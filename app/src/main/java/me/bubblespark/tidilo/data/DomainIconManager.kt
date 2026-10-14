@@ -1,0 +1,531 @@
+package me.bubblespark.tidilo.data
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import org.jsoup.Jsoup
+import java.io.File
+import java.io.FileOutputStream
+import java.net.URI
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * Domain-level icon caching and local storage management.
+ *
+ * - Fetches domain icons and caches them in local storage (filesDir/domain_icons/).
+ * - Prevents redundant fetches if an icon is already cached locally.
+ * - Filters out icons smaller than MIN_ICON_SIZE (96x96).
+ * - Downsamples icons larger than MAX_ICON_SIZE (384x384).
+ * - Selects the largest resolution candidate among available candidates.
+ */
+object DomainIconManager {
+
+    const val MIN_ICON_SIZE = 96
+    const val MAX_ICON_SIZE = 384
+    const val DOMAIN_TIMEOUT_MS = 10_000L
+    private const val USER_AGENT =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+    private val memoryCache = ConcurrentHashMap<String, ImageBitmap>()
+
+    private val _iconUpdateVersion = MutableStateFlow(0L)
+    val iconUpdateVersion: StateFlow<Long> = _iconUpdateVersion.asStateFlow()
+
+    /**
+     * Extracts normalized domain name from a URL (lowercase, removes 'www.' and port).
+     */
+    fun extractDomain(url: String): String? {
+        return try {
+            val trimmed = url.trim()
+            val uri = URI(if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) "https://$trimmed" else trimmed)
+            val host = uri.host ?: return null
+            host.removePrefix("www.").lowercase().substringBefore(':')
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun getIconFile(context: Context, domain: String): File {
+        val dir = File(context.filesDir, "domain_icons")
+        if (!dir.exists()) dir.mkdirs()
+        return File(dir, "$domain.png")
+    }
+
+    /**
+     * Checks if a domain icon file exists in local storage.
+     */
+    fun hasIcon(context: Context, domain: String): Boolean {
+        val file = getIconFile(context, domain)
+        return file.exists() && file.length() > 0
+    }
+
+    /**
+     * Returns the cached ImageBitmap from memory, or null if uncached (0ms, non-blocking).
+     */
+    fun getCachedIconBitmap(domain: String): ImageBitmap? {
+        val normalized = domain.trim().lowercase()
+        return memoryCache[normalized]
+    }
+
+    /**
+     * Loads the domain icon from disk, registers it in memory cache, and returns it.
+     * (Disk icons are already transparent, so no redundant transparency processing is run).
+     */
+    fun loadIconFromDisk(context: Context, domain: String): ImageBitmap? {
+        val normalized = domain.trim().lowercase()
+        memoryCache[normalized]?.let { return it }
+        val file = getIconFile(context, normalized)
+        if (!file.exists() || file.length() == 0L) return null
+
+        return try {
+            val rawBitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
+            val imageBitmap = rawBitmap.asImageBitmap()
+            memoryCache[normalized] = imageBitmap
+            imageBitmap
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Retrieves domain icon ImageBitmap from memory cache or disk. Returns null if not stored.
+     */
+    fun getIconBitmap(context: Context, domain: String): ImageBitmap? {
+        return getCachedIconBitmap(domain) ?: loadIconFromDisk(context, domain)
+    }
+
+    /**
+     * Preloads existing disk-cached icons into memory cache on background thread without network calls.
+     */
+    fun preloadIcons(context: Context, domains: Collection<String?>) {
+        val unique = domains.filterNotNull().map { it.trim().lowercase() }.distinct()
+        for (domain in unique) {
+            if (!memoryCache.containsKey(domain) && hasIcon(context, domain)) {
+                loadIconFromDisk(context, domain)
+            }
+        }
+    }
+
+    private val dominantColorCache = ConcurrentHashMap<String, Color>()
+
+    /**
+     * Extracts and caches the dominant brand color of a domain icon.
+     * Falls back to a deterministic accent color based on domain hash if unavailable.
+     */
+    fun getDominantColor(context: Context, domain: String): Color {
+        val normalized = domain.trim().lowercase()
+        dominantColorCache[normalized]?.let { return it }
+
+        val imageBitmap = getCachedIconBitmap(normalized) ?: loadIconFromDisk(context, normalized)
+        val color = if (imageBitmap != null) {
+            extractDominantColor(imageBitmap.asAndroidBitmap(), normalized)
+        } else {
+            generateDomainAccentColor(normalized)
+        }
+
+        dominantColorCache[normalized] = color
+        return color
+    }
+
+    /**
+     * Synchronously returns cached dominant color from memory or null if not yet computed.
+     */
+    fun getCachedDominantColor(domain: String): Color? {
+        val normalized = domain.trim().lowercase()
+        return dominantColorCache[normalized]
+    }
+
+    /**
+     * Samples vibrant, saturated pixels from an icon bitmap to determine its primary brand color.
+     */
+    fun extractDominantColor(bitmap: Bitmap, domain: String): Color {
+        return try {
+            val sampleSize = 24
+            val scaled = Bitmap.createScaledBitmap(bitmap, sampleSize, sampleSize, false)
+            val pixels = IntArray(sampleSize * sampleSize)
+            scaled.getPixels(pixels, 0, sampleSize, 0, 0, sampleSize, sampleSize)
+            if (scaled != bitmap) scaled.recycle()
+
+            var bestColor = 0
+            var bestScore = -1f
+            val hsv = FloatArray(3)
+
+            for (pixel in pixels) {
+                val alpha = (pixel ushr 24) and 0xFF
+                if (alpha < 120) continue
+
+                android.graphics.Color.colorToHSV(pixel, hsv)
+                val saturation = hsv[1]
+                val value = hsv[2]
+
+                // Avoid washed-out white or dark near-black
+                if (value < 0.15f || (saturation < 0.1f && value > 0.9f)) continue
+
+                // Score by saturation and medium-high luminance
+                val score = saturation * (1f - kotlin.math.abs(value - 0.7f))
+                if (score > bestScore) {
+                    bestScore = score
+                    bestColor = pixel
+                }
+            }
+
+            if (bestScore > 0.15f) {
+                ensureDarkThemeLegibility(Color(bestColor))
+            } else {
+                generateDomainAccentColor(domain)
+            }
+        } catch (_: Exception) {
+            generateDomainAccentColor(domain)
+        }
+    }
+
+    /**
+     * Calibrates accent color to ensure strong contrast, vibrant ambient glow, and legible text on dark backgrounds.
+     * Prevents deep navy, dark blue, and low-luminance tones from dissolving into the dark theme surface.
+     */
+    fun ensureDarkThemeLegibility(color: Color): Color {
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(
+            android.graphics.Color.argb(
+                (color.alpha * 255).toInt(),
+                (color.red * 255).toInt(),
+                (color.green * 255).toInt(),
+                (color.blue * 255).toInt()
+            ),
+            hsv
+        )
+        val hue = hsv[0]
+        var saturation = hsv[1]
+        var value = hsv[2]
+
+        // Human eyes have lower perceived sensitivity to blue and violet (hue 190° - 275°)
+        val isBlueOrViolet = hue in 190f..275f
+
+        val minValue = if (isBlueOrViolet) 0.88f else 0.72f
+        if (value < minValue) {
+            value = minValue
+        }
+
+        // For deep dark blues, moderate saturation while boosting brightness to yield a luminous brand blue
+        if (isBlueOrViolet && saturation > 0.65f) {
+            saturation = 0.58f
+            value = 0.92f
+        } else if (saturation > 0.85f && value < 0.80f) {
+            saturation = 0.75f
+            value = 0.85f
+        }
+
+        return Color.hsv(hue, saturation, value)
+    }
+
+    /**
+     * Generates a deterministic, aesthetically pleasing accent color based on domain name hash.
+     */
+    fun generateDomainAccentColor(domain: String): Color {
+        val hash = kotlin.math.abs(domain.hashCode())
+        val hue = (hash % 360).toFloat()
+        val isBlue = hue in 190f..275f
+        val sat = if (isBlue) 0.48f else 0.55f
+        val v = if (isBlue) 0.92f else 0.85f
+        return Color.hsv(hue, sat, v)
+    }
+
+    /**
+     * Removes domain icon from local disk storage and in-memory cache.
+     */
+    fun removeIcon(context: Context, domain: String) {
+        val normalized = domain.trim().lowercase()
+        memoryCache.remove(normalized)
+        dominantColorCache.remove(normalized)
+        val file = getIconFile(context, normalized)
+        if (file.exists()) {
+            file.delete()
+        }
+        _iconUpdateVersion.value = System.currentTimeMillis()
+    }
+
+    /**
+     * If the four corners are a uniform opaque color (solid background), transparentizes it to extract the logo symbol.
+     * Returns the source bitmap unmodified if the corners are already transparent.
+     */
+    fun makeBackgroundTransparent(source: Bitmap): Bitmap {
+        val w = source.width
+        val h = source.height
+        if (w <= 1 || h <= 1) return source
+
+        return try {
+            val cTL = source.getPixel(0, 0)
+            val cTR = source.getPixel(w - 1, 0)
+            val cBL = source.getPixel(0, h - 1)
+            val cBR = source.getPixel(w - 1, h - 1)
+
+            val aTL = android.graphics.Color.alpha(cTL)
+            val aTR = android.graphics.Color.alpha(cTR)
+            val aBL = android.graphics.Color.alpha(cBL)
+            val aBR = android.graphics.Color.alpha(cBR)
+
+            // If all 4 corners are transparent (alpha < 30), it is already transparent PNG
+            if (aTL < 30 && aTR < 30 && aBL < 30 && aBR < 30) {
+                return source
+            }
+
+            fun isSimilar(c1: Int, c2: Int, maxDiff: Int = 18): Boolean {
+                val rDiff = kotlin.math.abs(android.graphics.Color.red(c1) - android.graphics.Color.red(c2))
+                val gDiff = kotlin.math.abs(android.graphics.Color.green(c1) - android.graphics.Color.green(c2))
+                val bDiff = kotlin.math.abs(android.graphics.Color.blue(c1) - android.graphics.Color.blue(c2))
+                return rDiff <= maxDiff && gDiff <= maxDiff && bDiff <= maxDiff
+            }
+
+            val allOpaque = aTL > 220 && aTR > 220 && aBL > 220 && aBR > 220
+            if (!allOpaque || !isSimilar(cTL, cTR) || !isSimilar(cTL, cBL) || !isSimilar(cTL, cBR)) {
+                return source // Do not convert if corners are not uniform solid background
+            }
+
+            val bgR = android.graphics.Color.red(cTL)
+            val bgG = android.graphics.Color.green(cTL)
+            val bgB = android.graphics.Color.blue(cTL)
+
+            val pixels = IntArray(w * h)
+            source.getPixels(pixels, 0, w, 0, 0, w, h)
+
+            val threshold = 22.0
+            val smooth = 25.0
+
+            for (i in pixels.indices) {
+                val p = pixels[i]
+                val r = android.graphics.Color.red(p)
+                val g = android.graphics.Color.green(p)
+                val b = android.graphics.Color.blue(p)
+                val a = android.graphics.Color.alpha(p)
+
+                val dist = kotlin.math.sqrt(
+                    ((r - bgR) * (r - bgR) + (g - bgG) * (g - bgG) + (b - bgB) * (b - bgB)).toDouble()
+                )
+
+                if (dist < threshold) {
+                    pixels[i] = 0 // Fully transparent
+                } else if (dist < threshold + smooth) {
+                    val factor = ((dist - threshold) / smooth).toFloat()
+                    val newAlpha = (a * factor).toInt().coerceIn(0, 255)
+                    pixels[i] = android.graphics.Color.argb(newAlpha, r, g, b)
+                }
+            }
+
+            val output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            output.setPixels(pixels, 0, w, 0, 0, w, h)
+            output
+        } catch (_: Exception) {
+            source
+        }
+    }
+
+    /**
+     * Downsamples bitmap maintaining aspect ratio if larger than maxSize (default 384x384).
+     */
+    fun downsampleIfNeeded(bitmap: Bitmap, maxSize: Int = MAX_ICON_SIZE): Bitmap {
+        val w = bitmap.width
+        val h = bitmap.height
+        if (w <= maxSize && h <= maxSize) return bitmap
+
+        val ratio = kotlin.math.min(maxSize.toFloat() / w, maxSize.toFloat() / h)
+        val targetW = (w * ratio).toInt().coerceAtLeast(1)
+        val targetH = (h * ratio).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
+    }
+
+    /**
+     * Discovers icon candidate URLs from HTML markup (<link rel="icon">, <link rel="apple-touch-icon">, etc.).
+     */
+    private fun findHtmlIconUrls(pageUrl: String): List<String> {
+        val results = mutableListOf<String>()
+        try {
+            val doc = Jsoup.connect(pageUrl)
+                .userAgent(USER_AGENT)
+                .timeout(4000)
+                .followRedirects(true)
+                .get()
+
+            // Extract og:site_name and register as domain display name
+            val siteName = doc.select("meta[property='og:site_name'], meta[name='og:site_name']").firstOrNull()?.attr("content")?.trim()
+            if (!siteName.isNullOrBlank()) {
+                val domain = extractDomain(pageUrl)
+                if (domain != null) {
+                    DomainPolicyManager.setDomainDisplayName(domain, siteName)
+                }
+            }
+
+            val linkElements = doc.select("link[rel*='icon']")
+            for (el in linkElements) {
+                val href = el.absUrl("href")
+                if (href.isNotBlank() && (href.startsWith("http://") || href.startsWith("https://"))) {
+                    results.add(href)
+                }
+            }
+
+            // msapplication-TileImage (Windows Tile icon, often 144x144)
+            val tileMeta = doc.select("meta[name='msapplication-TileImage'], meta[name='msapplication-tileimage']")
+            for (el in tileMeta) {
+                val content = el.absUrl("content").ifEmpty { el.attr("content") }
+                if (content.isNotBlank() && (content.startsWith("http://") || content.startsWith("https://"))) {
+                    results.add(content)
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return results
+    }
+
+    /**
+     * Fetches domain icon and saves it to local disk storage.
+     * - Selects the highest resolution candidate.
+     * - Requires at least 96x96 resolution.
+     * - Downsamples icons exceeding 384x384.
+     * - Skips if already cached unless forceRefresh is true.
+     */
+    suspend fun fetchAndSaveDomainIcon(
+        context: Context,
+        url: String,
+        appleTouchIconUrl: String? = null,
+        faviconUrl: String? = null,
+        forceRefresh: Boolean = false
+    ): Boolean = withContext(Dispatchers.IO) {
+        val domain = extractDomain(url) ?: return@withContext false
+
+        if (!forceRefresh && hasIcon(context, domain)) {
+            return@withContext true
+        }
+
+        val candidates = LinkedHashSet<String>()
+        if (!appleTouchIconUrl.isNullOrBlank()) candidates.add(appleTouchIconUrl.trim())
+        if (!faviconUrl.isNullOrBlank()) candidates.add(faviconUrl.trim())
+
+        // Discover icons from HTML markup
+        val targetPageUrl = if (url.startsWith("http://") || url.startsWith("https://")) url else "https://$domain"
+        val htmlIcons = findHtmlIconUrls(targetPageUrl)
+        candidates.addAll(htmlIcons)
+
+        // Direct root path candidates
+        candidates.add("https://$domain/apple-touch-icon.png")
+        candidates.add("https://$domain/apple-touch-icon-precomposed.png")
+
+        // Google Favicon service candidates
+        candidates.add("https://www.google.com/s2/favicons?domain=$domain&sz=256")
+        candidates.add("https://www.google.com/s2/favicons?domain=$domain&sz=128")
+
+        var bestBitmap: Bitmap? = null
+        var bestArea = 0
+
+        for (candidateUrl in candidates) {
+            try {
+                val bytes = downloadBytes(candidateUrl) ?: continue
+
+                // Resolution check: exclude candidates smaller than 96x96
+                val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
+                val width = boundsOptions.outWidth
+                val height = boundsOptions.outHeight
+
+                if (width < MIN_ICON_SIZE || height < MIN_ICON_SIZE) {
+                    continue
+                }
+
+                val area = width * height
+                if (area > bestArea) {
+                    val rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    if (rawBitmap != null) {
+                        bestBitmap = rawBitmap
+                        bestArea = area
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        if (bestBitmap != null) {
+            // Downsample icons larger than 384x384 before saving
+            val scaledBitmap = downsampleIfNeeded(bestBitmap, MAX_ICON_SIZE)
+            val processedBitmap = makeBackgroundTransparent(scaledBitmap)
+
+            val file = getIconFile(context, domain)
+            FileOutputStream(file).use { out ->
+                processedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+
+            memoryCache[domain] = processedBitmap.asImageBitmap()
+            dominantColorCache[domain] = extractDominantColor(processedBitmap, domain)
+            _iconUpdateVersion.value = System.currentTimeMillis()
+            return@withContext true
+        }
+
+        false
+    }
+
+    /**
+     * Forces re-fetching of a single domain icon (with 10-second timeout).
+     * Deletes existing icon and returns false upon timeout or failure.
+     */
+    suspend fun refreshDomainIcon(
+        context: Context,
+        domain: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val result = withTimeoutOrNull(DOMAIN_TIMEOUT_MS) {
+            fetchAndSaveDomainIcon(
+                context = context,
+                url = "https://$domain",
+                forceRefresh = true
+            )
+        }
+        if (result == true) {
+            true
+        } else {
+            removeIcon(context, domain)
+            false
+        }
+    }
+
+    /**
+     * Sequentially refreshes icons for all provided domains.
+     */
+    suspend fun refreshAllDomainIcons(
+        context: Context,
+        domains: List<String>,
+        onProgress: ((current: Int, total: Int, currentDomain: String) -> Unit)? = null
+    ) = withContext(Dispatchers.IO) {
+        val uniqueDomains = domains.distinct()
+        val total = uniqueDomains.size
+        for ((index, domain) in uniqueDomains.withIndex()) {
+            onProgress?.invoke(index, total, domain)
+            refreshDomainIcon(context, domain)
+            onProgress?.invoke(index + 1, total, domain)
+        }
+    }
+
+    private fun downloadBytes(urlStr: String): ByteArray? {
+        return try {
+            val response = Jsoup.connect(urlStr)
+                .userAgent(USER_AGENT)
+                .ignoreContentType(true)
+                .followRedirects(true)
+                .timeout(4000)
+                .maxBodySize(5 * 1024 * 1024)
+                .execute()
+            if (response.statusCode() in 200..299) {
+                response.bodyAsBytes()
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+}

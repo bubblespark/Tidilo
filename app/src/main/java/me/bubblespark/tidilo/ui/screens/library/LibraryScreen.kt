@@ -1,0 +1,540 @@
+package me.bubblespark.tidilo.ui.screens.library
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.EaseInOutCubic
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.data.DomainIconManager
+import me.bubblespark.tidilo.data.DomainPolicyManager
+import me.bubblespark.tidilo.ui.components.FrostedHeaderContainer
+import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+private sealed interface LibraryDisplayState {
+    data object NewestFirst : LibraryDisplayState
+    data object DomainGrid : LibraryDisplayState
+    data class DomainDrillDown(val domain: String) : LibraryDisplayState
+}
+
+@Composable
+fun LibraryScreen(
+    viewModel: LibraryViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToDetail: (String) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
+    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
+    val filterMode by viewModel.filterMode.collectAsStateWithLifecycle()
+    val selectedDomainFilter by viewModel.selectedDomainFilter.collectAsStateWithLifecycle()
+    val domainGroups by viewModel.domainGroups.collectAsStateWithLifecycle()
+    val domainFilteredBookmarks by viewModel.domainFilteredBookmarks.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val isBarsVisible = LocalBarsVisible.current
+    var lastCardClickTime by remember { mutableLongStateOf(0L) }
+    val context = LocalContext.current
+    val iconVersion by DomainIconManager.iconUpdateVersion.collectAsStateWithLifecycle()
+
+    val selectedDomainColor by produceState<Color?>(
+        initialValue = selectedDomainFilter?.let {
+            DomainIconManager.getCachedDominantColor(it) ?: DomainIconManager.generateDomainAccentColor(it)
+        },
+        key1 = selectedDomainFilter,
+        key2 = iconVersion
+    ) {
+        val domain = selectedDomainFilter
+        if (domain != null) {
+            val cached = DomainIconManager.getCachedDominantColor(domain)
+            if (cached != null) {
+                value = cached
+            } else {
+                value = withContext(Dispatchers.IO) {
+                    DomainIconManager.getDominantColor(context, domain)
+                }
+            }
+        } else {
+            value = null
+        }
+    }
+
+    val domainGridState = rememberLazyGridState()
+    val newestFirstListState = rememberLazyListState()
+    val domainDetailListState = rememberLazyListState()
+
+    LaunchedEffect(selectedDomainFilter) {
+        if (selectedDomainFilter != null) {
+            domainDetailListState.scrollToItem(0)
+        }
+    }
+
+    val displayState = remember(filterMode, selectedDomainFilter) {
+        when {
+            filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
+                LibraryDisplayState.DomainDrillDown(selectedDomainFilter!!)
+            filterMode == LibraryFilterMode.DOMAIN ->
+                LibraryDisplayState.DomainGrid
+            else ->
+                LibraryDisplayState.NewestFirst
+        }
+    }
+
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val headerHeight = statusBarTop + 80.dp
+
+    // Restore to domain grid from domain drilldown on system back gesture
+    if (filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null) {
+        BackHandler {
+            viewModel.clearDomainFilter()
+        }
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        if (isLoading) {
+            SkeletonBookmarkList(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = headerHeight, start = 20.dp, end = 20.dp)
+            )
+        } else {
+            AnimatedContent(
+                targetState = displayState,
+                transitionSpec = {
+                    if (initialState is LibraryDisplayState.DomainGrid && targetState is LibraryDisplayState.DomainDrillDown) {
+                        // Forward navigation: Domain Grid -> Domain DrillDown
+                        slideIntoContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + fadeIn(animationSpec = tween(280, easing = EaseInOutCubic)) togetherWith
+                        slideOutOfContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + fadeOut(animationSpec = tween(200))
+                    } else if (initialState is LibraryDisplayState.DomainDrillDown && targetState is LibraryDisplayState.DomainGrid) {
+                        // Backward navigation: Domain DrillDown -> Domain Grid
+                        slideIntoContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.End,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + fadeIn(animationSpec = tween(280, easing = EaseInOutCubic)) togetherWith
+                        slideOutOfContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.End,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + fadeOut(animationSpec = tween(200))
+                    } else {
+                        // Filter mode change or fallback: Crossfade
+                        fadeIn(animationSpec = tween(240, easing = EaseInOutCubic)) togetherWith
+                        fadeOut(animationSpec = tween(180))
+                    }
+                },
+                label = "library_display_state",
+                modifier = Modifier.fillMaxSize()
+            ) { state ->
+                when (state) {
+                    is LibraryDisplayState.DomainGrid -> {
+                        if (domainGroups.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = headerHeight, start = 20.dp, end = 20.dp)
+                            ) {
+                                EmptyLibraryMessage()
+                            }
+                        } else {
+                            LazyVerticalGrid(
+                                state = domainGridState,
+                                columns = GridCells.Fixed(2),
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(
+                                    top = headerHeight,
+                                    bottom = 140.dp,
+                                    start = 20.dp,
+                                    end = 20.dp
+                                ),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(
+                                    items = domainGroups,
+                                    key = { it.domain },
+                                    contentType = { "domain_card" }
+                                ) { group ->
+                                    DomainCard(
+                                        item = group,
+                                        isJapanese = currentLanguage.isJapanese,
+                                        onClick = {
+                                            viewModel.selectDomainFilter(group.domain)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    is LibraryDisplayState.DomainDrillDown -> {
+                        val currentDomain = state.domain
+                        val domainColor = selectedDomainColor
+                            ?: DomainIconManager.getCachedDominantColor(currentDomain)
+                            ?: DomainIconManager.generateDomainAccentColor(currentDomain)
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .drawBehind {
+                                    // Radiant ambient beam from top-right corner spreading across ~2/3 of the screen towards bottom-left
+                                    val ambientBeam = Brush.linearGradient(
+                                        colorStops = arrayOf(
+                                            0.00f to domainColor.copy(alpha = 0.32f),
+                                            0.22f to domainColor.copy(alpha = 0.22f),
+                                            0.45f to domainColor.copy(alpha = 0.13f),
+                                            0.68f to domainColor.copy(alpha = 0.05f),
+                                            0.84f to domainColor.copy(alpha = 0.015f),
+                                            1.00f to Color.Transparent
+                                        ),
+                                        start = Offset(size.width * 1.05f, -size.height * 0.02f),
+                                        end = Offset(-size.width * 0.15f, size.height * 0.90f)
+                                    )
+                                    drawRect(brush = ambientBeam)
+
+                                    // Deep spherical glow in top-right shoulder spreading across ~2/3 of screen
+                                    val cornerGlow = Brush.radialGradient(
+                                        colorStops = arrayOf(
+                                            0.00f to domainColor.copy(alpha = 0.22f),
+                                            0.30f to domainColor.copy(alpha = 0.13f),
+                                            0.60f to domainColor.copy(alpha = 0.05f),
+                                            0.82f to domainColor.copy(alpha = 0.012f),
+                                            1.00f to Color.Transparent
+                                        ),
+                                        center = Offset(size.width, 0f),
+                                        radius = size.height * 0.72f
+                                    )
+                                    drawRect(brush = cornerGlow)
+                                }
+                        ) {
+                            if (domainFilteredBookmarks.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(top = headerHeight, start = 20.dp, end = 20.dp)
+                                ) {
+                                    EmptyLibraryMessage()
+                                }
+                            } else {
+                                LazyColumn(
+                                    state = domainDetailListState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(
+                                        top = headerHeight,
+                                        bottom = 140.dp,
+                                        start = 20.dp,
+                                        end = 20.dp
+                                    ),
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    items(
+                                        items = domainFilteredBookmarks,
+                                        key = { it.id },
+                                        contentType = { "bookmark_card" }
+                                    ) { item ->
+                                        BookmarkItemCard(
+                                            bookmark = item,
+                                            wordKeywords = emptyList(),
+                                            tagKeywords = emptyList(),
+                                            currentLanguage = currentLanguage,
+                                            onClick = {
+                                                val now = android.os.SystemClock.uptimeMillis()
+                                                if (now - lastCardClickTime > 800L) {
+                                                    lastCardClickTime = now
+                                                    onNavigateToDetail(item.id)
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    is LibraryDisplayState.NewestFirst -> {
+                        if (bookmarks.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = headerHeight, start = 20.dp, end = 20.dp)
+                            ) {
+                                EmptyLibraryMessage()
+                            }
+                        } else {
+                            LazyColumn(
+                                state = newestFirstListState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(
+                                    top = headerHeight,
+                                    bottom = 140.dp,
+                                    start = 20.dp,
+                                    end = 20.dp
+                                ),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                items(
+                                    items = bookmarks,
+                                    key = { it.id },
+                                    contentType = { "bookmark_card" }
+                                ) { item ->
+                                    BookmarkItemCard(
+                                        bookmark = item,
+                                        wordKeywords = emptyList(),
+                                        tagKeywords = emptyList(),
+                                        currentLanguage = currentLanguage,
+                                        onClick = {
+                                            val now = android.os.SystemClock.uptimeMillis()
+                                            if (now - lastCardClickTime > 800L) {
+                                                lastCardClickTime = now
+                                                onNavigateToDetail(item.id)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Expressive Header (slides out/in from top screen edge linked with scrolling)
+        AnimatedVisibility(
+            visible = isBarsVisible,
+            enter = slideInVertically(
+                initialOffsetY = { -it },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            ) + fadeIn(animationSpec = tween(200)),
+            exit = slideOutVertically(
+                targetOffsetY = { -it },
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            ) + fadeOut(animationSpec = tween(150)),
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            FrostedHeaderContainer {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        // Back button during domain drilldown
+                        AnimatedVisibility(
+                            visible = filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null,
+                            enter = fadeIn(animationSpec = tween(200)) + expandHorizontally(),
+                            exit = fadeOut(animationSpec = tween(150)) + shrinkHorizontally()
+                        ) {
+                            IconButton(
+                                onClick = { viewModel.clearDomainFilter() },
+                                modifier = Modifier
+                                    .padding(end = 4.dp)
+                                    .size(40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back to Domains",
+                                    tint = MaterialTheme.colorScheme.onBackground
+                                )
+                            }
+                        }
+
+                        Column {
+                            val headerTitle = when {
+                                filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
+                                    DomainPolicyManager.getDisplayName(selectedDomainFilter)
+                                else -> "Library"
+                            }
+                            val headerSubtitle = when {
+                                isLoading ->
+                                    if (currentLanguage.isJapanese) "読み込み中..." else "Loading bookmarks..."
+                                filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
+                                    if (currentLanguage.isJapanese) "ドメインブックマーク (${domainFilteredBookmarks.size})" else "Tagged Bookmarks (${domainFilteredBookmarks.size})"
+                                filterMode == LibraryFilterMode.DOMAIN ->
+                                    if (currentLanguage.isJapanese) "ドメイン一覧 (${domainGroups.size})" else "Domains (${domainGroups.size})"
+                                else ->
+                                    if (currentLanguage.isJapanese) "保存済みブックマーク (${bookmarks.size})" else "Tagged Bookmarks (${bookmarks.size})"
+                            }
+
+                            AnimatedContent(
+                                targetState = headerTitle,
+                                transitionSpec = {
+                                    fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
+                                },
+                                label = "header_title"
+                            ) { title ->
+                                Text(
+                                    text = title,
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            AnimatedContent(
+                                targetState = headerSubtitle,
+                                transitionSpec = {
+                                    fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
+                                },
+                                label = "header_subtitle"
+                            ) { subtitle ->
+                                Text(
+                                    text = subtitle,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (selectedDomainFilter != null && selectedDomainColor != null) {
+                                        selectedDomainColor!!
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Settings button
+                        IconButton(
+                            onClick = onNavigateToSettings,
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyLibraryMessage() {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 24.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Inbox,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(36.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "No bookmarks yet",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Enqueued bookmarks will appear here after processing.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
+    }
+}

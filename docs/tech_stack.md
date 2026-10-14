@@ -1,0 +1,54 @@
+# Tech Stack & Dependency Specification
+
+This document provides the canonical catalog of all programming languages, SDKs, tools, and third-party libraries used in **Tidilo**, along with exact version numbers and technical rationales.
+
+---
+
+## 1. Toolchain & Platform Versions
+
+| Component | Version | Configuration Location | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Android Gradle Plugin (AGP)** | `8.7.3` | `gradle/libs.versions.toml` | Build orchestration and packaging. |
+| **Kotlin** | `2.1.0` | `gradle/libs.versions.toml` | Core application language. |
+| **Kotlin Compose Compiler Plugin** | `2.1.0` | `gradle/libs.versions.toml` | Official Kotlin 2.0+ integrated Compose compiler. |
+| **Java / JVM Target** | `21` | `app/build.gradle.kts` | Modern Java runtime bytecode target. |
+| **compileSdk** | `36` | `app/build.gradle.kts` | API 36 platform headers. |
+| **minSdk** | `34` | `app/build.gradle.kts` | Android 14 baseline for AICore support. |
+| **targetSdk** | `36` | `app/build.gradle.kts` | Target Android 15/16 platform behaviors. |
+
+---
+
+## 2. Jetpack Compose & AndroidX Libraries
+
+| Library | Version / BOM | Package / Alias | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Compose BOM** | `2024.12.01` | `androidx-compose-bom` | Stable dependency management across all Compose UI modules. |
+| **Compose UI & Foundation** | BOM managed | `androidx-ui`, `androidx-ui-graphics` | Declarative UI rendering, touch handling, layout primitives. |
+| **Compose Material 3** | BOM managed | `androidx-material3` | Material 3 components, expressive color tokens, surface hierarchy. |
+| **Material Icons Extended** | BOM managed | `androidx-material-icons-extended` | Material icons (Search, History, OpenInNew, Tag, Folder, etc.). |
+| **Navigation Compose** | `2.8.5` | `androidx-navigation-compose` | In-app screen routing, type-safe arguments, animated transitions. |
+| **Lifecycle Runtime KTX** | `2.8.7` | `androidx-lifecycle-runtime-ktx` | Android lifecycle coroutines and scopes. |
+| **Lifecycle ViewModel KTX** | `2.8.7` | `androidx-lifecycle-viewmodel-ktx` | `viewModelScope` lifecycle-bound coroutine launch. |
+| **Lifecycle Runtime Compose** | `2.8.7` | `androidx-lifecycle-runtime-compose` | `collectAsStateWithLifecycle()` for zero battery drain in background. |
+| **Lifecycle ViewModel Compose** | `2.8.7` | `androidx-lifecycle-viewmodel-compose` | Compose integration for ViewModel instantiation (`viewModel()`). |
+| **Activity Compose** | `1.9.3` | `androidx-activity-compose` | `ComponentActivity.setContent`, `enableEdgeToEdge()`, `BackHandler`. |
+| **Core KTX** | `1.15.0` | `androidx-core-ktx` | Kotlin extensions for core Android platform APIs. |
+
+---
+
+## 3. On-Device AI & Web Scraping Libraries
+
+| Library | Exact Artifact Coordinates | Purpose & Justification |
+| :--- | :--- | :--- |
+| **Google ML Kit GenAI Prompt SDK** | `com.google.mlkit:genai-prompt:1.0.0-beta2` | Directly binds to Android AICore system service to run **Gemini Nano** on-device. Zero network traffic, zero API keys required, instant response. |
+| **Jsoup** | `org.jsoup:jsoup:1.18.3` | High-performance HTML parsing, DOM traversal, meta tag extraction, OGP detection, and HTML sanitization. |
+| **Readability4J** | `net.dankito.readability4j:readability4j:1.0.8` | Kotlin port of Mozilla Firefox's Readability algorithm. Strips navigation bars, footers, and ads to extract clean article text. |
+
+---
+
+## 4. Test Libraries
+
+| Library | Version | Purpose |
+| :--- | :--- | :--- |
+| **JUnit 4** | `4.13.2` | Core JVM unit testing framework for repositories, ViewModels, parsers. |
+| **org.json** | `20240303` | Mock JSON implementations for pure JVM unit tests without Android runtime stubs. |

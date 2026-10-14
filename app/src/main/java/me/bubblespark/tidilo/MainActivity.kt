@@ -94,19 +94,22 @@ fun TidiloApp(
     val currentRoute = navBackStackEntry?.destination?.route
     val isBottomBarVisible = Screen.allTabs.any { it.route == currentRoute }
 
+    val filterMode by libraryViewModel.filterMode.collectAsStateWithLifecycle()
+    val selectedDomainFilter by libraryViewModel.selectedDomainFilter.collectAsStateWithLifecycle()
+
     // Header and navigation bar visibility state
     var isBarsVisible by remember { mutableStateOf(true) }
     // Library FAB menu expanded/collapsed state
     var isFilterMenuExpanded by remember { mutableStateOf(false) }
 
-    // Reset bars to visible and collapse FAB menu when switching tabs
-    LaunchedEffect(currentRoute) {
+    // Reset bars to visible and collapse FAB menu when switching tabs, filter modes, or domain drilldown
+    LaunchedEffect(currentRoute, filterMode, selectedDomainFilter) {
         isBarsVisible = true
         isFilterMenuExpanded = false
     }
 
     // Scroll linking: Trigger only when content is actually scrolled (prevents false triggers on short screens)
-    val nestedScrollConnection = remember(isBottomBarVisible) {
+    val nestedScrollConnection = remember(isBottomBarVisible, currentRoute, filterMode, selectedDomainFilter) {
         object : NestedScrollConnection {
             private var accumulatedScroll = 0f
             private val hideThreshold = 30f // Threshold for downward scroll to hide
@@ -220,7 +223,6 @@ fun TidiloApp(
                         .navigationBarsPadding()
                         .padding(bottom = 16.dp)
                 ) {
-                    val filterMode by libraryViewModel.filterMode.collectAsStateWithLifecycle()
                     TidiloBottomBar(
                         navController = navController,
                         isBarsVisible = isBarsVisible,

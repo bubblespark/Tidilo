@@ -79,6 +79,7 @@ fun TidiloApp(
 ) {
     val navController = rememberNavController()
     val queuingItems by queueViewModel.queuingItems.collectAsStateWithLifecycle()
+    val runningItems by queueViewModel.runningItems.collectAsStateWithLifecycle()
 
     // When receiving a shared URL via Intent, enqueue to Queuing and navigate to Queue screen automatically
     LaunchedEffect(sharedUrl) {
@@ -227,6 +228,7 @@ fun TidiloApp(
                         navController = navController,
                         isBarsVisible = isBarsVisible,
                         queuingCount = queuingItems.size,
+                        isQueueRunning = runningItems.isNotEmpty(),
                         isFilterMenuExpanded = isFilterMenuExpanded,
                         onToggleFilterMenu = { isFilterMenuExpanded = !isFilterMenuExpanded },
                         currentFilterMode = filterMode,

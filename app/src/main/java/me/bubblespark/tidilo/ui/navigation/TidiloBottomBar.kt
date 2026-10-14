@@ -3,9 +3,17 @@ package me.bubblespark.tidilo.ui.navigation
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.EaseOutBack
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -56,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -80,6 +89,7 @@ fun TidiloBottomBar(
     navController: NavController,
     isBarsVisible: Boolean = true,
     queuingCount: Int = 0,
+    isQueueRunning: Boolean = false,
     isFilterMenuExpanded: Boolean = false,
     onToggleFilterMenu: () -> Unit = {},
     currentFilterMode: LibraryFilterMode = LibraryFilterMode.NEWEST_FIRST,
@@ -195,6 +205,51 @@ fun TidiloBottomBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
+                    val infiniteTransition = rememberInfiniteTransition(label = "queueHourglassTransition")
+
+                    // Hourglass 180-degree flip loop animation (Issue #3)
+                    // 3400ms cycle:
+                    // 0ms..500ms: Flip 180° with EaseOutBack bounce
+                    // 500ms..1700ms: Resting at 180° (sand falling metaphor)
+                    // 1700ms..2200ms: Flip 180° -> 360° with EaseOutBack bounce
+                    // 2200ms..3400ms: Resting at 360°/0°
+                    val hourglassRotation by infiniteTransition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 360f,
+                        animationSpec = infiniteRepeatable(
+                            animation = keyframes {
+                                durationMillis = 3400
+                                0f at 0 using EaseOutBack
+                                180f at 500 using LinearEasing
+                                180f at 1700 using EaseOutBack
+                                360f at 2200 using LinearEasing
+                                360f at 3400
+                            },
+                            repeatMode = RepeatMode.Restart
+                        ),
+                        label = "queueHourglassRotation"
+                    )
+
+                    // Dynamic pop/bounce scale during rotation peaks
+                    val hourglassScale by infiniteTransition.animateFloat(
+                        initialValue = 1f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = keyframes {
+                                durationMillis = 3400
+                                1f at 0 using FastOutSlowInEasing
+                                1.15f at 250 using FastOutSlowInEasing
+                                1f at 500
+                                1f at 1700 using FastOutSlowInEasing
+                                1.15f at 1950 using FastOutSlowInEasing
+                                1f at 2200
+                                1f at 3400
+                            },
+                            repeatMode = RepeatMode.Restart
+                        ),
+                        label = "queueHourglassScale"
+                    )
+
                     items.forEach { screen ->
                         val isSelected = currentRoute == screen.route
 
@@ -246,6 +301,18 @@ fun TidiloBottomBar(
                                 val iconVector = if (isSelected) screen.selectedIcon else screen.unselectedIcon
                                 val iconColor = if (isSelected) activeContentColor else inactiveTextColor
 
+                                val iconModifier = if (screen == Screen.Queue && isQueueRunning) {
+                                    Modifier
+                                        .size(28.dp)
+                                        .graphicsLayer {
+                                            rotationZ = hourglassRotation
+                                            scaleX = hourglassScale
+                                            scaleY = hourglassScale
+                                        }
+                                } else {
+                                    Modifier.size(28.dp)
+                                }
+
                                 if (screen == Screen.Queue && queuingCount > 0) {
                                     BadgedBox(
                                         badge = {
@@ -263,7 +330,7 @@ fun TidiloBottomBar(
                                         Icon(
                                             imageVector = iconVector,
                                             contentDescription = screen.title,
-                                            modifier = Modifier.size(28.dp),
+                                            modifier = iconModifier,
                                             tint = iconColor
                                         )
                                     }
@@ -271,7 +338,7 @@ fun TidiloBottomBar(
                                     Icon(
                                         imageVector = iconVector,
                                         contentDescription = screen.title,
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = iconModifier,
                                         tint = iconColor
                                     )
                                 }

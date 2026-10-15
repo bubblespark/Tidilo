@@ -240,7 +240,7 @@ class BookmarkRepository private constructor(context: Context) {
     }
 
     /**
-     * Synchronizes domain policies (icons are loaded on demand by individual card composables).
+     * Synchronizes domain policies and fetches missing domain icons in the background.
      */
     private fun warmUpDomainIconsAsync(items: List<BookmarkItem>) {
         repositoryScope.launch {
@@ -248,6 +248,14 @@ class BookmarkRepository private constructor(context: Context) {
                 .distinct()
 
             DomainPolicyManager.syncDomains(domains)
+            DomainIconManager.preloadIcons(appContext, domains)
+
+            for (item in items) {
+                val domain = DomainIconManager.extractDomain(item.url) ?: continue
+                if (!DomainIconManager.hasIcon(appContext, domain)) {
+                    DomainIconManager.fetchAndSaveDomainIcon(appContext, item.url)
+                }
+            }
         }
     }
 
@@ -428,134 +436,13 @@ class BookmarkRepository private constructor(context: Context) {
             return listOf(
                 BookmarkItem(
                     id = "b1",
-                    title = "Android Developers: Material 3 Expressive",
-                    url = "https://m3.material.io/",
-                    description = "Expressive design system featuring fluid motion, adaptive shapes, and modern layout tokens.",
-                    tag = Tag.create(
-                        category = "Article",
-                        subcategory = "Tech",
-                        entities = listOf("Material 3", "Compose", "Design System")
-                    )
-                ),
-                BookmarkItem(
-                    id = "b2",
-                    title = "Gemini Nano によるオンデバイス生成AIの活用とアーキテクチャ",
-                    url = "https://developer.android.com/ai/aicore",
-                    description = "Android 14以降のAICoreシステムサービスを活用し、ローカル端末上でGemini Nanoを低遅延・高プライバシーに推論実行する仕組みの解説。",
-                    tag = Tag.create(
-                        category = "Article",
-                        subcategory = "Tech",
-                        entities = listOf("Gemini Nano", "AICore", "OnDevice")
-                    )
-                ),
-                BookmarkItem(
-                    id = "b3",
-                    title = "映画レビュー・最新予告編＆メイキング映像特集",
-                    url = "https://www.youtube.com/watch?v=sample-trailer",
-                    description = "最新のSF大作のハイクオリティな予告編映像と、VFXメイキング解説コンテンツ。",
-                    tag = Tag.create(
-                        category = "Media",
-                        subcategory = "Entertainment",
-                        entities = listOf("YouTube", "Cinema", "VFX")
-                    )
-                ),
-                BookmarkItem(
-                    id = "b4",
-                    title = "GitHub CLI & Actions ワークフロー自動化ガイド",
-                    url = "https://cli.github.com/",
-                    description = "コマンドラインからPRレビューやIssue管理、CI/CDパイプライン実行を行える開発者向けツール。",
+                    title = "bubblespark/Tidilo: On-Device AI Bookmark & Knowledge Manager for Android",
+                    url = "https://github.com/bubblespark/Tidilo",
+                    description = "An intelligent, privacy-first personal bookmark and knowledge manager for Android that uses local Gemini Nano via AICore to automatically summarize, categorize, and extract entity keywords without cloud APIs.",
                     tag = Tag.create(
                         category = "Tool",
                         subcategory = "Tech",
-                        entities = listOf("GitHub", "Git", "CLI")
-                    )
-                ),
-                BookmarkItem(
-                    id = "b5",
-                    title = "スペシャルティコーヒー生豆・焙煎器具オンラインストア",
-                    url = "https://example-coffee.shop/items",
-                    description = "世界中のシングルオリジン豆と家庭用ハンドドリップ器具を取り扱うセレクトショップ。",
-                    tag = Tag.create(
-                        category = "Commerce",
-                        subcategory = "Food",
-                        entities = listOf("Coffee", "Roastery", "Beans")
-                    )
-                ),
-                BookmarkItem(
-                    id = "b6",
-                    title = "シャドウバース プレイヤーコミュニティ＆大会戦略フォーラム",
-                    url = "https://community.shadowverse.example/forums",
-                    description = "新パック環境のデッキ構築議論や大会メタレポート、プレイヤー同士の対戦募集掲示板。",
-                    tag = Tag.create(
-                        category = "Community",
-                        subcategory = "Game",
-                        entities = listOf("Shadowverse", "eSports", "Tournament")
-                    )
-                ),
-                BookmarkItem(
-                    id = "b7",
-                    title = "JR東日本 列車運行情報・新幹線チケットレス予約",
-                    url = "https://www.jreast.co.jp/",
-                    description = "リアルタイムの列車運行状況確認や、新幹線・特急列車の座席指定予約ができる公式ポータル。",
-                    tag = Tag.create(
-                        category = "Official",
-                        subcategory = "Travel",
-                        entities = listOf("JR East", "Shinkansen", "Booking")
-                    )
-                ),
-                BookmarkItem(
-                    id = "b8",
-                    title = "世界モバイルOS市場シェア推移レポート 2026",
-                    url = "https://statcounter.com/mobile-os/",
-                    description = "グローバルおよび地域別のスマートフォンOS利用シェア推移を可視化した統計・リファレンスデータ。",
-                    tag = Tag.create(
-                        category = "Reference",
-                        subcategory = "Business",
-                        entities = listOf("Market Data", "Mobile OS", "Statistics")
-                    )
-                ),
-                BookmarkItem(
-                    id = "b9",
-                    title = "睡眠の質を高めるスマートウォッチ活用術",
-                    url = "https://wellness-journal.example/sleep-optimization",
-                    description = "睡眠ステージ分析や心拍変動トラッキングによるリカバリー向上の実践的なアドバイス。",
-                    tag = Tag.create(
-                        category = "Article",
-                        subcategory = "Life",
-                        entities = listOf("Sleep Tech", "Smartwatch", "Wellness")
-                    )
-                ),
-                BookmarkItem(
-                    id = "b10",
-                    title = "Coursera | Professional Certificate Programs",
-                    url = "https://www.coursera.org/",
-                    description = "世界各国の主要大学や企業が提供するデータサイエンス・AI専門講座の公式認定プログラム。",
-                    tag = Tag.create(
-                        category = "Official",
-                        subcategory = "Education",
-                        entities = listOf("Coursera", "Data Science", "Certification")
-                    )
-                ),
-                BookmarkItem(
-                    id = "b11",
-                    title = "週末ロードバイク車載POVライド映像ログ",
-                    url = "https://vimeo.com/sample-cycling-pov",
-                    description = "雄大な山岳コースを4K 60fpsで記録した、臨場感あふれるヒルクライムロードのライド動画。",
-                    tag = Tag.create(
-                        category = "Media",
-                        subcategory = "Hobby",
-                        entities = listOf("Cycling", "POV", "GoPro")
-                    )
-                ),
-                BookmarkItem(
-                    id = "b12",
-                    title = "Notion – Connected workspace for wiki, docs & projects",
-                    url = "https://www.notion.so/",
-                    description = "ドキュメント、タスク管理、ナレッジベースを一元管理できる多機能プロダクティビティツール。",
-                    tag = Tag.create(
-                        category = "Tool",
-                        subcategory = "Business",
-                        entities = listOf("Notion", "Productivity", "Workspace")
+                        entities = listOf("Android", "Gemini Nano", "AICore", "Jetpack Compose", "GitHub")
                     )
                 )
             )

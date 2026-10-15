@@ -414,6 +414,12 @@ object DomainIconManager {
         val htmlIcons = findHtmlIconUrls(targetPageUrl)
         candidates.addAll(htmlIcons)
 
+        // Fallback to domain root HTML if no icons discovered or target is a deep URL
+        val rootPageUrl = "https://$domain"
+        if (targetPageUrl != rootPageUrl && targetPageUrl != "$rootPageUrl/") {
+            candidates.addAll(findHtmlIconUrls(rootPageUrl))
+        }
+
         // Direct root path candidates
         candidates.add("https://$domain/apple-touch-icon.png")
         candidates.add("https://$domain/apple-touch-icon-precomposed.png")

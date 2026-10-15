@@ -22,11 +22,14 @@ android {
     signingConfigs {
         create("release") {
             val keystorePath = System.getenv("KEYSTORE_PATH")
-            if (keystorePath != null && file(keystorePath).exists()) {
-                storeFile = file(keystorePath)
+            val keystoreFile = if (keystorePath != null) rootProject.file(keystorePath) else null
+            if (keystoreFile != null && keystoreFile.exists()) {
+                storeFile = keystoreFile
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
                 keyPassword = System.getenv("KEY_PASSWORD")
+            } else if (System.getenv("CI") == "true") {
+                throw GradleException("Keystore not found. Looked at: ${keystoreFile?.absolutePath}")
             } else {
                 initWith(getByName("debug"))
             }

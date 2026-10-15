@@ -407,78 +407,32 @@ class QueueRepository private constructor(context: Context) {
         val running = parseItems(runningJson).filterNot {
             it.id == "run-1" || it.url == "https://source.android.com/devices/tech/gemini-nano"
         }
-        val queuing = parseItems(queuingJson)
-        val error = parseItems(errorJson)
+        // Filter out legacy demo queuing items
+        val queuing = parseItems(queuingJson).filterNot {
+            it.id in setOf("queue-1", "queue-2", "queue-3", "queue-4", "queue-5", "queue-6")
+        }
+        // Filter out legacy demo error item
+        val error = parseItems(errorJson).filterNot {
+            it.id == "err-1"
+        }
 
         if (runningJson == null && queuingJson == null) {
-            // Demo seed data on first launch: Running is empty, only Queuing and Error
+            // Clean empty state on first launch: no demo seed tasks
             _runningItems.value = emptyList()
-
-            // Queuing: 6 items (for verifying 5-item limit and "More Items" button)
-            _queuingItems.value = listOf(
-                QueueItem(
-                    id = "queue-1",
-                    url = "https://developer.android.com/compose",
-                    title = "Jetpack Compose Modern UI Guide",
-                    status = QueueItemStatus.QUEUED,
-                    statusText = "Queued • Ready for batch tagging"
-                ),
-                QueueItem(
-                    id = "queue-2",
-                    url = "https://m3.material.io/",
-                    title = "Material 3 Expressive Specification",
-                    status = QueueItemStatus.QUEUED,
-                    statusText = "Queued • Waiting for trigger"
-                ),
-                QueueItem(
-                    id = "queue-3",
-                    url = "https://kotlinlang.org/docs/home.html",
-                    title = "Kotlin Programming Language Documentation",
-                    status = QueueItemStatus.QUEUED,
-                    statusText = "Queued • Added from web"
-                ),
-                QueueItem(
-                    id = "queue-4",
-                    url = "https://github.com/google/guava",
-                    title = "Google Guava Core Libraries for Java",
-                    status = QueueItemStatus.QUEUED,
-                    statusText = "Queued • Ready for tagging"
-                ),
-                QueueItem(
-                    id = "queue-5",
-                    url = "https://pixiv.net",
-                    title = "pixiv – イラスト・マンガ・小説の投稿プラットフォーム",
-                    status = QueueItemStatus.QUEUED,
-                    statusText = "Queued • Added just now"
-                ),
-                QueueItem(
-                    id = "queue-6",
-                    url = "https://zenn.dev/articles",
-                    title = "Zenn – エンジニアのための技術情報共有コミュニティ",
-                    status = QueueItemStatus.QUEUED,
-                    statusText = "Queued • Added just now"
-                )
-            )
-
-            // Error: 1 item (demo for HTTP 404 error badge/emphasis)
-            _errorItems.value = listOf(
-                QueueItem(
-                    id = "err-1",
-                    url = "https://developer.android.com/samples/legacy-removed-doc",
-                    title = "developer.android.com",
-                    status = QueueItemStatus.ERROR,
-                    statusText = "Failed",
-                    errorMessage = "HTTP Error 404: Not Found"
-                )
-            )
+            _queuingItems.value = emptyList()
+            _errorItems.value = emptyList()
 
             saveToPrefs()
         } else {
             _runningItems.value = running
             _queuingItems.value = queuing
             _errorItems.value = error
-            // Purge legacy test Running tasks or completed items from SharedPreferences immediately
-            if (running.size != parseItems(runningJson).size || prefs.contains("completed_items")) {
+            // Purge legacy demo items or completed items from SharedPreferences immediately
+            if (running.size != parseItems(runningJson).size ||
+                queuing.size != parseItems(queuingJson).size ||
+                error.size != parseItems(errorJson).size ||
+                prefs.contains("completed_items")
+            ) {
                 saveToPrefs()
             }
         }

@@ -30,11 +30,12 @@ jobs:
       - name: Decode Keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > release.jks
+          ls -la release.jks
 
       # 2. Release APK をビルド（環境変数を渡して署名）
       - name: Build Release APK
         env:
-          KEYSTORE_PATH: release.jks
+          KEYSTORE_PATH: ${{ github.workspace }}/release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}

@@ -33,6 +33,35 @@ import me.bubblespark.tidilo.ui.screens.settings.SettingsScreen
 import me.bubblespark.tidilo.ui.screens.settings.SettingsDebugScreen
 import me.bubblespark.tidilo.ui.screens.settings.GenerateContentRequestScreen
 
+private val BottomNavTabOrder = listOf(
+    Screen.Library.route,
+    Screen.Search.route,
+    Screen.Queue.route
+)
+
+private fun getBottomNavTabIndex(route: String?): Int {
+    val idx = BottomNavTabOrder.indexOf(route)
+    return if (idx >= 0) idx else -1
+}
+
+private fun getSlideDirection(
+    initialRoute: String?,
+    targetRoute: String?,
+    defaultDirection: AnimatedContentTransitionScope.SlideDirection
+): AnimatedContentTransitionScope.SlideDirection {
+    val initialIndex = getBottomNavTabIndex(initialRoute)
+    val targetIndex = getBottomNavTabIndex(targetRoute)
+    return if (initialIndex != -1 && targetIndex != -1) {
+        if (targetIndex > initialIndex) {
+            AnimatedContentTransitionScope.SlideDirection.Start
+        } else {
+            AnimatedContentTransitionScope.SlideDirection.End
+        }
+    } else {
+        defaultDirection
+    }
+}
+
 @Composable
 fun TidiloNavGraph(
     navController: NavHostController,
@@ -46,30 +75,84 @@ fun TidiloNavGraph(
         startDestination = if (sharedUrl != null) Screen.Queue.route else Screen.Library.route,
         modifier = modifier,
         enterTransition = {
+            val direction = getSlideDirection(
+                initialRoute = initialState.destination.route,
+                targetRoute = targetState.destination.route,
+                defaultDirection = AnimatedContentTransitionScope.SlideDirection.Start
+            )
             fadeIn(animationSpec = tween(280, easing = EaseInOutCubic)) +
                     slideIntoContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                        towards = direction,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            dampingRatio = Spring.DampingRatioNoBouncy,
                             stiffness = Spring.StiffnessMediumLow
                         )
                     )
         },
         exitTransition = {
-            fadeOut(animationSpec = tween(200))
+            val direction = getSlideDirection(
+                initialRoute = initialState.destination.route,
+                targetRoute = targetState.destination.route,
+                defaultDirection = AnimatedContentTransitionScope.SlideDirection.Start
+            )
+            fadeOut(animationSpec = tween(200)) +
+                    slideOutOfContainer(
+                        towards = direction,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
         },
         popEnterTransition = {
+            val direction = getSlideDirection(
+                initialRoute = initialState.destination.route,
+                targetRoute = targetState.destination.route,
+                defaultDirection = AnimatedContentTransitionScope.SlideDirection.End
+            )
             fadeIn(animationSpec = tween(280, easing = EaseInOutCubic)) +
                     slideIntoContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        towards = direction,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            dampingRatio = Spring.DampingRatioNoBouncy,
                             stiffness = Spring.StiffnessMediumLow
                         )
                     )
         },
         popExitTransition = {
-            fadeOut(animationSpec = tween(200))
+            val direction = getSlideDirection(
+                initialRoute = initialState.destination.route,
+                targetRoute = targetState.destination.route,
+                defaultDirection = AnimatedContentTransitionScope.SlideDirection.End
+            )
+            fadeOut(animationSpec = tween(200)) +
+                    slideOutOfContainer(
+                        towards = direction,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
+        },
+        predictivePopEnterTransition = { _ ->
+            fadeIn(animationSpec = tween(280, easing = EaseInOutCubic)) +
+                    slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
+        },
+        predictivePopExitTransition = { _ ->
+            fadeOut(animationSpec = tween(200)) +
+                    slideOutOfContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
         }
     ) {
         composable(Screen.Library.route) {

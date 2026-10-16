@@ -2,7 +2,6 @@ package me.bubblespark.tidilo.ui.screens.library
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseInOutCubic
 import androidx.compose.animation.core.Spring
@@ -164,43 +163,9 @@ fun LibraryScreen(
             AnimatedContent(
                 targetState = displayState,
                 transitionSpec = {
-                    if (initialState is LibraryDisplayState.DomainGrid && targetState is LibraryDisplayState.DomainDrillDown) {
-                        // Forward navigation: Domain Grid -> Domain DrillDown
-                        slideIntoContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioLowBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            )
-                        ) + fadeIn(animationSpec = tween(280, easing = EaseInOutCubic)) togetherWith
-                        slideOutOfContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            )
-                        ) + fadeOut(animationSpec = tween(200))
-                    } else if (initialState is LibraryDisplayState.DomainDrillDown && targetState is LibraryDisplayState.DomainGrid) {
-                        // Backward navigation: Domain DrillDown -> Domain Grid
-                        slideIntoContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.End,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioLowBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            )
-                        ) + fadeIn(animationSpec = tween(280, easing = EaseInOutCubic)) togetherWith
-                        slideOutOfContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.End,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            )
-                        ) + fadeOut(animationSpec = tween(200))
-                    } else {
-                        // Filter mode change or fallback: Crossfade
-                        fadeIn(animationSpec = tween(240, easing = EaseInOutCubic)) togetherWith
-                        fadeOut(animationSpec = tween(180))
-                    }
+                    // Filter mode change, Domain Grid <-> DrillDown, or refresh: smooth Crossfade
+                    fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
+                            fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
                 },
                 label = "library_display_state",
                 modifier = Modifier.fillMaxSize()

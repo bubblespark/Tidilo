@@ -108,7 +108,7 @@ fun TidiloBottomBar(
         Screen.Queue
     )
 
-    val barHeight = 84.dp
+    val barHeight = 68.dp
     val containerBgColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val isActionButtonVisible = currentRoute in listOf(
         Screen.Library.route,

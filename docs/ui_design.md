@@ -110,12 +110,12 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 
 ### 6.1 `TidiloBottomBar` (Floating Pill Navigation & Separated Circular Action Button)
 - **Navigation Pill Bar**:
-  - **Dimensions**: Height `84dp` (strictly preserved for touch ergonomics and UX), Width `maxWidth * 0.58f` centered horizontally (`Alignment.Center`).
+  - **Dimensions**: Outer Container Height `68dp`, Inner Tab Button Height `56dp` (aligned with the contracted 56dp action button height for a unified horizontal baseline), Width `maxWidth * 0.58f` centered horizontally (`Alignment.Center`).
   - **Shape**: `CircleShape` pill with `10dp` elevation shadow on `surfaceContainerHighest` container.
   - **Dynamic Tab Expansion & Vertical Layout**:
     - Layout: Vertical `Column` with `28dp` icons and labels below (sample_extra.png specification).
     - Selected tab: Expands with spring weight animation (`1.35f`), rendering `[28dp Icon]` on top and `[Label]` below within an active container capsule (`primaryContainer`).
-    - Unselected tabs: Contract with weight `1.0f`, rendering `[28dp Icon]` only (label hidden, icon centered vertically in the 84dp pill).
+    - Unselected tabs: Contract with weight `1.0f`, rendering `[28dp Icon]` only (label hidden, icon centered vertically in the 56dp inner pill button).
     - Bar outer width remains invariant across tab selections.
   - **Badge**: Dynamic red counter badge on `Queue` tab indicating pending URLs.
 - **Separated Circular Action Button** (Material 3 Expressive Filled Tonal Button):
@@ -123,7 +123,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
   - **Dynamic Scaling, Offset & Scroll Persistence**:
     - **Contracted Size (Navigation Visible)**: Medium **M size** equivalent (`56dp` container, `28dp` icon, elevation `6dp`). Offset shifted right (`offset(x = (barWidth / 2) + 14.dp + (56.dp / 2))`) with a clean 14dp gap from the navigation pill bar to completely eliminate overlap.
     - **Expanded Size (Navigation Hidden / Scrolled)**: Fine-tuned **`86dp` container**, **`40dp` icon** (+12dp enlargement tracking container expansion), elevation `10dp`. Center offset anchors cleanly to standard FAB margin (`(maxWidth / 2) - 16.dp - (86.dp / 2)`).
-    - **Perfect Circle Guarantee**: Outer `BoxWithConstraints` expands to `containerHeight = maxOf(barHeight, buttonSize)` with `requiredSize(buttonSize)`, preventing parent height constraints from clamping the vertical dimension to 84dp and ensuring a pristine 1:1 circular aspect ratio (`86dp × 86dp`) in all states.
+    - **Perfect Circle Guarantee**: Outer `BoxWithConstraints` expands to `containerHeight = maxOf(barHeight, buttonSize)` with `requiredSize(buttonSize)`, preventing parent height constraints from clamping the vertical dimension to `barHeight` (68dp) and ensuring a pristine 1:1 circular aspect ratio (`86dp × 86dp`) in all states.
     - When navigation reappears (scroll up): Smoothly contracts back to 56dp container / 28dp icon with low bouncy spring animation.
   - **Contextual Behavior**:
     - `LibraryScreen`: Filter FAB menu toggle button (`FilterListIcon` / `Icons.Default.Close`). Expands a Material 3 Expressive pill menu with two persistent options: "Domain" on top (`DomainIcon`, 28dp) and "Newest first" below (`ArrowDownwardIcon`, 28dp). The active mode pill is highlighted using `primaryContainer` / `onPrimaryContainer`, and inactive using `secondaryContainer` / `onSecondaryContainer`. The pill size matches `BookmarkDetailScreen`'s FAB menu exactly (`horizontal = 24dp, vertical = 16dp`, typography `titleMedium`, SemiBold) and remains invariant regardless of the FAB container's 56dp/86dp scaling state, aligning flush to the right edge of the FAB. When expanded, the floating navigation bar hides downwards using official Edge-to-Edge slide-out animation, returning on dismissal.

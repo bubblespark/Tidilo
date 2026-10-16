@@ -196,7 +196,11 @@ fun QueueScreen(
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val headerHeight = statusBarTop + 80.dp
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
         // 3 sections (Running, Queuing, Error)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),

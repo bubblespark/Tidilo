@@ -75,7 +75,8 @@ Tidilo uses realistic spring physics rather than mechanical linear transitions:
   - Fully symmetric lateral slide transitions with non-bouncy spring physics (`dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow`):
     - **Forward Navigation (Enter / Exit)**: Incoming screen slides in from right to left (`SlideDirection.Start`) + fade in (280ms); outgoing screen slides out toward left (`SlideDirection.Start`) + fade out (200ms).
     - **Backward / Pop Navigation (PopEnter / PopExit)**: Previous screen slides in from left to right (`SlideDirection.End`) + fade in (280ms); popping screen slides out toward right (`SlideDirection.End`) + fade out (200ms).
-  - Integrates seamlessly with Android 14+ Predictive Back gestures via Compose Navigation's `SeekableTransitionState` without bouncy overshoot artifacts.
+    - **Predictive Pop Navigation (PredictivePopEnter / PredictivePopExit)**: Explicitly overrides Navigation Compose default `scaleOut(0.7f)` with symmetric lateral slides (`slideIntoContainer(End)` and `slideOutOfContainer(End)`). Completely eliminates unwanted shrinking-to-center / dissolve artifacts during predictive back swipe gestures.
+  - **Opaque Screen Roots**: All top-level screen containers must specify `Modifier.background(MaterialTheme.colorScheme.background)` to guarantee 100% opacity, preventing underlying screens from showing through during navigation transitions.
 - **In-Page Content & Filter Transitions (`LibraryScreen.kt`)**:
   - Filter mode switching and Domain Grid ⇄ Domain DrillDown utilize a lightweight crossfade (`fadeIn(220ms)` togetherWith `fadeOut(180ms)`).
   - Eliminates jarring lateral page jumps during filter changes, giving users a responsive in-place refresh / redraw feel.

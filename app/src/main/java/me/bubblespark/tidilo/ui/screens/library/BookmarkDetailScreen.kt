@@ -206,7 +206,11 @@ fun BookmarkDetailScreen(
 
     val domain = remember(bookmark.url) { DomainIconManager.extractDomain(bookmark.url) }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()

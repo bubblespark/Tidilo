@@ -84,6 +84,26 @@ fun TidiloNavGraph(
                             stiffness = Spring.StiffnessMediumLow
                         )
                     )
+        },
+        predictivePopEnterTransition = { _ ->
+            fadeIn(animationSpec = tween(280, easing = EaseInOutCubic)) +
+                    slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
+        },
+        predictivePopExitTransition = { _ ->
+            fadeOut(animationSpec = tween(200)) +
+                    slideOutOfContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
         }
     ) {
         composable(Screen.Library.route) {

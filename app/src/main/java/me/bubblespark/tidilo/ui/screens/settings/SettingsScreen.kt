@@ -39,8 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.RadioButton
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Switch
@@ -586,8 +585,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
-                    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-                    LinearWavyProgressIndicator(
+                    LinearProgressIndicator(
                         progress = {
                             if (totalDomainCount > 0) {
                                 (processedDomainCount.toFloat() / totalDomainCount.toFloat()).coerceIn(0f, 1f)

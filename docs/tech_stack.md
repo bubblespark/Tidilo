@@ -26,7 +26,7 @@ This document provides the canonical catalog of all programming languages, SDKs,
 | :--- | :--- | :--- | :--- |
 | **Compose BOM** | `2026.09.00` | `androidx-compose-bom` | Dependency management across Compose UI modules. |
 | **Compose UI & Foundation** | BOM managed | `androidx-ui`, `androidx-ui-graphics` | Declarative UI rendering, touch handling, layout primitives. |
-| **Compose Material 3** | `1.5.0-beta01` | `androidx-material3` | Material 3 & Expressive components (`LinearWavyProgressIndicator`). |
+| **Compose Material 3** | BOM managed (`1.4.0`) | `androidx-material3` | Material 3 components and design tokens. |
 | **Material Icons Extended** | BOM managed | `androidx-material-icons-extended` | Material icons (Search, History, OpenInNew, Tag, Folder, etc.). |
 | **Navigation Compose** | `2.10.2` | `androidx-navigation-compose` | In-app screen routing, type-safe arguments, animated transitions. |
 | **Lifecycle Runtime KTX** | `2.11.0` | `androidx-lifecycle-runtime-ktx` | Android lifecycle coroutines and scopes. |

@@ -58,7 +58,7 @@ class QueueRepository private constructor(context: Context) {
         }
 
         val hasCustomTitle = !title.isNullOrBlank() && !isRawUrlOrHost(title, trimmed)
-        val initialTitle = if (hasCustomTitle) title!!.trim() else extractHostOrTitle(trimmed)
+        val initialTitle = if (hasCustomTitle) title.trim() else extractHostOrTitle(trimmed)
         val domain = DomainIconManager.extractDomain(trimmed)
         DomainPolicyManager.registerDomain(domain, false)
         val isDomainNsfw = DomainPolicyManager.isNsfwDomain(domain)
@@ -367,7 +367,7 @@ class QueueRepository private constructor(context: Context) {
                 val updateItem = { item: QueueItem ->
                     if (item.id == itemId) {
                         item.copy(
-                            title = if (hasNewTitle) realTitle!! else item.title,
+                            title = if (hasNewTitle) realTitle else item.title,
                             url = realUrl,
                             isNsfw = isNsfw
                         )

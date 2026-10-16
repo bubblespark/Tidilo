@@ -527,7 +527,7 @@ private fun EmptyGroupCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
     ) {
         Column(
@@ -722,7 +722,7 @@ private fun QueueItemCard(
             containerColor = if (isError) {
                 MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
             } else {
-                MaterialTheme.colorScheme.surfaceContainerHigh ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                MaterialTheme.colorScheme.surfaceContainerHigh
             }
         ),
         elevation = CardDefaults.cardElevation(0.dp)
@@ -870,7 +870,8 @@ private fun QueueItemCard(
                         QueueItemStatus.WAITING_AI -> MaterialTheme.colorScheme.tertiary
                         QueueItemStatus.QUEUED -> MaterialTheme.colorScheme.secondary
                         QueueItemStatus.COMPLETED -> MaterialTheme.colorScheme.primary
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        QueueItemStatus.PROCESSING_AI,
+                        QueueItemStatus.ERROR -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                 )
             }

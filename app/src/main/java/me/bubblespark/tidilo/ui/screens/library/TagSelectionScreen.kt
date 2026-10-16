@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.config.AppConfig
@@ -308,7 +309,13 @@ fun TagSelectionScreen(
             value = tagSearchQuery,
             onValueChange = { tagSearchQuery = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search tags (e.g. Tech, Material 3)...") },
+            placeholder = {
+                Text(
+                    text = "Search tags...",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Default.Search,

@@ -53,7 +53,6 @@ import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -61,11 +60,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -236,9 +233,6 @@ fun QueueScreen(
                     ) { item ->
                         QueueItemCard(
                             item = item,
-                            onAiPromoteClick = if (item.status == QueueItemStatus.WAITING_AI) {
-                                { viewModel.retryRunning(it.id) }
-                            } else null,
                             modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
                         )
                     }
@@ -285,7 +279,6 @@ fun QueueScreen(
                         SwipeableQueueItemCard(
                             item = item,
                             bounceOffsetDp = bounceOffset.value,
-                            onAiPromoteClick = { viewModel.promoteToRunning(it.id) },
                             onSwipeRight = { viewModel.promoteToRunning(item.id) },
                             onSwipeLeft = { triggerDeleteQueuing(item) },
                             modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
@@ -334,7 +327,6 @@ fun QueueScreen(
                         SwipeableQueueItemCard(
                             item = item,
                             bounceOffsetDp = bounceOffset.value,
-                            onRetryClick = { viewModel.retryError(it.id) },
                             onSwipeRight = { viewModel.retryError(item.id) },
                             onSwipeLeft = { triggerDeleteError(item) },
                             modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
@@ -560,8 +552,6 @@ private fun EmptyGroupCard(
 private fun SwipeableQueueItemCard(
     item: QueueItem,
     bounceOffsetDp: Float,
-    onAiPromoteClick: ((QueueItem) -> Unit)? = null,
-    onRetryClick: ((QueueItem) -> Unit)? = null,
     onSwipeRight: () -> Unit,
     onSwipeLeft: () -> Unit,
     modifier: Modifier = Modifier
@@ -645,9 +635,7 @@ private fun SwipeableQueueItemCard(
         gesturesEnabled = !isActionCompleted
     ) {
         QueueItemCard(
-            item = item,
-            onAiPromoteClick = onAiPromoteClick,
-            onRetryClick = onRetryClick
+            item = item
         )
     }
 }
@@ -704,8 +692,6 @@ private fun SwipeDismissBackground(
 @Composable
 private fun QueueItemCard(
     item: QueueItem,
-    onAiPromoteClick: ((QueueItem) -> Unit)? = null,
-    onRetryClick: ((QueueItem) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isError = item.status == QueueItemStatus.ERROR
@@ -750,44 +736,6 @@ private fun QueueItemCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                }
-
-                // AI tagging button for Queuing or Running (WAITING_AI) items
-                if ((item.status == QueueItemStatus.QUEUED || item.status == QueueItemStatus.WAITING_AI) && onAiPromoteClick != null) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    FilledTonalIconButton(
-                        onClick = { onAiPromoteClick(item) },
-                        modifier = Modifier.size(38.dp),
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = "Run AI Tagging",
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-
-                // Retry button for Error items
-                if (isError && onRetryClick != null) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    FilledTonalIconButton(
-                        onClick = { onRetryClick(item) },
-                        modifier = Modifier.size(38.dp),
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Retry",
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
                 }
             }
 

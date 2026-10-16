@@ -128,7 +128,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
   - **Contextual Behavior**:
     - `LibraryScreen`: Filter FAB menu toggle button (`FilterListIcon` / `Icons.Default.Close`). Expands a Material 3 Expressive pill menu with two persistent options: "Domain" on top (`DomainIcon`, 28dp) and "Newest first" below (`ArrowDownwardIcon`, 28dp). The active mode pill is highlighted using `primaryContainer` / `onPrimaryContainer`, and inactive using `secondaryContainer` / `onSecondaryContainer`. The pill size matches `BookmarkDetailScreen`'s FAB menu exactly (`horizontal = 24dp, vertical = 16dp`, typography `titleMedium`, SemiBold) and remains invariant regardless of the FAB container's 56dp/86dp scaling state, aligning flush to the right edge of the FAB. When expanded, the floating navigation bar hides downwards using official Edge-to-Edge slide-out animation, returning on dismissal.
     - `SearchScreen`: Search action button (`Icons.Default.Search`). Tapping requests focus to top search input bar and guarantees keyboard expansion (`keyboardController?.show()`) even if the input was already focused while the keyboard was dismissed. (Settings button on Search header removed).
-    - `QueueScreen`: Filled accent sparkle button (`Icons.Default.AutoAwesome`) triggering batch `aiTaggingAll()` execution. (Consists of 3 sections: Running, Queuing, Error; tapping 'AI Tagging All' or per-item AI button promotes items directly to Running without confirmation dialogs).
+    - `QueueScreen`: Filled accent sparkle button (`Icons.Default.AutoAwesome`) triggering batch `aiTaggingAll()` execution. (Consists of 3 sections: Running, Queuing, Error; tapping 'AI Tagging All' promotes items directly to Running without confirmation dialogs, while individual items are operated via swipe gestures).
 
 ### 6.2 `BookmarkItemCard`
 - **Shape**: `RoundedCornerShape(24.dp)`.
@@ -222,6 +222,9 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Rapid deletion replacement: Any ongoing Snackbar is dismissed instantly (`snackbarJob?.cancel()` + `snackbarHostState.currentSnackbarData?.dismiss()`) when a subsequent item is swiped away, immediately presenting the new item's Snackbar.
 - **Screen Navigation Affordance Cue**:
   - On entry into Queue Screen, if cards exist in Queuing or Error groups, cards perform a micro bounce cue (`Animatable` jumping `24dp` rightward and settling via a medium-bouncy spring), teaching users swipe affordance naturally without intrusive tutorials.
+- **Card Surface Simplification (Buttons Removed)**:
+  - Individual action buttons on cards (`FilledTonalIconButton` with sparkle or retry) were eliminated across all groups (Running, Queuing, Error).
+  - Cards delegate individual actions entirely to swipe gestures (right swipe to run AI / retry, left swipe to delete) and batch operations to the floating action button ('AI Tagging All'), maximizing title and URL display width while producing a cleaner, uncluttered card layout.
 
 ### 6.7 NSFW Contents Settings & Badge Specification
 - **Settings Screen Menu Icons (`SettingsScreen.kt`)**:

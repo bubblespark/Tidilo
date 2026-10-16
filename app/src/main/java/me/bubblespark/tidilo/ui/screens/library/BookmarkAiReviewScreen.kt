@@ -130,13 +130,9 @@ fun BookmarkAiReviewScreen(
     var selectedTagSource by rememberSaveable { mutableStateOf(ProposalSource.PROPOSAL) }
     var showDiscardConfirmDialog by remember { mutableStateOf(false) }
 
-    // Intercept back gesture when reviewing proposal
-    BackHandler(enabled = true) {
-        if (uiState is AiReviewUiState.Success) {
-            showDiscardConfirmDialog = true
-        } else {
-            onNavigateBack()
-        }
+    // Intercept back gesture only when reviewing proposal with unsaved changes
+    BackHandler(enabled = uiState is AiReviewUiState.Success) {
+        showDiscardConfirmDialog = true
     }
 
     // Trigger AI inference on entry or retry

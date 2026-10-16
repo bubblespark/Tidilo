@@ -70,10 +70,15 @@ Tidilo uses realistic spring physics rather than mechanical linear transitions:
   - When scrolling up (downward swipe): Header slides in from above; bottom bar slides in from below.
   - Combined with subtle alpha fade (`fadeIn(200ms)` / `fadeOut(150ms)`).
 
-### 4.2 Screen-to-Screen Navigation
-- Configured in `TidiloNavGraph.kt`:
-  - Horizontal slide into container + fade in (`dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow`).
-  - Screen pop uses corresponding reverse slide with exit fade.
+### 4.2 Screen-to-Screen Navigation & In-Page State Transitions
+- **Screen-to-Screen Transitions (`TidiloNavGraph.kt`)**:
+  - Fully symmetric lateral slide transitions with non-bouncy spring physics (`dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow`):
+    - **Forward Navigation (Enter / Exit)**: Incoming screen slides in from right to left (`SlideDirection.Start`) + fade in (280ms); outgoing screen slides out toward left (`SlideDirection.Start`) + fade out (200ms).
+    - **Backward / Pop Navigation (PopEnter / PopExit)**: Previous screen slides in from left to right (`SlideDirection.End`) + fade in (280ms); popping screen slides out toward right (`SlideDirection.End`) + fade out (200ms).
+  - Integrates seamlessly with Android 14+ Predictive Back gestures via Compose Navigation's `SeekableTransitionState` without bouncy overshoot artifacts.
+- **In-Page Content & Filter Transitions (`LibraryScreen.kt`)**:
+  - Filter mode switching and Domain Grid ⇄ Domain DrillDown utilize a lightweight crossfade (`fadeIn(220ms)` togetherWith `fadeOut(180ms)`).
+  - Eliminates jarring lateral page jumps during filter changes, giving users a responsive in-place refresh / redraw feel.
 
 ---
 

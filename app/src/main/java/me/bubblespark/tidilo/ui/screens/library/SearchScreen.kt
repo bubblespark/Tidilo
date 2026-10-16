@@ -352,7 +352,13 @@ fun SearchScreen(
                                 }
                                 hadFocus = focusState.isFocused
                             },
-                        placeholder = { Text("Search word or #Tag (AND search)...") },
+                        placeholder = {
+                            Text(
+                                text = "Search word or #Tag...",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Search,

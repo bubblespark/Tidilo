@@ -110,12 +110,12 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 
 ### 6.1 `TidiloBottomBar` (Floating Pill Navigation & Separated Circular Action Button)
 - **Navigation Pill Bar**:
-  - **Dimensions**: Outer Container Height `68dp`, Inner Tab Button Height `56dp` (aligned with the contracted 56dp action button height for a unified horizontal baseline), Width `maxWidth * 0.58f` centered horizontally (`Alignment.Center`).
+  - **Dimensions & Centering**: Outer Container Height `68dp`, Inner Tab Button Height `56dp` (aligned with the contracted 56dp action button height for a unified horizontal baseline), Width `maxWidth * 0.58f` centered horizontally (`Alignment.Center`). Anchored via `.navigationBarsPadding().padding(bottom = 24.dp)` in `MainActivity.kt` to symmetrically adjust top and bottom boundaries by 8dp relative to the previous 84dp/16dp layout, preserving the exact vertical center position (58dp above navigation bars).
   - **Shape**: `CircleShape` pill with `10dp` elevation shadow on `surfaceContainerHighest` container.
   - **Dynamic Tab Expansion & Vertical Layout**:
-    - Layout: Vertical `Column` with `28dp` icons and labels below (sample_extra.png specification).
-    - Selected tab: Expands with spring weight animation (`1.35f`), rendering `[28dp Icon]` on top and `[Label]` below within an active container capsule (`primaryContainer`).
-    - Unselected tabs: Contract with weight `1.0f`, rendering `[28dp Icon]` only (label hidden, icon centered vertically in the 56dp inner pill button).
+    - Layout: Vertical `Column` with icons and labels below.
+    - Selected tab: Expands with spring weight animation (`1.35f`), rendering downscaled `[25dp Icon]` (10% smaller, truncated from `28 * 0.9 = 25.2dp` to `25dp`) and `[10sp Label]` (10% smaller, truncated from `12 * 0.9 = 10.8sp` to `10sp`, with `14sp` lineHeight and `2dp` vertical spacer) within an active container capsule (`primaryContainer`).
+    - Unselected tabs: Contract with weight `1.0f`, rendering full-sized `[28dp Icon]` only (label hidden, icon centered vertically in the 56dp inner pill button).
     - Bar outer width remains invariant across tab selections.
   - **Badge**: Dynamic red counter badge on `Queue` tab indicating pending URLs.
 - **Separated Circular Action Button** (Material 3 Expressive Filled Tonal Button):

@@ -93,7 +93,6 @@ fun BookmarkItemCard(
         shape = RoundedCornerShape(24.dp), // M3 Expressive Large Rounding
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {

@@ -102,9 +102,9 @@ class WebPageParserTest {
         assertTrue("Jsoup clean text should not contain footer", !parsed.jsoupBodyText.contains("All rights reserved."))
 
         // Verify Readability4J output
-        assertNotNull(parsed.readabilityArticle)
-        assertTrue(parsed.readabilityArticle!!.textContent.isNotBlank())
-        assertTrue(parsed.readabilityArticle!!.charCount > 0)
+        val article = checkNotNull(parsed.readabilityArticle)
+        assertTrue(article.textContent.isNotBlank())
+        assertTrue(article.charCount > 0)
 
         // Verify regular articles yield false for NSFW signal
         org.junit.Assert.assertFalse(parsed.isNsfwSignal)

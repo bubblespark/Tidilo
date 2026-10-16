@@ -73,10 +73,15 @@ Tidilo uses realistic spring physics rather than mechanical linear transitions:
 ### 4.2 Screen-to-Screen Navigation & In-Page State Transitions
 - **Screen-to-Screen Transitions (`TidiloNavGraph.kt`)**:
   - Fully symmetric lateral slide transitions with non-bouncy spring physics (`dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow`):
-    - **Forward Navigation (Enter / Exit)**: Incoming screen slides in from right to left (`SlideDirection.Start`) + fade in (280ms); outgoing screen slides out toward left (`SlideDirection.Start`) + fade out (200ms).
-    - **Backward / Pop Navigation (PopEnter / PopExit)**: Previous screen slides in from left to right (`SlideDirection.End`) + fade in (280ms); popping screen slides out toward right (`SlideDirection.End`) + fade out (200ms).
+    - **Forward Hierarchical Navigation (Enter / Exit)**: Incoming screen slides in from right to left (`SlideDirection.Start`) + fade in (280ms); outgoing screen slides out toward left (`SlideDirection.Start`) + fade out (200ms).
+    - **Backward / Pop Hierarchical Navigation (PopEnter / PopExit)**: Previous screen slides in from left to right (`SlideDirection.End`) + fade in (280ms); popping screen slides out toward right (`SlideDirection.End`) + fade out (200ms).
     - **Predictive Pop Navigation (PredictivePopEnter / PredictivePopExit)**: Explicitly overrides Navigation Compose default `scaleOut(0.7f)` with symmetric lateral slides (`slideIntoContainer(End)` and `slideOutOfContainer(End)`). Completely eliminates unwanted shrinking-to-center / dissolve artifacts during predictive back swipe gestures.
-  - **Opaque Screen Roots**: All top-level screen containers must specify `Modifier.background(MaterialTheme.colorScheme.background)` to guarantee 100% opacity, preventing underlying screens from showing through during navigation transitions.
+  - **Bottom Navigation Tab-Relative Direction**:
+    - For floating navigation bar tabs (`Screen.allTabs`: `Library: 0`, `Search: 1`, `Queue: 2`), the transition direction is determined by relative physical tab order rather than back-stack depth:
+      - **Moving Right (`targetIndex > initialIndex`)**: `Library ➔ Search`, `Search ➔ Queue`, `Library ➔ Queue` slide with `SlideDirection.Start` (incoming enters from right).
+      - **Moving Left (`targetIndex < initialIndex`)**: `Queue ➔ Search`, `Search ➔ Library`, `Queue ➔ Library` slide with `SlideDirection.End` (incoming enters from left).
+      - Completely fixes the Navigation Compose artifact where `Queue ➔ Search` was erroneously pushed as a forward (rightward) transition.
+  - **Centralized Surface Background**: The full-screen background is managed centrally by the root `Scaffold` (`containerColor = MaterialTheme.colorScheme.background`) in `MainActivity.kt`. Because the lateral transitions maintain strictly adjacent (side-by-side) bounds with zero spatial overlap, individual screen roots avoid duplicate `.background()` modifiers, eliminating GPU overdraw while guaranteeing 100% seamless edge-to-edge visuals.
 - **In-Page Content & Filter Transitions (`LibraryScreen.kt`)**:
   - Filter mode switching and Domain Grid ⇄ Domain DrillDown utilize a lightweight crossfade (`fadeIn(220ms)` togetherWith `fadeOut(180ms)`).
   - Eliminates jarring lateral page jumps during filter changes, giving users a responsive in-place refresh / redraw feel.

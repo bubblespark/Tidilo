@@ -8,11 +8,13 @@ This document provides the canonical catalog of all programming languages, SDKs,
 
 | Component | Version | Configuration Location | Purpose |
 | :--- | :--- | :--- | :--- |
-| **Android Gradle Plugin (AGP)** | `8.7.3` | `gradle/libs.versions.toml` | Build orchestration and packaging. |
-| **Kotlin** | `2.1.0` | `gradle/libs.versions.toml` | Core application language. |
-| **Kotlin Compose Compiler Plugin** | `2.1.0` | `gradle/libs.versions.toml` | Official Kotlin 2.0+ integrated Compose compiler. |
+| **Android Gradle Plugin (AGP)** | `9.4.0` | `gradle/libs.versions.toml` | Build orchestration and packaging with built-in Kotlin support. |
+| **Gradle Wrapper** | `9.8.1` | `gradle/wrapper/gradle-wrapper.properties` | Modern build automation tool. |
+| **Kotlin** | `2.4.21` | `gradle/libs.versions.toml` | Core application language (AGP built-in). |
+| **Kotlin Compose Compiler Plugin** | `2.4.21` | `gradle/libs.versions.toml` | Integrated Compose compiler plugin. |
+| **KSP** | `2.3.12` | `gradle/libs.versions.toml` | Kotlin Symbol Processing for Room code generation. |
 | **Java / JVM Target** | `21` | `app/build.gradle.kts` | Modern Java runtime bytecode target. |
-| **compileSdk** | `36` | `app/build.gradle.kts` | API 36 platform headers. |
+| **compileSdk** | `37` | `app/build.gradle.kts` | API 37 platform headers. |
 | **minSdk** | `34` | `app/build.gradle.kts` | Android 14 baseline for AICore support. |
 | **targetSdk** | `36` | `app/build.gradle.kts` | Target Android 15/16 platform behaviors. |
 
@@ -22,18 +24,18 @@ This document provides the canonical catalog of all programming languages, SDKs,
 
 | Library | Version / BOM | Package / Alias | Purpose |
 | :--- | :--- | :--- | :--- |
-| **Compose BOM** | `2024.12.01` | `androidx-compose-bom` | Stable dependency management across all Compose UI modules. |
+| **Compose BOM** | `2026.09.00` | `androidx-compose-bom` | Dependency management across Compose UI modules. |
 | **Compose UI & Foundation** | BOM managed | `androidx-ui`, `androidx-ui-graphics` | Declarative UI rendering, touch handling, layout primitives. |
-| **Compose Material 3** | BOM managed | `androidx-material3` | Material 3 components, expressive color tokens, surface hierarchy. |
+| **Compose Material 3** | `1.5.0-beta01` | `androidx-material3` | Material 3 & Expressive components (`LinearWavyProgressIndicator`). |
 | **Material Icons Extended** | BOM managed | `androidx-material-icons-extended` | Material icons (Search, History, OpenInNew, Tag, Folder, etc.). |
-| **Navigation Compose** | `2.8.5` | `androidx-navigation-compose` | In-app screen routing, type-safe arguments, animated transitions. |
-| **Lifecycle Runtime KTX** | `2.8.7` | `androidx-lifecycle-runtime-ktx` | Android lifecycle coroutines and scopes. |
-| **Lifecycle ViewModel KTX** | `2.8.7` | `androidx-lifecycle-viewmodel-ktx` | `viewModelScope` lifecycle-bound coroutine launch. |
-| **Lifecycle Runtime Compose** | `2.8.7` | `androidx-lifecycle-runtime-compose` | `collectAsStateWithLifecycle()` for zero battery drain in background. |
-| **Lifecycle ViewModel Compose** | `2.8.7` | `androidx-lifecycle-viewmodel-compose` | Compose integration for ViewModel instantiation (`viewModel()`). |
-| **Activity Compose** | `1.9.3` | `androidx-activity-compose` | `ComponentActivity.setContent`, `enableEdgeToEdge()`, `BackHandler`. |
+| **Navigation Compose** | `2.10.2` | `androidx-navigation-compose` | In-app screen routing, type-safe arguments, animated transitions. |
+| **Lifecycle Runtime KTX** | `2.11.0` | `androidx-lifecycle-runtime-ktx` | Android lifecycle coroutines and scopes. |
+| **Lifecycle ViewModel KTX** | `2.11.0` | `androidx-lifecycle-viewmodel-ktx` | `viewModelScope` lifecycle-bound coroutine launch. |
+| **Lifecycle Runtime Compose** | `2.11.0` | `androidx-lifecycle-runtime-compose` | `collectAsStateWithLifecycle()` for zero battery drain in background. |
+| **Lifecycle ViewModel Compose** | `2.11.0` | `androidx-lifecycle-viewmodel-compose` | Compose integration for ViewModel instantiation (`viewModel()`). |
+| **Activity Compose** | `1.13.0` | `androidx-activity-compose` | `ComponentActivity.setContent`, `enableEdgeToEdge()`, `BackHandler`. |
 | **Room** | `2.8.5` | `androidx-room-runtime`, `androidx-room-ktx`, `androidx-room-compiler` | SQLite persistence, reactive DAOs, and flow queries. |
-| **Core KTX** | `1.15.0` | `androidx-core-ktx` | Kotlin extensions for core Android platform APIs. |
+| **Core KTX** | `1.19.1` | `androidx-core-ktx` | Kotlin extensions for core Android platform APIs. |
 
 ---
 

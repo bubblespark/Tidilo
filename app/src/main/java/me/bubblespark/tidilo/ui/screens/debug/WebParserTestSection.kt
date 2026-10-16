@@ -49,7 +49,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -62,9 +62,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
+import android.content.ClipData
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.toClipEntry
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -93,8 +95,16 @@ fun WebParserTestSection(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
     val focusManager = LocalFocusManager.current
+
+    val copyToClipboard: (String, String) -> Unit = { text, toastMessage ->
+        coroutineScope.launch {
+            val clipData = ClipData.newPlainText("Text", text)
+            clipboard.setClipEntry(clipData.toClipEntry())
+        }
+        Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
+    }
 
     var inputUrl by remember { mutableStateOf("https://developers.google.com/ml-kit/genai/prompt/android?hl=ja") }
     var parserState by remember { mutableStateOf<WebParserUiState>(WebParserUiState.Idle) }
@@ -181,9 +191,12 @@ fun WebParserTestSection(
                             }
                         }
                         IconButton(onClick = {
-                            val clip = clipboardManager.getText()?.text
-                            if (!clip.isNullOrBlank()) {
-                                inputUrl = clip
+                            coroutineScope.launch {
+                                val clipEntry = clipboard.getClipEntry()
+                                val clip = clipEntry?.clipData?.getItemAt(0)?.text?.toString()
+                                if (!clip.isNullOrBlank()) {
+                                    inputUrl = clip
+                                }
                             }
                         }) {
                             Icon(imageVector = Icons.Default.ContentPaste, contentDescription = "Paste")
@@ -323,7 +336,7 @@ fun WebParserTestSection(
                         "Body Text"
                     )
 
-                    ScrollableTabRow(
+                    SecondaryScrollableTabRow(
                         selectedTabIndex = selectedTab,
                         edgePadding = 0.dp,
                         containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
@@ -348,35 +361,20 @@ fun WebParserTestSection(
 
                     // 3. Tab Contents
                     when (selectedTab) {
-                        0 -> SummaryTab(page = page, onCopy = {
-                            clipboardManager.setText(AnnotatedString(it))
-                            Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
-                        })
-                        1 -> MetaAndOgpTab(page = page, onCopy = {
-                            clipboardManager.setText(AnnotatedString(it))
-                            Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
-                        })
-                        2 -> JsonLdTab(page = page, onCopy = {
-                            clipboardManager.setText(AnnotatedString(it))
-                            Toast.makeText(context, "Copied JSON-LD", Toast.LENGTH_SHORT).show()
-                        })
+                        0 -> SummaryTab(page = page, onCopy = { copyToClipboard(it, "Copied to clipboard") })
+                        1 -> MetaAndOgpTab(page = page, onCopy = { copyToClipboard(it, "Copied") })
+                        2 -> JsonLdTab(page = page, onCopy = { copyToClipboard(it, "Copied JSON-LD") })
                         3 -> AllMetaTagsTab(
                             page = page,
                             searchQuery = metaSearchFilter,
                             onSearchChange = { metaSearchFilter = it },
-                            onCopy = {
-                                clipboardManager.setText(AnnotatedString(it))
-                                Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
-                            }
+                            onCopy = { copyToClipboard(it, "Copied") }
                         )
                         4 -> BodyTextTab(
                             page = page,
                             mode = bodyExtractorMode,
                             onModeChange = { bodyExtractorMode = it },
-                            onCopy = {
-                                clipboardManager.setText(AnnotatedString(it))
-                                Toast.makeText(context, "Copied body text", Toast.LENGTH_SHORT).show()
-                            }
+                            onCopy = { copyToClipboard(it, "Copied body text") }
                         )
                     }
                 }

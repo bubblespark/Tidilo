@@ -222,7 +222,7 @@ fun TidiloApp(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
-                        .padding(bottom = 16.dp)
+                        .padding(bottom = 24.dp)
                 ) {
                     TidiloBottomBar(
                         navController = navController,

@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -108,7 +109,7 @@ fun TidiloBottomBar(
         Screen.Queue
     )
 
-    val barHeight = 84.dp
+    val barHeight = 68.dp
     val containerBgColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val isActionButtonVisible = currentRoute in listOf(
         Screen.Library.route,
@@ -272,6 +273,16 @@ fun TidiloBottomBar(
                             label = "tabWeight_${screen.route}"
                         )
 
+                        // Selected icon is 10% smaller (28dp * 0.9 = 25.2dp -> 25dp truncated)
+                        val tabIconSize by animateDpAsState(
+                            targetValue = if (isSelected) 25.dp else 28.dp,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            label = "tabIconSize_${screen.route}"
+                        )
+
                         Box(
                             modifier = Modifier
                                 .weight(tabWeight)
@@ -303,14 +314,14 @@ fun TidiloBottomBar(
 
                                 val iconModifier = if (screen == Screen.Queue && isQueueRunning) {
                                     Modifier
-                                        .size(28.dp)
+                                        .size(tabIconSize)
                                         .graphicsLayer {
                                             rotationZ = hourglassRotation
                                             scaleX = hourglassScale
                                             scaleY = hourglassScale
                                         }
                                 } else {
-                                    Modifier.size(28.dp)
+                                    Modifier.size(tabIconSize)
                                 }
 
                                 if (screen == Screen.Queue && queuingCount > 0) {
@@ -343,7 +354,7 @@ fun TidiloBottomBar(
                                     )
                                 }
 
-                                // Display label only for selected item
+                                // Display label only for selected item (10% smaller: 12sp * 0.9 = 10.8sp -> 10sp truncated)
                                 AnimatedVisibility(
                                     visible = isSelected,
                                     enter = fadeIn(animationSpec = tween(150, delayMillis = 40)) + expandVertically(
@@ -360,10 +371,13 @@ fun TidiloBottomBar(
                                     )
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Spacer(modifier = Modifier.height(2.dp))
                                         Text(
                                             text = screen.title,
-                                            style = MaterialTheme.typography.labelMedium,
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontSize = 10.sp,
+                                                lineHeight = 14.sp
+                                            ),
                                             fontWeight = FontWeight.Bold,
                                             color = activeContentColor,
                                             maxLines = 1,

@@ -94,11 +94,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalClipboardManager
+import android.content.ClipData
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.toClipEntry
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -120,7 +123,8 @@ fun BookmarkDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val coroutineScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
@@ -332,7 +336,10 @@ fun BookmarkDetailScreen(
                     },
                     onLongClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        clipboardManager.setText(AnnotatedString(bookmark.url))
+                        coroutineScope.launch {
+                            val clipData = ClipData.newPlainText("URL", bookmark.url)
+                            clipboard.setClipEntry(clipData.toClipEntry())
+                        }
                         Toast
                             .makeText(
                                 context,

@@ -222,9 +222,10 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Rapid deletion replacement: Any ongoing Snackbar is dismissed instantly (`snackbarJob?.cancel()` + `snackbarHostState.currentSnackbarData?.dismiss()`) when a subsequent item is swiped away, immediately presenting the new item's Snackbar.
 - **Screen Navigation Affordance Cue**:
   - On entry into Queue Screen, if cards exist in Queuing or Error groups, cards perform a micro bounce cue (`Animatable` jumping `24dp` rightward and settling via a medium-bouncy spring), teaching users swipe affordance naturally without intrusive tutorials.
-- **Card Surface Simplification (Buttons Removed)**:
+- **Card Surface Simplification & Single-Line Title Truncation (Buttons Removed)**:
   - Individual action buttons on cards (`FilledTonalIconButton` with sparkle or retry) were eliminated across all groups (Running, Queuing, Error).
   - Cards delegate individual actions entirely to swipe gestures (right swipe to run AI / retry, left swipe to delete) and batch operations to the floating action button ('AI Tagging All'), maximizing title and URL display width while producing a cleaner, uncluttered card layout.
+  - Page title text (`item.title`) is constrained to a single line (`maxLines = 1, overflow = TextOverflow.Ellipsis`), preventing long webpage titles from stretching cards vertically and ensuring consistent card heights across all queue states.
 
 ### 6.7 NSFW Contents Settings & Badge Specification
 - **Settings Screen Menu Icons (`SettingsScreen.kt`)**:

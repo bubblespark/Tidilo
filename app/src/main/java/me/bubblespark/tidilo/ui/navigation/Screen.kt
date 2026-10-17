@@ -29,10 +29,10 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.CollectionsBookmark
     )
 
-    data object Queue : Screen(
-        route = "queue",
-        title = "Queue",
-        titleRes = R.string.nav_queue,
+    data object Import : Screen(
+        route = "import",
+        title = "Import",
+        titleRes = R.string.nav_import,
         selectedIcon = Icons.Filled.HourglassTop,
         unselectedIcon = Icons.Outlined.HourglassEmpty
     )
@@ -106,6 +106,6 @@ sealed class Screen(
     }
 
     companion object {
-        val allTabs = listOf(Library, Search, Queue)
+        val allTabs = listOf(Library, Search, Import)
     }
 }

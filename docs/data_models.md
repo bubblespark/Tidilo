@@ -94,26 +94,26 @@ Both `Category` and `Subcategory` provide bidirectional resolution via `fromId(q
 
 ---
 
-## 3. Queue State Machine & Models
+## 3. Import Task State Machine & Models
 
-Located in `ui/screens/queue/QueueViewModel.kt`:
+Located in `data/ImportTask.kt`:
 
 ```kotlin
-enum class QueueItemStatus {
+enum class TaskStatus {
     PROCESSING_AI, // Active inference running on Gemini Nano
-    WAITING_AI,    // Queued in Running section waiting for AICore execution slot
-    QUEUED,        // Freshly enqueued URL from share sheet or '+' button
+    WAITING_AI,    // Waiting in Processing group for AICore execution slot
+    READY,         // URL parsed and ready for AI analysis (share sheet or '+' button)
     COMPLETED,     // Finished tagging and saved into BookmarkRepository
     ERROR          // Failed due to rate limit, non-200 HTTP response, or parse failure
 }
 
 @Immutable
-data class QueueItem(
+data class ImportTask(
     val id: String = UUID.randomUUID().toString(),
     val url: String,
     val title: String,
-    val status: QueueItemStatus,
-    val statusText: String,
+    val status: TaskStatus = TaskStatus.READY,
+    val statusText: String = "",
     val errorMessage: String? = null,
     val assignedTags: List<String> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
@@ -128,8 +128,8 @@ data class QueueItem(
 
 ```mermaid
 stateDiagram-v2
-    [*] --> QUEUED : Enqueue URL (Share Sheet or Manual)
-    QUEUED --> WAITING_AI : Promote single / "AI Tagging All"
+    [*] --> READY : Import URL (Share Sheet or Manual)
+    READY --> WAITING_AI : Promote single / "AI Analysis All"
     WAITING_AI --> PROCESSING_AI : Coroutine grabs Mutex
     PROCESSING_AI --> [*] : Gemini Nano inference succeeds -> Saved to Library
     PROCESSING_AI --> ERROR : HTTP != 200, Rate Limit, or Parse failure
@@ -166,31 +166,16 @@ Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt
 
 ## 6. Persistence & Serialization Schemas
 
-All persistence is managed via Android `SharedPreferences` in dedicated files:
+All persistence is managed via **Room Database** (`AppDatabase` v3) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
 
-1. **`tidilo_bookmark_prefs` (`bookmarks_list`)**:
-   ```json
-   [
-     {
-       "id": "b1",
-       "title": "Material 3 Expressive",
-       "url": "https://m3.material.io/",
-       "description": "Expressive design system...",
-       "tag": {
-         "category": "Article",
-         "subcategory": "Tech",
-         "entities": ["Material 3", "Compose"]
-       },
-       "createdAt": 1791650000000,
-       "updatedAt": 1791650000000,
-       "note": "Optional personal user note"
-     }
-   ]
-   ```
-2. **`tidilo_queue_prefs` (`running_items`, `queuing_items`, `error_items`, `completed_items`)**:
-   Stores serialized arrays of `QueueItem` objects with their status and assigned tags.
-3. **`tidilo_library_prefs` (`search_history`)**:
+1. **Room Database (`AppDatabase`)**:
+   - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL and creation timestamp.
+   - **`import_tasks` table (`ImportTaskEntity`)**: Managed by `ImportTaskDao`, storing processing, ready, and error tasks with reactive `Flow<List<ImportTaskEntity>>` observation and status index.
+   - **Legacy Migration**: On initial launch of v3, existing task data in legacy `tidilo_queue_prefs` is imported into Room automatically and cleared.
+2. **`tidilo_library_prefs` (`search_history`)**:
    Array of up to 10 strings representing complete queries, ordered latest-first.
+3. **`tidilo_app_config_prefs`**:
+   Application language, NSFW visibility toggle, AICore fallback mode, and auto-run settings.
 
 ---
 

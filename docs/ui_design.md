@@ -41,7 +41,7 @@ Configured in `ui/theme/Type.kt` using standard font scaling with expressive let
 | **bodyLarge** | 16sp / 24sp | Normal | Long descriptions, web article text snippets |
 | **bodyMedium** | 14sp / 20sp | Normal | Card descriptions, notes editor body, history rows |
 | **bodySmall** | 12sp / 16sp | Normal | URLs, secondary captions, metadata timestamps |
-| **labelLarge** | 14sp / 20sp | SemiBold / Bold | Pill buttons (Save, OK, Enqueue, Clear) |
+| **labelLarge** | 14sp / 20sp | SemiBold / Bold | Pill buttons (Save, OK, Import, Clear) |
 | **labelMedium** | 12sp / 16sp | Medium | Item counters, status pills, sub-headers |
 | **labelSmall** | 11sp / 16sp | Medium | Badges, tag chips, chevron arrows |
 
@@ -81,10 +81,10 @@ Tidilo uses realistic spring physics rather than mechanical linear transitions:
     - Transitions evaluate returning vs advancing dynamically: when `targetState.id == navController.previousBackStackEntry?.id`, the transition is definitively a backward/pop operation and slides toward `End` (rightward). Otherwise, forward hierarchical transitions slide toward `Start` (leftward).
     - **Mid-Transition Back Swipe Collision Prevention (Fixes Issue #29)**: When a back gesture interrupts an in-flight forward entrance animation, Navigation Compose evaluates `enterTransition` / `exitTransition` instead of `popEnter` / `popExit`. Because the dynamic resolver checks `navController.previousBackStackEntry`, it accurately detects that the destination is the returning parent and enforces `SlideDirection.End`. This ensures the outgoing screen smoothly slides out to the right (→) and parent screen slides in from the left (→) without collision (`→ ←`) or blackout artifacts.
   - **Bottom Navigation Tab-Relative Direction**:
-    - For floating navigation bar tabs (`Screen.allTabs`: `Library: 0`, `Search: 1`, `Queue: 2`), the transition direction is determined by relative physical tab order rather than back-stack depth:
-      - **Moving Right (`targetIndex > initialIndex`)**: `Library ➔ Search`, `Search ➔ Queue`, `Library ➔ Queue` slide with `SlideDirection.Start` (incoming enters from right).
-      - **Moving Left (`targetIndex < initialIndex`)**: `Queue ➔ Search`, `Search ➔ Library`, `Queue ➔ Library` slide with `SlideDirection.End` (incoming enters from left).
-      - Completely fixes the Navigation Compose artifact where `Queue ➔ Search` was erroneously pushed as a forward (rightward) transition.
+    - For floating navigation bar tabs (`Screen.allTabs`: `Library: 0`, `Search: 1`, `Import: 2`), the transition direction is determined by relative physical tab order rather than back-stack depth:
+      - **Moving Right (`targetIndex > initialIndex`)**: `Library ➔ Search`, `Search ➔ Import`, `Library ➔ Import` slide with `SlideDirection.Start` (incoming enters from right).
+      - **Moving Left (`targetIndex < initialIndex`)**: `Import ➔ Search`, `Search ➔ Library`, `Import ➔ Library` slide with `SlideDirection.End` (incoming enters from left).
+      - Completely fixes the Navigation Compose artifact where `Import ➔ Search` was erroneously pushed as a forward (rightward) transition.
   - **Centralized Surface Background**: The full-screen background is managed centrally by the root `Scaffold` (`containerColor = MaterialTheme.colorScheme.background`) in `MainActivity.kt`. Because the lateral transitions maintain strictly adjacent (side-by-side) bounds with zero spatial overlap, individual screen roots avoid duplicate `.background()` modifiers, eliminating GPU overdraw while guaranteeing 100% seamless edge-to-edge visuals.
 - **In-Page Content & Filter Transitions (`LibraryScreen.kt`)**:
   - Filter mode switching and Domain Grid ⇄ Domain DrillDown utilize a lightweight crossfade (`fadeIn(220ms)` togetherWith `fadeOut(180ms)`).
@@ -100,7 +100,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 2. **Scroll Immersion & Actual Scroll Tracking**:
    - Lazy lists occupy the full physical screen with `contentPadding` accommodating the top app bar (`statusBars + 76dp`) and the bottom navigation bar (`140dp`).
    - Content flows freely under the translucent status and navigation bars.
-   - **`onPostScroll` Consumption-based Connection**: Controls only hide when content **actually consumes vertical scroll** (`consumed.y < -30f`), completely preventing false dismissals on screens with few or non-scrollable items (such as QueueScreen or empty Library). Reappears when content actually scrolls up (`consumed.y > +20f`) or is pulled down at the top overscroll boundary (`available.y > +20f`).
+   - **`onPostScroll` Consumption-based Connection**: Controls only hide when content **actually consumes vertical scroll** (`consumed.y < -30f`), completely preventing false dismissals on screens with few or non-scrollable items (such as ImportScreen or empty Library). Reappears when content actually scrolls up (`consumed.y > +20f`) or is pulled down at the top overscroll boundary (`available.y > +20f`).
 3. **Status Bar Scrim**:
    - When bars are hidden during scroll, a dynamic 4-stop vertical gradient scrim renders over the status bar:
      `listOf(scrimBg.copy(0.85f), scrimBg.copy(0.50f), scrimBg.copy(0.15f), Color.Transparent)`.
@@ -121,7 +121,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
     - Selected tab: Expands with spring weight animation (`1.35f`), rendering downscaled `[25dp Icon]` (10% smaller, truncated from `28 * 0.9 = 25.2dp` to `25dp`) and `[10sp Label]` (10% smaller, truncated from `12 * 0.9 = 10.8sp` to `10sp`, with `14sp` lineHeight and `2dp` vertical spacer) within an active container capsule (`primaryContainer`).
     - Unselected tabs: Contract with weight `1.0f`, rendering full-sized `[28dp Icon]` only (label hidden, icon centered vertically in the 56dp inner pill button).
     - Bar outer width remains invariant across tab selections.
-  - **Badge**: Dynamic red counter badge on `Queue` tab indicating pending URLs.
+  - **Badge**: Dynamic red counter badge on `Import` tab indicating pending URLs in the Ready group.
 - **Separated Circular Action Button** (Material 3 Expressive Filled Tonal Button):
   - **Design & Colors**: `CircleShape` filled with the exact active tab container color (`MaterialTheme.colorScheme.primaryContainer`), with uniform active content icon tint (`MaterialTheme.colorScheme.onPrimaryContainer`) across all screens, ensuring harmonious visual unity between the floating navigation capsule and the action button.
   - **Dynamic Scaling, Offset & Scroll Persistence**:
@@ -132,7 +132,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
   - **Contextual Behavior**:
     - `LibraryScreen`: Filter FAB menu toggle button (`FilterListIcon` / `Icons.Default.Close`). Expands a Material 3 Expressive pill menu with two persistent options: "Domain" on top (`DomainIcon`, 28dp) and "Newest first" below (`ArrowDownwardIcon`, 28dp). The active mode pill is highlighted using `primaryContainer` / `onPrimaryContainer`, and inactive using `secondaryContainer` / `onSecondaryContainer`. The pill size matches `BookmarkDetailScreen`'s FAB menu exactly (`horizontal = 24dp, vertical = 16dp`, typography `titleMedium`, SemiBold) and remains invariant regardless of the FAB container's 56dp/86dp scaling state, aligning flush to the right edge of the FAB. When expanded, the floating navigation bar hides downwards using official Edge-to-Edge slide-out animation, returning on dismissal.
     - `SearchScreen`: Search action button (`Icons.Default.Search`). Tapping requests focus to top search input bar and guarantees keyboard expansion (`keyboardController?.show()`) even if the input was already focused while the keyboard was dismissed. (Settings button on Search header removed).
-    - `QueueScreen`: Filled accent sparkle button (`Icons.Default.AutoAwesome`) triggering batch `aiTaggingAll()` execution. (Consists of 3 sections: Running, Queuing, Error; tapping 'AI Tagging All' promotes items directly to Running without confirmation dialogs, while individual items are operated via swipe gestures).
+    - `ImportScreen`: Filled accent sparkle button (`Icons.Default.AutoAwesome`) triggering batch `aiAnalysisAll()` execution. (Consists of 3 sections: Processing, Ready, Error; tapping 'AI Analysis All' promotes items directly to Processing without confirmation dialogs, while individual items are operated via swipe gestures).
 
 ### 6.2 `BookmarkItemCard`
 - **Shape**: `RoundedCornerShape(24.dp)`.
@@ -196,10 +196,10 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Shared Consistency**: Shared seamlessly between card feeds (`BookmarkCard`, `SearchScreen`), domain grid (`DomainCard`), and detail views (`BookmarkDetailScreen`).
 - **Asynchronous & Non-Blocking Performance**: Uses `produceState<ImageBitmap?>` to resolve icons without blocking the main UI thread. In-memory hits (`DomainIconManager.getCachedIconBitmap`) render instantaneously (0ms), while cold disk cache reads are dispatched asynchronously on `Dispatchers.IO` (`DomainIconManager.loadIconFromDisk`), with redundant background transparency recalculations completely eliminated.
 
-### 6.6 Dynamic Swipe-Action Queue Cards (Queuing & Error Groups)
+### 6.6 Dynamic Swipe-Action Import Cards (Ready & Error Groups)
 - **Component**: Custom high-performance gesture layer utilizing Compose Foundation `Modifier.draggable(Orientation.Horizontal)` and `Animatable` layout offset, eliminating `SwipeToDismissBox` quirks and deprecations.
 - **Directional Actions & Visuals**:
-  - **Right Swipe (`StartToEnd`)**: Triggers immediate AI Tagging (`promoteToRunning` for Queuing, `retryError` for Error).
+  - **Right Swipe (`StartToEnd`)**: Triggers immediate AI Analysis (`promoteToProcessing` for Ready, `retryError` for Error).
     - Container: Dark Green (`Color(0xFF2E7D32)`), `RoundedCornerShape(24.dp)`.
     - Content: Sparkle icon (`Icons.Default.AutoAwesome`, 26dp, White) aligned `CenterStart` with `24dp` horizontal padding.
   - **Left Swipe (`EndToStart`)**: Triggers immediate item deletion.
@@ -213,7 +213,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Action icons (`Icons.Default.AutoAwesome` / `Icons.Default.Delete`) dynamically spring from `0.85f` to `1.25f` scale (`Spring.DampingRatioMediumBouncy`) the instant the drag crosses the 40% threshold, giving tactile confirmation of when release will trigger the action.
 - **Immediate State Reset & Lifecycle Protection (Resolves Issue #27)**:
   - Once the card fully slides off-screen, executes the action callback and immediately resets `offsetX` to `0f`.
-  - Guarded with `LaunchedEffect(item.id, item.status, item.statusText)`: Any card retained or returned to the queue (e.g. AICore Quota Exceeded error 27 or deletion Undo) automatically resets to `0f`, completely eliminating off-screen stuck card states.
+  - Guarded with `LaunchedEffect(item.id, item.status, item.statusText)`: Any card retained or returned to the ready group (e.g. AICore Quota Exceeded error 27 or deletion Undo) automatically resets to `0f`, completely eliminating off-screen stuck card states.
 - **Undo Snackbar & Clean State Restoration**:
   - Displays with standard short duration (`SnackbarDuration.Short`) and an `Undo` button.
   - Positioned safely above the floating navigation pill: `Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 96.dp)`.
@@ -221,11 +221,11 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - **Scoped State Lifecycle (`remember(item.id)`)**: `SwipeToDismissBoxState` and internal trigger flags are explicitly scoped to `item.id` rather than using `rememberSaveable`. This ensures restored items re-initialize cleanly at `Settled` (center position), completely preventing the infinite loop bug where restored cards reappeared off-screen and triggered immediate re-deletion.
   - Rapid deletion replacement: Any ongoing Snackbar is dismissed instantly (`snackbarJob?.cancel()` + `snackbarHostState.currentSnackbarData?.dismiss()`) when a subsequent item is swiped away, immediately presenting the new item's Snackbar.
 - **Screen Navigation Affordance Cue**:
-  - On entry into Queue Screen, if cards exist in Queuing or Error groups, cards perform a micro bounce cue (`Animatable` jumping `24dp` rightward and settling via a medium-bouncy spring), teaching users swipe affordance naturally without intrusive tutorials.
+  - On entry into Import Screen, if cards exist in Ready or Error groups, cards perform a micro bounce cue (`Animatable` jumping `24dp` rightward and settling via a medium-bouncy spring), teaching users swipe affordance naturally without intrusive tutorials.
 - **Card Surface Simplification & Single-Line Title Truncation (Buttons Removed)**:
-  - Individual action buttons on cards (`FilledTonalIconButton` with sparkle or retry) were eliminated across all groups (Running, Queuing, Error).
-  - Cards delegate individual actions entirely to swipe gestures (right swipe to run AI / retry, left swipe to delete) and batch operations to the floating action button ('AI Tagging All'), maximizing title and URL display width while producing a cleaner, uncluttered card layout.
-  - Page title text (`item.title`) is constrained to a single line (`maxLines = 1, overflow = TextOverflow.Ellipsis`), preventing long webpage titles from stretching cards vertically and ensuring consistent card heights across all queue states.
+  - Individual action buttons on cards (`FilledTonalIconButton` with sparkle or retry) were eliminated across all groups (Processing, Ready, Error).
+  - Cards delegate individual actions entirely to swipe gestures (right swipe to run AI / retry, left swipe to delete) and batch operations to the floating action button ('AI Analysis All'), maximizing title and URL display width while producing a cleaner, uncluttered card layout.
+  - Page title text (`item.title`) is constrained to a single line (`maxLines = 1, overflow = TextOverflow.Ellipsis`), preventing long webpage titles from stretching cards vertically and ensuring consistent card heights across all task states.
 
 ### 6.7 NSFW Contents Settings & Badge Specification
 - **Settings Screen Menu Icons (`SettingsScreen.kt`)**:
@@ -292,4 +292,4 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Header relies exclusively on neutral frost translucency (`contentAlpha = 0.85f`) and smootherstep dissolution without applying artificial colored lighting layers, eliminating color collision and shelf artifacts.
   - The underlying screen's ambient illumination shines naturally through the translucent frosted glass with complete optical clarity.
 - **Touch-through Transparency**: Lower dissolve zone uses a non-interactive `Spacer`, allowing pointer events to interact freely with underlying lazy lists.
-- **Adopted Screens**: Unified across `LibraryScreen`, `SearchScreen`, and `QueueScreen`.
+- **Adopted Screens**: Unified across `LibraryScreen`, `SearchScreen`, and `ImportScreen`.

@@ -57,7 +57,7 @@ import me.bubblespark.tidilo.ui.navigation.Screen
 import me.bubblespark.tidilo.ui.navigation.TidiloBottomBar
 import me.bubblespark.tidilo.ui.navigation.TidiloNavGraph
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
-import me.bubblespark.tidilo.ui.screens.queue.QueueViewModel
+import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 
 import android.content.res.Configuration
@@ -137,20 +137,20 @@ class MainActivity : ComponentActivity() {
 fun TidiloApp(
     sharedUrl: String? = null,
     modifier: Modifier = Modifier,
-    queueViewModel: QueueViewModel = viewModel(),
+    importViewModel: ImportViewModel = viewModel(),
     libraryViewModel: LibraryViewModel = viewModel()
 ) {
     val navController = rememberNavController()
-    val queuingItems by queueViewModel.queuingItems.collectAsStateWithLifecycle()
-    val runningItems by queueViewModel.runningItems.collectAsStateWithLifecycle()
-    val quotaExceededDialogVisible by queueViewModel.quotaExceededDialogVisible.collectAsStateWithLifecycle()
+    val readyTasks by importViewModel.readyTasks.collectAsStateWithLifecycle()
+    val processingTasks by importViewModel.processingTasks.collectAsStateWithLifecycle()
+    val quotaExceededDialogVisible by importViewModel.quotaExceededDialogVisible.collectAsStateWithLifecycle()
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
 
-    // When receiving a shared URL via Intent, enqueue to Queuing and navigate to Queue screen automatically
+    // When receiving a shared URL via Intent, import to Ready and navigate to Import screen automatically
     LaunchedEffect(sharedUrl) {
         if (!sharedUrl.isNullOrBlank()) {
-            queueViewModel.enqueueUrl(sharedUrl)
-            navController.navigate(Screen.Queue.route) {
+            importViewModel.importUrl(sharedUrl)
+            navController.navigate(Screen.Import.route) {
                 launchSingleTop = true
             }
         }
@@ -229,7 +229,7 @@ fun TidiloApp(
                 // Full-screen content layer extending edge-to-edge
                 TidiloNavGraph(
                     navController = navController,
-                    queueViewModel = queueViewModel,
+                    importViewModel = importViewModel,
                     libraryViewModel = libraryViewModel,
                     sharedUrl = sharedUrl,
                     modifier = Modifier.fillMaxSize()
@@ -279,7 +279,7 @@ fun TidiloApp(
                     )
                 }
 
-                // M3 Expressive navigation bar & action button shown only on main tabs (Library, Search, Queue)
+                // M3 Expressive navigation bar & action button shown only on main tabs (Library, Search, Import)
                 AnimatedVisibility(
                     visible = isBottomBarVisible,
                     enter = fadeIn(animationSpec = tween(200)),
@@ -292,8 +292,8 @@ fun TidiloApp(
                     TidiloBottomBar(
                         navController = navController,
                         isBarsVisible = isBarsVisible,
-                        queuingCount = queuingItems.size,
-                        isQueueRunning = runningItems.isNotEmpty(),
+                        readyCount = readyTasks.size,
+                        isProcessing = processingTasks.isNotEmpty(),
                         isFilterMenuExpanded = isFilterMenuExpanded,
                         onToggleFilterMenu = { isFilterMenuExpanded = !isFilterMenuExpanded },
                         currentFilterMode = filterMode,
@@ -303,8 +303,8 @@ fun TidiloApp(
                         onSearchAction = {
                             libraryViewModel.triggerSearchFocus()
                         },
-                        onAiTaggingAll = {
-                            queueViewModel.aiTaggingAll()
+                        onAiAnalysisAll = {
+                            importViewModel.aiAnalysisAll()
                         }
                     )
                 }
@@ -313,7 +313,7 @@ fun TidiloApp(
 
         if (quotaExceededDialogVisible) {
             AlertDialog(
-                onDismissRequest = { queueViewModel.dismissQuotaExceededDialog() },
+                onDismissRequest = { importViewModel.dismissQuotaExceededDialog() },
                 title = {
                     Text(
                         text = stringResource(R.string.dialog_aicore_title),
@@ -326,7 +326,7 @@ fun TidiloApp(
                     )
                 },
                 confirmButton = {
-                    TextButton(onClick = { queueViewModel.dismissQuotaExceededDialog() }) {
+                    TextButton(onClick = { importViewModel.dismissQuotaExceededDialog() }) {
                         Text(text = stringResource(R.string.common_ok))
                     }
                 }

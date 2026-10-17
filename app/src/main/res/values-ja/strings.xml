@@ -2,7 +2,7 @@
     <!-- App & Navigation -->
     <string name="app_name">Tidilo</string>
     <string name="nav_library">Library</string>
-    <string name="nav_queue">Queue</string>
+    <string name="nav_import">Queue</string>
     <string name="nav_search">Search</string>
     <string name="nav_debug">Debug</string>
 
@@ -33,40 +33,40 @@
     <string name="bottom_bar_close_filter_menu">フィルターメニューを閉じる</string>
     <string name="bottom_bar_filter_menu">フィルターメニュー</string>
     <string name="bottom_bar_search">Search</string>
-    <string name="bottom_bar_ai_tagging_all">AI Tagging All</string>
+    <string name="bottom_bar_ai_analysis_all">AI Tagging All</string>
 
-    <!-- Queue Screen -->
-    <string name="queue_header_title">Queue</string>
-    <string name="queue_header_subtitle">Semantic AI Tagging Queue</string>
-    <string name="queue_enqueue_button_content_desc">Enqueue URL</string>
-    <string name="queue_group_running">Running</string>
-    <string name="queue_group_queuing">Queuing</string>
-    <string name="queue_group_error">Error</string>
-    <string name="queue_empty_running_title">実行中のタスクはありません</string>
-    <string name="queue_empty_running_hint">URLを登録した上で、画面右下のボタン、または待機中のURLカードを右にスワイプして下さい</string>
-    <string name="queue_empty_queuing_title">待機中のタスクはありません</string>
-    <string name="queue_empty_queuing_hint">画面右上の登録ボタン、またはデバイスの共有メニューからURLを追加して下さい</string>
-    <string name="queue_empty_error_title">エラーのタスクはありません</string>
-    <string name="queue_empty_error_hint">HTTPエラーやAICoreエラーの場合、ここに表示されます</string>
-    <string name="queue_show_less">表示を縮小</string>
-    <string name="queue_more_items">表示を拡大 (%1$d件)</string>
-    <string name="queue_item_deleted">\"%1$s\" 削除しました</string>
-    <string name="queue_collapse_group">%1$sを折りたたむ</string>
-    <string name="queue_expand_group">%1$sを展開</string>
-    <string name="queue_dialog_enqueue_title">URLの登録</string>
-    <string name="queue_dialog_enqueue_description">有効なHTTPまたはHTTPSのWebアドレスを入力して下さい。</string>
-    <string name="queue_dialog_enqueue_error_invalid">http:// または https:// で始まり、有効なドメイン名である必要があります</string>
-    <string name="queue_dialog_enqueue_supporting_text">http:// or https:// から始まる必要があります</string>
-    <string name="queue_dialog_enqueue_confirm">登録</string>
-    <string name="queue_status_waiting_aicore">Waiting for AICore slot...</string>
-    <string name="queue_status_generating_tags">Gemini Nano generating semantic tags...</string>
-    <string name="queue_status_paused_retry_active">Paused • Retrying when app is active</string>
-    <string name="queue_status_aicore_busy">AICore busy • Retrying (%1$d/%2$d)...</string>
-    <string name="queue_status_aicore_blocked">AICore background blocked • Retrying (%1$d/%2$d)...</string>
-    <string name="queue_status_queued_quota_exceeded">Queued • Quota exceeded</string>
-    <string name="queue_status_failed">Failed</string>
-    <string name="queue_status_completed">Completed</string>
-    <string name="queue_status_queued">Queued</string>
+    <!-- Import Screen -->
+    <string name="import_header_title">Queue</string>
+    <string name="import_header_subtitle">Semantic AI Tagging Queue</string>
+    <string name="import_button_content_desc">Enqueue URL</string>
+    <string name="import_group_processing">Running</string>
+    <string name="import_group_ready">Queuing</string>
+    <string name="import_group_error">Error</string>
+    <string name="import_empty_processing_title">実行中のタスクはありません</string>
+    <string name="import_empty_processing_hint">URLを登録した上で、画面右下のボタン、または待機中のURLカードを右にスワイプして下さい</string>
+    <string name="import_empty_ready_title">待機中のタスクはありません</string>
+    <string name="import_empty_ready_hint">画面右上の登録ボタン、またはデバイスの共有メニューからURLを追加して下さい</string>
+    <string name="import_empty_error_title">エラーのタスクはありません</string>
+    <string name="import_empty_error_hint">HTTPエラーやAICoreエラーの場合、ここに表示されます</string>
+    <string name="import_show_less">表示を縮小</string>
+    <string name="import_more_items">表示を拡大 (%1$d件)</string>
+    <string name="import_item_deleted">\"%1$s\" 削除しました</string>
+    <string name="import_collapse_group">%1$sを折りたたむ</string>
+    <string name="import_expand_group">%1$sを展開</string>
+    <string name="import_dialog_title">URLの登録</string>
+    <string name="import_dialog_description">有効なHTTPまたはHTTPSのWebアドレスを入力して下さい。</string>
+    <string name="import_dialog_error_invalid">http:// または https:// で始まり、有効なドメイン名である必要があります</string>
+    <string name="import_dialog_supporting_text">http:// or https:// から始まる必要があります</string>
+    <string name="import_dialog_confirm">登録</string>
+    <string name="import_status_waiting_aicore">Waiting for AICore slot...</string>
+    <string name="import_status_analyzing_content">Gemini Nano generating semantic tags...</string>
+    <string name="import_status_paused_retry_active">Paused • Retrying when app is active</string>
+    <string name="import_status_aicore_busy">AICore busy • Retrying (%1$d/%2$d)...</string>
+    <string name="import_status_aicore_blocked">AICore background blocked • Retrying (%1$d/%2$d)...</string>
+    <string name="import_status_ready_quota_exceeded">Queued • Quota exceeded</string>
+    <string name="import_status_failed">Failed</string>
+    <string name="import_status_completed">Completed</string>
+    <string name="import_status_ready">Queued</string>
 
     <!-- AICore Dialogs -->
     <string name="dialog_aicore_title">AICore</string>
@@ -207,8 +207,8 @@
     <!-- Notifications -->
     <string name="notification_channel_name">Queue Notifications</string>
     <string name="notification_channel_desc">Notifications for URL enqueue operations</string>
-    <string name="notification_enqueue_success">Enqueue was successful. There are %1$d items in the queuing.</string>
-    <string name="notification_enqueue_failed">Enqueue failed. Please check the contents.</string>
+    <string name="notification_import_success">Enqueue was successful. There are %1$d items in the queuing.</string>
+    <string name="notification_import_failed">Enqueue failed. Please check the contents.</string>
 
     <!-- Taxonomy: Categories -->
     <string name="category_article">記事</string>

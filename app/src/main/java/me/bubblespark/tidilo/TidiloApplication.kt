@@ -6,7 +6,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import android.os.Bundle
-import me.bubblespark.tidilo.data.QueueRepository
+import me.bubblespark.tidilo.data.ImportRepository
 
 class TidiloApplication : Application() {
 
@@ -17,8 +17,10 @@ class TidiloApplication : Application() {
         lateinit var instance: TidiloApplication
             private set
 
-        const val CHANNEL_ID_QUEUE = "tidilo_share_queue"
-        const val CHANNEL_NAME_QUEUE = "Queue Notifications"
+        const val CHANNEL_ID_IMPORT = "tidilo_share_import"
+        const val CHANNEL_NAME_IMPORT = "Import Notifications"
+        // Legacy alias for compatibility
+        const val CHANNEL_ID_QUEUE = CHANNEL_ID_IMPORT
     }
 
     override fun onCreate() {
@@ -59,14 +61,14 @@ class TidiloApplication : Application() {
 
     private fun onAppBecameActive() {
         runCatching {
-            QueueRepository.getInstance(this).onAppBecameActive()
+            ImportRepository.getInstance(this).onAppBecameActive()
         }
     }
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID_QUEUE,
+                CHANNEL_ID_IMPORT,
                 getString(R.string.notification_channel_name),
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {

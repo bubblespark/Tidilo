@@ -39,58 +39,21 @@ internal val BottomNavTabOrder = listOf(
     Screen.Queue.route
 )
 
-internal fun getRouteDepth(route: String?): Int {
-    if (route == null) return -1
-    return when {
-        route in BottomNavTabOrder -> 0
-        route.startsWith("bookmark_detail") ||
-        route == Screen.TagSelection.route ||
-        route == Screen.Settings.route -> 1
-        route.startsWith("bookmark_ai_review") ||
-        route == Screen.NsfwContents.route ||
-        route == Screen.SettingsDebug.route ||
-        route == Screen.GenerateContentRequest.route -> 2
-        else -> -1
-    }
+internal fun isBottomNavTabSwitch(initialRoute: String?, targetRoute: String?): Boolean {
+    return initialRoute in BottomNavTabOrder && targetRoute in BottomNavTabOrder
 }
 
-internal fun getSlideDirection(
+internal fun getTabSlideDirection(
     initialRoute: String?,
-    targetRoute: String?,
-    defaultDirection: AnimatedContentTransitionScope.SlideDirection
+    targetRoute: String?
 ): AnimatedContentTransitionScope.SlideDirection {
-    val initialDepth = getRouteDepth(initialRoute)
-    val targetDepth = getRouteDepth(targetRoute)
-
-    // Case 1: Switching between Bottom Navigation tabs (Depth 0 -> Depth 0)
-    if (initialDepth == 0 && targetDepth == 0) {
-        val initialIndex = BottomNavTabOrder.indexOf(initialRoute)
-        val targetIndex = BottomNavTabOrder.indexOf(targetRoute)
-        return if (initialIndex != -1 && targetIndex != -1) {
-            if (targetIndex > initialIndex) {
-                AnimatedContentTransitionScope.SlideDirection.Start
-            } else {
-                AnimatedContentTransitionScope.SlideDirection.End
-            }
-        } else {
-            defaultDirection
-        }
+    val initialIndex = BottomNavTabOrder.indexOf(initialRoute)
+    val targetIndex = BottomNavTabOrder.indexOf(targetRoute)
+    return if (targetIndex > initialIndex) {
+        AnimatedContentTransitionScope.SlideDirection.Start
+    } else {
+        AnimatedContentTransitionScope.SlideDirection.End
     }
-
-    // Case 2: Hierarchical navigation between different depths
-    if (initialDepth != -1 && targetDepth != -1) {
-        return if (targetDepth > initialDepth) {
-            // Forward navigation (deeper into hierarchy): slide towards Start (left)
-            AnimatedContentTransitionScope.SlideDirection.Start
-        } else if (targetDepth < initialDepth) {
-            // Backward navigation (returning up hierarchy): slide towards End (right)
-            AnimatedContentTransitionScope.SlideDirection.End
-        } else {
-            defaultDirection
-        }
-    }
-
-    return defaultDirection
 }
 
 @Composable
@@ -106,11 +69,13 @@ fun TidiloNavGraph(
         startDestination = if (sharedUrl != null) Screen.Queue.route else Screen.Library.route,
         modifier = modifier,
         enterTransition = {
-            val direction = getSlideDirection(
-                initialRoute = initialState.destination.route,
-                targetRoute = targetState.destination.route,
-                defaultDirection = AnimatedContentTransitionScope.SlideDirection.Start
-            )
+            val direction = if (isBottomNavTabSwitch(initialState.destination.route, targetState.destination.route)) {
+                getTabSlideDirection(initialState.destination.route, targetState.destination.route)
+            } else if (targetState.id == navController.previousBackStackEntry?.id) {
+                AnimatedContentTransitionScope.SlideDirection.End
+            } else {
+                AnimatedContentTransitionScope.SlideDirection.Start
+            }
             fadeIn(animationSpec = tween(280, easing = EaseInOutCubic)) +
                     slideIntoContainer(
                         towards = direction,
@@ -121,11 +86,13 @@ fun TidiloNavGraph(
                     )
         },
         exitTransition = {
-            val direction = getSlideDirection(
-                initialRoute = initialState.destination.route,
-                targetRoute = targetState.destination.route,
-                defaultDirection = AnimatedContentTransitionScope.SlideDirection.Start
-            )
+            val direction = if (isBottomNavTabSwitch(initialState.destination.route, targetState.destination.route)) {
+                getTabSlideDirection(initialState.destination.route, targetState.destination.route)
+            } else if (targetState.id == navController.previousBackStackEntry?.id) {
+                AnimatedContentTransitionScope.SlideDirection.End
+            } else {
+                AnimatedContentTransitionScope.SlideDirection.Start
+            }
             fadeOut(animationSpec = tween(200)) +
                     slideOutOfContainer(
                         towards = direction,
@@ -136,14 +103,9 @@ fun TidiloNavGraph(
                     )
         },
         popEnterTransition = {
-            val direction = getSlideDirection(
-                initialRoute = initialState.destination.route,
-                targetRoute = targetState.destination.route,
-                defaultDirection = AnimatedContentTransitionScope.SlideDirection.End
-            )
             fadeIn(animationSpec = tween(280, easing = EaseInOutCubic)) +
                     slideIntoContainer(
-                        towards = direction,
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
                         animationSpec = spring(
                             dampingRatio = Spring.DampingRatioNoBouncy,
                             stiffness = Spring.StiffnessMediumLow
@@ -151,14 +113,9 @@ fun TidiloNavGraph(
                     )
         },
         popExitTransition = {
-            val direction = getSlideDirection(
-                initialRoute = initialState.destination.route,
-                targetRoute = targetState.destination.route,
-                defaultDirection = AnimatedContentTransitionScope.SlideDirection.End
-            )
             fadeOut(animationSpec = tween(200)) +
                     slideOutOfContainer(
-                        towards = direction,
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
                         animationSpec = spring(
                             dampingRatio = Spring.DampingRatioNoBouncy,
                             stiffness = Spring.StiffnessMediumLow

@@ -44,6 +44,13 @@ class QueueViewModel : ViewModel() {
     // Error group: Items that failed due to rate limits, HTTP errors, etc.
     val errorItems: StateFlow<List<QueueItem>> = repository.errorItems
 
+    // Battery Quota Exceeded dialog state
+    val quotaExceededDialogVisible: StateFlow<Boolean> = repository.quotaExceededDialogVisible
+
+    fun dismissQuotaExceededDialog() {
+        repository.dismissQuotaExceededDialog()
+    }
+
     /**
      * Enqueues URL into the Queuing group.
      */

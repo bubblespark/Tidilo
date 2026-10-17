@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.service
 
+import com.google.mlkit.genai.common.GenAiException
 import com.google.mlkit.genai.prompt.Generation
 import com.google.mlkit.genai.prompt.GenerativeModel
 import com.google.mlkit.genai.prompt.TextPart
@@ -20,6 +21,12 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.URI
 import java.util.UUID
+
+open class AiCoreExecutionException(
+    val errorCode: Int,
+    message: String,
+    cause: Throwable? = null
+) : Exception(message, cause)
 
 data class TaggingResult(
     val title: String,
@@ -114,14 +121,7 @@ object GeminiTaggingService {
             val aiOutput = try {
                 runNanoInference(prompt)
             } catch (e: Exception) {
-                val msg = e.message.orEmpty()
-                if (msg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) || msg.contains("rate limit", ignoreCase = true)) {
-                    throw Exception("AICore Rate Limit Exceeded: System service temporarily busy")
-                } else if (msg.contains("UNAVAILABLE", ignoreCase = true)) {
-                    throw Exception("AICore Service Unavailable on device")
-                } else {
-                    throw Exception("AICore Inference Failed: ${e.message ?: e.javaClass.simpleName}", e)
-                }
+                throw mapInferenceException(e)
             }
 
             // Parse JSON and normalize results
@@ -183,14 +183,7 @@ object GeminiTaggingService {
             val aiOutput = try {
                 runNanoInference(prompt)
             } catch (e: Exception) {
-                val msg = e.message.orEmpty()
-                if (msg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) || msg.contains("rate limit", ignoreCase = true)) {
-                    throw Exception("AICore Rate Limit Exceeded: System service temporarily busy")
-                } else if (msg.contains("UNAVAILABLE", ignoreCase = true)) {
-                    throw Exception("AICore Service Unavailable on device")
-                } else {
-                    throw Exception("AICore Inference Failed: ${e.message ?: e.javaClass.simpleName}", e)
-                }
+                throw mapInferenceException(e)
             }
 
             // 5. Parse JSON and normalize results
@@ -449,5 +442,38 @@ object GeminiTaggingService {
 
     private fun extractHost(url: String): String {
         return runCatching { URI(url).host ?: url }.getOrDefault(url)
+    }
+
+    /**
+     * Maps low-level AI inference exceptions into AiCoreExecutionException preserving specific error codes.
+     */
+    fun mapInferenceException(e: Exception): AiCoreExecutionException {
+        val errorCode = when (e) {
+            is GenAiException -> e.errorCode
+            is AiCoreExecutionException -> e.errorCode
+            else -> when (val cause = e.cause) {
+                is GenAiException -> cause.errorCode
+                is AiCoreExecutionException -> cause.errorCode
+                else -> null
+            }
+        }
+        val msg = e.message.orEmpty()
+        val friendlyMessage = when (errorCode) {
+            GenAiException.ErrorCode.BUSY -> "AICore Rate Limit Exceeded: System service temporarily busy"
+            GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED -> "AICore battery use quota exceeded (code 27)"
+            GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED -> "AICore background use blocked (code 30)"
+            else -> if (msg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) || msg.contains("rate limit", ignoreCase = true)) {
+                "AICore Rate Limit Exceeded: System service temporarily busy"
+            } else if (msg.contains("UNAVAILABLE", ignoreCase = true)) {
+                "AICore Service Unavailable on device"
+            } else {
+                "AICore Inference Failed: ${e.message ?: e.javaClass.simpleName}"
+            }
+        }
+        return AiCoreExecutionException(
+            errorCode = errorCode ?: GenAiException.ErrorCode.UNKNOWN,
+            message = friendlyMessage,
+            cause = e
+        )
     }
 }

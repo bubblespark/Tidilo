@@ -2,9 +2,11 @@ package me.bubblespark.tidilo.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.google.mlkit.genai.common.GenAiException
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.parser.WebPageParser
+import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.service.GeminiTaggingService
 import me.bubblespark.tidilo.ui.screens.queue.QueueItem
 import me.bubblespark.tidilo.ui.screens.queue.QueueItemStatus
@@ -40,6 +42,13 @@ class QueueRepository private constructor(context: Context) {
 
     private val _errorItems = MutableStateFlow<List<QueueItem>>(emptyList())
     val errorItems: StateFlow<List<QueueItem>> = _errorItems.asStateFlow()
+
+    private val _quotaExceededDialogVisible = MutableStateFlow(false)
+    val quotaExceededDialogVisible: StateFlow<Boolean> = _quotaExceededDialogVisible.asStateFlow()
+
+    fun dismissQuotaExceededDialog() {
+        _quotaExceededDialogVisible.value = false
+    }
 
     init {
         loadFromPrefs()
@@ -254,6 +263,7 @@ class QueueRepository private constructor(context: Context) {
 
     private val foregroundRetryCounts = mutableMapOf<String, Int>()
     private val MAX_FOREGROUND_RETRIES = 3
+    private val RETRY_INTERVAL_MS = 3000L
 
     /**
      * Called when the app transitions to active/foreground.
@@ -334,59 +344,129 @@ class QueueRepository private constructor(context: Context) {
     }
 
     /**
-     * Handles failure during AI tagging execution.
-     * If the failure occurred due to backgrounding, app switching, or AICore unavailability,
-     * retains the item in Running with WAITING_AI status for automatic retry instead of failing to Error.
+     * Handles failure during AI tagging execution in accordance with Issue #22:
+     * - Background: Suspend execution, keep item in Running with WAITING_AI status until foreground.
+     * - BUSY (9): Retry up to 3 times with 3-second interval. On retry limit, fail entire Running batch.
+     * - PER_APP_BATTERY_USE_QUOTA_EXCEEDED (27):
+     *     - Show dialog: "AICore使用制限を超過しました。利用が制限されています。"
+     *     - Move current URL and all other Waiting Running items back to Queuing group.
+     * - BACKGROUND_USE_BLOCKED (30):
+     *     - If in foreground, retry up to 3 times with 3-second interval. On retry limit, fail entire Running batch.
+     *     - If in background, pause and wait for foreground.
+     * - Retry limit reached OR any other errors:
+     *     - Remove current task and all other pending Running tasks from Running, moving them to Error group.
      */
     private fun handleExecutionFailure(target: QueueItem, throwable: Throwable) {
         val errorMessage = throwable.message.orEmpty()
-        val isBackground = !TidiloApplication.instance.isAppInForeground
-        val isAiCoreError = isAiCoreOrInterruptionException(throwable)
+        val isForeground = TidiloApplication.instance.isAppInForeground
+        val errorCode = extractAiCoreErrorCode(throwable)
 
-        if (isBackground || isAiCoreError) {
-            // App switched to background or AICore service interrupted: do NOT move to Error.
-            // Retain in Running group with WAITING_AI status to be automatically retried.
+        // 1. If app is in background, suspend and retain in Running with WAITING_AI status
+        if (!isForeground) {
             updateRunningItemStatus(
                 itemId = target.id,
                 status = QueueItemStatus.WAITING_AI,
                 statusText = "Paused • Retrying when app is active"
             )
-            // If app is active in foreground, retry with backoff up to limit
-            if (TidiloApplication.instance.isAppInForeground) {
+            return
+        }
+
+        // 2. Handle specific AICore error codes
+        when (errorCode) {
+            GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED -> {
+                // Quota exceeded: Show dialog and move all Running items back to Queuing
+                moveAllRunningToQueuing()
+            }
+
+            GenAiException.ErrorCode.BUSY -> {
+                // BUSY: Retry up to 3 times with 3-second intervals
                 val retryCount = (foregroundRetryCounts[target.id] ?: 0) + 1
                 foregroundRetryCounts[target.id] = retryCount
                 if (retryCount <= MAX_FOREGROUND_RETRIES) {
                     updateRunningItemStatus(
                         itemId = target.id,
                         status = QueueItemStatus.WAITING_AI,
-                        statusText = "Temporary AICore issue • Retrying ($retryCount/$MAX_FOREGROUND_RETRIES)..."
+                        statusText = "AICore busy • Retrying ($retryCount/$MAX_FOREGROUND_RETRIES)..."
                     )
                     repositoryScope.launch {
-                        delay(retryCount * 1500L)
+                        delay(RETRY_INTERVAL_MS)
                         if (TidiloApplication.instance.isAppInForeground) {
                             executeItemAiTagging(target.id)
                         }
                     }
                 } else {
-                    foregroundRetryCounts.remove(target.id)
-                    moveRunningToError(target, errorMessage)
+                    // Retry limit reached: fall back to removing all Running items to Error
+                    moveAllRunningToError(target, errorMessage.ifBlank { "AICore busy: Retry limit exceeded (3/3)" })
                 }
             }
-        } else {
-            // Permanent failure (e.g., HTTP 404, invalid URL syntax)
-            foregroundRetryCounts.remove(target.id)
-            moveRunningToError(target, errorMessage.ifBlank { "Unknown failure" })
+
+            GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED -> {
+                // BACKGROUND_USE_BLOCKED: Retry up to 3 times with 3-second intervals in foreground
+                val retryCount = (foregroundRetryCounts[target.id] ?: 0) + 1
+                foregroundRetryCounts[target.id] = retryCount
+                if (retryCount <= MAX_FOREGROUND_RETRIES) {
+                    updateRunningItemStatus(
+                        itemId = target.id,
+                        status = QueueItemStatus.WAITING_AI,
+                        statusText = "AICore background blocked • Retrying ($retryCount/$MAX_FOREGROUND_RETRIES)..."
+                    )
+                    repositoryScope.launch {
+                        delay(RETRY_INTERVAL_MS)
+                        if (TidiloApplication.instance.isAppInForeground) {
+                            executeItemAiTagging(target.id)
+                        }
+                    }
+                } else {
+                    // Retry limit reached: fall back to removing all Running items to Error
+                    moveAllRunningToError(target, errorMessage.ifBlank { "AICore background blocked: Retry limit exceeded (3/3)" })
+                }
+            }
+
+            else -> {
+                // Unhandled error / other errors: Remove current task and all other Running items to Error
+                moveAllRunningToError(target, errorMessage.ifBlank { "AICore inference failure" })
+            }
         }
     }
 
-    private fun moveRunningToError(target: QueueItem, errorMessage: String) {
-        _runningItems.value = _runningItems.value.filter { it.id != target.id }
-        val errorItem = target.copy(
-            status = QueueItemStatus.ERROR,
-            statusText = "Failed",
-            errorMessage = errorMessage
-        )
-        _errorItems.value = listOf(errorItem) + _errorItems.value
+    /**
+     * Moves all items currently in Running back to the Queuing group due to battery quota limit.
+     */
+    private fun moveAllRunningToQueuing() {
+        _quotaExceededDialogVisible.value = true
+        val currentRunning = _runningItems.value
+        val converted = currentRunning.map { item ->
+            item.copy(
+                status = QueueItemStatus.QUEUED,
+                statusText = "Queued • Quota exceeded"
+            )
+        }
+        _runningItems.value = emptyList()
+        _queuingItems.value = converted + _queuingItems.value
+        foregroundRetryCounts.clear()
+        saveToPrefs()
+    }
+
+    /**
+     * Removes the failed item and all other items queued in Running, moving them to the Error group.
+     */
+    private fun moveAllRunningToError(primaryFailedItem: QueueItem, errorMessage: String) {
+        val currentRunning = _runningItems.value
+        val fallbackMsg = errorMessage.ifBlank { "Unknown failure" }
+        val errorItemsToAdd = currentRunning.map { item ->
+            item.copy(
+                status = QueueItemStatus.ERROR,
+                statusText = "Failed",
+                errorMessage = if (item.id == primaryFailedItem.id) {
+                    fallbackMsg
+                } else {
+                    "Batch stopped: $fallbackMsg"
+                }
+            )
+        }
+        _runningItems.value = emptyList()
+        _errorItems.value = errorItemsToAdd + _errorItems.value
+        foregroundRetryCounts.clear()
         saveToPrefs()
     }
 
@@ -658,6 +738,29 @@ class QueueRepository private constructor(context: Context) {
                     className.contains("genai", ignoreCase = true) ||
                     className.contains("RemoteException", ignoreCase = true) ||
                     className.contains("CancellationException", ignoreCase = true)
+        }
+
+        fun extractAiCoreErrorCode(throwable: Throwable): Int? {
+            var curr: Throwable? = throwable
+            while (curr != null) {
+                when (curr) {
+                    is AiCoreExecutionException -> return curr.errorCode
+                    is GenAiException -> return curr.errorCode
+                }
+                curr = curr.cause
+            }
+            val msg = throwable.message.orEmpty()
+            return when {
+                msg.contains("PER_APP_BATTERY_USE_QUOTA_EXCEEDED", ignoreCase = true) ||
+                        msg.contains("battery use quota", ignoreCase = true) ||
+                        msg.contains("quota exceeded", ignoreCase = true) -> GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED
+                msg.contains("BACKGROUND_USE_BLOCKED", ignoreCase = true) ||
+                        msg.contains("background use blocked", ignoreCase = true) -> GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED
+                msg.contains("BUSY", ignoreCase = true) ||
+                        msg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ||
+                        msg.contains("rate limit", ignoreCase = true) -> GenAiException.ErrorCode.BUSY
+                else -> null
+            }
         }
     }
 }

@@ -270,6 +270,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Screen header shows domain display name with a back navigation arrow button (`Icons.AutoMirrored.Filled.ArrowBack`).
   - Header subtitle text color dynamically coordinates with `selectedDomainColor`.
   - System back gesture is captured via `BackHandler` to return to the domain grid rather than exiting or switching tabs.
+  - **Drill-down Content State Retention during Exit Transition**: The drill-down bookmark list is strictly derived from the composable's `state.domain` via `LibraryViewModel.filterBookmarksByDomain(bookmarks, state.domain)` rather than the globally mutable `selectedDomainFilter`. This guarantees that exiting drill-down views retain their items and never flash a transient "No bookmarks yet" empty state while fading out during back gestures.
 - **Page Transition Animations (`AnimatedContent` & `AnimatedVisibility`)**:
   - **Forward Transition (Domain Grid -> Domain Drill-down)**: Content enters with slide towards `Start` (`slideIntoContainer` with low-bouncy spring + 280ms cubic ease fade-in) and exits towards `Start` (no-bouncy spring + 200ms fade-out).
   - **Backward Transition (Domain Drill-down -> Domain Grid)**: Content enters with reverse slide towards `End` (low-bouncy spring + 280ms cubic ease fade-in) and exits towards `End` (no-bouncy spring + 200ms fade-out).

@@ -161,14 +161,7 @@ class LibraryViewModel : ViewModel() {
      */
     val domainFilteredBookmarks: StateFlow<List<BookmarkItem>> =
         combine(bookmarks, selectedDomainFilter) { currentBookmarks, selectedDomain ->
-            if (selectedDomain.isNullOrBlank()) {
-                emptyList()
-            } else {
-                val normalized = selectedDomain.trim().lowercase()
-                currentBookmarks.filter {
-                    DomainIconManager.extractDomain(it.url)?.lowercase() == normalized
-                }
-            }
+            filterBookmarksByDomain(currentBookmarks, selectedDomain)
         }
         .flowOn(Dispatchers.Default)
         .stateIn(
@@ -359,6 +352,18 @@ class LibraryViewModel : ViewModel() {
             val trimmed = newQuery.trim().replace("\\s+".toRegex(), " ")
             if (trimmed.isBlank()) return current
             return (listOf(trimmed) + current.filter { it != trimmed }).take(limit)
+        }
+
+        /**
+         * Filter bookmarks by domain (case-insensitive normalized).
+         * Returns empty list if domain is null or blank.
+         */
+        fun filterBookmarksByDomain(items: List<BookmarkItem>, domain: String?): List<BookmarkItem> {
+            if (domain.isNullOrBlank()) return emptyList()
+            val normalized = domain.trim().lowercase()
+            return items.filter {
+                DomainIconManager.extractDomain(it.url)?.lowercase() == normalized
+            }
         }
     }
 }

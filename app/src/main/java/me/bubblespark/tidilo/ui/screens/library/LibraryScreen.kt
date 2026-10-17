@@ -217,6 +217,10 @@ fun LibraryScreen(
                             ?: DomainIconManager.getCachedDominantColor(currentDomain)
                             ?: DomainIconManager.generateDomainAccentColor(currentDomain)
 
+                        val domainBookmarks = remember(bookmarks, currentDomain) {
+                            LibraryViewModel.filterBookmarksByDomain(bookmarks, currentDomain)
+                        }
+
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -251,7 +255,7 @@ fun LibraryScreen(
                                     drawRect(brush = cornerGlow)
                                 }
                         ) {
-                            if (domainFilteredBookmarks.isEmpty()) {
+                            if (domainBookmarks.isEmpty()) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -272,7 +276,7 @@ fun LibraryScreen(
                                     verticalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
                                     items(
-                                        items = domainFilteredBookmarks,
+                                        items = domainBookmarks,
                                         key = { it.id },
                                         contentType = { "bookmark_card" }
                                     ) { item ->

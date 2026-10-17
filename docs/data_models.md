@@ -114,7 +114,11 @@ data class QueueItem(
     val statusText: String,
     val errorMessage: String? = null,
     val assignedTags: List<String> = emptyList(),
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val isNsfw: Boolean = false,
+    val siteName: String = "",
+    val description: String = "",
+    val bodySnippet: String = ""
 )
 ```
 

@@ -89,4 +89,44 @@ class QueueRepositoryTest {
         assertEquals("Paused • Retrying when app is active", interruptedItem.statusText)
         assertEquals("run-test", interruptedItem.id)
     }
+
+    @Test
+    fun testPrecomputedQueueItemMetadataFields() {
+        val item = QueueItem(
+            id = "preparsed-1",
+            url = "https://example.com/article",
+            title = "Example Article Title",
+            status = QueueItemStatus.QUEUED,
+            statusText = "Queued • Ready for AI",
+            isNsfw = false,
+            siteName = "Example Blog",
+            description = "A concise article description",
+            bodySnippet = "This is the extracted body text snippet used for instant AI tagging."
+        )
+
+        assertEquals("preparsed-1", item.id)
+        assertEquals("https://example.com/article", item.url)
+        assertEquals("Example Article Title", item.title)
+        assertEquals("Example Blog", item.siteName)
+        assertEquals("A concise article description", item.description)
+        assertEquals("This is the extracted body text snippet used for instant AI tagging.", item.bodySnippet)
+        assertEquals(false, item.isNsfw)
+
+        // Verify prompt construction with precomputed snippets
+        val promptJa = me.bubblespark.tidilo.service.GeminiTaggingService.buildPromptWithSnippets(
+            url = item.url,
+            siteName = item.siteName,
+            title = item.title,
+            description = item.description,
+            bodySnippet = item.bodySnippet,
+            language = me.bubblespark.tidilo.config.AppLanguage.JAPANESE
+        )
+
+        org.junit.Assert.assertTrue(promptJa.contains("URL: https://example.com/article"))
+        org.junit.Assert.assertTrue(promptJa.contains("Site: Example Blog"))
+        org.junit.Assert.assertTrue(promptJa.contains("Title: Example Article Title"))
+        org.junit.Assert.assertTrue(promptJa.contains("Description: A concise article description"))
+        org.junit.Assert.assertTrue(promptJa.contains("Content: This is the extracted body text snippet used for instant AI tagging."))
+        org.junit.Assert.assertTrue(promptJa.contains("Language: Japanese."))
+    }
 }

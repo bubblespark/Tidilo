@@ -49,36 +49,96 @@ class QueueRepository private constructor(context: Context) {
 
     /**
      * Enqueues a URL into the Queuing group.
-     * Automatically fetches og:title / <title> in background immediately after enqueuing.
+     * Completes HTML parsing, body text extraction, metadata detection, and domain icon resolution
+     * BEFORE adding the item to the Queuing list.
      */
-    fun enqueue(rawUrl: String, title: String? = null): Result<Int> {
+    fun enqueue(
+        rawUrl: String,
+        title: String? = null,
+        onEnqueued: ((Result<QueueItem>) -> Unit)? = null
+    ): Result<Int> {
         val trimmed = rawUrl.trim()
         if (!isValidHttpUrl(trimmed)) {
-            return Result.failure(IllegalArgumentException("Invalid HTTP/HTTPS URL"))
+            val ex = IllegalArgumentException("Invalid HTTP/HTTPS URL")
+            onEnqueued?.invoke(Result.failure(ex))
+            return Result.failure(ex)
         }
 
-        val hasCustomTitle = !title.isNullOrBlank() && !isRawUrlOrHost(title, trimmed)
-        val initialTitle = if (hasCustomTitle) title.trim() else extractHostOrTitle(trimmed)
-        val domain = DomainIconManager.extractDomain(trimmed)
-        DomainPolicyManager.registerDomain(domain, false)
-        val isDomainNsfw = DomainPolicyManager.isNsfwDomain(domain)
+        val estimatedCount = _queuingItems.value.size + 1
 
-        val newItem = QueueItem(
-            url = trimmed,
-            title = initialTitle,
-            status = QueueItemStatus.QUEUED,
-            statusText = "Queued • Added just now",
-            isNsfw = isDomainNsfw
-        )
+        repositoryScope.launch {
+            try {
+                // 1. Fetch & parse HTML, extract metadata, OGP, and Readability body snippet
+                val parseResult = WebPageParser.parseUrl(trimmed)
+                val parsed = parseResult.getOrNull()
 
-        val updated = listOf(newItem) + _queuingItems.value
-        _queuingItems.value = updated
-        saveToPrefs()
+                val realUrl = parsed?.resolvedUrl?.takeIf { it.isNotBlank() } ?: trimmed
+                val hasCustomTitle = !title.isNullOrBlank() && !isRawUrlOrHost(title, trimmed)
+                val realTitle = if (hasCustomTitle) {
+                    title.trim()
+                } else {
+                    parsed?.ogpTags?.get("og:title")?.trim()?.takeIf { it.isNotBlank() }
+                        ?: parsed?.title?.trim()?.takeIf { it.isNotBlank() }
+                        ?: extractHostOrTitle(realUrl)
+                }
 
-        // Asynchronously parse HTML to update title, canonical/resolved URL, NSFW flag, and domain icon
-        fetchAndSetTitleAsync(newItem.id, trimmed)
+                val domain = DomainIconManager.extractDomain(realUrl)
+                val siteName = parsed?.ogpTags?.get("og:site_name")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: extractHostOrTitle(realUrl)
+                DomainPolicyManager.registerDomain(domain, false, siteName)
+                val isNsfw = parsed?.isNsfwSignal == true || DomainPolicyManager.isNsfwDomain(domain)
 
-        return Result.success(updated.size)
+                // 2. Fetch and save domain icon (resolving watermark icon)
+                if (domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
+                    DomainIconManager.fetchAndSaveDomainIcon(
+                        context = appContext,
+                        url = realUrl,
+                        appleTouchIconUrl = parsed?.appleTouchIconUrl,
+                        faviconUrl = parsed?.faviconUrl
+                    )
+                }
+
+                val description = parsed?.ogpTags?.get("og:description")
+                    ?: parsed?.standardMetaTags?.get("description")
+                    ?: ""
+                val bodySnippet = (parsed?.readabilityArticle?.textContent?.takeIf { it.isNotBlank() }
+                    ?: parsed?.jsoupBodyText
+                    ?: "").take(800).replace("\n", " ")
+
+                // 3. Create fully pre-parsed QueueItem and enqueue into Queuing group
+                val newItem = QueueItem(
+                    url = realUrl,
+                    title = realTitle,
+                    status = QueueItemStatus.QUEUED,
+                    statusText = "Queued • Ready for AI",
+                    isNsfw = isNsfw,
+                    siteName = siteName,
+                    description = description,
+                    bodySnippet = bodySnippet
+                )
+
+                _queuingItems.value = listOf(newItem) + _queuingItems.value
+                saveToPrefs()
+
+                onEnqueued?.invoke(Result.success(newItem))
+            } catch (e: Exception) {
+                // Fallback: If network/parsing throws, enqueue fallback item with basic details
+                val domain = DomainIconManager.extractDomain(trimmed)
+                val isDomainNsfw = DomainPolicyManager.isNsfwDomain(domain)
+                val fallbackItem = QueueItem(
+                    url = trimmed,
+                    title = title?.trim()?.takeIf { it.isNotBlank() } ?: extractHostOrTitle(trimmed),
+                    status = QueueItemStatus.QUEUED,
+                    statusText = "Queued • Added without metadata",
+                    isNsfw = isDomainNsfw
+                )
+                _queuingItems.value = listOf(fallbackItem) + _queuingItems.value
+                saveToPrefs()
+                onEnqueued?.invoke(Result.failure(e))
+            }
+        }
+
+        return Result.success(estimatedCount)
     }
 
     /**
@@ -245,11 +305,15 @@ class QueueRepository private constructor(context: Context) {
                 )
 
                 try {
-                    // 2. Web parsing -> Gemini Nano inference -> Save to Library
+                    // 2. Gemini Nano inference using precomputed metadata -> Save to Library
                     val result = GeminiTaggingService.processAndSaveBookmark(
                         url = target.url,
                         language = AppConfig.currentLanguage.value,
-                        preferredTitle = target.title
+                        preferredTitle = target.title,
+                        bodySnippet = target.bodySnippet.takeIf { it.isNotBlank() },
+                        description = target.description.takeIf { it.isNotBlank() },
+                        siteName = target.siteName.takeIf { it.isNotBlank() },
+                        isNsfw = target.isNsfw
                     )
 
                     if (result.isSuccess) {
@@ -338,10 +402,10 @@ class QueueRepository private constructor(context: Context) {
     }
 
     /**
-     * Fetches og:title or <title> in background from HTML and updates title,
-     * automatically promoting shortened/wrapper URLs to the canonical/resolved URL.
+     * Fetches metadata and body snippets in background for any legacy/unparsed Queuing items,
+     * ensuring they have precomputed data ready for zero-overhead Running execution.
      */
-    private fun fetchAndSetTitleAsync(itemId: String, url: String) {
+    private fun fetchAndPreparseItemAsync(itemId: String, url: String) {
         repositoryScope.launch {
             try {
                 val parsed = WebPageParser.parseUrl(url).getOrNull() ?: return@launch
@@ -349,27 +413,38 @@ class QueueRepository private constructor(context: Context) {
                     ?: parsed.title?.trim()?.takeIf { it.isNotBlank() }
                 val realUrl = parsed.resolvedUrl.takeIf { it.isNotBlank() } ?: url
                 val domain = DomainIconManager.extractDomain(realUrl)
-                val siteName = parsed.ogpTags["og:site_name"]?.trim()?.takeIf { it.isNotBlank() } ?: ""
+                val siteName = parsed.ogpTags["og:site_name"]?.trim()?.takeIf { it.isNotBlank() }
+                    ?: extractHostOrTitle(realUrl)
                 DomainPolicyManager.registerDomain(domain, false, siteName)
                 val isNsfw = parsed.isNsfwSignal || DomainPolicyManager.isNsfwDomain(domain)
 
                 // Fetch domain icon (saves only >=96x96 without duplicates)
-                DomainIconManager.fetchAndSaveDomainIcon(
-                    context = appContext,
-                    url = realUrl,
-                    appleTouchIconUrl = parsed.appleTouchIconUrl,
-                    faviconUrl = parsed.faviconUrl
-                )
+                if (domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
+                    DomainIconManager.fetchAndSaveDomainIcon(
+                        context = appContext,
+                        url = realUrl,
+                        appleTouchIconUrl = parsed.appleTouchIconUrl,
+                        faviconUrl = parsed.faviconUrl
+                    )
+                }
+
+                val description = parsed.ogpTags["og:description"]
+                    ?: parsed.standardMetaTags["description"]
+                    ?: ""
+                val bodySnippet = (parsed.readabilityArticle?.textContent?.takeIf { it.isNotBlank() }
+                    ?: parsed.jsoupBodyText).take(800).replace("\n", " ")
 
                 val hasNewTitle = !realTitle.isNullOrBlank()
-                val hasNewUrl = realUrl != url
 
                 val updateItem = { item: QueueItem ->
                     if (item.id == itemId) {
                         item.copy(
                             title = if (hasNewTitle) realTitle else item.title,
                             url = realUrl,
-                            isNsfw = isNsfw
+                            isNsfw = isNsfw,
+                            siteName = siteName,
+                            description = description,
+                            bodySnippet = bodySnippet
                         )
                     } else {
                         item
@@ -387,10 +462,10 @@ class QueueRepository private constructor(context: Context) {
     private fun fetchTitlesForQueuingItems() {
         repositoryScope.launch {
             val toFetch = _queuingItems.value.filter {
-                isRawUrlOrHost(it.title, it.url) || WebPageParser.isWrapperUrl(it.url)
+                it.bodySnippet.isBlank() || isRawUrlOrHost(it.title, it.url) || WebPageParser.isWrapperUrl(it.url)
             }
             toFetch.forEach { item ->
-                fetchAndSetTitleAsync(item.id, item.url)
+                fetchAndPreparseItemAsync(item.id, item.url)
             }
         }
     }
@@ -472,6 +547,9 @@ class QueueRepository private constructor(context: Context) {
                 }
                 put("createdAt", item.createdAt)
                 put("isNsfw", item.isNsfw)
+                put("siteName", item.siteName)
+                put("description", item.description)
+                put("bodySnippet", item.bodySnippet)
             }
             array.put(obj)
         }
@@ -506,7 +584,10 @@ class QueueRepository private constructor(context: Context) {
                         errorMessage = obj.optString("errorMessage", "").takeIf { it.isNotBlank() },
                         assignedTags = tagsList,
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                        isNsfw = isNsfw
+                        isNsfw = isNsfw,
+                        siteName = obj.optString("siteName", ""),
+                        description = obj.optString("description", ""),
+                        bodySnippet = obj.optString("bodySnippet", "")
                     )
                 )
             }

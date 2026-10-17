@@ -37,6 +37,7 @@ class ShareReceiverActivity : ComponentActivity() {
     private fun handleShareIntent(intent: Intent?) {
         if (intent == null || intent.action != Intent.ACTION_SEND || intent.type != "text/plain") {
             showNotification(
+                context = applicationContext,
                 success = false,
                 message = "Enqueue failed. Please check the contents."
             )
@@ -48,35 +49,40 @@ class ShareReceiverActivity : ComponentActivity() {
 
         if (validUrl != null) {
             val repository = QueueRepository.getInstance(applicationContext)
-            val result = repository.enqueue(validUrl)
-
-            result.onSuccess { queuingCount ->
-                showNotification(
-                    success = true,
-                    message = "Enqueue was successful. There are $queuingCount items in the queuing."
-                )
-            }.onFailure {
-                showNotification(
-                    success = false,
-                    message = "Enqueue failed. Please check the contents."
-                )
+            val appContext = applicationContext
+            repository.enqueue(validUrl) { result ->
+                result.onSuccess {
+                    val count = repository.currentQueuingCount
+                    showNotification(
+                        context = appContext,
+                        success = true,
+                        message = "Enqueue was successful. There are $count items in the queuing."
+                    )
+                }.onFailure {
+                    showNotification(
+                        context = appContext,
+                        success = false,
+                        message = "Enqueue failed. Please check the contents."
+                    )
+                }
             }
         } else {
             showNotification(
+                context = applicationContext,
                 success = false,
                 message = "Enqueue failed. Please check the contents."
             )
         }
     }
 
-    private fun showNotification(success: Boolean, message: String) {
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+    private fun showNotification(context: Context, success: Boolean, message: String) {
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             ?: return
 
         // Check notification permission (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val hasPermission = ContextCompat.checkSelfPermission(
-                this,
+                context,
                 android.Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
             if (!hasPermission) {
@@ -86,11 +92,11 @@ class ShareReceiverActivity : ComponentActivity() {
         }
 
         // Open MainActivity (Queue screen) on notification tap
-        val openIntent = Intent(this, MainActivity::class.java).apply {
+        val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
-            this,
+            context,
             0,
             openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -102,7 +108,7 @@ class ShareReceiverActivity : ComponentActivity() {
             android.R.drawable.stat_notify_error
         }
 
-        val notification = NotificationCompat.Builder(this, TidiloApplication.CHANNEL_ID_QUEUE)
+        val notification = NotificationCompat.Builder(context, TidiloApplication.CHANNEL_ID_QUEUE)
             .setSmallIcon(iconRes)
             .setContentTitle("Tidilo")
             .setContentText(message)

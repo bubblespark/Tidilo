@@ -33,37 +33,84 @@ data class TaggingResult(
 object GeminiTaggingService {
 
     /**
-     * Parses the URL, generates summary and tags using Gemini Nano, and saves into Library.
+     * Parses the URL or uses pre-parsed snippets, generates summary and tags using Gemini Nano, and saves into Library.
      */
     suspend fun processAndSaveBookmark(
         url: String,
         language: AppLanguage,
-        preferredTitle: String? = null
+        preferredTitle: String? = null,
+        bodySnippet: String? = null,
+        description: String? = null,
+        siteName: String? = null,
+        isNsfw: Boolean = false
     ): Result<BookmarkItem> = withContext(Dispatchers.IO) {
         runCatching {
-            // 1. Parse web page and extract main body content
-            val parseResult = WebPageParser.parseUrl(url)
-            val parsed = parseResult.getOrElse { e ->
-                throw Exception("Network / Fetch Failed: ${e.message ?: "Could not connect to URL"}", e)
+            val hasPreparsedData = !bodySnippet.isNullOrBlank()
+
+            val realUrl: String
+            val finalTitle: String
+            val prompt: String
+            val resolvedIsNsfw: Boolean
+            var parsedWebPage: ParsedWebPage? = null
+
+            if (hasPreparsedData) {
+                // Fast path: Bypass network fetch, DOM parsing, and icon downloads.
+                // Precomputed metadata from enqueue time is used directly for instant prompt assembly.
+                realUrl = url
+                finalTitle = preferredTitle?.trim()?.takeIf { it.isNotBlank() && !isRawUrlOrHost(it, url) }
+                    ?: extractHost(url)
+                val effectiveSiteName = siteName?.trim()?.takeIf { it.isNotBlank() } ?: extractHost(url)
+                val effectiveDescription = description.orEmpty()
+                val effectiveSnippet = bodySnippet.orEmpty()
+                resolvedIsNsfw = isNsfw
+
+                prompt = buildPromptWithSnippets(
+                    url = realUrl,
+                    siteName = effectiveSiteName,
+                    title = finalTitle,
+                    description = effectiveDescription,
+                    bodySnippet = effectiveSnippet,
+                    language = language
+                )
+            } else {
+                // Fallback path: Full web fetch and DOM extraction (for legacy items or direct calls)
+                val parseResult = WebPageParser.parseUrl(url)
+                val parsed = parseResult.getOrElse { e ->
+                    throw Exception("Network / Fetch Failed: ${e.message ?: "Could not connect to URL"}", e)
+                }
+
+                // Treat non-200 HTTP response codes as failure
+                if (parsed.statusCode != 200) {
+                    throw Exception("HTTP Error ${parsed.statusCode}: ${parsed.statusMessage.ifBlank { "Invalid status" }}")
+                }
+
+                realUrl = parsed.resolvedUrl.takeIf { it.isNotBlank() } ?: url
+                finalTitle = parsed.ogpTags["og:title"]?.trim()?.takeIf { it.isNotBlank() }
+                    ?: parsed.title?.trim()?.takeIf { it.isNotBlank() }
+                    ?: preferredTitle?.trim()?.takeIf { it.isNotBlank() && !isRawUrlOrHost(it, realUrl) }
+                    ?: extractHost(realUrl)
+
+                prompt = buildPrompt(url = realUrl, parsed = parsed, language = language)
+                parsedWebPage = parsed
+
+                // Domain registration and NSFW policy check
+                val domain = DomainIconManager.extractDomain(realUrl)
+                val detectedSiteName = parsed.ogpTags["og:site_name"]?.trim()?.takeIf { it.isNotBlank() } ?: ""
+                DomainPolicyManager.registerDomain(domain, false, detectedSiteName)
+                resolvedIsNsfw = parsed.isNsfwSignal || DomainPolicyManager.isNsfwDomain(domain)
+
+                // Verify domain icon cache and fetch only if not yet cached during execution
+                if (domain != null && !DomainIconManager.hasIcon(TidiloApplication.instance, domain)) {
+                    DomainIconManager.fetchAndSaveDomainIcon(
+                        context = TidiloApplication.instance,
+                        url = realUrl,
+                        appleTouchIconUrl = parsed.appleTouchIconUrl,
+                        faviconUrl = parsed.faviconUrl
+                    )
+                }
             }
 
-            // Treat non-200 HTTP response codes as failure
-            if (parsed.statusCode != 200) {
-                throw Exception("HTTP Error ${parsed.statusCode}: ${parsed.statusMessage.ifBlank { "Invalid status" }}")
-            }
-
-            // 2. Determine resolved URL and title (prefer og:title then <title>)
-            val realUrl = parsed.resolvedUrl.takeIf { it.isNotBlank() } ?: url
-
-            val finalTitle = parsed.ogpTags["og:title"]?.trim()?.takeIf { it.isNotBlank() }
-                ?: parsed.title?.trim()?.takeIf { it.isNotBlank() }
-                ?: preferredTitle?.trim()?.takeIf { it.isNotBlank() && !isRawUrlOrHost(it, realUrl) }
-                ?: extractHost(realUrl)
-
-            // 3. Build prompt with resolved URL
-            val prompt = buildPrompt(url = realUrl, parsed = parsed, language = language)
-
-            // 4. Run inference with Gemini Nano
+            // Run inference with Gemini Nano
             val aiOutput = try {
                 runNanoInference(prompt)
             } catch (e: Exception) {
@@ -77,26 +124,10 @@ object GeminiTaggingService {
                 }
             }
 
-            // 5. Parse JSON and normalize results
-            val result = parseAiResponse(aiOutput, finalTitle, parsed)
+            // Parse JSON and normalize results
+            val result = parseAiResponse(aiOutput, finalTitle, parsedWebPage)
 
-            // Domain registration and NSFW policy check
-            val domain = DomainIconManager.extractDomain(realUrl)
-            val siteName = parsed.ogpTags["og:site_name"]?.trim()?.takeIf { it.isNotBlank() } ?: ""
-            DomainPolicyManager.registerDomain(domain, false, siteName)
-            val isNsfw = parsed.isNsfwSignal || DomainPolicyManager.isNsfwDomain(domain)
-
-            // Verify domain icon cache and fetch only if not yet cached during Running execution
-            if (domain != null && !DomainIconManager.hasIcon(TidiloApplication.instance, domain)) {
-                DomainIconManager.fetchAndSaveDomainIcon(
-                    context = TidiloApplication.instance,
-                    url = realUrl,
-                    appleTouchIconUrl = parsed.appleTouchIconUrl,
-                    faviconUrl = parsed.faviconUrl
-                )
-            }
-
-            // 6. Construct BookmarkItem with resolved URL
+            // Construct BookmarkItem with resolved URL
             val bookmarkItem = BookmarkItem(
                 id = UUID.randomUUID().toString(),
                 title = result.title,
@@ -107,10 +138,10 @@ object GeminiTaggingService {
                     subcategory = result.subcategory,
                     entities = result.entities
                 ),
-                isNsfw = isNsfw
+                isNsfw = resolvedIsNsfw
             )
 
-            // 7. Save to Library (BookmarkRepository)
+            // Save to Library (BookmarkRepository)
             BookmarkRepository.getInstance().addBookmark(bookmarkItem)
 
             bookmarkItem
@@ -191,7 +222,7 @@ object GeminiTaggingService {
     }
 
     /**
-     * Constructs the prompt payload sent to Gemini Nano.
+     * Constructs the prompt payload sent to Gemini Nano from a parsed webpage.
      */
     fun buildPrompt(
         url: String,
@@ -207,6 +238,27 @@ object GeminiTaggingService {
             ?: parsed?.jsoupBodyText
             ?: "").take(800).replace("\n", " ")
 
+        return buildPromptWithSnippets(
+            url = url,
+            siteName = siteName,
+            title = title,
+            description = description,
+            bodySnippet = bodySnippet,
+            language = language
+        )
+    }
+
+    /**
+     * Constructs the prompt payload directly from raw snippet values without needing a ParsedWebPage instance.
+     */
+    fun buildPromptWithSnippets(
+        url: String,
+        siteName: String,
+        title: String,
+        description: String,
+        bodySnippet: String,
+        language: AppLanguage
+    ): String {
         val summaryInstruction = if (language.isJapanese) {
             """
             - Language: Japanese.

@@ -83,7 +83,7 @@ fun SettingsScreen(
     val bookmarkRepository = remember { BookmarkRepository.getInstance(context) }
     val scope = rememberCoroutineScope()
 
-    var fallbackMenuExpanded by remember { mutableStateOf(false) }
+    var showFallbackDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showConfirmDialog by remember { mutableStateOf(false) }
     var showProgressDialog by remember { mutableStateOf(false) }
@@ -264,7 +264,9 @@ fun SettingsScreen(
 
         // AICore Error Fallback Mode Card
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showFallbackDialog = true },
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -292,7 +294,7 @@ fun SettingsScreen(
                         )
                     }
                     Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.padding(end = 8.dp)) {
+                    Column {
                         Text(
                             text = if (currentLanguage.isJapanese) "AICoreエラー発生時のフォールバック" else "AICore error fallback",
                             style = MaterialTheme.typography.titleMedium,
@@ -301,79 +303,19 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (currentLanguage.isJapanese)
-                                "エラー時にAIタグ付けをスキップして保存"
-                            else
-                                "Save bookmarks without AI tags on error",
+                            text = aiCoreFallbackMode.getLabel(currentLanguage.isJapanese),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
                     }
                 }
 
-                Box {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        modifier = Modifier
-                            .widthIn(min = 100.dp, max = 140.dp)
-                            .clickable { fallbackMenuExpanded = true }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = aiCoreFallbackMode.getLabel(currentLanguage.isJapanese),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .basicMarquee()
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "Select fallback mode",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-
-                    DropdownMenu(
-                        expanded = fallbackMenuExpanded,
-                        onDismissRequest = { fallbackMenuExpanded = false },
-                        modifier = Modifier.widthIn(min = 220.dp, max = 340.dp)
-                    ) {
-                        AiCoreFallbackMode.entries.forEach { mode ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = mode.getLabel(currentLanguage.isJapanese),
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                },
-                                onClick = {
-                                    AppConfig.setAiCoreFallbackMode(mode)
-                                    fallbackMenuExpanded = false
-                                },
-                                trailingIcon = if (mode == aiCoreFallbackMode) {
-                                    {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                } else null
-                            )
-                        }
-                    }
-                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
 
@@ -748,6 +690,78 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showFallbackDialog) {
+        AlertDialog(
+            onDismissRequest = { showFallbackDialog = false },
+            title = {
+                Text(
+                    text = if (currentLanguage.isJapanese) "AICoreエラー発生時のフォールバック" else "AICore Error Fallback",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column {
+                    AiCoreFallbackMode.entries.forEach { mode ->
+                        val isSelected = mode == aiCoreFallbackMode
+                        val descriptionText = when (mode) {
+                            AiCoreFallbackMode.DISABLE -> if (currentLanguage.isJapanese)
+                                "フォールバックを行わず、エラー項目へ移動します"
+                            else
+                                "Do not fallback; move items to Error"
+                            AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY -> if (currentLanguage.isJapanese)
+                                "AICoreの利用上限超過（エラー27）時のみAIタグなしで保存"
+                            else
+                                "Save without AI tags only when battery quota is exceeded"
+                            AiCoreFallbackMode.ALL -> if (currentLanguage.isJapanese)
+                                "すべてのAICoreエラー発生時にAIタグなしで保存"
+                            else
+                                "Save without AI tags on all AICore errors"
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    AppConfig.setAiCoreFallbackMode(mode)
+                                    showFallbackDialog = false
+                                }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = {
+                                    AppConfig.setAiCoreFallbackMode(mode)
+                                    showFallbackDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = mode.getLabel(currentLanguage.isJapanese),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = descriptionText,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showFallbackDialog = false }) {
+                    Text(if (currentLanguage.isJapanese) "閉じる" else "Close")
+                }
+            },
+            shape = RoundedCornerShape(24.dp)
+        )
     }
 
     if (showLanguageDialog) {

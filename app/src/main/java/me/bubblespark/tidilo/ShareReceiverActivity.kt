@@ -39,7 +39,7 @@ class ShareReceiverActivity : ComponentActivity() {
             showNotification(
                 context = applicationContext,
                 success = false,
-                message = "Enqueue failed. Please check the contents."
+                message = applicationContext.getString(R.string.notification_enqueue_failed)
             )
             return
         }
@@ -56,13 +56,13 @@ class ShareReceiverActivity : ComponentActivity() {
                     showNotification(
                         context = appContext,
                         success = true,
-                        message = "Enqueue was successful. There are $count items in the queuing."
+                        message = appContext.getString(R.string.notification_enqueue_success, count)
                     )
                 }.onFailure {
                     showNotification(
                         context = appContext,
                         success = false,
-                        message = "Enqueue failed. Please check the contents."
+                        message = appContext.getString(R.string.notification_enqueue_failed)
                     )
                 }
             }
@@ -70,7 +70,7 @@ class ShareReceiverActivity : ComponentActivity() {
             showNotification(
                 context = applicationContext,
                 success = false,
-                message = "Enqueue failed. Please check the contents."
+                message = applicationContext.getString(R.string.notification_enqueue_failed)
             )
         }
     }
@@ -110,7 +110,7 @@ class ShareReceiverActivity : ComponentActivity() {
 
         val notification = NotificationCompat.Builder(context, TidiloApplication.CHANNEL_ID_QUEUE)
             .setSmallIcon(iconRes)
-            .setContentTitle("Tidilo")
+            .setContentTitle(context.getString(R.string.app_name))
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)

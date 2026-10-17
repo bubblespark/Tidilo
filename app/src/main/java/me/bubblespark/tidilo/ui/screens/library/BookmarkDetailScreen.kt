@@ -101,11 +101,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.toClipEntry
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.Subcategory
@@ -126,7 +128,6 @@ fun BookmarkDetailScreen(
     val clipboard = LocalClipboard.current
     val coroutineScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
-    val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
 
     val bookmark = remember(bookmarks, bookmarkId) {
@@ -142,12 +143,12 @@ fun BookmarkDetailScreen(
                 IconButton(onClick = onNavigateBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back"
+                        contentDescription = stringResource(R.string.common_back)
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = if (currentLanguage.isJapanese) "アイテムが見つかりません" else "Item not found",
+                    text = stringResource(R.string.detail_item_not_found),
                     color = MaterialTheme.colorScheme.outline
                 )
             }
@@ -170,11 +171,11 @@ fun BookmarkDetailScreen(
         showDiscardConfirmDialog = true
     }
 
-    val localizedCategory = remember(bookmark.tag.category, currentLanguage) {
-        bookmark.tag.category?.let { Category.toLocalized(it, currentLanguage.isJapanese) } ?: ""
+    val localizedCategory = remember(bookmark.tag.category, context) {
+        bookmark.tag.category?.let { Category.toLocalized(it, context) } ?: ""
     }
-    val localizedSubcategory = remember(bookmark.tag.subcategory, currentLanguage) {
-        bookmark.tag.subcategory?.let { Subcategory.toLocalized(it, currentLanguage.isJapanese) } ?: ""
+    val localizedSubcategory = remember(bookmark.tag.subcategory, context) {
+        bookmark.tag.subcategory?.let { Subcategory.toLocalized(it, context) } ?: ""
     }
 
     val formattedCreatedAt = remember(bookmark.createdAt) {
@@ -243,13 +244,13 @@ fun BookmarkDetailScreen(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = stringResource(R.string.common_back),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (currentLanguage.isJapanese) "詳細" else "Details",
+                    text = stringResource(R.string.detail_title),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -275,7 +276,7 @@ fun BookmarkDetailScreen(
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
             ) {
                 Text(
-                    text = if (currentLanguage.isJapanese) "保存" else "Save",
+                    text = stringResource(R.string.detail_save),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -328,7 +329,7 @@ fun BookmarkDetailScreen(
                             Toast
                                 .makeText(
                                     context,
-                                    if (currentLanguage.isJapanese) "ブラウザを開けませんでした" else "Could not open browser",
+                                    context.getString(R.string.bookmark_could_not_open_browser),
                                     Toast.LENGTH_SHORT
                                 )
                                 .show()
@@ -343,7 +344,7 @@ fun BookmarkDetailScreen(
                         Toast
                             .makeText(
                                 context,
-                                if (currentLanguage.isJapanese) "URLをコピーしました" else "URL copied to clipboard",
+                                context.getString(R.string.detail_url_copied),
                                 Toast.LENGTH_SHORT
                             )
                             .show()
@@ -358,7 +359,7 @@ fun BookmarkDetailScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                    contentDescription = "Open URL",
+                    contentDescription = stringResource(R.string.detail_open_url),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
@@ -389,7 +390,7 @@ fun BookmarkDetailScreen(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = if (currentLanguage.isJapanese) "分類 & タグ" else "Tags & Classification",
+                text = stringResource(R.string.detail_section_tags),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -411,7 +412,7 @@ fun BookmarkDetailScreen(
                 if (bookmark.isAiSkipped) {
                     AssistChip(
                         onClick = {},
-                        label = { Text("AI Skipped", fontWeight = FontWeight.Bold) },
+                        label = { Text(stringResource(R.string.bookmark_ai_skipped), fontWeight = FontWeight.Bold) },
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                             labelColor = MaterialTheme.colorScheme.onTertiaryContainer
@@ -527,7 +528,7 @@ fun BookmarkDetailScreen(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = if (currentLanguage.isJapanese) "要約" else "Summary",
+                text = stringResource(R.string.detail_section_summary),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -573,7 +574,7 @@ fun BookmarkDetailScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (currentLanguage.isJapanese) "メモ" else "Note",
+                        text = stringResource(R.string.detail_section_note),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -598,7 +599,7 @@ fun BookmarkDetailScreen(
                 },
                 placeholder = {
                     Text(
-                        text = if (currentLanguage.isJapanese) "メモを入力..." else "Add note...",
+                        text = stringResource(R.string.detail_note_placeholder),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
                     )
@@ -629,13 +630,13 @@ fun BookmarkDetailScreen(
             horizontalAlignment = Alignment.End
         ) {
             Text(
-                text = "Created: $formattedCreatedAt",
+                text = stringResource(R.string.detail_created_at, formattedCreatedAt),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "Updated: $formattedUpdatedAt",
+                text = stringResource(R.string.detail_updated_at, formattedUpdatedAt),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
             )
@@ -692,7 +693,7 @@ fun BookmarkDetailScreen(
                 ) {
                     // Top: Delete button
                     FabMenuItem(
-                        label = if (currentLanguage.isJapanese) "削除" else "Delete",
+                        label = stringResource(R.string.detail_action_delete),
                         icon = Icons.Default.Delete,
                         containerColor = MaterialTheme.colorScheme.errorContainer,
                         contentColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -704,7 +705,7 @@ fun BookmarkDetailScreen(
 
                     // Bottom: AI Summary button
                     FabMenuItem(
-                        label = if (currentLanguage.isJapanese) "AI要約" else "AI Summary",
+                        label = stringResource(R.string.detail_action_ai_summary),
                         icon = Icons.Default.AutoAwesome,
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -732,7 +733,7 @@ fun BookmarkDetailScreen(
                 ) {
                     Icon(
                         imageVector = if (isFabMenuExpanded) Icons.Default.Close else MenuOpenIcon,
-                        contentDescription = if (isFabMenuExpanded) "Close menu" else "Open menu",
+                        contentDescription = stringResource(if (isFabMenuExpanded) R.string.detail_fab_close else R.string.detail_fab_open),
                         modifier = Modifier.size(40.dp)
                     )
                 }
@@ -746,13 +747,13 @@ fun BookmarkDetailScreen(
             onDismissRequest = { showDiscardConfirmDialog = false },
             title = {
                 Text(
-                    text = if (currentLanguage.isJapanese) "変更を破棄しますか？" else "Discard changes?",
+                    text = stringResource(R.string.detail_dialog_discard_title),
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = if (currentLanguage.isJapanese) "保存されていない変更は破棄されます。" else "Unsaved changes will be discarded."
+                    text = stringResource(R.string.detail_dialog_discard_message)
                 )
             },
             confirmButton = {
@@ -763,7 +764,7 @@ fun BookmarkDetailScreen(
                     }
                 ) {
                     Text(
-                        text = "OK",
+                        text = stringResource(R.string.common_ok),
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -774,7 +775,7 @@ fun BookmarkDetailScreen(
                     onClick = { showDiscardConfirmDialog = false }
                 ) {
                     Text(
-                        text = if (currentLanguage.isJapanese) "キャンセル" else "Cancel"
+                        text = stringResource(R.string.common_cancel)
                     )
                 }
             }
@@ -787,16 +788,13 @@ fun BookmarkDetailScreen(
             onDismissRequest = { showDeleteConfirmDialog = false },
             title = {
                 Text(
-                    text = if (currentLanguage.isJapanese) "ブックマークの削除" else "Delete Bookmark",
+                    text = stringResource(R.string.detail_dialog_delete_title),
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = if (currentLanguage.isJapanese)
-                        "このブックマークをごみ箱に移動しますか？\n（ごみ箱内で30日間保持された後に完全削除されます）"
-                    else
-                        "Move this bookmark to trash?\n(Kept for 30 days before permanent deletion)"
+                    text = stringResource(R.string.detail_dialog_delete_message)
                 )
             },
             confirmButton = {
@@ -808,7 +806,7 @@ fun BookmarkDetailScreen(
                     }
                 ) {
                     Text(
-                        text = if (currentLanguage.isJapanese) "削除" else "Delete",
+                        text = stringResource(R.string.common_delete),
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Bold
                     )
@@ -816,7 +814,7 @@ fun BookmarkDetailScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                    Text(if (currentLanguage.isJapanese) "キャンセル" else "Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
             shape = RoundedCornerShape(24.dp)

@@ -40,10 +40,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.DomainIconManager
@@ -55,7 +57,6 @@ fun NsfwSettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
     val isNsfwBookmarkable by AppConfig.isNsfwContentBookmarkable.collectAsStateWithLifecycle()
     val policies by DomainPolicyManager.policies.collectAsStateWithLifecycle()
@@ -90,13 +91,13 @@ fun NsfwSettingsScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.common_back),
                     tint = MaterialTheme.colorScheme.onSurface
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = if (currentLanguage.isJapanese) "NSFW Contents" else "NSFW Contents",
+                text = stringResource(R.string.title_nsfw_contents),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -138,17 +139,14 @@ fun NsfwSettingsScreen(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = if (currentLanguage.isJapanese) "NSFWコンテンツを表示する。" else "Show NSFW Content",
+                        text = stringResource(R.string.nsfw_show_content_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = if (currentLanguage.isJapanese)
-                            "OFFにするとライブラリや検索で\nNSFWブックマークを非表示にします"
-                        else
-                            "Show or hide NSFW bookmarks in library and search",
+                        text = stringResource(R.string.nsfw_show_content_subtitle),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -196,17 +194,14 @@ fun NsfwSettingsScreen(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = if (currentLanguage.isJapanese) "NSFWコンテンツをブックマークする。" else "Bookmark NSFW Content",
+                        text = stringResource(R.string.nsfw_bookmark_content_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = if (currentLanguage.isJapanese)
-                            "NSFWコンテンツのキュー追加と保存を許可\n（今後実装予定）"
-                        else
-                            "Allow queuing and bookmarking NSFW pages (Upcoming feature)",
+                        text = stringResource(R.string.nsfw_bookmark_content_subtitle),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -223,7 +218,7 @@ fun NsfwSettingsScreen(
 
         // 3. Section: NSFW Domain Management
         Text(
-            text = if (currentLanguage.isJapanese) "NSFW ドメイン管理" else "NSFW Domain Management",
+            text = stringResource(R.string.nsfw_domain_management_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
@@ -231,10 +226,7 @@ fun NsfwSettingsScreen(
         )
 
         Text(
-            text = if (currentLanguage.isJapanese)
-                "チェックが有効なドメインはNSFWドメインとして扱われます。"
-            else
-                "Checked domains are designated and treated as NSFW sources.",
+            text = stringResource(R.string.nsfw_domain_management_subtitle),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.outline,
             modifier = Modifier.padding(start = 4.dp, bottom = 12.dp)
@@ -255,7 +247,7 @@ fun NsfwSettingsScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (currentLanguage.isJapanese) "保存されているドメインはありません" else "No domains saved yet",
+                        text = stringResource(R.string.nsfw_no_domains),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.outline
                     )

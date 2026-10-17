@@ -1,0 +1,234 @@
+<resources>
+    <!-- App & Navigation -->
+    <string name="app_name">Tidilo</string>
+    <string name="nav_library">Library</string>
+    <string name="nav_queue">Queue</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_debug">Debug</string>
+
+    <!-- Screen Titles -->
+    <string name="title_settings">Settings</string>
+    <string name="title_bookmark_detail">Details</string>
+    <string name="title_bookmark_ai_review">AI Review</string>
+    <string name="title_tag_selection">Tag Selection</string>
+    <string name="title_generate_content_request">GenerateContentRequest</string>
+    <string name="title_nsfw_contents">NSFW Contents</string>
+
+    <!-- Common Actions & Labels -->
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">キャンセル</string>
+    <string name="common_close">閉じる</string>
+    <string name="common_clear">クリア</string>
+    <string name="common_delete">削除</string>
+    <string name="common_save">保存</string>
+    <string name="common_retry">再試行</string>
+    <string name="common_undo">戻す</string>
+    <string name="common_back">戻る</string>
+    <string name="common_remove">削除</string>
+    <string name="common_search">検索</string>
+
+    <!-- Bottom Navigation Bar & FAB -->
+    <string name="bottom_bar_domain">Domain</string>
+    <string name="bottom_bar_newest_first">Newest first</string>
+    <string name="bottom_bar_close_filter_menu">フィルターメニューを閉じる</string>
+    <string name="bottom_bar_filter_menu">フィルターメニュー</string>
+    <string name="bottom_bar_search">Search</string>
+    <string name="bottom_bar_ai_tagging_all">AI Tagging All</string>
+
+    <!-- Queue Screen -->
+    <string name="queue_header_title">Queue</string>
+    <string name="queue_header_subtitle">Semantic AI Tagging Queue</string>
+    <string name="queue_enqueue_button_content_desc">Enqueue URL</string>
+    <string name="queue_group_running">Running</string>
+    <string name="queue_group_queuing">Queuing</string>
+    <string name="queue_group_error">Error</string>
+    <string name="queue_empty_running_title">実行中のタスクはありません</string>
+    <string name="queue_empty_running_hint">URLを登録した上で、画面右下のボタン、または待機中のURLカードを右にスワイプして下さい</string>
+    <string name="queue_empty_queuing_title">待機中のタスクはありません</string>
+    <string name="queue_empty_queuing_hint">画面右上の登録ボタン、またはデバイスの共有メニューからURLを追加して下さい</string>
+    <string name="queue_empty_error_title">エラーのタスクはありません</string>
+    <string name="queue_empty_error_hint">HTTPエラーやAICoreエラーの場合、ここに表示されます</string>
+    <string name="queue_show_less">表示を縮小</string>
+    <string name="queue_more_items">表示を拡大 (%1$d件)</string>
+    <string name="queue_item_deleted">\"%1$s\" 削除しました</string>
+    <string name="queue_collapse_group">%1$sを折りたたむ</string>
+    <string name="queue_expand_group">%1$sを展開</string>
+    <string name="queue_dialog_enqueue_title">URLの登録</string>
+    <string name="queue_dialog_enqueue_description">有効なHTTPまたはHTTPSのWebアドレスを入力して下さい。</string>
+    <string name="queue_dialog_enqueue_error_invalid">http:// または https:// で始まり、有効なドメイン名である必要があります</string>
+    <string name="queue_dialog_enqueue_supporting_text">http:// or https:// から始まる必要があります</string>
+    <string name="queue_dialog_enqueue_confirm">登録</string>
+    <string name="queue_status_waiting_aicore">Waiting for AICore slot...</string>
+    <string name="queue_status_generating_tags">Gemini Nano generating semantic tags...</string>
+    <string name="queue_status_paused_retry_active">Paused • Retrying when app is active</string>
+    <string name="queue_status_aicore_busy">AICore busy • Retrying (%1$d/%2$d)...</string>
+    <string name="queue_status_aicore_blocked">AICore background blocked • Retrying (%1$d/%2$d)...</string>
+    <string name="queue_status_queued_quota_exceeded">Queued • Quota exceeded</string>
+    <string name="queue_status_failed">Failed</string>
+    <string name="queue_status_completed">Completed</string>
+    <string name="queue_status_queued">Queued</string>
+
+    <!-- AICore Dialogs -->
+    <string name="dialog_aicore_title">AICore</string>
+    <string name="dialog_aicore_quota_exceeded_message">AICore使用制限を超過しました。URLをインポートできません。\nしばらく待ってから再度実行するか、フォールバック機能の仕様を検討してください。</string>
+
+    <!-- Library Screen -->
+    <string name="library_header_title">Library</string>
+    <string name="library_subtitle_loading">Loading bookmarks...</string>
+    <string name="library_subtitle_tagged_bookmarks">Tagged Bookmarks (%1$d)</string>
+    <string name="library_subtitle_domains">Domains (%1$d)</string>
+    <string name="library_subtitle_domain_bookmarks">Domain Bookmarks (%1$d)</string>
+    <string name="library_empty_title">ブックマークがありません</string>
+    <string name="library_empty_hint">インポートされたブックマークは、処理が完了するとここに表示されます。</string>
+    <string name="library_back_to_domains">ドメインに戻る</string>
+    <string name="domain_card_item_count">%1$d件</string>
+    <string name="bookmark_open_in_browser">ブラウザで開く</string>
+    <string name="bookmark_could_not_open_browser">ブラウザを開くことができませんでした</string>
+    <string name="bookmark_ai_skipped">AI Skipped</string>
+    <string name="bookmark_nsfw">NSFW</string>
+
+    <!-- Search Screen -->
+    <string name="search_header_title">Search</string>
+    <string name="search_header_subtitle_keywords">Keywords &amp; Semantic Tags</string>
+    <string name="search_header_subtitle_results">Results (%1$d)</string>
+    <string name="search_placeholder">Search word or #Tag...</string>
+    <string name="search_content_desc">検索</string>
+    <string name="search_tag_selection_content_desc">Tag Selection</string>
+    <string name="search_recent_title">最近の検索</string>
+    <string name="search_no_recent">検索履歴はありません</string>
+    <string name="search_empty_title">ブックマークが見つかりませんでした</string>
+    <string name="search_empty_hint">一致する結果はありません: \"%1$s\"\nキーワードや#タグ（例：#AI、#Model）を使って検索してみてください</string>
+
+    <!-- Tag Selection Screen -->
+    <string name="tag_selection_title">Tag Selection</string>
+    <string name="tag_selection_subtitle">Mutual AND Filter (%1$d selected)</string>
+    <string name="tag_selection_search_placeholder">Search word...</string>
+    <string name="tag_selection_search_content_desc">Search Tags</string>
+    <string name="tag_selection_back_and_apply">適用して戻る</string>
+    <string name="tag_group_category">分類</string>
+    <string name="tag_group_subcategory">サブ分類</string>
+    <string name="tag_group_entity">固有タグ</string>
+    <string name="tag_empty_group">現在のフィルター条件に一致するタグはありません</string>
+    <string name="tag_sort_content_desc">並び替え</string>
+    <string name="tag_sort_count">件数順</string>
+    <string name="tag_sort_name">名称</string>
+
+    <!-- Bookmark Detail Screen -->
+    <string name="detail_item_not_found">アイテムが見つかりません</string>
+    <string name="detail_title">詳細</string>
+    <string name="detail_save">保存</string>
+    <string name="detail_open_url">URLを開く</string>
+    <string name="detail_url_copied">URLをクリップボードにコピーしました。</string>
+    <string name="detail_section_tags">分類 &amp; タグ</string>
+    <string name="detail_section_summary">要約</string>
+    <string name="detail_section_note">メモ</string>
+    <string name="detail_note_placeholder">メモを入力...</string>
+    <string name="detail_created_at">作成日時: %1$s</string>
+    <string name="detail_updated_at">更新日時: %1$s</string>
+    <string name="detail_action_delete">削除</string>
+    <string name="detail_action_ai_summary">AI要約</string>
+    <string name="detail_fab_open">メニューを開く</string>
+    <string name="detail_fab_close">メニューを閉じる</string>
+    <string name="detail_dialog_discard_title">変更を破棄しますか？</string>
+    <string name="detail_dialog_discard_message">保存されていない変更は破棄されます。</string>
+    <string name="detail_dialog_delete_title">ブックマークの削除</string>
+    <string name="detail_dialog_delete_message">このブックマークをごみ箱に移動しますか？\n(ごみ箱内で30日間保持された後に完全に削除されます。)</string>
+
+    <!-- AI Review Screen -->
+    <string name="ai_review_title">AI要約とタグの比較</string>
+    <string name="ai_review_loading_title">AIがページを解析して提案を作成中...</string>
+    <string name="ai_review_loading_subtitle">Gemini Nanoが要約とタグを推論しています</string>
+    <string name="ai_review_error_title">AI要約に失敗しました。</string>
+    <string name="ai_review_section_summary">要約</string>
+    <string name="ai_review_select_summary">適用する要約を選択して下さい。</string>
+    <string name="ai_review_proposal_badge">✨ AI提案</string>
+    <string name="ai_review_current_badge">現在</string>
+    <string name="ai_review_no_summary">(要約がありません)</string>
+    <string name="ai_review_section_tags">分類 &amp; タグ</string>
+    <string name="ai_review_select_tags">適用する分類とタグを選択して下さい。</string>
+    <string name="ai_review_uncategorized">(分類がありません)</string>
+    <string name="ai_review_note_notice">※ メモはそのまま保持されます。</string>
+    <string name="ai_review_apply_changes">変更を適用する</string>
+    <string name="ai_review_applied_toast">選択した内容で反映しました。</string>
+    <string name="ai_review_dialog_discard_title">変更を破棄しますか？</string>
+    <string name="ai_review_dialog_discard_message">AIの提案を適用せずに詳細画面に戻ります。</string>
+    <string name="ai_review_dialog_discard_confirm">破棄する</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">設定</string>
+    <string name="settings_section_general">全般</string>
+    <string name="settings_language_title">言語</string>
+    <string name="settings_language_dialog_title">言語を選択</string>
+    <string name="settings_section_ai">AI</string>
+    <string name="settings_auto_run_ai_title">アクティブ時にAI処理を自動実行</string>
+    <string name="settings_auto_run_ai_subtitle">アプリ起動や復帰時にQueuingタスクを自動実行</string>
+    <string name="settings_aicore_fallback_title">AICoreエラー発生時の代替処理</string>
+    <string name="settings_aicore_fallback_dialog_title">AICoreエラー発生時の代替処理</string>
+    <string name="settings_fallback_mode_disable">無効</string>
+    <string name="settings_fallback_mode_disable_desc">代替処理は行われず、エラーとして扱われます。</string>
+    <string name="settings_fallback_mode_quota">AICoreの割り当て量を超えた場合のみ</string>
+    <string name="settings_fallback_mode_quota_desc">AICoreエラーの割り当て超過発生時のみ、AIによる要約とタグ付けを省略して保存する。</string>
+    <string name="settings_fallback_mode_all">全て</string>
+    <string name="settings_fallback_mode_all_desc">全てのAICoreエラー発生時、AIによる要約とタグ付けを省略して保存する。</string>
+    <string name="settings_generate_content_title">GenerateContentRequest</string>
+    <string name="settings_generate_content_subtitle">AICoreのリクエストパラメータの設定</string>
+    <string name="settings_nsfw_title">NSFW コンテンツ</string>
+    <string name="settings_nsfw_subtitle">表示設定とドメイン管理</string>
+    <string name="settings_section_data">データ管理</string>
+    <string name="settings_refetch_icons_title">ドメインアイコンの再取得</string>
+    <string name="settings_refetch_icons_subtitle">保存されている全てのドメインに対してアイコンを再取得</string>
+    <string name="settings_refetch_icons_dialog_title">ドメインアイコンの再ダウンロード</string>
+    <string name="settings_refetch_icons_dialog_message">全てのドメインに対してアイコンを再ダウンロードしますか？\n（通信環境によっては完了までに時間がかかる場合があります）</string>
+    <string name="settings_refetch_icons_progress_title">ドメインアイコンをダウンロード中</string>
+    <string name="settings_refetch_icons_preparing">準備中…</string>
+    <string name="settings_section_debug">Debug</string>
+    <string name="settings_debug_title">Debug</string>
+    <string name="settings_debug_subtitle">システム情報 &amp; デバッグメニュー</string>
+
+    <!-- NSFW Settings Screen -->
+    <string name="nsfw_show_content_title">NSFWコンテンツの表示</string>
+    <string name="nsfw_show_content_subtitle">OFFにすると、ライブラリや検索でNSFWブックマークを非表示にします。</string>
+    <string name="nsfw_bookmark_content_title">NSFWコンテンツをブックマーク</string>
+    <string name="nsfw_bookmark_content_subtitle">OFFにすると、NSFWコンテンツと判定されたブックマークはインポートされません。</string>
+    <string name="nsfw_domain_management_title">NSFW ドメイン管理</string>
+    <string name="nsfw_domain_management_subtitle">チェックが有効なドメインはNSFWドメインとして扱われます。</string>
+    <string name="nsfw_no_domains">ドメインがありません</string>
+
+    <!-- GenerateContentRequest Screen -->
+    <string name="gcr_reset_default_content_desc">Reset to Default</string>
+    <string name="gcr_reset_dialog_title">パラメータ設定を初期化しますか？</string>
+    <string name="gcr_reset_dialog_message">すべてのパラメータがデフォルト値にリセットされます。</string>
+
+    <!-- Debug Screen -->
+    <string name="debug_device_sdk_title">Device &amp; SDK Environment</string>
+    <string name="debug_aicore_status_title">Gemini Nano / AICore Status</string>
+    <string name="debug_mlkit_genai_title">ML Kit GenAI Prompt API Test</string>
+
+    <!-- Notifications -->
+    <string name="notification_channel_name">Queue Notifications</string>
+    <string name="notification_channel_desc">Notifications for URL enqueue operations</string>
+    <string name="notification_enqueue_success">Enqueue was successful. There are %1$d items in the queuing.</string>
+    <string name="notification_enqueue_failed">Enqueue failed. Please check the contents.</string>
+
+    <!-- Taxonomy: Categories -->
+    <string name="category_article">記事</string>
+    <string name="category_media">動画・作品</string>
+    <string name="category_tool">ツール</string>
+    <string name="category_commerce">ショップ</string>
+    <string name="category_community">コミュニティ</string>
+    <string name="category_official">公式・紹介</string>
+    <string name="category_reference">資料・情報</string>
+
+    <!-- Taxonomy: Subcategories -->
+    <string name="subcategory_tech">技術・IT</string>
+    <string name="subcategory_business">ビジネス</string>
+    <string name="subcategory_society">ニュース・社会</string>
+    <string name="subcategory_life">暮らし・健康</string>
+    <string name="subcategory_food">グルメ・料理</string>
+    <string name="subcategory_travel">旅行・交通</string>
+    <string name="subcategory_game">ゲーム</string>
+    <string name="subcategory_entertainment">エンタメ</string>
+    <string name="subcategory_hobby">趣味・スポーツ</string>
+    <string name="subcategory_adult">大人の嗜好</string>
+    <string name="subcategory_education">教育</string>
+</resources>

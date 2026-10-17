@@ -60,16 +60,74 @@ import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
 import me.bubblespark.tidilo.ui.screens.queue.QueueViewModel
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import java.util.Locale
+import me.bubblespark.tidilo.config.AppLanguage
+
 class MainActivity : ComponentActivity() {
+
+    override fun attachBaseContext(newBase: android.content.Context) {
+        val prefs = newBase.getSharedPreferences("tidilo_app_config_prefs", android.content.Context.MODE_PRIVATE)
+        val langCode = prefs.getString("app_language", AppLanguage.ENGLISH.code) ?: AppLanguage.ENGLISH.code
+        val locale = Locale.forLanguageTag(langCode)
+        val config = Configuration(newBase.resources.configuration).apply {
+            setLocale(locale)
+            setLayoutDirection(locale)
+        }
+        val localizedContext = newBase.createConfigurationContext(config)
+        super.attachBaseContext(localizedContext)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Enable Edge-to-Edge display recommended for Android 15+
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
+        // Ensure Activity resources are initialized with the configured language
+        val initialLang = AppConfig.currentLanguage.value
+        val initialLocale = Locale.forLanguageTag(initialLang.code)
+        val initialConfig = Configuration(resources.configuration).apply {
+            setLocale(initialLocale)
+            setLayoutDirection(initialLocale)
+        }
+        @Suppress("DEPRECATION")
+        resources.updateConfiguration(initialConfig, resources.displayMetrics)
+
         setContent {
-            TidiloTheme {
-                TidiloApp()
+            val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
+            val locale = remember(currentLanguage) { Locale.forLanguageTag(currentLanguage.code) }
+            val configuration = LocalConfiguration.current
+            val updatedConfig = remember(currentLanguage, configuration) {
+                Configuration(configuration).apply {
+                    setLocale(locale)
+                    setLayoutDirection(locale)
+                }
+            }
+            val context = LocalContext.current
+            val localizedContext = remember(currentLanguage, context, updatedConfig) {
+                context.createConfigurationContext(updatedConfig)
+            }
+
+            // Keep Activity resources and Application resources synchronized so that
+            // Dialogs and Popups (which create new Windows) load the correct localized strings
+            SideEffect {
+                @Suppress("DEPRECATION")
+                resources.updateConfiguration(updatedConfig, resources.displayMetrics)
+                @Suppress("DEPRECATION")
+                applicationContext.resources.updateConfiguration(updatedConfig, applicationContext.resources.displayMetrics)
+            }
+
+            CompositionLocalProvider(
+                LocalConfiguration provides updatedConfig,
+                LocalContext provides localizedContext
+            ) {
+                TidiloTheme {
+                    TidiloApp()
+                }
             }
         }
     }
@@ -258,22 +316,18 @@ fun TidiloApp(
                 onDismissRequest = { queueViewModel.dismissQuotaExceededDialog() },
                 title = {
                     Text(
-                        text = "AICore",
+                        text = stringResource(R.string.dialog_aicore_title),
                         fontWeight = FontWeight.Bold
                     )
                 },
                 text = {
                     Text(
-                        text = if (currentLanguage.isJapanese) {
-                            "AICore使用制限を超過しました。URLを取り込めません。しばらく待ってから再度実行するか、フォールバック機能の仕様を検討してください。"
-                        } else {
-                            "You have exceeded the AICore usage limit. We cannot import the URL. Please wait a while and try again, or enable the fallback feature."
-                        }
+                        text = stringResource(R.string.dialog_aicore_quota_exceeded_message)
                     )
                 },
                 confirmButton = {
                     TextButton(onClick = { queueViewModel.dismissQuotaExceededDialog() }) {
-                        Text(text = "OK")
+                        Text(text = stringResource(R.string.common_ok))
                     }
                 }
             )

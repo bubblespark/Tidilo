@@ -61,11 +61,13 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.ui.components.FrostedHeaderContainer
 import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
@@ -153,7 +155,7 @@ fun SearchScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (currentLanguage.isJapanese) "最近の検索" else "Recent Searches",
+                            text = stringResource(R.string.search_recent_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground
@@ -165,7 +167,7 @@ fun SearchScreen(
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Text(
-                                    text = if (currentLanguage.isJapanese) "消去" else "Clear",
+                                    text = stringResource(R.string.common_clear),
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.primary
@@ -184,7 +186,7 @@ fun SearchScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = if (currentLanguage.isJapanese) "検索履歴はありません" else "No recent searches",
+                                text = stringResource(R.string.search_no_recent),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -235,7 +237,7 @@ fun SearchScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Remove",
+                                    contentDescription = stringResource(R.string.common_remove),
                                     tint = MaterialTheme.colorScheme.outline,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -322,13 +324,17 @@ fun SearchScreen(
                     ) {
                         Column {
                             Text(
-                                text = "Search",
+                                text = stringResource(R.string.search_header_title),
                                 style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                             Text(
-                                text = if (searchQuery.isBlank()) "Keywords & Semantic Tags" else "Results (${filteredBookmarks.size})",
+                                text = if (searchQuery.isBlank()) {
+                                    stringResource(R.string.search_header_subtitle_keywords)
+                                } else {
+                                    stringResource(R.string.search_header_subtitle_results, filteredBookmarks.size)
+                                },
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -354,7 +360,7 @@ fun SearchScreen(
                             },
                         placeholder = {
                             Text(
-                                text = "Search word or #Tag...",
+                                text = stringResource(R.string.search_placeholder),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -362,7 +368,7 @@ fun SearchScreen(
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Search,
-                                contentDescription = "Search",
+                                contentDescription = stringResource(R.string.search_content_desc),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
@@ -377,7 +383,7 @@ fun SearchScreen(
                                     }) {
                                         Icon(
                                             imageVector = Icons.Default.Clear,
-                                            contentDescription = "Clear",
+                                            contentDescription = stringResource(R.string.common_clear),
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
@@ -390,7 +396,7 @@ fun SearchScreen(
                                 }) {
                                     Icon(
                                         imageVector = Icons.Default.Tag,
-                                        contentDescription = "Tag Selection",
+                                        contentDescription = stringResource(R.string.search_tag_selection_content_desc),
                                         tint = MaterialTheme.colorScheme.primary
                                     )
                                 }

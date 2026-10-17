@@ -105,6 +105,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.ui.components.FrostedHeaderContainer
 import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
 import kotlinx.coroutines.CoroutineStart
@@ -135,6 +138,7 @@ fun QueueScreen(
     var showAllQueuing by remember { mutableStateOf(false) }
     var showAllError by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
     var showEnqueueDialog by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -146,10 +150,11 @@ fun QueueScreen(
         val deleted = viewModel.deleteQueuingItem(item.id) ?: return
         snackbarJob?.cancel()
         snackbarHostState.currentSnackbarData?.dismiss()
+        val deletedTitle = deleted.first.title.ifBlank { deleted.first.url }
         snackbarJob = coroutineScope.launch {
             val result = snackbarHostState.showSnackbar(
-                message = "\"${deleted.first.title.ifBlank { deleted.first.url }}\" deleted",
-                actionLabel = "Undo",
+                message = context.getString(R.string.queue_item_deleted, deletedTitle),
+                actionLabel = context.getString(R.string.common_undo),
                 duration = SnackbarDuration.Short
             )
             if (result == SnackbarResult.ActionPerformed) {
@@ -162,10 +167,11 @@ fun QueueScreen(
         val deleted = viewModel.deleteErrorItem(item.id) ?: return
         snackbarJob?.cancel()
         snackbarHostState.currentSnackbarData?.dismiss()
+        val deletedTitle = deleted.first.title.ifBlank { deleted.first.url }
         snackbarJob = coroutineScope.launch {
             val result = snackbarHostState.showSnackbar(
-                message = "\"${deleted.first.title.ifBlank { deleted.first.url }}\" deleted",
-                actionLabel = "Undo",
+                message = context.getString(R.string.queue_item_deleted, deletedTitle),
+                actionLabel = context.getString(R.string.common_undo),
                 duration = SnackbarDuration.Short
             )
             if (result == SnackbarResult.ActionPerformed) {
@@ -219,7 +225,7 @@ fun QueueScreen(
             // ==================== 1. Running Group (defaults to closed) ====================
             item {
                 CollapsibleGroupHeader(
-                    title = "Running",
+                    title = stringResource(R.string.queue_group_running),
                     count = runningItems.size,
                     color = MaterialTheme.colorScheme.primary,
                     isExpanded = isRunningExpanded,
@@ -231,8 +237,8 @@ fun QueueScreen(
                 if (runningItems.isEmpty()) {
                     item {
                         EmptyGroupCard(
-                            message = "No tasks currently running",
-                            hint = "Trigger 'AI Tagging All' from the menu or promote an item"
+                            message = stringResource(R.string.queue_empty_running_title),
+                            hint = stringResource(R.string.queue_empty_running_hint)
                         )
                     }
                 } else {
@@ -264,7 +270,7 @@ fun QueueScreen(
             // ==================== 2. Queuing Group (defaults to open) ====================
             item {
                 CollapsibleGroupHeader(
-                    title = "Queuing",
+                    title = stringResource(R.string.queue_group_queuing),
                     count = queuingItems.size,
                     color = MaterialTheme.colorScheme.secondary,
                     isExpanded = isQueuingExpanded,
@@ -276,8 +282,8 @@ fun QueueScreen(
                 if (queuingItems.isEmpty()) {
                     item {
                         EmptyGroupCard(
-                            message = "No URLs waiting in queue",
-                            hint = "Add URLs via the '+' Enqueue button or device Share menu"
+                            message = stringResource(R.string.queue_empty_queuing_title),
+                            hint = stringResource(R.string.queue_empty_queuing_hint)
                         )
                     }
                 } else {
@@ -312,7 +318,7 @@ fun QueueScreen(
             // ==================== 3. Error Group (defaults to open) ====================
             item {
                 CollapsibleGroupHeader(
-                    title = "Error",
+                    title = stringResource(R.string.queue_group_error),
                     count = errorItems.size,
                     color = MaterialTheme.colorScheme.error,
                     isExpanded = isErrorExpanded,
@@ -324,8 +330,8 @@ fun QueueScreen(
                 if (errorItems.isEmpty()) {
                     item {
                         EmptyGroupCard(
-                            message = "No failed tasks",
-                            hint = "Rate limits or non-200 HTTP responses will appear here"
+                            message = stringResource(R.string.queue_empty_error_title),
+                            hint = stringResource(R.string.queue_empty_error_hint)
                         )
                     }
                 } else {
@@ -386,13 +392,13 @@ fun QueueScreen(
                 ) {
                     Column {
                         Text(
-                            text = "Queue",
+                            text = stringResource(R.string.queue_header_title),
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            text = "Semantic AI Tagging Queue",
+                            text = stringResource(R.string.queue_header_subtitle),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.secondary
                         )
@@ -403,7 +409,7 @@ fun QueueScreen(
                         IconButton(onClick = { showEnqueueDialog = true }) {
                             Icon(
                                 imageVector = Icons.Default.Add,
-                                contentDescription = "Enqueue URL",
+                                contentDescription = stringResource(R.string.queue_enqueue_button_content_desc),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -480,7 +486,11 @@ private fun CollapsibleGroupHeader(
             ) {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (isExpanded) "Collapse $title" else "Expand $title",
+                    contentDescription = if (isExpanded) {
+                        stringResource(R.string.queue_collapse_group, title)
+                    } else {
+                        stringResource(R.string.queue_expand_group, title)
+                    },
                     tint = MaterialTheme.colorScheme.outline
                 )
             }
@@ -511,7 +521,11 @@ private fun MoreItemsButton(
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
-            text = if (isExpanded) "Show Less" else "More Items ($hiddenCount more)",
+            text = if (isExpanded) {
+                stringResource(R.string.queue_show_less)
+            } else {
+                stringResource(R.string.queue_more_items, hiddenCount)
+            },
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Medium
         )
@@ -853,9 +867,10 @@ private fun QueueItemCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Pulse animation only during AI processing
+            val statusDisplay = resolveQueueStatusText(item)
             if (item.status == QueueItemStatus.PROCESSING_AI) {
                 PulsingStatusText(
-                    text = item.statusText,
+                    text = statusDisplay,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -868,7 +883,7 @@ private fun QueueItemCard(
                 )
             } else if (!isError) {
                 Text(
-                    text = item.statusText,
+                    text = statusDisplay,
                     style = MaterialTheme.typography.labelMedium,
                     color = when (item.status) {
                         QueueItemStatus.WAITING_AI -> MaterialTheme.colorScheme.tertiary
@@ -961,7 +976,7 @@ private fun EnqueueUrlDialog(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Enqueue URL",
+                    text = stringResource(R.string.queue_dialog_enqueue_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -970,7 +985,7 @@ private fun EnqueueUrlDialog(
         text = {
             Column {
                 Text(
-                    text = "Enter a valid HTTP or HTTPS web address to add to the queue for Gemini Nano tagging.",
+                    text = stringResource(R.string.queue_dialog_enqueue_description),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -984,11 +999,11 @@ private fun EnqueueUrlDialog(
                     supportingText = {
                         if (isDirty && !isValid) {
                             Text(
-                                text = "Must start with http:// or https:// and have a valid domain",
+                                text = stringResource(R.string.queue_dialog_enqueue_error_invalid),
                                 color = MaterialTheme.colorScheme.error
                             )
                         } else {
-                            Text(text = "http:// or https:// required")
+                            Text(text = stringResource(R.string.queue_dialog_enqueue_supporting_text))
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -1001,15 +1016,47 @@ private fun EnqueueUrlDialog(
                 enabled = isValid
             ) {
                 Text(
-                    text = "Enqueue",
+                    text = stringResource(R.string.queue_dialog_enqueue_confirm),
                     fontWeight = FontWeight.Bold
                 )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.common_cancel))
             }
         }
     )
+}
+
+/**
+ * Resolves localized status text for a queue item while preserving backwards compatibility.
+ */
+@Composable
+private fun resolveQueueStatusText(item: QueueItem): String {
+    val text = item.statusText
+    return when {
+        text == "Waiting for AICore slot..." -> stringResource(R.string.queue_status_waiting_aicore)
+        text == "Gemini Nano generating semantic tags..." -> stringResource(R.string.queue_status_generating_tags)
+        text == "Paused • Retrying when app is active" -> stringResource(R.string.queue_status_paused_retry_active)
+        text.startsWith("AICore busy • Retrying (") -> {
+            val match = Regex("""AICore busy • Retrying \((\d+)/(\d+)\)\.\.\.""").find(text)
+            if (match != null) {
+                val (c, m) = match.destructured
+                stringResource(R.string.queue_status_aicore_busy, c.toIntOrNull() ?: 1, m.toIntOrNull() ?: 3)
+            } else text
+        }
+        text.startsWith("AICore background blocked • Retrying (") -> {
+            val match = Regex("""AICore background blocked • Retrying \((\d+)/(\d+)\)\.\.\.""").find(text)
+            if (match != null) {
+                val (c, m) = match.destructured
+                stringResource(R.string.queue_status_aicore_blocked, c.toIntOrNull() ?: 1, m.toIntOrNull() ?: 3)
+            } else text
+        }
+        text == "Queued • Quota exceeded" -> stringResource(R.string.queue_status_queued_quota_exceeded)
+        text == "Failed" -> stringResource(R.string.queue_status_failed)
+        text == "Completed" -> stringResource(R.string.queue_status_completed)
+        text == "Queued" || text == "Queued • Ready for AI" || text == "Queued • Added without metadata" -> stringResource(R.string.queue_status_queued)
+        else -> text
+    }
 }

@@ -40,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,11 +50,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.Subcategory
 import me.bubblespark.tidilo.ui.components.SortIcon
@@ -90,7 +94,8 @@ fun TagSelectionScreen(
     modifier: Modifier = Modifier
 ) {
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
-    val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val localConfig = LocalConfiguration.current
 
     // Normalize initial tags selected in search bar into canonical IDs (English ID or Entity name)
     val initialSelectedTags = remember(viewModel) {
@@ -162,10 +167,10 @@ fun TagSelectionScreen(
     }
 
     // 1. Category list (localized display, always visible even if 0 count; sorted by count desc, then name asc)
-    val categoryTags = remember(allCategoryIds, activeCategoryCounts, cleanSearch, currentLanguage) {
+    val categoryTags = remember(allCategoryIds, activeCategoryCounts, cleanSearch, context) {
         allCategoryIds
             .map { id ->
-                val localized = Category.toLocalized(id, currentLanguage.isJapanese)
+                val localized = Category.toLocalized(id, context)
                 TagItem(id = id, displayName = localized, count = activeCategoryCounts[id] ?: 0)
             }
             .filter { item ->
@@ -179,10 +184,10 @@ fun TagSelectionScreen(
     }
 
     // 2. Subcategory list (localized display, always visible even if 0 count; sorted by count desc, then name asc)
-    val subcategoryTags = remember(allSubcategoryIds, activeSubcategoryCounts, cleanSearch, currentLanguage) {
+    val subcategoryTags = remember(allSubcategoryIds, activeSubcategoryCounts, cleanSearch, context) {
         allSubcategoryIds
             .map { id ->
-                val localized = Subcategory.toLocalized(id, currentLanguage.isJapanese)
+                val localized = Subcategory.toLocalized(id, context)
                 TagItem(id = id, displayName = localized, count = activeSubcategoryCounts[id] ?: 0)
             }
             .filter { item ->
@@ -225,8 +230,8 @@ fun TagSelectionScreen(
     // Apply selected tags to search bar and navigate back
     val applyAndNavigateBack = {
         val tagsToApply = selectedTags.map { id ->
-            Category.fromId(id)?.getLabel(currentLanguage.isJapanese)
-                ?: Subcategory.fromId(id)?.getLabel(currentLanguage.isJapanese)
+            Category.fromId(id)?.getLabel(context)
+                ?: Subcategory.fromId(id)?.getLabel(context)
                 ?: id
         }.toSet()
         viewModel.updateQueryWithSelectedTags(tagsToApply)
@@ -263,20 +268,20 @@ fun TagSelectionScreen(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back and apply tags",
+                        contentDescription = stringResource(R.string.tag_selection_back_and_apply),
                         tint = MaterialTheme.colorScheme.onBackground
                     )
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Column {
                     Text(
-                        text = "Tag Selection",
+                        text = stringResource(R.string.tag_selection_title),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = "Mutual AND Filter (${selectedTags.size} selected)",
+                        text = stringResource(R.string.tag_selection_subtitle, selectedTags.size),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -295,7 +300,7 @@ fun TagSelectionScreen(
                 )
             ) {
                 Text(
-                    text = "Clear",
+                    text = stringResource(R.string.common_clear),
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.titleMedium
                 )
@@ -311,7 +316,7 @@ fun TagSelectionScreen(
             modifier = Modifier.fillMaxWidth(),
             placeholder = {
                 Text(
-                    text = "Search tags...",
+                    text = stringResource(R.string.tag_selection_search_placeholder),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -319,7 +324,7 @@ fun TagSelectionScreen(
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Default.Search,
-                    contentDescription = "Search Tags",
+                    contentDescription = stringResource(R.string.tag_selection_search_content_desc),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             },
@@ -328,7 +333,7 @@ fun TagSelectionScreen(
                     IconButton(onClick = { tagSearchQuery = "" }) {
                         Icon(
                             imageVector = Icons.Default.Clear,
-                            contentDescription = "Clear",
+                            contentDescription = stringResource(R.string.common_clear),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -348,7 +353,7 @@ fun TagSelectionScreen(
 
         // Group 1: Category (always visible even when 0 items)
         TagGroupSection(
-            title = "Category",
+            title = stringResource(R.string.tag_group_category),
             tags = categoryTags,
             selectedTags = selectedTags,
             onTagToggled = { tagId ->
@@ -366,7 +371,7 @@ fun TagSelectionScreen(
 
         // Group 2: Subcategory (always visible even when 0 items)
         TagGroupSection(
-            title = "Subcategory",
+            title = stringResource(R.string.tag_group_subcategory),
             tags = subcategoryTags,
             selectedTags = selectedTags,
             onTagToggled = { tagId ->
@@ -384,7 +389,7 @@ fun TagSelectionScreen(
 
         // Group 3: Entity category (specific category - includes M3 Sort Menu)
         TagGroupSection(
-            title = "Entity category",
+            title = stringResource(R.string.tag_group_entity),
             tags = entityTags,
             selectedTags = selectedTags,
             onTagToggled = { tagId ->
@@ -404,7 +409,7 @@ fun TagSelectionScreen(
                     ) {
                         Icon(
                             imageVector = SortIcon,
-                            contentDescription = if (currentLanguage.isJapanese) "並び替え" else "Sort",
+                            contentDescription = stringResource(R.string.tag_sort_content_desc),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -416,55 +421,60 @@ fun TagSelectionScreen(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         tonalElevation = 6.dp
                     ) {
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = if (currentLanguage.isJapanese) "件数順" else "Count",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = if (entitySortMode == EntitySortMode.COUNT) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (entitySortMode == EntitySortMode.COUNT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                )
-                            },
-                            onClick = {
-                                entitySortMode = EntitySortMode.COUNT
-                                isSortMenuExpanded = false
-                            },
-                            trailingIcon = if (entitySortMode == EntitySortMode.COUNT) {
-                                {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp)
+                        CompositionLocalProvider(
+                            LocalContext provides context,
+                            LocalConfiguration provides localConfig
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.tag_sort_count),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (entitySortMode == EntitySortMode.COUNT) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (entitySortMode == EntitySortMode.COUNT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                     )
-                                }
-                            } else null
-                        )
+                                },
+                                onClick = {
+                                    entitySortMode = EntitySortMode.COUNT
+                                    isSortMenuExpanded = false
+                                },
+                                trailingIcon = if (entitySortMode == EntitySortMode.COUNT) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                } else null
+                            )
 
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = if (currentLanguage.isJapanese) "名称" else "Name",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = if (entitySortMode == EntitySortMode.NAME) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (entitySortMode == EntitySortMode.NAME) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                )
-                            },
-                            onClick = {
-                                entitySortMode = EntitySortMode.NAME
-                                isSortMenuExpanded = false
-                            },
-                            trailingIcon = if (entitySortMode == EntitySortMode.NAME) {
-                                {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp)
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.tag_sort_name),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (entitySortMode == EntitySortMode.NAME) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (entitySortMode == EntitySortMode.NAME) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                     )
-                                }
-                            } else null
-                        )
+                                },
+                                onClick = {
+                                    entitySortMode = EntitySortMode.NAME
+                                    isSortMenuExpanded = false
+                                },
+                                trailingIcon = if (entitySortMode == EntitySortMode.NAME) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                } else null
+                            )
+                        }
                     }
                 }
             }
@@ -515,7 +525,7 @@ private fun TagGroupSection(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "No matching tags available for current filter",
+                    text = stringResource(R.string.tag_empty_group),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.padding(14.dp)

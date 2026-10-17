@@ -63,9 +63,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
@@ -201,7 +203,6 @@ fun LibraryScreen(
                                 ) { group ->
                                     DomainCard(
                                         item = group,
-                                        isJapanese = currentLanguage.isJapanese,
                                         onClick = {
                                             viewModel.selectDomainFilter(group.domain)
                                         }
@@ -386,27 +387,28 @@ fun LibraryScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Back to Domains",
+                                    contentDescription = stringResource(R.string.library_back_to_domains),
                                     tint = MaterialTheme.colorScheme.onBackground
                                 )
                             }
                         }
 
                         Column {
+                            val defaultTitle = stringResource(R.string.library_header_title)
                             val headerTitle = when {
                                 filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
                                     DomainPolicyManager.getDisplayName(selectedDomainFilter)
-                                else -> "Library"
+                                else -> defaultTitle
                             }
                             val headerSubtitle = when {
                                 isLoading ->
-                                    if (currentLanguage.isJapanese) "読み込み中..." else "Loading bookmarks..."
+                                    stringResource(R.string.library_subtitle_loading)
                                 filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
-                                    if (currentLanguage.isJapanese) "ドメインブックマーク (${domainFilteredBookmarks.size})" else "Tagged Bookmarks (${domainFilteredBookmarks.size})"
+                                    stringResource(R.string.library_subtitle_domain_bookmarks, domainFilteredBookmarks.size)
                                 filterMode == LibraryFilterMode.DOMAIN ->
-                                    if (currentLanguage.isJapanese) "ドメイン一覧 (${domainGroups.size})" else "Domains (${domainGroups.size})"
+                                    stringResource(R.string.library_subtitle_domains, domainGroups.size)
                                 else ->
-                                    if (currentLanguage.isJapanese) "保存済みブックマーク (${bookmarks.size})" else "Tagged Bookmarks (${bookmarks.size})"
+                                    stringResource(R.string.library_subtitle_tagged_bookmarks, bookmarks.size)
                             }
 
                             AnimatedContent(
@@ -453,7 +455,7 @@ fun LibraryScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Settings,
-                                contentDescription = "Settings",
+                                contentDescription = stringResource(R.string.title_settings),
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
@@ -489,14 +491,14 @@ private fun EmptyLibraryMessage() {
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "No bookmarks yet",
+                text = stringResource(R.string.library_empty_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Enqueued bookmarks will appear here after processing.",
+                text = stringResource(R.string.library_empty_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )

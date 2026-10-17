@@ -1,6 +1,234 @@
 <resources>
+    <!-- App & Navigation -->
     <string name="app_name">Tidilo</string>
     <string name="nav_library">Library</string>
     <string name="nav_queue">Queue</string>
+    <string name="nav_search">Search</string>
     <string name="nav_debug">Debug</string>
+
+    <!-- Screen Titles -->
+    <string name="title_settings">Settings</string>
+    <string name="title_bookmark_detail">Details</string>
+    <string name="title_bookmark_ai_review">AI Review</string>
+    <string name="title_tag_selection">Tag Selection</string>
+    <string name="title_generate_content_request">GenerateContentRequest</string>
+    <string name="title_nsfw_contents">NSFW Contents</string>
+
+    <!-- Common Actions & Labels -->
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_close">Close</string>
+    <string name="common_clear">Clear</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_save">Save</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_undo">Undo</string>
+    <string name="common_back">Back</string>
+    <string name="common_remove">Remove</string>
+    <string name="common_search">Search</string>
+
+    <!-- Bottom Navigation Bar & FAB -->
+    <string name="bottom_bar_domain">Domain</string>
+    <string name="bottom_bar_newest_first">Newest first</string>
+    <string name="bottom_bar_close_filter_menu">Close filter menu</string>
+    <string name="bottom_bar_filter_menu">Filter menu</string>
+    <string name="bottom_bar_search">Search</string>
+    <string name="bottom_bar_ai_tagging_all">AI Tagging All</string>
+
+    <!-- Queue Screen -->
+    <string name="queue_header_title">Queue</string>
+    <string name="queue_header_subtitle">Semantic AI Tagging Queue</string>
+    <string name="queue_enqueue_button_content_desc">Enqueue URL</string>
+    <string name="queue_group_running">Running</string>
+    <string name="queue_group_queuing">Queuing</string>
+    <string name="queue_group_error">Error</string>
+    <string name="queue_empty_running_title">No tasks currently running</string>
+    <string name="queue_empty_running_hint">Trigger \'AI Tagging All\' from the menu or promote an item</string>
+    <string name="queue_empty_queuing_title">No URLs waiting in queue</string>
+    <string name="queue_empty_queuing_hint">Add URLs via the \'+\' Enqueue button or device Share menu</string>
+    <string name="queue_empty_error_title">No failed tasks</string>
+    <string name="queue_empty_error_hint">Rate limits or non-200 HTTP responses will appear here</string>
+    <string name="queue_show_less">Show Less</string>
+    <string name="queue_more_items">More Items (%1$d more)</string>
+    <string name="queue_item_deleted">\"%1$s\" deleted</string>
+    <string name="queue_collapse_group">Collapse %1$s</string>
+    <string name="queue_expand_group">Expand %1$s</string>
+    <string name="queue_dialog_enqueue_title">Enqueue URL</string>
+    <string name="queue_dialog_enqueue_description">Enter a valid HTTP or HTTPS web address to add to the queue for Gemini Nano tagging.</string>
+    <string name="queue_dialog_enqueue_error_invalid">Must start with http:// or https:// and have a valid domain</string>
+    <string name="queue_dialog_enqueue_supporting_text">http:// or https:// required</string>
+    <string name="queue_dialog_enqueue_confirm">Enqueue</string>
+    <string name="queue_status_waiting_aicore">Waiting for AICore slot...</string>
+    <string name="queue_status_generating_tags">Gemini Nano generating semantic tags...</string>
+    <string name="queue_status_paused_retry_active">Paused • Retrying when app is active</string>
+    <string name="queue_status_aicore_busy">AICore busy • Retrying (%1$d/%2$d)...</string>
+    <string name="queue_status_aicore_blocked">AICore background blocked • Retrying (%1$d/%2$d)...</string>
+    <string name="queue_status_queued_quota_exceeded">Queued • Quota exceeded</string>
+    <string name="queue_status_failed">Failed</string>
+    <string name="queue_status_completed">Completed</string>
+    <string name="queue_status_queued">Queued</string>
+
+    <!-- AICore Dialogs -->
+    <string name="dialog_aicore_title">AICore</string>
+    <string name="dialog_aicore_quota_exceeded_message">You have exceeded the AICore usage limit. We cannot import the URL.\nPlease wait a while and try again, or enable the fallback feature.</string>
+
+    <!-- Library Screen -->
+    <string name="library_header_title">Library</string>
+    <string name="library_subtitle_loading">Loading bookmarks...</string>
+    <string name="library_subtitle_tagged_bookmarks">Tagged Bookmarks (%1$d)</string>
+    <string name="library_subtitle_domains">Domains (%1$d)</string>
+    <string name="library_subtitle_domain_bookmarks">Domain Bookmarks (%1$d)</string>
+    <string name="library_empty_title">No bookmarks yet</string>
+    <string name="library_empty_hint">Enqueued bookmarks will appear here after processing.</string>
+    <string name="library_back_to_domains">Back to Domains</string>
+    <string name="domain_card_item_count">%1$d items</string>
+    <string name="bookmark_open_in_browser">Open in browser</string>
+    <string name="bookmark_could_not_open_browser">Could not open browser</string>
+    <string name="bookmark_ai_skipped">AI Skipped</string>
+    <string name="bookmark_nsfw">NSFW</string>
+
+    <!-- Search Screen -->
+    <string name="search_header_title">Search</string>
+    <string name="search_header_subtitle_keywords">Keywords &amp; Semantic Tags</string>
+    <string name="search_header_subtitle_results">Results (%1$d)</string>
+    <string name="search_placeholder">Search word or #Tag...</string>
+    <string name="search_content_desc">Search</string>
+    <string name="search_tag_selection_content_desc">Tag Selection</string>
+    <string name="search_recent_title">Recent Searches</string>
+    <string name="search_no_recent">No recent searches</string>
+    <string name="search_empty_title">No bookmarks found</string>
+    <string name="search_empty_hint">No results matching: \"%1$s\"\nTry searching with keywords or #Tags (e.g., #AI, #Model)</string>
+
+    <!-- Tag Selection Screen -->
+    <string name="tag_selection_title">Tag Selection</string>
+    <string name="tag_selection_subtitle">Mutual AND Filter (%1$d selected)</string>
+    <string name="tag_selection_search_placeholder">Search tags...</string>
+    <string name="tag_selection_search_content_desc">Search Tags</string>
+    <string name="tag_selection_back_and_apply">Back and apply tags</string>
+    <string name="tag_group_category">Category</string>
+    <string name="tag_group_subcategory">Subcategory</string>
+    <string name="tag_group_entity">Entity category</string>
+    <string name="tag_empty_group">No matching tags available for current filter</string>
+    <string name="tag_sort_content_desc">Sort</string>
+    <string name="tag_sort_count">Count</string>
+    <string name="tag_sort_name">Name</string>
+
+    <!-- Bookmark Detail Screen -->
+    <string name="detail_item_not_found">Item not found</string>
+    <string name="detail_title">Details</string>
+    <string name="detail_save">Save</string>
+    <string name="detail_open_url">Open URL</string>
+    <string name="detail_url_copied">URL copied to clipboard</string>
+    <string name="detail_section_tags">Category &amp; Tags</string>
+    <string name="detail_section_summary">Summary</string>
+    <string name="detail_section_note">Note</string>
+    <string name="detail_note_placeholder">Add note...</string>
+    <string name="detail_created_at">Created: %1$s</string>
+    <string name="detail_updated_at">Updated: %1$s</string>
+    <string name="detail_action_delete">Delete</string>
+    <string name="detail_action_ai_summary">AI Summary</string>
+    <string name="detail_fab_open">Open menu</string>
+    <string name="detail_fab_close">Close menu</string>
+    <string name="detail_dialog_discard_title">Discard changes?</string>
+    <string name="detail_dialog_discard_message">Unsaved changes will be discarded.</string>
+    <string name="detail_dialog_delete_title">Delete Bookmark</string>
+    <string name="detail_dialog_delete_message">Move this bookmark to trash?\n(Kept for 30 days before permanent deletion)</string>
+
+    <!-- AI Review Screen -->
+    <string name="ai_review_title">AI Proposal Review</string>
+    <string name="ai_review_loading_title">Analyzing web page with AI...</string>
+    <string name="ai_review_loading_subtitle">Gemini Nano on-device inference in progress</string>
+    <string name="ai_review_error_title">Failed to generate AI proposal</string>
+    <string name="ai_review_section_summary">Summary</string>
+    <string name="ai_review_select_summary">Select the summary to apply</string>
+    <string name="ai_review_proposal_badge">✨ AI Proposal</string>
+    <string name="ai_review_current_badge">Current</string>
+    <string name="ai_review_no_summary">(No summary)</string>
+    <string name="ai_review_section_tags">Category &amp; Tags</string>
+    <string name="ai_review_select_tags">Select categories and tags to apply</string>
+    <string name="ai_review_uncategorized">AI Skipped (Uncategorized)</string>
+    <string name="ai_review_note_notice">* Note is preserved as-is</string>
+    <string name="ai_review_apply_changes">Apply changes</string>
+    <string name="ai_review_applied_toast">Applied AI proposal</string>
+    <string name="ai_review_dialog_discard_title">Discard changes?</string>
+    <string name="ai_review_dialog_discard_message">Return to details without applying the AI proposal.</string>
+    <string name="ai_review_dialog_discard_confirm">Discard</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_general">General</string>
+    <string name="settings_language_title">Language</string>
+    <string name="settings_language_dialog_title">Select Language</string>
+    <string name="settings_section_ai">AI</string>
+    <string name="settings_auto_run_ai_title">Run AI when active</string>
+    <string name="settings_auto_run_ai_subtitle">Auto-promote Queuing tasks when app becomes active</string>
+    <string name="settings_aicore_fallback_title">AICore error fallback</string>
+    <string name="settings_aicore_fallback_dialog_title">AICore Error Fallback</string>
+    <string name="settings_fallback_mode_disable">Disable</string>
+    <string name="settings_fallback_mode_disable_desc">Do not fallback; move items to Error</string>
+    <string name="settings_fallback_mode_quota">Only if the AICore quota is exceeded</string>
+    <string name="settings_fallback_mode_quota_desc">Save without AI summary &amp; tags only when battery quota is exceeded</string>
+    <string name="settings_fallback_mode_all">All</string>
+    <string name="settings_fallback_mode_all_desc">Save without AI summary &amp; tags on all AICore errors</string>
+    <string name="settings_generate_content_title">GenerateContentRequest</string>
+    <string name="settings_generate_content_subtitle">Configure AICore request parameters</string>
+    <string name="settings_nsfw_title">NSFW Contents</string>
+    <string name="settings_nsfw_subtitle">Visibility &amp; Domain Policies</string>
+    <string name="settings_section_data">Data Management</string>
+    <string name="settings_refetch_icons_title">Re-fetch Domain Icons</string>
+    <string name="settings_refetch_icons_subtitle">Re-download high-resolution watermark icons</string>
+    <string name="settings_refetch_icons_dialog_title">Re-fetch Domain Icons</string>
+    <string name="settings_refetch_icons_dialog_message">Re-fetch all domain icons? This may take some time depending on your network connection.</string>
+    <string name="settings_refetch_icons_progress_title">Fetching Domain Icons</string>
+    <string name="settings_refetch_icons_preparing">Preparing…</string>
+    <string name="settings_section_debug">Debug</string>
+    <string name="settings_debug_title">Debug</string>
+    <string name="settings_debug_subtitle">System &amp; AI Diagnostics</string>
+
+    <!-- NSFW Settings Screen -->
+    <string name="nsfw_show_content_title">Show NSFW Content</string>
+    <string name="nsfw_show_content_subtitle">Show or hide NSFW bookmarks in library and search</string>
+    <string name="nsfw_bookmark_content_title">Bookmark NSFW Content</string>
+    <string name="nsfw_bookmark_content_subtitle">Allow queuing and bookmarking NSFW pages (Upcoming feature)</string>
+    <string name="nsfw_domain_management_title">NSFW Domain Management</string>
+    <string name="nsfw_domain_management_subtitle">Checked domains are designated and treated as NSFW sources.</string>
+    <string name="nsfw_no_domains">No domains saved yet</string>
+
+    <!-- GenerateContentRequest Screen -->
+    <string name="gcr_reset_default_content_desc">Reset to Default</string>
+    <string name="gcr_reset_dialog_title">Reset to Default?</string>
+    <string name="gcr_reset_dialog_message">All parameters will be reset to their default values. Checkboxes for candidateCount and temperature will be turned ON.</string>
+
+    <!-- Debug Screen -->
+    <string name="debug_device_sdk_title">Device &amp; SDK Environment</string>
+    <string name="debug_aicore_status_title">Gemini Nano / AICore Status</string>
+    <string name="debug_mlkit_genai_title">ML Kit GenAI Prompt API Test</string>
+
+    <!-- Notifications -->
+    <string name="notification_channel_name">Queue Notifications</string>
+    <string name="notification_channel_desc">Notifications for URL enqueue operations</string>
+    <string name="notification_enqueue_success">Enqueue was successful. There are %1$d items in the queuing.</string>
+    <string name="notification_enqueue_failed">Enqueue failed. Please check the contents.</string>
+
+    <!-- Taxonomy: Categories -->
+    <string name="category_article">Article</string>
+    <string name="category_media">Media</string>
+    <string name="category_tool">Tool</string>
+    <string name="category_commerce">Commerce</string>
+    <string name="category_community">Community</string>
+    <string name="category_official">Official</string>
+    <string name="category_reference">Reference</string>
+
+    <!-- Taxonomy: Subcategories -->
+    <string name="subcategory_tech">Tech</string>
+    <string name="subcategory_business">Business</string>
+    <string name="subcategory_society">Society</string>
+    <string name="subcategory_life">Life</string>
+    <string name="subcategory_food">Food</string>
+    <string name="subcategory_travel">Travel</string>
+    <string name="subcategory_game">Game</string>
+    <string name="subcategory_entertainment">Entertainment</string>
+    <string name="subcategory_hobby">Hobby</string>
+    <string name="subcategory_adult">Adult</string>
+    <string name="subcategory_education">Education</string>
 </resources>

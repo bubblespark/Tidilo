@@ -47,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,13 +55,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AppLanguage
@@ -80,6 +84,7 @@ fun SettingsScreen(
     val isAutoRunAiOnActive by AppConfig.isAutoRunAiOnActive.collectAsStateWithLifecycle()
     val aiCoreFallbackMode by AppConfig.aiCoreFallbackMode.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val localConfig = LocalConfiguration.current
     val bookmarkRepository = remember { BookmarkRepository.getInstance(context) }
     val scope = rememberCoroutineScope()
 
@@ -112,13 +117,13 @@ fun SettingsScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.common_back),
                     tint = MaterialTheme.colorScheme.onSurface
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "Settings",
+                text = stringResource(R.string.settings_title),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
@@ -129,7 +134,7 @@ fun SettingsScreen(
 
         // General Section Header
         Text(
-            text = "General",
+            text = stringResource(R.string.settings_section_general),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
@@ -170,7 +175,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
                         Text(
-                            text = "Language",
+                            text = stringResource(R.string.settings_language_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -197,7 +202,7 @@ fun SettingsScreen(
 
         // AI Section Header
         Text(
-            text = "AI",
+            text = stringResource(R.string.settings_section_ai),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
@@ -236,17 +241,14 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.padding(end = 8.dp)) {
                         Text(
-                            text = if (currentLanguage.isJapanese) "アクティブ時にAI処理実行" else "Run AI when active",
+                            text = stringResource(R.string.settings_auto_run_ai_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (currentLanguage.isJapanese)
-                                "アプリ起動や復帰時にQueuingのタスクを自動実行"
-                            else
-                                "Auto-promote Queuing tasks when app becomes active",
+                            text = stringResource(R.string.settings_auto_run_ai_subtitle),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -296,14 +298,14 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
                         Text(
-                            text = if (currentLanguage.isJapanese) "AICoreエラー発生時のフォールバック" else "AICore error fallback",
+                            text = stringResource(R.string.settings_aicore_fallback_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = aiCoreFallbackMode.getLabel(currentLanguage.isJapanese),
+                            text = stringResource(aiCoreFallbackMode.labelRes),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -355,14 +357,14 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
                         Text(
-                            text = "GenerateContentRequest",
+                            text = stringResource(R.string.settings_generate_content_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Configure AICore request parameters",
+                            text = stringResource(R.string.settings_generate_content_subtitle),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -414,14 +416,14 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
                         Text(
-                            text = "NSFW Contents",
+                            text = stringResource(R.string.settings_nsfw_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (currentLanguage.isJapanese) "表示設定とドメイン管理" else "Visibility & Domain Policies",
+                            text = stringResource(R.string.settings_nsfw_subtitle),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -441,7 +443,7 @@ fun SettingsScreen(
 
         // Data Management Section Header
         Text(
-            text = if (currentLanguage.isJapanese) "データ管理" else "Data Management",
+            text = stringResource(R.string.settings_section_data),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
@@ -482,14 +484,14 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
                         Text(
-                            text = if (currentLanguage.isJapanese) "ドメインアイコン全再取得" else "Re-fetch Domain Icons",
+                            text = stringResource(R.string.settings_refetch_icons_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (currentLanguage.isJapanese) "高解像度アイコンをすべて再ダウンロード" else "Re-download high-resolution watermark icons",
+                            text = stringResource(R.string.settings_refetch_icons_subtitle),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -509,7 +511,7 @@ fun SettingsScreen(
 
         // Debug Section Header
         Text(
-            text = "Debug",
+            text = stringResource(R.string.settings_section_debug),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
@@ -550,14 +552,14 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
                         Text(
-                            text = "Debug",
+                            text = stringResource(R.string.settings_debug_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (currentLanguage.isJapanese) "AI・システム診断 & Webパーサー" else "System & AI Diagnostics",
+                            text = stringResource(R.string.settings_debug_subtitle),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -581,16 +583,13 @@ fun SettingsScreen(
             onDismissRequest = { showConfirmDialog = false },
             title = {
                 Text(
-                    text = if (currentLanguage.isJapanese) "ドメインアイコン全再取得" else "Re-fetch Domain Icons",
+                    text = stringResource(R.string.settings_refetch_icons_dialog_title),
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = if (currentLanguage.isJapanese)
-                        "すべてのドメインアイコンを最新の状態で再取得しますか？\n（通信環境によっては完了まで時間がかかる場合があります）"
-                    else
-                        "Re-fetch all domain icons? This may take some time depending on your network connection."
+                    text = stringResource(R.string.settings_refetch_icons_dialog_message)
                 )
             },
             confirmButton = {
@@ -614,12 +613,12 @@ fun SettingsScreen(
                         }
                     }
                 ) {
-                    Text("OK")
+                    Text(stringResource(R.string.common_ok))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showConfirmDialog = false }) {
-                    Text(if (currentLanguage.isJapanese) "キャンセル" else "Cancel")
+                    Text(stringResource(R.string.common_cancel))
                 }
             },
             shape = RoundedCornerShape(24.dp)
@@ -647,7 +646,7 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
-                        text = if (currentLanguage.isJapanese) "ドメインアイコン再取得中" else "Fetching Domain Icons",
+                        text = stringResource(R.string.settings_refetch_icons_progress_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -671,7 +670,7 @@ fun SettingsScreen(
                     ) {
                         Text(
                             text = currentProcessingDomain.ifEmpty {
-                                if (currentLanguage.isJapanese) "準備中…" else "Preparing…"
+                                stringResource(R.string.settings_refetch_icons_preparing)
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -693,124 +692,132 @@ fun SettingsScreen(
     }
 
     if (showFallbackDialog) {
-        AlertDialog(
-            onDismissRequest = { showFallbackDialog = false },
-            title = {
-                Text(
-                    text = if (currentLanguage.isJapanese) "AICoreエラー発生時のフォールバック" else "AICore Error Fallback",
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column {
-                    AiCoreFallbackMode.entries.forEach { mode ->
-                        val isSelected = mode == aiCoreFallbackMode
-                        val descriptionText = when (mode) {
-                            AiCoreFallbackMode.DISABLE -> if (currentLanguage.isJapanese)
-                                "フォールバックを行わず、エラー項目へ移動します"
-                            else
-                                "Do not fallback; move items to Error"
-                            AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY -> if (currentLanguage.isJapanese)
-                                "AICoreの利用上限超過（エラー27）時のみAIタグなしで保存"
-                            else
-                                "Save without AI tags only when battery quota is exceeded"
-                            AiCoreFallbackMode.ALL -> if (currentLanguage.isJapanese)
-                                "すべてのAICoreエラー発生時にAIタグなしで保存"
-                            else
-                                "Save without AI tags on all AICore errors"
-                        }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    AppConfig.setAiCoreFallbackMode(mode)
-                                    showFallbackDialog = false
+        CompositionLocalProvider(
+            LocalContext provides context,
+            LocalConfiguration provides localConfig
+        ) {
+            AlertDialog(
+                onDismissRequest = { showFallbackDialog = false },
+                title = {
+                    CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
+                        Text(
+                            text = stringResource(R.string.settings_aicore_fallback_dialog_title),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                text = {
+                    CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
+                        Column {
+                            AiCoreFallbackMode.entries.forEach { mode ->
+                                val isSelected = mode == aiCoreFallbackMode
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            AppConfig.setAiCoreFallbackMode(mode)
+                                            showFallbackDialog = false
+                                        }
+                                        .padding(vertical = 10.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = {
+                                            AppConfig.setAiCoreFallbackMode(mode)
+                                            showFallbackDialog = false
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = stringResource(mode.labelRes),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = stringResource(mode.descRes),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
                                 }
-                                .padding(vertical = 10.dp, horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = {
-                                    AppConfig.setAiCoreFallbackMode(mode)
-                                    showFallbackDialog = false
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = mode.getLabel(currentLanguage.isJapanese),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = descriptionText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
                             }
                         }
                     }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showFallbackDialog = false }) {
-                    Text(if (currentLanguage.isJapanese) "閉じる" else "Close")
-                }
-            },
-            shape = RoundedCornerShape(24.dp)
-        )
+                },
+                confirmButton = {
+                    CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
+                        TextButton(onClick = { showFallbackDialog = false }) {
+                            Text(stringResource(R.string.common_close))
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
     }
 
     if (showLanguageDialog) {
-        AlertDialog(
-            onDismissRequest = { showLanguageDialog = false },
-            title = {
-                Text(
-                    text = "Select Language",
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column {
-                    AppLanguage.entries.forEach { lang ->
-                        val isSelected = lang == currentLanguage
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    AppConfig.setLanguage(lang)
-                                    showLanguageDialog = false
+        CompositionLocalProvider(
+            LocalContext provides context,
+            LocalConfiguration provides localConfig
+        ) {
+            AlertDialog(
+                onDismissRequest = { showLanguageDialog = false },
+                title = {
+                    CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
+                        Text(
+                            text = stringResource(R.string.settings_language_dialog_title),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                text = {
+                    CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
+                        Column {
+                            AppLanguage.entries.forEach { lang ->
+                                val isSelected = lang == currentLanguage
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            AppConfig.setLanguage(lang)
+                                            showLanguageDialog = false
+                                        }
+                                        .padding(vertical = 12.dp, horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = {
+                                            AppConfig.setLanguage(lang)
+                                            showLanguageDialog = false
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = lang.displayName,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
                                 }
-                                .padding(vertical = 12.dp, horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = {
-                                    AppConfig.setLanguage(lang)
-                                    showLanguageDialog = false
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = lang.displayName,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                            )
+                            }
                         }
                     }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showLanguageDialog = false }) {
-                    Text("Close")
-                }
-            },
-            shape = RoundedCornerShape(24.dp)
-        )
+                },
+                confirmButton = {
+                    CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
+                        TextButton(onClick = { showLanguageDialog = false }) {
+                            Text(stringResource(R.string.common_close))
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
     }
 }
 

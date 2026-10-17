@@ -35,10 +35,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.ui.components.DomainWatermark
 import kotlinx.coroutines.Dispatchers
@@ -59,7 +61,6 @@ data class DomainGroupItem(
 @Composable
 fun DomainCard(
     item: DomainGroupItem,
-    isJapanese: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -223,7 +224,7 @@ fun DomainCard(
                                 modifier = Modifier.size(11.dp)
                             )
                             Text(
-                                text = if (isJapanese) "${item.count}件" else "${item.count} items",
+                                text = stringResource(R.string.domain_card_item_count, item.count),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold
                             )

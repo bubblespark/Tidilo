@@ -56,6 +56,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
+import androidx.compose.ui.res.stringResource
+import me.bubblespark.tidilo.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -340,7 +342,7 @@ fun TidiloBottomBar(
                                     ) {
                                         Icon(
                                             imageVector = iconVector,
-                                            contentDescription = screen.title,
+                                            contentDescription = stringResource(screen.titleRes),
                                             modifier = iconModifier,
                                             tint = iconColor
                                         )
@@ -348,7 +350,7 @@ fun TidiloBottomBar(
                                 } else {
                                     Icon(
                                         imageVector = iconVector,
-                                        contentDescription = screen.title,
+                                        contentDescription = stringResource(screen.titleRes),
                                         modifier = iconModifier,
                                         tint = iconColor
                                     )
@@ -373,7 +375,7 @@ fun TidiloBottomBar(
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = screen.title,
+                                            text = stringResource(screen.titleRes),
                                             style = MaterialTheme.typography.labelMedium.copy(
                                                 fontSize = 10.sp,
                                                 lineHeight = 14.sp
@@ -458,7 +460,7 @@ fun TidiloBottomBar(
                                 )
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Text(
-                                    text = "Domain",
+                                    text = stringResource(R.string.bottom_bar_domain),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = if (isDomainActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
@@ -496,7 +498,7 @@ fun TidiloBottomBar(
                                 )
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Text(
-                                    text = "Newest first",
+                                    text = stringResource(R.string.bottom_bar_newest_first),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = if (isNewestActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
@@ -547,7 +549,7 @@ fun TidiloBottomBar(
                                 "library_close" -> {
                                     Icon(
                                         imageVector = Icons.Default.Close,
-                                        contentDescription = "Close filter menu",
+                                        contentDescription = stringResource(R.string.bottom_bar_close_filter_menu),
                                         tint = iconColor,
                                         modifier = Modifier.size(iconSize)
                                     )
@@ -555,7 +557,7 @@ fun TidiloBottomBar(
                                 Screen.Library.route -> {
                                     Icon(
                                         imageVector = FilterListIcon,
-                                        contentDescription = "Filter menu",
+                                        contentDescription = stringResource(R.string.bottom_bar_filter_menu),
                                         tint = iconColor,
                                         modifier = Modifier.size(iconSize)
                                     )
@@ -563,7 +565,7 @@ fun TidiloBottomBar(
                                 Screen.Search.route -> {
                                     Icon(
                                         imageVector = Icons.Default.Search,
-                                        contentDescription = "Search",
+                                        contentDescription = stringResource(R.string.bottom_bar_search),
                                         tint = iconColor,
                                         modifier = Modifier.size(iconSize)
                                     )
@@ -571,7 +573,7 @@ fun TidiloBottomBar(
                                 Screen.Queue.route -> {
                                     Icon(
                                         imageVector = Icons.Default.AutoAwesome,
-                                        contentDescription = "AI Tagging All",
+                                        contentDescription = stringResource(R.string.bottom_bar_ai_tagging_all),
                                         tint = iconColor,
                                         modifier = Modifier.size(iconSize)
                                     )

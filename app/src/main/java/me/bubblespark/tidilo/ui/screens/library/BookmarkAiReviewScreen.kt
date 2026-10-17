@@ -63,11 +63,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.DomainIconManager
@@ -111,12 +113,12 @@ fun BookmarkAiReviewScreen(
                 IconButton(onClick = onNavigateBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back"
+                        contentDescription = stringResource(R.string.common_back)
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = if (currentLanguage.isJapanese) "アイテムが見つかりません" else "Item not found",
+                    text = stringResource(R.string.detail_item_not_found),
                     color = MaterialTheme.colorScheme.outline
                 )
             }
@@ -177,14 +179,14 @@ fun BookmarkAiReviewScreen(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = if (currentLanguage.isJapanese) "戻る" else "Back"
+                        contentDescription = stringResource(R.string.common_back)
                     )
                 }
 
                 Spacer(modifier = Modifier.width(4.dp))
 
                 Text(
-                    text = if (currentLanguage.isJapanese) "AI要約とタグの比較" else "AI Proposal Review",
+                    text = stringResource(R.string.ai_review_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -211,14 +213,14 @@ fun BookmarkAiReviewScreen(
                             )
                             Spacer(modifier = Modifier.height(20.dp))
                             Text(
-                                text = if (currentLanguage.isJapanese) "AIがページを解析して提案を作成中..." else "Analyzing web page with AI...",
+                                text = stringResource(R.string.ai_review_loading_title),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = if (currentLanguage.isJapanese) "Gemini Nanoが要約とタグを推論しています" else "Gemini Nano on-device inference in progress",
+                                text = stringResource(R.string.ai_review_loading_subtitle),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -245,7 +247,7 @@ fun BookmarkAiReviewScreen(
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = if (currentLanguage.isJapanese) "AI提案の生成に失敗しました" else "Failed to generate AI proposal",
+                                text = stringResource(R.string.ai_review_error_title),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -262,7 +264,7 @@ fun BookmarkAiReviewScreen(
                                 onClick = { retryCount++ },
                                 shape = RoundedCornerShape(12.dp)
                             ) {
-                                Text(if (currentLanguage.isJapanese) "再試行" else "Retry")
+                                Text(stringResource(R.string.common_retry))
                             }
                         }
                     }
@@ -322,14 +324,14 @@ fun BookmarkAiReviewScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (currentLanguage.isJapanese) "要約" else "Summary",
+                                text = stringResource(R.string.ai_review_section_summary),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                         Text(
-                            text = if (currentLanguage.isJapanese) "適用する要約を選択してください" else "Select the summary to apply",
+                            text = stringResource(R.string.ai_review_select_summary),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
@@ -337,7 +339,7 @@ fun BookmarkAiReviewScreen(
 
                         // Option 1: AI Proposal
                         SummaryComparisonCard(
-                            title = if (currentLanguage.isJapanese) "✨ AI提案" else "✨ AI Proposal",
+                            title = stringResource(R.string.ai_review_proposal_badge),
                             text = proposal.summary,
                             isSelected = selectedSummarySource == ProposalSource.PROPOSAL,
                             isAi = true,
@@ -348,9 +350,9 @@ fun BookmarkAiReviewScreen(
 
                         // Option 2: Current
                         SummaryComparisonCard(
-                            title = if (currentLanguage.isJapanese) "現在" else "Current",
+                            title = stringResource(R.string.ai_review_current_badge),
                             text = bookmark.description.ifBlank {
-                                if (currentLanguage.isJapanese) "（要約なし）" else "(No summary)"
+                                stringResource(R.string.ai_review_no_summary)
                             },
                             isSelected = selectedSummarySource == ProposalSource.CURRENT,
                             isAi = false,
@@ -371,14 +373,14 @@ fun BookmarkAiReviewScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (currentLanguage.isJapanese) "分類 & タグ" else "Category & Tags",
+                                text = stringResource(R.string.ai_review_section_tags),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                         Text(
-                            text = if (currentLanguage.isJapanese) "適用する分類とタグを選択してください" else "Select categories and tags to apply",
+                            text = stringResource(R.string.ai_review_select_tags),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
@@ -386,11 +388,10 @@ fun BookmarkAiReviewScreen(
 
                         // Option 1: AI Proposal
                         TagComparisonCard(
-                            title = if (currentLanguage.isJapanese) "✨ AI提案" else "✨ AI Proposal",
+                            title = stringResource(R.string.ai_review_proposal_badge),
                             category = proposal.category,
                             subcategory = proposal.subcategory,
                             entities = proposal.entities,
-                            isJapanese = currentLanguage.isJapanese,
                             isSelected = selectedTagSource == ProposalSource.PROPOSAL,
                             isAi = true,
                             onClick = { selectedTagSource = ProposalSource.PROPOSAL }
@@ -400,11 +401,10 @@ fun BookmarkAiReviewScreen(
 
                         // Option 2: Current
                         TagComparisonCard(
-                            title = if (currentLanguage.isJapanese) "現在" else "Current",
+                            title = stringResource(R.string.ai_review_current_badge),
                             category = bookmark.tag.category,
                             subcategory = bookmark.tag.subcategory,
                             entities = bookmark.tag.entities,
-                            isJapanese = currentLanguage.isJapanese,
                             isSelected = selectedTagSource == ProposalSource.CURRENT,
                             isAi = false,
                             onClick = { selectedTagSource = ProposalSource.CURRENT }
@@ -427,7 +427,7 @@ fun BookmarkAiReviewScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (currentLanguage.isJapanese) "※ メモはそのまま保持されます" else "* Note is preserved as-is",
+                                text = stringResource(R.string.ai_review_note_notice),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -476,7 +476,7 @@ fun BookmarkAiReviewScreen(
 
                         Toast.makeText(
                             context,
-                            if (currentLanguage.isJapanese) "AI提案を適用しました" else "Applied AI proposal",
+                            context.getString(R.string.ai_review_applied_toast),
                             Toast.LENGTH_SHORT
                         ).show()
 
@@ -495,7 +495,7 @@ fun BookmarkAiReviewScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Check,
-                            contentDescription = if (currentLanguage.isJapanese) "変更を適用" else "Apply changes",
+                            contentDescription = stringResource(R.string.ai_review_apply_changes),
                             modifier = Modifier.size(40.dp)
                         )
                     }
@@ -510,17 +510,13 @@ fun BookmarkAiReviewScreen(
             onDismissRequest = { showDiscardConfirmDialog = false },
             title = {
                 Text(
-                    text = if (currentLanguage.isJapanese) "変更を破棄しますか？" else "Discard changes?",
+                    text = stringResource(R.string.ai_review_dialog_discard_title),
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = if (currentLanguage.isJapanese) {
-                        "AIの提案を適用せずに詳細画面に戻ります。"
-                    } else {
-                        "Return to details without applying the AI proposal."
-                    }
+                    text = stringResource(R.string.ai_review_dialog_discard_message)
                 )
             },
             confirmButton = {
@@ -531,7 +527,7 @@ fun BookmarkAiReviewScreen(
                     }
                 ) {
                     Text(
-                        text = if (currentLanguage.isJapanese) "破棄する" else "Discard",
+                        text = stringResource(R.string.ai_review_dialog_discard_confirm),
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -542,7 +538,7 @@ fun BookmarkAiReviewScreen(
                     onClick = { showDiscardConfirmDialog = false }
                 ) {
                     Text(
-                        text = if (currentLanguage.isJapanese) "キャンセル" else "Cancel"
+                        text = stringResource(R.string.common_cancel)
                     )
                 }
             }
@@ -622,11 +618,11 @@ private fun TagComparisonCard(
     category: String?,
     subcategory: String?,
     entities: List<String>,
-    isJapanese: Boolean,
     isSelected: Boolean,
     isAi: Boolean,
     onClick: () -> Unit
 ) {
+    val context = LocalContext.current
     val borderColor = if (isSelected) {
         MaterialTheme.colorScheme.primary
     } else {
@@ -638,8 +634,8 @@ private fun TagComparisonCard(
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
     }
 
-    val localizedCategory = category?.let { Category.toLocalized(it, isJapanese) } ?: ""
-    val localizedSubcategory = subcategory?.let { Subcategory.toLocalized(it, isJapanese) } ?: ""
+    val localizedCategory = category?.let { Category.toLocalized(it, context) } ?: ""
+    val localizedSubcategory = subcategory?.let { Subcategory.toLocalized(it, context) } ?: ""
 
     Card(
         modifier = Modifier
@@ -702,7 +698,7 @@ private fun TagComparisonCard(
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ) {
                         Text(
-                            text = if (isJapanese) "AIスキップ（未分類）" else "AI Skipped (Uncategorized)",
+                            text = stringResource(R.string.ai_review_uncategorized),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)

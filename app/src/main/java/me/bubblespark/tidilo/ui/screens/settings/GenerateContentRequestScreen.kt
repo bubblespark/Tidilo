@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -51,6 +52,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import me.bubblespark.tidilo.R
 import java.util.Locale
 import kotlin.math.round
 
@@ -89,13 +91,13 @@ fun GenerateContentRequestScreen(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = stringResource(R.string.common_back),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "GenerateContentRequest",
+                    text = stringResource(R.string.title_generate_content_request),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
@@ -112,7 +114,7 @@ fun GenerateContentRequestScreen(
             ) {
                 Icon(
                     imageVector = ResetWrench,
-                    contentDescription = "Reset to Default",
+                    contentDescription = stringResource(R.string.gcr_reset_default_content_desc),
                     tint = MaterialTheme.colorScheme.onSurface
                 )
             }
@@ -364,14 +366,14 @@ fun GenerateContentRequestScreen(
             onDismissRequest = { showResetConfirmDialog = false },
             title = {
                 Text(
-                    text = "Reset to Default?",
+                    text = stringResource(R.string.gcr_reset_dialog_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = "All parameters will be reset to their default values. Checkboxes for candidateCount and temperature will be turned ON.",
+                    text = stringResource(R.string.gcr_reset_dialog_message),
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -383,7 +385,7 @@ fun GenerateContentRequestScreen(
                     }
                 ) {
                     Text(
-                        text = "OK",
+                        text = stringResource(R.string.common_ok),
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -394,7 +396,7 @@ fun GenerateContentRequestScreen(
                     onClick = { showResetConfirmDialog = false }
                 ) {
                     Text(
-                        text = "Cancel",
+                        text = stringResource(R.string.common_cancel),
                         color = MaterialTheme.colorScheme.outline
                     )
                 }

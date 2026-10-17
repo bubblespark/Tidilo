@@ -43,9 +43,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.ui.screens.debug.DebugPromptTester
 import me.bubblespark.tidilo.ui.screens.debug.GenAiTestState
 import me.bubblespark.tidilo.ui.screens.debug.WebParserTestSection
@@ -81,20 +83,20 @@ fun SettingsDebugScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.common_back),
                     tint = MaterialTheme.colorScheme.onSurface
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Column {
                 Text(
-                    text = "Debug",
+                    text = stringResource(R.string.settings_debug_title),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = "System & AI Diagnostics",
+                    text = stringResource(R.string.settings_debug_subtitle),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.tertiary
                 )
@@ -120,7 +122,7 @@ fun SettingsDebugScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Device & SDK Environment",
+                        text = stringResource(R.string.debug_device_sdk_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -155,7 +157,7 @@ fun SettingsDebugScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Gemini Nano / AICore Status",
+                        text = stringResource(R.string.debug_aicore_status_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -189,7 +191,7 @@ fun SettingsDebugScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "ML Kit GenAI Prompt API Test",
+                        text = stringResource(R.string.debug_mlkit_genai_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )

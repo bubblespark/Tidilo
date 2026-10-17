@@ -67,10 +67,10 @@ class TidiloApplication : Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID_QUEUE,
-                CHANNEL_NAME_QUEUE,
+                getString(R.string.notification_channel_name),
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
-                description = "Notifications for URL enqueue operations"
+                description = getString(R.string.notification_channel_desc)
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)

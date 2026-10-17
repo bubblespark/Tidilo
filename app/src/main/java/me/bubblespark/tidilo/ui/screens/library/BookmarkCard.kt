@@ -41,12 +41,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppLanguage
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.Subcategory
@@ -60,15 +62,16 @@ fun BookmarkItemCard(
     bookmark: BookmarkItem,
     wordKeywords: List<String> = emptyList(),
     tagKeywords: List<String> = emptyList(),
-    currentLanguage: AppLanguage,
+    currentLanguage: AppLanguage = AppLanguage.ENGLISH,
     onClick: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     // Localized category and subcategory labels
-    val localizedCategory = remember(bookmark.tag.category, currentLanguage) {
-        bookmark.tag.category?.let { Category.toLocalized(it, currentLanguage.isJapanese) } ?: ""
+    val localizedCategory = remember(bookmark.tag.category, context) {
+        bookmark.tag.category?.let { Category.toLocalized(it, context) } ?: ""
     }
-    val localizedSubcategory = remember(bookmark.tag.subcategory, currentLanguage) {
-        bookmark.tag.subcategory?.let { Subcategory.toLocalized(it, currentLanguage.isJapanese) } ?: ""
+    val localizedSubcategory = remember(bookmark.tag.subcategory, context) {
+        bookmark.tag.subcategory?.let { Subcategory.toLocalized(it, context) } ?: ""
     }
 
     // Tag match evaluation (category and subcategory)
@@ -153,7 +156,7 @@ fun BookmarkItemCard(
                         }.onFailure {
                             Toast.makeText(
                                 context,
-                                if (currentLanguage.isJapanese) "ブラウザを開けませんでした" else "Could not open browser",
+                                context.getString(R.string.bookmark_could_not_open_browser),
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
@@ -162,7 +165,7 @@ fun BookmarkItemCard(
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.OpenInBrowser,
-                        contentDescription = "Open in browser",
+                        contentDescription = stringResource(R.string.bookmark_open_in_browser),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
@@ -228,7 +231,7 @@ fun BookmarkItemCard(
                     if (bookmark.isAiSkipped) {
                         CompactTagBadge(
                             icon = null,
-                            text = "AI Skipped",
+                            text = stringResource(R.string.bookmark_ai_skipped),
                             isMatched = false,
                             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                             contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -488,14 +491,14 @@ fun EmptySearchResult(query: String) {
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "No bookmarks found",
+                text = stringResource(R.string.search_empty_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "No results matching: \"$query\"\nTry searching with keywords or #Tags (e.g., #AI, #Model)",
+                text = stringResource(R.string.search_empty_hint, query),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )

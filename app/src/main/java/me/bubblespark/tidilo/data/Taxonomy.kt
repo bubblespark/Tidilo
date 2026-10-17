@@ -1,20 +1,30 @@
 package me.bubblespark.tidilo.data
 
+import android.content.Context
+import androidx.annotation.StringRes
+import me.bubblespark.tidilo.R
+
 /**
  * High-level category definition.
  * Uses English IDs (Article, Media, etc.) for AI prompts and internal storage,
  * and localizes based on language settings for UI presentation.
  */
-enum class Category(val id: String, val enLabel: String, val jaLabel: String) {
-    ARTICLE("Article", "Article", "記事"),
-    MEDIA("Media", "Media", "動画・作品"),
-    TOOL("Tool", "Tool", "ツール"),
-    COMMERCE("Commerce", "Commerce", "ショップ"),
-    COMMUNITY("Community", "Community", "コミュニティ"),
-    OFFICIAL("Official", "Official", "公式・紹介"),
-    REFERENCE("Reference", "Reference", "資料・情報");
+enum class Category(
+    val id: String,
+    val enLabel: String,
+    val jaLabel: String,
+    @StringRes val labelRes: Int
+) {
+    ARTICLE("Article", "Article", "記事", R.string.category_article),
+    MEDIA("Media", "Media", "動画・作品", R.string.category_media),
+    TOOL("Tool", "Tool", "ツール", R.string.category_tool),
+    COMMERCE("Commerce", "Commerce", "ショップ", R.string.category_commerce),
+    COMMUNITY("Community", "Community", "コミュニティ", R.string.category_community),
+    OFFICIAL("Official", "Official", "公式・紹介", R.string.category_official),
+    REFERENCE("Reference", "Reference", "資料・情報", R.string.category_reference);
 
     fun getLabel(isJapanese: Boolean): String = if (isJapanese) jaLabel else enLabel
+    fun getLabel(context: Context): String = context.getString(labelRes)
 
     companion object {
         fun fromId(id: String): Category? =
@@ -26,6 +36,9 @@ enum class Category(val id: String, val enLabel: String, val jaLabel: String) {
 
         fun toLocalized(id: String, isJapanese: Boolean): String =
             fromId(id)?.getLabel(isJapanese) ?: id
+
+        fun toLocalized(id: String, context: Context): String =
+            fromId(id)?.getLabel(context) ?: id
     }
 }
 
@@ -34,20 +47,26 @@ enum class Category(val id: String, val enLabel: String, val jaLabel: String) {
  * Uses English IDs (Tech, Game, etc.) for AI prompts and internal storage,
  * and localizes based on language settings for UI presentation.
  */
-enum class Subcategory(val id: String, val enLabel: String, val jaLabel: String) {
-    TECH("Tech", "Tech", "技術・IT"),
-    BUSINESS("Business", "Business", "ビジネス"),
-    SOCIETY("Society", "Society", "ニュース・社会"),
-    LIFE("Life", "Life", "暮らし・健康"),
-    FOOD("Food", "Food", "グルメ・料理"),
-    TRAVEL("Travel", "Travel", "旅行・交通"),
-    GAME("Game", "Game", "ゲーム"),
-    ENTERTAINMENT("Entertainment", "Entertainment", "エンタメ"),
-    HOBBY("Hobby", "Hobby", "趣味・スポーツ"),
-    ADULT("Adult", "Adult", "大人の嗜好"),
-    EDUCATION("Education", "Education", "教育");
+enum class Subcategory(
+    val id: String,
+    val enLabel: String,
+    val jaLabel: String,
+    @StringRes val labelRes: Int
+) {
+    TECH("Tech", "Tech", "技術・IT", R.string.subcategory_tech),
+    BUSINESS("Business", "Business", "ビジネス", R.string.subcategory_business),
+    SOCIETY("Society", "Society", "ニュース・社会", R.string.subcategory_society),
+    LIFE("Life", "Life", "暮らし・健康", R.string.subcategory_life),
+    FOOD("Food", "Food", "グルメ・料理", R.string.subcategory_food),
+    TRAVEL("Travel", "Travel", "旅行・交通", R.string.subcategory_travel),
+    GAME("Game", "Game", "ゲーム", R.string.subcategory_game),
+    ENTERTAINMENT("Entertainment", "Entertainment", "エンタメ", R.string.subcategory_entertainment),
+    HOBBY("Hobby", "Hobby", "趣味・スポーツ", R.string.subcategory_hobby),
+    ADULT("Adult", "Adult", "大人の嗜好", R.string.subcategory_adult),
+    EDUCATION("Education", "Education", "教育", R.string.subcategory_education);
 
     fun getLabel(isJapanese: Boolean): String = if (isJapanese) jaLabel else enLabel
+    fun getLabel(context: Context): String = context.getString(labelRes)
 
     companion object {
         fun fromId(id: String): Subcategory? =
@@ -59,6 +78,9 @@ enum class Subcategory(val id: String, val enLabel: String, val jaLabel: String)
 
         fun toLocalized(id: String, isJapanese: Boolean): String =
             fromId(id)?.getLabel(isJapanese) ?: id
+
+        fun toLocalized(id: String, context: Context): String =
+            fromId(id)?.getLabel(context) ?: id
     }
 }
 

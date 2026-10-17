@@ -192,8 +192,8 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Shared Consistency**: Shared seamlessly between card feeds (`BookmarkCard`, `SearchScreen`), domain grid (`DomainCard`), and detail views (`BookmarkDetailScreen`).
 - **Asynchronous & Non-Blocking Performance**: Uses `produceState<ImageBitmap?>` to resolve icons without blocking the main UI thread. In-memory hits (`DomainIconManager.getCachedIconBitmap`) render instantaneously (0ms), while cold disk cache reads are dispatched asynchronously on `Dispatchers.IO` (`DomainIconManager.loadIconFromDisk`), with redundant background transparency recalculations completely eliminated.
 
-### 6.6 `SwipeToDismissBox` Queue Actions (Queuing & Error Groups)
-- **Component**: Compose Material 3 `SwipeToDismissBox` wrapping `QueueItemCard` with `Modifier.animateItem()`.
+### 6.6 Dynamic Swipe-Action Queue Cards (Queuing & Error Groups)
+- **Component**: Custom high-performance gesture layer utilizing Compose Foundation `Modifier.draggable(Orientation.Horizontal)` and `Animatable` layout offset, eliminating `SwipeToDismissBox` quirks and deprecations.
 - **Directional Actions & Visuals**:
   - **Right Swipe (`StartToEnd`)**: Triggers immediate AI Tagging (`promoteToRunning` for Queuing, `retryError` for Error).
     - Container: Dark Green (`Color(0xFF2E7D32)`), `RoundedCornerShape(24.dp)`.
@@ -201,15 +201,15 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - **Left Swipe (`EndToStart`)**: Triggers immediate item deletion.
     - Container: Error Red (`Color(0xFFC62828)`), `RoundedCornerShape(24.dp)`.
     - Content: Trash icon (`Icons.Default.Delete`, 26dp, White) aligned `CenterEnd` with `24dp` horizontal padding.
-- **Ergonomic Threshold & Velocity Fling Support (45% Threshold)**:
-  - `positionalThreshold = { totalDistance -> totalDistance * 0.45f }` providing a natural 45% horizontal travel distance.
-  - Seamlessly accepts quick fling flicks with natural velocity without artificial progress gates, ensuring responsive, modern touch dynamics.
+- **Real-Time Finger Tracking & Release Mechanics (Gmail-Grade UX)**:
+  - **Continuous 1:1 Tracking**: The card tracks the finger precisely in real-time. Actions are NEVER triggered while the finger is on screen.
+  - **Under-Threshold Release**: When released below the 40% displacement threshold (and without high fling velocity), the card smoothly and physically springs back to the center (`0.dp`) via `Spring.DampingRatioLowBouncy` and `Spring.StiffnessMediumLow`, preserving release velocity with zero abrupt snapping.
+  - **Over-Threshold Release / Fling**: When released past 40% (or on a natural finger flick), the card dynamically animates all the way off-screen in the swipe direction (`FastOutSlowInEasing`), allowing the user to visually follow the slide-out before the action executes and the list collapses.
 - **Dynamic Tactile Icon Scale Feedback**:
-  - Action icons (`Icons.Default.AutoAwesome` / `Icons.Default.Delete`) dynamically spring from `0.85f` to `1.15f` scale (`Spring.DampingRatioMediumBouncy`) as drag progress crosses the 45% threshold, giving tactile visual feedback when the swipe action is locked in.
+  - Action icons (`Icons.Default.AutoAwesome` / `Icons.Default.Delete`) dynamically spring from `0.85f` to `1.25f` scale (`Spring.DampingRatioMediumBouncy`) the instant the drag crosses the 40% threshold, giving tactile confirmation of when release will trigger the action.
 - **Immediate State Reset & Lifecycle Protection (Resolves Issue #27)**:
-  - Upon dismissal confirmation (`dismissState.currentValue != Settled`), executes the action immediately and snaps `dismissState` back to `Settled` (`snapTo(Settled)`).
-  - List item removals and moves are animated smoothly by Compose LazyColumn `Modifier.animateItem()`.
-  - Guarded with `LaunchedEffect(item.id, item.status, item.statusText)`: Any card retained or returned to the queue (e.g. AICore Quota Exceeded error 27 or deletion Undo) automatically snaps back to `Settled` with full gestures re-enabled, completely eliminating off-screen stuck card states.
+  - Once the card fully slides off-screen, executes the action callback and immediately resets `offsetX` to `0f`.
+  - Guarded with `LaunchedEffect(item.id, item.status, item.statusText)`: Any card retained or returned to the queue (e.g. AICore Quota Exceeded error 27 or deletion Undo) automatically resets to `0f`, completely eliminating off-screen stuck card states.
 - **Undo Snackbar & Clean State Restoration**:
   - Displays with standard short duration (`SnackbarDuration.Short`) and an `Undo` button.
   - Positioned safely above the floating navigation pill: `Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 96.dp)`.

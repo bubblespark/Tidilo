@@ -17,8 +17,12 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -83,6 +87,7 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -91,18 +96,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.ui.components.FrostedHeaderContainer
 import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -542,15 +552,22 @@ private fun EmptyGroupCard(
     }
 }
 
+private enum class QueueSwipeDirection {
+    Settled,
+    StartToEnd,
+    EndToStart
+}
+
 /**
- * Swipe-action enabled card (SwipeToDismissBox):
- * - Right swipe: AI Tagging (green background + Icons.Default.AutoAwesome)
- * - Left swipe: Delete (red background + Icons.Default.Delete)
- * - positionalThreshold: 45% card travel with smooth velocity fling support
- * - Immediate state reset: Prevents cards from sticking in off-screen positions when
- *   items return or remain in the queue (e.g. Quota Exceeded error 27 or Undo).
+ * Swipe-action enabled card with Gmail-style dynamic gestures:
+ * - Real-time finger tracking: Card follows touch 1:1 without premature dismissals while dragging.
+ * - Under-threshold release: Smoothly and physically springs back to center (0 offset).
+ * - Over-threshold release: Dynamically animates completely off-screen in the swipe direction
+ *   before triggering the action callback, allowing smooth collapse of the item.
+ * - Clean state lifecycle: Offset resets immediately to 0 so returning items (e.g. Quota Exceeded error 27)
+ *   or Undo-restored items are never stuck off-screen.
+ * - Tactile icon scale feedback: Action icon springs from 0.85f to 1.25f when crossing the 40% threshold.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SwipeableQueueItemCard(
     item: QueueItem,
@@ -559,66 +576,108 @@ private fun SwipeableQueueItemCard(
     onSwipeLeft: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isActionCompleted by remember(item.id) { mutableStateOf(false) }
-    var confirmedDirection by remember(item.id) { mutableStateOf<SwipeToDismissBoxValue?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val offsetX = remember(item.id) { Animatable(0f) }
+    var cardWidthPx by remember { mutableFloatStateOf(0f) }
+    var isDismissing by remember(item.id) { mutableStateOf(false) }
 
-    val dismissState = rememberSwipeToDismissBoxState(
-        initialValue = SwipeToDismissBoxValue.Settled,
-        positionalThreshold = { totalDistance -> totalDistance * 0.45f }
-    )
-
-    // Ensure card is in Settled state if restored or returned from Running (e.g. Quota Exceeded error)
+    // Ensure card is settled at 0 if restored or returned from Running (e.g. Quota Exceeded error)
     LaunchedEffect(item.id, item.status, item.statusText) {
-        if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
-            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
-            confirmedDirection = null
-            isActionCompleted = false
+        if (!isDismissing && offsetX.value != 0f) {
+            offsetX.snapTo(0f)
         }
     }
 
-    // Trigger action when card is dismissed and reset state immediately
-    LaunchedEffect(dismissState.currentValue) {
-        val current = dismissState.currentValue
-        if (current != SwipeToDismissBoxValue.Settled && !isActionCompleted) {
-            isActionCompleted = true
-            confirmedDirection = current
-            if (current == SwipeToDismissBoxValue.StartToEnd) {
-                onSwipeRight()
-            } else if (current == SwipeToDismissBoxValue.EndToStart) {
-                onSwipeLeft()
-            }
-            // Reset state so that if the item returns or remains in queue (e.g. quota error, retry),
-            // it doesn't stay stuck in the dismissed/off-screen position.
-            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
-            confirmedDirection = null
-            isActionCompleted = false
+    val thresholdPx = if (cardWidthPx > 0f) cardWidthPx * 0.40f else with(density) { 140.dp.toPx() }
+    val velocityThresholdPx = with(density) { 500.dp.toPx() }
+
+    val currentOffset = offsetX.value
+    val swipeDirection = when {
+        currentOffset > 0f -> QueueSwipeDirection.StartToEnd
+        currentOffset < 0f -> QueueSwipeDirection.EndToStart
+        else -> QueueSwipeDirection.Settled
+    }
+    val isPastThreshold = if (thresholdPx > 0f) abs(currentOffset) >= thresholdPx else false
+
+    val draggableState = rememberDraggableState { delta ->
+        if (isDismissing) return@rememberDraggableState
+        coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            offsetX.snapTo(offsetX.value + delta)
         }
     }
 
-    val activeDirection = if (isActionCompleted || confirmedDirection != null) {
-        confirmedDirection ?: dismissState.dismissDirection
-    } else {
-        dismissState.dismissDirection
-    }
-
-    val progress = dismissState.progress
-
-    SwipeToDismissBox(
-        state = dismissState,
-        backgroundContent = {
-            SwipeDismissBackground(
-                direction = activeDirection,
-                progress = progress
-            )
-        },
-        modifier = modifier.offset(x = bounceOffsetDp.dp),
-        enableDismissFromStartToEnd = true,
-        enableDismissFromEndToStart = true,
-        gesturesEnabled = !isActionCompleted
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .onSizeChanged { size -> cardWidthPx = size.width.toFloat() }
+            .offset(x = bounceOffsetDp.dp)
     ) {
-        QueueItemCard(
-            item = item
-        )
+        // Background layer revealed as card slides (Green for right, Red for left)
+        if (swipeDirection != QueueSwipeDirection.Settled) {
+            SwipeDismissBackground(
+                direction = swipeDirection,
+                isPastThreshold = isPastThreshold
+            )
+        }
+
+        // Foreground Card Layer
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                .draggable(
+                    state = draggableState,
+                    orientation = Orientation.Horizontal,
+                    enabled = !isDismissing,
+                    onDragStopped = { velocity ->
+                        if (isDismissing) return@draggable
+                        val currentVal = offsetX.value
+                        val isFlingRight = velocity > velocityThresholdPx
+                        val isFlingLeft = velocity < -velocityThresholdPx
+                        val isConfirmedRight = currentVal > thresholdPx || (isFlingRight && currentVal > 0f)
+                        val isConfirmedLeft = currentVal < -thresholdPx || (isFlingLeft && currentVal < 0f)
+
+                        if (isConfirmedRight) {
+                            // Slide out completely to the right
+                            isDismissing = true
+                            val exitTarget = (cardWidthPx.takeIf { it > 0f } ?: 1200f) * 1.15f
+                            offsetX.animateTo(
+                                targetValue = exitTarget,
+                                initialVelocity = velocity,
+                                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                            )
+                            onSwipeRight()
+                            offsetX.snapTo(0f)
+                            isDismissing = false
+                        } else if (isConfirmedLeft) {
+                            // Slide out completely to the left
+                            isDismissing = true
+                            val exitTarget = -(cardWidthPx.takeIf { it > 0f } ?: 1200f) * 1.15f
+                            offsetX.animateTo(
+                                targetValue = exitTarget,
+                                initialVelocity = velocity,
+                                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                            )
+                            onSwipeLeft()
+                            offsetX.snapTo(0f)
+                            isDismissing = false
+                        } else {
+                            // Release below threshold: Spring smoothly back to center
+                            offsetX.animateTo(
+                                targetValue = 0f,
+                                initialVelocity = velocity,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioLowBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            )
+                        }
+                    }
+                )
+        ) {
+            QueueItemCard(item = item)
+        }
     }
 }
 
@@ -627,29 +686,28 @@ private fun SwipeableQueueItemCard(
  * Features dynamic icon scaling for tactile feedback as swipe threshold is approached.
  */
 @Composable
-private fun SwipeDismissBackground(
-    direction: SwipeToDismissBoxValue,
-    progress: Float = 0f
+private fun BoxScope.SwipeDismissBackground(
+    direction: QueueSwipeDirection,
+    isPastThreshold: Boolean
 ) {
     val backgroundColor = when (direction) {
-        SwipeToDismissBoxValue.StartToEnd -> Color(0xFF2E7D32) // Green (AI Tagging)
-        SwipeToDismissBoxValue.EndToStart -> Color(0xFFC62828) // Red (Delete)
-        SwipeToDismissBoxValue.Settled -> Color.Transparent
+        QueueSwipeDirection.StartToEnd -> Color(0xFF2E7D32) // Green (AI Tagging)
+        QueueSwipeDirection.EndToStart -> Color(0xFFC62828) // Red (Delete)
+        QueueSwipeDirection.Settled -> Color.Transparent
     }
     val icon = when (direction) {
-        SwipeToDismissBoxValue.StartToEnd -> Icons.Default.AutoAwesome
-        SwipeToDismissBoxValue.EndToStart -> Icons.Default.Delete
-        SwipeToDismissBoxValue.Settled -> null
+        QueueSwipeDirection.StartToEnd -> Icons.Default.AutoAwesome
+        QueueSwipeDirection.EndToStart -> Icons.Default.Delete
+        QueueSwipeDirection.Settled -> null
     }
-    val alignment = if (direction == SwipeToDismissBoxValue.StartToEnd) {
+    val alignment = if (direction == QueueSwipeDirection.StartToEnd) {
         Alignment.CenterStart
     } else {
         Alignment.CenterEnd
     }
 
-    val isPastThreshold = progress >= 0.45f
     val iconScale by animateFloatAsState(
-        targetValue = if (isPastThreshold) 1.15f else 0.85f,
+        targetValue = if (isPastThreshold) 1.25f else 0.85f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMediumLow
@@ -659,7 +717,7 @@ private fun SwipeDismissBackground(
 
     Box(
         modifier = Modifier
-            .fillMaxSize()
+            .matchParentSize()
             .clip(RoundedCornerShape(24.dp))
             .background(backgroundColor)
             .padding(horizontal = 24.dp),

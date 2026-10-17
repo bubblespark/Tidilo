@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
 import me.bubblespark.tidilo.ui.navigation.Screen
 import me.bubblespark.tidilo.ui.navigation.TidiloBottomBar
@@ -85,6 +86,7 @@ fun TidiloApp(
     val queuingItems by queueViewModel.queuingItems.collectAsStateWithLifecycle()
     val runningItems by queueViewModel.runningItems.collectAsStateWithLifecycle()
     val quotaExceededDialogVisible by queueViewModel.quotaExceededDialogVisible.collectAsStateWithLifecycle()
+    val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
 
     // When receiving a shared URL via Intent, enqueue to Queuing and navigate to Queue screen automatically
     LaunchedEffect(sharedUrl) {
@@ -262,7 +264,11 @@ fun TidiloApp(
                 },
                 text = {
                     Text(
-                        text = "AICore使用制限を超過しました。利用が制限されています。"
+                        text = if (currentLanguage.isJapanese) {
+                            "AICore使用制限を超過しました。URLを取り込めません。しばらく待ってから再度実行するか、フォールバック機能の仕様を検討してください。"
+                        } else {
+                            "You have exceeded the AICore usage limit. We cannot import the URL. Please wait a while and try again, or enable the fallback feature."
+                        }
                     )
                 },
                 confirmButton = {

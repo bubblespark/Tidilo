@@ -25,7 +25,10 @@ data class QueueItem(
     val errorMessage: String? = null,
     val assignedTags: List<String> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
-    val isNsfw: Boolean = false
+    val isNsfw: Boolean = false,
+    val siteName: String = "",
+    val description: String = "",
+    val bodySnippet: String = ""
 )
 
 class QueueViewModel : ViewModel() {

@@ -91,24 +91,24 @@ import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
 fun TidiloBottomBar(
     navController: NavController,
     isBarsVisible: Boolean = true,
-    queuingCount: Int = 0,
-    isQueueRunning: Boolean = false,
+    readyCount: Int = 0,
+    isProcessing: Boolean = false,
     isFilterMenuExpanded: Boolean = false,
     onToggleFilterMenu: () -> Unit = {},
     currentFilterMode: LibraryFilterMode = LibraryFilterMode.NEWEST_FIRST,
     onSelectFilterMode: (LibraryFilterMode) -> Unit = {},
     onSearchAction: () -> Unit = {},
-    onAiTaggingAll: () -> Unit = {},
+    onAiAnalysisAll: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // Floating navigation tabs: Library, Search, Queue
+    // Floating navigation tabs: Library, Search, Import
     val items = listOf(
         Screen.Library,
         Screen.Search,
-        Screen.Queue
+        Screen.Import
     )
 
     val barHeight = 68.dp
@@ -116,7 +116,7 @@ fun TidiloBottomBar(
     val isActionButtonVisible = currentRoute in listOf(
         Screen.Library.route,
         Screen.Search.route,
-        Screen.Queue.route
+        Screen.Import.route
     )
 
     // M3 Expressive: contracted size is 56dp (icon 28dp); expanded/hidden size is 86dp (icon 40dp)
@@ -314,7 +314,7 @@ fun TidiloBottomBar(
                                 val iconVector = if (isSelected) screen.selectedIcon else screen.unselectedIcon
                                 val iconColor = if (isSelected) activeContentColor else inactiveTextColor
 
-                                val iconModifier = if (screen == Screen.Queue && isQueueRunning) {
+                                val iconModifier = if (screen == Screen.Import && isProcessing) {
                                     Modifier
                                         .size(tabIconSize)
                                         .graphicsLayer {
@@ -326,15 +326,15 @@ fun TidiloBottomBar(
                                     Modifier.size(tabIconSize)
                                 }
 
-                                if (screen == Screen.Queue && queuingCount > 0) {
+                                if (screen == Screen.Import && readyCount > 0) {
                                     BadgedBox(
                                         badge = {
                                             Badge(
                                                 containerColor = MaterialTheme.colorScheme.error,
                                                 contentColor = MaterialTheme.colorScheme.onError
-                                            ) {
+                                             ) {
                                                 Text(
-                                                    text = if (queuingCount > 99) "99+" else queuingCount.toString(),
+                                                    text = if (readyCount > 99) "99+" else readyCount.toString(),
                                                     style = MaterialTheme.typography.labelSmall
                                                 )
                                             }
@@ -527,7 +527,7 @@ fun TidiloBottomBar(
                                 when (currentRoute) {
                                     Screen.Library.route -> onToggleFilterMenu()
                                     Screen.Search.route -> onSearchAction()
-                                    Screen.Queue.route -> onAiTaggingAll()
+                                    Screen.Import.route -> onAiAnalysisAll()
                                 }
                             },
                         contentAlignment = Alignment.Center
@@ -570,10 +570,10 @@ fun TidiloBottomBar(
                                         modifier = Modifier.size(iconSize)
                                     )
                                 }
-                                Screen.Queue.route -> {
+                                Screen.Import.route -> {
                                     Icon(
                                         imageVector = Icons.Default.AutoAwesome,
-                                        contentDescription = stringResource(R.string.bottom_bar_ai_tagging_all),
+                                        contentDescription = stringResource(R.string.bottom_bar_ai_analysis_all),
                                         tint = iconColor,
                                         modifier = Modifier.size(iconSize)
                                     )

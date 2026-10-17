@@ -12,8 +12,8 @@ class TidiloNavGraphTest {
     fun isBottomNavTabSwitch_returnsTrueOnlyWhenBothAreTabs() {
         // Tab to tab
         assertTrue(isBottomNavTabSwitch(Screen.Library.route, Screen.Search.route))
-        assertTrue(isBottomNavTabSwitch(Screen.Search.route, Screen.Queue.route))
-        assertTrue(isBottomNavTabSwitch(Screen.Queue.route, Screen.Library.route))
+        assertTrue(isBottomNavTabSwitch(Screen.Search.route, Screen.Import.route))
+        assertTrue(isBottomNavTabSwitch(Screen.Import.route, Screen.Library.route))
 
         // Tab to subscreen
         assertFalse(isBottomNavTabSwitch(Screen.Library.route, Screen.Settings.route))
@@ -48,20 +48,20 @@ class TidiloNavGraphTest {
             )
         )
 
-        // Search (1) -> Queue (2): moves to right tab -> slide towards Start (left)
+        // Search (1) -> Import (2): moves to right tab -> slide towards Start (left)
         assertEquals(
             AnimatedContentTransitionScope.SlideDirection.Start,
             getTabSlideDirection(
                 initialRoute = Screen.Search.route,
-                targetRoute = Screen.Queue.route
+                targetRoute = Screen.Import.route
             )
         )
 
-        // Queue (2) -> Search (1): moves to left tab -> slide towards End (right)
+        // Import (2) -> Search (1): moves to left tab -> slide towards End (right)
         assertEquals(
             AnimatedContentTransitionScope.SlideDirection.End,
             getTabSlideDirection(
-                initialRoute = Screen.Queue.route,
+                initialRoute = Screen.Import.route,
                 targetRoute = Screen.Search.route
             )
         )

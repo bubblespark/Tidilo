@@ -33,33 +33,64 @@ import me.bubblespark.tidilo.ui.screens.settings.SettingsScreen
 import me.bubblespark.tidilo.ui.screens.settings.SettingsDebugScreen
 import me.bubblespark.tidilo.ui.screens.settings.GenerateContentRequestScreen
 
-private val BottomNavTabOrder = listOf(
+internal val BottomNavTabOrder = listOf(
     Screen.Library.route,
     Screen.Search.route,
     Screen.Queue.route
 )
 
-private fun getBottomNavTabIndex(route: String?): Int {
-    val idx = BottomNavTabOrder.indexOf(route)
-    return if (idx >= 0) idx else -1
+internal fun getRouteDepth(route: String?): Int {
+    if (route == null) return -1
+    return when {
+        route in BottomNavTabOrder -> 0
+        route.startsWith("bookmark_detail") ||
+        route == Screen.TagSelection.route ||
+        route == Screen.Settings.route -> 1
+        route.startsWith("bookmark_ai_review") ||
+        route == Screen.NsfwContents.route ||
+        route == Screen.SettingsDebug.route ||
+        route == Screen.GenerateContentRequest.route -> 2
+        else -> -1
+    }
 }
 
-private fun getSlideDirection(
+internal fun getSlideDirection(
     initialRoute: String?,
     targetRoute: String?,
     defaultDirection: AnimatedContentTransitionScope.SlideDirection
 ): AnimatedContentTransitionScope.SlideDirection {
-    val initialIndex = getBottomNavTabIndex(initialRoute)
-    val targetIndex = getBottomNavTabIndex(targetRoute)
-    return if (initialIndex != -1 && targetIndex != -1) {
-        if (targetIndex > initialIndex) {
-            AnimatedContentTransitionScope.SlideDirection.Start
+    val initialDepth = getRouteDepth(initialRoute)
+    val targetDepth = getRouteDepth(targetRoute)
+
+    // Case 1: Switching between Bottom Navigation tabs (Depth 0 -> Depth 0)
+    if (initialDepth == 0 && targetDepth == 0) {
+        val initialIndex = BottomNavTabOrder.indexOf(initialRoute)
+        val targetIndex = BottomNavTabOrder.indexOf(targetRoute)
+        return if (initialIndex != -1 && targetIndex != -1) {
+            if (targetIndex > initialIndex) {
+                AnimatedContentTransitionScope.SlideDirection.Start
+            } else {
+                AnimatedContentTransitionScope.SlideDirection.End
+            }
         } else {
-            AnimatedContentTransitionScope.SlideDirection.End
+            defaultDirection
         }
-    } else {
-        defaultDirection
     }
+
+    // Case 2: Hierarchical navigation between different depths
+    if (initialDepth != -1 && targetDepth != -1) {
+        return if (targetDepth > initialDepth) {
+            // Forward navigation (deeper into hierarchy): slide towards Start (left)
+            AnimatedContentTransitionScope.SlideDirection.Start
+        } else if (targetDepth < initialDepth) {
+            // Backward navigation (returning up hierarchy): slide towards End (right)
+            AnimatedContentTransitionScope.SlideDirection.End
+        } else {
+            defaultDirection
+        }
+    }
+
+    return defaultDirection
 }
 
 @Composable

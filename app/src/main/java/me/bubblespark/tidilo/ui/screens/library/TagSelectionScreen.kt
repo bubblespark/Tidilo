@@ -133,18 +133,18 @@ fun TagSelectionScreen(
     // Always-visible Category / Subcategory:
     // Candidate list of all defined categories and subcategories (plus any legacy bookmark tags)
     val allCategoryIds = remember(bookmarks) {
-        (Category.entries.map { it.id } + bookmarks.map { it.tag.category }).distinct()
+        (Category.entries.map { it.id } + bookmarks.mapNotNull { it.tag.category }).distinct()
     }
     val allSubcategoryIds = remember(bookmarks) {
-        (Subcategory.entries.map { it.id } + bookmarks.map { it.tag.subcategory }).distinct()
+        (Subcategory.entries.map { it.id } + bookmarks.mapNotNull { it.tag.subcategory }).distinct()
     }
 
     // Occurrence count of each tag within currently active bookmarks
     val activeCategoryCounts = remember(activeBookmarks) {
-        activeBookmarks.groupingBy { it.tag.category }.eachCount()
+        activeBookmarks.mapNotNull { it.tag.category }.groupingBy { it }.eachCount()
     }
     val activeSubcategoryCounts = remember(activeBookmarks) {
-        activeBookmarks.groupingBy { it.tag.subcategory }.eachCount()
+        activeBookmarks.mapNotNull { it.tag.subcategory }.groupingBy { it }.eachCount()
     }
     val activeEntityCounts = remember(activeBookmarks) {
         activeBookmarks.flatMap { it.tag.entities }.groupingBy { it }.eachCount()

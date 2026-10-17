@@ -16,7 +16,8 @@ import me.bubblespark.tidilo.ui.screens.library.Tag
         Index(value = ["createdAt"]),
         Index(value = ["category"]),
         Index(value = ["subcategory"]),
-        Index(value = ["isNsfw"])
+        Index(value = ["isNsfw"]),
+        Index(value = ["isAiSkipped"])
     ]
 )
 data class BookmarkEntity(
@@ -25,13 +26,14 @@ data class BookmarkEntity(
     val title: String,
     val url: String,
     val description: String,
-    val category: String,
-    val subcategory: String,
-    val entities: List<String>,
+    val category: String? = null,
+    val subcategory: String? = null,
+    val entities: List<String> = emptyList(),
     val createdAt: Long,
     val updatedAt: Long,
     val note: String = "",
-    val isNsfw: Boolean = false
+    val isNsfw: Boolean = false,
+    val isAiSkipped: Boolean = false
 ) {
     fun toBookmarkItem(): BookmarkItem {
         return BookmarkItem(
@@ -39,15 +41,20 @@ data class BookmarkEntity(
             title = title,
             url = url,
             description = description,
-            tag = Tag.create(
-                category = category,
-                subcategory = subcategory,
-                entities = entities
-            ),
+            tag = if (isAiSkipped && category == null && subcategory == null && entities.isEmpty()) {
+                Tag.createEmpty()
+            } else {
+                Tag.create(
+                    category = category,
+                    subcategory = subcategory,
+                    entities = entities
+                )
+            },
             createdAt = createdAt,
             updatedAt = updatedAt,
             note = note,
-            isNsfw = isNsfw
+            isNsfw = isNsfw,
+            isAiSkipped = isAiSkipped
         )
     }
 
@@ -64,7 +71,8 @@ data class BookmarkEntity(
                 createdAt = item.createdAt,
                 updatedAt = item.updatedAt,
                 note = item.note,
-                isNsfw = item.isNsfw
+                isNsfw = item.isNsfw,
+                isAiSkipped = item.isAiSkipped
             )
         }
     }

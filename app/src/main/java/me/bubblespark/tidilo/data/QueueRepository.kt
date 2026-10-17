@@ -4,12 +4,16 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.google.mlkit.genai.common.GenAiException
 import me.bubblespark.tidilo.TidiloApplication
+import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.service.GeminiTaggingService
+import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
+import me.bubblespark.tidilo.ui.screens.library.Tag
 import me.bubblespark.tidilo.ui.screens.queue.QueueItem
 import me.bubblespark.tidilo.ui.screens.queue.QueueItemStatus
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -374,8 +378,12 @@ class QueueRepository private constructor(context: Context) {
         // 2. Handle specific AICore error codes
         when (errorCode) {
             GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED -> {
-                // Quota exceeded: Show dialog and move all Running items back to Queuing
-                moveAllRunningToQueuing()
+                if (isFallbackApplicable(errorCode, throwable)) {
+                    saveBookmarkFallback(target)
+                } else {
+                    // Quota exceeded: Show dialog and move all Running items back to Queuing
+                    moveAllRunningToQueuing()
+                }
             }
 
             GenAiException.ErrorCode.BUSY -> {
@@ -395,8 +403,12 @@ class QueueRepository private constructor(context: Context) {
                         }
                     }
                 } else {
-                    // Retry limit reached: fall back to removing all Running items to Error
-                    moveAllRunningToError(target, errorMessage.ifBlank { "AICore busy: Retry limit exceeded (3/3)" })
+                    // Retry limit reached: fall back to bookmark if applicable, else fail to Error
+                    if (isFallbackApplicable(errorCode, throwable)) {
+                        saveBookmarkFallback(target)
+                    } else {
+                        moveAllRunningToError(target, errorMessage.ifBlank { "AICore busy: Retry limit exceeded (3/3)" })
+                    }
                 }
             }
 
@@ -417,16 +429,57 @@ class QueueRepository private constructor(context: Context) {
                         }
                     }
                 } else {
-                    // Retry limit reached: fall back to removing all Running items to Error
-                    moveAllRunningToError(target, errorMessage.ifBlank { "AICore background blocked: Retry limit exceeded (3/3)" })
+                    // Retry limit reached: fall back to bookmark if applicable, else fail to Error
+                    if (isFallbackApplicable(errorCode, throwable)) {
+                        saveBookmarkFallback(target)
+                    } else {
+                        moveAllRunningToError(target, errorMessage.ifBlank { "AICore background blocked: Retry limit exceeded (3/3)" })
+                    }
                 }
             }
 
             else -> {
-                // Unhandled error / other errors: Remove current task and all other Running items to Error
-                moveAllRunningToError(target, errorMessage.ifBlank { "AICore inference failure" })
+                // Unhandled error / other errors: fall back to bookmark if applicable, else fail to Error
+                if (isFallbackApplicable(errorCode, throwable)) {
+                    saveBookmarkFallback(target)
+                } else {
+                    moveAllRunningToError(target, errorMessage.ifBlank { "AICore inference failure" })
+                }
             }
         }
+    }
+
+    private fun isAiCoreError(errorCode: Int?, throwable: Throwable): Boolean {
+        return errorCode != null || isAiCoreOrInterruptionException(throwable)
+    }
+
+    private fun isFallbackApplicable(errorCode: Int?, throwable: Throwable): Boolean {
+        return Companion.isFallbackApplicable(AppConfig.aiCoreFallbackMode.value, errorCode, throwable)
+    }
+
+    private fun saveBookmarkFallback(target: QueueItem) {
+        foregroundRetryCounts.remove(target.id)
+        _runningItems.value = _runningItems.value.filter { it.id != target.id }
+
+        val domain = DomainIconManager.extractDomain(target.url)
+        DomainPolicyManager.registerDomain(domain, false, target.siteName)
+        if (domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
+            repositoryScope.launch {
+                DomainIconManager.fetchAndSaveDomainIcon(appContext, target.url)
+            }
+        }
+
+        val fallbackBookmark = BookmarkItem(
+            id = UUID.randomUUID().toString(),
+            title = target.title,
+            url = target.url,
+            description = target.description,
+            tag = Tag.createEmpty(),
+            isNsfw = target.isNsfw,
+            isAiSkipped = true
+        )
+        BookmarkRepository.getInstance().addBookmark(fallbackBookmark)
+        saveToPrefs()
     }
 
     /**
@@ -760,6 +813,22 @@ class QueueRepository private constructor(context: Context) {
                         msg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ||
                         msg.contains("rate limit", ignoreCase = true) -> GenAiException.ErrorCode.BUSY
                 else -> null
+            }
+        }
+
+        fun isFallbackApplicable(
+            mode: AiCoreFallbackMode,
+            errorCode: Int?,
+            throwable: Throwable
+        ): Boolean {
+            return when (mode) {
+                AiCoreFallbackMode.DISABLE -> false
+                AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY -> {
+                    errorCode == GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED
+                }
+                AiCoreFallbackMode.ALL -> {
+                    errorCode != null || isAiCoreOrInterruptionException(throwable)
+                }
             }
         }
     }

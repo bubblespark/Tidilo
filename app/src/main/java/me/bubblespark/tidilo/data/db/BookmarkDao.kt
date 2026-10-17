@@ -41,8 +41,8 @@ interface BookmarkDao {
     suspend fun updateFields(
         id: String,
         description: String,
-        category: String,
-        subcategory: String,
+        category: String?,
+        subcategory: String?,
         entities: List<String>,
         updatedAt: Long
     )

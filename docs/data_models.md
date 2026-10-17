@@ -20,18 +20,20 @@ data class BookmarkItem(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val note: String = "",
-    val isNsfw: Boolean = false
+    val isNsfw: Boolean = false,
+    val isAiSkipped: Boolean = false
 )
 
 @Immutable
 data class Tag(
-    val category: String = DEFAULT_TAG,       // 1 of 7 Top-Level Categories or "None"
-    val subcategory: String = DEFAULT_TAG,    // 1 of 11 Subcategories or "None"
-    val entities: List<String> = emptyList()  // 2 to 10 specific keyword strings
+    val category: String? = DEFAULT_TAG,       // 1 of 7 Top-Level Categories, "None", or null (when AI is skipped)
+    val subcategory: String? = DEFAULT_TAG,    // 1 of 11 Subcategories, "None", or null (when AI is skipped)
+    val entities: List<String> = emptyList()   // Keyword strings
 ) {
     companion object {
         const val DEFAULT_TAG = "None"
         fun create(category: String?, subcategory: String?, entities: List<String> = emptyList()): Tag
+        fun createEmpty(): Tag = Tag(category = null, subcategory = null, entities = emptyList())
     }
 }
 ```

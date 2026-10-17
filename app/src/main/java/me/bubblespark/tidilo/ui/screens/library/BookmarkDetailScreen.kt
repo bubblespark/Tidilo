@@ -171,10 +171,10 @@ fun BookmarkDetailScreen(
     }
 
     val localizedCategory = remember(bookmark.tag.category, currentLanguage) {
-        Category.toLocalized(bookmark.tag.category, currentLanguage.isJapanese)
+        bookmark.tag.category?.let { Category.toLocalized(it, currentLanguage.isJapanese) } ?: ""
     }
     val localizedSubcategory = remember(bookmark.tag.subcategory, currentLanguage) {
-        Subcategory.toLocalized(bookmark.tag.subcategory, currentLanguage.isJapanese)
+        bookmark.tag.subcategory?.let { Subcategory.toLocalized(it, currentLanguage.isJapanese) } ?: ""
     }
 
     val formattedCreatedAt = remember(bookmark.createdAt) {
@@ -403,55 +403,67 @@ fun BookmarkDetailScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Line 1: [category] > [subcategory]
+            // Line 1: [AI Skipped] or [category] > [subcategory] (+ [NSFW])
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Category
-                AssistChip(
-                    onClick = {},
-                    label = { Text(localizedCategory) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Folder,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                        labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                )
+                if (bookmark.isAiSkipped) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("AI Skipped", fontWeight = FontWeight.Bold) },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            labelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                } else if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
+                    // Category
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(localizedCategory) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
 
-                Text(
-                    text = ">",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.outline
-                )
+                    Text(
+                        text = ">",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.outline
+                    )
 
-                // Subcategory
-                AssistChip(
-                    onClick = {},
-                    label = { Text(localizedSubcategory) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Folder,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                        labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                )
+                    // Subcategory
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(localizedSubcategory) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
 
                 if (bookmark.isNsfw) {
                     AssistChip(
@@ -467,7 +479,7 @@ fun BookmarkDetailScreen(
             }
 
             // Line 2: [entities] (disables LocalMinimumInteractiveComponentSize to compact multi-line height)
-            if (bookmark.tag.entities.isNotEmpty()) {
+            if (!bookmark.isAiSkipped && bookmark.tag.entities.isNotEmpty()) {
                 CompositionLocalProvider(
                     LocalMinimumInteractiveComponentSize provides Dp.Unspecified
                 ) {

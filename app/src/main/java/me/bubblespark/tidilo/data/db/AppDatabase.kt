@@ -14,7 +14,7 @@ import androidx.room.TypeConverters
         BookmarkEntity::class,
         TrashedBookmarkEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

@@ -110,4 +110,48 @@ class RoomEntityMappingTest {
         assertEquals(trashedItem.bookmark.url, restored.bookmark.url)
         assertEquals(trashedItem.trashedAt, restored.trashedAt)
     }
+
+    @Test
+    fun testBookmarkEntityWithAiSkippedAndNullTagsRoundtrip() {
+        val now = 1776000000000L
+        val original = BookmarkItem(
+            id = "fallback-1",
+            title = "Fallback Item Title",
+            url = "https://example.com/fallback",
+            description = "HTML parse fallback description",
+            tag = Tag.createEmpty(),
+            createdAt = now,
+            updatedAt = now,
+            isNsfw = false,
+            isAiSkipped = true
+        )
+
+        val entity = BookmarkEntity.fromBookmarkItem(original)
+        assertEquals("fallback-1", entity.id)
+        assertEquals(null, entity.category)
+        assertEquals(null, entity.subcategory)
+        assertEquals(emptyList<String>(), entity.entities)
+        assertTrue(entity.isAiSkipped)
+
+        val restored = entity.toBookmarkItem()
+        assertEquals(original.id, restored.id)
+        assertEquals(null, restored.tag.category)
+        assertEquals(null, restored.tag.subcategory)
+        assertEquals(emptyList<String>(), restored.tag.entities)
+        assertTrue(restored.isAiSkipped)
+
+        val trashedItem = TrashedBookmarkItem(
+            bookmark = original,
+            trashedAt = now + 5000L
+        )
+        val trashedEntity = TrashedBookmarkEntity.fromTrashedBookmarkItem(trashedItem)
+        assertTrue(trashedEntity.isAiSkipped)
+        assertEquals(null, trashedEntity.category)
+        assertEquals(null, trashedEntity.subcategory)
+
+        val restoredTrash = trashedEntity.toTrashedBookmarkItem()
+        assertTrue(restoredTrash.bookmark.isAiSkipped)
+        assertEquals(null, restoredTrash.bookmark.tag.category)
+        assertEquals(null, restoredTrash.bookmark.tag.subcategory)
+    }
 }

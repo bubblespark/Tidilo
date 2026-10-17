@@ -1,9 +1,16 @@
 package me.bubblespark.tidilo.data
 
+import com.google.mlkit.genai.common.GenAiException
+import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.service.AiCoreExecutionException
+import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
+import me.bubblespark.tidilo.ui.screens.library.Tag
 import me.bubblespark.tidilo.ui.screens.queue.QueueItem
 import me.bubblespark.tidilo.ui.screens.queue.QueueItemStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class QueueRepositoryTest {
@@ -262,5 +269,85 @@ class QueueRepositoryTest {
         assertEquals(failureMsg, errorItems[0].errorMessage)
         assertEquals(QueueItemStatus.ERROR, errorItems[1].status)
         assertEquals("Batch stopped: AICore busy: Retry limit exceeded (3/3)", errorItems[1].errorMessage)
+    }
+
+    @Test
+    fun testAiCoreFallbackModeEnumAndConfig() {
+        assertEquals("disable", AiCoreFallbackMode.DISABLE.code)
+        assertEquals("無効", AiCoreFallbackMode.DISABLE.jaLabel)
+        assertEquals("Disable", AiCoreFallbackMode.DISABLE.enLabel)
+
+        assertEquals("quota_only", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.code)
+        assertEquals("AICore超過時のみ", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.jaLabel)
+        assertEquals("Only if the AICore quota is exceeded", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.enLabel)
+
+        assertEquals("all", AiCoreFallbackMode.ALL.code)
+        assertEquals("全て", AiCoreFallbackMode.ALL.jaLabel)
+        assertEquals("All", AiCoreFallbackMode.ALL.enLabel)
+
+        assertEquals(AiCoreFallbackMode.DISABLE, AiCoreFallbackMode.fromCode("disable"))
+        assertEquals(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, AiCoreFallbackMode.fromCode("quota_only"))
+        assertEquals(AiCoreFallbackMode.ALL, AiCoreFallbackMode.fromCode("all"))
+        assertEquals(AiCoreFallbackMode.DISABLE, AiCoreFallbackMode.fromCode("unknown"))
+    }
+
+    @Test
+    fun testIsFallbackApplicableLogic() {
+        val quotaExceededCode = GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED
+        val busyCode = GenAiException.ErrorCode.BUSY
+        val quotaExceededException = GenAiException("Quota exceeded", null, quotaExceededCode)
+        val busyException = GenAiException("Busy", null, busyCode)
+        val networkException = Exception("Network connection failed")
+
+        // 1. DISABLE mode: never applicable
+        assertFalse(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.DISABLE, quotaExceededCode, quotaExceededException))
+        assertFalse(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.DISABLE, busyCode, busyException))
+        assertFalse(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.DISABLE, null, networkException))
+
+        // 2. QUOTA_EXCEEDED_ONLY mode: only applicable for PER_APP_BATTERY_USE_QUOTA_EXCEEDED (27)
+        assertTrue(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, quotaExceededCode, quotaExceededException))
+        assertFalse(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, busyCode, busyException))
+        assertFalse(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, null, networkException))
+
+        // 3. ALL mode: applicable for any AICore error code or AICore exception
+        assertTrue(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, quotaExceededCode, quotaExceededException))
+        assertTrue(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, busyCode, busyException))
+        val aiCoreMsgException = Exception("AICore Service Unavailable")
+        assertTrue(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, null, aiCoreMsgException))
+        assertFalse(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, null, networkException))
+    }
+
+    @Test
+    fun testFallbackBookmarkCreationContract() {
+        val target = QueueItem(
+            id = "queue-test-1",
+            url = "https://example.com/fallback-target",
+            title = "Target Web Page",
+            status = QueueItemStatus.PROCESSING_AI,
+            statusText = "Processing",
+            isNsfw = true,
+            siteName = "ExampleSite",
+            description = "Parsed HTML description text",
+            bodySnippet = "Extracted body snippet"
+        )
+
+        val fallbackBookmark = BookmarkItem(
+            id = java.util.UUID.randomUUID().toString(),
+            title = target.title,
+            url = target.url,
+            description = target.description,
+            tag = Tag.createEmpty(),
+            isNsfw = target.isNsfw,
+            isAiSkipped = true
+        )
+
+        assertEquals("Target Web Page", fallbackBookmark.title)
+        assertEquals("https://example.com/fallback-target", fallbackBookmark.url)
+        assertEquals("Parsed HTML description text", fallbackBookmark.description)
+        assertNull(fallbackBookmark.tag.category)
+        assertNull(fallbackBookmark.tag.subcategory)
+        assertTrue(fallbackBookmark.tag.entities.isEmpty())
+        assertTrue(fallbackBookmark.isNsfw)
+        assertTrue(fallbackBookmark.isAiSkipped)
     }
 }

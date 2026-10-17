@@ -322,15 +322,15 @@ class LibraryViewModel : ViewModel() {
                             true // Allow all tags if solitary '#' is entered
                         } else {
                             // Category (English ID or Japanese label)
-                            val catMatch = item.tag.category.contains(tagQuery, ignoreCase = true) ||
-                                    (Category.fromId(item.tag.category)?.let {
+                            val catMatch = item.tag.category?.contains(tagQuery, ignoreCase = true) == true ||
+                                    (item.tag.category?.let { Category.fromId(it) }?.let {
                                          it.jaLabel.contains(tagQuery, ignoreCase = true) ||
                                                  it.enLabel.contains(tagQuery, ignoreCase = true)
                                      } ?: false)
 
                             // Subcategory (English ID or Japanese label)
-                            val subMatch = item.tag.subcategory.contains(tagQuery, ignoreCase = true) ||
-                                    (Subcategory.fromId(item.tag.subcategory)?.let {
+                            val subMatch = item.tag.subcategory?.contains(tagQuery, ignoreCase = true) == true ||
+                                    (item.tag.subcategory?.let { Subcategory.fromId(it) }?.let {
                                          it.jaLabel.contains(tagQuery, ignoreCase = true) ||
                                                  it.enLabel.contains(tagQuery, ignoreCase = true)
                                      } ?: false)

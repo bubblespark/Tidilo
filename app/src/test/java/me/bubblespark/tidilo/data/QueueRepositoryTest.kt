@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.data
 
+import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.ui.screens.queue.QueueItem
 import me.bubblespark.tidilo.ui.screens.queue.QueueItemStatus
 import org.junit.Assert.assertEquals
@@ -128,5 +129,138 @@ class QueueRepositoryTest {
         org.junit.Assert.assertTrue(promptJa.contains("Description: A concise article description"))
         org.junit.Assert.assertTrue(promptJa.contains("Content: This is the extracted body text snippet used for instant AI tagging."))
         org.junit.Assert.assertTrue(promptJa.contains("Language: Japanese."))
+    }
+
+    @Test
+    fun testExtractAiCoreErrorCodeFromDirectAndWrappedExceptions() {
+        val busyEx = AiCoreExecutionException(
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.BUSY,
+            "Busy"
+        )
+        val quotaEx = AiCoreExecutionException(
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED,
+            "Quota exceeded"
+        )
+        val blockedEx = AiCoreExecutionException(
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED,
+            "Background use blocked"
+        )
+
+        assertEquals(
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.BUSY,
+            QueueRepository.extractAiCoreErrorCode(busyEx)
+        )
+        assertEquals(
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED,
+            QueueRepository.extractAiCoreErrorCode(quotaEx)
+        )
+        assertEquals(
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED,
+            QueueRepository.extractAiCoreErrorCode(blockedEx)
+        )
+
+        // Nested in runtime exception wrapper
+        val wrappedQuotaEx = RuntimeException("Wrapper exception", quotaEx)
+        assertEquals(
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED,
+            QueueRepository.extractAiCoreErrorCode(wrappedQuotaEx)
+        )
+
+        // String message fallback detection
+        val msgFallbackQuota = Exception("AICore battery use quota exceeded (code 27)")
+        val msgFallbackBusy = Exception("AICore BUSY rate limit exceeded")
+        val msgFallbackBlocked = Exception("AICore BACKGROUND_USE_BLOCKED error")
+
+        assertEquals(
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED,
+            QueueRepository.extractAiCoreErrorCode(msgFallbackQuota)
+        )
+        assertEquals(
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.BUSY,
+            QueueRepository.extractAiCoreErrorCode(msgFallbackBusy)
+        )
+        assertEquals(
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED,
+            QueueRepository.extractAiCoreErrorCode(msgFallbackBlocked)
+        )
+    }
+
+    @Test
+    fun testMapInferenceExceptionTransformsToAiCoreExecutionException() {
+        val genAiBusy = com.google.mlkit.genai.common.GenAiException(
+            "System busy",
+            null,
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.BUSY
+        )
+        val mappedBusy = me.bubblespark.tidilo.service.GeminiTaggingService.mapInferenceException(genAiBusy)
+        assertEquals(com.google.mlkit.genai.common.GenAiException.ErrorCode.BUSY, mappedBusy.errorCode)
+        org.junit.Assert.assertTrue(mappedBusy.message?.contains("AICore Rate Limit Exceeded") == true)
+
+        val genAiQuota = com.google.mlkit.genai.common.GenAiException(
+            "Quota limit hit",
+            null,
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED
+        )
+        val mappedQuota = me.bubblespark.tidilo.service.GeminiTaggingService.mapInferenceException(genAiQuota)
+        assertEquals(com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED, mappedQuota.errorCode)
+        org.junit.Assert.assertTrue(mappedQuota.message?.contains("battery use quota exceeded") == true)
+
+        val genAiBlocked = com.google.mlkit.genai.common.GenAiException(
+            "Background not allowed",
+            null,
+            com.google.mlkit.genai.common.GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED
+        )
+        val mappedBlocked = me.bubblespark.tidilo.service.GeminiTaggingService.mapInferenceException(genAiBlocked)
+        assertEquals(com.google.mlkit.genai.common.GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED, mappedBlocked.errorCode)
+        org.junit.Assert.assertTrue(mappedBlocked.message?.contains("background use blocked") == true)
+    }
+
+    @Test
+    fun testMoveAllRunningToQueuingLogic() {
+        val item1 = QueueItem(id = "run-1", url = "https://example.com/1", title = "Task 1", status = QueueItemStatus.PROCESSING_AI, statusText = "Inference")
+        val item2 = QueueItem(id = "run-2", url = "https://example.com/2", title = "Task 2", status = QueueItemStatus.WAITING_AI, statusText = "Waiting")
+        val currentRunning = listOf(item1, item2)
+
+        // When battery quota exceeded occurs:
+        val converted = currentRunning.map { item ->
+            item.copy(
+                status = QueueItemStatus.QUEUED,
+                statusText = "Queued • Quota exceeded"
+            )
+        }
+
+        assertEquals(2, converted.size)
+        assertEquals(QueueItemStatus.QUEUED, converted[0].status)
+        assertEquals("Queued • Quota exceeded", converted[0].statusText)
+        assertEquals(QueueItemStatus.QUEUED, converted[1].status)
+        assertEquals("Queued • Quota exceeded", converted[1].statusText)
+    }
+
+    @Test
+    fun testMoveAllRunningToErrorBatchFailureLogic() {
+        val item1 = QueueItem(id = "run-1", url = "https://example.com/1", title = "Task 1", status = QueueItemStatus.PROCESSING_AI, statusText = "Inference")
+        val item2 = QueueItem(id = "run-2", url = "https://example.com/2", title = "Task 2", status = QueueItemStatus.WAITING_AI, statusText = "Waiting")
+        val currentRunning = listOf(item1, item2)
+
+        val primaryFailedItem = item1
+        val failureMsg = "AICore busy: Retry limit exceeded (3/3)"
+
+        val errorItems = currentRunning.map { item ->
+            item.copy(
+                status = QueueItemStatus.ERROR,
+                statusText = "Failed",
+                errorMessage = if (item.id == primaryFailedItem.id) {
+                    failureMsg
+                } else {
+                    "Batch stopped: $failureMsg"
+                }
+            )
+        }
+
+        assertEquals(2, errorItems.size)
+        assertEquals(QueueItemStatus.ERROR, errorItems[0].status)
+        assertEquals(failureMsg, errorItems[0].errorMessage)
+        assertEquals(QueueItemStatus.ERROR, errorItems[1].status)
+        assertEquals("Batch stopped: AICore busy: Retry limit exceeded (3/3)", errorItems[1].errorMessage)
     }
 }

@@ -219,14 +219,23 @@ On-device SLMs (Small Language Models) can occasionally produce conversational p
 
 ## 8. Error Handling & Rate Limiting
 
-The AICore system service enforces device-level thermal and rate limits:
+The AICore system service enforces device-level thermal, power, and rate limits. The execution pipeline handles AICore error responses with the following deterministic recovery policies:
 
-| Error Condition | Caught Exception / Indicator | Strategy / Handling |
-| :--- | :--- | :--- |
-| **Rate Limit / Thermal** | `RESOURCE_EXHAUSTED` or `"rate limit"` | Mapped to `"AICore Rate Limit Exceeded: System service temporarily busy"`. Queue task enters `WAITING_AI` state with user retry affordance. |
-| **Service Unavailable** | `UNAVAILABLE` | Mapped to `"AICore Service Unavailable on device"`. User prompted to verify AICore / device support. |
-| **HTTP Non-200** | Status != 200 during fetch | Skipped before calling AICore, marked as `HTTP Error <Code>`. |
-| **JSON Parse Malformed**| Unparseable JSON syntax | Gracefully caught; falls back to HTML OGP metadata without throwing an unrecoverable exception. |
+### Foreground-Only Execution Policy
+AICore inference is only permitted while the app is in the foreground (`TidiloApplication.isAppInForeground == true`).
+- If an item starts or encounters backgrounding during execution, its status is updated to `WAITING_AI` (`"Paused • Retrying when app is active"`).
+- It remains in the `Running` queue and automatically resumes once the app returns to the foreground (`onAppBecameActive()`).
+
+### Error Code Recovery Matrix
+
+| Error Code / Name | GenAiException ErrorCode | Trigger Condition | System Behavior & Recovery Strategy |
+| :--- | :--- | :--- | :--- |
+| **`BUSY`** | `9` | AICore system service or NPU is temporarily overloaded. | Retry up to 3 times at 3-second intervals while in foreground (`WAITING_AI: "AICore busy • Retrying (x/3)..."`). If all 3 retries fail, abort the entire Running batch and move all Running items to `Error`. |
+| **`PER_APP_BATTERY_USE_QUOTA_EXCEEDED`** | `27` | Daily on-device battery/power budget for AICore is exceeded. | Display an `AlertDialog` stating *"AICore使用制限を超過しました。URLを取り込めません。しばらく待ってから再度実行するか、フォールバック機能の仕様を検討してください。"* (EN: *"You have exceeded the AICore usage limit. We cannot import the URL. Please wait a while and try again, or enable the fallback feature."*). Move the active task and **all other pending Running tasks back to `Queuing`**. No functional lockout is imposed on the rest of the application. |
+| **`BACKGROUND_USE_BLOCKED`** | `30` | Execution blocked because app was detected in background by system service. | If app is in foreground, retry up to 3 times at 3-second intervals (`WAITING_AI: "AICore background blocked • Retrying (x/3)..."`). If retry limit reached, fail entire Running batch to `Error`. If app is backgrounded, pause in `WAITING_AI` until foreground. |
+| **Other Inference Errors / Retry Limit Exhausted** | `UNKNOWN`, `UNAVAILABLE`, etc. | Unrecoverable model faults, timeouts, or exhausted retries. | Move the active task and **all other pending Running tasks** to the `Error` group. The primary failed task displays the detailed error message, and subsequent pending items display `"Batch stopped: <Error>"`. |
+| **HTTP Non-200 / Network** | Pre-parsing network failure | Status != 200 during fetch | Skipped during ingestion/fast-path pre-parsing, marked as `HTTP Error <Code>`. |
+| **JSON Parse Malformed** | SLM formatting anomaly | Unparseable JSON syntax | Gracefully caught in `GeminiTaggingService`; falls back to HTML OGP metadata without throwing an unrecoverable exception. |
 
 ---
 

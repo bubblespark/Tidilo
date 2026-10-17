@@ -25,8 +25,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
 import me.bubblespark.tidilo.ui.navigation.Screen
 import me.bubblespark.tidilo.ui.navigation.TidiloBottomBar
@@ -80,6 +85,8 @@ fun TidiloApp(
     val navController = rememberNavController()
     val queuingItems by queueViewModel.queuingItems.collectAsStateWithLifecycle()
     val runningItems by queueViewModel.runningItems.collectAsStateWithLifecycle()
+    val quotaExceededDialogVisible by queueViewModel.quotaExceededDialogVisible.collectAsStateWithLifecycle()
+    val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
 
     // When receiving a shared URL via Intent, enqueue to Queuing and navigate to Queue screen automatically
     LaunchedEffect(sharedUrl) {
@@ -244,6 +251,32 @@ fun TidiloApp(
                     )
                 }
             }
+        }
+
+        if (quotaExceededDialogVisible) {
+            AlertDialog(
+                onDismissRequest = { queueViewModel.dismissQuotaExceededDialog() },
+                title = {
+                    Text(
+                        text = "AICore",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Text(
+                        text = if (currentLanguage.isJapanese) {
+                            "AICore使用制限を超過しました。URLを取り込めません。しばらく待ってから再度実行するか、フォールバック機能の仕様を検討してください。"
+                        } else {
+                            "You have exceeded the AICore usage limit. We cannot import the URL. Please wait a while and try again, or enable the fallback feature."
+                        }
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { queueViewModel.dismissQuotaExceededDialog() }) {
+                        Text(text = "OK")
+                    }
+                }
+            )
         }
     }
 }

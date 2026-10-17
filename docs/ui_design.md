@@ -192,8 +192,8 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Shared Consistency**: Shared seamlessly between card feeds (`BookmarkCard`, `SearchScreen`), domain grid (`DomainCard`), and detail views (`BookmarkDetailScreen`).
 - **Asynchronous & Non-Blocking Performance**: Uses `produceState<ImageBitmap?>` to resolve icons without blocking the main UI thread. In-memory hits (`DomainIconManager.getCachedIconBitmap`) render instantaneously (0ms), while cold disk cache reads are dispatched asynchronously on `Dispatchers.IO` (`DomainIconManager.loadIconFromDisk`), with redundant background transparency recalculations completely eliminated.
 
-### 6.6 `SwipeToDismissBox` Queue Actions (Queuing & Error Groups)
-- **Component**: Compose Material 3 `SwipeToDismissBox` wrapping `QueueItemCard` with `Modifier.animateItem()`.
+### 6.6 Dynamic Swipe-Action Queue Cards (Queuing & Error Groups)
+- **Component**: Custom high-performance gesture layer utilizing Compose Foundation `Modifier.draggable(Orientation.Horizontal)` and `Animatable` layout offset, eliminating `SwipeToDismissBox` quirks and deprecations.
 - **Directional Actions & Visuals**:
   - **Right Swipe (`StartToEnd`)**: Triggers immediate AI Tagging (`promoteToRunning` for Queuing, `retryError` for Error).
     - Container: Dark Green (`Color(0xFF2E7D32)`), `RoundedCornerShape(24.dp)`.
@@ -201,19 +201,15 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - **Left Swipe (`EndToStart`)**: Triggers immediate item deletion.
     - Container: Error Red (`Color(0xFFC62828)`), `RoundedCornerShape(24.dp)`.
     - Content: Trash icon (`Icons.Default.Delete`, 26dp, White) aligned `CenterEnd` with `24dp` horizontal padding.
-- **Scroll Conflict & Fling Prevention (75% Threshold)**:
-  - `positionalThreshold = { totalDistance -> totalDistance * 0.75f }` requiring a deliberate 75% horizontal displacement.
-  - Guarded inside `confirmValueChange` against flick velocity: if `dismissState.progress < 0.75f`, immediately rejects the change (`false`) and settles the card back to its original position, guaranteeing execution only on a deliberate 75%+ swipe.
-- **Card Frame-Out & Background Fade-Out Animation**:
-  - Once 75% threshold is confirmed (`confirmValueChange = true`):
-    1. Card animates naturally to the edge and completely frames out of the viewport (retaining anchors to reach `currentValue != Settled` at 100% displacement).
-    2. Only after the card has fully framed out, the remaining green/red action container smoothly fades out via `LaunchedEffect(dismissState.currentValue)` and `backgroundAlpha.animateTo(0f, tween(200, easing = FastOutSlowInEasing))` with `graphicsLayer { this.alpha = alpha }`.
-    3. Triggers the action callback (`onSwipeRight()` / `onSwipeLeft()`) to mutate the ViewModel list only after the fade-out completes, providing an ultra-smooth visual exit.
-- **Card Tap & Transition Integrity**:
-  - Disabled list item fade-out (`Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)`) across all queue groups, preventing cards from becoming semi-transparent when tapped or removed.
-  - Card container colors accurately preserved from original design: `errorContainer.copy(alpha = 0.35f)` for Error cards, and `surfaceContainerHigh ?: surfaceVariant.copy(alpha = 0.4f)` for standard cards.
-  - **Background Bleed-Through Prevention**: Cards feature an underlying opaque shape layer (`Modifier.background(MaterialTheme.colorScheme.background, RoundedCornerShape(24.dp))`), ensuring swipe background colors (green/red) never bleed through semi-transparent card containers during drags.
-  - **Direction Reset to Settled**: When a slight swipe gesture is cancelled (<75%), `activeDirection` cleanly resets to `Settled` (`Color.Transparent`), guaranteeing the card immediately reverts to its original color without stuck background tinting.
+- **Real-Time Finger Tracking & Release Mechanics (Gmail-Grade UX)**:
+  - **Continuous 1:1 Tracking**: The card tracks the finger precisely in real-time. Actions are NEVER triggered while the finger is on screen.
+  - **Under-Threshold Release**: When released below the 40% displacement threshold (and without high fling velocity), the card smoothly and physically springs back to the center (`0.dp`) via `Spring.DampingRatioLowBouncy` and `Spring.StiffnessMediumLow`, preserving release velocity with zero abrupt snapping.
+  - **Over-Threshold Release / Fling**: When released past 40% (or on a natural finger flick), the card dynamically animates all the way off-screen in the swipe direction (`FastOutSlowInEasing`), allowing the user to visually follow the slide-out before the action executes and the list collapses.
+- **Dynamic Tactile Icon Scale Feedback**:
+  - Action icons (`Icons.Default.AutoAwesome` / `Icons.Default.Delete`) dynamically spring from `0.85f` to `1.25f` scale (`Spring.DampingRatioMediumBouncy`) the instant the drag crosses the 40% threshold, giving tactile confirmation of when release will trigger the action.
+- **Immediate State Reset & Lifecycle Protection (Resolves Issue #27)**:
+  - Once the card fully slides off-screen, executes the action callback and immediately resets `offsetX` to `0f`.
+  - Guarded with `LaunchedEffect(item.id, item.status, item.statusText)`: Any card retained or returned to the queue (e.g. AICore Quota Exceeded error 27 or deletion Undo) automatically resets to `0f`, completely eliminating off-screen stuck card states.
 - **Undo Snackbar & Clean State Restoration**:
   - Displays with standard short duration (`SnackbarDuration.Short`) and an `Undo` button.
   - Positioned safely above the floating navigation pill: `Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 96.dp)`.

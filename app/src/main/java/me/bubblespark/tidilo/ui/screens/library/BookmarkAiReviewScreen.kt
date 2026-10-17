@@ -619,8 +619,8 @@ private fun SummaryComparisonCard(
 @Composable
 private fun TagComparisonCard(
     title: String,
-    category: String,
-    subcategory: String,
+    category: String?,
+    subcategory: String?,
     entities: List<String>,
     isJapanese: Boolean,
     isSelected: Boolean,
@@ -638,8 +638,8 @@ private fun TagComparisonCard(
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
     }
 
-    val localizedCategory = Category.toLocalized(category, isJapanese)
-    val localizedSubcategory = Subcategory.toLocalized(subcategory, isJapanese)
+    val localizedCategory = category?.let { Category.toLocalized(it, isJapanese) } ?: ""
+    val localizedSubcategory = subcategory?.let { Subcategory.toLocalized(it, isJapanese) } ?: ""
 
     Card(
         modifier = Modifier
@@ -682,17 +682,32 @@ private fun TagComparisonCard(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                ) {
-                    Text(
-                        text = "$localizedCategory › $localizedSubcategory",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ) {
+                        Text(
+                            text = "$localizedCategory › $localizedSubcategory",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ) {
+                        Text(
+                            text = if (isJapanese) "AIスキップ（未分類）" else "AI Skipped (Uncategorized)",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
 

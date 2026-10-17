@@ -65,10 +65,10 @@ fun BookmarkItemCard(
 ) {
     // Localized category and subcategory labels
     val localizedCategory = remember(bookmark.tag.category, currentLanguage) {
-        Category.toLocalized(bookmark.tag.category, currentLanguage.isJapanese)
+        bookmark.tag.category?.let { Category.toLocalized(it, currentLanguage.isJapanese) } ?: ""
     }
     val localizedSubcategory = remember(bookmark.tag.subcategory, currentLanguage) {
-        Subcategory.toLocalized(bookmark.tag.subcategory, currentLanguage.isJapanese)
+        bookmark.tag.subcategory?.let { Subcategory.toLocalized(it, currentLanguage.isJapanese) } ?: ""
     }
 
     // Tag match evaluation (category and subcategory)
@@ -220,37 +220,49 @@ fun BookmarkItemCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Line 1: [category] > [subcategory]
+                // Line 1: [AI Skipped] or [category] > [subcategory] (+ [NSFW])
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    CompactTagBadge(
-                        icon = Icons.Default.Folder,
-                        text = localizedCategory,
-                        isMatched = isCategoryMatched,
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        matchedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        matchedContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                    if (bookmark.isAiSkipped) {
+                        CompactTagBadge(
+                            icon = null,
+                            text = "AI Skipped",
+                            isMatched = false,
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                            matchedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            matchedContentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    } else if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
+                        CompactTagBadge(
+                            icon = Icons.Default.Folder,
+                            text = localizedCategory,
+                            isMatched = isCategoryMatched,
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            matchedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            matchedContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
 
-                    Text(
-                        text = ">",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.outline
-                    )
+                        Text(
+                            text = ">",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.outline
+                        )
 
-                    CompactTagBadge(
-                        icon = Icons.AutoMirrored.Filled.Label,
-                        text = localizedSubcategory,
-                        isMatched = isSubcategoryMatched,
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        matchedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        matchedContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
+                        CompactTagBadge(
+                            icon = Icons.AutoMirrored.Filled.Label,
+                            text = localizedSubcategory,
+                            isMatched = isSubcategoryMatched,
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            matchedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            matchedContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
 
                     if (bookmark.isNsfw) {
                         CompactTagBadge(
@@ -266,7 +278,7 @@ fun BookmarkItemCard(
                 }
 
                 // Line 2: [entities] (leading '#' removed as icon is present; 8.dp uniform vertical spacing)
-                if (bookmark.tag.entities.isNotEmpty()) {
+                if (!bookmark.isAiSkipped && bookmark.tag.entities.isNotEmpty()) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),

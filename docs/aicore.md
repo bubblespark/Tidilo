@@ -231,11 +231,23 @@ AICore inference is only permitted while the app is in the foreground (`TidiloAp
 | Error Code / Name | GenAiException ErrorCode | Trigger Condition | System Behavior & Recovery Strategy |
 | :--- | :--- | :--- | :--- |
 | **`BUSY`** | `9` | AICore system service or NPU is temporarily overloaded. | Retry up to 3 times at 3-second intervals while in foreground (`WAITING_AI: "AICore busy • Retrying (x/3)..."`). If all 3 retries fail, abort the entire Running batch and move all Running items to `Error`. |
-| **`PER_APP_BATTERY_USE_QUOTA_EXCEEDED`** | `27` | Daily on-device battery/power budget for AICore is exceeded. | Display an `AlertDialog` stating *"AICore使用制限を超過しました。URLを取り込めません。しばらく待ってから再度実行するか、フォールバック機能の仕様を検討してください。"* (EN: *"You have exceeded the AICore usage limit. We cannot import the URL. Please wait a while and try again, or enable the fallback feature."*). Move the active task and **all other pending Running tasks back to `Queuing`**. No functional lockout is imposed on the rest of the application. |
-| **`BACKGROUND_USE_BLOCKED`** | `30` | Execution blocked because app was detected in background by system service. | If app is in foreground, retry up to 3 times at 3-second intervals (`WAITING_AI: "AICore background blocked • Retrying (x/3)..."`). If retry limit reached, fail entire Running batch to `Error`. If app is backgrounded, pause in `WAITING_AI` until foreground. |
-| **Other Inference Errors / Retry Limit Exhausted** | `UNKNOWN`, `UNAVAILABLE`, etc. | Unrecoverable model faults, timeouts, or exhausted retries. | Move the active task and **all other pending Running tasks** to the `Error` group. The primary failed task displays the detailed error message, and subsequent pending items display `"Batch stopped: <Error>"`. |
-| **HTTP Non-200 / Network** | Pre-parsing network failure | Status != 200 during fetch | Skipped during ingestion/fast-path pre-parsing, marked as `HTTP Error <Code>`. |
+| **`PER_APP_BATTERY_USE_QUOTA_EXCEEDED`** | `27` | Daily on-device battery/power budget for AICore is exceeded. | **Without Fallback (`DISABLE`)**: Display an `AlertDialog` stating *"AICore使用制限を超過しました。URLを取り込めません。しばらく待ってから再度実行するか、フォールバック機能の仕様を検討してください。"* (EN: *"You have exceeded the AICore usage limit. We cannot import the URL. Please wait a while and try again, or enable the fallback feature."*). Move active task and other pending Running tasks back to `Queuing`.<br>**With Fallback (`QUOTA_EXCEEDED_ONLY` or `ALL`)**: Ingest item immediately as an **AI Skipped Bookmark** (`isAiSkipped = true`, `category = null`, `subcategory = null`, `entities = []`, `summary = description`). The error dialog is suppressed. |
+| **`BACKGROUND_USE_BLOCKED`** | `30` | Execution blocked because app was detected in background by system service. | If app is in foreground, retry up to 3 times at 3-second intervals (`WAITING_AI: "AICore background blocked • Retrying (x/3)..."`). If retry limit reached: if fallback mode is `ALL`, ingest as AI Skipped Bookmark; otherwise fail entire Running batch to `Error`. If app is backgrounded, pause in `WAITING_AI` until foreground. |
+| **Other Inference Errors / Retry Limit Exhausted** | `UNKNOWN`, `UNAVAILABLE`, etc. | Unrecoverable model faults, timeouts, or exhausted retries. | If fallback mode is `ALL`, convert item directly into an AI Skipped Bookmark (`isAiSkipped = true`). Otherwise, move the active task and pending Running tasks to the `Error` group (`"Batch stopped: <Error>"`). |
+| **HTTP Non-200 / Network** | Pre-parsing network failure | Status != 200 during fetch | Skipped during ingestion/fast-path pre-parsing, marked as `HTTP Error <Code>`. Non-AICore errors do not fallback. |
 | **JSON Parse Malformed** | SLM formatting anomaly | Unparseable JSON syntax | Gracefully caught in `GeminiTaggingService`; falls back to HTML OGP metadata without throwing an unrecoverable exception. |
+
+### AICore Error Fallback Modes (`AppConfig.aiCoreFallbackMode`)
+Users can configure the fallback behavior under **Settings ➔ AI ➔ AICoreエラー発生時のフォールバック**:
+- **`無効 (Disable)`** *(Default)*: Standard behavior where quota exceeded triggers a warning dialog and other fatal errors push items to the `Error` list.
+- **`AICore超過時のみ (Only if the AICore quota is exceeded)`**: Triggers fallback exclusively when error code `PER_APP_BATTERY_USE_QUOTA_EXCEEDED (27)` is returned. Items are saved into the Library as bookmarks with `isAiSkipped = true` without showing the error dialog.
+- **`全て (All)`**: Applies fallback to quota exceeded and all AICore error codes (after retry exhaustion where applicable).
+
+#### Fallback Bookmark Contract
+- **`isAiSkipped`**: `true` (renders an "AI Skipped" badge in bookmark list and detail cards).
+- **`tag`**: `Tag.createEmpty()` (`category = null`, `subcategory = null`, `entities = emptyList()`).
+- **`description`**: Set to the HTML-parsed page description (`og:description` or `<meta name="description">`).
+- **Domain Icons & Policies**: Cached and associated normally.
 
 ---
 

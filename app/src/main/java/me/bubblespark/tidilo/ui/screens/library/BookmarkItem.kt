@@ -8,8 +8,8 @@ import androidx.compose.runtime.Immutable
  */
 @Immutable
 data class Tag(
-    val category: String = DEFAULT_TAG,
-    val subcategory: String = DEFAULT_TAG,
+    val category: String? = DEFAULT_TAG,
+    val subcategory: String? = DEFAULT_TAG,
     val entities: List<String> = emptyList()
 ) {
     companion object {
@@ -27,6 +27,8 @@ data class Tag(
                 .filter { it.isNotBlank() }
             return Tag(category = cat, subcategory = sub, entities = cleanEntities)
         }
+
+        fun createEmpty(): Tag = Tag(category = null, subcategory = null, entities = emptyList())
     }
 }
 
@@ -44,7 +46,8 @@ data class BookmarkItem(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = createdAt,
     val note: String = "",
-    val isNsfw: Boolean = false
+    val isNsfw: Boolean = false,
+    val isAiSkipped: Boolean = false
 )
 
 /**

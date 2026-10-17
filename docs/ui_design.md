@@ -71,11 +71,15 @@ Tidilo uses realistic spring physics rather than mechanical linear transitions:
   - Combined with subtle alpha fade (`fadeIn(200ms)` / `fadeOut(150ms)`).
 
 ### 4.2 Screen-to-Screen Navigation & In-Page State Transitions
-- **Screen-to-Screen Transitions (`TidiloNavGraph.kt`)**:
-  - Fully symmetric lateral slide transitions with non-bouncy spring physics (`dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow`):
-    - **Forward Hierarchical Navigation (Enter / Exit)**: Incoming screen slides in from right to left (`SlideDirection.Start`) + fade in (280ms); outgoing screen slides out toward left (`SlideDirection.Start`) + fade out (200ms).
-    - **Backward / Pop Hierarchical Navigation (PopEnter / PopExit)**: Previous screen slides in from left to right (`SlideDirection.End`) + fade in (280ms); popping screen slides out toward right (`SlideDirection.End`) + fade out (200ms).
-    - **Predictive Pop Navigation (PredictivePopEnter / PredictivePopExit)**: Explicitly overrides Navigation Compose default `scaleOut(0.7f)` with symmetric lateral slides (`slideIntoContainer(End)` and `slideOutOfContainer(End)`). Completely eliminates unwanted shrinking-to-center / dissolve artifacts during predictive back swipe gestures.
+  - **Screen-to-Screen Transitions (`TidiloNavGraph.kt`)**:
+    - Fully symmetric lateral slide transitions with non-bouncy spring physics (`dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow`):
+      - **Forward Hierarchical Navigation (Enter / Exit)**: Incoming screen slides in from right to left (`SlideDirection.Start`) + fade in (280ms); outgoing screen slides out toward left (`SlideDirection.Start`) + fade out (200ms).
+      - **Backward / Pop Hierarchical Navigation (PopEnter / PopExit)**: Previous screen slides in from left to right (`SlideDirection.End`) + fade in (280ms); popping screen slides out toward right (`SlideDirection.End`) + fade out (200ms).
+      - **Predictive Pop Navigation (PredictivePopEnter / PredictivePopExit)**: Explicitly overrides Navigation Compose default `scaleOut(0.7f)` with symmetric lateral slides (`slideIntoContainer(End)` and `slideOutOfContainer(End)`). Completely eliminates unwanted shrinking-to-center / dissolve artifacts during predictive back swipe gestures.
+  - **Dynamic Back-Stack Direction & Mid-Transition Gesture Safety**:
+    - **Zero-Hierarchy Clean Architecture**: Avoids static depth numbers or hardcoded screen names.
+    - Transitions evaluate returning vs advancing dynamically: when `targetState.id == navController.previousBackStackEntry?.id`, the transition is definitively a backward/pop operation and slides toward `End` (rightward). Otherwise, forward hierarchical transitions slide toward `Start` (leftward).
+    - **Mid-Transition Back Swipe Collision Prevention (Fixes Issue #29)**: When a back gesture interrupts an in-flight forward entrance animation, Navigation Compose evaluates `enterTransition` / `exitTransition` instead of `popEnter` / `popExit`. Because the dynamic resolver checks `navController.previousBackStackEntry`, it accurately detects that the destination is the returning parent and enforces `SlideDirection.End`. This ensures the outgoing screen smoothly slides out to the right (→) and parent screen slides in from the left (→) without collision (`→ ←`) or blackout artifacts.
   - **Bottom Navigation Tab-Relative Direction**:
     - For floating navigation bar tabs (`Screen.allTabs`: `Library: 0`, `Search: 1`, `Queue: 2`), the transition direction is determined by relative physical tab order rather than back-stack depth:
       - **Moving Right (`targetIndex > initialIndex`)**: `Library ➔ Search`, `Search ➔ Queue`, `Library ➔ Queue` slide with `SlideDirection.Start` (incoming enters from right).

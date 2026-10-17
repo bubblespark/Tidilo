@@ -201,19 +201,15 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - **Left Swipe (`EndToStart`)**: Triggers immediate item deletion.
     - Container: Error Red (`Color(0xFFC62828)`), `RoundedCornerShape(24.dp)`.
     - Content: Trash icon (`Icons.Default.Delete`, 26dp, White) aligned `CenterEnd` with `24dp` horizontal padding.
-- **Scroll Conflict & Fling Prevention (75% Threshold)**:
-  - `positionalThreshold = { totalDistance -> totalDistance * 0.75f }` requiring a deliberate 75% horizontal displacement.
-  - Guarded inside `confirmValueChange` against flick velocity: if `dismissState.progress < 0.75f`, immediately rejects the change (`false`) and settles the card back to its original position, guaranteeing execution only on a deliberate 75%+ swipe.
-- **Card Frame-Out & Background Fade-Out Animation**:
-  - Once 75% threshold is confirmed (`confirmValueChange = true`):
-    1. Card animates naturally to the edge and completely frames out of the viewport (retaining anchors to reach `currentValue != Settled` at 100% displacement).
-    2. Only after the card has fully framed out, the remaining green/red action container smoothly fades out via `LaunchedEffect(dismissState.currentValue)` and `backgroundAlpha.animateTo(0f, tween(200, easing = FastOutSlowInEasing))` with `graphicsLayer { this.alpha = alpha }`.
-    3. Triggers the action callback (`onSwipeRight()` / `onSwipeLeft()`) to mutate the ViewModel list only after the fade-out completes, providing an ultra-smooth visual exit.
-- **Card Tap & Transition Integrity**:
-  - Disabled list item fade-out (`Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)`) across all queue groups, preventing cards from becoming semi-transparent when tapped or removed.
-  - Card container colors accurately preserved from original design: `errorContainer.copy(alpha = 0.35f)` for Error cards, and `surfaceContainerHigh ?: surfaceVariant.copy(alpha = 0.4f)` for standard cards.
-  - **Background Bleed-Through Prevention**: Cards feature an underlying opaque shape layer (`Modifier.background(MaterialTheme.colorScheme.background, RoundedCornerShape(24.dp))`), ensuring swipe background colors (green/red) never bleed through semi-transparent card containers during drags.
-  - **Direction Reset to Settled**: When a slight swipe gesture is cancelled (<75%), `activeDirection` cleanly resets to `Settled` (`Color.Transparent`), guaranteeing the card immediately reverts to its original color without stuck background tinting.
+- **Ergonomic Threshold & Velocity Fling Support (45% Threshold)**:
+  - `positionalThreshold = { totalDistance -> totalDistance * 0.45f }` providing a natural 45% horizontal travel distance.
+  - Seamlessly accepts quick fling flicks with natural velocity without artificial progress gates, ensuring responsive, modern touch dynamics.
+- **Dynamic Tactile Icon Scale Feedback**:
+  - Action icons (`Icons.Default.AutoAwesome` / `Icons.Default.Delete`) dynamically spring from `0.85f` to `1.15f` scale (`Spring.DampingRatioMediumBouncy`) as drag progress crosses the 45% threshold, giving tactile visual feedback when the swipe action is locked in.
+- **Immediate State Reset & Lifecycle Protection (Resolves Issue #27)**:
+  - Upon dismissal confirmation (`dismissState.currentValue != Settled`), executes the action immediately and snaps `dismissState` back to `Settled` (`snapTo(Settled)`).
+  - List item removals and moves are animated smoothly by Compose LazyColumn `Modifier.animateItem()`.
+  - Guarded with `LaunchedEffect(item.id, item.status, item.statusText)`: Any card retained or returned to the queue (e.g. AICore Quota Exceeded error 27 or deletion Undo) automatically snaps back to `Settled` with full gestures re-enabled, completely eliminating off-screen stuck card states.
 - **Undo Snackbar & Clean State Restoration**:
   - Displays with standard short duration (`SnackbarDuration.Short`) and an `Undo` button.
   - Positioned safely above the floating navigation pill: `Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 96.dp)`.

@@ -6,6 +6,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
@@ -545,7 +546,9 @@ private fun EmptyGroupCard(
  * Swipe-action enabled card (SwipeToDismissBox):
  * - Right swipe: AI Tagging (green background + Icons.Default.AutoAwesome)
  * - Left swipe: Delete (red background + Icons.Default.Delete)
- * - positionalThreshold: Prevents unintended triggers and vertical scroll interference (75% movement to confirm)
+ * - positionalThreshold: 45% card travel with smooth velocity fling support
+ * - Immediate state reset: Prevents cards from sticking in off-screen positions when
+ *   items return or remain in the queue (e.g. Quota Exceeded error 27 or Undo).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -556,77 +559,56 @@ private fun SwipeableQueueItemCard(
     onSwipeLeft: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val density = LocalDensity.current
     var isActionCompleted by remember(item.id) { mutableStateOf(false) }
     var confirmedDirection by remember(item.id) { mutableStateOf<SwipeToDismissBoxValue?>(null) }
-    val backgroundAlpha = remember(item.id) { Animatable(1f) }
 
-    // Cleanly instantiate with remember(item.id) instead of rememberSaveable to prevent
-    // restoring past off-screen swipe states (EndToStart/StartToEnd) upon Undo restore.
-    var dismissStateRef by remember(item.id) { mutableStateOf<SwipeToDismissBoxState?>(null) }
-    val dismissState = remember(item.id) {
-        @Suppress("DEPRECATION")
-        SwipeToDismissBoxState(
-            initialValue = SwipeToDismissBoxValue.Settled,
-            density = density,
-            confirmValueChange = { dismissValue ->
-                if (isActionCompleted) return@SwipeToDismissBoxState false
-                if (dismissValue == SwipeToDismissBoxValue.Settled) {
-                    confirmedDirection = null
-                    return@SwipeToDismissBoxState true
-                }
-                // Reset if not swiped past ~75% (reliably prevents accidental triggers due to velocity)
-                val currentProgress = dismissStateRef?.progress ?: 0f
-                android.util.Log.d("QueueSwipe", "confirmValueChange: $dismissValue, progress=$currentProgress")
-                if (currentProgress < 0.75f) {
-                    confirmedDirection = null
-                    return@SwipeToDismissBoxState false
-                }
-                // Confirmed swipe at or above 75%. Lock direction during slide-out and fade
-                confirmedDirection = dismissValue
-                true
-            },
-            positionalThreshold = { totalDistance -> totalDistance * 0.75f }
-        ).also { dismissStateRef = it }
+    val dismissState = rememberSwipeToDismissBoxState(
+        initialValue = SwipeToDismissBoxValue.Settled,
+        positionalThreshold = { totalDistance -> totalDistance * 0.45f }
+    )
+
+    // Ensure card is in Settled state if restored or returned from Running (e.g. Quota Exceeded error)
+    LaunchedEffect(item.id, item.status, item.statusText) {
+        if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
+            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+            confirmedDirection = null
+            isActionCompleted = false
+        }
     }
 
-    // After the card completely leaves the screen (currentValue reaches boundary),
-    // fade out the remaining background color and execute the action upon completion.
+    // Trigger action when card is dismissed and reset state immediately
     LaunchedEffect(dismissState.currentValue) {
         val current = dismissState.currentValue
         if (current != SwipeToDismissBoxValue.Settled && !isActionCompleted) {
             isActionCompleted = true
             confirmedDirection = current
-            // 1. Fade out the remaining action background color
-            backgroundAlpha.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
-            )
-            // 2. Execute action after fade-out completes (ViewModel update -> item removal)
             if (current == SwipeToDismissBoxValue.StartToEnd) {
                 onSwipeRight()
             } else if (current == SwipeToDismissBoxValue.EndToStart) {
                 onSwipeLeft()
             }
+            // Reset state so that if the item returns or remains in queue (e.g. quota error, retry),
+            // it doesn't stay stuck in the dismissed/off-screen position.
+            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+            confirmedDirection = null
+            isActionCompleted = false
         }
     }
 
-    // Determine background direction to display:
-    // After confirmation, use locked confirmedDirection.
-    // Otherwise (idle, swiping, cancel return), use dismissState.dismissDirection directly.
-    // Reliably return to Settled (transparent) when released back to center.
     val activeDirection = if (isActionCompleted || confirmedDirection != null) {
         confirmedDirection ?: dismissState.dismissDirection
     } else {
         dismissState.dismissDirection
     }
 
+    val progress = dismissState.progress
+
     SwipeToDismissBox(
         state = dismissState,
         backgroundContent = {
             SwipeDismissBackground(
                 direction = activeDirection,
-                alpha = backgroundAlpha.value
+                progress = progress
             )
         },
         modifier = modifier.offset(x = bounceOffsetDp.dp),
@@ -642,12 +624,12 @@ private fun SwipeableQueueItemCard(
 
 /**
  * Background displayed during swipe (Green + Sparkles / Red + Trash).
- * Supports alpha parameter for fading out background color after card frames out.
+ * Features dynamic icon scaling for tactile feedback as swipe threshold is approached.
  */
 @Composable
 private fun SwipeDismissBackground(
     direction: SwipeToDismissBoxValue,
-    alpha: Float = 1f
+    progress: Float = 0f
 ) {
     val backgroundColor = when (direction) {
         SwipeToDismissBoxValue.StartToEnd -> Color(0xFF2E7D32) // Green (AI Tagging)
@@ -665,10 +647,19 @@ private fun SwipeDismissBackground(
         Alignment.CenterEnd
     }
 
+    val isPastThreshold = progress >= 0.45f
+    val iconScale by animateFloatAsState(
+        targetValue = if (isPastThreshold) 1.15f else 0.85f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "iconScale"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { this.alpha = alpha }
             .clip(RoundedCornerShape(24.dp))
             .background(backgroundColor)
             .padding(horizontal = 24.dp),
@@ -679,7 +670,12 @@ private fun SwipeDismissBackground(
                 imageVector = icon,
                 contentDescription = null,
                 tint = Color.White,
-                modifier = Modifier.size(26.dp)
+                modifier = Modifier
+                    .size(26.dp)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    }
             )
         }
     }

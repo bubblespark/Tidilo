@@ -254,4 +254,37 @@ class LibrarySearchTest {
         assertEquals(1, visibleWhenFalse.size)
         assertEquals("Clean Tech", visibleWhenFalse[0].title)
     }
+
+    @Test
+    fun testFilterBookmarksByDomain() {
+        val domainBookmarks = listOf(
+            BookmarkItem(id = "1", title = "M3", url = "https://m3.material.io/components", description = "", tag = Tag.create("Design", "Material3")),
+            BookmarkItem(id = "2", title = "Android AI", url = "https://developer.android.com/ai/aicore", description = "", tag = Tag.create("AI", "AICore")),
+            BookmarkItem(id = "3", title = "Android Compose", url = "https://developer.android.com/compose", description = "", tag = Tag.create("Design", "Compose")),
+            BookmarkItem(id = "4", title = "Invalid URL", url = "not-a-valid-url", description = "", tag = Tag.create("None", "None"))
+        )
+
+        // Exact match
+        val androidDev = LibraryViewModel.filterBookmarksByDomain(domainBookmarks, "developer.android.com")
+        assertEquals(2, androidDev.size)
+        assertEquals(listOf("2", "3"), androidDev.map { it.id })
+
+        // Case-insensitivity & trimming
+        val androidDevCase = LibraryViewModel.filterBookmarksByDomain(domainBookmarks, "  Developer.Android.COM  ")
+        assertEquals(2, androidDevCase.size)
+
+        // Single match
+        val m3 = LibraryViewModel.filterBookmarksByDomain(domainBookmarks, "m3.material.io")
+        assertEquals(1, m3.size)
+        assertEquals("1", m3[0].id)
+
+        // Non-existent domain
+        val nonExistent = LibraryViewModel.filterBookmarksByDomain(domainBookmarks, "nonexistent.org")
+        assertTrue(nonExistent.isEmpty())
+
+        // Null and blank domain
+        assertTrue(LibraryViewModel.filterBookmarksByDomain(domainBookmarks, null).isEmpty())
+        assertTrue(LibraryViewModel.filterBookmarksByDomain(domainBookmarks, "").isEmpty())
+        assertTrue(LibraryViewModel.filterBookmarksByDomain(domainBookmarks, "   ").isEmpty())
+    }
 }

@@ -133,6 +133,20 @@
     <string name="detail_dialog_discard_message">Unsaved changes will be discarded.</string>
     <string name="detail_dialog_delete_title">Delete Bookmark</string>
     <string name="detail_dialog_delete_message">Move this bookmark to trash?\n(Kept for 30 days before permanent deletion)</string>
+    <string name="detail_edit_tags">Edit category and tags</string>
+    <string name="detail_tag_dialog_title">Edit Category &amp; Tags</string>
+    <string name="detail_tag_category_label">Category</string>
+    <string name="detail_tag_subcategory_label">Subcategory</string>
+    <string name="detail_tag_entity_label">Entity</string>
+    <string name="detail_tag_add_entity">Add new entity</string>
+    <string name="detail_tag_select_entities">Select from existing entity tags</string>
+    <string name="detail_add_entity_title">Add Entity</string>
+    <string name="detail_add_entity_placeholder">Enter entity name</string>
+    <string name="detail_entity_picker_title">Select Entity Tags</string>
+    <string name="detail_entity_picker_selected">Selected</string>
+    <string name="detail_entity_picker_all">All Entities</string>
+    <string name="detail_entity_picker_empty">No entity tags available</string>
+    <string name="detail_tag_remove_entity">Remove %1$s</string>
 
     <!-- AI Review Screen -->
     <string name="ai_review_title">AI Proposal Review</string>

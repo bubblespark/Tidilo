@@ -197,6 +197,41 @@ class BookmarkRepository private constructor(context: Context) {
     }
 
     /**
+     * Updates note and tag of a bookmark and persists the change atomically.
+     */
+    fun updateBookmarkDetails(
+        id: String,
+        note: String,
+        tag: Tag
+    ) {
+        val now = System.currentTimeMillis()
+        val current = _bookmarks.value
+        val updated = current.map { item ->
+            if (item.id == id) {
+                item.copy(
+                    note = note,
+                    tag = tag,
+                    updatedAt = now
+                )
+            } else {
+                item
+            }
+        }
+        _bookmarks.value = updated
+
+        repositoryScope.launch {
+            bookmarkDao.updateNoteAndTag(
+                id = id,
+                note = note,
+                category = tag.category,
+                subcategory = tag.subcategory,
+                entities = tag.entities,
+                updatedAt = now
+            )
+        }
+    }
+
+    /**
      * Moves a bookmark to the trash.
      * - Excludes the item from the active bookmark list.
      * - Retains in trash up to MAX_TRASH_CAPACITY (evicting oldest items beyond limit).

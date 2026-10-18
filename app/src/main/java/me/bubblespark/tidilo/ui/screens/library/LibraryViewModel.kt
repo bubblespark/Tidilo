@@ -182,6 +182,10 @@ class LibraryViewModel : ViewModel() {
         bookmarkRepository.updateBookmarkFields(id, description, tag)
     }
 
+    fun updateBookmarkDetails(id: String, note: String, tag: Tag) {
+        bookmarkRepository.updateBookmarkDetails(id, note, tag)
+    }
+
     fun deleteBookmark(id: String) {
         bookmarkRepository.moveToTrash(id)
     }

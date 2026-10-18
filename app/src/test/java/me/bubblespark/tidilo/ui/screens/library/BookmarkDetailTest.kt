@@ -155,4 +155,83 @@ class BookmarkDetailTest {
         assertEquals("Tech", item.tag.subcategory)
         assertEquals(listOf("Zenn", "TypeScript"), item.tag.entities)
     }
+
+    @Test
+    fun testBookmarkTagModificationPreservesOtherFields() {
+        val initialTime = 1000L
+        val updateTime = 2000L
+        val original = BookmarkItem(
+            id = "b-test-edit",
+            title = "Original Title",
+            url = "https://example.com/item",
+            description = "Original Description",
+            tag = Tag.create("Article", "Tech", listOf("Kotlin")),
+            createdAt = initialTime,
+            updatedAt = initialTime,
+            note = "Original Note",
+            isNsfw = false,
+            isAiSkipped = false
+        )
+
+        val updatedTag = Tag.create("Tool", "Business", listOf("Kotlin", "Productivity"))
+        val updatedNote = "Updated Note"
+        val modified = original.copy(
+            note = updatedNote,
+            tag = updatedTag,
+            updatedAt = updateTime
+        )
+
+        // Verify updated fields
+        assertEquals("Tool", modified.tag.category)
+        assertEquals("Business", modified.tag.subcategory)
+        assertEquals(listOf("Kotlin", "Productivity"), modified.tag.entities)
+        assertEquals("Updated Note", modified.note)
+        assertEquals(updateTime, modified.updatedAt)
+
+        // Verify preserved fields
+        assertEquals("b-test-edit", modified.id)
+        assertEquals("Original Title", modified.title)
+        assertEquals("https://example.com/item", modified.url)
+        assertEquals("Original Description", modified.description)
+        assertEquals(initialTime, modified.createdAt)
+        assertEquals(false, modified.isNsfw)
+        assertEquals(false, modified.isAiSkipped)
+    }
+
+    @Test
+    fun testEntityTagListToggleAndRemoval() {
+        var entities = listOf("Compose", "Android", "Kotlin")
+
+        // 1. Remove entity
+        entities = entities.filterNot { it.equals("Android", ignoreCase = true) }
+        assertEquals(listOf("Compose", "Kotlin"), entities)
+
+        // 2. Toggle existing entity (should remove)
+        val target1 = "Compose"
+        entities = if (entities.any { it.equals(target1, ignoreCase = true) }) {
+            entities.filterNot { it.equals(target1, ignoreCase = true) }
+        } else {
+            entities + target1
+        }
+        assertEquals(listOf("Kotlin"), entities)
+
+        // 3. Toggle absent entity (should add)
+        val target2 = "Jetpack"
+        entities = if (entities.any { it.equals(target2, ignoreCase = true) }) {
+            entities.filterNot { it.equals(target2, ignoreCase = true) }
+        } else {
+            entities + target2
+        }
+        assertEquals(listOf("Kotlin", "Jetpack"), entities)
+    }
+
+    @Test
+    fun testCompareEntityNamesSorting() {
+        val list = listOf("日本語", "Apple", "zebra", "Banana", "テスト")
+        val sorted = list.sortedWith { a, b -> compareEntityNames(a, b) }
+
+        // English / ASCII words should precede Japanese, and be sorted alphabetically ignoring case
+        assertEquals(listOf("Apple", "Banana", "zebra", "テスト", "日本語"), sorted)
+    }
 }
+

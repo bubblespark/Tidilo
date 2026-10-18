@@ -73,7 +73,7 @@ enum class EntitySortMode {
     NAME
 }
 
-private fun compareEntityNames(a: String, b: String): Int {
+internal fun compareEntityNames(a: String, b: String): Int {
     val aFirst = a.firstOrNull()
     val bFirst = b.firstOrNull()
     val aIsAscii = aFirst != null && aFirst.code < 128

@@ -47,6 +47,16 @@ interface BookmarkDao {
         updatedAt: Long
     )
 
+    @Query("UPDATE bookmarks SET note = :note, category = :category, subcategory = :subcategory, entities = :entities, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateNoteAndTag(
+        id: String,
+        note: String,
+        category: String?,
+        subcategory: String?,
+        entities: List<String>,
+        updatedAt: Long
+    )
+
     @Query("UPDATE bookmarks SET isNsfw = :isNsfw WHERE id IN (:ids)")
     suspend fun updateNsfwByIds(ids: List<String>, isNsfw: Boolean)
 

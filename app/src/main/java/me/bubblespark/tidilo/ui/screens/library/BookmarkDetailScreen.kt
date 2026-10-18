@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
@@ -159,11 +160,23 @@ fun BookmarkDetailScreen(
     var noteText by remember(bookmark.id, bookmark.note) {
         mutableStateOf(bookmark.note)
     }
+    var editedTag by remember(bookmark.id, bookmark.tag) {
+        mutableStateOf(bookmark.tag)
+    }
     var showDiscardConfirmDialog by remember { mutableStateOf(false) }
     var isFabMenuExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    val hasChanges = remember(noteText, bookmark.note) {
-        noteText != bookmark.note
+
+    var showTagEditDialog by remember { mutableStateOf(false) }
+    var showAddEntityDialog by remember { mutableStateOf(false) }
+    var showEntityBottomSheet by remember { mutableStateOf(false) }
+
+    var draftCategory by remember { mutableStateOf<String?>(null) }
+    var draftSubcategory by remember { mutableStateOf<String?>(null) }
+    var draftEntities by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    val hasChanges = remember(noteText, bookmark.note, editedTag, bookmark.tag) {
+        (noteText != bookmark.note) || (editedTag != bookmark.tag)
     }
 
     // Intercept swipe-back (system gesture back)
@@ -171,11 +184,11 @@ fun BookmarkDetailScreen(
         showDiscardConfirmDialog = true
     }
 
-    val localizedCategory = remember(bookmark.tag.category, context) {
-        bookmark.tag.category?.let { Category.toLocalized(it, context) } ?: ""
+    val localizedCategory = remember(editedTag.category, context) {
+        editedTag.category?.let { Category.toLocalized(it, context) } ?: ""
     }
-    val localizedSubcategory = remember(bookmark.tag.subcategory, context) {
-        bookmark.tag.subcategory?.let { Subcategory.toLocalized(it, context) } ?: ""
+    val localizedSubcategory = remember(editedTag.subcategory, context) {
+        editedTag.subcategory?.let { Subcategory.toLocalized(it, context) } ?: ""
     }
 
     val formattedCreatedAt = remember(bookmark.createdAt) {
@@ -261,7 +274,7 @@ fun BookmarkDetailScreen(
             Button(
                 onClick = {
                     if (hasChanges) {
-                        viewModel.updateBookmarkNote(bookmark.id, noteText)
+                        viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag)
                     }
                     onNavigateBack()
                 },
@@ -380,24 +393,47 @@ fun BookmarkDetailScreen(
 
         // 4. Section: Tags & Classification
         Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.Tag,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = stringResource(R.string.detail_section_tags),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Tag,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.detail_section_tags),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    draftCategory = editedTag.category
+                    draftSubcategory = editedTag.subcategory
+                    draftEntities = editedTag.entities
+                    showTagEditDialog = true
+                },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Edit,
+                    contentDescription = stringResource(R.string.detail_edit_tags),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(10.dp))
+
+        val isAiSkipped = bookmark.isAiSkipped && editedTag.category == null && editedTag.subcategory == null && editedTag.entities.isEmpty()
 
         // [category] > [subcategory] newline [entities] (uniform 8.dp line spacing)
         Column(
@@ -409,7 +445,7 @@ fun BookmarkDetailScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (bookmark.isAiSkipped) {
+                if (isAiSkipped) {
                     AssistChip(
                         onClick = {},
                         label = { Text(stringResource(R.string.bookmark_ai_skipped), fontWeight = FontWeight.Bold) },
@@ -464,6 +500,24 @@ fun BookmarkDetailScreen(
                         ),
                         shape = RoundedCornerShape(10.dp)
                     )
+                } else if (localizedCategory.isNotBlank()) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(localizedCategory) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
                 }
 
                 if (bookmark.isNsfw) {
@@ -480,7 +534,7 @@ fun BookmarkDetailScreen(
             }
 
             // Line 2: [entities] (disables LocalMinimumInteractiveComponentSize to compact multi-line height)
-            if (!bookmark.isAiSkipped && bookmark.tag.entities.isNotEmpty()) {
+            if (!isAiSkipped && editedTag.entities.isNotEmpty()) {
                 CompositionLocalProvider(
                     LocalMinimumInteractiveComponentSize provides Dp.Unspecified
                 ) {
@@ -491,7 +545,7 @@ fun BookmarkDetailScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        bookmark.tag.entities.forEach { entity ->
+                        editedTag.entities.forEach { entity ->
                             AssistChip(
                                 onClick = {},
                                 label = { Text(entity.removePrefix("#")) },
@@ -818,6 +872,56 @@ fun BookmarkDetailScreen(
                 }
             },
             shape = RoundedCornerShape(24.dp)
+        )
+    }
+
+    // Tag edit dialogs & bottom sheet
+    if (showTagEditDialog) {
+        BookmarkTagEditDialog(
+            selectedCategory = draftCategory,
+            selectedSubcategory = draftSubcategory,
+            selectedEntities = draftEntities,
+            onCategoryChanged = { draftCategory = it },
+            onSubcategoryChanged = { draftSubcategory = it },
+            onAddEntityClick = { showAddEntityDialog = true },
+            onOpenEntityPickerClick = { showEntityBottomSheet = true },
+            onConfirm = {
+                editedTag = Tag.create(draftCategory, draftSubcategory, draftEntities)
+                showTagEditDialog = false
+            },
+            onDismiss = { showTagEditDialog = false }
+        )
+    }
+
+    if (showAddEntityDialog) {
+        AddEntityDialog(
+            onDismiss = { showAddEntityDialog = false },
+            onConfirm = { newEntity ->
+                if (!draftEntities.any { it.equals(newEntity, ignoreCase = true) }) {
+                    draftEntities = draftEntities + newEntity
+                }
+            }
+        )
+    }
+
+    if (showEntityBottomSheet) {
+        val allLibraryEntities = remember(bookmarks) {
+            bookmarks.flatMap { it.tag.entities }.distinct()
+        }
+        EntityTagPickerBottomSheet(
+            selectedEntities = draftEntities,
+            allEntities = (allLibraryEntities + draftEntities).distinct(),
+            onToggleEntity = { entity ->
+                draftEntities = if (draftEntities.any { it.equals(entity, ignoreCase = true) }) {
+                    draftEntities.filterNot { it.equals(entity, ignoreCase = true) }
+                } else {
+                    draftEntities + entity
+                }
+            },
+            onRemoveEntity = { entity ->
+                draftEntities = draftEntities.filterNot { it.equals(entity, ignoreCase = true) }
+            },
+            onDismiss = { showEntityBottomSheet = false }
         )
     }
 } // End of Box (fillMaxSize)

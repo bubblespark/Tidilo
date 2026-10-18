@@ -27,7 +27,7 @@ Used for visual categorization chips:
 
 ### 1.3 Warning Colors (Semantic Amber/Gold)
 Used for warning indicators, non-blocking fallback statuses, and AI Skipped notifications:
-- **`WarningLight` (`0xFF825500`)**: Deep amber tone calibrated for WCAG AAA contrast and high legibility against light background and surface containers.
+- **`WarningLight` (`0xFFB87700`)**: Brightened amber-gold tone calibrated for clear yellow/warning icon recognition and high legibility against light backgrounds.
 - **`WarningDark` (`0xFFFFBA28`)**: Luminous gold/yellow tone ensuring vibrant visibility and high contrast against dark OLED/gray surfaces.
 - **`WarningColor.textOrIcon`**: Adaptive `@Composable` helper dynamically resolving to `WarningDark` when `isSystemInDarkTheme() == true` and `WarningLight` otherwise.
 

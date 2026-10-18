@@ -59,7 +59,7 @@ val TagDesign = Color(0xFFE64A19)
 val TagNews = Color(0xFF0288D1)
 
 // Warning Colors (Semantic Amber/Gold for AI Skipped / Warnings)
-val WarningLight = Color(0xFF825500)
+val WarningLight = Color(0xFFB87700)
 val WarningDark = Color(0xFFFFBA28)
 
 object WarningColor {

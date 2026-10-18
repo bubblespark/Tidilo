@@ -172,11 +172,12 @@ class ImportRepository internal constructor(
      * "AI Analysis All": Moves all Ready URLs to Processing and sequentially executes AI analysis.
      */
     fun aiAnalysisAll() {
-        val currentReady = _readyTasks.value
-        if (currentReady.isEmpty()) return
-
         repositoryScope.launch {
-            val converted = currentReady.map { item ->
+            val readyEntities = taskDao.getTasksByStatuses(listOf(TaskStatus.READY.name))
+            if (readyEntities.isEmpty()) return@launch
+
+            val converted = readyEntities.map { entity ->
+                val item = entity.toImportTask()
                 item.copy(
                     status = TaskStatus.WAITING_AI,
                     statusText = "Waiting for AICore slot..."
@@ -194,9 +195,9 @@ class ImportRepository internal constructor(
      * Moves a single Ready task to Processing and starts AI analysis.
      */
     fun promoteTaskToProcessing(taskId: String) {
-        val target = _readyTasks.value.find { it.id == taskId } ?: return
-
         repositoryScope.launch {
+            val targetEntity = taskDao.getTaskById(taskId) ?: return@launch
+            val target = targetEntity.toImportTask()
             val promoted = target.copy(
                 status = TaskStatus.WAITING_AI,
                 statusText = "Waiting for AICore slot..."
@@ -210,9 +211,9 @@ class ImportRepository internal constructor(
      * Moves an Error task back to Processing and retries AI analysis.
      */
     fun retryErrorTask(taskId: String) {
-        val target = _errorTasks.value.find { it.id == taskId } ?: return
-
         repositoryScope.launch {
+            val targetEntity = taskDao.getTaskById(taskId) ?: return@launch
+            val target = targetEntity.toImportTask()
             val retried = target.copy(
                 status = TaskStatus.WAITING_AI,
                 statusText = "Waiting for AICore slot...",
@@ -289,11 +290,13 @@ class ImportRepository internal constructor(
      * Resumes or retries all tasks in the Processing group that are in WAITING_AI or interrupted state.
      */
     fun retryWaitingProcessingTasks() {
-        val waiting = _processingTasks.value.filter {
-            it.status == TaskStatus.WAITING_AI || it.status == TaskStatus.PROCESSING_AI
-        }
-        waiting.forEach { item ->
-            executeTaskAiAnalysis(item.id)
+        repositoryScope.launch {
+            val waitingEntities = taskDao.getTasksByStatuses(
+                listOf(TaskStatus.WAITING_AI.name, TaskStatus.PROCESSING_AI.name)
+            )
+            waitingEntities.forEach { entity ->
+                executeTaskAiAnalysis(entity.id)
+            }
         }
     }
 
@@ -303,7 +306,13 @@ class ImportRepository internal constructor(
     fun executeTaskAiAnalysis(taskId: String) {
         repositoryScope.launch {
             executionMutex.withLock {
-                val target = _processingTasks.value.find { it.id == taskId } ?: return@withLock
+                val targetEntity = taskDao.getTaskById(taskId) ?: return@withLock
+                val target = targetEntity.toImportTask()
+
+                // If task is no longer in a runnable state (e.g. deleted or already completed/errored), skip
+                if (target.status != TaskStatus.WAITING_AI && target.status != TaskStatus.PROCESSING_AI) {
+                    return@withLock
+                }
 
                 // If app is currently in background, do not start inference; wait for foreground
                 if (!TidiloApplication.instance.isAppInForeground) {
@@ -485,15 +494,17 @@ class ImportRepository internal constructor(
      */
     private fun moveAllProcessingToReady() {
         _quotaExceededDialogVisible.value = true
-        val currentProcessing = _processingTasks.value
-        val converted = currentProcessing.map { item ->
-            item.copy(
-                status = TaskStatus.READY,
-                statusText = "Ready • Quota exceeded"
-            )
-        }
         foregroundRetryCounts.clear()
         repositoryScope.launch {
+            val currentProcessing = taskDao.getTasksByStatuses(
+                listOf(TaskStatus.PROCESSING_AI.name, TaskStatus.WAITING_AI.name)
+            ).map { it.toImportTask() }
+            val converted = currentProcessing.map { item ->
+                item.copy(
+                    status = TaskStatus.READY,
+                    statusText = "Ready • Quota exceeded"
+                )
+            }
             taskDao.insertAll(converted.map { ImportTaskEntity.fromImportTask(it) })
         }
     }
@@ -502,21 +513,23 @@ class ImportRepository internal constructor(
      * Removes the failed task and all other tasks in Processing, moving them to the Error group.
      */
     private fun moveAllProcessingToError(primaryFailedItem: ImportTask, errorMessage: String) {
-        val currentProcessing = _processingTasks.value
         val fallbackMsg = errorMessage.ifBlank { "Unknown failure" }
-        val errorItemsToAdd = currentProcessing.map { item ->
-            item.copy(
-                status = TaskStatus.ERROR,
-                statusText = "Failed",
-                errorMessage = if (item.id == primaryFailedItem.id) {
-                    fallbackMsg
-                } else {
-                    "Batch stopped: $fallbackMsg"
-                }
-            )
-        }
         foregroundRetryCounts.clear()
         repositoryScope.launch {
+            val currentProcessing = taskDao.getTasksByStatuses(
+                listOf(TaskStatus.PROCESSING_AI.name, TaskStatus.WAITING_AI.name)
+            ).map { it.toImportTask() }
+            val errorItemsToAdd = currentProcessing.map { item ->
+                item.copy(
+                    status = TaskStatus.ERROR,
+                    statusText = "Failed",
+                    errorMessage = if (item.id == primaryFailedItem.id) {
+                        fallbackMsg
+                    } else {
+                        "Batch stopped: $fallbackMsg"
+                    }
+                )
+            }
             taskDao.insertAll(errorItemsToAdd.map { ImportTaskEntity.fromImportTask(it) })
         }
     }

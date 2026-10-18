@@ -6,11 +6,18 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Android%2014%2B%20(API%2034%2B)-brightgreen?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/Kotlin-2.1.0-blue?style=flat-square" alt="Kotlin">
-  <img src="https://img.shields.io/badge/Jetpack%20Compose-BOM%202024.12-purple?style=flat-square" alt="Compose">
+  <img src="https://img.shields.io/badge/Kotlin-2.4.2-blue?style=flat-square" alt="Kotlin">
+  <img src="https://img.shields.io/badge/Jetpack%20Compose-BOM%2026.09.00-purple?style=flat-square" alt="Compose">
   <img src="https://img.shields.io/badge/AI-Gemini%20Nano%20(AICore)-orange?style=flat-square" alt="Gemini Nano">
   <img src="https://img.shields.io/badge/Architecture-Clean%20%2F%20UDF%20%2F%20Room-teal?style=flat-square" alt="Architecture">
   <img src="https://img.shields.io/badge/License-Apache%202.0-lightgrey?style=flat-square" alt="License">
+</p>
+
+<p align="center">
+  <img src="docs/assets/library.png" alt="Library" height="20%" width="20%">
+  <img src="docs/assets/bookmark-detail.png" alt="Bookmark-Detail" height="20%" width="20%">
+  <img src="docs/assets/search.png" alt="Search" height="20%" width="20%">
+  <img src="docs/assets/tag-selection.png" alt="Tag-Selection" height="20%" width="20%">
 </p>
 
 ---
@@ -58,11 +65,11 @@ Instead of requiring manual organization, tedious tagging, or cloud-based catego
 
 Tidilo adheres to modern Android architecture best practices with **Unidirectional Data Flow (UDF)**:
 
-- **Language & Runtime**: Kotlin 2.1.0 on Java 21
-- **UI Framework**: Jetpack Compose BOM 2024.12.01 with Material 3 Expressive components
-- **Navigation**: Navigation Compose 2.8.5 with type-safe routing
+- **Language & Runtime**: Kotlin 2.4.2 on Java 21
+- **UI Framework**: Jetpack Compose BOM 2026.09.00 with Material 3 Expressive components
+- **Navigation**: Navigation Compose 2.10.2 with type-safe routing
 - **Concurrency**: Kotlin Coroutines & Reactive `StateFlow`
-- **Database**: AndroidX Room 2.6+ with KSP
+- **Database**: AndroidX Room 2.8.5 with KSP
 - **On-Device AI**: `com.google.mlkit:genai-prompt:1.0.0-beta2` (Gemini Nano on Android AICore)
 - **Web Parsing**: Jsoup 1.18.3 & Readability4J 1.0.8
 
@@ -71,7 +78,7 @@ Tidilo adheres to modern Android architecture best practices with **Unidirection
 ## 📱 Hardware & OS Requirements
 
 - **Operating System**: Android 14 (API 34) or higher
-- **Target Hardware**: Google Pixel 8, 9, 10, 11 series, or any Android device with an activated **AICore** service supporting Gemini Nano.
+- **Target Hardware**: Google Pixel 8, 9, 10, 11 series, or any Android device with an activated **AICore** service supporting Gemini Nano. Please see [here](https://developers.google.com/ml-kit/genai) for a list of devices that support AICore.
 
 ---
 
@@ -102,6 +109,15 @@ Tidilo adheres to modern Android architecture best practices with **Unidirection
    ```bash
    ./gradlew installDebug
    ```
+
+---
+
+## ⚠️ Precautions for Use
+
+### AICore Usage Limit
+- **AICore has an allocation limit**: Although it works in a local environment, AICore has certain usage limits. If you reach these limits, your access may be restricted for 24 hours. 
+- **An Approach to Limitations on the Application Side**: There are no specific restrictions. However, if this error occurs, a dialog box will appear on the screen. Any imports currently in progress will be rolled back to their previous state.
+- **Proposed Solutions to This Limitation**: When you import URLs, they accumulate before being processed by the AI. You should run AI analysis periodically to prevent them from piling up. There’s also an option to run this automatically when you launch the app, so please take advantage of it.
 
 ---
 

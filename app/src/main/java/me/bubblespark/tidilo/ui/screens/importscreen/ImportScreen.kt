@@ -424,7 +424,10 @@ fun ImportScreen(
 
                     // Right action: Import (+) button
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { showImportDialog = true }) {
+                        IconButton(
+                            onClick = { showImportDialog = true },
+                            modifier = Modifier.size(44.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = stringResource(R.string.import_button_content_desc),

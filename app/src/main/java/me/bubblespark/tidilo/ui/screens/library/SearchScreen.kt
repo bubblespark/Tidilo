@@ -309,7 +309,7 @@ fun SearchScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                        .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp)
                 ) {
                     // Upper row: Header title and subtitle
                     Row(
@@ -335,7 +335,7 @@ fun SearchScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // Lower row: Search input bar and '#' tag selection button
                     OutlinedTextField(

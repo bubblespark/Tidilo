@@ -73,11 +73,11 @@ fun GenerateContentRequestScreen(
             .navigationBarsPadding()
             .padding(horizontal = 20.dp)
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
         // Top Header: Back Button, Title, Default Button
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -87,18 +87,19 @@ fun GenerateContentRequestScreen(
             ) {
                 IconButton(
                     onClick = onNavigateBack,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .size(40.dp)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.common_back),
-                        tint = MaterialTheme.colorScheme.onSurface
+                        tint = MaterialTheme.colorScheme.onBackground
                     )
                 }
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = stringResource(R.string.title_generate_content_request),
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
                     maxLines = 1,
@@ -110,7 +111,8 @@ fun GenerateContentRequestScreen(
 
             // Reset Wrench icon button (without background)
             IconButton(
-                onClick = { showResetConfirmDialog = true }
+                onClick = { showResetConfirmDialog = true },
+                modifier = Modifier.size(44.dp)
             ) {
                 Icon(
                     imageVector = ResetWrench,

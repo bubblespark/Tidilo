@@ -334,11 +334,13 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Tab Screens without Back Button: `LibraryScreen`, `SearchScreen`, `ImportScreen`.
   - Sub-Screens with Back Button: `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `NsfwSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `BookmarkAiReviewScreen`.
 
-### 6.11 AI Skipped (AICore Fallback) Representation
+### 6.11 AI Skipped (AICore Fallback) Representation & Detail Layout Rhythm
 - **Bookmark Card (`BookmarkCard.kt`)**:
   - Removed the standalone `AI Skipped` tag chip from the card tags row.
-  - When `bookmark.isAiSkipped == true`, prepends an outlined warning icon (`Icons.Outlined.Warning`, 16dp) tinted with `WarningColor.textOrIcon` to the bookmark summary text row (`Arrangement.spacedBy(6.dp)`, top-aligned with 2dp optical text offset).
-- **Bookmark Detail Screen (`BookmarkDetailScreen.kt`)**:
+  - When `bookmark.isAiSkipped == true`, embeds the warning icon directly inside the summary text via `InlineTextContent` (`16.sp` with `PlaceholderVerticalAlign.Center`). Wrapped text lines naturally wrap underneath the icon flush with the left margin rather than creating an artificial empty column.
+- **Bookmark Detail Screen Spacing & Layout Rhythm (`BookmarkDetailScreen.kt`)**:
   - Removed the `AI Skipped` assist chip from the Category & Tags section.
   - When `bookmark.isAiSkipped == true`, displays a clear warning notice below the URL surface: `[warning icon] This bookmark has not been analyzed by AICore.` using `WarningColor.textOrIcon` for both icon and text with 8dp horizontal spacing.
+  - Spacing rhythm: URL to Warning notice is `6.dp`, Warning notice to Category & Tags is `14.dp` (eliminating disproportionate voids).
+  - Category & Tags edit `IconButton` and tag chips (`AssistChip`) are scoped under `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to eliminate invisible accessibility touch-target inflation (which previously caused a 32dp gap), harmonizing the header-to-content gap across Category & Tags, Summary, and Note to a consistent `10.dp`.
 

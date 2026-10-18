@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -199,18 +200,32 @@ class BookmarkRepository private constructor(context: Context) {
     /**
      * Updates note and tag of a bookmark and persists the change atomically.
      */
-    fun updateBookmarkDetails(
+    suspend fun updateBookmarkDetails(
         id: String,
         note: String,
         tag: Tag
-    ) {
+    ) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
+        val hasAnyTags = tag.category != null || tag.subcategory != null || tag.entities.isNotEmpty()
+        val newAiSkipped = !hasAnyTags
+
+        bookmarkDao.updateNoteAndTag(
+            id = id,
+            note = note,
+            category = tag.category,
+            subcategory = tag.subcategory,
+            entities = tag.entities,
+            isAiSkipped = newAiSkipped,
+            updatedAt = now
+        )
+
         val current = _bookmarks.value
         val updated = current.map { item ->
             if (item.id == id) {
                 item.copy(
                     note = note,
                     tag = tag,
+                    isAiSkipped = newAiSkipped,
                     updatedAt = now
                 )
             } else {
@@ -218,17 +233,6 @@ class BookmarkRepository private constructor(context: Context) {
             }
         }
         _bookmarks.value = updated
-
-        repositoryScope.launch {
-            bookmarkDao.updateNoteAndTag(
-                id = id,
-                note = note,
-                category = tag.category,
-                subcategory = tag.subcategory,
-                entities = tag.entities,
-                updatedAt = now
-            )
-        }
     }
 
     /**

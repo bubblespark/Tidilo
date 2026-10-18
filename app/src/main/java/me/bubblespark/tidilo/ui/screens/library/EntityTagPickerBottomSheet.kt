@@ -71,7 +71,6 @@ fun EntityTagPickerBottomSheet(
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(horizontal = 24.dp)
-                .heightIn(max = 520.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             // Header: Title and Done button

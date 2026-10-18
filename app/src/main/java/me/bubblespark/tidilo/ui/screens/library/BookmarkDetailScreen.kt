@@ -71,6 +71,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
@@ -170,6 +171,7 @@ fun BookmarkDetailScreen(
     var showTagEditDialog by remember { mutableStateOf(false) }
     var showAddEntityDialog by remember { mutableStateOf(false) }
     var showEntityBottomSheet by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
 
     var draftCategory by remember { mutableStateOf<String?>(null) }
     var draftSubcategory by remember { mutableStateOf<String?>(null) }
@@ -180,8 +182,10 @@ fun BookmarkDetailScreen(
     }
 
     // Intercept swipe-back (system gesture back)
-    BackHandler(enabled = hasChanges) {
-        showDiscardConfirmDialog = true
+    BackHandler(enabled = isSaving || hasChanges) {
+        if (!isSaving) {
+            showDiscardConfirmDialog = true
+        }
     }
 
     val localizedCategory = remember(editedTag.category, context) {
@@ -247,18 +251,21 @@ fun BookmarkDetailScreen(
             ) {
                 IconButton(
                     onClick = {
-                        if (hasChanges) {
-                            showDiscardConfirmDialog = true
-                        } else {
-                            onNavigateBack()
+                        if (!isSaving) {
+                            if (hasChanges) {
+                                showDiscardConfirmDialog = true
+                            } else {
+                                onNavigateBack()
+                            }
                         }
                     },
+                    enabled = !isSaving,
                     modifier = Modifier.size(44.dp)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.common_back),
-                        tint = MaterialTheme.colorScheme.onSurface
+                        tint = if (isSaving) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurface
                     )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
@@ -270,15 +277,22 @@ fun BookmarkDetailScreen(
                 )
             }
 
-            // Top-right "Save" button (filled pill button; visually disabled when no unsaved changes)
+            // Top-right "Save" button (filled pill button; visually disabled when no unsaved changes or saving)
             Button(
                 onClick = {
-                    if (hasChanges) {
-                        viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag)
+                    if (hasChanges && !isSaving) {
+                        isSaving = true
+                        coroutineScope.launch {
+                            try {
+                                viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag)
+                                onNavigateBack()
+                            } finally {
+                                isSaving = false
+                            }
+                        }
                     }
-                    onNavigateBack()
                 },
-                enabled = hasChanges,
+                enabled = hasChanges && !isSaving,
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -288,11 +302,19 @@ fun BookmarkDetailScreen(
                 ),
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.detail_save),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold
-                )
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text(
+                        text = stringResource(R.string.detail_save),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 

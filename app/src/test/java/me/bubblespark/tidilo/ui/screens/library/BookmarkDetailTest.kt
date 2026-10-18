@@ -233,5 +233,58 @@ class BookmarkDetailTest {
         // English / ASCII words should precede Japanese, and be sorted alphabetically ignoring case
         assertEquals(listOf("Apple", "Banana", "zebra", "テスト", "日本語"), sorted)
     }
+
+    @Test
+    fun testAiSkippedEvaluationWithAndWithoutTags() {
+        fun computeIsAiSkipped(item: BookmarkItem): Boolean {
+            return item.isAiSkipped && item.tag.category == null && item.tag.subcategory == null && item.tag.entities.isEmpty()
+        }
+
+        val purelySkipped = BookmarkItem(
+            id = "skipped-1",
+            title = "Skipped Item",
+            url = "https://example.com/skipped",
+            description = "No tags assigned",
+            tag = Tag.createEmpty(),
+            isAiSkipped = true
+        )
+        assertTrue(computeIsAiSkipped(purelySkipped))
+
+        val editedWithCategory = purelySkipped.copy(
+            tag = Tag.create(category = "Tool", subcategory = null, entities = emptyList())
+        )
+        org.junit.Assert.assertFalse(computeIsAiSkipped(editedWithCategory))
+
+        val editedWithEntity = purelySkipped.copy(
+            tag = Tag.create(category = null, subcategory = null, entities = listOf("Compose"))
+        )
+        org.junit.Assert.assertFalse(computeIsAiSkipped(editedWithEntity))
+    }
+
+    @Test
+    fun testTagUpdateClearsAiSkippedFlag() {
+        val original = BookmarkItem(
+            id = "b-ai-skipped",
+            title = "BOM Mapping",
+            url = "https://developer.android.com/compose/bom",
+            description = "BOM release notes",
+            tag = Tag.createEmpty(),
+            isAiSkipped = true
+        )
+        assertTrue(original.isAiSkipped)
+
+        // User edits tags in BookmarkDetailScreen
+        val newTag = Tag.create("Tool", "Tech", listOf("Android", "Compose"))
+        val hasAnyTags = newTag.category != null || newTag.subcategory != null || newTag.entities.isNotEmpty()
+        val updated = original.copy(
+            tag = newTag,
+            isAiSkipped = !hasAnyTags
+        )
+
+        org.junit.Assert.assertFalse(updated.isAiSkipped)
+        assertEquals("Tool", updated.tag.category)
+        assertEquals("Tech", updated.tag.subcategory)
+        assertEquals(listOf("Android", "Compose"), updated.tag.entities)
+    }
 }
 

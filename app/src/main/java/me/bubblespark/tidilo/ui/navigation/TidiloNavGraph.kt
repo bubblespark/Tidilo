@@ -15,9 +15,8 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
-import me.bubblespark.tidilo.ui.screens.queue.QueueScreen
-
-import me.bubblespark.tidilo.ui.screens.queue.QueueViewModel
+import me.bubblespark.tidilo.ui.screens.importscreen.ImportScreen
+import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
 
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -36,7 +35,7 @@ import me.bubblespark.tidilo.ui.screens.settings.GenerateContentRequestScreen
 internal val BottomNavTabOrder = listOf(
     Screen.Library.route,
     Screen.Search.route,
-    Screen.Queue.route
+    Screen.Import.route
 )
 
 internal fun isBottomNavTabSwitch(initialRoute: String?, targetRoute: String?): Boolean {
@@ -59,14 +58,14 @@ internal fun getTabSlideDirection(
 @Composable
 fun TidiloNavGraph(
     navController: NavHostController,
-    queueViewModel: QueueViewModel,
+    importViewModel: ImportViewModel,
     sharedUrl: String? = null,
     libraryViewModel: LibraryViewModel = viewModel(),
     modifier: Modifier = Modifier
 ) {
     NavHost(
         navController = navController,
-        startDestination = if (sharedUrl != null) Screen.Queue.route else Screen.Library.route,
+        startDestination = if (sharedUrl != null) Screen.Import.route else Screen.Library.route,
         modifier = modifier,
         enterTransition = {
             val direction = if (isBottomNavTabSwitch(initialState.destination.route, targetState.destination.route)) {
@@ -249,9 +248,9 @@ fun TidiloNavGraph(
                 }
             )
         }
-        composable(Screen.Queue.route) {
-            QueueScreen(
-                viewModel = queueViewModel,
+        composable(Screen.Import.route) {
+            ImportScreen(
+                viewModel = importViewModel,
                 initialSharedUrl = sharedUrl
             )
         }

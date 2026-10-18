@@ -10,7 +10,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import me.bubblespark.tidilo.data.QueueRepository
+import me.bubblespark.tidilo.data.ImportRepository
 
 class ShareReceiverActivity : ComponentActivity() {
 
@@ -39,30 +39,30 @@ class ShareReceiverActivity : ComponentActivity() {
             showNotification(
                 context = applicationContext,
                 success = false,
-                message = applicationContext.getString(R.string.notification_enqueue_failed)
+                message = applicationContext.getString(R.string.notification_import_failed)
             )
             return
         }
 
         val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
-        val validUrl = QueueRepository.extractUrlFromText(sharedText)
+        val validUrl = ImportRepository.extractUrlFromText(sharedText)
 
         if (validUrl != null) {
-            val repository = QueueRepository.getInstance(applicationContext)
+            val repository = ImportRepository.getInstance(applicationContext)
             val appContext = applicationContext
-            repository.enqueue(validUrl) { result ->
+            repository.importUrl(validUrl) { result ->
                 result.onSuccess {
-                    val count = repository.currentQueuingCount
+                    val count = repository.readyCount
                     showNotification(
                         context = appContext,
                         success = true,
-                        message = appContext.getString(R.string.notification_enqueue_success, count)
+                        message = appContext.getString(R.string.notification_import_success, count)
                     )
                 }.onFailure {
                     showNotification(
                         context = appContext,
                         success = false,
-                        message = appContext.getString(R.string.notification_enqueue_failed)
+                        message = appContext.getString(R.string.notification_import_failed)
                     )
                 }
             }
@@ -70,7 +70,7 @@ class ShareReceiverActivity : ComponentActivity() {
             showNotification(
                 context = applicationContext,
                 success = false,
-                message = applicationContext.getString(R.string.notification_enqueue_failed)
+                message = applicationContext.getString(R.string.notification_import_failed)
             )
         }
     }
@@ -91,7 +91,7 @@ class ShareReceiverActivity : ComponentActivity() {
             }
         }
 
-        // Open MainActivity (Queue screen) on notification tap
+        // Open MainActivity (Import screen) on notification tap
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -108,7 +108,7 @@ class ShareReceiverActivity : ComponentActivity() {
             android.R.drawable.stat_notify_error
         }
 
-        val notification = NotificationCompat.Builder(context, TidiloApplication.CHANNEL_ID_QUEUE)
+        val notification = NotificationCompat.Builder(context, TidiloApplication.CHANNEL_ID_IMPORT)
             .setSmallIcon(iconRes)
             .setContentTitle(context.getString(R.string.app_name))
             .setContentText(message)

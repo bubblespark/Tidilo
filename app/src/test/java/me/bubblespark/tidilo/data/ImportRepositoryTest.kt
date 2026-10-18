@@ -2,24 +2,23 @@ package me.bubblespark.tidilo.data
 
 import com.google.mlkit.genai.common.GenAiException
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
+import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.Tag
-import me.bubblespark.tidilo.ui.screens.queue.QueueItem
-import me.bubblespark.tidilo.ui.screens.queue.QueueItemStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class QueueRepositoryTest {
+class ImportRepositoryTest {
 
     @Test
-    fun testRemoveAndRestoreQueuingItemLogic() {
-        val item1 = QueueItem(id = "1", url = "https://example.com/1", title = "Item 1", status = QueueItemStatus.QUEUED, statusText = "Waiting")
-        val item2 = QueueItem(id = "2", url = "https://example.com/2", title = "Item 2", status = QueueItemStatus.QUEUED, statusText = "Waiting")
-        val item3 = QueueItem(id = "3", url = "https://example.com/3", title = "Item 3", status = QueueItemStatus.QUEUED, statusText = "Waiting")
+    fun testRemoveAndRestoreReadyTaskLogic() {
+        val item1 = ImportTask(id = "1", url = "https://example.com/1", title = "Item 1", status = TaskStatus.READY, statusText = "Ready")
+        val item2 = ImportTask(id = "2", url = "https://example.com/2", title = "Item 2", status = TaskStatus.READY, statusText = "Ready")
+        val item3 = ImportTask(id = "3", url = "https://example.com/3", title = "Item 3", status = TaskStatus.READY, statusText = "Ready")
 
         val list = mutableListOf(item1, item2, item3)
 
@@ -36,9 +35,9 @@ class QueueRepositoryTest {
     }
 
     @Test
-    fun testRemoveAndRestoreErrorItemLogic() {
-        val error1 = QueueItem(id = "e1", url = "https://example.com/err1", title = "Err 1", status = QueueItemStatus.ERROR, statusText = "Failed", errorMessage = "404")
-        val error2 = QueueItem(id = "e2", url = "https://example.com/err2", title = "Err 2", status = QueueItemStatus.ERROR, statusText = "Failed", errorMessage = "500")
+    fun testRemoveAndRestoreErrorTaskLogic() {
+        val error1 = ImportTask(id = "e1", url = "https://example.com/err1", title = "Err 1", status = TaskStatus.ERROR, statusText = "Failed", errorMessage = "404")
+        val error2 = ImportTask(id = "e2", url = "https://example.com/err2", title = "Err 2", status = TaskStatus.ERROR, statusText = "Failed", errorMessage = "500")
 
         val list = mutableListOf(error1, error2)
 
@@ -62,50 +61,50 @@ class QueueRepositoryTest {
         val remoteException = Exception("RemoteException: AICore service binder died")
         val cancelException = java.util.concurrent.CancellationException("Cancelled")
 
-        org.junit.Assert.assertTrue(QueueRepository.isAiCoreOrInterruptionException(aiCoreException1))
-        org.junit.Assert.assertTrue(QueueRepository.isAiCoreOrInterruptionException(aiCoreException2))
-        org.junit.Assert.assertTrue(QueueRepository.isAiCoreOrInterruptionException(aiCoreException3))
-        org.junit.Assert.assertTrue(QueueRepository.isAiCoreOrInterruptionException(remoteException))
-        org.junit.Assert.assertTrue(QueueRepository.isAiCoreOrInterruptionException(cancelException))
+        assertTrue(ImportRepository.isAiCoreOrInterruptionException(aiCoreException1))
+        assertTrue(ImportRepository.isAiCoreOrInterruptionException(aiCoreException2))
+        assertTrue(ImportRepository.isAiCoreOrInterruptionException(aiCoreException3))
+        assertTrue(ImportRepository.isAiCoreOrInterruptionException(remoteException))
+        assertTrue(ImportRepository.isAiCoreOrInterruptionException(cancelException))
 
         val http404 = Exception("HTTP Error 404: Not Found")
         val http500 = Exception("HTTP Error 500: Server Error")
         val invalidUrl = IllegalArgumentException("Invalid HTTP/HTTPS URL")
 
-        org.junit.Assert.assertFalse(QueueRepository.isAiCoreOrInterruptionException(http404))
-        org.junit.Assert.assertFalse(QueueRepository.isAiCoreOrInterruptionException(http500))
-        org.junit.Assert.assertFalse(QueueRepository.isAiCoreOrInterruptionException(invalidUrl))
+        assertFalse(ImportRepository.isAiCoreOrInterruptionException(http404))
+        assertFalse(ImportRepository.isAiCoreOrInterruptionException(http500))
+        assertFalse(ImportRepository.isAiCoreOrInterruptionException(invalidUrl))
     }
 
     @Test
-    fun testInterruptedRunningItemRetainsWaitingStatusWithoutError() {
-        val runningItem = QueueItem(
+    fun testInterruptedProcessingTaskRetainsWaitingStatusWithoutError() {
+        val processingTask = ImportTask(
             id = "run-test",
             url = "https://example.com/test",
             title = "Test Item",
-            status = QueueItemStatus.PROCESSING_AI,
-            statusText = "Processing..."
+            status = TaskStatus.PROCESSING_AI,
+            statusText = "Gemini Nano analyzing content..."
         )
 
         // When interrupted by background/AICore exception, it should be set to WAITING_AI with paused status
-        val interruptedItem = runningItem.copy(
-            status = QueueItemStatus.WAITING_AI,
+        val interruptedTask = processingTask.copy(
+            status = TaskStatus.WAITING_AI,
             statusText = "Paused • Retrying when app is active"
         )
 
-        assertEquals(QueueItemStatus.WAITING_AI, interruptedItem.status)
-        assertEquals("Paused • Retrying when app is active", interruptedItem.statusText)
-        assertEquals("run-test", interruptedItem.id)
+        assertEquals(TaskStatus.WAITING_AI, interruptedTask.status)
+        assertEquals("Paused • Retrying when app is active", interruptedTask.statusText)
+        assertEquals("run-test", interruptedTask.id)
     }
 
     @Test
-    fun testPrecomputedQueueItemMetadataFields() {
-        val item = QueueItem(
+    fun testPrecomputedImportTaskMetadataFields() {
+        val item = ImportTask(
             id = "preparsed-1",
             url = "https://example.com/article",
             title = "Example Article Title",
-            status = QueueItemStatus.QUEUED,
-            statusText = "Queued • Ready for AI",
+            status = TaskStatus.READY,
+            statusText = "Ready for AI Analysis",
             isNsfw = false,
             siteName = "Example Blog",
             description = "A concise article description",
@@ -130,12 +129,12 @@ class QueueRepositoryTest {
             language = me.bubblespark.tidilo.config.AppLanguage.JAPANESE
         )
 
-        org.junit.Assert.assertTrue(promptJa.contains("URL: https://example.com/article"))
-        org.junit.Assert.assertTrue(promptJa.contains("Site: Example Blog"))
-        org.junit.Assert.assertTrue(promptJa.contains("Title: Example Article Title"))
-        org.junit.Assert.assertTrue(promptJa.contains("Description: A concise article description"))
-        org.junit.Assert.assertTrue(promptJa.contains("Content: This is the extracted body text snippet used for instant AI tagging."))
-        org.junit.Assert.assertTrue(promptJa.contains("Language: Japanese."))
+        assertTrue(promptJa.contains("URL: https://example.com/article"))
+        assertTrue(promptJa.contains("Site: Example Blog"))
+        assertTrue(promptJa.contains("Title: Example Article Title"))
+        assertTrue(promptJa.contains("Description: A concise article description"))
+        assertTrue(promptJa.contains("Content: This is the extracted body text snippet used for instant AI tagging."))
+        assertTrue(promptJa.contains("Language: Japanese."))
     }
 
     @Test
@@ -155,22 +154,22 @@ class QueueRepositoryTest {
 
         assertEquals(
             com.google.mlkit.genai.common.GenAiException.ErrorCode.BUSY,
-            QueueRepository.extractAiCoreErrorCode(busyEx)
+            ImportRepository.extractAiCoreErrorCode(busyEx)
         )
         assertEquals(
             com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED,
-            QueueRepository.extractAiCoreErrorCode(quotaEx)
+            ImportRepository.extractAiCoreErrorCode(quotaEx)
         )
         assertEquals(
             com.google.mlkit.genai.common.GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED,
-            QueueRepository.extractAiCoreErrorCode(blockedEx)
+            ImportRepository.extractAiCoreErrorCode(blockedEx)
         )
 
         // Nested in runtime exception wrapper
         val wrappedQuotaEx = RuntimeException("Wrapper exception", quotaEx)
         assertEquals(
             com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED,
-            QueueRepository.extractAiCoreErrorCode(wrappedQuotaEx)
+            ImportRepository.extractAiCoreErrorCode(wrappedQuotaEx)
         )
 
         // String message fallback detection
@@ -180,15 +179,15 @@ class QueueRepositoryTest {
 
         assertEquals(
             com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED,
-            QueueRepository.extractAiCoreErrorCode(msgFallbackQuota)
+            ImportRepository.extractAiCoreErrorCode(msgFallbackQuota)
         )
         assertEquals(
             com.google.mlkit.genai.common.GenAiException.ErrorCode.BUSY,
-            QueueRepository.extractAiCoreErrorCode(msgFallbackBusy)
+            ImportRepository.extractAiCoreErrorCode(msgFallbackBusy)
         )
         assertEquals(
             com.google.mlkit.genai.common.GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED,
-            QueueRepository.extractAiCoreErrorCode(msgFallbackBlocked)
+            ImportRepository.extractAiCoreErrorCode(msgFallbackBlocked)
         )
     }
 
@@ -201,7 +200,7 @@ class QueueRepositoryTest {
         )
         val mappedBusy = me.bubblespark.tidilo.service.GeminiTaggingService.mapInferenceException(genAiBusy)
         assertEquals(com.google.mlkit.genai.common.GenAiException.ErrorCode.BUSY, mappedBusy.errorCode)
-        org.junit.Assert.assertTrue(mappedBusy.message?.contains("AICore Rate Limit Exceeded") == true)
+        assertTrue(mappedBusy.message?.contains("AICore Rate Limit Exceeded") == true)
 
         val genAiQuota = com.google.mlkit.genai.common.GenAiException(
             "Quota limit hit",
@@ -210,7 +209,7 @@ class QueueRepositoryTest {
         )
         val mappedQuota = me.bubblespark.tidilo.service.GeminiTaggingService.mapInferenceException(genAiQuota)
         assertEquals(com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED, mappedQuota.errorCode)
-        org.junit.Assert.assertTrue(mappedQuota.message?.contains("battery use quota exceeded") == true)
+        assertTrue(mappedQuota.message?.contains("battery use quota exceeded") == true)
 
         val genAiBlocked = com.google.mlkit.genai.common.GenAiException(
             "Background not allowed",
@@ -219,42 +218,42 @@ class QueueRepositoryTest {
         )
         val mappedBlocked = me.bubblespark.tidilo.service.GeminiTaggingService.mapInferenceException(genAiBlocked)
         assertEquals(com.google.mlkit.genai.common.GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED, mappedBlocked.errorCode)
-        org.junit.Assert.assertTrue(mappedBlocked.message?.contains("background use blocked") == true)
+        assertTrue(mappedBlocked.message?.contains("background use blocked") == true)
     }
 
     @Test
-    fun testMoveAllRunningToQueuingLogic() {
-        val item1 = QueueItem(id = "run-1", url = "https://example.com/1", title = "Task 1", status = QueueItemStatus.PROCESSING_AI, statusText = "Inference")
-        val item2 = QueueItem(id = "run-2", url = "https://example.com/2", title = "Task 2", status = QueueItemStatus.WAITING_AI, statusText = "Waiting")
-        val currentRunning = listOf(item1, item2)
+    fun testMoveAllProcessingToReadyLogic() {
+        val item1 = ImportTask(id = "run-1", url = "https://example.com/1", title = "Task 1", status = TaskStatus.PROCESSING_AI, statusText = "Inference")
+        val item2 = ImportTask(id = "run-2", url = "https://example.com/2", title = "Task 2", status = TaskStatus.WAITING_AI, statusText = "Waiting")
+        val currentProcessing = listOf(item1, item2)
 
         // When battery quota exceeded occurs:
-        val converted = currentRunning.map { item ->
+        val converted = currentProcessing.map { item ->
             item.copy(
-                status = QueueItemStatus.QUEUED,
-                statusText = "Queued • Quota exceeded"
+                status = TaskStatus.READY,
+                statusText = "Ready • Quota exceeded"
             )
         }
 
         assertEquals(2, converted.size)
-        assertEquals(QueueItemStatus.QUEUED, converted[0].status)
-        assertEquals("Queued • Quota exceeded", converted[0].statusText)
-        assertEquals(QueueItemStatus.QUEUED, converted[1].status)
-        assertEquals("Queued • Quota exceeded", converted[1].statusText)
+        assertEquals(TaskStatus.READY, converted[0].status)
+        assertEquals("Ready • Quota exceeded", converted[0].statusText)
+        assertEquals(TaskStatus.READY, converted[1].status)
+        assertEquals("Ready • Quota exceeded", converted[1].statusText)
     }
 
     @Test
-    fun testMoveAllRunningToErrorBatchFailureLogic() {
-        val item1 = QueueItem(id = "run-1", url = "https://example.com/1", title = "Task 1", status = QueueItemStatus.PROCESSING_AI, statusText = "Inference")
-        val item2 = QueueItem(id = "run-2", url = "https://example.com/2", title = "Task 2", status = QueueItemStatus.WAITING_AI, statusText = "Waiting")
-        val currentRunning = listOf(item1, item2)
+    fun testMoveAllProcessingToErrorBatchFailureLogic() {
+        val item1 = ImportTask(id = "run-1", url = "https://example.com/1", title = "Task 1", status = TaskStatus.PROCESSING_AI, statusText = "Inference")
+        val item2 = ImportTask(id = "run-2", url = "https://example.com/2", title = "Task 2", status = TaskStatus.WAITING_AI, statusText = "Waiting")
+        val currentProcessing = listOf(item1, item2)
 
         val primaryFailedItem = item1
         val failureMsg = "AICore busy: Retry limit exceeded (3/3)"
 
-        val errorItems = currentRunning.map { item ->
+        val errorItems = currentProcessing.map { item ->
             item.copy(
-                status = QueueItemStatus.ERROR,
+                status = TaskStatus.ERROR,
                 statusText = "Failed",
                 errorMessage = if (item.id == primaryFailedItem.id) {
                     failureMsg
@@ -265,9 +264,9 @@ class QueueRepositoryTest {
         }
 
         assertEquals(2, errorItems.size)
-        assertEquals(QueueItemStatus.ERROR, errorItems[0].status)
+        assertEquals(TaskStatus.ERROR, errorItems[0].status)
         assertEquals(failureMsg, errorItems[0].errorMessage)
-        assertEquals(QueueItemStatus.ERROR, errorItems[1].status)
+        assertEquals(TaskStatus.ERROR, errorItems[1].status)
         assertEquals("Batch stopped: AICore busy: Retry limit exceeded (3/3)", errorItems[1].errorMessage)
     }
 
@@ -300,30 +299,30 @@ class QueueRepositoryTest {
         val networkException = Exception("Network connection failed")
 
         // 1. DISABLE mode: never applicable
-        assertFalse(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.DISABLE, quotaExceededCode, quotaExceededException))
-        assertFalse(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.DISABLE, busyCode, busyException))
-        assertFalse(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.DISABLE, null, networkException))
+        assertFalse(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.DISABLE, quotaExceededCode, quotaExceededException))
+        assertFalse(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.DISABLE, busyCode, busyException))
+        assertFalse(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.DISABLE, null, networkException))
 
         // 2. QUOTA_EXCEEDED_ONLY mode: only applicable for PER_APP_BATTERY_USE_QUOTA_EXCEEDED (27)
-        assertTrue(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, quotaExceededCode, quotaExceededException))
-        assertFalse(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, busyCode, busyException))
-        assertFalse(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, null, networkException))
+        assertTrue(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, quotaExceededCode, quotaExceededException))
+        assertFalse(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, busyCode, busyException))
+        assertFalse(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, null, networkException))
 
         // 3. ALL mode: applicable for any AICore error code or AICore exception
-        assertTrue(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, quotaExceededCode, quotaExceededException))
-        assertTrue(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, busyCode, busyException))
+        assertTrue(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, quotaExceededCode, quotaExceededException))
+        assertTrue(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, busyCode, busyException))
         val aiCoreMsgException = Exception("AICore Service Unavailable")
-        assertTrue(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, null, aiCoreMsgException))
-        assertFalse(QueueRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, null, networkException))
+        assertTrue(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, null, aiCoreMsgException))
+        assertFalse(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, null, networkException))
     }
 
     @Test
     fun testFallbackBookmarkCreationContract() {
-        val target = QueueItem(
-            id = "queue-test-1",
+        val target = ImportTask(
+            id = "import-test-1",
             url = "https://example.com/fallback-target",
             title = "Target Web Page",
-            status = QueueItemStatus.PROCESSING_AI,
+            status = TaskStatus.PROCESSING_AI,
             statusText = "Processing",
             isNsfw = true,
             siteName = "ExampleSite",
@@ -349,5 +348,42 @@ class QueueRepositoryTest {
         assertTrue(fallbackBookmark.tag.entities.isEmpty())
         assertTrue(fallbackBookmark.isNsfw)
         assertTrue(fallbackBookmark.isAiSkipped)
+    }
+
+    @Test
+    fun testImportTaskEntityMapping() {
+        val task = ImportTask(
+            id = "task-entity-test",
+            url = "https://example.com/entity",
+            title = "Entity Test",
+            status = TaskStatus.READY,
+            statusText = "Ready for AI",
+            errorMessage = null,
+            assignedTags = listOf("tag1", "tag2"),
+            createdAt = 123456789L,
+            isNsfw = false,
+            siteName = "Site",
+            description = "Desc",
+            bodySnippet = "Body"
+        )
+
+        val entity = ImportTaskEntity.fromImportTask(task)
+        assertEquals("task-entity-test", entity.id)
+        assertEquals("https://example.com/entity", entity.url)
+        assertEquals(TaskStatus.READY.name, entity.status)
+        assertEquals(listOf("tag1", "tag2"), entity.assignedTags)
+
+        val reconstructed = entity.toImportTask()
+        assertEquals(task.id, reconstructed.id)
+        assertEquals(task.url, reconstructed.url)
+        assertEquals(task.title, reconstructed.title)
+        assertEquals(task.status, reconstructed.status)
+        assertEquals(task.statusText, reconstructed.statusText)
+        assertEquals(task.assignedTags, reconstructed.assignedTags)
+        assertEquals(task.createdAt, reconstructed.createdAt)
+        assertEquals(task.isNsfw, reconstructed.isNsfw)
+        assertEquals(task.siteName, reconstructed.siteName)
+        assertEquals(task.description, reconstructed.description)
+        assertEquals(task.bodySnippet, reconstructed.bodySnippet)
     }
 }

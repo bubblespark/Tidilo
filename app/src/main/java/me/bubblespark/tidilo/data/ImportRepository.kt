@@ -1,19 +1,7 @@
 package me.bubblespark.tidilo.data
 
 import android.content.Context
-import android.content.SharedPreferences
 import com.google.mlkit.genai.common.GenAiException
-import me.bubblespark.tidilo.TidiloApplication
-import me.bubblespark.tidilo.config.AiCoreFallbackMode
-import me.bubblespark.tidilo.config.AppConfig
-import me.bubblespark.tidilo.parser.WebPageParser
-import me.bubblespark.tidilo.service.AiCoreExecutionException
-import me.bubblespark.tidilo.service.GeminiTaggingService
-import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
-import me.bubblespark.tidilo.ui.screens.library.Tag
-import me.bubblespark.tidilo.ui.screens.queue.QueueItem
-import me.bubblespark.tidilo.ui.screens.queue.QueueItemStatus
-import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,28 +12,38 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import me.bubblespark.tidilo.TidiloApplication
+import me.bubblespark.tidilo.config.AiCoreFallbackMode
+import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.data.db.AppDatabase
+import me.bubblespark.tidilo.data.db.ImportTaskDao
+import me.bubblespark.tidilo.data.db.ImportTaskEntity
+import me.bubblespark.tidilo.parser.WebPageParser
+import me.bubblespark.tidilo.service.AiCoreExecutionException
+import me.bubblespark.tidilo.service.GeminiTaggingService
+import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
+import me.bubblespark.tidilo.ui.screens.library.Tag
 import org.json.JSONArray
-import org.json.JSONObject
 import java.net.URI
+import java.util.UUID
 
-class QueueRepository private constructor(context: Context) {
+class ImportRepository internal constructor(
+    context: Context,
+    private val taskDao: ImportTaskDao = AppDatabase.getInstance(context).importTaskDao()
+) {
 
     private val appContext: Context = context.applicationContext
-
-    private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences("tidilo_queue_prefs", Context.MODE_PRIVATE)
-
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val executionMutex = Mutex()
 
-    private val _runningItems = MutableStateFlow<List<QueueItem>>(emptyList())
-    val runningItems: StateFlow<List<QueueItem>> = _runningItems.asStateFlow()
+    private val _processingTasks = MutableStateFlow<List<ImportTask>>(emptyList())
+    val processingTasks: StateFlow<List<ImportTask>> = _processingTasks.asStateFlow()
 
-    private val _queuingItems = MutableStateFlow<List<QueueItem>>(emptyList())
-    val queuingItems: StateFlow<List<QueueItem>> = _queuingItems.asStateFlow()
+    private val _readyTasks = MutableStateFlow<List<ImportTask>>(emptyList())
+    val readyTasks: StateFlow<List<ImportTask>> = _readyTasks.asStateFlow()
 
-    private val _errorItems = MutableStateFlow<List<QueueItem>>(emptyList())
-    val errorItems: StateFlow<List<QueueItem>> = _errorItems.asStateFlow()
+    private val _errorTasks = MutableStateFlow<List<ImportTask>>(emptyList())
+    val errorTasks: StateFlow<List<ImportTask>> = _errorTasks.asStateFlow()
 
     private val _quotaExceededDialogVisible = MutableStateFlow(false)
     val quotaExceededDialogVisible: StateFlow<Boolean> = _quotaExceededDialogVisible.asStateFlow()
@@ -55,29 +53,48 @@ class QueueRepository private constructor(context: Context) {
     }
 
     init {
-        loadFromPrefs()
-        // Prefetch and resolve titles for queued items that have unresolved titles (e.g. domain name only)
-        fetchTitlesForQueuingItems()
+        repositoryScope.launch {
+            if (taskDao.getCount() == 0) {
+                migrateFromLegacyPrefs()
+            }
+            fetchTitlesForReadyTasks()
+        }
+
+        // Reactively observe Room database changes and populate StateFlows
+        repositoryScope.launch {
+            taskDao.getAllTasksFlow().collect { entities ->
+                val all = entities.map { it.toImportTask() }
+                _processingTasks.value = all.filter {
+                    it.status == TaskStatus.PROCESSING_AI || it.status == TaskStatus.WAITING_AI
+                }
+                _readyTasks.value = all.filter {
+                    it.status == TaskStatus.READY
+                }
+                _errorTasks.value = all.filter {
+                    it.status == TaskStatus.ERROR
+                }
+            }
+        }
     }
 
     /**
-     * Enqueues a URL into the Queuing group.
+     * Imports a URL into the Ready group.
      * Completes HTML parsing, body text extraction, metadata detection, and domain icon resolution
-     * BEFORE adding the item to the Queuing list.
+     * BEFORE storing the item in the database.
      */
-    fun enqueue(
+    fun importUrl(
         rawUrl: String,
         title: String? = null,
-        onEnqueued: ((Result<QueueItem>) -> Unit)? = null
+        onImported: ((Result<ImportTask>) -> Unit)? = null
     ): Result<Int> {
         val trimmed = rawUrl.trim()
         if (!isValidHttpUrl(trimmed)) {
             val ex = IllegalArgumentException("Invalid HTTP/HTTPS URL")
-            onEnqueued?.invoke(Result.failure(ex))
+            onImported?.invoke(Result.failure(ex))
             return Result.failure(ex)
         }
 
-        val estimatedCount = _queuingItems.value.size + 1
+        val estimatedCount = _readyTasks.value.size + 1
 
         repositoryScope.launch {
             try {
@@ -118,36 +135,33 @@ class QueueRepository private constructor(context: Context) {
                     ?: parsed?.jsoupBodyText
                     ?: "").take(800).replace("\n", " ")
 
-                // 3. Create fully pre-parsed QueueItem and enqueue into Queuing group
-                val newItem = QueueItem(
+                // 3. Create fully pre-parsed ImportTask and save into database
+                val newItem = ImportTask(
                     url = realUrl,
                     title = realTitle,
-                    status = QueueItemStatus.QUEUED,
-                    statusText = "Queued • Ready for AI",
+                    status = TaskStatus.READY,
+                    statusText = "Ready for AI Analysis",
                     isNsfw = isNsfw,
                     siteName = siteName,
                     description = description,
                     bodySnippet = bodySnippet
                 )
 
-                _queuingItems.value = listOf(newItem) + _queuingItems.value
-                saveToPrefs()
-
-                onEnqueued?.invoke(Result.success(newItem))
+                taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
+                onImported?.invoke(Result.success(newItem))
             } catch (e: Exception) {
-                // Fallback: If network/parsing throws, enqueue fallback item with basic details
+                // Fallback: If network/parsing throws, create fallback task with basic details
                 val domain = DomainIconManager.extractDomain(trimmed)
                 val isDomainNsfw = DomainPolicyManager.isNsfwDomain(domain)
-                val fallbackItem = QueueItem(
+                val fallbackItem = ImportTask(
                     url = trimmed,
                     title = title?.trim()?.takeIf { it.isNotBlank() } ?: extractHostOrTitle(trimmed),
-                    status = QueueItemStatus.QUEUED,
-                    statusText = "Queued • Added without metadata",
+                    status = TaskStatus.READY,
+                    statusText = "Ready • Added without metadata",
                     isNsfw = isDomainNsfw
                 )
-                _queuingItems.value = listOf(fallbackItem) + _queuingItems.value
-                saveToPrefs()
-                onEnqueued?.invoke(Result.failure(e))
+                taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(fallbackItem))
+                onImported?.invoke(Result.failure(e))
             }
         }
 
@@ -155,114 +169,104 @@ class QueueRepository private constructor(context: Context) {
     }
 
     /**
-     * "AI Tagging All": Moves all Queued URLs to Running and sequentially executes AI tagging.
+     * "AI Analysis All": Moves all Ready URLs to Processing and sequentially executes AI analysis.
      */
-    fun aiTaggingAll() {
-        val currentQueuing = _queuingItems.value
-        if (currentQueuing.isEmpty()) return
+    fun aiAnalysisAll() {
+        val currentReady = _readyTasks.value
+        if (currentReady.isEmpty()) return
 
-        val convertedItems = currentQueuing.map { item ->
-            item.copy(
-                status = QueueItemStatus.WAITING_AI,
+        repositoryScope.launch {
+            val converted = currentReady.map { item ->
+                item.copy(
+                    status = TaskStatus.WAITING_AI,
+                    statusText = "Waiting for AICore slot..."
+                )
+            }
+            taskDao.insertAll(converted.map { ImportTaskEntity.fromImportTask(it) })
+
+            converted.forEach { item ->
+                executeTaskAiAnalysis(item.id)
+            }
+        }
+    }
+
+    /**
+     * Moves a single Ready task to Processing and starts AI analysis.
+     */
+    fun promoteTaskToProcessing(taskId: String) {
+        val target = _readyTasks.value.find { it.id == taskId } ?: return
+
+        repositoryScope.launch {
+            val promoted = target.copy(
+                status = TaskStatus.WAITING_AI,
                 statusText = "Waiting for AICore slot..."
             )
-        }
-        _runningItems.value = _runningItems.value + convertedItems
-        _queuingItems.value = emptyList()
-        saveToPrefs()
-
-        // Sequentially trigger AI processing
-        convertedItems.forEach { item ->
-            executeItemAiTagging(item.id)
+            taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(promoted))
+            executeTaskAiAnalysis(promoted.id)
         }
     }
 
     /**
-     * Moves a single Queued item to Running and starts AI tagging.
+     * Moves an Error task back to Processing and retries AI analysis.
      */
-    fun promoteItemToRunning(itemId: String) {
-        val currentQueuing = _queuingItems.value
-        val target = currentQueuing.find { it.id == itemId } ?: return
+    fun retryErrorTask(taskId: String) {
+        val target = _errorTasks.value.find { it.id == taskId } ?: return
 
-        val updatedQueuing = currentQueuing.filter { it.id != itemId }
-        val promoted = target.copy(
-            status = QueueItemStatus.WAITING_AI,
-            statusText = "Waiting for AICore slot..."
-        )
-        _queuingItems.value = updatedQueuing
-        _runningItems.value = _runningItems.value + listOf(promoted)
-        saveToPrefs()
-
-        // Asynchronously execute AI tagging
-        executeItemAiTagging(promoted.id)
+        repositoryScope.launch {
+            val retried = target.copy(
+                status = TaskStatus.WAITING_AI,
+                statusText = "Waiting for AICore slot...",
+                errorMessage = null
+            )
+            taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(retried))
+            executeTaskAiAnalysis(retried.id)
+        }
     }
 
     /**
-     * Moves an Error item back to Running and retries AI tagging.
+     * Removes the specified Ready task, returning the removed task and its original index (for Undo).
      */
-    fun retryErrorItem(itemId: String) {
-        val currentErrors = _errorItems.value
-        val target = currentErrors.find { it.id == itemId } ?: return
-
-        val updatedErrors = currentErrors.filter { it.id != itemId }
-        val retried = target.copy(
-            status = QueueItemStatus.WAITING_AI,
-            statusText = "Waiting for AICore slot...",
-            errorMessage = null
-        )
-        _errorItems.value = updatedErrors
-        _runningItems.value = _runningItems.value + listOf(retried)
-        saveToPrefs()
-
-        executeItemAiTagging(retried.id)
-    }
-
-    /**
-     * Removes the specified Queued item, returning the removed item and its original index (for Undo).
-     */
-    fun removeQueuingItem(itemId: String): Pair<QueueItem, Int>? {
-        val current = _queuingItems.value
-        val index = current.indexOfFirst { it.id == itemId }
+    fun removeReadyTask(taskId: String): Pair<ImportTask, Int>? {
+        val current = _readyTasks.value
+        val index = current.indexOfFirst { it.id == taskId }
         if (index == -1) return null
         val target = current[index]
-        _queuingItems.value = current.filter { it.id != itemId }
-        saveToPrefs()
+        repositoryScope.launch {
+            taskDao.deleteById(taskId)
+        }
         return target to index
     }
 
     /**
-     * Restores a previously removed Queued item.
+     * Restores a previously removed Ready task.
      */
-    fun restoreQueuingItem(item: QueueItem, index: Int = 0) {
-        val current = _queuingItems.value.toMutableList()
-        val safeIndex = index.coerceIn(0, current.size)
-        current.add(safeIndex, item)
-        _queuingItems.value = current
-        saveToPrefs()
+    fun restoreReadyTask(task: ImportTask, index: Int = 0) {
+        repositoryScope.launch {
+            taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(task))
+        }
     }
 
     /**
-     * Removes the specified Error item, returning the removed item and its original index (for Undo).
+     * Removes the specified Error task, returning the removed task and its original index (for Undo).
      */
-    fun removeErrorItem(itemId: String): Pair<QueueItem, Int>? {
-        val current = _errorItems.value
-        val index = current.indexOfFirst { it.id == itemId }
+    fun removeErrorTask(taskId: String): Pair<ImportTask, Int>? {
+        val current = _errorTasks.value
+        val index = current.indexOfFirst { it.id == taskId }
         if (index == -1) return null
         val target = current[index]
-        _errorItems.value = current.filter { it.id != itemId }
-        saveToPrefs()
+        repositoryScope.launch {
+            taskDao.deleteById(taskId)
+        }
         return target to index
     }
 
     /**
-     * Restores a previously removed Error item.
+     * Restores a previously removed Error task.
      */
-    fun restoreErrorItem(item: QueueItem, index: Int = 0) {
-        val current = _errorItems.value.toMutableList()
-        val safeIndex = index.coerceIn(0, current.size)
-        current.add(safeIndex, item)
-        _errorItems.value = current
-        saveToPrefs()
+    fun restoreErrorTask(task: ImportTask, index: Int = 0) {
+        repositoryScope.launch {
+            taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(task))
+        }
     }
 
     private val foregroundRetryCounts = mutableMapOf<String, Int>()
@@ -271,51 +275,51 @@ class QueueRepository private constructor(context: Context) {
 
     /**
      * Called when the app transitions to active/foreground.
-     * Promotes Queuing tasks to Running if auto-run setting is enabled,
-     * and resumes any interrupted or waiting Running tasks.
+     * Promotes Ready tasks to Processing if auto-run setting is enabled,
+     * and resumes any interrupted or waiting Processing tasks.
      */
     fun onAppBecameActive() {
         if (AppConfig.isAutoRunAiOnActive.value) {
-            aiTaggingAll()
+            aiAnalysisAll()
         }
-        retryWaitingRunningItems()
+        retryWaitingProcessingTasks()
     }
 
     /**
-     * Resumes or retries all items in the Running group that are in WAITING_AI or interrupted state.
+     * Resumes or retries all tasks in the Processing group that are in WAITING_AI or interrupted state.
      */
-    fun retryWaitingRunningItems() {
-        val waiting = _runningItems.value.filter {
-            it.status == QueueItemStatus.WAITING_AI || it.status == QueueItemStatus.PROCESSING_AI
+    fun retryWaitingProcessingTasks() {
+        val waiting = _processingTasks.value.filter {
+            it.status == TaskStatus.WAITING_AI || it.status == TaskStatus.PROCESSING_AI
         }
         waiting.forEach { item ->
-            executeItemAiTagging(item.id)
+            executeTaskAiAnalysis(item.id)
         }
     }
 
     /**
-     * Executes the Gemini Nano tagging and summarization pipeline for the specified item.
+     * Executes the Gemini Nano analysis and summarization pipeline for the specified task.
      */
-    fun executeItemAiTagging(itemId: String) {
+    fun executeTaskAiAnalysis(taskId: String) {
         repositoryScope.launch {
             executionMutex.withLock {
-                val target = _runningItems.value.find { it.id == itemId } ?: return@withLock
+                val target = _processingTasks.value.find { it.id == taskId } ?: return@withLock
 
                 // If app is currently in background, do not start inference; wait for foreground
                 if (!TidiloApplication.instance.isAppInForeground) {
-                    updateRunningItemStatus(
-                        itemId = itemId,
-                        status = QueueItemStatus.WAITING_AI,
+                    updateProcessingTaskStatus(
+                        taskId = taskId,
+                        status = TaskStatus.WAITING_AI,
                         statusText = "Paused • Retrying when app is active"
                     )
                     return@withLock
                 }
 
                 // 1. Update status to PROCESSING_AI
-                updateRunningItemStatus(
-                    itemId = itemId,
-                    status = QueueItemStatus.PROCESSING_AI,
-                    statusText = "Gemini Nano generating semantic tags..."
+                updateProcessingTaskStatus(
+                    taskId = taskId,
+                    status = TaskStatus.PROCESSING_AI,
+                    statusText = "Gemini Nano analyzing content..."
                 )
 
                 try {
@@ -331,10 +335,9 @@ class QueueRepository private constructor(context: Context) {
                     )
 
                     if (result.isSuccess) {
-                        // 3. Success: Remove from Running and register in library
-                        foregroundRetryCounts.remove(itemId)
-                        _runningItems.value = _runningItems.value.filter { it.id != itemId }
-                        saveToPrefs()
+                        // 3. Success: Remove from database and register in library
+                        foregroundRetryCounts.remove(taskId)
+                        taskDao.deleteById(taskId)
                     } else {
                         // Failure: check if it should be retried or moved to Error
                         val throwable = result.exceptionOrNull() ?: Exception("Unknown tagging failure")
@@ -348,28 +351,28 @@ class QueueRepository private constructor(context: Context) {
     }
 
     /**
-     * Handles failure during AI tagging execution in accordance with Issue #22:
-     * - Background: Suspend execution, keep item in Running with WAITING_AI status until foreground.
-     * - BUSY (9): Retry up to 3 times with 3-second interval. On retry limit, fail entire Running batch.
+     * Handles failure during AI analysis execution in accordance with Issue #22:
+     * - Background: Suspend execution, keep task in Processing with WAITING_AI status until foreground.
+     * - BUSY (9): Retry up to 3 times with 3-second interval. On retry limit, fail entire Processing batch.
      * - PER_APP_BATTERY_USE_QUOTA_EXCEEDED (27):
      *     - Show dialog: "AICore使用制限を超過しました。利用が制限されています。"
-     *     - Move current URL and all other Waiting Running items back to Queuing group.
+     *     - Move current URL and all other Waiting Processing tasks back to Ready group.
      * - BACKGROUND_USE_BLOCKED (30):
-     *     - If in foreground, retry up to 3 times with 3-second interval. On retry limit, fail entire Running batch.
+     *     - If in foreground, retry up to 3 times with 3-second interval. On retry limit, fail entire Processing batch.
      *     - If in background, pause and wait for foreground.
      * - Retry limit reached OR any other errors:
-     *     - Remove current task and all other pending Running tasks from Running, moving them to Error group.
+     *     - Move current task and all other pending Processing tasks to Error group.
      */
-    private fun handleExecutionFailure(target: QueueItem, throwable: Throwable) {
+    private fun handleExecutionFailure(target: ImportTask, throwable: Throwable) {
         val errorMessage = throwable.message.orEmpty()
         val isForeground = TidiloApplication.instance.isAppInForeground
         val errorCode = extractAiCoreErrorCode(throwable)
 
-        // 1. If app is in background, suspend and retain in Running with WAITING_AI status
+        // 1. If app is in background, suspend and retain in Processing with WAITING_AI status
         if (!isForeground) {
-            updateRunningItemStatus(
-                itemId = target.id,
-                status = QueueItemStatus.WAITING_AI,
+            updateProcessingTaskStatus(
+                taskId = target.id,
+                status = TaskStatus.WAITING_AI,
                 statusText = "Paused • Retrying when app is active"
             )
             return
@@ -381,69 +384,63 @@ class QueueRepository private constructor(context: Context) {
                 if (isFallbackApplicable(errorCode, throwable)) {
                     saveBookmarkFallback(target)
                 } else {
-                    // Quota exceeded: Show dialog and move all Running items back to Queuing
-                    moveAllRunningToQueuing()
+                    moveAllProcessingToReady()
                 }
             }
 
             GenAiException.ErrorCode.BUSY -> {
-                // BUSY: Retry up to 3 times with 3-second intervals
                 val retryCount = (foregroundRetryCounts[target.id] ?: 0) + 1
                 foregroundRetryCounts[target.id] = retryCount
                 if (retryCount <= MAX_FOREGROUND_RETRIES) {
-                    updateRunningItemStatus(
-                        itemId = target.id,
-                        status = QueueItemStatus.WAITING_AI,
+                    updateProcessingTaskStatus(
+                        taskId = target.id,
+                        status = TaskStatus.WAITING_AI,
                         statusText = "AICore busy • Retrying ($retryCount/$MAX_FOREGROUND_RETRIES)..."
                     )
                     repositoryScope.launch {
                         delay(RETRY_INTERVAL_MS)
                         if (TidiloApplication.instance.isAppInForeground) {
-                            executeItemAiTagging(target.id)
+                            executeTaskAiAnalysis(target.id)
                         }
                     }
                 } else {
-                    // Retry limit reached: fall back to bookmark if applicable, else fail to Error
                     if (isFallbackApplicable(errorCode, throwable)) {
                         saveBookmarkFallback(target)
                     } else {
-                        moveAllRunningToError(target, errorMessage.ifBlank { "AICore busy: Retry limit exceeded (3/3)" })
+                        moveAllProcessingToError(target, errorMessage.ifBlank { "AICore busy: Retry limit exceeded (3/3)" })
                     }
                 }
             }
 
             GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED -> {
-                // BACKGROUND_USE_BLOCKED: Retry up to 3 times with 3-second intervals in foreground
                 val retryCount = (foregroundRetryCounts[target.id] ?: 0) + 1
                 foregroundRetryCounts[target.id] = retryCount
                 if (retryCount <= MAX_FOREGROUND_RETRIES) {
-                    updateRunningItemStatus(
-                        itemId = target.id,
-                        status = QueueItemStatus.WAITING_AI,
+                    updateProcessingTaskStatus(
+                        taskId = target.id,
+                        status = TaskStatus.WAITING_AI,
                         statusText = "AICore background blocked • Retrying ($retryCount/$MAX_FOREGROUND_RETRIES)..."
                     )
                     repositoryScope.launch {
                         delay(RETRY_INTERVAL_MS)
                         if (TidiloApplication.instance.isAppInForeground) {
-                            executeItemAiTagging(target.id)
+                            executeTaskAiAnalysis(target.id)
                         }
                     }
                 } else {
-                    // Retry limit reached: fall back to bookmark if applicable, else fail to Error
                     if (isFallbackApplicable(errorCode, throwable)) {
                         saveBookmarkFallback(target)
                     } else {
-                        moveAllRunningToError(target, errorMessage.ifBlank { "AICore background blocked: Retry limit exceeded (3/3)" })
+                        moveAllProcessingToError(target, errorMessage.ifBlank { "AICore background blocked: Retry limit exceeded (3/3)" })
                     }
                 }
             }
 
             else -> {
-                // Unhandled error / other errors: fall back to bookmark if applicable, else fail to Error
                 if (isFallbackApplicable(errorCode, throwable)) {
                     saveBookmarkFallback(target)
                 } else {
-                    moveAllRunningToError(target, errorMessage.ifBlank { "AICore inference failure" })
+                    moveAllProcessingToError(target, errorMessage.ifBlank { "AICore inference failure" })
                 }
             }
         }
@@ -457,9 +454,11 @@ class QueueRepository private constructor(context: Context) {
         return Companion.isFallbackApplicable(AppConfig.aiCoreFallbackMode.value, errorCode, throwable)
     }
 
-    private fun saveBookmarkFallback(target: QueueItem) {
+    private fun saveBookmarkFallback(target: ImportTask) {
         foregroundRetryCounts.remove(target.id)
-        _runningItems.value = _runningItems.value.filter { it.id != target.id }
+        repositoryScope.launch {
+            taskDao.deleteById(target.id)
+        }
 
         val domain = DomainIconManager.extractDomain(target.url)
         DomainPolicyManager.registerDomain(domain, false, target.siteName)
@@ -479,36 +478,35 @@ class QueueRepository private constructor(context: Context) {
             isAiSkipped = true
         )
         BookmarkRepository.getInstance().addBookmark(fallbackBookmark)
-        saveToPrefs()
     }
 
     /**
-     * Moves all items currently in Running back to the Queuing group due to battery quota limit.
+     * Moves all tasks currently in Processing back to the Ready group due to battery quota limit.
      */
-    private fun moveAllRunningToQueuing() {
+    private fun moveAllProcessingToReady() {
         _quotaExceededDialogVisible.value = true
-        val currentRunning = _runningItems.value
-        val converted = currentRunning.map { item ->
+        val currentProcessing = _processingTasks.value
+        val converted = currentProcessing.map { item ->
             item.copy(
-                status = QueueItemStatus.QUEUED,
-                statusText = "Queued • Quota exceeded"
+                status = TaskStatus.READY,
+                statusText = "Ready • Quota exceeded"
             )
         }
-        _runningItems.value = emptyList()
-        _queuingItems.value = converted + _queuingItems.value
         foregroundRetryCounts.clear()
-        saveToPrefs()
+        repositoryScope.launch {
+            taskDao.insertAll(converted.map { ImportTaskEntity.fromImportTask(it) })
+        }
     }
 
     /**
-     * Removes the failed item and all other items queued in Running, moving them to the Error group.
+     * Removes the failed task and all other tasks in Processing, moving them to the Error group.
      */
-    private fun moveAllRunningToError(primaryFailedItem: QueueItem, errorMessage: String) {
-        val currentRunning = _runningItems.value
+    private fun moveAllProcessingToError(primaryFailedItem: ImportTask, errorMessage: String) {
+        val currentProcessing = _processingTasks.value
         val fallbackMsg = errorMessage.ifBlank { "Unknown failure" }
-        val errorItemsToAdd = currentRunning.map { item ->
+        val errorItemsToAdd = currentProcessing.map { item ->
             item.copy(
-                status = QueueItemStatus.ERROR,
+                status = TaskStatus.ERROR,
                 statusText = "Failed",
                 errorMessage = if (item.id == primaryFailedItem.id) {
                     fallbackMsg
@@ -517,28 +515,19 @@ class QueueRepository private constructor(context: Context) {
                 }
             )
         }
-        _runningItems.value = emptyList()
-        _errorItems.value = errorItemsToAdd + _errorItems.value
         foregroundRetryCounts.clear()
-        saveToPrefs()
-    }
-
-    private fun updateRunningItemStatus(itemId: String, status: QueueItemStatus, statusText: String) {
-        _runningItems.value = _runningItems.value.map { item ->
-            if (item.id == itemId) {
-                item.copy(status = status, statusText = statusText)
-            } else {
-                item
-            }
+        repositoryScope.launch {
+            taskDao.insertAll(errorItemsToAdd.map { ImportTaskEntity.fromImportTask(it) })
         }
-        saveToPrefs()
     }
 
-    /**
-     * Fetches metadata and body snippets in background for any legacy/unparsed Queuing items,
-     * ensuring they have precomputed data ready for zero-overhead Running execution.
-     */
-    private fun fetchAndPreparseItemAsync(itemId: String, url: String) {
+    private fun updateProcessingTaskStatus(taskId: String, status: TaskStatus, statusText: String) {
+        repositoryScope.launch {
+            taskDao.updateStatus(taskId, status.name, statusText)
+        }
+    }
+
+    private fun fetchAndPreparseTaskAsync(taskId: String, url: String) {
         repositoryScope.launch {
             try {
                 val parsed = WebPageParser.parseUrl(url).getOrNull() ?: return@launch
@@ -548,17 +537,17 @@ class QueueRepository private constructor(context: Context) {
                 val domain = DomainIconManager.extractDomain(realUrl)
                 val siteName = parsed.ogpTags["og:site_name"]?.trim()?.takeIf { it.isNotBlank() }
                     ?: extractHostOrTitle(realUrl)
-                DomainPolicyManager.registerDomain(domain, false, siteName)
-                val isNsfw = parsed.isNsfwSignal || DomainPolicyManager.isNsfwDomain(domain)
 
-                // Fetch domain icon (saves only >=96x96 without duplicates)
-                if (domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
-                    DomainIconManager.fetchAndSaveDomainIcon(
-                        context = appContext,
-                        url = realUrl,
-                        appleTouchIconUrl = parsed.appleTouchIconUrl,
-                        faviconUrl = parsed.faviconUrl
-                    )
+                if (domain != null) {
+                    DomainPolicyManager.registerDomain(domain, false, siteName)
+                    if (!DomainIconManager.hasIcon(appContext, domain)) {
+                        DomainIconManager.fetchAndSaveDomainIcon(
+                            context = appContext,
+                            url = realUrl,
+                            appleTouchIconUrl = parsed.appleTouchIconUrl,
+                            faviconUrl = parsed.faviconUrl
+                        )
+                    }
                 }
 
                 val description = parsed.ogpTags["og:description"]
@@ -567,137 +556,82 @@ class QueueRepository private constructor(context: Context) {
                 val bodySnippet = (parsed.readabilityArticle?.textContent?.takeIf { it.isNotBlank() }
                     ?: parsed.jsoupBodyText).take(800).replace("\n", " ")
 
-                val hasNewTitle = !realTitle.isNullOrBlank()
+                val isNsfw = parsed.isNsfwSignal || (domain != null && DomainPolicyManager.isNsfwDomain(domain))
 
-                val updateItem = { item: QueueItem ->
-                    if (item.id == itemId) {
-                        item.copy(
-                            title = if (hasNewTitle) realTitle else item.title,
-                            url = realUrl,
-                            isNsfw = isNsfw,
-                            siteName = siteName,
-                            description = description,
-                            bodySnippet = bodySnippet
-                        )
-                    } else {
-                        item
-                    }
+                val existing = taskDao.getTaskById(taskId)
+                if (existing != null) {
+                    val updated = existing.copy(
+                        url = realUrl,
+                        title = if (realTitle != null && isRawUrlOrHost(existing.title, existing.url)) realTitle else existing.title,
+                        siteName = siteName,
+                        description = description.ifBlank { existing.description },
+                        bodySnippet = bodySnippet.ifBlank { existing.bodySnippet },
+                        isNsfw = isNsfw || existing.isNsfw
+                    )
+                    taskDao.update(updated)
                 }
-                _queuingItems.value = _queuingItems.value.map(updateItem)
-                _runningItems.value = _runningItems.value.map(updateItem)
-                saveToPrefs()
             } catch (_: Exception) {
-                // Ignore failure and retain current values
             }
         }
     }
 
-    private fun fetchTitlesForQueuingItems() {
+    private fun fetchTitlesForReadyTasks() {
         repositoryScope.launch {
-            val toFetch = _queuingItems.value.filter {
-                it.bodySnippet.isBlank() || isRawUrlOrHost(it.title, it.url) || WebPageParser.isWrapperUrl(it.url)
+            val toFetch = _readyTasks.value.filter {
+                isRawUrlOrHost(it.title, it.url) || it.bodySnippet.isBlank()
             }
             toFetch.forEach { item ->
-                fetchAndPreparseItemAsync(item.id, item.url)
+                fetchAndPreparseTaskAsync(item.id, item.url)
             }
         }
     }
 
-    val currentQueuingCount: Int
-        get() = _queuingItems.value.size
+    val readyCount: Int
+        get() = _readyTasks.value.size
 
-    private fun loadFromPrefs() {
-        val runningJson = prefs.getString("running_items", null)
-        val queuingJson = prefs.getString("queuing_items", null)
-        val errorJson = prefs.getString("error_items", null)
+    private suspend fun migrateFromLegacyPrefs() {
+        val legacyPrefs = appContext.getSharedPreferences("tidilo_queue_prefs", Context.MODE_PRIVATE)
+        val runningJson = legacyPrefs.getString("running_items", null)
+        val queuingJson = legacyPrefs.getString("queuing_items", null)
+        val errorJson = legacyPrefs.getString("error_items", null)
 
-        // Filter out legacy test Running task (run-1)
-        val running = parseItems(runningJson).filterNot {
-            it.id == "run-1" || it.url == "https://source.android.com/devices/tech/gemini-nano"
-        }
-        // Filter out legacy demo queuing items
-        val queuing = parseItems(queuingJson).filterNot {
+        val toInsert = mutableListOf<ImportTaskEntity>()
+        parseLegacyItems(runningJson).filterNot {
             it.id in setOf("queue-1", "queue-2", "queue-3", "queue-4", "queue-5", "queue-6")
+        }.forEach {
+            toInsert.add(ImportTaskEntity.fromImportTask(it))
         }
-        // Filter out legacy demo error item
-        val error = parseItems(errorJson).filterNot {
+
+        parseLegacyItems(queuingJson).filterNot {
+            it.id in setOf("queue-1", "queue-2", "queue-3", "queue-4", "queue-5", "queue-6")
+        }.forEach {
+            toInsert.add(ImportTaskEntity.fromImportTask(it))
+        }
+
+        parseLegacyItems(errorJson).filterNot {
             it.id == "err-1"
+        }.forEach {
+            toInsert.add(ImportTaskEntity.fromImportTask(it))
         }
 
-        if (runningJson == null && queuingJson == null) {
-            // Clean empty state on first launch: no demo seed tasks
-            _runningItems.value = emptyList()
-            _queuingItems.value = emptyList()
-            _errorItems.value = emptyList()
-
-            saveToPrefs()
-        } else {
-            _runningItems.value = running
-            _queuingItems.value = queuing
-            _errorItems.value = error
-            // Purge legacy demo items or completed items from SharedPreferences immediately
-            if (running.size != parseItems(runningJson).size ||
-                queuing.size != parseItems(queuingJson).size ||
-                error.size != parseItems(errorJson).size ||
-                prefs.contains("completed_items")
-            ) {
-                saveToPrefs()
-            }
+        if (toInsert.isNotEmpty()) {
+            taskDao.insertAll(toInsert)
         }
+        legacyPrefs.edit().clear().apply()
     }
 
-    private fun saveToPrefs() {
-        val running = _runningItems.value
-        val queuing = _queuingItems.value
-        val error = _errorItems.value
-        repositoryScope.launch {
-            val runningJson = serializeItems(running)
-            val queuingJson = serializeItems(queuing)
-            val errorJson = serializeItems(error)
-            prefs.edit()
-                .putString("running_items", runningJson)
-                .putString("queuing_items", queuingJson)
-                .putString("error_items", errorJson)
-                .remove("completed_items")
-                .apply()
-        }
-    }
-
-    private fun serializeItems(items: List<QueueItem>): String {
-        val array = JSONArray()
-        items.forEach { item ->
-            val obj = JSONObject().apply {
-                put("id", item.id)
-                put("url", item.url)
-                put("title", item.title)
-                put("status", item.status.name)
-                put("statusText", item.statusText)
-                if (item.errorMessage != null) put("errorMessage", item.errorMessage)
-                if (item.assignedTags.isNotEmpty()) {
-                    val tagsArr = JSONArray()
-                    item.assignedTags.forEach { tagsArr.put(it) }
-                    put("assignedTags", tagsArr)
-                }
-                put("createdAt", item.createdAt)
-                put("isNsfw", item.isNsfw)
-                put("siteName", item.siteName)
-                put("description", item.description)
-                put("bodySnippet", item.bodySnippet)
-            }
-            array.put(obj)
-        }
-        return array.toString()
-    }
-
-    private fun parseItems(json: String?): List<QueueItem> {
+    private fun parseLegacyItems(json: String?): List<ImportTask> {
         if (json.isNullOrBlank()) return emptyList()
         return runCatching {
             val array = JSONArray(json)
-            val list = mutableListOf<QueueItem>()
+            val list = mutableListOf<ImportTask>()
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
-                val statusStr = obj.optString("status", QueueItemStatus.QUEUED.name)
-                val status = runCatching { QueueItemStatus.valueOf(statusStr) }.getOrDefault(QueueItemStatus.QUEUED)
+                val statusStr = obj.optString("status", TaskStatus.READY.name)
+                val status = when (statusStr) {
+                    "QUEUED" -> TaskStatus.READY
+                    else -> runCatching { TaskStatus.valueOf(statusStr) }.getOrDefault(TaskStatus.READY)
+                }
 
                 val tagsList = mutableListOf<String>()
                 obj.optJSONArray("assignedTags")?.let { arr ->
@@ -708,7 +642,7 @@ class QueueRepository private constructor(context: Context) {
                 val isNsfw = obj.optBoolean("isNsfw", false)
 
                 list.add(
-                    QueueItem(
+                    ImportTask(
                         id = obj.getString("id"),
                         url = obj.getString("url"),
                         title = obj.getString("title"),
@@ -730,11 +664,11 @@ class QueueRepository private constructor(context: Context) {
 
     companion object {
         @Volatile
-        private var INSTANCE: QueueRepository? = null
+        private var INSTANCE: ImportRepository? = null
 
-        fun getInstance(context: Context): QueueRepository {
+        fun getInstance(context: Context = TidiloApplication.instance): ImportRepository {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: QueueRepository(context.applicationContext).also { INSTANCE = it }
+                INSTANCE ?: ImportRepository(context.applicationContext).also { INSTANCE = it }
             }
         }
 
@@ -788,9 +722,9 @@ class QueueRepository private constructor(context: Context) {
                     msg.contains("UNAVAILABLE", ignoreCase = true) ||
                     msg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ||
                     msg.contains("Inference Failed", ignoreCase = true) ||
-                    className.contains("genai", ignoreCase = true) ||
-                    className.contains("RemoteException", ignoreCase = true) ||
-                    className.contains("CancellationException", ignoreCase = true)
+                    className.contains("CancellationException", ignoreCase = true) ||
+                    throwable is GenAiException ||
+                    throwable is AiCoreExecutionException
         }
 
         fun extractAiCoreErrorCode(throwable: Throwable): Int? {
@@ -806,7 +740,8 @@ class QueueRepository private constructor(context: Context) {
             return when {
                 msg.contains("PER_APP_BATTERY_USE_QUOTA_EXCEEDED", ignoreCase = true) ||
                         msg.contains("battery use quota", ignoreCase = true) ||
-                        msg.contains("quota exceeded", ignoreCase = true) -> GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED
+                        msg.contains("quota exceeded", ignoreCase = true) ||
+                        msg.contains("code 27", ignoreCase = true) -> GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED
                 msg.contains("BACKGROUND_USE_BLOCKED", ignoreCase = true) ||
                         msg.contains("background use blocked", ignoreCase = true) -> GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED
                 msg.contains("BUSY", ignoreCase = true) ||
@@ -816,15 +751,13 @@ class QueueRepository private constructor(context: Context) {
             }
         }
 
-        fun isFallbackApplicable(
-            mode: AiCoreFallbackMode,
-            errorCode: Int?,
-            throwable: Throwable
-        ): Boolean {
+        fun isFallbackApplicable(mode: AiCoreFallbackMode, errorCode: Int?, throwable: Throwable): Boolean {
             return when (mode) {
                 AiCoreFallbackMode.DISABLE -> false
                 AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY -> {
-                    errorCode == GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED
+                    errorCode == GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED ||
+                            throwable.message?.contains("27") == true ||
+                            throwable.message?.contains("QUOTA", ignoreCase = true) == true
                 }
                 AiCoreFallbackMode.ALL -> {
                     errorCode != null || isAiCoreOrInterruptionException(throwable)

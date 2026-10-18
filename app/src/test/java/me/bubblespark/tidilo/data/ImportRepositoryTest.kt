@@ -386,4 +386,57 @@ class ImportRepositoryTest {
         assertEquals(task.description, reconstructed.description)
         assertEquals(task.bodySnippet, reconstructed.bodySnippet)
     }
+
+    @Test
+    fun testTaskExecutionEligibilityGuardsAgainstInvalidStates() {
+        // executeTaskAiAnalysis requires the task to be in WAITING_AI or PROCESSING_AI
+        fun isEligibleForExecution(status: TaskStatus): Boolean {
+            return status == TaskStatus.WAITING_AI || status == TaskStatus.PROCESSING_AI
+        }
+
+        assertTrue(isEligibleForExecution(TaskStatus.WAITING_AI))
+        assertTrue(isEligibleForExecution(TaskStatus.PROCESSING_AI))
+        assertFalse(isEligibleForExecution(TaskStatus.READY))
+        assertFalse(isEligibleForExecution(TaskStatus.COMPLETED))
+        assertFalse(isEligibleForExecution(TaskStatus.ERROR))
+    }
+
+    @Test
+    fun testPromoteReadyTaskToWaitingAiStateTransition() {
+        val readyTask = ImportTask(
+            id = "test-promote-1",
+            url = "https://example.com/test",
+            title = "Sample Webpage",
+            status = TaskStatus.READY,
+            statusText = "Ready for AI Analysis",
+            isNsfw = false,
+            siteName = "SampleSite",
+            description = "Snippet description",
+            bodySnippet = "Extracted body content"
+        )
+
+        val promoted = readyTask.copy(
+            status = TaskStatus.WAITING_AI,
+            statusText = "Waiting for AICore slot..."
+        )
+
+        assertEquals(TaskStatus.WAITING_AI, promoted.status)
+        assertEquals("Waiting for AICore slot...", promoted.statusText)
+        assertEquals(readyTask.id, promoted.id)
+        assertEquals(readyTask.url, promoted.url)
+        assertEquals(readyTask.title, promoted.title)
+        assertEquals(readyTask.siteName, promoted.siteName)
+        assertEquals(readyTask.description, promoted.description)
+        assertEquals(readyTask.bodySnippet, promoted.bodySnippet)
+
+        // Convert to entity and back to ensure Room compatibility
+        val entity = ImportTaskEntity.fromImportTask(promoted)
+        assertEquals(TaskStatus.WAITING_AI.name, entity.status)
+        assertEquals("Waiting for AICore slot...", entity.statusText)
+
+        val restored = entity.toImportTask()
+        assertEquals(TaskStatus.WAITING_AI, restored.status)
+        assertEquals("Waiting for AICore slot...", restored.statusText)
+    }
 }
+

@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 // Expressive M3 Light Colors
@@ -55,3 +57,13 @@ val TagTech = Color(0xFF388E3C)
 val TagAI = Color(0xFF7B1FA2)
 val TagDesign = Color(0xFFE64A19)
 val TagNews = Color(0xFF0288D1)
+
+// Warning Colors (Semantic Amber/Gold for AI Skipped / Warnings)
+val WarningLight = Color(0xFF825500)
+val WarningDark = Color(0xFFFFBA28)
+
+object WarningColor {
+    val textOrIcon: Color
+        @Composable
+        get() = if (isSystemInDarkTheme()) WarningDark else WarningLight
+}

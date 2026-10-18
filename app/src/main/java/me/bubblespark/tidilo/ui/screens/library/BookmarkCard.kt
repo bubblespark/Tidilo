@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.OpenInBrowser
+import androidx.compose.material.icons.outlined.Warning
+import me.bubblespark.tidilo.ui.theme.WarningColor
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -198,22 +200,58 @@ fun BookmarkItemCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            if (wordKeywords.isEmpty()) {
-                Text(
-                    text = bookmark.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            if (bookmark.isAiSkipped) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Warning,
+                        contentDescription = stringResource(R.string.bookmark_ai_skipped),
+                        tint = WarningColor.textOrIcon,
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .size(16.dp)
+                    )
+                    if (wordKeywords.isEmpty()) {
+                        Text(
+                            text = bookmark.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        val highlightedDescription = rememberHighlightedText(
+                            text = bookmark.description,
+                            keywords = wordKeywords
+                        )
+                        Text(
+                            text = highlightedDescription,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             } else {
-                val highlightedDescription = rememberHighlightedText(
-                    text = bookmark.description,
-                    keywords = wordKeywords
-                )
-                Text(
-                    text = highlightedDescription,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (wordKeywords.isEmpty()) {
+                    Text(
+                        text = bookmark.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    val highlightedDescription = rememberHighlightedText(
+                        text = bookmark.description,
+                        keywords = wordKeywords
+                    )
+                    Text(
+                        text = highlightedDescription,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -277,17 +315,6 @@ fun BookmarkItemCard(
                         )
                     }
 
-                    if (bookmark.isAiSkipped) {
-                        CompactTagBadge(
-                            icon = null,
-                            text = stringResource(R.string.bookmark_ai_skipped),
-                            isMatched = false,
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                            matchedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            matchedContentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    }
 
                     if (bookmark.isNsfw) {
                         CompactTagBadge(

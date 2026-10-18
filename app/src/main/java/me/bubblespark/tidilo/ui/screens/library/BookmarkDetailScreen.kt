@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.Warning
+import me.bubblespark.tidilo.ui.theme.WarningColor
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
@@ -418,6 +420,27 @@ fun BookmarkDetailScreen(
             }
         }
 
+        if (bookmark.isAiSkipped) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Warning,
+                    contentDescription = null,
+                    tint = WarningColor.textOrIcon,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = stringResource(R.string.detail_ai_not_analyzed_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = WarningColor.textOrIcon
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
 
         // 4. Section: Tags & Classification
@@ -556,17 +579,6 @@ fun BookmarkDetailScreen(
                     )
                 }
 
-                if (bookmark.isAiSkipped) {
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(stringResource(R.string.bookmark_ai_skipped), fontWeight = FontWeight.Bold) },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            labelColor = MaterialTheme.colorScheme.onTertiaryContainer
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-                }
 
                 if (editedIsNsfw) {
                     AssistChip(

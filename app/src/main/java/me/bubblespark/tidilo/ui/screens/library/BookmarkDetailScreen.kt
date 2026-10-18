@@ -244,11 +244,11 @@ fun BookmarkDetailScreen(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp)
         ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
         // 1. Top Header: Back Button + Title + Save Button
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -266,15 +266,16 @@ fun BookmarkDetailScreen(
                         }
                     },
                     enabled = !isSaving,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .size(40.dp)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.common_back),
-                        tint = if (isSaving) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurface
+                        tint = if (isSaving) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onBackground
                     )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.detail_title),
                     style = MaterialTheme.typography.headlineMedium,

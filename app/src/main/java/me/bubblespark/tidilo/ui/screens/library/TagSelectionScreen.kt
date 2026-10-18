@@ -250,11 +250,11 @@ fun TagSelectionScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
         // Top Menu: Back (←) button, title, and Clear button
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -264,7 +264,9 @@ fun TagSelectionScreen(
             ) {
                 IconButton(
                     onClick = applyAndNavigateBack,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .size(40.dp)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -272,7 +274,6 @@ fun TagSelectionScreen(
                         tint = MaterialTheme.colorScheme.onBackground
                     )
                 }
-                Spacer(modifier = Modifier.width(4.dp))
                 Column {
                     Text(
                         text = stringResource(R.string.tag_selection_title),

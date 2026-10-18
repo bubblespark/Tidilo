@@ -311,3 +311,20 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - The underlying screen's ambient illumination shines naturally through the translucent frosted glass with complete optical clarity.
 - **Touch-through Transparency**: Lower dissolve zone uses a non-interactive `Spacer`, allowing pointer events to interact freely with underlying lazy lists.
 - **Adopted Screens**: Unified across `LibraryScreen`, `SearchScreen`, and `ImportScreen`.
+
+### 6.10 Application-Wide Title Bar & Header Geometry Standardization
+- **Baseline Source of Truth (`LibraryScreen`)**:
+  - Distance from Status Bar: `statusBarsPadding()` immediately followed by `top = 4.dp, bottom = 4.dp` padding.
+  - Horizontal Screen Margin: `start = 20.dp, end = 20.dp`.
+  - Title Text Typography: `MaterialTheme.typography.headlineMedium`, `fontWeight = FontWeight.Bold`, `color = MaterialTheme.colorScheme.onBackground`.
+  - Vertical Center Line: Coordinated at $Y \approx 217\text{px}$ across Pixel / standard densities.
+- **Back Navigation Affordance (`IconButton`)**:
+  - Dimensions & End Spacing: `modifier = Modifier.padding(end = 4.dp).size(40.dp)`.
+  - Icon Vector & Tint: `Icons.AutoMirrored.Filled.ArrowBack` with `tint = MaterialTheme.colorScheme.onBackground`.
+  - Horizontal Title Text Alignment: Exactly $64\text{dp}$ ($20\text{dp} + 40\text{dp} + 4\text{dp}$) from the screen start edge across all screens with back navigation.
+- **Secondary Actions & Toolbar Buttons**:
+  - Header Action Buttons: Standardized to `modifier = Modifier.size(44.dp)` (e.g. Settings gear in Library, Add link in Import, Reset Wrench in GenerateContentRequest).
+- **Unified Screens**:
+  - Tab Screens without Back Button: `LibraryScreen`, `SearchScreen`, `ImportScreen`.
+  - Sub-Screens with Back Button: `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `NsfwSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `BookmarkAiReviewScreen`.
+

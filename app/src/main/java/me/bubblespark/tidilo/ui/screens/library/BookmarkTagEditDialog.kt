@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -31,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -56,8 +58,11 @@ fun BookmarkTagEditDialog(
     selectedCategory: String?,
     selectedSubcategory: String?,
     selectedEntities: List<String>,
+    isNsfw: Boolean = false,
+    isNsfwContentVisible: Boolean = true,
     onCategoryChanged: (String) -> Unit,
     onSubcategoryChanged: (String) -> Unit,
+    onNsfwChanged: (Boolean) -> Unit = {},
     onAddEntityClick: () -> Unit,
     onOpenEntityPickerClick: () -> Unit,
     onConfirm: () -> Unit,
@@ -241,7 +246,56 @@ fun BookmarkTagEditDialog(
                     }
                 }
 
-                // 3. Entity Section (Entity label + action icons + chips without delete button)
+                // 3. NSFW Toggle Section
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.detail_tag_nsfw_label),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Switch(
+                            checked = isNsfw,
+                            onCheckedChange = onNsfwChanged
+                        )
+                    }
+
+                    if (!isNsfwContentVisible && isNsfw) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(R.string.detail_tag_nsfw_hidden_warning),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 4. Entity Section (Entity label + action icons + chips without delete button)
                 Column {
                     Row(
                         modifier = Modifier.fillMaxWidth(),

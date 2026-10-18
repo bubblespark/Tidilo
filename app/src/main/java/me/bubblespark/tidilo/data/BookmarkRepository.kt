@@ -198,13 +198,14 @@ class BookmarkRepository private constructor(context: Context) {
     }
 
     /**
-     * Updates note and tag of a bookmark and persists the change atomically.
+     * Updates note, tag, and NSFW status of a bookmark and persists the change atomically.
      * Preserves existing isAiSkipped flag.
      */
     suspend fun updateBookmarkDetails(
         id: String,
         note: String,
-        tag: Tag
+        tag: Tag,
+        isNsfw: Boolean
     ) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
 
@@ -214,6 +215,7 @@ class BookmarkRepository private constructor(context: Context) {
             category = tag.category,
             subcategory = tag.subcategory,
             entities = tag.entities,
+            isNsfw = isNsfw,
             updatedAt = now
         )
 
@@ -223,6 +225,7 @@ class BookmarkRepository private constructor(context: Context) {
                 item.copy(
                     note = note,
                     tag = tag,
+                    isNsfw = isNsfw,
                     updatedAt = now
                 )
             } else {

@@ -171,18 +171,20 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 - **Integrated Category & Tag Editing Workflow (Parent Dialog + Screen-Level Bottom Sheet)**:
   - **Edit Action Trigger**: Positioned at the right end of the "Category & Tags" section header row via a borderless `IconButton(Icons.Outlined.Edit)`.
   - **Parent Modification Dialog (`BookmarkTagEditDialog`)**:
-    - Centralized `AlertDialog` managing Category (7 options), Subcategory (11 options), and assigned Entities in one place.
+    - Centralized `AlertDialog` managing Category (7 options), Subcategory (11 options), NSFW status toggle, and assigned Entities in one place.
     - **Category & Subcategory Dropdowns**: Single-select dropdown menus displaying localized strings.
+    - **NSFW Content Toggle Section**: Positioned between Subcategory and Entity sections. Contains a Material 3 `Switch` allowing users to mark bookmarks as NSFW. When `AppConfig.isNsfwContentVisible` is OFF (NSFW hidden in Settings) and the toggle is ON, displays a contextual warning banner beneath the switch: `If you save while “ON” is selected, that bookmark will be hidden. (See “NSFW Contents” in Settings.)`.
     - **Entity Section Header**: Features borderless action icon buttons: `+` (Add new entity via `AddEntityDialog`) and `List Alt` (`ListAltIcon`, opens existing entity picker bottom sheet).
     - **Entity Preview Chips**: Rendered identically to Detail screen's chip style (`AssistChip`, 10dp rounded corners, tag icon) **without delete buttons** to maintain a clean layout.
   - **Screen-Level Bottom Sheet Anchor (`EntityTagPickerBottomSheet`)**:
     - Positioned at the root screen level (`BookmarkDetailScreen`) rather than inside the dialog's window tree.
     - Animates smoothly from the physical screen bottom, cleanly overlapping the lower half of the parent dialog.
+    - Dismissal via the top-right OK button smoothly executes `sheetState.hide()` to slide down before invoking `onDismiss()`.
     - **Top Section**: Selected entity chips with dedicated delete ('x') buttons (`Icons.Default.Close`).
     - **Bottom Section**: All unique entity tags across the library sorted A-Z (`compareEntityNames`), functioning as toggle buttons with highlighted ON/OFF states.
     - Dismissing or dragging down cleanly commits changes to the parent dialog's draft state.
   - **Two-Stage Persistence & In-Memory Preview**:
-    - Confirming the parent dialog updates `editedTag` in memory, immediately previewing the changes on the Detail screen and activating the top-right "Save" button.
+    - Confirming the parent dialog updates `editedTag` and `editedIsNsfw` in memory, immediately previewing the changes on the Detail screen and activating the top-right "Save" button.
     - Changes are atomically persisted to Room database and repository only when the user taps "Save".
 - **URL Interactive Row**:
   - Bound via `combinedClickable`. Single tap launches external browser with fallback toast; long press performs haptic feedback (`HapticFeedbackType.LongPress`), copies the full URL to the clipboard via `LocalClipboardManager.setText`, and displays an immediate confirmation toast.

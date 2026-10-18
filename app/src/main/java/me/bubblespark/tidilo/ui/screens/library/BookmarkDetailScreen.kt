@@ -164,6 +164,9 @@ fun BookmarkDetailScreen(
     var editedTag by remember(bookmark.id, bookmark.tag) {
         mutableStateOf(bookmark.tag)
     }
+    var editedIsNsfw by remember(bookmark.id, bookmark.isNsfw) {
+        mutableStateOf(bookmark.isNsfw)
+    }
     var showDiscardConfirmDialog by remember { mutableStateOf(false) }
     var isFabMenuExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -176,9 +179,12 @@ fun BookmarkDetailScreen(
     var draftCategory by remember { mutableStateOf<String?>(null) }
     var draftSubcategory by remember { mutableStateOf<String?>(null) }
     var draftEntities by remember { mutableStateOf<List<String>>(emptyList()) }
+    var draftIsNsfw by remember { mutableStateOf(false) }
 
-    val hasChanges = remember(noteText, bookmark.note, editedTag, bookmark.tag) {
-        (noteText != bookmark.note) || (editedTag != bookmark.tag)
+    val isNsfwContentVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
+
+    val hasChanges = remember(noteText, bookmark.note, editedTag, bookmark.tag, editedIsNsfw, bookmark.isNsfw) {
+        (noteText != bookmark.note) || (editedTag != bookmark.tag) || (editedIsNsfw != bookmark.isNsfw)
     }
 
     // Intercept swipe-back (system gesture back)
@@ -284,7 +290,7 @@ fun BookmarkDetailScreen(
                         isSaving = true
                         coroutineScope.launch {
                             try {
-                                viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag)
+                                viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsNsfw)
                                 onNavigateBack()
                             } finally {
                                 isSaving = false
@@ -440,6 +446,7 @@ fun BookmarkDetailScreen(
                     draftCategory = editedTag.category
                     draftSubcategory = editedTag.subcategory
                     draftEntities = editedTag.entities
+                    draftIsNsfw = editedIsNsfw
                     showTagEditDialog = true
                 },
                 modifier = Modifier.size(36.dp)
@@ -560,7 +567,7 @@ fun BookmarkDetailScreen(
                     )
                 }
 
-                if (bookmark.isNsfw) {
+                if (editedIsNsfw) {
                     AssistChip(
                         onClick = {},
                         label = { Text("NSFW", fontWeight = FontWeight.Bold) },
@@ -921,12 +928,16 @@ fun BookmarkDetailScreen(
             selectedCategory = draftCategory,
             selectedSubcategory = draftSubcategory,
             selectedEntities = draftEntities,
+            isNsfw = draftIsNsfw,
+            isNsfwContentVisible = isNsfwContentVisible,
             onCategoryChanged = { draftCategory = it },
             onSubcategoryChanged = { draftSubcategory = it },
+            onNsfwChanged = { draftIsNsfw = it },
             onAddEntityClick = { showAddEntityDialog = true },
             onOpenEntityPickerClick = { showEntityBottomSheet = true },
             onConfirm = {
                 editedTag = Tag.create(draftCategory, draftSubcategory, draftEntities)
+                editedIsNsfw = draftIsNsfw
                 showTagEditDialog = false
             },
             onDismiss = { showTagEditDialog = false }

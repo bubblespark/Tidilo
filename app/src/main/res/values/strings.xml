@@ -137,6 +137,8 @@
     <string name="detail_tag_dialog_title">Edit Category &amp; Tags</string>
     <string name="detail_tag_category_label">Category</string>
     <string name="detail_tag_subcategory_label">Subcategory</string>
+    <string name="detail_tag_nsfw_label">NSFW</string>
+    <string name="detail_tag_nsfw_hidden_warning">If you save while “ON” is selected, that bookmark will be hidden. (See “NSFW Contents” in Settings.)</string>
     <string name="detail_tag_entity_label">Entity</string>
     <string name="detail_tag_add_entity">Add new entity</string>
     <string name="detail_tag_select_entities">Select from existing entity tags</string>

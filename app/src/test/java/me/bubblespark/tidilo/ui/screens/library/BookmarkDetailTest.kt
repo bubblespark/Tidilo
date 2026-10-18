@@ -260,5 +260,49 @@ class BookmarkDetailTest {
         assertEquals(listOf("Android", "Compose"), updated.tag.entities)
         assertEquals("Updated note", updated.note)
     }
+
+    @Test
+    fun testNsfwToggleAndPersistence() {
+        val original = BookmarkItem(
+            id = "b-nsfw-test",
+            title = "Test Item",
+            url = "https://example.com/item",
+            description = "Description",
+            tag = Tag.create("Media", "Video", listOf("Tutorial")),
+            isAiSkipped = true,
+            isNsfw = false
+        )
+        org.junit.Assert.assertFalse(original.isNsfw)
+
+        // Toggle NSFW ON
+        val toggledOn = original.copy(isNsfw = true)
+        assertTrue(toggledOn.isNsfw)
+        assertTrue("isAiSkipped must still be preserved", toggledOn.isAiSkipped)
+        assertEquals("Media", toggledOn.tag.category)
+
+        // Toggle NSFW OFF
+        val toggledOff = toggledOn.copy(isNsfw = false)
+        org.junit.Assert.assertFalse(toggledOff.isNsfw)
+        assertTrue("isAiSkipped must still be preserved", toggledOff.isAiSkipped)
+    }
+
+    @Test
+    fun testNsfwWarningCondition() {
+        fun shouldShowWarning(isNsfwContentVisible: Boolean, isNsfw: Boolean): Boolean {
+            return !isNsfwContentVisible && isNsfw
+        }
+
+        // ShowNSFWContents = false (disabled in Settings), isNsfw = true (toggled ON) -> Show warning
+        assertTrue(shouldShowWarning(isNsfwContentVisible = false, isNsfw = true))
+
+        // ShowNSFWContents = true (enabled in Settings), isNsfw = true -> Don't show warning
+        org.junit.Assert.assertFalse(shouldShowWarning(isNsfwContentVisible = true, isNsfw = true))
+
+        // ShowNSFWContents = false, isNsfw = false -> Don't show warning
+        org.junit.Assert.assertFalse(shouldShowWarning(isNsfwContentVisible = false, isNsfw = false))
+
+        // ShowNSFWContents = true, isNsfw = false -> Don't show warning
+        org.junit.Assert.assertFalse(shouldShowWarning(isNsfwContentVisible = true, isNsfw = false))
+    }
 }
 

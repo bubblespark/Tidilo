@@ -74,10 +74,6 @@ fun BookmarkItemCard(
         bookmark.tag.subcategory?.let { Subcategory.toLocalized(it, context) } ?: ""
     }
 
-    val isAiSkipped = remember(bookmark.isAiSkipped, bookmark.tag) {
-        bookmark.isAiSkipped && bookmark.tag.category == null && bookmark.tag.subcategory == null && bookmark.tag.entities.isEmpty()
-    }
-
     // Tag match evaluation (category and subcategory)
     val isCategoryMatched = remember(tagKeywords, bookmark.tag.category, localizedCategory) {
         if (tagKeywords.isEmpty()) false
@@ -227,22 +223,12 @@ fun BookmarkItemCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Line 1: [AI Skipped] or [category] > [subcategory] (+ [NSFW])
+                // Line 1: [category] > [subcategory] (+ [AI Skipped]) (+ [NSFW])
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    if (isAiSkipped) {
-                        CompactTagBadge(
-                            icon = null,
-                            text = stringResource(R.string.bookmark_ai_skipped),
-                            isMatched = false,
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                            matchedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            matchedContentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    } else if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
+                    if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
                         CompactTagBadge(
                             icon = Icons.Default.Folder,
                             text = localizedCategory,
@@ -291,6 +277,18 @@ fun BookmarkItemCard(
                         )
                     }
 
+                    if (bookmark.isAiSkipped) {
+                        CompactTagBadge(
+                            icon = null,
+                            text = stringResource(R.string.bookmark_ai_skipped),
+                            isMatched = false,
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                            matchedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            matchedContentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+
                     if (bookmark.isNsfw) {
                         CompactTagBadge(
                             icon = null,
@@ -305,7 +303,7 @@ fun BookmarkItemCard(
                 }
 
                 // Line 2: [entities] (leading '#' removed as icon is present; 8.dp uniform vertical spacing)
-                if (!isAiSkipped && bookmark.tag.entities.isNotEmpty()) {
+                if (bookmark.tag.entities.isNotEmpty()) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),

@@ -199,6 +199,7 @@ class BookmarkRepository private constructor(context: Context) {
 
     /**
      * Updates note and tag of a bookmark and persists the change atomically.
+     * Preserves existing isAiSkipped flag.
      */
     suspend fun updateBookmarkDetails(
         id: String,
@@ -206,8 +207,6 @@ class BookmarkRepository private constructor(context: Context) {
         tag: Tag
     ) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        val hasAnyTags = tag.category != null || tag.subcategory != null || tag.entities.isNotEmpty()
-        val newAiSkipped = !hasAnyTags
 
         bookmarkDao.updateNoteAndTag(
             id = id,
@@ -215,7 +214,6 @@ class BookmarkRepository private constructor(context: Context) {
             category = tag.category,
             subcategory = tag.subcategory,
             entities = tag.entities,
-            isAiSkipped = newAiSkipped,
             updatedAt = now
         )
 
@@ -225,7 +223,6 @@ class BookmarkRepository private constructor(context: Context) {
                 item.copy(
                     note = note,
                     tag = tag,
-                    isAiSkipped = newAiSkipped,
                     updatedAt = now
                 )
             } else {

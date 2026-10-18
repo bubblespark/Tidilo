@@ -235,34 +235,7 @@ class BookmarkDetailTest {
     }
 
     @Test
-    fun testAiSkippedEvaluationWithAndWithoutTags() {
-        fun computeIsAiSkipped(item: BookmarkItem): Boolean {
-            return item.isAiSkipped && item.tag.category == null && item.tag.subcategory == null && item.tag.entities.isEmpty()
-        }
-
-        val purelySkipped = BookmarkItem(
-            id = "skipped-1",
-            title = "Skipped Item",
-            url = "https://example.com/skipped",
-            description = "No tags assigned",
-            tag = Tag.createEmpty(),
-            isAiSkipped = true
-        )
-        assertTrue(computeIsAiSkipped(purelySkipped))
-
-        val editedWithCategory = purelySkipped.copy(
-            tag = Tag.create(category = "Tool", subcategory = null, entities = emptyList())
-        )
-        org.junit.Assert.assertFalse(computeIsAiSkipped(editedWithCategory))
-
-        val editedWithEntity = purelySkipped.copy(
-            tag = Tag.create(category = null, subcategory = null, entities = listOf("Compose"))
-        )
-        org.junit.Assert.assertFalse(computeIsAiSkipped(editedWithEntity))
-    }
-
-    @Test
-    fun testTagUpdateClearsAiSkippedFlag() {
+    fun testTagUpdatePreservesAiSkippedFlag() {
         val original = BookmarkItem(
             id = "b-ai-skipped",
             title = "BOM Mapping",
@@ -273,18 +246,19 @@ class BookmarkDetailTest {
         )
         assertTrue(original.isAiSkipped)
 
-        // User edits tags in BookmarkDetailScreen
+        // User edits tags in BookmarkDetailScreen: isAiSkipped remains true as historical fact
         val newTag = Tag.create("Tool", "Tech", listOf("Android", "Compose"))
-        val hasAnyTags = newTag.category != null || newTag.subcategory != null || newTag.entities.isNotEmpty()
         val updated = original.copy(
             tag = newTag,
-            isAiSkipped = !hasAnyTags
+            note = "Updated note"
         )
 
-        org.junit.Assert.assertFalse(updated.isAiSkipped)
+        // Verify isAiSkipped remains true as an independent label, while tags are fully populated
+        assertTrue(updated.isAiSkipped)
         assertEquals("Tool", updated.tag.category)
         assertEquals("Tech", updated.tag.subcategory)
         assertEquals(listOf("Android", "Compose"), updated.tag.entities)
+        assertEquals("Updated note", updated.note)
     }
 }
 

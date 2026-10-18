@@ -171,6 +171,7 @@ All persistence is managed via **Room Database** (`AppDatabase` v3) for robust r
 1. **Room Database (`AppDatabase`)**:
    - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL and creation timestamp.
    - **`import_tasks` table (`ImportTaskEntity`)**: Managed by `ImportTaskDao`, storing processing, ready, and error tasks with reactive `Flow<List<ImportTaskEntity>>` observation and status index.
+   - **Single Source of Truth & Concurrency**: Room DB serves as the authoritative source of truth for all business operations, state promotions, and AI execution loops (`executeTaskAiAnalysis`). UI StateFlows (`_readyTasks`, `_processingTasks`, `_errorTasks`) are read-only observers of Room. Querying Room directly within `executionMutex.withLock` eliminates race conditions where asynchronous Flow emissions could otherwise lag behind immediate execution checks.
    - **Legacy Migration**: On initial launch of v3, existing task data in legacy `tidilo_queue_prefs` is imported into Room automatically and cleared.
 2. **`tidilo_library_prefs` (`search_history`)**:
    Array of up to 10 strings representing complete queries, ordered latest-first.

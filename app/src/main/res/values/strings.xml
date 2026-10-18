@@ -119,6 +119,7 @@
     <string name="detail_save">Save</string>
     <string name="detail_open_url">Open URL</string>
     <string name="detail_url_copied">URL copied to clipboard</string>
+    <string name="detail_ai_not_analyzed_warning">This bookmark has not been analyzed by AICore.</string>
     <string name="detail_section_tags">Category &amp; Tags</string>
     <string name="detail_section_summary">Summary</string>
     <string name="detail_section_note">Note</string>

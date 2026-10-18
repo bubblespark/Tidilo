@@ -25,6 +25,12 @@ Used for visual categorization chips:
 - `TagDesign`: `0xFFE64A19` (Orange)
 - `TagNews`: `0xFF0288D1` (Blue)
 
+### 1.3 Warning Colors (Semantic Amber/Gold)
+Used for warning indicators, non-blocking fallback statuses, and AI Skipped notifications:
+- **`WarningLight` (`0xFFB87700`)**: Brightened amber-gold tone calibrated for clear yellow/warning icon recognition and high legibility against light backgrounds.
+- **`WarningDark` (`0xFFFFBA28`)**: Luminous gold/yellow tone ensuring vibrant visibility and high contrast against dark OLED/gray surfaces.
+- **`WarningColor.textOrIcon`**: Adaptive `@Composable` helper dynamically resolving to `WarningDark` when `isSystemInDarkTheme() == true` and `WarningLight` otherwise.
+
 ---
 
 ## 2. Typography Scale
@@ -327,4 +333,14 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Unified Screens**:
   - Tab Screens without Back Button: `LibraryScreen`, `SearchScreen`, `ImportScreen`.
   - Sub-Screens with Back Button: `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `NsfwSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `BookmarkAiReviewScreen`.
+
+### 6.11 AI Skipped (AICore Fallback) Representation & Detail Layout Rhythm
+- **Bookmark Card (`BookmarkCard.kt`)**:
+  - Removed the standalone `AI Skipped` tag chip from the card tags row.
+  - When `bookmark.isAiSkipped == true`, embeds the warning icon directly inside the summary text via `InlineTextContent` (`16.sp` with `PlaceholderVerticalAlign.Center`). Wrapped text lines naturally wrap underneath the icon flush with the left margin rather than creating an artificial empty column.
+- **Bookmark Detail Screen Spacing & Layout Rhythm (`BookmarkDetailScreen.kt`)**:
+  - Removed the `AI Skipped` assist chip from the Category & Tags section.
+  - When `bookmark.isAiSkipped == true`, displays a clear warning notice below the URL surface: `[warning icon] This bookmark has not been analyzed by AICore.` using `WarningColor.textOrIcon` for both icon and text with 8dp horizontal spacing.
+  - Spacing rhythm: URL to Warning notice is `6.dp`, Warning notice to Category & Tags is `14.dp` (eliminating disproportionate voids).
+  - Category & Tags edit `IconButton` and tag chips (`AssistChip`) are scoped under `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to eliminate invisible accessibility touch-target inflation (which previously caused a 32dp gap), harmonizing the header-to-content gap across Category & Tags, Summary, and Note to a consistent `10.dp`.
 

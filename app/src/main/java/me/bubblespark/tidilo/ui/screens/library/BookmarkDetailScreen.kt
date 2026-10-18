@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.Warning
+import me.bubblespark.tidilo.ui.theme.WarningColor
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
@@ -418,7 +420,29 @@ fun BookmarkDetailScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        if (bookmark.isAiSkipped) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Warning,
+                    contentDescription = null,
+                    tint = WarningColor.textOrIcon,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = stringResource(R.string.detail_ai_not_analyzed_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = WarningColor.textOrIcon
+                )
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+        } else {
+            Spacer(modifier = Modifier.height(24.dp))
+        }
 
         // 4. Section: Tags & Classification
         Row(
@@ -442,37 +466,44 @@ fun BookmarkDetailScreen(
                 )
             }
 
-            IconButton(
-                onClick = {
-                    draftCategory = editedTag.category
-                    draftSubcategory = editedTag.subcategory
-                    draftEntities = editedTag.entities
-                    draftIsNsfw = editedIsNsfw
-                    showTagEditDialog = true
-                },
-                modifier = Modifier.size(36.dp)
+            CompositionLocalProvider(
+                LocalMinimumInteractiveComponentSize provides Dp.Unspecified
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.Edit,
-                    contentDescription = stringResource(R.string.detail_edit_tags),
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
+                IconButton(
+                    onClick = {
+                        draftCategory = editedTag.category
+                        draftSubcategory = editedTag.subcategory
+                        draftEntities = editedTag.entities
+                        draftIsNsfw = editedIsNsfw
+                        showTagEditDialog = true
+                    },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Edit,
+                        contentDescription = stringResource(R.string.detail_edit_tags),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(10.dp))
 
         // [category] > [subcategory] newline [entities] (uniform 8.dp line spacing)
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        CompositionLocalProvider(
+            LocalMinimumInteractiveComponentSize provides Dp.Unspecified
         ) {
-            // Line 1: [category] > [subcategory] (+ [AI Skipped]) (+ [NSFW])
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Line 1: [category] > [subcategory] (+ [NSFW])
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                 if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
                     // Category
                     AssistChip(
@@ -556,17 +587,6 @@ fun BookmarkDetailScreen(
                     )
                 }
 
-                if (bookmark.isAiSkipped) {
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(stringResource(R.string.bookmark_ai_skipped), fontWeight = FontWeight.Bold) },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            labelColor = MaterialTheme.colorScheme.onTertiaryContainer
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-                }
 
                 if (editedIsNsfw) {
                     AssistChip(
@@ -615,6 +635,7 @@ fun BookmarkDetailScreen(
                 }
             }
         }
+    }
 
         Spacer(modifier = Modifier.height(24.dp))
 

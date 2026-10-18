@@ -36,12 +36,12 @@
     <string name="bottom_bar_ai_analysis_all">AI Tagging All</string>
 
     <!-- Import Screen -->
-    <string name="import_header_title">Queue</string>
-    <string name="import_header_subtitle">Semantic AI Tagging Queue</string>
-    <string name="import_button_content_desc">Enqueue URL</string>
-    <string name="import_group_processing">Running</string>
-    <string name="import_group_ready">Queuing</string>
-    <string name="import_group_error">Error</string>
+    <string name="import_header_title">Import</string>
+    <string name="import_header_subtitle">Semantic AI Analysis &amp; Management</string>
+    <string name="import_button_content_desc">URLの登録</string>
+    <string name="import_group_processing">実行中</string>
+    <string name="import_group_ready">待機中</string>
+    <string name="import_group_error">エラー</string>
     <string name="import_empty_processing_title">実行中のタスクはありません</string>
     <string name="import_empty_processing_hint">URLを登録した上で、画面右下のボタン、または待機中のURLカードを右にスワイプして下さい</string>
     <string name="import_empty_ready_title">待機中のタスクはありません</string>
@@ -195,7 +195,7 @@
     <string name="nsfw_no_domains">ドメインがありません</string>
 
     <!-- GenerateContentRequest Screen -->
-    <string name="gcr_reset_default_content_desc">Reset to Default</string>
+    <string name="gcr_reset_default_content_desc">パラメータ設定を初期化</string>
     <string name="gcr_reset_dialog_title">パラメータ設定を初期化しますか？</string>
     <string name="gcr_reset_dialog_message">すべてのパラメータがデフォルト値にリセットされます。</string>
 
@@ -205,10 +205,10 @@
     <string name="debug_mlkit_genai_title">ML Kit GenAI Prompt API Test</string>
 
     <!-- Notifications -->
-    <string name="notification_channel_name">Queue Notifications</string>
-    <string name="notification_channel_desc">Notifications for URL enqueue operations</string>
-    <string name="notification_import_success">Enqueue was successful. There are %1$d items in the queuing.</string>
-    <string name="notification_import_failed">Enqueue failed. Please check the contents.</string>
+    <string name="notification_channel_name">インポートの通知</string>
+    <string name="notification_channel_desc">URLインポート操作に関する通知</string>
+    <string name="notification_import_success">インポートに成功しました。%1$d個のアイテムが利用可能です。</string>
+    <string name="notification_import_failed">インポートに失敗しました。内容をご確認ください。</string>
 
     <!-- Taxonomy: Categories -->
     <string name="category_article">記事</string>

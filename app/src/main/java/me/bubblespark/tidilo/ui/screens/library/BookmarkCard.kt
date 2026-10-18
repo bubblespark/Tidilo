@@ -223,22 +223,12 @@ fun BookmarkItemCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Line 1: [AI Skipped] or [category] > [subcategory] (+ [NSFW])
+                // Line 1: [category] > [subcategory] (+ [AI Skipped]) (+ [NSFW])
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    if (bookmark.isAiSkipped) {
-                        CompactTagBadge(
-                            icon = null,
-                            text = stringResource(R.string.bookmark_ai_skipped),
-                            isMatched = false,
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                            matchedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            matchedContentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    } else if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
+                    if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
                         CompactTagBadge(
                             icon = Icons.Default.Folder,
                             text = localizedCategory,
@@ -265,6 +255,38 @@ fun BookmarkItemCard(
                             matchedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
                             matchedContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                         )
+                    } else if (localizedCategory.isNotBlank()) {
+                        CompactTagBadge(
+                            icon = Icons.Default.Folder,
+                            text = localizedCategory,
+                            isMatched = isCategoryMatched,
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            matchedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            matchedContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    } else if (localizedSubcategory.isNotBlank()) {
+                        CompactTagBadge(
+                            icon = Icons.AutoMirrored.Filled.Label,
+                            text = localizedSubcategory,
+                            isMatched = isSubcategoryMatched,
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            matchedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            matchedContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+
+                    if (bookmark.isAiSkipped) {
+                        CompactTagBadge(
+                            icon = null,
+                            text = stringResource(R.string.bookmark_ai_skipped),
+                            isMatched = false,
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                            matchedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            matchedContentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
                     }
 
                     if (bookmark.isNsfw) {
@@ -281,7 +303,7 @@ fun BookmarkItemCard(
                 }
 
                 // Line 2: [entities] (leading '#' removed as icon is present; 8.dp uniform vertical spacing)
-                if (!bookmark.isAiSkipped && bookmark.tag.entities.isNotEmpty()) {
+                if (bookmark.tag.entities.isNotEmpty()) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),

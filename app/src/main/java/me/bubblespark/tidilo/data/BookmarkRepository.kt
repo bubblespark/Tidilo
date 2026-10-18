@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -194,6 +195,44 @@ class BookmarkRepository private constructor(context: Context) {
                 updatedAt = now
             )
         }
+    }
+
+    /**
+     * Updates note, tag, and NSFW status of a bookmark and persists the change atomically.
+     * Preserves existing isAiSkipped flag.
+     */
+    suspend fun updateBookmarkDetails(
+        id: String,
+        note: String,
+        tag: Tag,
+        isNsfw: Boolean
+    ) = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+
+        bookmarkDao.updateNoteAndTag(
+            id = id,
+            note = note,
+            category = tag.category,
+            subcategory = tag.subcategory,
+            entities = tag.entities,
+            isNsfw = isNsfw,
+            updatedAt = now
+        )
+
+        val current = _bookmarks.value
+        val updated = current.map { item ->
+            if (item.id == id) {
+                item.copy(
+                    note = note,
+                    tag = tag,
+                    isNsfw = isNsfw,
+                    updatedAt = now
+                )
+            } else {
+                item
+            }
+        }
+        _bookmarks.value = updated
     }
 
     /**

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
@@ -70,6 +71,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
@@ -159,23 +161,44 @@ fun BookmarkDetailScreen(
     var noteText by remember(bookmark.id, bookmark.note) {
         mutableStateOf(bookmark.note)
     }
+    var editedTag by remember(bookmark.id, bookmark.tag) {
+        mutableStateOf(bookmark.tag)
+    }
+    var editedIsNsfw by remember(bookmark.id, bookmark.isNsfw) {
+        mutableStateOf(bookmark.isNsfw)
+    }
     var showDiscardConfirmDialog by remember { mutableStateOf(false) }
     var isFabMenuExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    val hasChanges = remember(noteText, bookmark.note) {
-        noteText != bookmark.note
+
+    var showTagEditDialog by remember { mutableStateOf(false) }
+    var showAddEntityDialog by remember { mutableStateOf(false) }
+    var showEntityBottomSheet by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
+
+    var draftCategory by remember { mutableStateOf<String?>(null) }
+    var draftSubcategory by remember { mutableStateOf<String?>(null) }
+    var draftEntities by remember { mutableStateOf<List<String>>(emptyList()) }
+    var draftIsNsfw by remember { mutableStateOf(false) }
+
+    val isNsfwContentVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
+
+    val hasChanges = remember(noteText, bookmark.note, editedTag, bookmark.tag, editedIsNsfw, bookmark.isNsfw) {
+        (noteText != bookmark.note) || (editedTag != bookmark.tag) || (editedIsNsfw != bookmark.isNsfw)
     }
 
     // Intercept swipe-back (system gesture back)
-    BackHandler(enabled = hasChanges) {
-        showDiscardConfirmDialog = true
+    BackHandler(enabled = isSaving || hasChanges) {
+        if (!isSaving) {
+            showDiscardConfirmDialog = true
+        }
     }
 
-    val localizedCategory = remember(bookmark.tag.category, context) {
-        bookmark.tag.category?.let { Category.toLocalized(it, context) } ?: ""
+    val localizedCategory = remember(editedTag.category, context) {
+        editedTag.category?.let { Category.toLocalized(it, context) } ?: ""
     }
-    val localizedSubcategory = remember(bookmark.tag.subcategory, context) {
-        bookmark.tag.subcategory?.let { Subcategory.toLocalized(it, context) } ?: ""
+    val localizedSubcategory = remember(editedTag.subcategory, context) {
+        editedTag.subcategory?.let { Subcategory.toLocalized(it, context) } ?: ""
     }
 
     val formattedCreatedAt = remember(bookmark.createdAt) {
@@ -234,18 +257,21 @@ fun BookmarkDetailScreen(
             ) {
                 IconButton(
                     onClick = {
-                        if (hasChanges) {
-                            showDiscardConfirmDialog = true
-                        } else {
-                            onNavigateBack()
+                        if (!isSaving) {
+                            if (hasChanges) {
+                                showDiscardConfirmDialog = true
+                            } else {
+                                onNavigateBack()
+                            }
                         }
                     },
+                    enabled = !isSaving,
                     modifier = Modifier.size(44.dp)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.common_back),
-                        tint = MaterialTheme.colorScheme.onSurface
+                        tint = if (isSaving) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurface
                     )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
@@ -257,15 +283,22 @@ fun BookmarkDetailScreen(
                 )
             }
 
-            // Top-right "Save" button (filled pill button; visually disabled when no unsaved changes)
+            // Top-right "Save" button (filled pill button; visually disabled when no unsaved changes or saving)
             Button(
                 onClick = {
-                    if (hasChanges) {
-                        viewModel.updateBookmarkNote(bookmark.id, noteText)
+                    if (hasChanges && !isSaving) {
+                        isSaving = true
+                        coroutineScope.launch {
+                            try {
+                                viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsNsfw)
+                                onNavigateBack()
+                            } finally {
+                                isSaving = false
+                            }
+                        }
                     }
-                    onNavigateBack()
                 },
-                enabled = hasChanges,
+                enabled = hasChanges && !isSaving,
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -275,11 +308,19 @@ fun BookmarkDetailScreen(
                 ),
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.detail_save),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold
-                )
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text(
+                        text = stringResource(R.string.detail_save),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 
@@ -380,21 +421,43 @@ fun BookmarkDetailScreen(
 
         // 4. Section: Tags & Classification
         Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.Tag,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = stringResource(R.string.detail_section_tags),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Tag,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.detail_section_tags),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    draftCategory = editedTag.category
+                    draftSubcategory = editedTag.subcategory
+                    draftEntities = editedTag.entities
+                    draftIsNsfw = editedIsNsfw
+                    showTagEditDialog = true
+                },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Edit,
+                    contentDescription = stringResource(R.string.detail_edit_tags),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -404,22 +467,12 @@ fun BookmarkDetailScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Line 1: [AI Skipped] or [category] > [subcategory] (+ [NSFW])
+            // Line 1: [category] > [subcategory] (+ [AI Skipped]) (+ [NSFW])
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (bookmark.isAiSkipped) {
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(stringResource(R.string.bookmark_ai_skipped), fontWeight = FontWeight.Bold) },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            labelColor = MaterialTheme.colorScheme.onTertiaryContainer
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-                } else if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
+                if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
                     // Category
                     AssistChip(
                         onClick = {},
@@ -464,9 +517,57 @@ fun BookmarkDetailScreen(
                         ),
                         shape = RoundedCornerShape(10.dp)
                     )
+                } else if (localizedCategory.isNotBlank()) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(localizedCategory) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                } else if (localizedSubcategory.isNotBlank()) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(localizedSubcategory) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
                 }
 
-                if (bookmark.isNsfw) {
+                if (bookmark.isAiSkipped) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(stringResource(R.string.bookmark_ai_skipped), fontWeight = FontWeight.Bold) },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            labelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+
+                if (editedIsNsfw) {
                     AssistChip(
                         onClick = {},
                         label = { Text("NSFW", fontWeight = FontWeight.Bold) },
@@ -480,7 +581,7 @@ fun BookmarkDetailScreen(
             }
 
             // Line 2: [entities] (disables LocalMinimumInteractiveComponentSize to compact multi-line height)
-            if (!bookmark.isAiSkipped && bookmark.tag.entities.isNotEmpty()) {
+            if (editedTag.entities.isNotEmpty()) {
                 CompositionLocalProvider(
                     LocalMinimumInteractiveComponentSize provides Dp.Unspecified
                 ) {
@@ -491,7 +592,7 @@ fun BookmarkDetailScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        bookmark.tag.entities.forEach { entity ->
+                        editedTag.entities.forEach { entity ->
                             AssistChip(
                                 onClick = {},
                                 label = { Text(entity.removePrefix("#")) },
@@ -818,6 +919,60 @@ fun BookmarkDetailScreen(
                 }
             },
             shape = RoundedCornerShape(24.dp)
+        )
+    }
+
+    // Tag edit dialogs & bottom sheet
+    if (showTagEditDialog) {
+        BookmarkTagEditDialog(
+            selectedCategory = draftCategory,
+            selectedSubcategory = draftSubcategory,
+            selectedEntities = draftEntities,
+            isNsfw = draftIsNsfw,
+            isNsfwContentVisible = isNsfwContentVisible,
+            onCategoryChanged = { draftCategory = it },
+            onSubcategoryChanged = { draftSubcategory = it },
+            onNsfwChanged = { draftIsNsfw = it },
+            onAddEntityClick = { showAddEntityDialog = true },
+            onOpenEntityPickerClick = { showEntityBottomSheet = true },
+            onConfirm = {
+                editedTag = Tag.create(draftCategory, draftSubcategory, draftEntities)
+                editedIsNsfw = draftIsNsfw
+                showTagEditDialog = false
+            },
+            onDismiss = { showTagEditDialog = false }
+        )
+    }
+
+    if (showAddEntityDialog) {
+        AddEntityDialog(
+            onDismiss = { showAddEntityDialog = false },
+            onConfirm = { newEntity ->
+                if (!draftEntities.any { it.equals(newEntity, ignoreCase = true) }) {
+                    draftEntities = draftEntities + newEntity
+                }
+            }
+        )
+    }
+
+    if (showEntityBottomSheet) {
+        val allLibraryEntities = remember(bookmarks) {
+            bookmarks.flatMap { it.tag.entities }.distinct()
+        }
+        EntityTagPickerBottomSheet(
+            selectedEntities = draftEntities,
+            allEntities = (allLibraryEntities + draftEntities).distinct(),
+            onToggleEntity = { entity ->
+                draftEntities = if (draftEntities.any { it.equals(entity, ignoreCase = true) }) {
+                    draftEntities.filterNot { it.equals(entity, ignoreCase = true) }
+                } else {
+                    draftEntities + entity
+                }
+            },
+            onRemoveEntity = { entity ->
+                draftEntities = draftEntities.filterNot { it.equals(entity, ignoreCase = true) }
+            },
+            onDismiss = { showEntityBottomSheet = false }
         )
     }
 } // End of Box (fillMaxSize)

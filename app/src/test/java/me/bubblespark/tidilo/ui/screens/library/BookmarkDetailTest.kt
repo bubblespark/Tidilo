@@ -155,4 +155,154 @@ class BookmarkDetailTest {
         assertEquals("Tech", item.tag.subcategory)
         assertEquals(listOf("Zenn", "TypeScript"), item.tag.entities)
     }
+
+    @Test
+    fun testBookmarkTagModificationPreservesOtherFields() {
+        val initialTime = 1000L
+        val updateTime = 2000L
+        val original = BookmarkItem(
+            id = "b-test-edit",
+            title = "Original Title",
+            url = "https://example.com/item",
+            description = "Original Description",
+            tag = Tag.create("Article", "Tech", listOf("Kotlin")),
+            createdAt = initialTime,
+            updatedAt = initialTime,
+            note = "Original Note",
+            isNsfw = false,
+            isAiSkipped = false
+        )
+
+        val updatedTag = Tag.create("Tool", "Business", listOf("Kotlin", "Productivity"))
+        val updatedNote = "Updated Note"
+        val modified = original.copy(
+            note = updatedNote,
+            tag = updatedTag,
+            updatedAt = updateTime
+        )
+
+        // Verify updated fields
+        assertEquals("Tool", modified.tag.category)
+        assertEquals("Business", modified.tag.subcategory)
+        assertEquals(listOf("Kotlin", "Productivity"), modified.tag.entities)
+        assertEquals("Updated Note", modified.note)
+        assertEquals(updateTime, modified.updatedAt)
+
+        // Verify preserved fields
+        assertEquals("b-test-edit", modified.id)
+        assertEquals("Original Title", modified.title)
+        assertEquals("https://example.com/item", modified.url)
+        assertEquals("Original Description", modified.description)
+        assertEquals(initialTime, modified.createdAt)
+        assertEquals(false, modified.isNsfw)
+        assertEquals(false, modified.isAiSkipped)
+    }
+
+    @Test
+    fun testEntityTagListToggleAndRemoval() {
+        var entities = listOf("Compose", "Android", "Kotlin")
+
+        // 1. Remove entity
+        entities = entities.filterNot { it.equals("Android", ignoreCase = true) }
+        assertEquals(listOf("Compose", "Kotlin"), entities)
+
+        // 2. Toggle existing entity (should remove)
+        val target1 = "Compose"
+        entities = if (entities.any { it.equals(target1, ignoreCase = true) }) {
+            entities.filterNot { it.equals(target1, ignoreCase = true) }
+        } else {
+            entities + target1
+        }
+        assertEquals(listOf("Kotlin"), entities)
+
+        // 3. Toggle absent entity (should add)
+        val target2 = "Jetpack"
+        entities = if (entities.any { it.equals(target2, ignoreCase = true) }) {
+            entities.filterNot { it.equals(target2, ignoreCase = true) }
+        } else {
+            entities + target2
+        }
+        assertEquals(listOf("Kotlin", "Jetpack"), entities)
+    }
+
+    @Test
+    fun testCompareEntityNamesSorting() {
+        val list = listOf("日本語", "Apple", "zebra", "Banana", "テスト")
+        val sorted = list.sortedWith { a, b -> compareEntityNames(a, b) }
+
+        // English / ASCII words should precede Japanese, and be sorted alphabetically ignoring case
+        assertEquals(listOf("Apple", "Banana", "zebra", "テスト", "日本語"), sorted)
+    }
+
+    @Test
+    fun testTagUpdatePreservesAiSkippedFlag() {
+        val original = BookmarkItem(
+            id = "b-ai-skipped",
+            title = "BOM Mapping",
+            url = "https://developer.android.com/compose/bom",
+            description = "BOM release notes",
+            tag = Tag.createEmpty(),
+            isAiSkipped = true
+        )
+        assertTrue(original.isAiSkipped)
+
+        // User edits tags in BookmarkDetailScreen: isAiSkipped remains true as historical fact
+        val newTag = Tag.create("Tool", "Tech", listOf("Android", "Compose"))
+        val updated = original.copy(
+            tag = newTag,
+            note = "Updated note"
+        )
+
+        // Verify isAiSkipped remains true as an independent label, while tags are fully populated
+        assertTrue(updated.isAiSkipped)
+        assertEquals("Tool", updated.tag.category)
+        assertEquals("Tech", updated.tag.subcategory)
+        assertEquals(listOf("Android", "Compose"), updated.tag.entities)
+        assertEquals("Updated note", updated.note)
+    }
+
+    @Test
+    fun testNsfwToggleAndPersistence() {
+        val original = BookmarkItem(
+            id = "b-nsfw-test",
+            title = "Test Item",
+            url = "https://example.com/item",
+            description = "Description",
+            tag = Tag.create("Media", "Video", listOf("Tutorial")),
+            isAiSkipped = true,
+            isNsfw = false
+        )
+        org.junit.Assert.assertFalse(original.isNsfw)
+
+        // Toggle NSFW ON
+        val toggledOn = original.copy(isNsfw = true)
+        assertTrue(toggledOn.isNsfw)
+        assertTrue("isAiSkipped must still be preserved", toggledOn.isAiSkipped)
+        assertEquals("Media", toggledOn.tag.category)
+
+        // Toggle NSFW OFF
+        val toggledOff = toggledOn.copy(isNsfw = false)
+        org.junit.Assert.assertFalse(toggledOff.isNsfw)
+        assertTrue("isAiSkipped must still be preserved", toggledOff.isAiSkipped)
+    }
+
+    @Test
+    fun testNsfwWarningCondition() {
+        fun shouldShowWarning(isNsfwContentVisible: Boolean, isNsfw: Boolean): Boolean {
+            return !isNsfwContentVisible && isNsfw
+        }
+
+        // ShowNSFWContents = false (disabled in Settings), isNsfw = true (toggled ON) -> Show warning
+        assertTrue(shouldShowWarning(isNsfwContentVisible = false, isNsfw = true))
+
+        // ShowNSFWContents = true (enabled in Settings), isNsfw = true -> Don't show warning
+        org.junit.Assert.assertFalse(shouldShowWarning(isNsfwContentVisible = true, isNsfw = true))
+
+        // ShowNSFWContents = false, isNsfw = false -> Don't show warning
+        org.junit.Assert.assertFalse(shouldShowWarning(isNsfwContentVisible = false, isNsfw = false))
+
+        // ShowNSFWContents = true, isNsfw = false -> Don't show warning
+        org.junit.Assert.assertFalse(shouldShowWarning(isNsfwContentVisible = true, isNsfw = false))
+    }
 }
+

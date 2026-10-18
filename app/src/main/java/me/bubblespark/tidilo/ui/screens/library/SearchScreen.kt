@@ -48,7 +48,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -94,7 +93,6 @@ fun SearchScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
     var hadFocus by remember { mutableStateOf(false) }
-    var lastCardClickTime by remember { mutableLongStateOf(0L) }
     val isBarsVisible = LocalBarsVisible.current
 
     // Request focus on search input and display soft keyboard when floating navigation search action button is pressed
@@ -278,12 +276,8 @@ fun SearchScreen(
                             tagKeywords = tagKeywords,
                             currentLanguage = currentLanguage,
                             onClick = {
-                                val now = android.os.SystemClock.uptimeMillis()
-                                if (now - lastCardClickTime > 800L) {
-                                    lastCardClickTime = now
-                                    viewModel.addSearchHistory(searchQuery)
-                                    onNavigateToDetail(item.id)
-                                }
+                                viewModel.addSearchHistory(searchQuery)
+                                onNavigateToDetail(item.id)
                             }
                         )
                     }

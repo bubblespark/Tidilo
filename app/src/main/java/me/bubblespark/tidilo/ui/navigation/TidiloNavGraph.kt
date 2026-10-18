@@ -18,7 +18,6 @@ import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
 import me.bubblespark.tidilo.ui.screens.importscreen.ImportScreen
 import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
 
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
 import me.bubblespark.tidilo.ui.screens.library.SearchScreen
@@ -149,8 +148,8 @@ fun TidiloNavGraph(
                     navController.navigate(Screen.Settings.route)
                 },
                 onNavigateToDetail = { bookmarkId ->
-                    if (navController.currentBackStackEntry?.lifecycle?.currentState == Lifecycle.State.RESUMED) {
-                        navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId))
+                    navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
+                        launchSingleTop = true
                     }
                 }
             )
@@ -162,8 +161,8 @@ fun TidiloNavGraph(
                     navController.navigate(Screen.TagSelection.route)
                 },
                 onNavigateToDetail = { bookmarkId ->
-                    if (navController.currentBackStackEntry?.lifecycle?.currentState == Lifecycle.State.RESUMED) {
-                        navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId))
+                    navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
+                        launchSingleTop = true
                     }
                 }
             )
@@ -182,8 +181,8 @@ fun TidiloNavGraph(
                     navController.popBackStack()
                 },
                 onNavigateToAiReview = { id ->
-                    if (navController.currentBackStackEntry?.lifecycle?.currentState == Lifecycle.State.RESUMED) {
-                        navController.navigate(Screen.BookmarkAiReview.createRoute(id))
+                    navController.navigate(Screen.BookmarkAiReview.createRoute(id)) {
+                        launchSingleTop = true
                     }
                 }
             )

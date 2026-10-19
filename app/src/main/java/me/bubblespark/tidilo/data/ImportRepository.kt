@@ -28,11 +28,12 @@ import java.net.URI
 import java.util.UUID
 
 class ImportRepository internal constructor(
-    context: Context,
-    private val taskDao: ImportTaskDao = AppDatabase.getInstance(context).importTaskDao()
+    context: Context? = null,
+    private val taskDao: ImportTaskDao = context?.let { AppDatabase.getInstance(it).importTaskDao() }
+        ?: throw IllegalArgumentException("taskDao must be provided if context is null")
 ) {
 
-    private val appContext: Context = context.applicationContext
+    private val appContext: Context? = context?.applicationContext
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val executionMutex = Mutex()
 
@@ -48,33 +49,58 @@ class ImportRepository internal constructor(
     private val _quotaExceededDialogVisible = MutableStateFlow(false)
     val quotaExceededDialogVisible: StateFlow<Boolean> = _quotaExceededDialogVisible.asStateFlow()
 
+    private val _aiProcessingProgress = MutableStateFlow(AiProcessingProgress())
+    val aiProcessingProgress: StateFlow<AiProcessingProgress> = _aiProcessingProgress.asStateFlow()
+
+    private var batchProgressState = BatchProgressState()
+    private var isAiCancelPending = false
+    private val cancelledTaskIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
     fun dismissQuotaExceededDialog() {
         _quotaExceededDialogVisible.value = false
     }
 
     init {
-        repositoryScope.launch {
-            if (taskDao.getCount() == 0) {
-                migrateFromLegacyPrefs()
+        context?.let {
+            repositoryScope.launch {
+                if (taskDao.getCount() == 0) {
+                    migrateFromLegacyPrefs()
+                }
+                fetchTitlesForReadyTasks()
             }
-            fetchTitlesForReadyTasks()
         }
 
         // Reactively observe Room database changes and populate StateFlows
         repositoryScope.launch {
             taskDao.getAllTasksFlow().collect { entities ->
                 val all = entities.map { it.toImportTask() }
-                _processingTasks.value = all.filter {
+                val processing = all.filter {
                     it.status == TaskStatus.PROCESSING_AI || it.status == TaskStatus.WAITING_AI
                 }
+                _processingTasks.value = processing
                 _readyTasks.value = all.filter {
                     it.status == TaskStatus.READY
                 }
                 _errorTasks.value = all.filter {
                     it.status == TaskStatus.ERROR
                 }
+                updateBatchProgress(processing)
             }
         }
+    }
+
+    private fun updateBatchProgress(processingTasks: List<ImportTask>) {
+        val (progress, newState) = computeBatchProgress(
+            processingTasks = processingTasks,
+            state = batchProgressState,
+            isCancelPending = isAiCancelPending
+        )
+        batchProgressState = newState
+        if (!progress.isProcessing) {
+            isAiCancelPending = false
+            cancelledTaskIds.clear()
+        }
+        _aiProcessingProgress.value = progress
     }
 
     /**
@@ -119,7 +145,7 @@ class ImportRepository internal constructor(
                 val isNsfw = parsed?.isNsfwSignal == true || DomainPolicyManager.isNsfwDomain(domain)
 
                 // 2. Fetch and save domain icon (resolving watermark icon)
-                if (domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
+                if (appContext != null && domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
                     DomainIconManager.fetchAndSaveDomainIcon(
                         context = appContext,
                         url = realUrl,
@@ -172,6 +198,9 @@ class ImportRepository internal constructor(
      * "AI Analysis All": Moves all Ready URLs to Processing and sequentially executes AI analysis.
      */
     fun aiAnalysisAll() {
+        isAiCancelPending = false
+        cancelledTaskIds.clear()
+        batchProgressState = BatchProgressState()
         repositoryScope.launch {
             val readyEntities = taskDao.getTasksByStatuses(listOf(TaskStatus.READY.name))
             if (readyEntities.isEmpty()) return@launch
@@ -195,6 +224,7 @@ class ImportRepository internal constructor(
      * Moves a single Ready task to Processing and starts AI analysis.
      */
     fun promoteTaskToProcessing(taskId: String) {
+        cancelledTaskIds.remove(taskId)
         repositoryScope.launch {
             val targetEntity = taskDao.getTaskById(taskId) ?: return@launch
             val target = targetEntity.toImportTask()
@@ -204,6 +234,32 @@ class ImportRepository internal constructor(
             )
             taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(promoted))
             executeTaskAiAnalysis(promoted.id)
+        }
+    }
+
+    /**
+     * Cancels pending queue items: restores all WAITING_AI tasks back to READY,
+     * while allowing any currently executing PROCESSING_AI task to finish cleanly.
+     */
+    fun cancelProcessing() {
+        isAiCancelPending = true
+        _aiProcessingProgress.value = _aiProcessingProgress.value.copy(isCancelPending = true)
+        repositoryScope.launch {
+            val waitingOrActive = taskDao.getTasksByStatuses(
+                listOf(TaskStatus.WAITING_AI.name, TaskStatus.PROCESSING_AI.name)
+            )
+            cancelledTaskIds.addAll(waitingOrActive.map { it.id })
+
+            val waitingEntities = waitingOrActive.filter { it.status == TaskStatus.WAITING_AI.name }
+            if (waitingEntities.isNotEmpty()) {
+                val restored = waitingEntities.map { entity ->
+                    entity.toImportTask().copy(
+                        status = TaskStatus.READY,
+                        statusText = ""
+                    )
+                }
+                taskDao.insertAll(restored.map { ImportTaskEntity.fromImportTask(it) })
+            }
         }
     }
 
@@ -308,6 +364,15 @@ class ImportRepository internal constructor(
             executionMutex.withLock {
                 val targetEntity = taskDao.getTaskById(taskId) ?: return@withLock
                 val target = targetEntity.toImportTask()
+
+                // If cancellation is requested and task is in the cancelled queue, restore to READY and skip
+                val shouldCancel = isAiCancelPending && (cancelledTaskIds.contains(taskId) || cancelledTaskIds.isEmpty())
+                if (shouldCancel && target.status == TaskStatus.WAITING_AI) {
+                    cancelledTaskIds.remove(taskId)
+                    val restored = target.copy(status = TaskStatus.READY, statusText = "")
+                    taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(restored))
+                    return@withLock
+                }
 
                 // If task is no longer in a runnable state (e.g. deleted or already completed/errored), skip
                 if (target.status != TaskStatus.WAITING_AI && target.status != TaskStatus.PROCESSING_AI) {
@@ -471,7 +536,7 @@ class ImportRepository internal constructor(
 
         val domain = DomainIconManager.extractDomain(target.url)
         DomainPolicyManager.registerDomain(domain, false, target.siteName)
-        if (domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
+        if (appContext != null && domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
             repositoryScope.launch {
                 DomainIconManager.fetchAndSaveDomainIcon(appContext, target.url)
             }
@@ -553,7 +618,7 @@ class ImportRepository internal constructor(
 
                 if (domain != null) {
                     DomainPolicyManager.registerDomain(domain, false, siteName)
-                    if (!DomainIconManager.hasIcon(appContext, domain)) {
+                    if (appContext != null && !DomainIconManager.hasIcon(appContext, domain)) {
                         DomainIconManager.fetchAndSaveDomainIcon(
                             context = appContext,
                             url = realUrl,
@@ -603,7 +668,7 @@ class ImportRepository internal constructor(
         get() = _readyTasks.value.size
 
     private suspend fun migrateFromLegacyPrefs() {
-        val legacyPrefs = appContext.getSharedPreferences("tidilo_queue_prefs", Context.MODE_PRIVATE)
+        val legacyPrefs = appContext?.getSharedPreferences("tidilo_queue_prefs", Context.MODE_PRIVATE) ?: return
         val runningJson = legacyPrefs.getString("running_items", null)
         val queuingJson = legacyPrefs.getString("queuing_items", null)
         val errorJson = legacyPrefs.getString("error_items", null)
@@ -675,6 +740,11 @@ class ImportRepository internal constructor(
         }.getOrDefault(emptyList())
     }
 
+    internal data class BatchProgressState(
+        val batchTotal: Int = 0,
+        val lastProcessingIds: Set<String> = emptySet()
+    )
+
     companion object {
         @Volatile
         private var INSTANCE: ImportRepository? = null
@@ -683,6 +753,52 @@ class ImportRepository internal constructor(
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: ImportRepository(context.applicationContext).also { INSTANCE = it }
             }
+        }
+
+        /**
+         * Pure function to calculate updated AiProcessingProgress and tracking state.
+         * Shared between production repository and unit tests to ensure strict consistency.
+         */
+        internal fun computeBatchProgress(
+            processingTasks: List<ImportTask>,
+            state: BatchProgressState,
+            isCancelPending: Boolean = false
+        ): Pair<AiProcessingProgress, BatchProgressState> {
+            if (processingTasks.isEmpty()) {
+                return Pair(
+                    AiProcessingProgress(
+                        isProcessing = false,
+                        completedCount = 0,
+                        totalCount = 0,
+                        currentTaskTitle = null,
+                        isCancelPending = false
+                    ),
+                    BatchProgressState()
+                )
+            }
+
+            val currentIds = processingTasks.map { it.id }.toSet()
+            val newBatchTotal = if (state.lastProcessingIds.isEmpty()) {
+                processingTasks.size
+            } else {
+                val newlyAdded = currentIds - state.lastProcessingIds
+                state.batchTotal + newlyAdded.size
+            }
+
+            val total = maxOf(newBatchTotal, processingTasks.size)
+            val remaining = processingTasks.size
+            val completed = (total - remaining).coerceAtLeast(0)
+            val currentTask = processingTasks.find { it.status == TaskStatus.PROCESSING_AI }
+                ?: processingTasks.firstOrNull()
+
+            val progress = AiProcessingProgress(
+                isProcessing = true,
+                completedCount = completed,
+                totalCount = total,
+                currentTaskTitle = currentTask?.title?.takeIf { it.isNotBlank() } ?: currentTask?.url,
+                isCancelPending = isCancelPending
+            )
+            return Pair(progress, BatchProgressState(batchTotal = total, lastProcessingIds = currentIds))
         }
 
         fun isValidHttpUrl(url: String?): Boolean {

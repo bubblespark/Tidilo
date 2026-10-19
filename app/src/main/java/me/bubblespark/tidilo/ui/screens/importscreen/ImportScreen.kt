@@ -116,17 +116,14 @@ fun ImportScreen(
     initialSharedUrl: String? = null,
     modifier: Modifier = Modifier
 ) {
-    val processingTasks by viewModel.processingTasks.collectAsStateWithLifecycle()
     val readyTasks by viewModel.readyTasks.collectAsStateWithLifecycle()
     val errorTasks by viewModel.errorTasks.collectAsStateWithLifecycle()
 
-    // Section expand/collapse states (Requirements: Ready and Error default to open, Processing to closed)
-    var isProcessingExpanded by remember { mutableStateOf(false) }
+    // Section expand/collapse states (Requirements: Ready and Error default to open)
     var isReadyExpanded by remember { mutableStateOf(true) }
     var isErrorExpanded by remember { mutableStateOf(true) }
 
     // Show up to 5 items / More Items expanded state
-    var showAllProcessing by remember { mutableStateOf(false) }
     var showAllReady by remember { mutableStateOf(false) }
     var showAllError by remember { mutableStateOf(false) }
 
@@ -229,7 +226,7 @@ fun ImportScreen(
     val headerHeight = statusBarTop + 80.dp
 
     Box(modifier = modifier.fillMaxSize()) {
-        // 3 sections (Processing, Ready, Error)
+        // 2 sections (Ready, Error)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -240,52 +237,7 @@ fun ImportScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ==================== 1. Processing Group (defaults to closed) ====================
-            item {
-                CollapsibleGroupHeader(
-                    title = stringResource(R.string.import_group_processing),
-                    count = processingTasks.size,
-                    color = MaterialTheme.colorScheme.primary,
-                    isExpanded = isProcessingExpanded,
-                    onToggle = { isProcessingExpanded = !isProcessingExpanded }
-                )
-            }
-
-            if (isProcessingExpanded) {
-                if (processingTasks.isEmpty()) {
-                    item {
-                        EmptyGroupCard(
-                            message = stringResource(R.string.import_empty_processing_title),
-                            hint = stringResource(R.string.import_empty_processing_hint)
-                        )
-                    }
-                } else {
-                    val visibleProcessing = if (showAllProcessing) processingTasks else processingTasks.take(5)
-                    items(
-                        items = visibleProcessing,
-                        key = { it.id },
-                        contentType = { "import_task" }
-                    ) { item ->
-                        TaskCard(
-                            item = item,
-                            modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
-                        )
-                    }
-                    if (processingTasks.size > 5) {
-                        item {
-                            MoreItemsButton(
-                                hiddenCount = processingTasks.size - 5,
-                                isExpanded = showAllProcessing,
-                                onClick = { showAllProcessing = !showAllProcessing }
-                            )
-                        }
-                    }
-                }
-            }
-
-            item { Spacer(modifier = Modifier.height(4.dp)) }
-
-            // ==================== 2. Ready Group (defaults to open) ====================
+            // ==================== 1. Ready Group (defaults to open) ====================
             item {
                 CollapsibleGroupHeader(
                     title = stringResource(R.string.import_group_ready),

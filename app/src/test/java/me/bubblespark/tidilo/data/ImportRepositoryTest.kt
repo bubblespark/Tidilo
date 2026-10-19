@@ -1,7 +1,13 @@
 package me.bubblespark.tidilo.data
 
 import com.google.mlkit.genai.common.GenAiException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
+import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
@@ -437,6 +443,252 @@ class ImportRepositoryTest {
         val restored = entity.toImportTask()
         assertEquals(TaskStatus.WAITING_AI, restored.status)
         assertEquals("Waiting for AICore slot...", restored.statusText)
+    }
+
+    @Test
+    fun testAiProcessingProgressDefaultState() {
+        val defaultProgress = AiProcessingProgress()
+        assertFalse(defaultProgress.isProcessing)
+        assertEquals(0, defaultProgress.completedCount)
+        assertEquals(0, defaultProgress.totalCount)
+        assertNull(defaultProgress.currentTaskTitle)
+    }
+
+    @Test
+    fun testBatchProgressTrackingLifecycle() {
+        var state = ImportRepository.BatchProgressState()
+
+        fun computeProgress(processingTasks: List<ImportTask>): AiProcessingProgress {
+            val (progress, newState) = ImportRepository.computeBatchProgress(
+                processingTasks = processingTasks,
+                state = state
+            )
+            state = newState
+            return progress
+        }
+
+        // 1. Initial empty state
+        val step0 = computeProgress(emptyList())
+        assertFalse(step0.isProcessing)
+        assertEquals(0, step0.totalCount)
+        assertEquals(0, step0.completedCount)
+
+        // 2. Batch starts with 3 tasks (t1 analyzing, t2, t3 waiting)
+        val t1 = ImportTask(id = "1", url = "https://a.com", title = "Task A", status = TaskStatus.PROCESSING_AI, statusText = "")
+        val t2 = ImportTask(id = "2", url = "https://b.com", title = "Task B", status = TaskStatus.WAITING_AI, statusText = "")
+        val t3 = ImportTask(id = "3", url = "https://c.com", title = "Task C", status = TaskStatus.WAITING_AI, statusText = "")
+
+        val step1 = computeProgress(listOf(t1, t2, t3))
+        assertTrue(step1.isProcessing)
+        assertEquals(3, step1.totalCount)
+        assertEquals(0, step1.completedCount)
+        assertEquals("Task A", step1.currentTaskTitle)
+
+        // 3. Task 1 finishes -> remaining t2 (analyzing) and t3 (waiting)
+        val t2Active = t2.copy(status = TaskStatus.PROCESSING_AI)
+        val step2 = computeProgress(listOf(t2Active, t3))
+        assertTrue(step2.isProcessing)
+        assertEquals(3, step2.totalCount)
+        assertEquals(1, step2.completedCount)
+        assertEquals("Task B", step2.currentTaskTitle)
+
+        // 4. User adds task 4 mid-flight
+        val t4 = ImportTask(id = "4", url = "https://d.com", title = "Task D", status = TaskStatus.WAITING_AI, statusText = "")
+        val step3 = computeProgress(listOf(t2Active, t3, t4))
+        assertTrue(step3.isProcessing)
+        assertEquals(4, step3.totalCount)
+        assertEquals(1, step3.completedCount)
+
+        // 5. Task 2 finishes -> remaining t3 (analyzing) and t4
+        val t3Active = t3.copy(status = TaskStatus.PROCESSING_AI)
+        val step4 = computeProgress(listOf(t3Active, t4))
+        assertTrue(step4.isProcessing)
+        assertEquals(4, step4.totalCount)
+        assertEquals(2, step4.completedCount)
+        assertEquals("Task C", step4.currentTaskTitle)
+
+        // 6. Task 3 finishes -> remaining t4 (analyzing)
+        val t4Active = t4.copy(status = TaskStatus.PROCESSING_AI)
+        val step5 = computeProgress(listOf(t4Active))
+        assertTrue(step5.isProcessing)
+        assertEquals(4, step5.totalCount)
+        assertEquals(3, step5.completedCount)
+        assertEquals("Task D", step5.currentTaskTitle)
+
+        // 7. Task 4 finishes -> empty list (all completed)
+        val step6 = computeProgress(emptyList())
+        assertFalse(step6.isProcessing)
+        assertEquals(0, step6.totalCount)
+        assertEquals(0, step6.completedCount)
+        assertNull(step6.currentTaskTitle)
+    }
+
+    @Test
+    fun testBatchProgressCancellationLifecycle() {
+        var state = ImportRepository.BatchProgressState()
+        var isAiCancelPending = false
+
+        fun computeProgress(processingTasks: List<ImportTask>): AiProcessingProgress {
+            val (progress, newState) = ImportRepository.computeBatchProgress(
+                processingTasks = processingTasks,
+                state = state,
+                isCancelPending = isAiCancelPending
+            )
+            state = newState
+            return progress
+        }
+
+        // 1. Batch starts with 3 tasks (t1 processing, t2 & t3 waiting)
+        val t1 = ImportTask(id = "1", url = "https://a.com", title = "Task A", status = TaskStatus.PROCESSING_AI, statusText = "")
+        val t2 = ImportTask(id = "2", url = "https://b.com", title = "Task B", status = TaskStatus.WAITING_AI, statusText = "")
+        val t3 = ImportTask(id = "3", url = "https://c.com", title = "Task C", status = TaskStatus.WAITING_AI, statusText = "")
+
+        val activeList = mutableListOf(t1, t2, t3)
+        val initialProgress = computeProgress(activeList)
+        assertTrue(initialProgress.isProcessing)
+        assertFalse(initialProgress.isCancelPending)
+        assertEquals(3, initialProgress.totalCount)
+        assertEquals("Task A", initialProgress.currentTaskTitle)
+
+        // 2. User taps '×' cancel button:
+        // isAiCancelPending flag is set to true
+        isAiCancelPending = true
+        // Waiting tasks (t2, t3) are returned to READY and removed from processing list
+        val waitingTasks = activeList.filter { it.status == TaskStatus.WAITING_AI }
+        assertEquals(2, waitingTasks.size)
+        activeList.removeAll(waitingTasks)
+        val restoredToReady = waitingTasks.map { it.copy(status = TaskStatus.READY, statusText = "") }
+        assertEquals(2, restoredToReady.size)
+        assertTrue(restoredToReady.all { it.status == TaskStatus.READY })
+
+        // Active list now contains ONLY the single actively executing task (t1)
+        val cancelledProgress = computeProgress(activeList)
+        assertTrue(cancelledProgress.isProcessing)
+        assertTrue(cancelledProgress.isCancelPending) // Cancel button is now disabled / grayed out
+        assertEquals("Task A", cancelledProgress.currentTaskTitle)
+        assertEquals(1, activeList.size)
+        assertEquals(TaskStatus.PROCESSING_AI, activeList.first().status)
+
+        // 3. Actively executing task finishes -> active list becomes empty
+        activeList.clear()
+        val finalProgress = computeProgress(activeList)
+        assertFalse(finalProgress.isProcessing) // Indicator button hides
+        assertFalse(finalProgress.isCancelPending) // Reset for future batches
+        assertEquals(0, finalProgress.totalCount)
+        assertEquals(0, finalProgress.completedCount)
+        assertNull(finalProgress.currentTaskTitle)
+    }
+
+    private class FakeImportTaskDao : ImportTaskDao {
+        val tasksFlow = MutableStateFlow<List<ImportTaskEntity>>(emptyList())
+
+        override fun getAllTasksFlow(): Flow<List<ImportTaskEntity>> = tasksFlow
+
+        override suspend fun getAllTasks(): List<ImportTaskEntity> = tasksFlow.value
+
+        override fun getTasksByStatusesFlow(statuses: List<String>): Flow<List<ImportTaskEntity>> =
+            tasksFlow.map { list -> list.filter { it.status in statuses } }
+
+        override suspend fun getTasksByStatuses(statuses: List<String>): List<ImportTaskEntity> =
+            tasksFlow.value.filter { it.status in statuses }
+
+        override suspend fun getTaskById(id: String): ImportTaskEntity? =
+            tasksFlow.value.find { it.id == id }
+
+        override suspend fun getTaskByUrl(url: String): ImportTaskEntity? =
+            tasksFlow.value.find { it.url == url }
+
+        override suspend fun insertOrUpdate(task: ImportTaskEntity) {
+            val current = tasksFlow.value.toMutableList()
+            current.removeAll { it.id == task.id }
+            current.add(task)
+            tasksFlow.value = current
+        }
+
+        override suspend fun insertAll(tasks: List<ImportTaskEntity>) {
+            val current = tasksFlow.value.toMutableList()
+            val newIds = tasks.map { it.id }.toSet()
+            current.removeAll { it.id in newIds }
+            current.addAll(tasks)
+            tasksFlow.value = current
+        }
+
+        override suspend fun update(task: ImportTaskEntity) = insertOrUpdate(task)
+
+        override suspend fun updateStatus(id: String, status: String, statusText: String, errorMessage: String?) {
+            val existing = getTaskById(id) ?: return
+            insertOrUpdate(existing.copy(status = status, statusText = statusText, errorMessage = errorMessage))
+        }
+
+        override suspend fun deleteById(id: String) {
+            tasksFlow.value = tasksFlow.value.filter { it.id != id }
+        }
+
+        override suspend fun deleteByIds(ids: List<String>) {
+            tasksFlow.value = tasksFlow.value.filter { it.id !in ids }
+        }
+
+        override suspend fun deleteByStatus(status: String) {
+            tasksFlow.value = tasksFlow.value.filter { it.status != status }
+        }
+
+        override suspend fun getCount(): Int = tasksFlow.value.size
+    }
+
+    @Test
+    fun testRepositoryCancellationWithFakeDao() = runBlocking {
+        val fakeDao = FakeImportTaskDao()
+        val t1 = ImportTaskEntity(
+            id = "1", url = "https://a.com", title = "Task A",
+            status = TaskStatus.PROCESSING_AI.name, statusText = "", assignedTags = emptyList(),
+            createdAt = 100L, isNsfw = false, siteName = "", description = "", bodySnippet = ""
+        )
+        val t2 = ImportTaskEntity(
+            id = "2", url = "https://b.com", title = "Task B",
+            status = TaskStatus.WAITING_AI.name, statusText = "", assignedTags = emptyList(),
+            createdAt = 200L, isNsfw = false, siteName = "", description = "", bodySnippet = ""
+        )
+        val t3 = ImportTaskEntity(
+            id = "3", url = "https://c.com", title = "Task C",
+            status = TaskStatus.WAITING_AI.name, statusText = "", assignedTags = emptyList(),
+            createdAt = 300L, isNsfw = false, siteName = "", description = "", bodySnippet = ""
+        )
+
+        fakeDao.tasksFlow.value = listOf(t1, t2, t3)
+
+        val repository = ImportRepository(context = null, taskDao = fakeDao)
+        delay(150)
+
+        // 1. Initial batch progress state
+        val initialProgress = repository.aiProcessingProgress.value
+        assertTrue(initialProgress.isProcessing)
+        assertFalse(initialProgress.isCancelPending)
+        assertEquals(3, initialProgress.totalCount)
+
+        // 2. User invokes cancelProcessing()
+        repository.cancelProcessing()
+        delay(150)
+
+        // Waiting tasks (t2, t3) are restored to READY in DAO
+        val allTasks = fakeDao.getAllTasks()
+        val waitingTasks = allTasks.filter { it.status == TaskStatus.WAITING_AI.name }
+        val readyTasks = allTasks.filter { it.status == TaskStatus.READY.name }
+        assertEquals(0, waitingTasks.size)
+        assertEquals(2, readyTasks.size)
+
+        // Progress emits isCancelPending = true while active task is finishing
+        val cancelProgress = repository.aiProcessingProgress.value
+        assertTrue(cancelProgress.isProcessing)
+        assertTrue(cancelProgress.isCancelPending)
+        assertEquals("Task A", cancelProgress.currentTaskTitle)
+
+        // 3. When active task finishes and DB is updated (only ready tasks remain)
+        fakeDao.tasksFlow.value = readyTasks
+        delay(150)
+
+        val finalProgress = repository.aiProcessingProgress.value
+        assertFalse(finalProgress.isProcessing)
+        assertFalse(finalProgress.isCancelPending)
     }
 }
 

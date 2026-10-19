@@ -34,16 +34,18 @@
     <string name="bottom_bar_filter_menu">フィルターメニュー</string>
     <string name="bottom_bar_search">Search</string>
     <string name="bottom_bar_ai_analysis_all">AI Tagging All</string>
+    <string name="bottom_bar_ai_processing">AI処理ステータス</string>
+    <string name="ai_indicator_processing_title">AI解析中…</string>
+    <string name="ai_indicator_progress_format">AI解析中… (%1$d/%2$d)</string>
+    <string name="ai_indicator_tap_to_view">タップでQueue画面を開く</string>
+    <string name="ai_indicator_cancel_button">AI解析キューをキャンセル</string>
 
     <!-- Import Screen -->
     <string name="import_header_title">Import</string>
     <string name="import_header_subtitle">Semantic AI Analysis &amp; Management</string>
     <string name="import_button_content_desc">URLの登録</string>
-    <string name="import_group_processing">実行中</string>
     <string name="import_group_ready">待機中</string>
     <string name="import_group_error">エラー</string>
-    <string name="import_empty_processing_title">実行中のタスクはありません</string>
-    <string name="import_empty_processing_hint">URLを登録した上で、画面右下のボタン、または待機中のURLカードを右にスワイプして下さい</string>
     <string name="import_empty_ready_title">待機中のタスクはありません</string>
     <string name="import_empty_ready_hint">画面右上の登録ボタン、またはデバイスの共有メニューからURLを追加して下さい</string>
     <string name="import_empty_error_title">エラーのタスクはありません</string>

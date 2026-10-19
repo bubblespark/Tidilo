@@ -138,7 +138,28 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
   - **Contextual Behavior**:
     - `LibraryScreen`: Filter FAB menu toggle button (`FilterListIcon` / `Icons.Default.Close`). Expands a Material 3 Expressive pill menu with two persistent options: "Domain" on top (`DomainIcon`, 28dp) and "Newest first" below (`ArrowDownwardIcon`, 28dp). The active mode pill is highlighted using `primaryContainer` / `onPrimaryContainer`, and inactive using `secondaryContainer` / `onSecondaryContainer`. The pill size matches `BookmarkDetailScreen`'s FAB menu exactly (`horizontal = 24dp, vertical = 16dp`, typography `titleMedium`, SemiBold) and remains invariant regardless of the FAB container's 56dp/86dp scaling state, aligning flush to the right edge of the FAB. When expanded, the floating navigation bar hides downwards using official Edge-to-Edge slide-out animation, returning on dismissal.
     - `SearchScreen`: Search action button (`Icons.Default.Search`). Tapping requests focus to top search input bar and guarantees keyboard expansion (`keyboardController?.show()`) even if the input was already focused while the keyboard was dismissed. (Settings button on Search header removed).
-    - `ImportScreen`: Filled accent sparkle button (`Icons.Default.AutoAwesome`) triggering batch `aiAnalysisAll()` execution. (Consists of 3 sections: Processing, Ready, Error; tapping 'AI Analysis All' promotes items directly to Processing without confirmation dialogs, while individual items are operated via swipe gestures).
+    - `ImportScreen`: Filled accent sparkle button (`Icons.Default.AutoAwesome`) triggering batch `aiAnalysisAll()` execution. (Consists of 2 sections: Ready, Error; tapping 'AI Analysis All' promotes items directly to processing without confirmation dialogs, while individual items are operated via swipe gestures).
+- **Left-Side AI Processing Status Indicator (`AiProcessingIndicatorButton` & `AiProcessingSpeechBubble`)**:
+  - **Symmetric Left Placement**: Anchored symmetrically on the left side of `TidiloBottomBar` at `offset(x = -actionButtonOffsetX)` (opposite to the right action button).
+  - **Dynamic Scaling, Offset & Scroll Persistence**:
+    - Automatically scales in (`scaleIn() + fadeIn()`) when background AI processing is active (`isProcessing = true`), and smoothly scales out (`scaleOut() + fadeOut()`) upon batch completion.
+    - Symmetrically tracks the right action button scaling and positioning:
+      - **Contracted Size (Navigation Visible)**: `56dp` container, `28dp` icon, elevation `6dp`, with `14dp` clearance from the navigation pill.
+      - **Expanded Size (Navigation Hidden / Scrolled)**: `86dp` container, `40dp` icon, elevation `10dp`, anchored to standard 16dp margin at the bottom-left corner (`-(maxWidth / 2 - 16.dp - 86.dp / 2)`).
+  - **Aesthetic Effects ("Gorgeous AI Rainbow Effect & Ambient Glow")**:
+    - Chromatic AI Rainbow / Aurora palette (`#FF5252`, `#FF7A00`, `#FFD600`, `#00E676`, `#00E5FF`, `#2979FF`, `#D500F9`).
+    - **Idea 1: Ambient Aura Glow (`drawBehind`)**: Multi-layered concentric circular sweep gradients (3 overlapping stroke layers with decaying alpha and gentle breathing pulse `0.60f..1.0f`) radiating 6~9dp outward. Synchronized in lockstep with the rotation angle, strictly circular with mathematically zero rectangular corner artifacts and near-zero GPU overhead.
+    - **Synchronized 360-degree Rotation**: 3200ms linear loop rotating both the outer ambient aura, the 2.5dp/3.5dp vibrant border ring, and the inner aurora core.
+    - **Idea 3: Inner Aurora Core (`Brush.sweepGradient`)**: Swirling translucent rainbow aurora layer inside the button surface rotating in sync with the border ring, paired with a center primary radial depth spotlight (`0.32f`) illuminating the breathing sparkling icon (`AutoAwesome`, `0.94f..1.08f`).
+  - **Elevated Speech Bubble (`AiProcessingSpeechBubble`)**:
+    - Floats directly above the left button (`offset(y = -(buttonSize + 14.dp))`), starting from `Alignment.BottomStart` and extending rightward (`width = 270.dp`).
+    - Downward pointing triangle pointer aligned precisely to the center of the button (`padding(start = (buttonSize / 2) - 7.dp)`).
+    - Real-time batch progress header: `AI Analyzing... (current/total)` where current is 1-indexed for the active task (`(completedCount + 1).coerceAtMost(totalCount)`) (`ai_indicator_progress_format`).
+    - Top-right Cancel button (`Icons.Default.Close`, 24dp): Tapping immediately restores all queued (`WAITING_AI`) tasks back to `Ready`, while allowing the currently executing inference task (`PROCESSING_AI`) to finish cleanly. Once tapped, the cancel button is disabled and grayed out (`alpha = 0.38f`). Upon the active task's completion, the batch ends and the floating indicator automatically disappears.
+    - Currently processing webpage title or URL display with single-line ellipsis.
+    - Animated `LinearProgressIndicator` reflecting completed progress ratio (`completedCount / totalCount`).
+    - Action hint: `Tap to view in Import →` (`Tap to view in Queue →` in Japanese locale). Tapping the bubble navigates directly to `Screen.Import` using top-level destination navigation options and dismisses the bubble.
+    - Scrim backdrop dismisses the bubble cleanly upon tapping outside or screen navigation.
 
 ### 6.2 `BookmarkItemCard`
 - **Shape**: `RoundedCornerShape(24.dp)`.

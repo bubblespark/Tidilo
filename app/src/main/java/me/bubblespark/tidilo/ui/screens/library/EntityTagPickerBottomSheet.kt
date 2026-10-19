@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.ui.screens.library
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -208,8 +209,9 @@ private fun SelectedEntityChip(
 ) {
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        color = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -218,13 +220,15 @@ private fun SelectedEntityChip(
             Icon(
                 imageVector = Icons.Default.Tag,
                 contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.size(14.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = name.removePrefix("#"),
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimary
             )
             Spacer(modifier = Modifier.width(4.dp))
             IconButton(
@@ -234,6 +238,7 @@ private fun SelectedEntityChip(
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = stringResource(R.string.detail_tag_remove_entity, name),
+                    tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(14.dp)
                 )
             }
@@ -273,6 +278,7 @@ private fun AllEntityToggleChip(
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = backgroundColor,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onToggle)

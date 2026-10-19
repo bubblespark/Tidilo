@@ -344,3 +344,26 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Spacing rhythm: URL to Warning notice is `6.dp`, Warning notice to Category & Tags is `14.dp` (eliminating disproportionate voids).
   - Category & Tags edit `IconButton` and tag chips (`AssistChip`) are scoped under `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to eliminate invisible accessibility touch-target inflation (which previously caused a 32dp gap), harmonizing the header-to-content gap across Category & Tags, Summary, and Note to a consistent `10.dp`.
 
+### 6.12 Tag Edit Dialog Dropdown Menu Specification (`BookmarkTagEditDialog.kt`)
+- **Full-Width Popup Anchoring**:
+  - The Category and Subcategory selection fields wrap their `Surface` and `DropdownMenu` inside `BoxWithConstraints(modifier = Modifier.fillMaxWidth())`.
+  - The `DropdownMenu` applies `Modifier.width(maxWidth)`, ensuring the dropdown menu spans the exact width of the parent selector field rather than clipping or floating arbitrarily to the left/right.
+- **Bounded Menu Height & Smooth Scrolling**:
+  - Menu height is constrained using `Modifier.heightIn(max = 250.dp)` (roughly 5 visible items).
+  - Leveraging Compose's built-in `DropdownMenuContent` vertical scroll support, longer lists (such as Subcategory with 11 items) scroll smoothly without extending off-screen or obscuring the dialog layout.
+- **Visual Contrast & Boundary Definition**:
+  - Since `AlertDialog` sits on `surfaceContainerHigh`, dropdown container color is elevated to `MaterialTheme.colorScheme.surfaceContainerHighest`.
+  - Harmonizes with the Detail screen's Entity tag chips (`AssistChip`) by applying an identical 1dp border (`MaterialTheme.colorScheme.outlineVariant`) across both the selector field (`Surface`, `RoundedCornerShape(12.dp)`) and popup container (`DropdownMenu`, `RoundedCornerShape(16.dp)`).
+  - Similarly, all Entity chips in `BookmarkTagEditDialog` and `EntityTagPickerBottomSheet` apply `BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)`, establishing unified border geometry and color hierarchy.
+- **Entity Chip Color & Typography Synchronization (`EntityTagPickerBottomSheet.kt`)**:
+  - `SelectedEntityChip` background is unified with active `AllEntityToggleChip` to pure primary color (`MaterialTheme.colorScheme.primary`) with `onPrimary` content color and `FontWeight.Bold`, resolving the previous mismatch where selected chips appeared darker in `primaryContainer`.
+- **Scroll Affordance & Vertical Scrollbar Indicator**:
+  - Solves the "False Floor" (invisible scroll continuation) issue using a custom dynamic vertical scrollbar (`Modifier.verticalScrollbar`).
+  - Passes dedicated `ScrollState` (`categoryScrollState` / `subcategoryScrollState`) to `DropdownMenu(scrollState = ...)`.
+  - Only renders when `scrollState.maxValue > 0` (non-scrollable lists remain clean with no extra chrome).
+  - Displays a subtle 4dp primary track (`primary.copy(alpha = 0.15f)`) and dynamic primary thumb (`primary`) on the right edge (`paddingEnd = 6.dp, paddingVertical = 12.dp`), providing immediate visual cues on scrollability and current scroll position.
+- **Leading Checkmark Alignment**:
+  - Moved checkmark icon from `trailingIcon` to `leadingIcon` (display order: `[Checkmark] [Item name]`).
+  - Selected items render `Icons.Default.Check` (`size = 18.dp`, tinted with `primary`).
+  - Unselected items render an empty `Spacer(modifier = Modifier.size(18.dp))` in `leadingIcon`, maintaining uniform vertical text alignment across all menu entries.
+

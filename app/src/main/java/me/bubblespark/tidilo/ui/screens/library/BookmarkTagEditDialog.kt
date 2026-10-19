@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -121,6 +122,7 @@ fun BookmarkTagEditDialog(
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
@@ -155,7 +157,7 @@ fun BookmarkTagEditDialog(
                                 .heightIn(max = 250.dp)
                                 .border(
                                     width = 1.dp,
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = MaterialTheme.colorScheme.outlineVariant,
                                     shape = RoundedCornerShape(16.dp)
                                 )
                                 .verticalScrollbar(
@@ -211,6 +213,7 @@ fun BookmarkTagEditDialog(
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
@@ -245,7 +248,7 @@ fun BookmarkTagEditDialog(
                                 .heightIn(max = 250.dp)
                                 .border(
                                     width = 1.dp,
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = MaterialTheme.colorScheme.outlineVariant,
                                     shape = RoundedCornerShape(16.dp)
                                 )
                                 .verticalScrollbar(
@@ -407,7 +410,8 @@ fun BookmarkTagEditDialog(
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
                                     color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
-                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,

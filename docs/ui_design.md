@@ -353,7 +353,10 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Leveraging Compose's built-in `DropdownMenuContent` vertical scroll support, longer lists (such as Subcategory with 11 items) scroll smoothly without extending off-screen or obscuring the dialog layout.
 - **Visual Contrast & Boundary Definition**:
   - Since `AlertDialog` sits on `surfaceContainerHigh`, dropdown container color is elevated to `MaterialTheme.colorScheme.surfaceContainerHighest`.
-  - Applies a 1dp (1pt) border with `MaterialTheme.colorScheme.primary` and `shape = RoundedCornerShape(16.dp)`, providing crisp boundary definition and brand harmonization with dialog accents.
+  - Harmonizes with the Detail screen's Entity tag chips (`AssistChip`) by applying an identical 1dp border (`MaterialTheme.colorScheme.outlineVariant`) across both the selector field (`Surface`, `RoundedCornerShape(12.dp)`) and popup container (`DropdownMenu`, `RoundedCornerShape(16.dp)`).
+  - Similarly, all Entity chips in `BookmarkTagEditDialog` and `EntityTagPickerBottomSheet` apply `BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)`, establishing unified border geometry and color hierarchy.
+- **Entity Chip Color & Typography Synchronization (`EntityTagPickerBottomSheet.kt`)**:
+  - `SelectedEntityChip` background is unified with active `AllEntityToggleChip` to pure primary color (`MaterialTheme.colorScheme.primary`) with `onPrimary` content color and `FontWeight.Bold`, resolving the previous mismatch where selected chips appeared darker in `primaryContainer`.
 - **Scroll Affordance & Vertical Scrollbar Indicator**:
   - Solves the "False Floor" (invisible scroll continuation) issue using a custom dynamic vertical scrollbar (`Modifier.verticalScrollbar`).
   - Passes dedicated `ScrollState` (`categoryScrollState` / `subcategoryScrollState`) to `DropdownMenu(scrollState = ...)`.

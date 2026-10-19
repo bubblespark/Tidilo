@@ -410,7 +410,6 @@ class ImportRepository internal constructor(
                     status = TaskStatus.PROCESSING_AI,
                     statusText = "Gemini Nano analyzing content..."
                 )
-                delay(1800L)
 
                 try {
                     // 2. Gemini Nano inference using precomputed metadata -> Save to Library

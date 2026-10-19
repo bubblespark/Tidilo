@@ -49,6 +49,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import me.bubblespark.tidilo.config.AppConfig
@@ -342,7 +343,11 @@ fun TidiloApp(
                         onNavigateToImport = {
                             if (currentRoute != Screen.Import.route) {
                                 navController.navigate(Screen.Import.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
                                     launchSingleTop = true
+                                    restoreState = true
                                 }
                             }
                         },

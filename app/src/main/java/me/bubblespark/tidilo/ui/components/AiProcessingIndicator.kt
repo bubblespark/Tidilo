@@ -372,7 +372,7 @@ fun AiProcessingSpeechBubble(
                 // Progress bar
                 if (progress.totalCount > 0) {
                     val progressRatio by animateFloatAsState(
-                        targetValue = ((progress.completedCount + 1).toFloat() / progress.totalCount.toFloat()).coerceIn(0f, 1f),
+                        targetValue = (progress.completedCount.toFloat() / progress.totalCount.toFloat()).coerceIn(0f, 1f),
                         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
                         label = "aiBubbleProgressRatio"
                     )

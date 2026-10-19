@@ -353,7 +353,12 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Leveraging Compose's built-in `DropdownMenuContent` vertical scroll support, longer lists (such as Subcategory with 11 items) scroll smoothly without extending off-screen or obscuring the dialog layout.
 - **Visual Contrast & Boundary Definition**:
   - Since `AlertDialog` sits on `surfaceContainerHigh`, dropdown container color is elevated to `MaterialTheme.colorScheme.surfaceContainerHighest`.
-  - Adds a 1dp outline border (`MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)`) with `shape = RoundedCornerShape(16.dp)`, eliminating color blending between the popup and dialog background in both light and dark/OLED themes.
+  - Applies a 1dp (1pt) border with `MaterialTheme.colorScheme.primary` and `shape = RoundedCornerShape(16.dp)`, providing crisp boundary definition and brand harmonization with dialog accents.
+- **Scroll Affordance & Vertical Scrollbar Indicator**:
+  - Solves the "False Floor" (invisible scroll continuation) issue using a custom dynamic vertical scrollbar (`Modifier.verticalScrollbar`).
+  - Passes dedicated `ScrollState` (`categoryScrollState` / `subcategoryScrollState`) to `DropdownMenu(scrollState = ...)`.
+  - Only renders when `scrollState.maxValue > 0` (non-scrollable lists remain clean with no extra chrome).
+  - Displays a subtle 4dp primary track (`primary.copy(alpha = 0.15f)`) and dynamic primary thumb (`primary`) on the right edge (`paddingEnd = 6.dp, paddingVertical = 12.dp`), providing immediate visual cues on scrollability and current scroll position.
 - **Leading Checkmark Alignment**:
   - Moved checkmark icon from `trailingIcon` to `leadingIcon` (display order: `[Checkmark] [Item name]`).
   - Selected items render `Icons.Default.Check` (`size = 18.dp`, tinted with `primary`).

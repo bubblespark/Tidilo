@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -46,9 +47,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.Category
@@ -74,6 +81,8 @@ fun BookmarkTagEditDialog(
     val context = LocalContext.current
     var isCategoryDropdownExpanded by remember { mutableStateOf(false) }
     var isSubcategoryDropdownExpanded by remember { mutableStateOf(false) }
+    val categoryScrollState = rememberScrollState()
+    val subcategoryScrollState = rememberScrollState()
 
     val localizedCategory = remember(selectedCategory, context) {
         selectedCategory?.let { Category.toLocalized(it, context) } ?: ""
@@ -140,13 +149,18 @@ fun BookmarkTagEditDialog(
                         DropdownMenu(
                             expanded = isCategoryDropdownExpanded,
                             onDismissRequest = { isCategoryDropdownExpanded = false },
+                            scrollState = categoryScrollState,
                             modifier = Modifier
                                 .width(maxWidth)
                                 .heightIn(max = 250.dp)
                                 .border(
                                     width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    color = MaterialTheme.colorScheme.primary,
                                     shape = RoundedCornerShape(16.dp)
+                                )
+                                .verticalScrollbar(
+                                    scrollState = categoryScrollState,
+                                    color = MaterialTheme.colorScheme.primary
                                 ),
                             shape = RoundedCornerShape(16.dp),
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
@@ -225,13 +239,18 @@ fun BookmarkTagEditDialog(
                         DropdownMenu(
                             expanded = isSubcategoryDropdownExpanded,
                             onDismissRequest = { isSubcategoryDropdownExpanded = false },
+                            scrollState = subcategoryScrollState,
                             modifier = Modifier
                                 .width(maxWidth)
                                 .heightIn(max = 250.dp)
                                 .border(
                                     width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    color = MaterialTheme.colorScheme.primary,
                                     shape = RoundedCornerShape(16.dp)
+                                )
+                                .verticalScrollbar(
+                                    scrollState = subcategoryScrollState,
+                                    color = MaterialTheme.colorScheme.primary
                                 ),
                             shape = RoundedCornerShape(16.dp),
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
@@ -492,4 +511,56 @@ fun AddEntityDialog(
         },
         shape = RoundedCornerShape(20.dp)
     )
+}
+
+/**
+ * Renders a subtle vertical scrollbar on the right side of a scrollable container.
+ * Only draws the track and thumb when [scrollState.maxValue] > 0 (i.e. content exceeds container bounds).
+ */
+private fun Modifier.verticalScrollbar(
+    scrollState: ScrollState,
+    color: Color,
+    width: Dp = 4.dp,
+    paddingEnd: Dp = 6.dp,
+    paddingVertical: Dp = 12.dp,
+    minThumbHeight: Dp = 24.dp
+): Modifier = this.drawWithContent {
+    drawContent()
+
+    val totalHeight = size.height
+    val totalScrollable = scrollState.maxValue
+    if (totalScrollable > 0 && totalHeight > 0) {
+        val padVertPx = paddingVertical.toPx()
+        val usableTrackHeight = totalHeight - 2 * padVertPx
+        if (usableTrackHeight > 0) {
+            val widthPx = width.toPx()
+            val padEndPx = paddingEnd.toPx()
+            val thumbOffsetX = size.width - padEndPx - widthPx
+
+            // 1. Subtle track
+            drawRoundRect(
+                color = color.copy(alpha = 0.15f),
+                topLeft = Offset(thumbOffsetX, padVertPx),
+                size = Size(widthPx, usableTrackHeight),
+                cornerRadius = CornerRadius(widthPx / 2, widthPx / 2)
+            )
+
+            // 2. Dynamic thumb
+            val contentHeight = totalScrollable + totalHeight
+            val viewRatio = totalHeight / contentHeight.coerceAtLeast(1f)
+            val minThumbHeightPx = minThumbHeight.toPx()
+            val thumbHeightPx = (usableTrackHeight * viewRatio).coerceIn(minThumbHeightPx, usableTrackHeight)
+
+            val scrollFraction = (scrollState.value.toFloat() / totalScrollable.toFloat()).coerceIn(0f, 1f)
+            val maxThumbOffset = usableTrackHeight - thumbHeightPx
+            val thumbOffsetY = padVertPx + maxThumbOffset * scrollFraction
+
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(thumbOffsetX, thumbOffsetY),
+                size = Size(widthPx, thumbHeightPx),
+                cornerRadius = CornerRadius(widthPx / 2, widthPx / 2)
+            )
+        }
+    }
 }

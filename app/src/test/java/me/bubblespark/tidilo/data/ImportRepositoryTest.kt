@@ -438,5 +438,112 @@ class ImportRepositoryTest {
         assertEquals(TaskStatus.WAITING_AI, restored.status)
         assertEquals("Waiting for AICore slot...", restored.statusText)
     }
+
+    @Test
+    fun testAiProcessingProgressDefaultState() {
+        val defaultProgress = AiProcessingProgress()
+        assertFalse(defaultProgress.isProcessing)
+        assertEquals(0, defaultProgress.completedCount)
+        assertEquals(0, defaultProgress.totalCount)
+        assertNull(defaultProgress.currentTaskTitle)
+    }
+
+    @Test
+    fun testBatchProgressTrackingLifecycle() {
+        var batchTotal = 0
+        var lastProcessingIds = emptySet<String>()
+
+        fun computeProgress(processingTasks: List<ImportTask>): AiProcessingProgress {
+            if (processingTasks.isEmpty()) {
+                batchTotal = 0
+                lastProcessingIds = emptySet()
+                return AiProcessingProgress(
+                    isProcessing = false,
+                    completedCount = 0,
+                    totalCount = 0,
+                    currentTaskTitle = null
+                )
+            }
+
+            val currentIds = processingTasks.map { it.id }.toSet()
+            if (lastProcessingIds.isEmpty()) {
+                batchTotal = processingTasks.size
+            } else {
+                val newlyAdded = currentIds - lastProcessingIds
+                if (newlyAdded.isNotEmpty()) {
+                    batchTotal += newlyAdded.size
+                }
+            }
+            lastProcessingIds = currentIds
+
+            val total = maxOf(batchTotal, processingTasks.size)
+            val remaining = processingTasks.size
+            val completed = (total - remaining).coerceAtLeast(0)
+            val currentTask = processingTasks.find { it.status == TaskStatus.PROCESSING_AI }
+                ?: processingTasks.firstOrNull()
+
+            return AiProcessingProgress(
+                isProcessing = true,
+                completedCount = completed,
+                totalCount = total,
+                currentTaskTitle = currentTask?.title?.takeIf { it.isNotBlank() } ?: currentTask?.url
+            )
+        }
+
+        // 1. Initial empty state
+        val step0 = computeProgress(emptyList())
+        assertFalse(step0.isProcessing)
+        assertEquals(0, step0.totalCount)
+        assertEquals(0, step0.completedCount)
+
+        // 2. Batch starts with 3 tasks (t1 analyzing, t2, t3 waiting)
+        val t1 = ImportTask(id = "1", url = "https://a.com", title = "Task A", status = TaskStatus.PROCESSING_AI, statusText = "")
+        val t2 = ImportTask(id = "2", url = "https://b.com", title = "Task B", status = TaskStatus.WAITING_AI, statusText = "")
+        val t3 = ImportTask(id = "3", url = "https://c.com", title = "Task C", status = TaskStatus.WAITING_AI, statusText = "")
+
+        val step1 = computeProgress(listOf(t1, t2, t3))
+        assertTrue(step1.isProcessing)
+        assertEquals(3, step1.totalCount)
+        assertEquals(0, step1.completedCount)
+        assertEquals("Task A", step1.currentTaskTitle)
+
+        // 3. Task 1 finishes -> remaining t2 (analyzing) and t3 (waiting)
+        val t2Active = t2.copy(status = TaskStatus.PROCESSING_AI)
+        val step2 = computeProgress(listOf(t2Active, t3))
+        assertTrue(step2.isProcessing)
+        assertEquals(3, step2.totalCount)
+        assertEquals(1, step2.completedCount)
+        assertEquals("Task B", step2.currentTaskTitle)
+
+        // 4. User adds task 4 mid-flight
+        val t4 = ImportTask(id = "4", url = "https://d.com", title = "Task D", status = TaskStatus.WAITING_AI, statusText = "")
+        val step3 = computeProgress(listOf(t2Active, t3, t4))
+        assertTrue(step3.isProcessing)
+        assertEquals(4, step3.totalCount)
+        assertEquals(1, step3.completedCount)
+
+        // 5. Task 2 finishes -> remaining t3 (analyzing) and t4
+        val t3Active = t3.copy(status = TaskStatus.PROCESSING_AI)
+        val step4 = computeProgress(listOf(t3Active, t4))
+        assertTrue(step4.isProcessing)
+        assertEquals(4, step4.totalCount)
+        assertEquals(2, step4.completedCount)
+        assertEquals("Task C", step4.currentTaskTitle)
+
+        // 6. Task 3 finishes -> remaining t4 (analyzing)
+        val t4Active = t4.copy(status = TaskStatus.PROCESSING_AI)
+        val step5 = computeProgress(listOf(t4Active))
+        assertTrue(step5.isProcessing)
+        assertEquals(4, step5.totalCount)
+        assertEquals(3, step5.completedCount)
+        assertEquals("Task D", step5.currentTaskTitle)
+
+        // 7. Task 4 finishes -> empty list (all completed)
+        val step6 = computeProgress(emptyList())
+        assertFalse(step6.isProcessing)
+        assertEquals(0, step6.totalCount)
+        assertEquals(0, step6.completedCount)
+        assertNull(step6.currentTaskTitle)
+    }
 }
 

@@ -48,6 +48,12 @@ class ImportRepository internal constructor(
     private val _quotaExceededDialogVisible = MutableStateFlow(false)
     val quotaExceededDialogVisible: StateFlow<Boolean> = _quotaExceededDialogVisible.asStateFlow()
 
+    private val _aiProcessingProgress = MutableStateFlow(AiProcessingProgress())
+    val aiProcessingProgress: StateFlow<AiProcessingProgress> = _aiProcessingProgress.asStateFlow()
+
+    private var batchTotal = 0
+    private var lastProcessingIds = emptySet<String>()
+
     fun dismissQuotaExceededDialog() {
         _quotaExceededDialogVisible.value = false
     }
@@ -64,17 +70,57 @@ class ImportRepository internal constructor(
         repositoryScope.launch {
             taskDao.getAllTasksFlow().collect { entities ->
                 val all = entities.map { it.toImportTask() }
-                _processingTasks.value = all.filter {
+                val processing = all.filter {
                     it.status == TaskStatus.PROCESSING_AI || it.status == TaskStatus.WAITING_AI
                 }
+                _processingTasks.value = processing
                 _readyTasks.value = all.filter {
                     it.status == TaskStatus.READY
                 }
                 _errorTasks.value = all.filter {
                     it.status == TaskStatus.ERROR
                 }
+                updateBatchProgress(processing)
             }
         }
+    }
+
+    private fun updateBatchProgress(processingTasks: List<ImportTask>) {
+        if (processingTasks.isEmpty()) {
+            batchTotal = 0
+            lastProcessingIds = emptySet()
+            _aiProcessingProgress.value = AiProcessingProgress(
+                isProcessing = false,
+                completedCount = 0,
+                totalCount = 0,
+                currentTaskTitle = null
+            )
+            return
+        }
+
+        val currentIds = processingTasks.map { it.id }.toSet()
+        if (lastProcessingIds.isEmpty()) {
+            batchTotal = processingTasks.size
+        } else {
+            val newlyAdded = currentIds - lastProcessingIds
+            if (newlyAdded.isNotEmpty()) {
+                batchTotal += newlyAdded.size
+            }
+        }
+        lastProcessingIds = currentIds
+
+        val total = maxOf(batchTotal, processingTasks.size)
+        val remaining = processingTasks.size
+        val completed = (total - remaining).coerceAtLeast(0)
+        val currentTask = processingTasks.find { it.status == TaskStatus.PROCESSING_AI }
+            ?: processingTasks.firstOrNull()
+
+        _aiProcessingProgress.value = AiProcessingProgress(
+            isProcessing = true,
+            completedCount = completed,
+            totalCount = total,
+            currentTaskTitle = currentTask?.title?.takeIf { it.isNotBlank() } ?: currentTask?.url
+        )
     }
 
     /**
@@ -330,6 +376,7 @@ class ImportRepository internal constructor(
                     status = TaskStatus.PROCESSING_AI,
                     statusText = "Gemini Nano analyzing content..."
                 )
+                delay(1800L)
 
                 try {
                     // 2. Gemini Nano inference using precomputed metadata -> Save to Library

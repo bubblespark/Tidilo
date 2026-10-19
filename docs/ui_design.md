@@ -139,6 +139,26 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
     - `LibraryScreen`: Filter FAB menu toggle button (`FilterListIcon` / `Icons.Default.Close`). Expands a Material 3 Expressive pill menu with two persistent options: "Domain" on top (`DomainIcon`, 28dp) and "Newest first" below (`ArrowDownwardIcon`, 28dp). The active mode pill is highlighted using `primaryContainer` / `onPrimaryContainer`, and inactive using `secondaryContainer` / `onSecondaryContainer`. The pill size matches `BookmarkDetailScreen`'s FAB menu exactly (`horizontal = 24dp, vertical = 16dp`, typography `titleMedium`, SemiBold) and remains invariant regardless of the FAB container's 56dp/86dp scaling state, aligning flush to the right edge of the FAB. When expanded, the floating navigation bar hides downwards using official Edge-to-Edge slide-out animation, returning on dismissal.
     - `SearchScreen`: Search action button (`Icons.Default.Search`). Tapping requests focus to top search input bar and guarantees keyboard expansion (`keyboardController?.show()`) even if the input was already focused while the keyboard was dismissed. (Settings button on Search header removed).
     - `ImportScreen`: Filled accent sparkle button (`Icons.Default.AutoAwesome`) triggering batch `aiAnalysisAll()` execution. (Consists of 3 sections: Processing, Ready, Error; tapping 'AI Analysis All' promotes items directly to Processing without confirmation dialogs, while individual items are operated via swipe gestures).
+- **Left-Side AI Processing Status Indicator (`AiProcessingIndicatorButton` & `AiProcessingSpeechBubble`)**:
+  - **Symmetric Left Placement**: Anchored symmetrically on the left side of `TidiloBottomBar` at `offset(x = -actionButtonOffsetX)` (opposite to the right action button).
+  - **Dynamic Scaling, Offset & Scroll Persistence**:
+    - Automatically scales in (`scaleIn() + fadeIn()`) when background AI processing is active (`isProcessing = true`), and smoothly scales out (`scaleOut() + fadeOut()`) upon batch completion.
+    - Symmetrically tracks the right action button scaling and positioning:
+      - **Contracted Size (Navigation Visible)**: `56dp` container, `28dp` icon, elevation `6dp`, with `14dp` clearance from the navigation pill.
+      - **Expanded Size (Navigation Hidden / Scrolled)**: `86dp` container, `40dp` icon, elevation `10dp`, anchored to standard 16dp margin at the bottom-left corner (`-(maxWidth / 2 - 16.dp - 86.dp / 2)`).
+  - **Aesthetic Effects ("Gorgeous AI Rainbow Effect")**:
+    - Chromatic AI Rainbow / Aurora palette (`#8B5CF6`, `#3B82F6`, `#06B6D4`, `#10B981`, `#F59E0B`, `#EC4899`).
+    - 360-degree rotating sweep gradient on the 2.5dp/3.5dp border ring.
+    - Ambient radial aura glow breathing behind the button (`pulseScale` 1.0f..1.15f, `pulseAlpha` 0.38f..0.65f).
+    - Center sparkling icon (`AutoAwesome`) with synchronized breathing scale (`0.94f..1.08f`).
+  - **Elevated Speech Bubble (`AiProcessingSpeechBubble`)**:
+    - Floats directly above the left button (`offset(y = -(buttonSize + 14.dp))`), starting from `Alignment.BottomStart` and extending rightward (`width = 270.dp`).
+    - Downward pointing triangle pointer aligned precisely to the center of the button (`padding(start = (buttonSize / 2) - 7.dp)`).
+    - Real-time batch progress header: `AI Analyzing... (completed/total)` (`ai_indicator_progress_format`).
+    - Currently processing webpage title or URL display with single-line ellipsis.
+    - Animated `LinearProgressIndicator` reflecting `completed / total` ratio.
+    - Action hint: `Tap to view in Queue →`. Tapping the bubble navigates directly to `Screen.Import` (`launchSingleTop = true`) and dismisses the bubble.
+    - Scrim backdrop dismisses the bubble cleanly upon tapping outside or screen navigation.
 
 ### 6.2 `BookmarkItemCard`
 - **Shape**: `RoundedCornerShape(24.dp)`.

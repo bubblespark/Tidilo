@@ -73,6 +73,9 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
+import me.bubblespark.tidilo.data.AiProcessingProgress
+import me.bubblespark.tidilo.ui.components.AiProcessingIndicatorButton
+import me.bubblespark.tidilo.ui.components.AiProcessingSpeechBubble
 import me.bubblespark.tidilo.ui.components.ArrowDownwardIcon
 import me.bubblespark.tidilo.ui.components.DomainIcon
 import me.bubblespark.tidilo.ui.components.FilterListIcon
@@ -86,6 +89,7 @@ import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
  * - Library action button: FAB menu toggle (FilterListIcon / Close), opens "Domain" & "Newest first" pill menu
  * - Search action button: Focus search input (Search icon)
  * - Queue action button: AI Tagging All (AutoAwesome icon)
+ * - Left floating button: AI Processing Status Indicator with rainbow glow and progress speech bubble
  */
 @Composable
 fun TidiloBottomBar(
@@ -99,6 +103,11 @@ fun TidiloBottomBar(
     onSelectFilterMode: (LibraryFilterMode) -> Unit = {},
     onSearchAction: () -> Unit = {},
     onAiAnalysisAll: () -> Unit = {},
+    aiProcessingProgress: AiProcessingProgress = AiProcessingProgress(),
+    isSpeechBubbleVisible: Boolean = false,
+    onToggleSpeechBubble: () -> Unit = {},
+    onDismissSpeechBubble: () -> Unit = {},
+    onNavigateToImport: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -394,7 +403,55 @@ fun TidiloBottomBar(
             }
         }
 
-        // 2. Action button and FAB menu positioned at the right offset
+        // 2. AI Processing indicator button positioned symmetrically at the left offset
+        AnimatedVisibility(
+            visible = aiProcessingProgress.isProcessing,
+            enter = scaleIn(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+            exit = scaleOut(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .offset(x = -actionButtonOffsetX)
+        ) {
+            Box(
+                modifier = Modifier.requiredSize(buttonSize),
+                contentAlignment = Alignment.Center
+            ) {
+                // Elevated speech bubble floating above the left button
+                AnimatedVisibility(
+                    visible = isSpeechBubbleVisible,
+                    enter = fadeIn(animationSpec = tween(180)) + slideInVertically(
+                        initialOffsetY = { it / 3 },
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                    ),
+                    exit = fadeOut(animationSpec = tween(120)) + slideOutVertically(
+                        targetOffsetY = { it / 3 },
+                        animationSpec = tween(120)
+                    ),
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .offset(y = -(buttonSize + 14.dp))
+                        .wrapContentSize(align = Alignment.BottomStart, unbounded = true)
+                ) {
+                    AiProcessingSpeechBubble(
+                        progress = aiProcessingProgress,
+                        buttonSize = buttonSize,
+                        onNavigateToImport = onNavigateToImport,
+                        onDismiss = onDismissSpeechBubble
+                    )
+                }
+
+                // Rainbow glowing button
+                AiProcessingIndicatorButton(
+                    progress = aiProcessingProgress,
+                    buttonSize = buttonSize,
+                    iconSize = iconSize,
+                    buttonElevation = buttonElevation,
+                    onClick = onToggleSpeechBubble
+                )
+            }
+        }
+
+        // 3. Action button and FAB menu positioned at the right offset
         // Palette requirement: matches active tab selection (primaryContainer / onPrimaryContainer)
         AnimatedVisibility(
             visible = isActionButtonVisible,

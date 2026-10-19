@@ -143,6 +143,7 @@ fun TidiloApp(
     val navController = rememberNavController()
     val readyTasks by importViewModel.readyTasks.collectAsStateWithLifecycle()
     val processingTasks by importViewModel.processingTasks.collectAsStateWithLifecycle()
+    val aiProcessingProgress by importViewModel.aiProcessingProgress.collectAsStateWithLifecycle()
     val quotaExceededDialogVisible by importViewModel.quotaExceededDialogVisible.collectAsStateWithLifecycle()
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
 
@@ -167,11 +168,21 @@ fun TidiloApp(
     var isBarsVisible by remember { mutableStateOf(true) }
     // Library FAB menu expanded/collapsed state
     var isFilterMenuExpanded by remember { mutableStateOf(false) }
+    // AI Processing speech bubble visible state
+    var isAiSpeechBubbleVisible by remember { mutableStateOf(false) }
 
-    // Reset bars to visible and collapse FAB menu when switching tabs, filter modes, or domain drilldown
+    // Reset bars to visible and collapse menus when switching tabs, filter modes, or domain drilldown
     LaunchedEffect(currentRoute, filterMode, selectedDomainFilter) {
         isBarsVisible = true
         isFilterMenuExpanded = false
+        isAiSpeechBubbleVisible = false
+    }
+
+    // Dismiss AI speech bubble when processing completes
+    LaunchedEffect(aiProcessingProgress.isProcessing) {
+        if (!aiProcessingProgress.isProcessing) {
+            isAiSpeechBubbleVisible = false
+        }
     }
 
     // Scroll linking: Trigger only when content is actually scrolled (prevents false triggers on short screens)
@@ -279,6 +290,20 @@ fun TidiloApp(
                     )
                 }
 
+                // Invisible dismiss scrim when AI speech bubble is open (tap outside to close)
+                if (isBottomBarVisible && isAiSpeechBubbleVisible && aiProcessingProgress.isProcessing) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                isAiSpeechBubbleVisible = false
+                            }
+                    )
+                }
+
                 // M3 Expressive navigation bar & action button shown only on main tabs (Library, Search, Import)
                 AnimatedVisibility(
                     visible = isBottomBarVisible,
@@ -295,7 +320,10 @@ fun TidiloApp(
                         readyCount = readyTasks.size,
                         isProcessing = processingTasks.isNotEmpty(),
                         isFilterMenuExpanded = isFilterMenuExpanded,
-                        onToggleFilterMenu = { isFilterMenuExpanded = !isFilterMenuExpanded },
+                        onToggleFilterMenu = {
+                            isFilterMenuExpanded = !isFilterMenuExpanded
+                            if (isFilterMenuExpanded) isAiSpeechBubbleVisible = false
+                        },
                         currentFilterMode = filterMode,
                         onSelectFilterMode = { mode ->
                             libraryViewModel.setFilterMode(mode)
@@ -305,6 +333,20 @@ fun TidiloApp(
                         },
                         onAiAnalysisAll = {
                             importViewModel.aiAnalysisAll()
+                        },
+                        aiProcessingProgress = aiProcessingProgress,
+                        isSpeechBubbleVisible = isAiSpeechBubbleVisible,
+                        onToggleSpeechBubble = {
+                            isAiSpeechBubbleVisible = !isAiSpeechBubbleVisible
+                            if (isAiSpeechBubbleVisible) isFilterMenuExpanded = false
+                        },
+                        onDismissSpeechBubble = { isAiSpeechBubbleVisible = false },
+                        onNavigateToImport = {
+                            if (currentRoute != Screen.Import.route) {
+                                navController.navigate(Screen.Import.route) {
+                                    launchSingleTop = true
+                                }
+                            }
                         }
                     )
                 }

@@ -34,6 +34,10 @@
     <string name="bottom_bar_filter_menu">フィルターメニュー</string>
     <string name="bottom_bar_search">Search</string>
     <string name="bottom_bar_ai_analysis_all">AI Tagging All</string>
+    <string name="bottom_bar_ai_processing">AI処理ステータス</string>
+    <string name="ai_indicator_processing_title">AI解析中…</string>
+    <string name="ai_indicator_progress_format">AI解析中… (%1$d/%2$d)</string>
+    <string name="ai_indicator_tap_to_view">タップでQueue画面を開く</string>
 
     <!-- Import Screen -->
     <string name="import_header_title">Import</string>

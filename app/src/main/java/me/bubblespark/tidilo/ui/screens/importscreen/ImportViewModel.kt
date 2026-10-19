@@ -13,6 +13,9 @@ class ImportViewModel(
     // Processing group: AI analysis in progress or awaiting execution
     val processingTasks: StateFlow<List<ImportTask>> = repository.processingTasks
 
+    // Batch progress for background AI processing
+    val aiProcessingProgress: StateFlow<me.bubblespark.tidilo.data.AiProcessingProgress> = repository.aiProcessingProgress
+
     // Ready group: Waiting after share or import
     val readyTasks: StateFlow<List<ImportTask>> = repository.readyTasks
 

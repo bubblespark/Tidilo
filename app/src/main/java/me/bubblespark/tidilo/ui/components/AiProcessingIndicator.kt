@@ -43,7 +43,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -97,28 +96,6 @@ fun AiProcessingIndicatorButton(
         label = "aiRainbowRotation"
     )
 
-    // Breathing pulse scale for ambient halo
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1.0f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "aiPulseScale"
-    )
-
-    // Breathing pulse alpha for ambient halo
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.38f,
-        targetValue = 0.65f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "aiPulseAlpha"
-    )
-
     // Subtle scale breathing for center AI icon
     val iconPulse by infiniteTransition.animateFloat(
         initialValue = 0.94f,
@@ -134,24 +111,7 @@ fun AiProcessingIndicatorButton(
         modifier = modifier.size(buttonSize),
         contentAlignment = Alignment.Center
     ) {
-        // 1. Ambient outer glow halo
-        Box(
-            modifier = Modifier
-                .size(buttonSize + 16.dp)
-                .graphicsLayer {
-                    scaleX = pulseScale
-                    scaleY = pulseScale
-                    alpha = pulseAlpha
-                    rotationZ = rotationAngle
-                }
-                .blur(14.dp)
-                .background(
-                    brush = Brush.sweepGradient(AiRainbowColors),
-                    shape = CircleShape
-                )
-        )
-
-        // 2. Button surface container
+        // Button surface container
         Surface(
             modifier = Modifier.fillMaxSize(),
             shape = CircleShape,

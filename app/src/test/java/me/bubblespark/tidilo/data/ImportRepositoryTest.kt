@@ -1,7 +1,13 @@
 package me.bubblespark.tidilo.data
 
 import com.google.mlkit.genai.common.GenAiException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
+import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
@@ -450,44 +456,15 @@ class ImportRepositoryTest {
 
     @Test
     fun testBatchProgressTrackingLifecycle() {
-        var batchTotal = 0
-        var lastProcessingIds = emptySet<String>()
+        var state = ImportRepository.BatchProgressState()
 
         fun computeProgress(processingTasks: List<ImportTask>): AiProcessingProgress {
-            if (processingTasks.isEmpty()) {
-                batchTotal = 0
-                lastProcessingIds = emptySet()
-                return AiProcessingProgress(
-                    isProcessing = false,
-                    completedCount = 0,
-                    totalCount = 0,
-                    currentTaskTitle = null
-                )
-            }
-
-            val currentIds = processingTasks.map { it.id }.toSet()
-            if (lastProcessingIds.isEmpty()) {
-                batchTotal = processingTasks.size
-            } else {
-                val newlyAdded = currentIds - lastProcessingIds
-                if (newlyAdded.isNotEmpty()) {
-                    batchTotal += newlyAdded.size
-                }
-            }
-            lastProcessingIds = currentIds
-
-            val total = maxOf(batchTotal, processingTasks.size)
-            val remaining = processingTasks.size
-            val completed = (total - remaining).coerceAtLeast(0)
-            val currentTask = processingTasks.find { it.status == TaskStatus.PROCESSING_AI }
-                ?: processingTasks.firstOrNull()
-
-            return AiProcessingProgress(
-                isProcessing = true,
-                completedCount = completed,
-                totalCount = total,
-                currentTaskTitle = currentTask?.title?.takeIf { it.isNotBlank() } ?: currentTask?.url
+            val (progress, newState) = ImportRepository.computeBatchProgress(
+                processingTasks = processingTasks,
+                state = state
             )
+            state = newState
+            return progress
         }
 
         // 1. Initial empty state
@@ -548,48 +525,17 @@ class ImportRepositoryTest {
 
     @Test
     fun testBatchProgressCancellationLifecycle() {
-        var batchTotal = 0
-        var lastProcessingIds = emptySet<String>()
+        var state = ImportRepository.BatchProgressState()
         var isAiCancelPending = false
 
         fun computeProgress(processingTasks: List<ImportTask>): AiProcessingProgress {
-            if (processingTasks.isEmpty()) {
-                batchTotal = 0
-                lastProcessingIds = emptySet()
-                isAiCancelPending = false
-                return AiProcessingProgress(
-                    isProcessing = false,
-                    completedCount = 0,
-                    totalCount = 0,
-                    currentTaskTitle = null,
-                    isCancelPending = false
-                )
-            }
-
-            val currentIds = processingTasks.map { it.id }.toSet()
-            if (lastProcessingIds.isEmpty()) {
-                batchTotal = processingTasks.size
-            } else {
-                val newlyAdded = currentIds - lastProcessingIds
-                if (newlyAdded.isNotEmpty()) {
-                    batchTotal += newlyAdded.size
-                }
-            }
-            lastProcessingIds = currentIds
-
-            val total = maxOf(batchTotal, processingTasks.size)
-            val remaining = processingTasks.size
-            val completed = (total - remaining).coerceAtLeast(0)
-            val currentTask = processingTasks.find { it.status == TaskStatus.PROCESSING_AI }
-                ?: processingTasks.firstOrNull()
-
-            return AiProcessingProgress(
-                isProcessing = true,
-                completedCount = completed,
-                totalCount = total,
-                currentTaskTitle = currentTask?.title?.takeIf { it.isNotBlank() } ?: currentTask?.url,
+            val (progress, newState) = ImportRepository.computeBatchProgress(
+                processingTasks = processingTasks,
+                state = state,
                 isCancelPending = isAiCancelPending
             )
+            state = newState
+            return progress
         }
 
         // 1. Batch starts with 3 tasks (t1 processing, t2 & t3 waiting)
@@ -631,6 +577,118 @@ class ImportRepositoryTest {
         assertEquals(0, finalProgress.totalCount)
         assertEquals(0, finalProgress.completedCount)
         assertNull(finalProgress.currentTaskTitle)
+    }
+
+    private class FakeImportTaskDao : ImportTaskDao {
+        val tasksFlow = MutableStateFlow<List<ImportTaskEntity>>(emptyList())
+
+        override fun getAllTasksFlow(): Flow<List<ImportTaskEntity>> = tasksFlow
+
+        override suspend fun getAllTasks(): List<ImportTaskEntity> = tasksFlow.value
+
+        override fun getTasksByStatusesFlow(statuses: List<String>): Flow<List<ImportTaskEntity>> =
+            tasksFlow.map { list -> list.filter { it.status in statuses } }
+
+        override suspend fun getTasksByStatuses(statuses: List<String>): List<ImportTaskEntity> =
+            tasksFlow.value.filter { it.status in statuses }
+
+        override suspend fun getTaskById(id: String): ImportTaskEntity? =
+            tasksFlow.value.find { it.id == id }
+
+        override suspend fun getTaskByUrl(url: String): ImportTaskEntity? =
+            tasksFlow.value.find { it.url == url }
+
+        override suspend fun insertOrUpdate(task: ImportTaskEntity) {
+            val current = tasksFlow.value.toMutableList()
+            current.removeAll { it.id == task.id }
+            current.add(task)
+            tasksFlow.value = current
+        }
+
+        override suspend fun insertAll(tasks: List<ImportTaskEntity>) {
+            val current = tasksFlow.value.toMutableList()
+            val newIds = tasks.map { it.id }.toSet()
+            current.removeAll { it.id in newIds }
+            current.addAll(tasks)
+            tasksFlow.value = current
+        }
+
+        override suspend fun update(task: ImportTaskEntity) = insertOrUpdate(task)
+
+        override suspend fun updateStatus(id: String, status: String, statusText: String, errorMessage: String?) {
+            val existing = getTaskById(id) ?: return
+            insertOrUpdate(existing.copy(status = status, statusText = statusText, errorMessage = errorMessage))
+        }
+
+        override suspend fun deleteById(id: String) {
+            tasksFlow.value = tasksFlow.value.filter { it.id != id }
+        }
+
+        override suspend fun deleteByIds(ids: List<String>) {
+            tasksFlow.value = tasksFlow.value.filter { it.id !in ids }
+        }
+
+        override suspend fun deleteByStatus(status: String) {
+            tasksFlow.value = tasksFlow.value.filter { it.status != status }
+        }
+
+        override suspend fun getCount(): Int = tasksFlow.value.size
+    }
+
+    @Test
+    fun testRepositoryCancellationWithFakeDao() = runBlocking {
+        val fakeDao = FakeImportTaskDao()
+        val t1 = ImportTaskEntity(
+            id = "1", url = "https://a.com", title = "Task A",
+            status = TaskStatus.PROCESSING_AI.name, statusText = "", assignedTags = emptyList(),
+            createdAt = 100L, isNsfw = false, siteName = "", description = "", bodySnippet = ""
+        )
+        val t2 = ImportTaskEntity(
+            id = "2", url = "https://b.com", title = "Task B",
+            status = TaskStatus.WAITING_AI.name, statusText = "", assignedTags = emptyList(),
+            createdAt = 200L, isNsfw = false, siteName = "", description = "", bodySnippet = ""
+        )
+        val t3 = ImportTaskEntity(
+            id = "3", url = "https://c.com", title = "Task C",
+            status = TaskStatus.WAITING_AI.name, statusText = "", assignedTags = emptyList(),
+            createdAt = 300L, isNsfw = false, siteName = "", description = "", bodySnippet = ""
+        )
+
+        fakeDao.tasksFlow.value = listOf(t1, t2, t3)
+
+        val repository = ImportRepository(context = null, taskDao = fakeDao)
+        delay(150)
+
+        // 1. Initial batch progress state
+        val initialProgress = repository.aiProcessingProgress.value
+        assertTrue(initialProgress.isProcessing)
+        assertFalse(initialProgress.isCancelPending)
+        assertEquals(3, initialProgress.totalCount)
+
+        // 2. User invokes cancelProcessing()
+        repository.cancelProcessing()
+        delay(150)
+
+        // Waiting tasks (t2, t3) are restored to READY in DAO
+        val allTasks = fakeDao.getAllTasks()
+        val waitingTasks = allTasks.filter { it.status == TaskStatus.WAITING_AI.name }
+        val readyTasks = allTasks.filter { it.status == TaskStatus.READY.name }
+        assertEquals(0, waitingTasks.size)
+        assertEquals(2, readyTasks.size)
+
+        // Progress emits isCancelPending = true while active task is finishing
+        val cancelProgress = repository.aiProcessingProgress.value
+        assertTrue(cancelProgress.isProcessing)
+        assertTrue(cancelProgress.isCancelPending)
+        assertEquals("Task A", cancelProgress.currentTaskTitle)
+
+        // 3. When active task finishes and DB is updated (only ready tasks remain)
+        fakeDao.tasksFlow.value = readyTasks
+        delay(150)
+
+        val finalProgress = repository.aiProcessingProgress.value
+        assertFalse(finalProgress.isProcessing)
+        assertFalse(finalProgress.isCancelPending)
     }
 }
 

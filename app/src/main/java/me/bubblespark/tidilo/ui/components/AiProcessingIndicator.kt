@@ -48,10 +48,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -111,8 +114,61 @@ fun AiProcessingIndicatorButton(
         label = "aiIconPulse"
     )
 
+    val rainbowSweepBrush = remember { Brush.sweepGradient(AiRainbowColors) }
+    val auroraFillColors = remember { AiRainbowColors.map { it.copy(alpha = 0.22f) } }
+    val auroraFillBrush = remember { Brush.sweepGradient(auroraFillColors) }
+
+    // Ambient glow pulse (breathing intensity synchronized with AI processing)
+    val glowPulse by infiniteTransition.animateFloat(
+        initialValue = 0.60f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "aiGlowPulse"
+    )
+
     Box(
-        modifier = modifier.size(buttonSize),
+        modifier = modifier
+            .size(buttonSize)
+            .drawBehind {
+                // Idea 1: Ambient Aura Glow
+                // Mathematical circular concentric sweeps radiating outward, strictly circular
+                // with no rectangular artifacts, rotated in lockstep with the outer ring.
+                val radius = size.minDimension / 2f
+                val strokeOuter = if (buttonSize > 60.dp) 7.dp.toPx() else 5.dp.toPx()
+                val strokeMid = if (buttonSize > 60.dp) 4.5.dp.toPx() else 3.5.dp.toPx()
+                val strokeInner = if (buttonSize > 60.dp) 3.dp.toPx() else 2.dp.toPx()
+
+                val offsetOuter = if (buttonSize > 60.dp) 6.dp.toPx() else 4.5.dp.toPx()
+                val offsetMid = if (buttonSize > 60.dp) 3.dp.toPx() else 2.2.dp.toPx()
+                val offsetInner = if (buttonSize > 60.dp) 1.dp.toPx() else 0.8.dp.toPx()
+
+                rotate(rotationAngle) {
+                    // Outer aura layer 3 (softest ambient halo)
+                    drawCircle(
+                        brush = rainbowSweepBrush,
+                        radius = radius + offsetOuter,
+                        style = Stroke(width = strokeOuter),
+                        alpha = 0.12f * glowPulse
+                    )
+                    // Outer aura layer 2 (mid halo)
+                    drawCircle(
+                        brush = rainbowSweepBrush,
+                        radius = radius + offsetMid,
+                        style = Stroke(width = strokeMid),
+                        alpha = 0.24f * glowPulse
+                    )
+                    // Outer aura layer 1 (closest rim glow)
+                    drawCircle(
+                        brush = rainbowSweepBrush,
+                        radius = radius + offsetInner,
+                        style = Stroke(width = strokeInner),
+                        alpha = 0.40f * glowPulse
+                    )
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         // Button surface container
@@ -134,26 +190,40 @@ fun AiProcessingIndicatorButton(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                // Rotating rainbow border ring
+                // Synchronized rotating elements: Rainbow border + Idea 3: Inner Aurora Core
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer { rotationZ = rotationAngle }
-                        .border(
-                            width = if (buttonSize > 60.dp) 3.5.dp else 2.5.dp,
-                            brush = Brush.sweepGradient(AiRainbowColors),
-                            shape = CircleShape
-                        )
-                )
+                ) {
+                    // Idea 3: Inner Aurora Core (soft swirling rainbow gradient inside)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(auroraFillBrush)
+                    )
 
-                // Inner radial glow highlight
+                    // Rotating rainbow border ring
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .border(
+                                width = if (buttonSize > 60.dp) 3.5.dp else 2.5.dp,
+                                brush = rainbowSweepBrush,
+                                shape = CircleShape
+                            )
+                    )
+                }
+
+                // Inner radial depth spotlight (highlights the center AI sparkle icon)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
                             Brush.radialGradient(
                                 colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
                                     Color.Transparent
                                 )
                             )

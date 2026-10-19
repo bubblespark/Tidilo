@@ -146,10 +146,11 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
     - Symmetrically tracks the right action button scaling and positioning:
       - **Contracted Size (Navigation Visible)**: `56dp` container, `28dp` icon, elevation `6dp`, with `14dp` clearance from the navigation pill.
       - **Expanded Size (Navigation Hidden / Scrolled)**: `86dp` container, `40dp` icon, elevation `10dp`, anchored to standard 16dp margin at the bottom-left corner (`-(maxWidth / 2 - 16.dp - 86.dp / 2)`).
-  - **Aesthetic Effects ("Gorgeous AI Rainbow Effect")**:
-    - Chromatic AI Rainbow / Aurora palette (`#8B5CF6`, `#3B82F6`, `#06B6D4`, `#10B981`, `#F59E0B`, `#EC4899`).
-    - 360-degree rotating sweep gradient on the 2.5dp/3.5dp border ring.
-    - Inner radial glow highlight and center sparkling icon (`AutoAwesome`) with synchronized breathing scale (`0.94f..1.06f`).
+  - **Aesthetic Effects ("Gorgeous AI Rainbow Effect & Ambient Glow")**:
+    - Chromatic AI Rainbow / Aurora palette (`#FF5252`, `#FF7A00`, `#FFD600`, `#00E676`, `#00E5FF`, `#2979FF`, `#D500F9`).
+    - **Idea 1: Ambient Aura Glow (`drawBehind`)**: Multi-layered concentric circular sweep gradients (3 overlapping stroke layers with decaying alpha and gentle breathing pulse `0.60f..1.0f`) radiating 6~9dp outward. Synchronized in lockstep with the rotation angle, strictly circular with mathematically zero rectangular corner artifacts and near-zero GPU overhead.
+    - **Synchronized 360-degree Rotation**: 3200ms linear loop rotating both the outer ambient aura, the 2.5dp/3.5dp vibrant border ring, and the inner aurora core.
+    - **Idea 3: Inner Aurora Core (`Brush.sweepGradient`)**: Swirling translucent rainbow aurora layer inside the button surface rotating in sync with the border ring, paired with a center primary radial depth spotlight (`0.32f`) illuminating the breathing sparkling icon (`AutoAwesome`, `0.94f..1.08f`).
   - **Elevated Speech Bubble (`AiProcessingSpeechBubble`)**:
     - Floats directly above the left button (`offset(y = -(buttonSize + 14.dp))`), starting from `Alignment.BottomStart` and extending rightward (`width = 270.dp`).
     - Downward pointing triangle pointer aligned precisely to the center of the button (`padding(start = (buttonSize / 2) - 7.dp)`).

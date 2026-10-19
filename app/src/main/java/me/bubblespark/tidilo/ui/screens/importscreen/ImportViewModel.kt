@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.data.ImportRepository
 import me.bubblespark.tidilo.data.ImportTask
+import me.bubblespark.tidilo.data.ImportingTask
 
 class ImportViewModel(
     private val repository: ImportRepository = ImportRepository.getInstance(TidiloApplication.instance)
@@ -18,6 +19,9 @@ class ImportViewModel(
 
     // Ready group: Waiting after share or import
     val readyTasks: StateFlow<List<ImportTask>> = repository.readyTasks
+
+    // Tasks currently being fetched and parsed
+    val importingTasks: StateFlow<List<ImportingTask>> = repository.importingTasks
 
     // Error group: Tasks that failed due to rate limits, HTTP errors, etc.
     val errorTasks: StateFlow<List<ImportTask>> = repository.errorTasks

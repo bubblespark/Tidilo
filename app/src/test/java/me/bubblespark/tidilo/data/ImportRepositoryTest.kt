@@ -690,5 +690,28 @@ class ImportRepositoryTest {
         assertFalse(finalProgress.isProcessing)
         assertFalse(finalProgress.isCancelPending)
     }
+
+    @Test
+    fun testImportingTasksTrackingLifecycle() = runBlocking {
+        val fakeDao = FakeImportTaskDao()
+        val repository = ImportRepository(context = null, taskDao = fakeDao)
+
+        // 1. Initially importingTasks is empty
+        assertEquals(0, repository.importingTasks.value.size)
+
+        // 2. Start importing a URL
+        val result = repository.importUrl("https://example.com/test", title = "Test Article")
+        assertTrue(result.isSuccess)
+
+        // 3. Immediately after calling importUrl, importingTasks tracks the task
+        // (Wait for background coroutine to complete)
+        delay(1200)
+
+        // After import finishes, importingTasks should be cleaned up
+        assertEquals(0, repository.importingTasks.value.size)
+        // And taskDao should contain the task
+        val tasks = fakeDao.getAllTasks()
+        assertTrue(tasks.any { it.url.contains("example.com") })
+    }
 }
 

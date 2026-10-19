@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -42,6 +43,9 @@ class ImportRepository internal constructor(
 
     private val _readyTasks = MutableStateFlow<List<ImportTask>>(emptyList())
     val readyTasks: StateFlow<List<ImportTask>> = _readyTasks.asStateFlow()
+
+    private val _importingTasks = MutableStateFlow<List<ImportingTask>>(emptyList())
+    val importingTasks: StateFlow<List<ImportingTask>> = _importingTasks.asStateFlow()
 
     private val _errorTasks = MutableStateFlow<List<ImportTask>>(emptyList())
     val errorTasks: StateFlow<List<ImportTask>> = _errorTasks.asStateFlow()
@@ -120,7 +124,10 @@ class ImportRepository internal constructor(
             return Result.failure(ex)
         }
 
-        val estimatedCount = _readyTasks.value.size + 1
+        val importing = ImportingTask(url = trimmed, title = title)
+        _importingTasks.update { it + importing }
+
+        val estimatedCount = _readyTasks.value.size + _importingTasks.value.size
 
         repositoryScope.launch {
             try {
@@ -188,6 +195,8 @@ class ImportRepository internal constructor(
                 )
                 taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(fallbackItem))
                 onImported?.invoke(Result.failure(e))
+            } finally {
+                _importingTasks.update { list -> list.filter { it.id != importing.id } }
             }
         }
 

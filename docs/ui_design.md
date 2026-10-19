@@ -275,6 +275,11 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Ready cards use solid `MaterialTheme.colorScheme.surfaceContainer` container color.
   - Error cards use solid `MaterialTheme.colorScheme.errorContainer` container color with `onErrorContainer` title and `error` status badge / message colors.
   - Cards strictly utilize flat `0.dp` elevation (`CardDefaults.cardElevation(defaultElevation = 0.dp)`), completely eliminating elevation shadow bleed-through, artificial dark borders, and sharp inner padding boundary artifacts under light mode.
+- **Active URL Import Loading Indicator & Card (`ImportingTaskCard`)**:
+  - When a URL is imported via the device Share menu or the Import URL dialog, an active import state is tracked immediately in `ImportRepository.importingTasks`.
+  - **Ready Group Header Indicator**: `CollapsibleGroupHeader` displays a compact 14dp `CircularProgressIndicator` (`strokeWidth = 2.dp`, color `secondary`) alongside the section title and item count (`readyTasks.size + importingTasks.size`) whenever tasks are being fetched and parsed.
+  - **Importing Card (`ImportingTaskCard`)**: Rendered directly at the top of the Ready list with full `surfaceContainer` styling, `RoundedCornerShape(20.dp)`, `0.dp` elevation, domain watermark, page URL/title, and a rotating `CircularProgressIndicator` with "Importing..." status label.
+  - **Elimination of Sudden Appearance Artifact**: Completely replaces the empty group card placeholder (`EmptyGroupCard`) during imports, providing immediate feedback and seamlessly transitioning into the ready task card upon completion without layout jumps.
 
 ### 6.7 NSFW Contents Settings & Badge Specification
 - **Settings Screen Menu Icons (`SettingsScreen.kt`)**:

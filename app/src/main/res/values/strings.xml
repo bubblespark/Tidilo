@@ -43,11 +43,8 @@
     <string name="import_header_title">Import</string>
     <string name="import_header_subtitle">Semantic AI Analysis &amp; Management</string>
     <string name="import_button_content_desc">Import URL</string>
-    <string name="import_group_processing">Processing</string>
     <string name="import_group_ready">Ready</string>
     <string name="import_group_error">Error</string>
-    <string name="import_empty_processing_title">No items currently processing</string>
-    <string name="import_empty_processing_hint">Trigger \'AI Analysis All\' from the menu or promote an item</string>
     <string name="import_empty_ready_title">No URLs ready for analysis</string>
     <string name="import_empty_ready_hint">Add URLs via the \'+\' Import button or device Share menu</string>
     <string name="import_empty_error_title">No failed items</string>

@@ -271,6 +271,10 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Individual action buttons on cards (`FilledTonalIconButton` with sparkle or retry) were eliminated across all groups (Processing, Ready, Error).
   - Cards delegate individual actions entirely to swipe gestures (right swipe to run AI / retry, left swipe to delete) and batch operations to the floating action button ('AI Analysis All'), maximizing title and URL display width while producing a cleaner, uncluttered card layout.
   - Page title text (`item.title`) is constrained to a single line (`maxLines = 1, overflow = TextOverflow.Ellipsis`), preventing long webpage titles from stretching cards vertically and ensuring consistent card heights across all task states.
+- **Card Container & Elevation Standards (Error & Ready Cards)**:
+  - Ready cards use solid `MaterialTheme.colorScheme.surfaceContainer` container color.
+  - Error cards use solid `MaterialTheme.colorScheme.errorContainer` container color with `onErrorContainer` title and `error` status badge / message colors.
+  - Cards strictly utilize flat `0.dp` elevation (`CardDefaults.cardElevation(defaultElevation = 0.dp)`), completely eliminating elevation shadow bleed-through, artificial dark borders, and sharp inner padding boundary artifacts under light mode.
 
 ### 6.7 NSFW Contents Settings & Badge Specification
 - **Settings Screen Menu Icons (`SettingsScreen.kt`)**:

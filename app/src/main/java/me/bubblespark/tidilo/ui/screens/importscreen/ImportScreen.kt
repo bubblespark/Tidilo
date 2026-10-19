@@ -710,7 +710,7 @@ private fun TaskCard(
 ) {
     val isError = item.status == TaskStatus.ERROR
     val containerColor = if (isError) {
-        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+        MaterialTheme.colorScheme.errorContainer
     } else {
         MaterialTheme.colorScheme.surfaceContainer
     }
@@ -719,7 +719,7 @@ private fun TaskCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             val domain = remember(item.url) { DomainIconManager.extractDomain(item.url) }
@@ -841,8 +841,8 @@ private fun TaskCard(
                             TaskStatus.WAITING_AI -> MaterialTheme.colorScheme.tertiary
                             TaskStatus.READY -> MaterialTheme.colorScheme.secondary
                             TaskStatus.COMPLETED -> MaterialTheme.colorScheme.primary
-                            TaskStatus.PROCESSING_AI,
-                            TaskStatus.ERROR -> MaterialTheme.colorScheme.onSurfaceVariant
+                            TaskStatus.PROCESSING_AI -> MaterialTheme.colorScheme.onSurfaceVariant
+                            TaskStatus.ERROR -> MaterialTheme.colorScheme.error
                         }
                     )
                 }

@@ -345,6 +345,9 @@ fun TidiloApp(
                                     launchSingleTop = true
                                 }
                             }
+                        },
+                        onCancelProcessing = {
+                            importViewModel.cancelProcessing()
                         }
                     )
                 }

@@ -12,5 +12,6 @@ data class AiProcessingProgress(
     val isProcessing: Boolean = false,
     val completedCount: Int = 0,
     val totalCount: Int = 0,
-    val currentTaskTitle: String? = null
+    val currentTaskTitle: String? = null,
+    val isCancelPending: Boolean = false
 )

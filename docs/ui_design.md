@@ -154,6 +154,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
     - Floats directly above the left button (`offset(y = -(buttonSize + 14.dp))`), starting from `Alignment.BottomStart` and extending rightward (`width = 270.dp`).
     - Downward pointing triangle pointer aligned precisely to the center of the button (`padding(start = (buttonSize / 2) - 7.dp)`).
     - Real-time batch progress header: `AI Analyzing... (completed/total)` (`ai_indicator_progress_format`).
+    - Top-right Cancel button (`Icons.Default.Close`, 24dp): Tapping immediately restores all queued (`WAITING_AI`) tasks back to `Ready`, while allowing the currently executing inference task (`PROCESSING_AI`) to finish cleanly. Once tapped, the cancel button is disabled and grayed out (`alpha = 0.38f`). Upon the active task's completion, the batch ends and the floating indicator automatically disappears.
     - Currently processing webpage title or URL display with single-line ellipsis.
     - Animated `LinearProgressIndicator` reflecting `completed / total` ratio.
     - Action hint: `Tap to view in Queue →`. Tapping the bubble navigates directly to `Screen.Import` (`launchSingleTop = true`) and dismisses the bubble.

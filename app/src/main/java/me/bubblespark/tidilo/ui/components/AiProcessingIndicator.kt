@@ -32,13 +32,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -183,6 +187,7 @@ fun AiProcessingSpeechBubble(
     buttonSize: Dp,
     onNavigateToImport: () -> Unit,
     onDismiss: () -> Unit,
+    onCancelProcessing: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val bubbleWidth = 270.dp
@@ -219,34 +224,64 @@ fun AiProcessingSpeechBubble(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 14.dp)
             ) {
-                // Title row with AI sparkling icon
+                // Title row with AI sparkling icon and Cancel '×' button
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-
-                    val titleText = if (progress.totalCount > 0) {
-                        stringResource(
-                            R.string.ai_indicator_progress_format,
-                            (progress.completedCount + 1).coerceAtMost(progress.totalCount),
-                            progress.totalCount
+                    Row(
+                        modifier = Modifier.weight(1f, fill = false),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
                         )
-                    } else {
-                        stringResource(R.string.ai_indicator_processing_title)
+
+                        val titleText = if (progress.totalCount > 0) {
+                            stringResource(
+                                R.string.ai_indicator_progress_format,
+                                (progress.completedCount + 1).coerceAtMost(progress.totalCount),
+                                progress.totalCount
+                            )
+                        } else {
+                            stringResource(R.string.ai_indicator_processing_title)
+                        }
+
+                        Text(
+                            text = titleText,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
 
-                    Text(
-                        text = titleText,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    // Cancel '×' button (disabled and grayed out once clicked while remaining task finishes)
+                    val isCancelling = progress.isCancelPending
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                        IconButton(
+                            onClick = onCancelProcessing,
+                            enabled = !isCancelling,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = stringResource(R.string.ai_indicator_cancel_button),
+                                tint = if (!isCancelling) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                                },
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 }
 
                 // Currently processing web page title / URL

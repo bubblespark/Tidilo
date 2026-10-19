@@ -545,5 +545,92 @@ class ImportRepositoryTest {
         assertEquals(0, step6.completedCount)
         assertNull(step6.currentTaskTitle)
     }
+
+    @Test
+    fun testBatchProgressCancellationLifecycle() {
+        var batchTotal = 0
+        var lastProcessingIds = emptySet<String>()
+        var isAiCancelPending = false
+
+        fun computeProgress(processingTasks: List<ImportTask>): AiProcessingProgress {
+            if (processingTasks.isEmpty()) {
+                batchTotal = 0
+                lastProcessingIds = emptySet()
+                isAiCancelPending = false
+                return AiProcessingProgress(
+                    isProcessing = false,
+                    completedCount = 0,
+                    totalCount = 0,
+                    currentTaskTitle = null,
+                    isCancelPending = false
+                )
+            }
+
+            val currentIds = processingTasks.map { it.id }.toSet()
+            if (lastProcessingIds.isEmpty()) {
+                batchTotal = processingTasks.size
+            } else {
+                val newlyAdded = currentIds - lastProcessingIds
+                if (newlyAdded.isNotEmpty()) {
+                    batchTotal += newlyAdded.size
+                }
+            }
+            lastProcessingIds = currentIds
+
+            val total = maxOf(batchTotal, processingTasks.size)
+            val remaining = processingTasks.size
+            val completed = (total - remaining).coerceAtLeast(0)
+            val currentTask = processingTasks.find { it.status == TaskStatus.PROCESSING_AI }
+                ?: processingTasks.firstOrNull()
+
+            return AiProcessingProgress(
+                isProcessing = true,
+                completedCount = completed,
+                totalCount = total,
+                currentTaskTitle = currentTask?.title?.takeIf { it.isNotBlank() } ?: currentTask?.url,
+                isCancelPending = isAiCancelPending
+            )
+        }
+
+        // 1. Batch starts with 3 tasks (t1 processing, t2 & t3 waiting)
+        val t1 = ImportTask(id = "1", url = "https://a.com", title = "Task A", status = TaskStatus.PROCESSING_AI, statusText = "")
+        val t2 = ImportTask(id = "2", url = "https://b.com", title = "Task B", status = TaskStatus.WAITING_AI, statusText = "")
+        val t3 = ImportTask(id = "3", url = "https://c.com", title = "Task C", status = TaskStatus.WAITING_AI, statusText = "")
+
+        val activeList = mutableListOf(t1, t2, t3)
+        val initialProgress = computeProgress(activeList)
+        assertTrue(initialProgress.isProcessing)
+        assertFalse(initialProgress.isCancelPending)
+        assertEquals(3, initialProgress.totalCount)
+        assertEquals("Task A", initialProgress.currentTaskTitle)
+
+        // 2. User taps '×' cancel button:
+        // isAiCancelPending flag is set to true
+        isAiCancelPending = true
+        // Waiting tasks (t2, t3) are returned to READY and removed from processing list
+        val waitingTasks = activeList.filter { it.status == TaskStatus.WAITING_AI }
+        assertEquals(2, waitingTasks.size)
+        activeList.removeAll(waitingTasks)
+        val restoredToReady = waitingTasks.map { it.copy(status = TaskStatus.READY, statusText = "") }
+        assertEquals(2, restoredToReady.size)
+        assertTrue(restoredToReady.all { it.status == TaskStatus.READY })
+
+        // Active list now contains ONLY the single actively executing task (t1)
+        val cancelledProgress = computeProgress(activeList)
+        assertTrue(cancelledProgress.isProcessing)
+        assertTrue(cancelledProgress.isCancelPending) // Cancel button is now disabled / grayed out
+        assertEquals("Task A", cancelledProgress.currentTaskTitle)
+        assertEquals(1, activeList.size)
+        assertEquals(TaskStatus.PROCESSING_AI, activeList.first().status)
+
+        // 3. Actively executing task finishes -> active list becomes empty
+        activeList.clear()
+        val finalProgress = computeProgress(activeList)
+        assertFalse(finalProgress.isProcessing) // Indicator button hides
+        assertFalse(finalProgress.isCancelPending) // Reset for future batches
+        assertEquals(0, finalProgress.totalCount)
+        assertEquals(0, finalProgress.completedCount)
+        assertNull(finalProgress.currentTaskTitle)
+    }
 }
 

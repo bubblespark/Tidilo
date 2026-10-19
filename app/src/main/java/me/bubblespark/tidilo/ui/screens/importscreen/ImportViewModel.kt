@@ -65,6 +65,14 @@ class ImportViewModel(
     }
 
     /**
+     * Cancels the pending AI queue: restores waiting tasks to Ready,
+     * while allowing the currently running inference task to finish.
+     */
+    fun cancelProcessing() {
+        repository.cancelProcessing()
+    }
+
+    /**
      * Retries a task in the Error group.
      */
     fun retryError(taskId: String) {

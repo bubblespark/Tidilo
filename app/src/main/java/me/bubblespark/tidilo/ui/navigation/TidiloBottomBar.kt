@@ -98,6 +98,7 @@ fun TidiloBottomBar(
     onToggleSpeechBubble: () -> Unit = {},
     onDismissSpeechBubble: () -> Unit = {},
     onNavigateToImport: () -> Unit = {},
+    onCancelProcessing: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -369,7 +370,8 @@ fun TidiloBottomBar(
                         progress = aiProcessingProgress,
                         buttonSize = buttonSize,
                         onNavigateToImport = onNavigateToImport,
-                        onDismiss = onDismissSpeechBubble
+                        onDismiss = onDismissSpeechBubble,
+                        onCancelProcessing = onCancelProcessing
                     )
                 }
 

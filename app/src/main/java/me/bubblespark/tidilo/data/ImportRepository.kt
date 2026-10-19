@@ -53,6 +53,7 @@ class ImportRepository internal constructor(
 
     private var batchTotal = 0
     private var lastProcessingIds = emptySet<String>()
+    private var isAiCancelPending = false
 
     fun dismissQuotaExceededDialog() {
         _quotaExceededDialogVisible.value = false
@@ -89,11 +90,13 @@ class ImportRepository internal constructor(
         if (processingTasks.isEmpty()) {
             batchTotal = 0
             lastProcessingIds = emptySet()
+            isAiCancelPending = false
             _aiProcessingProgress.value = AiProcessingProgress(
                 isProcessing = false,
                 completedCount = 0,
                 totalCount = 0,
-                currentTaskTitle = null
+                currentTaskTitle = null,
+                isCancelPending = false
             )
             return
         }
@@ -119,7 +122,8 @@ class ImportRepository internal constructor(
             isProcessing = true,
             completedCount = completed,
             totalCount = total,
-            currentTaskTitle = currentTask?.title?.takeIf { it.isNotBlank() } ?: currentTask?.url
+            currentTaskTitle = currentTask?.title?.takeIf { it.isNotBlank() } ?: currentTask?.url,
+            isCancelPending = isAiCancelPending
         )
     }
 
@@ -218,6 +222,7 @@ class ImportRepository internal constructor(
      * "AI Analysis All": Moves all Ready URLs to Processing and sequentially executes AI analysis.
      */
     fun aiAnalysisAll() {
+        isAiCancelPending = false
         repositoryScope.launch {
             val readyEntities = taskDao.getTasksByStatuses(listOf(TaskStatus.READY.name))
             if (readyEntities.isEmpty()) return@launch
@@ -241,6 +246,7 @@ class ImportRepository internal constructor(
      * Moves a single Ready task to Processing and starts AI analysis.
      */
     fun promoteTaskToProcessing(taskId: String) {
+        isAiCancelPending = false
         repositoryScope.launch {
             val targetEntity = taskDao.getTaskById(taskId) ?: return@launch
             val target = targetEntity.toImportTask()
@@ -250,6 +256,27 @@ class ImportRepository internal constructor(
             )
             taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(promoted))
             executeTaskAiAnalysis(promoted.id)
+        }
+    }
+
+    /**
+     * Cancels pending queue items: restores all WAITING_AI tasks back to READY,
+     * while allowing any currently executing PROCESSING_AI task to finish cleanly.
+     */
+    fun cancelProcessing() {
+        isAiCancelPending = true
+        _aiProcessingProgress.value = _aiProcessingProgress.value.copy(isCancelPending = true)
+        repositoryScope.launch {
+            val waitingEntities = taskDao.getTasksByStatuses(listOf(TaskStatus.WAITING_AI.name))
+            if (waitingEntities.isNotEmpty()) {
+                val restored = waitingEntities.map { entity ->
+                    entity.toImportTask().copy(
+                        status = TaskStatus.READY,
+                        statusText = ""
+                    )
+                }
+                taskDao.insertAll(restored.map { ImportTaskEntity.fromImportTask(it) })
+            }
         }
     }
 
@@ -354,6 +381,13 @@ class ImportRepository internal constructor(
             executionMutex.withLock {
                 val targetEntity = taskDao.getTaskById(taskId) ?: return@withLock
                 val target = targetEntity.toImportTask()
+
+                // If cancellation is requested and task is still waiting, restore to READY and skip
+                if (isAiCancelPending && target.status == TaskStatus.WAITING_AI) {
+                    val restored = target.copy(status = TaskStatus.READY, statusText = "")
+                    taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(restored))
+                    return@withLock
+                }
 
                 // If task is no longer in a runnable state (e.g. deleted or already completed/errored), skip
                 if (target.status != TaskStatus.WAITING_AI && target.status != TaskStatus.PROCESSING_AI) {

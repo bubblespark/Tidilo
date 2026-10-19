@@ -54,6 +54,7 @@ class ImportRepository internal constructor(
     private var batchTotal = 0
     private var lastProcessingIds = emptySet<String>()
     private var isAiCancelPending = false
+    private val cancelledTaskIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     fun dismissQuotaExceededDialog() {
         _quotaExceededDialogVisible.value = false
@@ -91,6 +92,7 @@ class ImportRepository internal constructor(
             batchTotal = 0
             lastProcessingIds = emptySet()
             isAiCancelPending = false
+            cancelledTaskIds.clear()
             _aiProcessingProgress.value = AiProcessingProgress(
                 isProcessing = false,
                 completedCount = 0,
@@ -223,6 +225,7 @@ class ImportRepository internal constructor(
      */
     fun aiAnalysisAll() {
         isAiCancelPending = false
+        cancelledTaskIds.clear()
         repositoryScope.launch {
             val readyEntities = taskDao.getTasksByStatuses(listOf(TaskStatus.READY.name))
             if (readyEntities.isEmpty()) return@launch
@@ -246,7 +249,7 @@ class ImportRepository internal constructor(
      * Moves a single Ready task to Processing and starts AI analysis.
      */
     fun promoteTaskToProcessing(taskId: String) {
-        isAiCancelPending = false
+        cancelledTaskIds.remove(taskId)
         repositoryScope.launch {
             val targetEntity = taskDao.getTaskById(taskId) ?: return@launch
             val target = targetEntity.toImportTask()
@@ -267,7 +270,12 @@ class ImportRepository internal constructor(
         isAiCancelPending = true
         _aiProcessingProgress.value = _aiProcessingProgress.value.copy(isCancelPending = true)
         repositoryScope.launch {
-            val waitingEntities = taskDao.getTasksByStatuses(listOf(TaskStatus.WAITING_AI.name))
+            val waitingOrActive = taskDao.getTasksByStatuses(
+                listOf(TaskStatus.WAITING_AI.name, TaskStatus.PROCESSING_AI.name)
+            )
+            cancelledTaskIds.addAll(waitingOrActive.map { it.id })
+
+            val waitingEntities = waitingOrActive.filter { it.status == TaskStatus.WAITING_AI.name }
             if (waitingEntities.isNotEmpty()) {
                 val restored = waitingEntities.map { entity ->
                     entity.toImportTask().copy(
@@ -382,8 +390,10 @@ class ImportRepository internal constructor(
                 val targetEntity = taskDao.getTaskById(taskId) ?: return@withLock
                 val target = targetEntity.toImportTask()
 
-                // If cancellation is requested and task is still waiting, restore to READY and skip
-                if (isAiCancelPending && target.status == TaskStatus.WAITING_AI) {
+                // If cancellation is requested and task is in the cancelled queue, restore to READY and skip
+                val shouldCancel = isAiCancelPending && (cancelledTaskIds.contains(taskId) || cancelledTaskIds.isEmpty())
+                if (shouldCancel && target.status == TaskStatus.WAITING_AI) {
+                    cancelledTaskIds.remove(taskId)
                     val restored = target.copy(status = TaskStatus.READY, statusText = "")
                     taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(restored))
                     return@withLock

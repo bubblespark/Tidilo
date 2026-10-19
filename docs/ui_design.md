@@ -344,3 +344,18 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Spacing rhythm: URL to Warning notice is `6.dp`, Warning notice to Category & Tags is `14.dp` (eliminating disproportionate voids).
   - Category & Tags edit `IconButton` and tag chips (`AssistChip`) are scoped under `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to eliminate invisible accessibility touch-target inflation (which previously caused a 32dp gap), harmonizing the header-to-content gap across Category & Tags, Summary, and Note to a consistent `10.dp`.
 
+### 6.12 Tag Edit Dialog Dropdown Menu Specification (`BookmarkTagEditDialog.kt`)
+- **Full-Width Popup Anchoring**:
+  - The Category and Subcategory selection fields wrap their `Surface` and `DropdownMenu` inside `BoxWithConstraints(modifier = Modifier.fillMaxWidth())`.
+  - The `DropdownMenu` applies `Modifier.width(maxWidth)`, ensuring the dropdown menu spans the exact width of the parent selector field rather than clipping or floating arbitrarily to the left/right.
+- **Bounded Menu Height & Smooth Scrolling**:
+  - Menu height is constrained using `Modifier.heightIn(max = 250.dp)` (roughly 5 visible items).
+  - Leveraging Compose's built-in `DropdownMenuContent` vertical scroll support, longer lists (such as Subcategory with 11 items) scroll smoothly without extending off-screen or obscuring the dialog layout.
+- **Visual Contrast & Boundary Definition**:
+  - Since `AlertDialog` sits on `surfaceContainerHigh`, dropdown container color is elevated to `MaterialTheme.colorScheme.surfaceContainerHighest`.
+  - Adds a 1dp outline border (`MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)`) with `shape = RoundedCornerShape(16.dp)`, eliminating color blending between the popup and dialog background in both light and dark/OLED themes.
+- **Leading Checkmark Alignment**:
+  - Moved checkmark icon from `trailingIcon` to `leadingIcon` (display order: `[Checkmark] [Item name]`).
+  - Selected items render `Icons.Default.Check` (`size = 18.dp`, tinted with `primary`).
+  - Unselected items render an empty `Spacer(modifier = Modifier.size(18.dp))` in `leadingIcon`, maintaining uniform vertical text alignment across all menu entries.
+

@@ -1,8 +1,10 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -105,7 +108,7 @@ fun BookmarkTagEditDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-                    Box(modifier = Modifier.fillMaxWidth()) {
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
@@ -137,8 +140,16 @@ fun BookmarkTagEditDialog(
                         DropdownMenu(
                             expanded = isCategoryDropdownExpanded,
                             onDismissRequest = { isCategoryDropdownExpanded = false },
+                            modifier = Modifier
+                                .width(maxWidth)
+                                .heightIn(max = 250.dp)
+                                .border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(16.dp)
+                                ),
                             shape = RoundedCornerShape(16.dp),
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
                         ) {
                             Category.entries.forEach { category ->
                                 val label = category.getLabel(context)
@@ -151,16 +162,18 @@ fun BookmarkTagEditDialog(
                                             color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                         )
                                     },
-                                    trailingIcon = if (isSelected) {
-                                        {
+                                    leadingIcon = {
+                                        if (isSelected) {
                                             Icon(
                                                 imageVector = Icons.Default.Check,
                                                 contentDescription = null,
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(18.dp)
                                             )
+                                        } else {
+                                            Spacer(modifier = Modifier.size(18.dp))
                                         }
-                                    } else null,
+                                    },
                                     onClick = {
                                         onCategoryChanged(category.id)
                                         isCategoryDropdownExpanded = false
@@ -180,7 +193,7 @@ fun BookmarkTagEditDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-                    Box(modifier = Modifier.fillMaxWidth()) {
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
@@ -212,8 +225,16 @@ fun BookmarkTagEditDialog(
                         DropdownMenu(
                             expanded = isSubcategoryDropdownExpanded,
                             onDismissRequest = { isSubcategoryDropdownExpanded = false },
+                            modifier = Modifier
+                                .width(maxWidth)
+                                .heightIn(max = 250.dp)
+                                .border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(16.dp)
+                                ),
                             shape = RoundedCornerShape(16.dp),
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
                         ) {
                             Subcategory.entries.forEach { subcategory ->
                                 val label = subcategory.getLabel(context)
@@ -226,16 +247,18 @@ fun BookmarkTagEditDialog(
                                             color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                         )
                                     },
-                                    trailingIcon = if (isSelected) {
-                                        {
+                                    leadingIcon = {
+                                        if (isSelected) {
                                             Icon(
                                                 imageVector = Icons.Default.Check,
                                                 contentDescription = null,
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(18.dp)
                                             )
+                                        } else {
+                                            Spacer(modifier = Modifier.size(18.dp))
                                         }
-                                    } else null,
+                                    },
                                     onClick = {
                                         onSubcategoryChanged(subcategory.id)
                                         isSubcategoryDropdownExpanded = false

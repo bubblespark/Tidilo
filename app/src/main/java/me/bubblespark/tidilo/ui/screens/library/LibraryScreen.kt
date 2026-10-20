@@ -64,9 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.DpOffset
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -481,33 +479,13 @@ fun LibraryScreen(
                                 ) {
                                     LibraryViewMode.entries.forEach { mode ->
                                         val isSelected = mode == viewMode
-                                        val itemBackground = if (isSelected) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            Color.Transparent
-                                        }
-                                        val itemContentColor = if (isSelected) {
-                                            MaterialTheme.colorScheme.onPrimary
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurface
-                                        }
-                                        val iconTint = if (isSelected) {
-                                            MaterialTheme.colorScheme.onPrimary
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        }
-
                                         DropdownMenuItem(
-                                            modifier = Modifier
-                                                .padding(horizontal = 8.dp, vertical = 2.dp)
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(itemBackground),
                                             text = {
                                                 Text(
                                                     text = stringResource(mode.labelRes),
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                    color = itemContentColor
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                                 )
                                             },
                                             leadingIcon = {
@@ -519,7 +497,7 @@ fun LibraryScreen(
                                                         Icon(
                                                             imageVector = Icons.Default.Check,
                                                             contentDescription = null,
-                                                            tint = itemContentColor,
+                                                            tint = MaterialTheme.colorScheme.primary,
                                                             modifier = Modifier.size(18.dp)
                                                         )
                                                     } else {
@@ -528,7 +506,7 @@ fun LibraryScreen(
                                                     Icon(
                                                         imageVector = mode.icon,
                                                         contentDescription = null,
-                                                        tint = iconTint,
+                                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                                         modifier = Modifier.size(20.dp)
                                                     )
                                                 }

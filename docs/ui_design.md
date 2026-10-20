@@ -421,10 +421,10 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Aligned flush to the right edge of the header row and bookmark cards (`screenWidth - 20.dp`) by applying `offset = DpOffset(x = 88.dp - menuWidth, y = 0.dp)`.
   - Follows Tidilo menu design language with `shape = RoundedCornerShape(16.dp)`, `containerColor = MaterialTheme.colorScheme.surfaceContainerHigh`, and `tonalElevation = 6.dp`.
   - Wrapped with `CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig)` to ensure accurate localization in dynamic popup windows.
-- **Item Order & Primary Color Highlight**:
+- **Item Order & Leading Checkmark Alignment**:
   - Conforms to the `[Checkmark] [Icon] [Display Name]` sequence.
-  - Active/selected item is prominently highlighted with an inner pill (`shape = RoundedCornerShape(12.dp)`) filled with `MaterialTheme.colorScheme.primary`, with checkmark (`Icons.Default.Check`, 18dp), icon (20dp), and text label rendered in `MaterialTheme.colorScheme.onPrimary` (FontWeight.Bold).
-  - Unselected items render with a transparent background, empty checkmark spacer (`Spacer(modifier = Modifier.size(18.dp))`), `onSurfaceVariant` icon, and `onSurface` text label (FontWeight.Normal).
+  - Selected items render `Icons.Default.Check` (`18.dp`, `primary`), icon in `primary` (20dp), and text label in `FontWeight.Bold` and `MaterialTheme.colorScheme.primary`.
+  - Unselected items render an empty `Spacer(modifier = Modifier.size(18.dp))`, icon tinted with `onSurfaceVariant` (`20.dp`), and label in `FontWeight.Normal` and `MaterialTheme.colorScheme.onSurface`.
   - Maintains strict vertical column alignment across all menu entries without shifting text or icons.
 - **Menu Items (`LibraryViewMode`)**:
   - `LIST`: "List" (`R.string.library_view_mode_list`), icon `ListSymbolIcon` (Material Symbols Outlined `list`).

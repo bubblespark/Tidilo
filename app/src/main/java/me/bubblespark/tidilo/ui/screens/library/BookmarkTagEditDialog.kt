@@ -84,7 +84,6 @@ fun BookmarkTagEditDialog(
     var isSubcategoryDropdownExpanded by remember { mutableStateOf(false) }
     val categoryScrollState = rememberScrollState()
     val subcategoryScrollState = rememberScrollState()
-    var showLimitErrorDialog by remember { mutableStateOf(false) }
     var showInlineLimitError by remember { mutableStateOf(false) }
 
     val localizedCategory = remember(selectedCategory, context) {
@@ -361,7 +360,6 @@ fun BookmarkTagEditDialog(
                             IconButton(
                                 onClick = {
                                     if (selectedEntities.size >= Tag.MAX_ENTITIES) {
-                                        showLimitErrorDialog = true
                                         showInlineLimitError = true
                                     } else {
                                         showInlineLimitError = false
@@ -491,36 +489,6 @@ fun BookmarkTagEditDialog(
         shape = RoundedCornerShape(24.dp)
     )
 
-    if (showLimitErrorDialog) {
-        AlertDialog(
-            onDismissRequest = { showLimitErrorDialog = false },
-            title = {
-                Text(
-                    text = stringResource(R.string.detail_tag_entity_limit_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            },
-            text = {
-                Text(
-                    text = stringResource(R.string.detail_tag_entity_limit_message),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showLimitErrorDialog = false }) {
-                    Text(
-                        text = stringResource(R.string.common_ok),
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            },
-            shape = RoundedCornerShape(20.dp)
-        )
-    }
 }
 
 /**

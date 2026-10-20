@@ -402,11 +402,9 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Each bookmark supports a maximum ceiling of 10 assigned Entity tags.
 - **Header Selection Count Affordance**:
   - Both `BookmarkTagEditDialog` and `EntityTagPickerBottomSheet` dynamically display current selection and limit as `(${selectedEntities.size}/${Tag.MAX_ENTITIES})` in their Entity section headers.
-- **Parent Dialog Add Button Guard & Dual Feedback (`BookmarkTagEditDialog.kt`)**:
+- **Parent Dialog Add Button Guard & Inline Error Feedback (`BookmarkTagEditDialog.kt`)**:
   - Tapping the `+` button when 10 entities are already selected prevents `AddEntityDialog` from opening.
-  - Triggers dual error feedback:
-    1. A contextual `AlertDialog` informing the user that the maximum limit of 10 entity tags has been reached (`detail_tag_entity_limit_title`, `detail_tag_entity_limit_message`).
-    2. An inline error warning banner (`Surface` with `errorContainer.copy(alpha = 0.35f)`, error `Info` icon, and `detail_tag_entity_limit_inline`) rendered above the entity preview chips until an entity is removed or the dialog closes.
+  - Triggers an inline error warning banner (`Surface` with `errorContainer.copy(alpha = 0.35f)`, error `Info` icon, and `detail_tag_entity_limit_inline`) rendered above the entity preview chips until an entity is removed or the dialog closes. No intrusive dialog is displayed since the inline error banner clearly indicates the limit.
 - **Bottom Sheet Picker Maximum Limit Affordance (`EntityTagPickerBottomSheet.kt`)**:
   - When 10 entities are already selected, unselected entity chips in the bottom library section are visually dimmed (`alpha = 0.38f` text and outline, `alpha = 0.25f` background) to communicate non-addable state.
   - Tapping an unselected chip while at maximum limit blocks addition and immediately displays a contextual inline warning banner (`detail_tag_entity_limit_inline`) above the chip toggle grid.

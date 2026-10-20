@@ -176,9 +176,9 @@ fun LibraryScreen(
         peekBookmark = null
     }
 
-    // Restore to domain grid from domain drilldown on system back gesture
+    // Restore to domain grid from domain drilldown on system back gesture (disabled during peek)
     if (filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null) {
-        BackHandler {
+        BackHandler(enabled = peekBookmark == null) {
             viewModel.clearDomainFilter()
         }
     }

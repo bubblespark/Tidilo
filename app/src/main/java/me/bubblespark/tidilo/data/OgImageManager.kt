@@ -15,7 +15,7 @@ import android.content.Context
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import me.bubblespark.tidilo.data.db.AppDatabase
-import java.util.concurrent.ConcurrentHashMap
+import android.util.LruCache
 
 /**
  * Manager for downloading, downsampling, compressing, and caching og:image assets in the database.
@@ -28,19 +28,23 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object OgImageManager {
 
-    private val memoryCache = ConcurrentHashMap<String, ImageBitmap>()
+    private const val MAX_CACHE_SIZE_BYTES = 16 * 1024 * 1024 // 16MB limit
 
-    fun getCachedOgImageBitmap(domain: String): ImageBitmap? = memoryCache[domain]
+    private val memoryCache = object : LruCache<String, ImageBitmap>(MAX_CACHE_SIZE_BYTES) {
+        override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
+    }
+
+    fun getCachedOgImageBitmap(domain: String): ImageBitmap? = memoryCache.get(domain)
 
     suspend fun loadOgImageFromDb(context: Context, domain: String): ImageBitmap? = withContext(Dispatchers.IO) {
-        memoryCache[domain]?.let { return@withContext it }
+        memoryCache.get(domain)?.let { return@withContext it }
         val dao = AppDatabase.getInstance(context).ogImageDao()
         val entity = dao.getLatestOgImageForDomain(domain) ?: return@withContext null
         try {
             val bitmap = BitmapFactory.decodeByteArray(entity.imageBlob, 0, entity.imageBlob.size)
             val imageBitmap = bitmap?.asImageBitmap()
             if (imageBitmap != null) {
-                memoryCache[domain] = imageBitmap
+                memoryCache.put(domain, imageBitmap)
             }
             imageBitmap
         } catch (_: Exception) {
@@ -290,6 +294,9 @@ object OgImageManager {
         )
 
         val insertedId = ogImageDao.insertOrIgnore(entity)
+        if (insertedId >= 0) {
+            memoryCache.remove(domain)
+        }
         return@withContext insertedId >= 0
     }
 }

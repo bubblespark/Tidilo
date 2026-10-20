@@ -14,6 +14,7 @@ data class Tag(
 ) {
     companion object {
         const val DEFAULT_TAG = "None"
+        const val MAX_ENTITIES = 10
 
         fun create(
             category: String?,

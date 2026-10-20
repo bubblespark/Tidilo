@@ -84,6 +84,8 @@ fun BookmarkTagEditDialog(
     var isSubcategoryDropdownExpanded by remember { mutableStateOf(false) }
     val categoryScrollState = rememberScrollState()
     val subcategoryScrollState = rememberScrollState()
+    var showLimitErrorDialog by remember { mutableStateOf(false) }
+    var showInlineLimitError by remember { mutableStateOf(false) }
 
     val localizedCategory = remember(selectedCategory, context) {
         selectedCategory?.let { Category.toLocalized(it, context) } ?: ""
@@ -348,7 +350,7 @@ fun BookmarkTagEditDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "${stringResource(R.string.detail_tag_entity_label)} (${selectedEntities.size})",
+                            text = "${stringResource(R.string.detail_tag_entity_label)} (${selectedEntities.size}/${Tag.MAX_ENTITIES})",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -357,7 +359,15 @@ fun BookmarkTagEditDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             // "Add" icon button without background
                             IconButton(
-                                onClick = onAddEntityClick,
+                                onClick = {
+                                    if (selectedEntities.size >= Tag.MAX_ENTITIES) {
+                                        showLimitErrorDialog = true
+                                        showInlineLimitError = true
+                                    } else {
+                                        showInlineLimitError = false
+                                        onAddEntityClick()
+                                    }
+                                },
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
@@ -386,6 +396,34 @@ fun BookmarkTagEditDialog(
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
+
+                    if (showInlineLimitError && selectedEntities.size >= Tag.MAX_ENTITIES) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(R.string.detail_tag_entity_limit_inline),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
 
                     if (selectedEntities.isEmpty()) {
                         Surface(
@@ -452,6 +490,37 @@ fun BookmarkTagEditDialog(
         },
         shape = RoundedCornerShape(24.dp)
     )
+
+    if (showLimitErrorDialog) {
+        AlertDialog(
+            onDismissRequest = { showLimitErrorDialog = false },
+            title = {
+                Text(
+                    text = stringResource(R.string.detail_tag_entity_limit_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.detail_tag_entity_limit_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showLimitErrorDialog = false }) {
+                    Text(
+                        text = stringResource(R.string.common_ok),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
 }
 
 /**

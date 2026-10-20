@@ -108,6 +108,14 @@ enum class TaskStatus {
 }
 
 @Immutable
+data class ImportingTask(
+    val id: String = UUID.randomUUID().toString(),
+    val url: String,
+    val title: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Immutable
 data class ImportTask(
     val id: String = UUID.randomUUID().toString(),
     val url: String,

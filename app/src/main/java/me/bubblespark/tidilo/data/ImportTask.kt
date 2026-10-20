@@ -15,6 +15,17 @@ enum class TaskStatus {
 }
 
 /**
+ * Transient representation of a task actively importing and parsing a URL.
+ */
+@Immutable
+data class ImportingTask(
+    val id: String = UUID.randomUUID().toString(),
+    val url: String,
+    val title: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+/**
  * Immutable domain representation of an import task.
  */
 @Immutable

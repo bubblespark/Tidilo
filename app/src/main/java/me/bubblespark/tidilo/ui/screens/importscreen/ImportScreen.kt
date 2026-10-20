@@ -60,6 +60,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -102,6 +103,7 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.data.ImportTask
+import me.bubblespark.tidilo.data.ImportingTask
 import me.bubblespark.tidilo.data.TaskStatus
 import me.bubblespark.tidilo.ui.components.DomainWatermark
 import me.bubblespark.tidilo.ui.components.FrostedHeaderContainer
@@ -117,6 +119,7 @@ fun ImportScreen(
     modifier: Modifier = Modifier
 ) {
     val readyTasks by viewModel.readyTasks.collectAsStateWithLifecycle()
+    val importingTasks by viewModel.importingTasks.collectAsStateWithLifecycle()
     val errorTasks by viewModel.errorTasks.collectAsStateWithLifecycle()
 
     // Section expand/collapse states (Requirements: Ready and Error default to open)
@@ -241,15 +244,16 @@ fun ImportScreen(
             item {
                 CollapsibleGroupHeader(
                     title = stringResource(R.string.import_group_ready),
-                    count = readyTasks.size,
+                    count = readyTasks.size + importingTasks.size,
                     color = MaterialTheme.colorScheme.secondary,
                     isExpanded = isReadyExpanded,
+                    isLoading = importingTasks.isNotEmpty(),
                     onToggle = { isReadyExpanded = !isReadyExpanded }
                 )
             }
 
             if (isReadyExpanded) {
-                if (readyTasks.isEmpty()) {
+                if (readyTasks.isEmpty() && importingTasks.isEmpty()) {
                     item {
                         EmptyGroupCard(
                             message = stringResource(R.string.import_empty_ready_title),
@@ -257,6 +261,18 @@ fun ImportScreen(
                         )
                     }
                 } else {
+                    if (importingTasks.isNotEmpty()) {
+                        items(
+                            items = importingTasks,
+                            key = { "importing_${it.id}" },
+                            contentType = { "importing_task" }
+                        ) { item ->
+                            ImportingTaskCard(
+                                item = item,
+                                modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
+                            )
+                        }
+                    }
                     val visibleReady = if (showAllReady) readyTasks else readyTasks.take(5)
                     items(
                         items = visibleReady,
@@ -422,6 +438,7 @@ private fun CollapsibleGroupHeader(
     count: Int,
     color: Color,
     isExpanded: Boolean,
+    isLoading: Boolean = false,
     onToggle: () -> Unit
 ) {
     Surface(
@@ -451,6 +468,14 @@ private fun CollapsibleGroupHeader(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
+                if (isLoading) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = color
+                    )
+                }
             }
 
             IconButton(
@@ -844,6 +869,108 @@ private fun TaskCard(
                             TaskStatus.PROCESSING_AI -> MaterialTheme.colorScheme.onSurfaceVariant
                             TaskStatus.ERROR -> MaterialTheme.colorScheme.error
                         }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Card representing an active URL import in progress.
+ * Displays a rotating CircularProgressIndicator matching the Ready theme.
+ */
+@Composable
+private fun ImportingTaskCard(
+    item: ImportingTask,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            val domain = remember(item.url) { DomainIconManager.extractDomain(item.url) }
+
+            if (!domain.isNullOrBlank()) {
+                DomainWatermark(
+                    domain = domain,
+                    size = 80.dp,
+                    alpha = 0.22f,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                val resolvedDisplayName = remember(domain) {
+                    domain?.let { DomainPolicyManager.getDisplayName(it) } ?: domain
+                }
+
+                if (!resolvedDisplayName.isNullOrBlank()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ) {
+                            Text(
+                                text = resolvedDisplayName,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                val displayTitle = item.title?.takeIf { it.isNotBlank() } ?: item.url
+                Text(
+                    text = displayTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (!item.title.isNullOrBlank() && item.title != item.url) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = item.url,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                    Text(
+                        text = stringResource(R.string.import_status_importing),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.secondary
                     )
                 }
             }

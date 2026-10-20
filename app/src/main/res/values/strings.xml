@@ -69,6 +69,7 @@
     <string name="import_status_failed">Failed</string>
     <string name="import_status_completed">Completed</string>
     <string name="import_status_ready">Ready</string>
+    <string name="import_status_importing">Importing...</string>
 
     <!-- AICore Dialogs -->
     <string name="dialog_aicore_title">AICore</string>

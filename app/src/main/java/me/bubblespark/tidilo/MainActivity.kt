@@ -143,6 +143,7 @@ fun TidiloApp(
 ) {
     val navController = rememberNavController()
     val readyTasks by importViewModel.readyTasks.collectAsStateWithLifecycle()
+    val importingTasks by importViewModel.importingTasks.collectAsStateWithLifecycle()
     val aiProcessingProgress by importViewModel.aiProcessingProgress.collectAsStateWithLifecycle()
     val quotaExceededDialogVisible by importViewModel.quotaExceededDialogVisible.collectAsStateWithLifecycle()
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
@@ -317,7 +318,7 @@ fun TidiloApp(
                     TidiloBottomBar(
                         navController = navController,
                         isBarsVisible = isBarsVisible,
-                        readyCount = readyTasks.size,
+                        readyCount = readyTasks.size + importingTasks.size,
                         isFilterMenuExpanded = isFilterMenuExpanded,
                         onToggleFilterMenu = {
                             isFilterMenuExpanded = !isFilterMenuExpanded

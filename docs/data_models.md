@@ -38,6 +38,33 @@ data class Tag(
 }
 ```
 
+### 1.3 `OgImageEntity` (Cached OG Images)
+Located in `data/db/OgImageEntity.kt`:
+
+```kotlin
+@Entity(
+    tableName = "og_images",
+    primaryKeys = ["domain", "filename"],
+    indices = [
+        Index(value = ["domain"]),
+        Index(value = ["createdAt"])
+    ]
+)
+data class OgImageEntity(
+    val domain: String,
+    val filename: String,
+    val imageBlob: ByteArray,
+    val mimeType: String = "image/webp",
+    val width: Int,
+    val height: Int,
+    val sizeBytes: Int,
+    val createdAt: Long = System.currentTimeMillis()
+)
+```
+- **Composite Primary Key**: `(domain, filename)` prevents duplicate network downloads across URLs sharing identical images.
+- **Compression & Dimension Standards**: Compressed to WebP lossy format under 50KB with maximum dimension constrained to 640px.
+- **Persistence Timing**: Saved during background AI processing (`PROCESSING_AI`), avoiding CursorWindow bloat in main bookmark queries by keeping images in a dedicated table.
+
 ### 1.2 `TrashedBookmarkItem`
 Located in `ui/screens/library/BookmarkItem.kt`:
 
@@ -128,7 +155,8 @@ data class ImportTask(
     val isNsfw: Boolean = false,
     val siteName: String = "",
     val description: String = "",
-    val bodySnippet: String = ""
+    val bodySnippet: String = "",
+    val ogImageUrl: String? = null
 )
 ```
 

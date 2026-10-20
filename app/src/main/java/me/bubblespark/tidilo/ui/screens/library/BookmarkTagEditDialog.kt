@@ -41,6 +41,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,6 +86,12 @@ fun BookmarkTagEditDialog(
     val categoryScrollState = rememberScrollState()
     val subcategoryScrollState = rememberScrollState()
     var showInlineLimitError by remember { mutableStateOf(false) }
+
+    LaunchedEffect(selectedEntities.size) {
+        if (selectedEntities.size < Tag.MAX_ENTITIES) {
+            showInlineLimitError = false
+        }
+    }
 
     val localizedCategory = remember(selectedCategory, context) {
         selectedCategory?.let { Category.toLocalized(it, context) } ?: ""

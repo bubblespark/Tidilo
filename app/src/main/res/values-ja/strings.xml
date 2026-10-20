@@ -86,6 +86,10 @@
     <string name="library_view_mode_menu_desc">表示スタイル</string>
     <string name="library_view_mode_list">リスト</string>
     <string name="library_view_mode_grid">グリッド</string>
+    <string name="time_just_now">たった今</string>
+    <string name="time_minutes_ago">%1$d分前</string>
+    <string name="time_hours_ago">%1$d時間前</string>
+    <string name="time_days_ago">%1$d日前</string>
     <string name="domain_card_item_count">%1$d件</string>
     <string name="bookmark_open_in_browser">ブラウザで開く</string>
     <string name="bookmark_could_not_open_browser">ブラウザを開くことができませんでした</string>

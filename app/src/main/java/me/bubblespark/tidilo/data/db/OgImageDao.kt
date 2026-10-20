@@ -17,6 +17,9 @@ interface OgImageDao {
     @Query("SELECT * FROM og_images WHERE domain = :domain AND filename = :filename LIMIT 1")
     suspend fun getOgImage(domain: String, filename: String): OgImageEntity?
 
+    @Query("SELECT * FROM og_images WHERE domain = :domain ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getLatestOgImageForDomain(domain: String): OgImageEntity?
+
     @Query("SELECT COUNT(*) > 0 FROM og_images WHERE domain = :domain AND filename = :filename")
     suspend fun exists(domain: String, filename: String): Boolean
 

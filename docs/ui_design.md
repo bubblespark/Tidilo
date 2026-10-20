@@ -433,4 +433,35 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - `GRID`: "Grid" (`R.string.library_view_mode_grid`), icon `GridViewSymbolIcon` (Material Symbols Outlined `grid_view`).
 - **State & Scope Boundary**:
   - Selected view mode is tracked and persisted via `LibraryViewModel.viewMode` (saved in `tidilo_library_prefs`).
-  - Tapping an item updates selection state and dismisses the menu. The actual card rendering toggle (e.g. `LazyVerticalGrid`) is decoupled and scheduled for subsequent card implementation.
+  - Tapping an item updates selection state and dismisses the menu, smoothly transitioning the bookmark list layout via AnimatedContent crossfade.
+
+### 6.15 Bookmark Grid View & Card Specification (`BookmarkGridCard.kt`, `TimeFormatter.kt`)
+- **2-Column Grid Geometry & Spacing**:
+  - Rendered using `LazyVerticalGrid` with `columns = GridCells.Fixed(2)`.
+  - Outer screen edge horizontal padding: `20.dp` (matching frosted header and existing list cards).
+  - Inter-column gap (`horizontalArrangement`): `8.dp` (tightened spacing maximizing card and image surface area).
+  - Vertical row spacing (`verticalArrangement`): `10.dp`.
+- **Card Container & Shape (`BookmarkGridCard.kt`)**:
+  - `Surface` container with `shape = RoundedCornerShape(16.dp)`, `color = MaterialTheme.colorScheme.surfaceContainer`, and `tonalElevation = 2.dp`.
+  - Supports combined touch interactions via `combinedClickable(onClick, onLongClick)`.
+- **Top Image Region (1.91:1 Aspect Ratio)**:
+  - Fixed ratio `1.91f` matching standard Open Graph (OGP) dimensions (1200x630), clipped to card top corners (`topStart = 16.dp, topEnd = 16.dp`).
+  - When cached og:image exists: Decodes WebP from local database and displays using `ContentScale.Crop`.
+  - When og:image is absent: Displays domain accent gradient background with centered domain favicon (`36.dp`) or first-letter glyph placeholder, ensuring uniform card heights across the grid.
+- **Bottom Information Hierarchy**:
+  - ❶ **Domain Name**: Small caption (`labelSmall`, `onSurfaceVariant`, single-line ellipsis).
+  - ❷ **Category Hierarchy**: Localized `Category > Subcategory` (`labelSmall`, `primary`, single-line ellipsis).
+  - ❸ **Bookmark Title**: Up to 3 lines (`bodySmall`, `FontWeight.SemiBold`, `lineHeight = 18.sp`, `overflow = TextOverflow.Ellipsis`).
+  - ❹ **Created Date (Relative Time)**: Bottom caption (`labelSmall`, `outline`, formatted via `TimeFormatter`).
+- **Relative Time Formatting Rules (`TimeFormatter.kt`)**:
+  - `< 1 minute`: "Just now" / "たった今"
+  - `1 to 59 minutes`: "X min ago" / "X分前"
+  - `1 to 23 hours`: "X hours ago" / "X時間前"
+  - `1 to 29 days`: "X days ago" / "X日前"
+  - `>= 30 days`: "yyyy/MM/dd" (e.g. `2026/09/20`)
+- **Long-Press Summary Peek**:
+  - Long-pressing any grid card reveals an in-card frosted modal overlay (`surface.copy(alpha = 0.94f)`) with full AI summary text.
+  - Tapping anywhere or tapping the close icon dismisses the overlay without triggering navigation to the detail screen.
+- **Shared View Mode Synchronization**:
+  - The active `LibraryViewMode` (`LIST` or `GRID`) is uniformly applied to both the primary **Newest First** list and the **Domain > BookmarkList (Drill-Down)** list.
+  - Layout transitions between `LIST` and `GRID` use `AnimatedContent` with smooth Crossfade (`fadeIn(220ms)` + `fadeOut(180ms)`).

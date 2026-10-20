@@ -11,6 +11,11 @@ import org.jsoup.Jsoup
 import java.io.ByteArrayOutputStream
 import java.net.URI
 import java.security.MessageDigest
+import android.content.Context
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import me.bubblespark.tidilo.data.db.AppDatabase
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Manager for downloading, downsampling, compressing, and caching og:image assets in the database.
@@ -22,6 +27,26 @@ import java.security.MessageDigest
  * - Encodes as WebP lossy, ensuring the final byte array is under 50KB.
  */
 object OgImageManager {
+
+    private val memoryCache = ConcurrentHashMap<String, ImageBitmap>()
+
+    fun getCachedOgImageBitmap(domain: String): ImageBitmap? = memoryCache[domain]
+
+    suspend fun loadOgImageFromDb(context: Context, domain: String): ImageBitmap? = withContext(Dispatchers.IO) {
+        memoryCache[domain]?.let { return@withContext it }
+        val dao = AppDatabase.getInstance(context).ogImageDao()
+        val entity = dao.getLatestOgImageForDomain(domain) ?: return@withContext null
+        try {
+            val bitmap = BitmapFactory.decodeByteArray(entity.imageBlob, 0, entity.imageBlob.size)
+            val imageBitmap = bitmap?.asImageBitmap()
+            if (imageBitmap != null) {
+                memoryCache[domain] = imageBitmap
+            }
+            imageBitmap
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     const val MAX_IMAGE_DIMENSION = 640
     const val MAX_FILE_SIZE_BYTES = 50 * 1024 // 50KB

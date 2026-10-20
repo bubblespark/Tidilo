@@ -58,7 +58,8 @@ import me.bubblespark.tidilo.ui.util.TimeFormatter
 
 /**
  * Modern 2-column Grid bookmark card with 1.91:1 og:image header,
- * category hierarchy, up to 3-line title, relative time, and long-press summary peek.
+ * fixed height container, plain text category hierarchy, 3-line fixed title (+2pt font),
+ * relative time, and long-press summary peek.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -75,12 +76,18 @@ fun BookmarkGridCard(
         domain?.let { DomainPolicyManager.getDisplayName(it) } ?: domain ?: ""
     }
 
-    // Category & Subcategory localization
+    // Category & Subcategory localization (without badge frame)
     val localizedCategory = remember(bookmark.tag.category, context) {
-        bookmark.tag.category?.takeIf { it != Tag.DEFAULT_TAG }?.let { Category.toLocalized(it, context) } ?: ""
+        val cat = bookmark.tag.category?.trim()?.takeIf {
+            it.isNotBlank() && !it.equals(Tag.DEFAULT_TAG, ignoreCase = true)
+        }
+        cat?.let { Category.toLocalized(it, context) } ?: ""
     }
     val localizedSubcategory = remember(bookmark.tag.subcategory, context) {
-        bookmark.tag.subcategory?.takeIf { it != Tag.DEFAULT_TAG }?.let { Subcategory.toLocalized(it, context) } ?: ""
+        val sub = bookmark.tag.subcategory?.trim()?.takeIf {
+            it.isNotBlank() && !it.equals(Tag.DEFAULT_TAG, ignoreCase = true)
+        }
+        sub?.let { Subcategory.toLocalized(it, context) } ?: ""
     }
 
     val categoryHierarchy = remember(localizedCategory, localizedSubcategory) {
@@ -200,51 +207,62 @@ fun BookmarkGridCard(
                     }
                 }
 
-                // 2. Bottom Information Area
+                // 2. Bottom Information Area (Fixed Height for uniform grid cards)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 10.dp)
+                        .height(148.dp)
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {
-                    // ❶ Domain Name
-                    if (domainDisplayName.isNotBlank()) {
-                        Text(
-                            text = domainDisplayName,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                    }
-
-                    // ❷ Category > Subcategory
-                    if (categoryHierarchy.isNotBlank()) {
-                        Text(
-                            text = categoryHierarchy,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
-
-                    // ❸ Bookmark Title (up to 3 lines)
+                    // ❶ Domain Name (1 line)
                     Text(
-                        text = bookmark.title.ifBlank { bookmark.url },
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        lineHeight = 18.sp
+                        text = domainDisplayName.ifBlank { " " },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
-                    // ❹ Created Date (Relative Time)
+                    // ❷ Category > Subcategory (1 line, plain text without frame/badge)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(16.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (categoryHierarchy.isNotBlank()) {
+                            Text(
+                                text = categoryHierarchy,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // ❸ Bookmark Title (Exactly 3 lines fixed, font size +2pt = 14sp)
+                    Text(
+                        text = bookmark.title.ifBlank { bookmark.url },
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        minLines = 3,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    // ❹ Created Date (Relative Time, pinned to bottom)
                     Text(
                         text = relativeTime,
                         style = MaterialTheme.typography.labelSmall,

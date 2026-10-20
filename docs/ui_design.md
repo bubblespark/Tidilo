@@ -426,6 +426,8 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Selected items render `Icons.Default.Check` (`18.dp`, `primary`), icon in `primary` (20dp), and text label in `FontWeight.Bold` and `MaterialTheme.colorScheme.primary`.
   - Unselected items render an empty `Spacer(modifier = Modifier.size(18.dp))`, icon tinted with `onSurfaceVariant` (`20.dp`), and label in `FontWeight.Normal` and `MaterialTheme.colorScheme.onSurface`.
   - Maintains strict vertical column alignment across all menu entries without shifting text or icons.
+- **Accessibility (A11y)**:
+  - Each `DropdownMenuItem` declares `Modifier.semantics { selected = isSelected }`, ensuring screen readers and accessibility services (TalkBack) accurately announce the active mode.
 - **Menu Items (`LibraryViewMode`)**:
   - `LIST`: "List" (`R.string.library_view_mode_list`), icon `ListSymbolIcon` (Material Symbols Outlined `list`).
   - `GRID`: "Grid" (`R.string.library_view_mode_grid`), icon `GridViewSymbolIcon` (Material Symbols Outlined `grid_view`).

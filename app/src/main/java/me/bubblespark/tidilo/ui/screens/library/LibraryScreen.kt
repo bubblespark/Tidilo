@@ -72,6 +72,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -480,6 +482,7 @@ fun LibraryScreen(
                                     LibraryViewMode.entries.forEach { mode ->
                                         val isSelected = mode == viewMode
                                         DropdownMenuItem(
+                                            modifier = Modifier.semantics { this.selected = isSelected },
                                             text = {
                                                 Text(
                                                     text = stringResource(mode.labelRes),

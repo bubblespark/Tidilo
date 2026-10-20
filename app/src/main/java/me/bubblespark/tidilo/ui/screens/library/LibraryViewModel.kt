@@ -104,9 +104,7 @@ class LibraryViewModel : ViewModel() {
     }
 
     private fun saveViewMode(mode: LibraryViewMode) {
-        viewModelScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("library_view_mode", mode.name).apply()
-        }
+        prefs.edit().putString("library_view_mode", mode.name).apply()
     }
 
     private val _viewMode = MutableStateFlow(loadViewMode())

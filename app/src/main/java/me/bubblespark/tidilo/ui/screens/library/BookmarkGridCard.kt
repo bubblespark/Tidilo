@@ -59,7 +59,7 @@ import me.bubblespark.tidilo.ui.util.TimeFormatter
 /**
  * Modern 2-column Grid bookmark card with 1.91:1 og:image header,
  * fixed height container, plain text category hierarchy, 3-line fixed title (+2pt font),
- * relative time, and long-press summary peek.
+ * balanced component spacing, relative time, and long-press summary peek.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -207,35 +207,41 @@ fun BookmarkGridCard(
                     }
                 }
 
-                // 2. Bottom Information Area (Fixed Height for uniform grid cards)
+                // 2. Bottom Information Area (Tightly balanced, consistent spacing)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(148.dp)
-                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .height(134.dp)
+                        .padding(horizontal = 12.dp, vertical = 9.dp)
                 ) {
                     // ❶ Domain Name (1 line)
                     Text(
                         text = domainDisplayName.ifBlank { " " },
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
 
                     // ❷ Category > Subcategory (1 line, plain text without frame/badge)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(16.dp),
+                            .height(15.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
                         if (categoryHierarchy.isNotBlank()) {
                             Text(
                                 text = categoryHierarchy,
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                ),
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
@@ -244,14 +250,14 @@ fun BookmarkGridCard(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     // ❸ Bookmark Title (Exactly 3 lines fixed, font size +2pt = 14sp)
                     Text(
                         text = bookmark.title.ifBlank { bookmark.url },
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontSize = 14.sp,
-                            lineHeight = 20.sp,
+                            lineHeight = 19.sp,
                             fontWeight = FontWeight.SemiBold
                         ),
                         color = MaterialTheme.colorScheme.onSurface,
@@ -260,12 +266,15 @@ fun BookmarkGridCard(
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.height(7.dp))
 
-                    // ❹ Created Date (Relative Time, pinned to bottom)
+                    // ❹ Created Date (Relative Time)
                     Text(
                         text = relativeTime,
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        ),
                         color = MaterialTheme.colorScheme.outline,
                         maxLines = 1
                     )

@@ -444,12 +444,12 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Card Container & Shape (`BookmarkGridCard.kt`)**:
   - `Surface` container with `shape = RoundedCornerShape(16.dp)`, `color = MaterialTheme.colorScheme.surfaceContainer`, and `tonalElevation = 2.dp`.
   - Supports combined touch interactions via `combinedClickable(onClick, onLongClick)`.
-  - Fully uniform vertical height across all cards: fixed image aspect ratio `1.91f` combined with fixed-height information container (`148.dp`).
+  - Fully uniform vertical height across all cards: fixed image aspect ratio `1.91f` combined with fixed-height information container (`134.dp`).
 - **Top Image Region (1.91:1 Aspect Ratio)**:
   - Fixed ratio `1.91f` matching standard Open Graph (OGP) dimensions (1200x630), clipped to card top corners (`topStart = 16.dp, topEnd = 16.dp`).
   - When cached og:image exists: Decodes WebP from local database and displays using `ContentScale.Crop`.
   - When og:image is absent: Displays domain accent gradient background with centered domain favicon (`36.dp`) or first-letter glyph placeholder, ensuring uniform card heights across the grid.
-- **Bottom Information Hierarchy (Fixed Height: 148dp)**:
+- **Bottom Information Hierarchy (Fixed Height: 134dp)**:
   - ❶ **Domain Name**: Small caption (`labelSmall`, `onSurfaceVariant`, single-line ellipsis).
   - ❷ **Category Hierarchy**: Localized `Category > Subcategory` as clean plain text without badge border/background (`labelSmall`, `primary`, single-line ellipsis, fixed 16dp height slot ensuring grid alignment even when unassigned).
   - ❸ **Bookmark Title**: Fixed 3-line reservation (`minLines = 3, maxLines = 3`, `fontSize = 14.sp`, `FontWeight.SemiBold`, `lineHeight = 20.sp`, `overflow = TextOverflow.Ellipsis`), preventing height variance across 1-line and multi-line titles.

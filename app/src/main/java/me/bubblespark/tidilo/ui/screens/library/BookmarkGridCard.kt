@@ -202,10 +202,10 @@ fun BookmarkGridCard(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // ❷ Bookmark Title (Matches List style typography: titleMedium SemiBold, exactly 3 lines fixed)
+                    // ❷ Bookmark Title (titleSmall SemiBold)
                     Text(
                         text = bookmark.title.ifBlank { bookmark.url },
-                        style = MaterialTheme.typography.titleMedium.copy(
+                        style = MaterialTheme.typography.titleSmall.copy(
                             fontWeight = FontWeight.SemiBold
                         ),
                         color = MaterialTheme.colorScheme.onSurface,

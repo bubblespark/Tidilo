@@ -451,7 +451,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - When og:image is absent: Displays domain accent gradient background with centered domain favicon (`36.dp`) or first-letter glyph placeholder, ensuring uniform card heights across the grid.
 - **Bottom Information Hierarchy (Fixed Height: 134dp)**:
   - ❶ **Domain Name**: Subtle caption (`labelSmall`, `11.sp`, `lineHeight = 15.sp`, `color = MaterialTheme.colorScheme.outline`, single-line ellipsis).
-  - ❷ **Bookmark Title**: Positioned immediately below the domain name. High-readability 3-line reservation matching List style typography (`minLines = 3, maxLines = 3`, `style = MaterialTheme.typography.titleMedium`, `FontWeight.SemiBold`, `overflow = TextOverflow.Ellipsis`), seamlessly filling the card body without awkward dead space.
+  - ❷ **Bookmark Title**: Positioned immediately below the domain name. High-readability 3-line reservation (`minLines = 3, maxLines = 3`, `style = MaterialTheme.typography.titleSmall`, `FontWeight.SemiBold`, `overflow = TextOverflow.Ellipsis`).
   - ❸ **Created Date (Relative Time)**: Bottom caption (`labelSmall`, `outline`, formatted via `TimeFormatter`).
 - **Relative Time Formatting Rules (`TimeFormatter.kt`)**:
   - `< 1 minute`: "Just now" / "たった今"

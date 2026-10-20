@@ -202,6 +202,10 @@ object OgImageManager {
             val finalHeight = scaledBitmap.height
             scaledBitmap.recycle()
 
+            if (compressedBytes.size >= maxBytes) {
+                return null
+            }
+
             return CompressedImageResult(
                 bytes = compressedBytes,
                 width = finalWidth,

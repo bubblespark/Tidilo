@@ -13,9 +13,10 @@ import androidx.room.TypeConverters
     entities = [
         BookmarkEntity::class,
         TrashedBookmarkEntity::class,
-        ImportTaskEntity::class
+        ImportTaskEntity::class,
+        OgImageEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -24,6 +25,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bookmarkDao(): BookmarkDao
     abstract fun trashDao(): TrashDao
     abstract fun importTaskDao(): ImportTaskDao
+    abstract fun ogImageDao(): OgImageDao
 
     companion object {
         private const val DATABASE_NAME = "tidilo_database.db"

@@ -30,7 +30,8 @@ data class ImportTaskEntity(
     val isNsfw: Boolean = false,
     val siteName: String = "",
     val description: String = "",
-    val bodySnippet: String = ""
+    val bodySnippet: String = "",
+    val ogImageUrl: String? = null
 ) {
     fun toImportTask(): ImportTask {
         val taskStatus = runCatching {
@@ -52,7 +53,8 @@ data class ImportTaskEntity(
             isNsfw = isNsfw,
             siteName = siteName,
             description = description,
-            bodySnippet = bodySnippet
+            bodySnippet = bodySnippet,
+            ogImageUrl = ogImageUrl
         )
     }
 
@@ -70,7 +72,8 @@ data class ImportTaskEntity(
                 isNsfw = task.isNsfw,
                 siteName = task.siteName,
                 description = task.description,
-                bodySnippet = task.bodySnippet
+                bodySnippet = task.bodySnippet,
+                ogImageUrl = task.ogImageUrl
             )
         }
     }

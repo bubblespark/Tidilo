@@ -19,6 +19,8 @@ import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
+import me.bubblespark.tidilo.data.db.OgImageDao
+import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.service.GeminiTaggingService
@@ -31,7 +33,8 @@ import java.util.UUID
 class ImportRepository internal constructor(
     context: Context? = null,
     private val taskDao: ImportTaskDao = context?.let { AppDatabase.getInstance(it).importTaskDao() }
-        ?: throw IllegalArgumentException("taskDao must be provided if context is null")
+        ?: throw IllegalArgumentException("taskDao must be provided if context is null"),
+    private val ogImageDao: OgImageDao? = context?.let { AppDatabase.getInstance(it).ogImageDao() }
 ) {
 
     private val appContext: Context? = context?.applicationContext
@@ -167,6 +170,8 @@ class ImportRepository internal constructor(
                 val bodySnippet = (parsed?.readabilityArticle?.textContent?.takeIf { it.isNotBlank() }
                     ?: parsed?.jsoupBodyText
                     ?: "").take(800).replace("\n", " ")
+                val ogImageUrl = parsed?.ogpTags?.get("og:image")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: parsed?.twitterTags?.get("twitter:image")?.trim()?.takeIf { it.isNotBlank() }
 
                 // 3. Create fully pre-parsed ImportTask and save into database
                 val newItem = ImportTask(
@@ -177,7 +182,8 @@ class ImportRepository internal constructor(
                     isNsfw = isNsfw,
                     siteName = siteName,
                     description = description,
-                    bodySnippet = bodySnippet
+                    bodySnippet = bodySnippet,
+                    ogImageUrl = ogImageUrl
                 )
 
                 taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
@@ -404,6 +410,26 @@ class ImportRepository internal constructor(
                     status = TaskStatus.PROCESSING_AI,
                     statusText = "Gemini Nano analyzing content..."
                 )
+
+                // 1.5 Cache og:image into database during Processing (Issue #57)
+                val activeOgImageDao = ogImageDao ?: appContext?.let { AppDatabase.getInstance(it).ogImageDao() }
+                if (activeOgImageDao != null) {
+                    val candidateOgImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
+                        ?: runCatching {
+                            WebPageParser.parseUrl(target.url).getOrNull()?.let {
+                                it.ogpTags["og:image"] ?: it.twitterTags["twitter:image"]
+                            }
+                        }.getOrNull()
+                    if (!candidateOgImageUrl.isNullOrBlank()) {
+                        runCatching {
+                            OgImageManager.processAndSaveOgImage(
+                                pageUrl = target.url,
+                                ogImageUrl = candidateOgImageUrl,
+                                ogImageDao = activeOgImageDao
+                            )
+                        }
+                    }
+                }
 
                 try {
                     // 2. Gemini Nano inference using precomputed metadata -> Save to Library

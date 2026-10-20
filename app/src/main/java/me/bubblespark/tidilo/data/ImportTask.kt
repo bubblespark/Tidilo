@@ -41,5 +41,6 @@ data class ImportTask(
     val isNsfw: Boolean = false,
     val siteName: String = "",
     val description: String = "",
-    val bodySnippet: String = ""
+    val bodySnippet: String = "",
+    val ogImageUrl: String? = null
 )

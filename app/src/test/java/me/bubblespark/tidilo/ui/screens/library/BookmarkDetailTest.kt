@@ -311,7 +311,7 @@ class BookmarkDetailTest {
     }
 
     @Test
-    fun testEntityTagToggleLimit() {
+    fun testTagToggleEntityFunction() {
         // Prepare list with 10 entities
         val initialEntities = (1..10).map { "Entity$it" }
         assertEquals(10, initialEntities.size)
@@ -320,60 +320,54 @@ class BookmarkDetailTest {
 
         // Attempt to toggle an absent entity when already at Tag.MAX_ENTITIES
         val newEntity = "Entity11"
-        draftEntities = if (draftEntities.any { it.equals(newEntity, ignoreCase = true) }) {
-            draftEntities.filterNot { it.equals(newEntity, ignoreCase = true) }
-        } else if (draftEntities.size < Tag.MAX_ENTITIES) {
-            draftEntities + newEntity
-        } else {
-            draftEntities
-        }
-        // Count should remain 10, Entity11 not added
+        draftEntities = Tag.toggleEntity(draftEntities, newEntity)
         assertEquals(10, draftEntities.size)
         org.junit.Assert.assertFalse(draftEntities.contains("Entity11"))
 
         // Toggling an existing entity when at Tag.MAX_ENTITIES should successfully remove it
         val existingEntity = "Entity5"
-        draftEntities = if (draftEntities.any { it.equals(existingEntity, ignoreCase = true) }) {
-            draftEntities.filterNot { it.equals(existingEntity, ignoreCase = true) }
-        } else if (draftEntities.size < Tag.MAX_ENTITIES) {
-            draftEntities + existingEntity
-        } else {
-            draftEntities
-        }
+        draftEntities = Tag.toggleEntity(draftEntities, existingEntity)
         assertEquals(9, draftEntities.size)
         org.junit.Assert.assertFalse(draftEntities.contains("Entity5"))
 
         // Now at 9 entities, toggling a new entity should succeed
-        draftEntities = if (draftEntities.any { it.equals(newEntity, ignoreCase = true) }) {
-            draftEntities.filterNot { it.equals(newEntity, ignoreCase = true) }
-        } else if (draftEntities.size < Tag.MAX_ENTITIES) {
-            draftEntities + newEntity
-        } else {
-            draftEntities
-        }
+        draftEntities = Tag.toggleEntity(draftEntities, newEntity)
         assertEquals(10, draftEntities.size)
         assertTrue(draftEntities.contains("Entity11"))
+
+        // Blank entity should be ignored
+        assertEquals(10, Tag.toggleEntity(draftEntities, "   ").size)
     }
 
     @Test
-    fun testAddEntityLimitGuard() {
+    fun testTagAddEntityFunction() {
         var draftEntities = (1..10).map { "Tag$it" }
         val newTag = "Tag11"
 
-        // Simulate AddEntityDialog onConfirm guard
-        if (draftEntities.size < Tag.MAX_ENTITIES && !draftEntities.any { it.equals(newTag, ignoreCase = true) }) {
-            draftEntities = draftEntities + newTag
-        }
+        // Attempt to add when at limit
+        draftEntities = Tag.addEntity(draftEntities, newTag)
         assertEquals(10, draftEntities.size)
         org.junit.Assert.assertFalse(draftEntities.contains("Tag11"))
 
-        // Remove one, then add
+        // Attempt to add existing tag when at limit
+        draftEntities = Tag.addEntity(draftEntities, "tag1")
+        assertEquals(10, draftEntities.size)
+
+        // Drop one, then add new tag
         draftEntities = draftEntities.dropLast(1)
-        if (draftEntities.size < Tag.MAX_ENTITIES && !draftEntities.any { it.equals(newTag, ignoreCase = true) }) {
-            draftEntities = draftEntities + newTag
-        }
+        draftEntities = Tag.addEntity(draftEntities, newTag)
         assertEquals(10, draftEntities.size)
         assertTrue(draftEntities.contains("Tag11"))
+
+        // Adding duplicate (case-insensitive) should return unchanged list
+        val sizeBeforeDup = draftEntities.size
+        draftEntities = Tag.addEntity(draftEntities, "tag11")
+        assertEquals(sizeBeforeDup, draftEntities.size)
+
+        // Blank entity should be ignored
+        val sizeBeforeBlank = draftEntities.size
+        draftEntities = Tag.addEntity(draftEntities, "  ")
+        assertEquals(sizeBeforeBlank, draftEntities.size)
     }
 }
 

@@ -64,6 +64,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -461,12 +465,15 @@ fun LibraryScreen(
                                 )
                             }
 
+                            val menuWidth = 200.dp
                             DropdownMenu(
                                 expanded = isViewModeMenuExpanded,
                                 onDismissRequest = { isViewModeMenuExpanded = false },
+                                offset = DpOffset(x = 88.dp - menuWidth, y = 0.dp),
                                 shape = RoundedCornerShape(16.dp),
                                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                tonalElevation = 6.dp
+                                tonalElevation = 6.dp,
+                                modifier = Modifier.width(menuWidth)
                             ) {
                                 CompositionLocalProvider(
                                     LocalContext provides context,
@@ -474,13 +481,33 @@ fun LibraryScreen(
                                 ) {
                                     LibraryViewMode.entries.forEach { mode ->
                                         val isSelected = mode == viewMode
+                                        val itemBackground = if (isSelected) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            Color.Transparent
+                                        }
+                                        val itemContentColor = if (isSelected) {
+                                            MaterialTheme.colorScheme.onPrimary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurface
+                                        }
+                                        val iconTint = if (isSelected) {
+                                            MaterialTheme.colorScheme.onPrimary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+
                                         DropdownMenuItem(
+                                            modifier = Modifier
+                                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(itemBackground),
                                             text = {
                                                 Text(
                                                     text = stringResource(mode.labelRes),
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                    color = itemContentColor
                                                 )
                                             },
                                             leadingIcon = {
@@ -492,7 +519,7 @@ fun LibraryScreen(
                                                         Icon(
                                                             imageVector = Icons.Default.Check,
                                                             contentDescription = null,
-                                                            tint = MaterialTheme.colorScheme.primary,
+                                                            tint = itemContentColor,
                                                             modifier = Modifier.size(18.dp)
                                                         )
                                                     } else {
@@ -501,7 +528,7 @@ fun LibraryScreen(
                                                     Icon(
                                                         imageVector = mode.icon,
                                                         contentDescription = null,
-                                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        tint = iconTint,
                                                         modifier = Modifier.size(20.dp)
                                                     )
                                                 }

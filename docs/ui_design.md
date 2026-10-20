@@ -417,12 +417,14 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Displays `Dashboard2GearIcon` (Material Symbols Outlined `dashboard_2_gear`, 24dp), providing visual affordance for layout/dashboard customization.
 - **Dropdown Menu Positioning & Container Geometry**:
   - Anchored directly to the button container using Material 3 `DropdownMenu`.
+  - Width is fixed to `200.dp`, providing a generous and polished layout that avoids feeling narrow or cramped.
+  - Aligned flush to the right edge of the header row and bookmark cards (`screenWidth - 20.dp`) by applying `offset = DpOffset(x = 88.dp - menuWidth, y = 0.dp)`.
   - Follows Tidilo menu design language with `shape = RoundedCornerShape(16.dp)`, `containerColor = MaterialTheme.colorScheme.surfaceContainerHigh`, and `tonalElevation = 6.dp`.
   - Wrapped with `CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig)` to ensure accurate localization in dynamic popup windows.
-- **Item Order & Leading Checkmark Alignment**:
+- **Item Order & Primary Color Highlight**:
   - Conforms to the `[Checkmark] [Icon] [Display Name]` sequence.
-  - Selected items render `Icons.Default.Check` (`18.dp`, `primary`), with label in `FontWeight.Bold` and `MaterialTheme.colorScheme.primary`.
-  - Unselected items render an empty `Spacer(modifier = Modifier.size(18.dp))`, icon tinted with `onSurfaceVariant` (`20.dp`), and label in `FontWeight.Normal` and `MaterialTheme.colorScheme.onSurface`.
+  - Active/selected item is prominently highlighted with an inner pill (`shape = RoundedCornerShape(12.dp)`) filled with `MaterialTheme.colorScheme.primary`, with checkmark (`Icons.Default.Check`, 18dp), icon (20dp), and text label rendered in `MaterialTheme.colorScheme.onPrimary` (FontWeight.Bold).
+  - Unselected items render with a transparent background, empty checkmark spacer (`Spacer(modifier = Modifier.size(18.dp))`), `onSurfaceVariant` icon, and `onSurface` text label (FontWeight.Normal).
   - Maintains strict vertical column alignment across all menu entries without shifting text or icons.
 - **Menu Items (`LibraryViewMode`)**:
   - `LIST`: "List" (`R.string.library_view_mode_list`), icon `ListSymbolIcon` (Material Symbols Outlined `list`).

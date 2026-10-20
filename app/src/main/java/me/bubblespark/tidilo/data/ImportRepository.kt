@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.data
 
 import android.content.Context
 import com.google.mlkit.genai.common.GenAiException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -411,22 +412,21 @@ class ImportRepository internal constructor(
                     statusText = "Gemini Nano analyzing content..."
                 )
 
-                // 1.5 Cache og:image into database during Processing (Issue #57)
+                // 1.5 Cache og:image into database during Processing asynchronously (Issue #57)
                 val activeOgImageDao = ogImageDao ?: appContext?.let { AppDatabase.getInstance(it).ogImageDao() }
-                if (activeOgImageDao != null) {
-                    val candidateOgImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
-                        ?: runCatching {
-                            WebPageParser.parseUrl(target.url).getOrNull()?.let {
-                                it.ogpTags["og:image"] ?: it.twitterTags["twitter:image"]
-                            }
-                        }.getOrNull()
-                    if (!candidateOgImageUrl.isNullOrBlank()) {
-                        runCatching {
+                val candidateOgImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
+                if (activeOgImageDao != null && !candidateOgImageUrl.isNullOrBlank()) {
+                    repositoryScope.launch {
+                        try {
                             OgImageManager.processAndSaveOgImage(
                                 pageUrl = target.url,
                                 ogImageUrl = candidateOgImageUrl,
                                 ogImageDao = activeOgImageDao
                             )
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            // Non-critical background image cache failure
                         }
                     }
                 }

@@ -56,7 +56,7 @@ import me.bubblespark.tidilo.ui.util.TimeFormatter
 
 /**
  * Modern 2-column Grid bookmark card with 1.91:1 og:image header,
- * fixed height container, muted domain name, prominent 3-line fixed title,
+ * fixed height container, muted domain name, 3-line fixed title matching List style (titleMedium SemiBold),
  * relative time, and long-press summary peek.
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -181,11 +181,11 @@ fun BookmarkGridCard(
                     }
                 }
 
-                // 2. Bottom Information Area (Tightly fitted, no wasted space)
+                // 2. Bottom Information Area (Tightly fitted, matching List style typography)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(126.dp)
+                        .height(134.dp)
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {
                     // ❶ Domain Name (Softer contrast)
@@ -202,12 +202,10 @@ fun BookmarkGridCard(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // ❷ Bookmark Title (Prominent, exactly 3 lines fixed, 15.5sp / 21sp line height)
+                    // ❷ Bookmark Title (Matches List style typography: titleMedium SemiBold, exactly 3 lines fixed)
                     Text(
                         text = bookmark.title.ifBlank { bookmark.url },
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = 15.5.sp,
-                            lineHeight = 21.sp,
+                        style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.SemiBold
                         ),
                         color = MaterialTheme.colorScheme.onSurface,
@@ -216,7 +214,7 @@ fun BookmarkGridCard(
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    Spacer(modifier = Modifier.height(7.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // ❸ Created Date (Relative Time)
                     Text(

@@ -444,14 +444,14 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Card Container & Shape (`BookmarkGridCard.kt`)**:
   - `Surface` container with `shape = RoundedCornerShape(16.dp)`, `color = MaterialTheme.colorScheme.surfaceContainer`, and `tonalElevation = 2.dp`.
   - Supports combined touch interactions via `combinedClickable(onClick, onLongClick)`.
-  - Fully uniform vertical height across all cards: fixed image aspect ratio `1.91f` combined with fixed-height information container (`126.dp`).
+  - Fully uniform vertical height across all cards: fixed image aspect ratio `1.91f` combined with fixed-height information container (`134.dp`).
 - **Top Image Region (1.91:1 Aspect Ratio)**:
   - Fixed ratio `1.91f` matching standard Open Graph (OGP) dimensions (1200x630), clipped to card top corners (`topStart = 16.dp, topEnd = 16.dp`).
   - When cached og:image exists: Decodes WebP from local database and displays using `ContentScale.Crop`.
   - When og:image is absent: Displays domain accent gradient background with centered domain favicon (`36.dp`) or first-letter glyph placeholder, ensuring uniform card heights across the grid.
-- **Bottom Information Hierarchy (Fixed Height: 126dp)**:
+- **Bottom Information Hierarchy (Fixed Height: 134dp)**:
   - ❶ **Domain Name**: Subtle caption (`labelSmall`, `11.sp`, `lineHeight = 15.sp`, `color = MaterialTheme.colorScheme.outline`, single-line ellipsis).
-  - ❷ **Bookmark Title**: Positioned immediately below the domain name. Enlarged, high-readability 3-line reservation (`minLines = 3, maxLines = 3`, `fontSize = 15.5.sp`, `FontWeight.SemiBold`, `lineHeight = 21.sp`, `overflow = TextOverflow.Ellipsis`), seamlessly filling the card body without awkward dead space.
+  - ❷ **Bookmark Title**: Positioned immediately below the domain name. High-readability 3-line reservation matching List style typography (`minLines = 3, maxLines = 3`, `style = MaterialTheme.typography.titleMedium`, `FontWeight.SemiBold`, `overflow = TextOverflow.Ellipsis`), seamlessly filling the card body without awkward dead space.
   - ❸ **Created Date (Relative Time)**: Bottom caption (`labelSmall`, `outline`, formatted via `TimeFormatter`).
 - **Relative Time Formatting Rules (`TimeFormatter.kt`)**:
   - `< 1 minute`: "Just now" / "たった今"

@@ -49,17 +49,15 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.R
-import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.data.OgImageManager
-import me.bubblespark.tidilo.data.Subcategory
 import me.bubblespark.tidilo.ui.util.TimeFormatter
 
 /**
  * Modern 2-column Grid bookmark card with 1.91:1 og:image header,
- * fixed height container, plain text category hierarchy, 3-line fixed title (+2pt font),
- * balanced component spacing, relative time, and long-press summary peek.
+ * fixed height container, muted domain name, prominent 3-line fixed title,
+ * relative time, and long-press summary peek.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -74,30 +72,6 @@ fun BookmarkGridCard(
     val domain = remember(bookmark.url) { DomainIconManager.extractDomain(bookmark.url) }
     val domainDisplayName = remember(domain) {
         domain?.let { DomainPolicyManager.getDisplayName(it) } ?: domain ?: ""
-    }
-
-    // Category & Subcategory localization (without badge frame)
-    val localizedCategory = remember(bookmark.tag.category, context) {
-        val cat = bookmark.tag.category?.trim()?.takeIf {
-            it.isNotBlank() && !it.equals(Tag.DEFAULT_TAG, ignoreCase = true)
-        }
-        cat?.let { Category.toLocalized(it, context) } ?: ""
-    }
-    val localizedSubcategory = remember(bookmark.tag.subcategory, context) {
-        val sub = bookmark.tag.subcategory?.trim()?.takeIf {
-            it.isNotBlank() && !it.equals(Tag.DEFAULT_TAG, ignoreCase = true)
-        }
-        sub?.let { Subcategory.toLocalized(it, context) } ?: ""
-    }
-
-    val categoryHierarchy = remember(localizedCategory, localizedSubcategory) {
-        when {
-            localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank() ->
-                "$localizedCategory > $localizedSubcategory"
-            localizedCategory.isNotBlank() -> localizedCategory
-            localizedSubcategory.isNotBlank() -> localizedSubcategory
-            else -> ""
-        }
     }
 
     val relativeTime = remember(bookmark.createdAt, context) {
@@ -207,57 +181,33 @@ fun BookmarkGridCard(
                     }
                 }
 
-                // 2. Bottom Information Area (Tightly balanced, consistent spacing)
+                // 2. Bottom Information Area (Tightly fitted, no wasted space)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(134.dp)
-                        .padding(horizontal = 12.dp, vertical = 9.dp)
+                        .height(126.dp)
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {
-                    // ❶ Domain Name (1 line)
+                    // ❶ Domain Name (Softer contrast)
                     Text(
                         text = domainDisplayName.ifBlank { " " },
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 11.sp,
                             lineHeight = 15.sp
                         ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.outline,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    Spacer(modifier = Modifier.height(3.dp))
-
-                    // ❷ Category > Subcategory (1 line, plain text without frame/badge)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(15.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        if (categoryHierarchy.isNotBlank()) {
-                            Text(
-                                text = categoryHierarchy,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
-                                    lineHeight = 15.sp
-                                ),
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.primary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // ❸ Bookmark Title (Exactly 3 lines fixed, font size +2pt = 14sp)
+                    // ❷ Bookmark Title (Prominent, exactly 3 lines fixed, 15.5sp / 21sp line height)
                     Text(
                         text = bookmark.title.ifBlank { bookmark.url },
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = 14.sp,
-                            lineHeight = 19.sp,
+                            fontSize = 15.5.sp,
+                            lineHeight = 21.sp,
                             fontWeight = FontWeight.SemiBold
                         ),
                         color = MaterialTheme.colorScheme.onSurface,
@@ -268,7 +218,7 @@ fun BookmarkGridCard(
 
                     Spacer(modifier = Modifier.height(7.dp))
 
-                    // ❹ Created Date (Relative Time)
+                    // ❸ Created Date (Relative Time)
                     Text(
                         text = relativeTime,
                         style = MaterialTheme.typography.labelSmall.copy(

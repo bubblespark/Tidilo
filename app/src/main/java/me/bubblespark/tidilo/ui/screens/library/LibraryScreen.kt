@@ -14,6 +14,9 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,9 +39,12 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DropdownMenu
@@ -77,6 +83,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.DomainIconManager
@@ -137,11 +144,14 @@ fun LibraryScreen(
 
     val domainGridState = rememberLazyGridState()
     val newestFirstListState = rememberLazyListState()
+    val newestFirstGridState = rememberLazyGridState()
     val domainDetailListState = rememberLazyListState()
+    val domainDetailGridState = rememberLazyGridState()
 
     LaunchedEffect(selectedDomainFilter) {
         if (selectedDomainFilter != null) {
             domainDetailListState.scrollToItem(0)
+            domainDetailGridState.scrollToItem(0)
         }
     }
 
@@ -159,9 +169,16 @@ fun LibraryScreen(
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val headerHeight = statusBarTop + 80.dp
 
-    // Restore to domain grid from domain drilldown on system back gesture
+    var peekBookmark by remember { mutableStateOf<BookmarkItem?>(null) }
+
+    // Dismiss summary peek on system back gesture
+    BackHandler(enabled = peekBookmark != null) {
+        peekBookmark = null
+    }
+
+    // Restore to domain grid from domain drilldown on system back gesture (disabled during peek)
     if (filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null) {
-        BackHandler {
+        BackHandler(enabled = peekBookmark == null) {
             viewModel.clearDomainFilter()
         }
     }
@@ -276,29 +293,69 @@ fun LibraryScreen(
                                     EmptyLibraryMessage()
                                 }
                             } else {
-                                LazyColumn(
-                                    state = domainDetailListState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(
-                                        top = headerHeight,
-                                        bottom = 140.dp,
-                                        start = 20.dp,
-                                        end = 20.dp
-                                    ),
-                                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    items(
-                                        items = domainBookmarks,
-                                        key = { it.id },
-                                        contentType = { "bookmark_card" }
-                                    ) { item ->
-                                        BookmarkItemCard(
-                                            bookmark = item,
-                                            wordKeywords = emptyList(),
-                                            tagKeywords = emptyList(),
-                                            currentLanguage = currentLanguage,
-                                            onClick = { onNavigateToDetail(item.id) }
-                                        )
+                                AnimatedContent(
+                                    targetState = viewMode,
+                                    transitionSpec = {
+                                        fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
+                                                fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
+                                    },
+                                    label = "domain_view_mode_transition"
+                                ) { mode ->
+                                    when (mode) {
+                                        LibraryViewMode.LIST -> {
+                                            LazyColumn(
+                                                state = domainDetailListState,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentPadding = PaddingValues(
+                                                    top = headerHeight,
+                                                    bottom = 140.dp,
+                                                    start = 20.dp,
+                                                    end = 20.dp
+                                                ),
+                                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                                            ) {
+                                                items(
+                                                    items = domainBookmarks,
+                                                    key = { it.id },
+                                                    contentType = { "bookmark_card" }
+                                                ) { item ->
+                                                    BookmarkItemCard(
+                                                        bookmark = item,
+                                                        wordKeywords = emptyList(),
+                                                        tagKeywords = emptyList(),
+                                                        currentLanguage = currentLanguage,
+                                                        onClick = { onNavigateToDetail(item.id) }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        LibraryViewMode.GRID -> {
+                                            LazyVerticalGrid(
+                                                state = domainDetailGridState,
+                                                columns = GridCells.Fixed(2),
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentPadding = PaddingValues(
+                                                    top = headerHeight,
+                                                    bottom = 140.dp,
+                                                    start = 20.dp,
+                                                    end = 20.dp
+                                                ),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                items(
+                                                    items = domainBookmarks,
+                                                    key = { it.id },
+                                                    contentType = { "bookmark_grid_card" }
+                                                ) { item ->
+                                                    BookmarkGridCard(
+                                                        bookmark = item,
+                                                        onClick = { onNavigateToDetail(item.id) },
+                                                        onLongClick = { peekBookmark = item }
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -314,29 +371,69 @@ fun LibraryScreen(
                                 EmptyLibraryMessage()
                             }
                         } else {
-                            LazyColumn(
-                                state = newestFirstListState,
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(
-                                    top = headerHeight,
-                                    bottom = 140.dp,
-                                    start = 20.dp,
-                                    end = 20.dp
-                                ),
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
-                            ) {
-                                items(
-                                    items = bookmarks,
-                                    key = { it.id },
-                                    contentType = { "bookmark_card" }
-                                ) { item ->
-                                    BookmarkItemCard(
-                                        bookmark = item,
-                                        wordKeywords = emptyList(),
-                                        tagKeywords = emptyList(),
-                                        currentLanguage = currentLanguage,
-                                        onClick = { onNavigateToDetail(item.id) }
-                                    )
+                            AnimatedContent(
+                                targetState = viewMode,
+                                transitionSpec = {
+                                    fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
+                                            fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
+                                },
+                                label = "newest_first_view_mode_transition"
+                            ) { mode ->
+                                when (mode) {
+                                    LibraryViewMode.LIST -> {
+                                        LazyColumn(
+                                            state = newestFirstListState,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentPadding = PaddingValues(
+                                                top = headerHeight,
+                                                bottom = 140.dp,
+                                                start = 20.dp,
+                                                end = 20.dp
+                                            ),
+                                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            items(
+                                                items = bookmarks,
+                                                key = { it.id },
+                                                contentType = { "bookmark_card" }
+                                            ) { item ->
+                                                BookmarkItemCard(
+                                                    bookmark = item,
+                                                    wordKeywords = emptyList(),
+                                                    tagKeywords = emptyList(),
+                                                    currentLanguage = currentLanguage,
+                                                    onClick = { onNavigateToDetail(item.id) }
+                                                )
+                                            }
+                                        }
+                                    }
+                                    LibraryViewMode.GRID -> {
+                                        LazyVerticalGrid(
+                                            state = newestFirstGridState,
+                                            columns = GridCells.Fixed(2),
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentPadding = PaddingValues(
+                                                top = headerHeight,
+                                                bottom = 140.dp,
+                                                start = 20.dp,
+                                                end = 20.dp
+                                            ),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            items(
+                                                items = bookmarks,
+                                                key = { it.id },
+                                                contentType = { "bookmark_grid_card" }
+                                            ) { item ->
+                                                BookmarkGridCard(
+                                                    bookmark = item,
+                                                    onClick = { onNavigateToDetail(item.id) },
+                                                    onLongClick = { peekBookmark = item }
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -345,9 +442,9 @@ fun LibraryScreen(
             }
         }
 
-        // Expressive Header (slides out/in from top screen edge linked with scrolling)
+        // Expressive Header (slides out/in from top screen edge linked with scrolling, hidden during peek)
         AnimatedVisibility(
-            visible = isBarsVisible,
+            visible = isBarsVisible && peekBookmark == null,
             enter = slideInVertically(
                 initialOffsetY = { -it },
                 animationSpec = spring(
@@ -384,7 +481,7 @@ fun LibraryScreen(
                             exit = fadeOut(animationSpec = tween(150)) + shrinkHorizontally()
                         ) {
                             IconButton(
-                                onClick = { viewModel.clearDomainFilter() },
+                                onClick = { if (peekBookmark == null) viewModel.clearDomainFilter() else peekBookmark = null },
                                 modifier = Modifier
                                     .padding(end = 4.dp)
                                     .size(40.dp)
@@ -455,7 +552,7 @@ fun LibraryScreen(
                         // View mode toggle menu button
                         Box {
                             IconButton(
-                                onClick = { isViewModeMenuExpanded = true },
+                                onClick = { if (peekBookmark == null) isViewModeMenuExpanded = true else peekBookmark = null },
                                 modifier = Modifier.size(44.dp)
                             ) {
                                 Icon(
@@ -526,7 +623,7 @@ fun LibraryScreen(
 
                         // Settings button
                         IconButton(
-                            onClick = onNavigateToSettings,
+                            onClick = { if (peekBookmark == null) onNavigateToSettings() else peekBookmark = null },
                             modifier = Modifier.size(44.dp)
                         ) {
                             Icon(
@@ -535,6 +632,75 @@ fun LibraryScreen(
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
+                    }
+                }
+            }
+        }
+
+        // Full-screen borderless AI Summary Peek Overlay (Edge-to-Edge, only summary text)
+        AnimatedVisibility(
+            visible = peekBookmark != null,
+            enter = fadeIn(animationSpec = tween(200)),
+            exit = fadeOut(animationSpec = tween(160)),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val currentPeek = peekBookmark
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.85f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { peekBookmark = null }
+                    )
+            ) {
+                if (currentPeek != null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = headerHeight)
+                            .padding(horizontal = 24.dp)
+                            .verticalScroll(rememberScrollState())
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { peekBookmark = null }
+                            )
+                    ) {
+                        // Badge: AI Summary
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.detail_action_ai_summary),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = currentPeek.description.ifBlank {
+                                stringResource(R.string.ai_review_no_summary)
+                            },
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                lineHeight = 24.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+
+                        Spacer(modifier = Modifier.height(140.dp))
                     }
                 }
             }

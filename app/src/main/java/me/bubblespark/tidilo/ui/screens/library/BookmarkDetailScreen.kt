@@ -970,9 +970,7 @@ fun BookmarkDetailScreen(
         AddEntityDialog(
             onDismiss = { showAddEntityDialog = false },
             onConfirm = { newEntity ->
-                if (!draftEntities.any { it.equals(newEntity, ignoreCase = true) }) {
-                    draftEntities = draftEntities + newEntity
-                }
+                draftEntities = Tag.addEntity(draftEntities, newEntity)
             }
         )
     }
@@ -985,11 +983,7 @@ fun BookmarkDetailScreen(
             selectedEntities = draftEntities,
             allEntities = (allLibraryEntities + draftEntities).distinct(),
             onToggleEntity = { entity ->
-                draftEntities = if (draftEntities.any { it.equals(entity, ignoreCase = true) }) {
-                    draftEntities.filterNot { it.equals(entity, ignoreCase = true) }
-                } else {
-                    draftEntities + entity
-                }
+                draftEntities = Tag.toggleEntity(draftEntities, entity)
             },
             onRemoveEntity = { entity ->
                 draftEntities = draftEntities.filterNot { it.equals(entity, ignoreCase = true) }

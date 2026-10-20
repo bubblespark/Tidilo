@@ -14,6 +14,7 @@ data class Tag(
 ) {
     companion object {
         const val DEFAULT_TAG = "None"
+        const val MAX_ENTITIES = 10
 
         fun create(
             category: String?,
@@ -29,6 +30,32 @@ data class Tag(
         }
 
         fun createEmpty(): Tag = Tag(category = null, subcategory = null, entities = emptyList())
+
+        /**
+         * Adds an entity tag to the current list if not already present and limit has not been reached.
+         */
+        fun addEntity(current: List<String>, newEntity: String): List<String> {
+            val clean = newEntity.trim().removePrefix("#").trim()
+            if (clean.isBlank()) return current
+            if (current.size >= MAX_ENTITIES) return current
+            if (current.any { it.equals(clean, ignoreCase = true) }) return current
+            return current + clean
+        }
+
+        /**
+         * Toggles an entity tag in the current list: removes if present, adds if absent and below MAX_ENTITIES.
+         */
+        fun toggleEntity(current: List<String>, entity: String): List<String> {
+            val clean = entity.trim().removePrefix("#").trim()
+            if (clean.isBlank()) return current
+            return if (current.any { it.equals(clean, ignoreCase = true) }) {
+                current.filterNot { it.equals(clean, ignoreCase = true) }
+            } else if (current.size < MAX_ENTITIES) {
+                current + clean
+            } else {
+                current
+            }
+        }
     }
 }
 

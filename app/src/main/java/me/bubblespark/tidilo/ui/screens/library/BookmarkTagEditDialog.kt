@@ -41,6 +41,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -84,6 +85,13 @@ fun BookmarkTagEditDialog(
     var isSubcategoryDropdownExpanded by remember { mutableStateOf(false) }
     val categoryScrollState = rememberScrollState()
     val subcategoryScrollState = rememberScrollState()
+    var showInlineLimitError by remember { mutableStateOf(false) }
+
+    LaunchedEffect(selectedEntities.size) {
+        if (selectedEntities.size < Tag.MAX_ENTITIES) {
+            showInlineLimitError = false
+        }
+    }
 
     val localizedCategory = remember(selectedCategory, context) {
         selectedCategory?.let { Category.toLocalized(it, context) } ?: ""
@@ -348,7 +356,7 @@ fun BookmarkTagEditDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "${stringResource(R.string.detail_tag_entity_label)} (${selectedEntities.size})",
+                            text = "${stringResource(R.string.detail_tag_entity_label)} (${selectedEntities.size}/${Tag.MAX_ENTITIES})",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -357,7 +365,14 @@ fun BookmarkTagEditDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             // "Add" icon button without background
                             IconButton(
-                                onClick = onAddEntityClick,
+                                onClick = {
+                                    if (selectedEntities.size >= Tag.MAX_ENTITIES) {
+                                        showInlineLimitError = true
+                                    } else {
+                                        showInlineLimitError = false
+                                        onAddEntityClick()
+                                    }
+                                },
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
@@ -386,6 +401,34 @@ fun BookmarkTagEditDialog(
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
+
+                    if (showInlineLimitError && selectedEntities.size >= Tag.MAX_ENTITIES) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(R.string.detail_tag_entity_limit_inline),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
 
                     if (selectedEntities.isEmpty()) {
                         Surface(
@@ -452,6 +495,7 @@ fun BookmarkTagEditDialog(
         },
         shape = RoundedCornerShape(24.dp)
     )
+
 }
 
 /**

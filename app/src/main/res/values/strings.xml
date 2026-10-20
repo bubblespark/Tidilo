@@ -153,6 +153,7 @@
     <string name="detail_entity_picker_all">All Entities</string>
     <string name="detail_entity_picker_empty">No entity tags available</string>
     <string name="detail_tag_remove_entity">Remove %1$s</string>
+    <string name="detail_tag_entity_limit_inline">Maximum of 10 entities allowed</string>
 
     <!-- AI Review Screen -->
     <string name="ai_review_title">AI Proposal Review</string>

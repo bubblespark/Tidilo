@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -61,6 +62,7 @@ fun EntityTagPickerBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
     var isDismissing by remember { mutableStateOf(false) }
+    var showLimitWarning by remember { mutableStateOf(false) }
     val sortedAllEntities = remember(allEntities) {
         allEntities.distinct().sortedWith { a, b -> compareEntityNames(a, b) }
     }
@@ -116,7 +118,7 @@ fun EntityTagPickerBottomSheet(
 
             // 1. Selected Entities Section
             Text(
-                text = "${stringResource(R.string.detail_entity_picker_selected)} (${selectedEntities.size})",
+                text = "${stringResource(R.string.detail_entity_picker_selected)} (${selectedEntities.size}/${Tag.MAX_ENTITIES})",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary
@@ -146,7 +148,38 @@ fun EntityTagPickerBottomSheet(
                     selectedEntities.forEach { entity ->
                         SelectedEntityChip(
                             name = entity,
-                            onDelete = { onRemoveEntity(entity) }
+                            onDelete = {
+                                showLimitWarning = false
+                                onRemoveEntity(entity)
+                            }
+                        )
+                    }
+                }
+            }
+
+            if (showLimitWarning && selectedEntities.size >= Tag.MAX_ENTITIES) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.detail_tag_entity_limit_inline),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
@@ -188,7 +221,18 @@ fun EntityTagPickerBottomSheet(
                         AllEntityToggleChip(
                             name = entity,
                             isSelected = isSelected,
-                            onToggle = { onToggleEntity(entity) }
+                            isAtMaxLimit = selectedEntities.size >= Tag.MAX_ENTITIES,
+                            onToggle = {
+                                if (isSelected) {
+                                    showLimitWarning = false
+                                    onToggleEntity(entity)
+                                } else if (selectedEntities.size >= Tag.MAX_ENTITIES) {
+                                    showLimitWarning = true
+                                } else {
+                                    showLimitWarning = false
+                                    onToggleEntity(entity)
+                                }
+                            }
                         )
                     }
                 }
@@ -253,23 +297,24 @@ private fun SelectedEntityChip(
 private fun AllEntityToggleChip(
     name: String,
     isSelected: Boolean,
+    isAtMaxLimit: Boolean = false,
     onToggle: () -> Unit
 ) {
     val backgroundColor by animateColorAsState(
-        targetValue = if (isSelected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        targetValue = when {
+            isSelected -> MaterialTheme.colorScheme.primary
+            isAtMaxLimit -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
         },
         animationSpec = tween(150),
         label = "all_chip_bg"
     )
 
     val contentColor by animateColorAsState(
-        targetValue = if (isSelected) {
-            MaterialTheme.colorScheme.onPrimary
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
+        targetValue = when {
+            isSelected -> MaterialTheme.colorScheme.onPrimary
+            isAtMaxLimit -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
         },
         animationSpec = tween(150),
         label = "all_chip_content"

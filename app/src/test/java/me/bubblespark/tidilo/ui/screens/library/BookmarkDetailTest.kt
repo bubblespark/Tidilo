@@ -304,5 +304,70 @@ class BookmarkDetailTest {
         // ShowNSFWContents = true, isNsfw = false -> Don't show warning
         org.junit.Assert.assertFalse(shouldShowWarning(isNsfwContentVisible = true, isNsfw = false))
     }
+
+    @Test
+    fun testMaxEntitiesConstant() {
+        assertEquals(10, Tag.MAX_ENTITIES)
+    }
+
+    @Test
+    fun testTagToggleEntityFunction() {
+        // Prepare list with 10 entities
+        val initialEntities = (1..10).map { "Entity$it" }
+        assertEquals(10, initialEntities.size)
+
+        var draftEntities = initialEntities
+
+        // Attempt to toggle an absent entity when already at Tag.MAX_ENTITIES
+        val newEntity = "Entity11"
+        draftEntities = Tag.toggleEntity(draftEntities, newEntity)
+        assertEquals(10, draftEntities.size)
+        org.junit.Assert.assertFalse(draftEntities.contains("Entity11"))
+
+        // Toggling an existing entity when at Tag.MAX_ENTITIES should successfully remove it
+        val existingEntity = "Entity5"
+        draftEntities = Tag.toggleEntity(draftEntities, existingEntity)
+        assertEquals(9, draftEntities.size)
+        org.junit.Assert.assertFalse(draftEntities.contains("Entity5"))
+
+        // Now at 9 entities, toggling a new entity should succeed
+        draftEntities = Tag.toggleEntity(draftEntities, newEntity)
+        assertEquals(10, draftEntities.size)
+        assertTrue(draftEntities.contains("Entity11"))
+
+        // Blank entity should be ignored
+        assertEquals(10, Tag.toggleEntity(draftEntities, "   ").size)
+    }
+
+    @Test
+    fun testTagAddEntityFunction() {
+        var draftEntities = (1..10).map { "Tag$it" }
+        val newTag = "Tag11"
+
+        // Attempt to add when at limit
+        draftEntities = Tag.addEntity(draftEntities, newTag)
+        assertEquals(10, draftEntities.size)
+        org.junit.Assert.assertFalse(draftEntities.contains("Tag11"))
+
+        // Attempt to add existing tag when at limit
+        draftEntities = Tag.addEntity(draftEntities, "tag1")
+        assertEquals(10, draftEntities.size)
+
+        // Drop one, then add new tag
+        draftEntities = draftEntities.dropLast(1)
+        draftEntities = Tag.addEntity(draftEntities, newTag)
+        assertEquals(10, draftEntities.size)
+        assertTrue(draftEntities.contains("Tag11"))
+
+        // Adding duplicate (case-insensitive) should return unchanged list
+        val sizeBeforeDup = draftEntities.size
+        draftEntities = Tag.addEntity(draftEntities, "tag11")
+        assertEquals(sizeBeforeDup, draftEntities.size)
+
+        // Blank entity should be ignored
+        val sizeBeforeBlank = draftEntities.size
+        draftEntities = Tag.addEntity(draftEntities, "  ")
+        assertEquals(sizeBeforeBlank, draftEntities.size)
+    }
 }
 

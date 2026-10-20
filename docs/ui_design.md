@@ -444,24 +444,26 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Card Container & Shape (`BookmarkGridCard.kt`)**:
   - `Surface` container with `shape = RoundedCornerShape(16.dp)`, `color = MaterialTheme.colorScheme.surfaceContainer`, and `tonalElevation = 2.dp`.
   - Supports combined touch interactions via `combinedClickable(onClick, onLongClick)`.
-  - Fully uniform vertical height across all cards: fixed image aspect ratio `1.91f` combined with fixed-height information container (`134.dp`).
+  - Fully uniform vertical height across all cards: fixed image aspect ratio `1.91f` combined with fixed-height information container (`116.dp`).
 - **Top Image Region (1.91:1 Aspect Ratio)**:
   - Fixed ratio `1.91f` matching standard Open Graph (OGP) dimensions (1200x630), clipped to card top corners (`topStart = 16.dp, topEnd = 16.dp`).
   - When cached og:image exists: Decodes WebP from local database and displays using `ContentScale.Crop`.
   - When og:image is absent: Displays domain accent gradient background with centered domain favicon (`36.dp`) or first-letter glyph placeholder, ensuring uniform card heights across the grid.
-- **Bottom Information Hierarchy (Fixed Height: 134dp)**:
+- **Bottom Information Hierarchy (Fixed Height: 116dp)**:
   - ❶ **Domain Name**: Subtle caption (`labelSmall`, `11.sp`, `lineHeight = 15.sp`, `color = MaterialTheme.colorScheme.outline`, single-line ellipsis).
   - ❷ **Bookmark Title**: Positioned immediately below the domain name. High-readability 3-line reservation (`minLines = 3, maxLines = 3`, `style = MaterialTheme.typography.titleSmall`, `FontWeight.SemiBold`, `overflow = TextOverflow.Ellipsis`).
-  - ❸ **Created Date (Relative Time)**: Bottom caption (`labelSmall`, `outline`, formatted via `TimeFormatter`).
+  - ❸ **Created Date (Relative Time)**: Bottom caption (`labelSmall`, `outline`, formatted via `TimeFormatter`). Snapped to the bottom-left of every card tile via `Spacer(Modifier.weight(1f))` ensuring a perfectly aligned baseline across all cards regardless of title line count.
 - **Relative Time Formatting Rules (`TimeFormatter.kt`)**:
   - `< 1 minute`: "Just now" / "たった今"
-  - `1 to 59 minutes`: "X min ago" / "X分前"
-  - `1 to 23 hours`: "X hours ago" / "X時間前"
-  - `1 to 29 days`: "X days ago" / "X日前"
+  - `1 to 59 minutes`: "1 minute ago" / "%d minutes ago" / "%d分前"
+  - `1 to 23 hours`: "1 hour ago" / "%d hours ago" / "%d時間前"
+  - `1 to 29 days`: "1 day ago" / "%d days ago" / "%d日前"
   - `>= 30 days`: "yyyy/MM/dd" (e.g. `2026/09/20`)
-- **Long-Press Summary Peek**:
-  - Long-pressing any grid card reveals an in-card frosted modal overlay (`surface.copy(alpha = 0.94f)`) with full AI summary text.
-  - Tapping anywhere or tapping the close icon dismisses the overlay without triggering navigation to the detail screen.
+- **Prominent Borderless Summary Peek Overlay (`LibraryScreen.kt`)**:
+  - Long-pressing any grid card automatically transitions the screen into full Edge-to-Edge display (hiding the header) and reveals a clean, borderless overlay.
+  - Background blur is completely omitted for crisp, natural clarity; the overlay applies the theme background color at 85% opacity (`MaterialTheme.colorScheme.background.copy(alpha = 0.85f)`).
+  - Displays the `✨ AI Summary` badge and summary text in `MaterialTheme.typography.bodyMedium` (lineHeight 24sp), positioned at a stable, fixed vertical offset (`headerHeight`).
+  - Tapping anywhere on the screen or using the system back gesture dismisses the peek overlay and restores the previous Edge-to-Edge/bars state cleanly.
 - **Shared View Mode Synchronization**:
   - The active `LibraryViewMode` (`LIST` or `GRID`) is uniformly applied to both the primary **Newest First** list and the **Domain > BookmarkList (Drill-Down)** list.
   - Layout transitions between `LIST` and `GRID` use `AnimatedContent` with smooth Crossfade (`fadeIn(220ms)` + `fadeOut(180ms)`).

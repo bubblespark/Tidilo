@@ -1,16 +1,11 @@
 package me.bubblespark.tidilo.ui.screens.library
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,13 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -64,10 +53,10 @@ import me.bubblespark.tidilo.ui.util.TimeFormatter
 fun BookmarkGridCard(
     bookmark: BookmarkItem,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit = {}
+    onClick: () -> Unit = {},
+    onLongClick: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
-    var isSummaryPeekVisible by remember { mutableStateOf(false) }
 
     val domain = remember(bookmark.url) { DomainIconManager.extractDomain(bookmark.url) }
     val domainDisplayName = remember(domain) {
@@ -109,185 +98,124 @@ fun BookmarkGridCard(
         } ?: primaryColor
     }
 
+    val hasSummary = bookmark.description.isNotBlank()
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = {
-                    isSummaryPeekVisible = true
-                }
+                onLongClick = if (hasSummary && onLongClick != null) {
+                    { onLongClick() }
+                } else null
             ),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 2.dp
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                // 1. Top Image Area (Aspect Ratio 1.91:1)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1.91f)
-                        .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                        .background(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    domainAccentColor.copy(alpha = 0.18f),
-                                    MaterialTheme.colorScheme.surfaceContainerHigh
-                                )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // 1. Top Image Area (Aspect Ratio 1.91:1)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1.91f)
+                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                domainAccentColor.copy(alpha = 0.18f),
+                                MaterialTheme.colorScheme.surfaceContainerHigh
                             )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val currentOg = ogBitmap
-                    if (currentOg != null) {
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                val currentOg = ogBitmap
+                if (currentOg != null) {
+                    Image(
+                        bitmap = currentOg,
+                        contentDescription = bookmark.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    // Fallback domain icon placeholder
+                    val currentIcon = domainIconBitmap
+                    if (currentIcon != null) {
                         Image(
-                            bitmap = currentOg,
-                            contentDescription = bookmark.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                            bitmap = currentIcon,
+                            contentDescription = domainDisplayName,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
                         )
                     } else {
-                        // Fallback domain icon placeholder
-                        val currentIcon = domainIconBitmap
-                        if (currentIcon != null) {
-                            Image(
-                                bitmap = currentIcon,
-                                contentDescription = domainDisplayName,
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(8.dp))
+                        // First letter fallback
+                        val initial = domainDisplayName.firstOrNull()?.uppercaseChar()?.toString() ?: "•"
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(domainAccentColor.copy(alpha = 0.30f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = initial,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = domainAccentColor
                             )
-                        } else {
-                            // First letter fallback
-                            val initial = domainDisplayName.firstOrNull()?.uppercaseChar()?.toString() ?: "•"
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(domainAccentColor.copy(alpha = 0.30f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = initial,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = domainAccentColor
-                                )
-                            }
                         }
                     }
-                }
-
-                // 2. Bottom Information Area (Tightly fitted, matching List style typography)
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(134.dp)
-                        .padding(horizontal = 12.dp, vertical = 10.dp)
-                ) {
-                    // ❶ Domain Name (Softer contrast)
-                    Text(
-                        text = domainDisplayName.ifBlank { " " },
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        ),
-                        color = MaterialTheme.colorScheme.outline,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // ❷ Bookmark Title (titleSmall SemiBold)
-                    Text(
-                        text = bookmark.title.ifBlank { bookmark.url },
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = FontWeight.SemiBold
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        minLines = 3,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // ❸ Created Date (Relative Time)
-                    Text(
-                        text = relativeTime,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        ),
-                        color = MaterialTheme.colorScheme.outline,
-                        maxLines = 1
-                    )
                 }
             }
 
-            // Summary Peek Overlay (Revealed on Long Press)
-            AnimatedVisibility(
-                visible = isSummaryPeekVisible,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.matchParentSize()
+            // 2. Bottom Information Area (Tightly fitted, matching List style typography)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(116.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
-                        .combinedClickable(
-                            onClick = { isSummaryPeekVisible = false },
-                            onLongClick = { isSummaryPeekVisible = false }
-                        )
-                        .padding(10.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = stringResource(R.string.detail_section_summary),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            IconButton(
-                                onClick = { isSummaryPeekVisible = false },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
+                // ❶ Domain Name (Softer contrast)
+                Text(
+                    text = domainDisplayName.ifBlank { " " },
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    ),
+                    color = MaterialTheme.colorScheme.outline,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
 
-                        val summaryText = bookmark.description.ifBlank {
-                            stringResource(R.string.ai_review_no_summary)
-                        }
+                Spacer(modifier = Modifier.height(4.dp))
 
-                        Text(
-                            text = summaryText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            lineHeight = 16.sp
-                        )
-                    }
-                }
+                // ❷ Bookmark Title (titleSmall SemiBold)
+                Text(
+                    text = bookmark.title.ifBlank { bookmark.url },
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    minLines = 3,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // ❸ Created Date (Relative Time, snapped to bottom-left)
+                Text(
+                    text = relativeTime,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    ),
+                    color = MaterialTheme.colorScheme.outline,
+                    maxLines = 1
+                )
             }
         }
     }

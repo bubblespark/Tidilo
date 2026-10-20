@@ -76,13 +76,25 @@ object TimeFormatter {
                 context.getString(R.string.time_just_now)
             }
             is RelativeTimeResult.MinutesAgo -> {
-                context.getString(R.string.time_minutes_ago, result.minutes)
+                if (result.minutes == 1L) {
+                    context.getString(R.string.time_minute_ago)
+                } else {
+                    context.getString(R.string.time_minutes_ago, result.minutes)
+                }
             }
             is RelativeTimeResult.HoursAgo -> {
-                context.getString(R.string.time_hours_ago, result.hours)
+                if (result.hours == 1L) {
+                    context.getString(R.string.time_hour_ago)
+                } else {
+                    context.getString(R.string.time_hours_ago, result.hours)
+                }
             }
             is RelativeTimeResult.DaysAgo -> {
-                context.getString(R.string.time_days_ago, result.days)
+                if (result.days == 1L) {
+                    context.getString(R.string.time_day_ago)
+                } else {
+                    context.getString(R.string.time_days_ago, result.days)
+                }
             }
             is RelativeTimeResult.FormattedDate -> {
                 result.formatted

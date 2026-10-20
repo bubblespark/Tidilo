@@ -84,6 +84,9 @@
     <string name="library_empty_title">No bookmarks yet</string>
     <string name="library_empty_hint">Enqueued bookmarks will appear here after processing.</string>
     <string name="library_back_to_domains">Back to Domains</string>
+    <string name="library_view_mode_menu_desc">View style</string>
+    <string name="library_view_mode_list">List</string>
+    <string name="library_view_mode_grid">Grid</string>
     <string name="domain_card_item_count">%1$d items</string>
     <string name="bookmark_open_in_browser">Open in browser</string>
     <string name="bookmark_could_not_open_browser">Could not open browser</string>

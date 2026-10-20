@@ -94,6 +94,31 @@ class LibraryViewModel : ViewModel() {
         }
     }
 
+    private fun loadViewMode(): LibraryViewMode {
+        val saved = prefs.getString("library_view_mode", null)
+        return if (saved == LibraryViewMode.GRID.name) {
+            LibraryViewMode.GRID
+        } else {
+            LibraryViewMode.LIST
+        }
+    }
+
+    private fun saveViewMode(mode: LibraryViewMode) {
+        viewModelScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("library_view_mode", mode.name).apply()
+        }
+    }
+
+    private val _viewMode = MutableStateFlow(loadViewMode())
+    val viewMode: StateFlow<LibraryViewMode> = _viewMode.asStateFlow()
+
+    fun setViewMode(mode: LibraryViewMode) {
+        if (_viewMode.value != mode) {
+            _viewMode.value = mode
+            saveViewMode(mode)
+        }
+    }
+
     private val _filterMode = MutableStateFlow(loadFilterMode())
     val filterMode: StateFlow<LibraryFilterMode> = _filterMode.asStateFlow()
 

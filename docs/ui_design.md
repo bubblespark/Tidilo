@@ -409,3 +409,24 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - When 10 entities are already selected, unselected entity chips in the bottom library section are visually dimmed (`alpha = 0.38f` text and outline, `alpha = 0.25f` background) to communicate non-addable state.
   - Tapping an unselected chip while at maximum limit blocks addition and immediately displays a contextual inline warning banner (`detail_tag_entity_limit_inline`) above the chip toggle grid.
   - Selected chips remain fully active and removable; deleting any chip immediately clears the warning banner and restores full visual contrast to unselected chips.
+
+### 6.14 Library Bookmark List View Mode Dropdown Menu Specification (`LibraryScreen.kt`, `LibraryViewMode.kt`)
+- **Header Action Button & Material Symbols Icon**:
+  - Placed immediately to the left of the Settings button in `LibraryScreen.kt`'s frosted header row.
+  - Sized at `44.dp` matching the Settings `IconButton`.
+  - Displays `Dashboard2GearIcon` (Material Symbols Outlined `dashboard_2_gear`, 24dp), providing visual affordance for layout/dashboard customization.
+- **Dropdown Menu Positioning & Container Geometry**:
+  - Anchored directly to the button container using Material 3 `DropdownMenu`.
+  - Follows Tidilo menu design language with `shape = RoundedCornerShape(16.dp)`, `containerColor = MaterialTheme.colorScheme.surfaceContainerHigh`, and `tonalElevation = 6.dp`.
+  - Wrapped with `CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig)` to ensure accurate localization in dynamic popup windows.
+- **Item Order & Leading Checkmark Alignment**:
+  - Conforms to the `[Checkmark] [Icon] [Display Name]` sequence.
+  - Selected items render `Icons.Default.Check` (`18.dp`, `primary`), with label in `FontWeight.Bold` and `MaterialTheme.colorScheme.primary`.
+  - Unselected items render an empty `Spacer(modifier = Modifier.size(18.dp))`, icon tinted with `onSurfaceVariant` (`20.dp`), and label in `FontWeight.Normal` and `MaterialTheme.colorScheme.onSurface`.
+  - Maintains strict vertical column alignment across all menu entries without shifting text or icons.
+- **Menu Items (`LibraryViewMode`)**:
+  - `LIST`: "List" (`R.string.library_view_mode_list`), icon `ListSymbolIcon` (Material Symbols Outlined `list`).
+  - `GRID`: "Grid" (`R.string.library_view_mode_grid`), icon `GridViewSymbolIcon` (Material Symbols Outlined `grid_view`).
+- **State & Scope Boundary**:
+  - Selected view mode is tracked and persisted via `LibraryViewModel.viewMode` (saved in `tidilo_library_prefs`).
+  - Tapping an item updates selection state and dismisses the menu. The actual card rendering toggle (e.g. `LazyVerticalGrid`) is decoupled and scheduled for subsequent card implementation.

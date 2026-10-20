@@ -39,7 +39,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalConfiguration
+import me.bubblespark.tidilo.ui.components.Dashboard2GearIcon
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -97,6 +104,9 @@ fun LibraryScreen(
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val isBarsVisible = LocalBarsVisible.current
     val context = LocalContext.current
+    val localConfig = LocalConfiguration.current
+    val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
+    var isViewModeMenuExpanded by remember { mutableStateOf(false) }
     val iconVersion by DomainIconManager.iconUpdateVersion.collectAsStateWithLifecycle()
 
     val selectedDomainColor by produceState<Color?>(
@@ -438,6 +448,74 @@ fun LibraryScreen(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // View mode toggle menu button
+                        Box {
+                            IconButton(
+                                onClick = { isViewModeMenuExpanded = true },
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Dashboard2GearIcon,
+                                    contentDescription = stringResource(R.string.library_view_mode_menu_desc),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = isViewModeMenuExpanded,
+                                onDismissRequest = { isViewModeMenuExpanded = false },
+                                shape = RoundedCornerShape(16.dp),
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                tonalElevation = 6.dp
+                            ) {
+                                CompositionLocalProvider(
+                                    LocalContext provides context,
+                                    LocalConfiguration provides localConfig
+                                ) {
+                                    LibraryViewMode.entries.forEach { mode ->
+                                        val isSelected = mode == viewMode
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = stringResource(mode.labelRes),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            },
+                                            leadingIcon = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    if (isSelected) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Check,
+                                                            contentDescription = null,
+                                                            tint = MaterialTheme.colorScheme.primary,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    } else {
+                                                        Spacer(modifier = Modifier.size(18.dp))
+                                                    }
+                                                    Icon(
+                                                        imageVector = mode.icon,
+                                                        contentDescription = null,
+                                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                viewModel.setViewMode(mode)
+                                                isViewModeMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         // Settings button
                         IconButton(
                             onClick = onNavigateToSettings,

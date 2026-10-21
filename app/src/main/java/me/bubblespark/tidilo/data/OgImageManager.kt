@@ -465,6 +465,7 @@ object OgImageManager {
                     memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
                     memoryCache.put(fallbackCacheKey(domain), imageBitmap)
                 }
+                _cacheVersion.value++
                 true
             } catch (_: Exception) {
                 false

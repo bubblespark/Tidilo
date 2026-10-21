@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Android%2014%2B%20(API%2034%2B)-brightgreen?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/Kotlin-2.4.2-blue?style=flat-square" alt="Kotlin">
+  <img src="https://img.shields.io/badge/Kotlin-2.4.21-blue?style=flat-square" alt="Kotlin">
   <img src="https://img.shields.io/badge/Jetpack%20Compose-BOM%2026.09.00-purple?style=flat-square" alt="Compose">
   <img src="https://img.shields.io/badge/AI-Gemini%20Nano%20(AICore)-orange?style=flat-square" alt="Gemini Nano">
   <img src="https://img.shields.io/badge/Architecture-Clean%20%2F%20UDF%20%2F%20Room-teal?style=flat-square" alt="Architecture">
@@ -78,7 +78,7 @@ Tidilo adheres to modern Android architecture best practices with **Unidirection
 ## 📱 Hardware & OS Requirements
 
 - **Operating System**: Android 14 (API 34) or higher
-- **Target Hardware**: Google Pixel 8, 9, 10, 11 series, or any Android device with an activated **AICore** service supporting Gemini Nano. Please see [here](https://developers.google.com/ml-kit/genai) for a list of devices that support AICore.
+- **Target Hardware**: In addition to supporting AICore, you must also support the **Prompt API** for the ML Kit GenAI API. Please see [here](https://developers.google.com/ml-kit/genai?hl=ja#prompt-device) for a list of devices that support AICore.
 
 ---
 

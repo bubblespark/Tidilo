@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.collection.LruCache
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -17,16 +18,17 @@ import org.jsoup.Jsoup
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URI
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Domain-level icon caching and local storage management.
  *
- * - Fetches domain icons and caches them in local storage (filesDir/domain_icons/).
+ * - Fetches domain icons and caches them in disposable local storage (cacheDir/domain_icons/).
  * - Prevents redundant fetches if an icon is already cached locally.
  * - Filters out icons smaller than MIN_ICON_SIZE (96x96).
  * - Downsamples icons larger than MAX_ICON_SIZE (384x384).
  * - Selects the largest resolution candidate among available candidates.
+ * - Uses bounded memory cache (LruCache) to prevent OOM.
+ * - Supports clearing image cache without deleting bookmark data.
  */
 object DomainIconManager {
 
@@ -36,10 +38,25 @@ object DomainIconManager {
     private const val USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
-    private val memoryCache = ConcurrentHashMap<String, ImageBitmap>()
+    private const val MAX_MEMORY_CACHE_BYTES = 4 * 1024 * 1024 // 4MB limit
+    private val memoryCache = object : LruCache<String, ImageBitmap>(MAX_MEMORY_CACHE_BYTES) {
+        override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
+    }
 
     private val _iconUpdateVersion = MutableStateFlow(0L)
     val iconUpdateVersion: StateFlow<Long> = _iconUpdateVersion.asStateFlow()
+
+    private val cacheLock = Any()
+    private var cacheGeneration = 0L
+
+    fun getCurrentGeneration(): Long = synchronized(cacheLock) { cacheGeneration }
+
+    private fun nextVersion(): Long = synchronized(cacheLock) {
+        val current = _iconUpdateVersion.value
+        val next = maxOf(System.currentTimeMillis(), current + 1L)
+        _iconUpdateVersion.value = next
+        next
+    }
 
     /**
      * Extracts normalized domain name from a URL (lowercase, removes 'www.' and port).
@@ -55,9 +72,19 @@ object DomainIconManager {
         }
     }
 
-    private fun getIconFile(context: Context, domain: String): File {
-        val dir = File(context.filesDir, "domain_icons")
+    private fun getIconDir(context: Context): File {
+        val dir = File(context.cacheDir, "domain_icons")
         if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
+    private fun getIconFile(context: Context, domain: String): File {
+        val dir = getIconDir(context)
+        return File(dir, "$domain.png")
+    }
+
+    private fun getLegacyIconFile(context: Context, domain: String): File {
+        val dir = File(context.filesDir, "domain_icons")
         return File(dir, "$domain.png")
     }
 
@@ -66,7 +93,7 @@ object DomainIconManager {
      */
     fun hasIcon(context: Context, domain: String): Boolean {
         val file = getIconFile(context, domain)
-        return file.exists() && file.length() > 0
+        return (file.exists() && file.length() > 0) || getLegacyIconFile(context, domain).run { exists() && length() > 0 }
     }
 
     /**
@@ -74,7 +101,7 @@ object DomainIconManager {
      */
     fun getCachedIconBitmap(domain: String): ImageBitmap? {
         val normalized = domain.trim().lowercase()
-        return memoryCache[normalized]
+        return memoryCache.get(normalized)
     }
 
     /**
@@ -83,17 +110,37 @@ object DomainIconManager {
      */
     fun loadIconFromDisk(context: Context, domain: String): ImageBitmap? {
         val normalized = domain.trim().lowercase()
-        memoryCache[normalized]?.let { return it }
-        val file = getIconFile(context, normalized)
-        if (!file.exists() || file.length() == 0L) return null
+        return synchronized(cacheLock) load@{
+            memoryCache.get(normalized)?.let { return@load it }
+            val file = getIconFile(context, normalized)
+            val legacy = getLegacyIconFile(context, normalized)
+            val targetFile = if (!file.exists() || file.length() == 0L) {
+                if (legacy.exists() && legacy.length() > 0L) {
+                    val copied = runCatching {
+                        legacy.copyTo(file, overwrite = true)
+                        legacy.delete()
+                        true
+                    }.getOrDefault(false)
+                    if (copied && file.exists() && file.length() > 0L) {
+                        file
+                    } else {
+                        legacy
+                    }
+                } else {
+                    return@load null
+                }
+            } else {
+                file
+            }
 
-        return try {
-            val rawBitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
-            val imageBitmap = rawBitmap.asImageBitmap()
-            memoryCache[normalized] = imageBitmap
-            imageBitmap
-        } catch (_: Exception) {
-            null
+            try {
+                val rawBitmap = BitmapFactory.decodeFile(targetFile.absolutePath) ?: return@load null
+                val imageBitmap = rawBitmap.asImageBitmap()
+                memoryCache.put(normalized, imageBitmap)
+                imageBitmap
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 
@@ -110,13 +157,13 @@ object DomainIconManager {
     fun preloadIcons(context: Context, domains: Collection<String?>) {
         val unique = domains.filterNotNull().map { it.trim().lowercase() }.distinct()
         for (domain in unique) {
-            if (!memoryCache.containsKey(domain) && hasIcon(context, domain)) {
+            if (memoryCache.get(domain) == null && hasIcon(context, domain)) {
                 loadIconFromDisk(context, domain)
             }
         }
     }
 
-    private val dominantColorCache = ConcurrentHashMap<String, Color>()
+    private val dominantColorCache = LruCache<String, Color>(256)
 
     /**
      * Extracts and caches the dominant brand color of a domain icon.
@@ -124,7 +171,7 @@ object DomainIconManager {
      */
     fun getDominantColor(context: Context, domain: String): Color {
         val normalized = domain.trim().lowercase()
-        dominantColorCache[normalized]?.let { return it }
+        dominantColorCache.get(normalized)?.let { return it }
 
         val imageBitmap = getCachedIconBitmap(normalized) ?: loadIconFromDisk(context, normalized)
         val color = if (imageBitmap != null) {
@@ -133,7 +180,7 @@ object DomainIconManager {
             generateDomainAccentColor(normalized)
         }
 
-        dominantColorCache[normalized] = color
+        dominantColorCache.put(normalized, color)
         return color
     }
 
@@ -142,7 +189,7 @@ object DomainIconManager {
      */
     fun getCachedDominantColor(domain: String): Color? {
         val normalized = domain.trim().lowercase()
-        return dominantColorCache[normalized]
+        return dominantColorCache.get(normalized)
     }
 
     /**
@@ -245,13 +292,39 @@ object DomainIconManager {
      */
     fun removeIcon(context: Context, domain: String) {
         val normalized = domain.trim().lowercase()
-        memoryCache.remove(normalized)
-        dominantColorCache.remove(normalized)
+        synchronized(cacheLock) {
+            memoryCache.remove(normalized)
+            dominantColorCache.remove(normalized)
+        }
         val file = getIconFile(context, normalized)
         if (file.exists()) {
             file.delete()
         }
-        _iconUpdateVersion.value = System.currentTimeMillis()
+        val legacy = getLegacyIconFile(context, normalized)
+        if (legacy.exists()) {
+            legacy.delete()
+        }
+        nextVersion()
+    }
+
+    /**
+     * Clears all domain icon caches (in-memory bitmaps, dominant colors, and cacheDir/filesDir storage).
+     */
+    suspend fun clearCache(context: Context) = withContext(Dispatchers.IO) {
+        synchronized(cacheLock) {
+            cacheGeneration++
+            memoryCache.evictAll()
+            dominantColorCache.evictAll()
+            val dir = File(context.cacheDir, "domain_icons")
+            if (dir.exists()) {
+                dir.deleteRecursively()
+            }
+            val legacy = File(context.filesDir, "domain_icons")
+            if (legacy.exists()) {
+                legacy.deleteRecursively()
+            }
+            nextVersion()
+        }
     }
 
     /**
@@ -398,7 +471,9 @@ object DomainIconManager {
         appleTouchIconUrl: String? = null,
         faviconUrl: String? = null,
         forceRefresh: Boolean = false
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): Boolean {
+        val requestGeneration = synchronized(cacheLock) { cacheGeneration }
+        return withContext(Dispatchers.IO) {
         val domain = extractDomain(url) ?: return@withContext false
 
         if (!forceRefresh && hasIcon(context, domain)) {
@@ -458,22 +533,29 @@ object DomainIconManager {
         }
 
         if (bestBitmap != null) {
-            // Downsample icons larger than 384x384 before saving
-            val scaledBitmap = downsampleIfNeeded(bestBitmap, MAX_ICON_SIZE)
-            val processedBitmap = makeBackgroundTransparent(scaledBitmap)
+            val saved = synchronized(cacheLock) {
+                if (requestGeneration != cacheGeneration) {
+                    false
+                } else {
+                    val scaledBitmap = downsampleIfNeeded(bestBitmap, MAX_ICON_SIZE)
+                    val processedBitmap = makeBackgroundTransparent(scaledBitmap)
 
-            val file = getIconFile(context, domain)
-            FileOutputStream(file).use { out ->
-                processedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    val file = getIconFile(context, domain)
+                    FileOutputStream(file).use { out ->
+                        processedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+
+                    memoryCache.put(domain, processedBitmap.asImageBitmap())
+                    dominantColorCache.put(domain, extractDominantColor(processedBitmap, domain))
+                    nextVersion()
+                    true
+                }
             }
-
-            memoryCache[domain] = processedBitmap.asImageBitmap()
-            dominantColorCache[domain] = extractDominantColor(processedBitmap, domain)
-            _iconUpdateVersion.value = System.currentTimeMillis()
-            return@withContext true
+            return@withContext saved
         }
 
         false
+        }
     }
 
     /**

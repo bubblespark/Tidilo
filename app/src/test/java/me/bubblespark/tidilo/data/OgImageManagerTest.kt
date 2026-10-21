@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.data
 
 import android.graphics.BitmapFactory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -28,22 +29,6 @@ class OgImageManagerTest {
     }
 
     @Test
-    fun testExtractFilename_standardPaths() {
-        assertEquals("hero_image.png", OgImageManager.extractFilename("https://example.com/assets/hero_image.png"))
-        assertEquals("og-banner.jpg", OgImageManager.extractFilename("https://example.com/images/og-banner.jpg?w=1200&h=630#anchor"))
-        assertEquals("thumbnail.webp", OgImageManager.extractFilename("https://cdn.site.org/v2/thumbnail.webp?token=xyz"))
-    }
-
-    @Test
-    fun testExtractFilename_fallbackForMissingExtensionOrTrailingSlash() {
-        val filename1 = OgImageManager.extractFilename("https://example.com/images/")
-        assertTrue("Fallback should generate .webp extension", filename1.endsWith(".webp"))
-
-        val filename2 = OgImageManager.extractFilename("https://example.com/api/og?title=test")
-        assertTrue("Fallback should generate .webp extension", filename2.endsWith(".webp"))
-    }
-
-    @Test
     fun testResolveImageUrl_absoluteAndRelative() {
         // Absolute URL
         val absolute = "https://cdn.example.com/images/banner.png"
@@ -56,6 +41,41 @@ class OgImageManagerTest {
         // Relative path without leading slash
         val relativeSub = "og.jpg"
         assertEquals("https://example.com/news/og.jpg", OgImageManager.resolveImageUrl("https://example.com/news/", relativeSub))
+    }
+
+    @Test
+    fun testComputeImageKey_urlDistinctIdentity() {
+        val urlA = "https://example.com/article-a/og.png"
+        val urlB = "https://example.com/article-b/og.png"
+
+        val keyA = OgImageManager.computeImageKey(urlA)
+        val keyB = OgImageManager.computeImageKey(urlB)
+
+        assertTrue("Key should end with .webp", keyA.endsWith(".webp"))
+        assertTrue("Key should end with .webp", keyB.endsWith(".webp"))
+        assertNotEquals("Different paths with same basename must have distinct keys", keyA, keyB)
+    }
+
+    @Test
+    fun testComputeImageKey_queryAndFragmentHandling() {
+        val baseWithQuery1 = "https://example.com/og.png?width=1200&quality=80"
+        val baseWithQuery2 = "https://example.com/og.png?width=600&quality=80"
+        val baseWithFragment1 = "https://example.com/og.png#section1"
+        val baseWithFragment2 = "https://example.com/og.png#section2"
+        val baseWithoutFragment = "https://example.com/og.png"
+
+        val keyQuery1 = OgImageManager.computeImageKey(baseWithQuery1)
+        val keyQuery2 = OgImageManager.computeImageKey(baseWithQuery2)
+        val keyFrag1 = OgImageManager.computeImageKey(baseWithFragment1)
+        val keyFrag2 = OgImageManager.computeImageKey(baseWithFragment2)
+        val keyBase = OgImageManager.computeImageKey(baseWithoutFragment)
+
+        // Query parameters identify different resources -> must differ
+        assertNotEquals("Different queries must produce distinct keys", keyQuery1, keyQuery2)
+
+        // Fragments do not identify different resources -> must be identical
+        assertEquals("Fragments must be stripped and produce identical key", keyFrag1, keyFrag2)
+        assertEquals("Fragment-bearing URL must match base URL key", keyBase, keyFrag1)
     }
 
     @Test
@@ -90,8 +110,8 @@ class OgImageManagerTest {
 
     @Test
     fun testCacheKeyFormats() {
-        assertEquals("zenn.dev/hero.jpg", OgImageManager.cacheKey("zenn.dev", "hero.jpg"))
-        assertEquals("github.com/og.png", OgImageManager.cacheKey("github.com", "og.png"))
+        val key = OgImageManager.computeImageKey("https://zenn.dev/images/hero.jpg")
+        assertEquals("zenn.dev/$key", OgImageManager.cacheKey("zenn.dev", key))
         assertEquals("zenn.dev/__latest__", OgImageManager.fallbackCacheKey("zenn.dev"))
     }
 
@@ -105,7 +125,8 @@ class OgImageManagerTest {
             tag = Tag.create("Tech", "Android"),
             ogImageUrl = "https://cdn.zenn.dev/images/og1.png"
         )
-        assertEquals("og1.png", bookmark1.ogImageFilename)
+        val expectedKey1 = OgImageManager.computeImageKey("https://cdn.zenn.dev/images/og1.png")
+        assertEquals(expectedKey1, bookmark1.ogImageFilename)
 
         val bookmarkRelative = BookmarkItem(
             id = "2",
@@ -115,7 +136,8 @@ class OgImageManagerTest {
             tag = Tag.create("Tech", "Web"),
             ogImageUrl = "/assets/banner.jpg"
         )
-        assertEquals("banner.jpg", bookmarkRelative.ogImageFilename)
+        val expectedRelativeKey = OgImageManager.computeImageKey("https://example.com/assets/banner.jpg")
+        assertEquals(expectedRelativeKey, bookmarkRelative.ogImageFilename)
 
         val bookmarkNoOg = BookmarkItem(
             id = "3",
@@ -140,13 +162,14 @@ class OgImageManagerTest {
 
     @Test
     fun testDistinctBookmarksSameDomainHaveDistinctFilenamesAndCacheKeys() {
+        // Both bookmarks use identical basename 'cover.png' but different paths
         val b1 = BookmarkItem(
             id = "b1",
             title = "Title 1",
             url = "https://zenn.dev/user1/articles/first",
             description = "",
             tag = Tag.create("Tech", "Kotlin"),
-            ogImageUrl = "https://zenn.dev/images/cover_first.webp"
+            ogImageUrl = "https://zenn.dev/articles/1/cover.png"
         )
         val b2 = BookmarkItem(
             id = "b2",
@@ -154,17 +177,58 @@ class OgImageManagerTest {
             url = "https://zenn.dev/user2/articles/second",
             description = "",
             tag = Tag.create("Tech", "Kotlin"),
-            ogImageUrl = "https://zenn.dev/images/cover_second.webp"
+            ogImageUrl = "https://zenn.dev/articles/2/cover.png"
         )
 
-        assertEquals("cover_first.webp", b1.ogImageFilename)
-        assertEquals("cover_second.webp", b2.ogImageFilename)
+        assertNotNull(b1.ogImageFilename)
+        assertNotNull(b2.ogImageFilename)
+        assertNotEquals("Identical basename with different paths must have distinct image identities",
+            b1.ogImageFilename, b2.ogImageFilename)
 
         val key1 = OgImageManager.cacheKey("zenn.dev", b1.ogImageFilename!!)
         val key2 = OgImageManager.cacheKey("zenn.dev", b2.ogImageFilename!!)
 
-        assertEquals("zenn.dev/cover_first.webp", key1)
-        assertEquals("zenn.dev/cover_second.webp", key2)
-        assertTrue("Cache keys for different bookmarks under same domain must differ", key1 != key2)
+        assertNotEquals("Cache keys for different bookmarks under same domain must differ", key1, key2)
+        assertEquals("zenn.dev/${b1.ogImageFilename}", key1)
+        assertEquals("zenn.dev/${b2.ogImageFilename}", key2)
+    }
+
+    @Test
+    fun testGenerationToken() = kotlinx.coroutines.runBlocking {
+        val initialGen = OgImageManager.getCurrentGeneration()
+        val initialVersion = OgImageManager.cacheVersion.value
+        assertTrue("Generation should be non-negative", initialGen >= 0L)
+
+        val tempDir = java.nio.file.Files.createTempDirectory("og_image_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+            }
+            OgImageManager.clearImageCache(fakeContext)
+            val afterGen = OgImageManager.getCurrentGeneration()
+            assertTrue("Clearing cache should increment generation", afterGen > initialGen)
+            assertTrue("Clearing cache should increment cache version", OgImageManager.cacheVersion.value > initialVersion)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun testCacheVersionMonotonicityAcrossClears() = kotlinx.coroutines.runBlocking {
+        val tempDir = java.nio.file.Files.createTempDirectory("og_image_test_monotonic").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+            }
+            val v0 = OgImageManager.cacheVersion.value
+            OgImageManager.clearImageCache(fakeContext)
+            val v1 = OgImageManager.cacheVersion.value
+            assertTrue(v1 > v0)
+            OgImageManager.clearImageCache(fakeContext)
+            val v2 = OgImageManager.cacheVersion.value
+            assertTrue(v2 > v1)
+        } finally {
+            tempDir.deleteRecursively()
+        }
     }
 }

@@ -1,7 +1,9 @@
 package me.bubblespark.tidilo.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DomainIconManagerTest {
@@ -32,5 +34,38 @@ class DomainIconManagerTest {
         assertEquals(96, DomainIconManager.MIN_ICON_SIZE)
         assertEquals(384, DomainIconManager.MAX_ICON_SIZE)
         assertEquals(10_000L, DomainIconManager.DOMAIN_TIMEOUT_MS)
+    }
+
+    @Test
+    fun generateDomainAccentColor_returnsConsistentColorForDomain() {
+        val color1 = DomainIconManager.generateDomainAccentColor("github.com")
+        val color2 = DomainIconManager.generateDomainAccentColor("github.com")
+        assertEquals(color1, color2)
+
+        val zennColor = DomainIconManager.generateDomainAccentColor("zenn.dev")
+        assertNotNull(zennColor)
+    }
+
+    @Test
+    fun testClearCacheIncrementsVersion() = kotlinx.coroutines.runBlocking {
+        val tempDir = java.nio.file.Files.createTempDirectory("domain_icon_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
+            }
+            val initialVersion = DomainIconManager.iconUpdateVersion.value
+            val initialGen = DomainIconManager.getCurrentGeneration()
+            DomainIconManager.clearCache(fakeContext)
+            assertTrue(DomainIconManager.iconUpdateVersion.value > initialVersion)
+            assertTrue(DomainIconManager.getCurrentGeneration() > initialGen)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun iconUpdateVersion_initialValueIsNonNegative() {
+        assertTrue(DomainIconManager.iconUpdateVersion.value >= 0L)
     }
 }

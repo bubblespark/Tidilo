@@ -65,7 +65,7 @@ Instead of requiring manual organization, tedious tagging, or cloud-based catego
 
 Tidilo adheres to modern Android architecture best practices with **Unidirectional Data Flow (UDF)**:
 
-- **Language & Runtime**: Kotlin 2.4.2 on Java 21
+- **Language & Runtime**: Kotlin 2.4.21 on Java 21
 - **UI Framework**: Jetpack Compose BOM 2026.09.00 with Material 3 Expressive components
 - **Navigation**: Navigation Compose 2.10.2 with type-safe routing
 - **Concurrency**: Kotlin Coroutines & Reactive `StateFlow`
@@ -78,7 +78,7 @@ Tidilo adheres to modern Android architecture best practices with **Unidirection
 ## 📱 Hardware & OS Requirements
 
 - **Operating System**: Android 14 (API 34) or higher
-- **Target Hardware**: In addition to supporting AICore, you must also support the **Prompt API** for the ML Kit GenAI API. Please see [here](https://developers.google.com/ml-kit/genai?hl=ja#prompt-device) for a list of devices that support AICore.
+- **Target Hardware**: In addition to supporting AICore, you must also support the **Prompt API** for the ML Kit GenAI API. [List of devices compatible with AICore and PromptAPI](https://developers.google.com/ml-kit/genai?hl=ja#prompt-device)
 
 ---
 

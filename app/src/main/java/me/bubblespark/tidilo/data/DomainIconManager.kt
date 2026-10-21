@@ -193,7 +193,42 @@ object DomainIconManager {
     }
 
     /**
-     * Samples vibrant, saturated pixels from an icon bitmap to determine its primary brand color.
+     * Adaptive neutral colors for monochrome icons calibrated for dark-mode visibility.
+     */
+    val PLATINUM_WHITE = Color(0xFFE2E8F0) // Tailored for light monochrome icons (Tailwind Slate-200)
+    val SLATE_GRAY = Color(0xFF94A3B8)     // Tailored for dark monochrome icons (Tailwind Slate-400)
+
+    /**
+     * Pure-Kotlin RGB to HSV converter for portable, testable color analysis without Android framework stubs.
+     */
+    fun colorToHsv(colorInt: Int, hsv: FloatArray) {
+        val r = (colorInt ushr 16) and 0xFF
+        val g = (colorInt ushr 8) and 0xFF
+        val b = colorInt and 0xFF
+        val rf = r / 255f
+        val gf = g / 255f
+        val bf = b / 255f
+        val max = maxOf(rf, gf, bf)
+        val min = minOf(rf, gf, bf)
+        val delta = max - min
+
+        val v = max
+        val s = if (max == 0f) 0f else delta / max
+        val h = when {
+            delta == 0f -> 0f
+            max == rf -> ((gf - bf) / delta) % 6f * 60f
+            max == gf -> ((bf - rf) / delta + 2f) * 60f
+            else -> ((rf - gf) / delta + 4f) * 60f
+        }.let { if (it < 0f) it + 360f else it }
+
+        hsv[0] = h
+        hsv[1] = s
+        hsv[2] = v
+    }
+
+    /**
+     * Samples vibrant, saturated pixels from an icon bitmap to determine its primary brand color,
+     * or assigns an adaptive neutral (platinum white / slate gray) for monochrome icons.
      */
     fun extractDominantColor(bitmap: Bitmap, domain: String): Color {
         return try {
@@ -203,36 +238,69 @@ object DomainIconManager {
             scaled.getPixels(pixels, 0, sampleSize, 0, 0, sampleSize, sampleSize)
             if (scaled != bitmap) scaled.recycle()
 
-            var bestColor = 0
-            var bestScore = -1f
-            val hsv = FloatArray(3)
-
-            for (pixel in pixels) {
-                val alpha = (pixel ushr 24) and 0xFF
-                if (alpha < 120) continue
-
-                android.graphics.Color.colorToHSV(pixel, hsv)
-                val saturation = hsv[1]
-                val value = hsv[2]
-
-                // Avoid washed-out white or dark near-black
-                if (value < 0.15f || (saturation < 0.1f && value > 0.9f)) continue
-
-                // Score by saturation and medium-high luminance
-                val score = saturation * (1f - kotlin.math.abs(value - 0.7f))
-                if (score > bestScore) {
-                    bestScore = score
-                    bestColor = pixel
-                }
-            }
-
-            if (bestScore > 0.15f) {
-                ensureDarkThemeLegibility(Color(bestColor))
-            } else {
-                generateDomainAccentColor(domain)
-            }
+            extractDominantColorFromPixels(pixels, domain)
         } catch (_: Exception) {
             generateDomainAccentColor(domain)
+        }
+    }
+
+    /**
+     * Analyzes pixel array to extract a vibrant brand color or an adaptive monochrome neutral.
+     */
+    fun extractDominantColorFromPixels(pixels: IntArray, domain: String): Color {
+        var bestColor = 0
+        var bestScore = -1f
+        val hsv = FloatArray(3)
+
+        var visiblePixelCount = 0
+        var totalVisibleBrightness = 0f
+        var chromaticCount = 0
+
+        for (pixel in pixels) {
+            val alpha = (pixel ushr 24) and 0xFF
+            if (alpha < 120) continue
+
+            visiblePixelCount++
+            colorToHsv(pixel, hsv)
+            val saturation = hsv[1]
+            val value = hsv[2]
+            totalVisibleBrightness += value
+
+            if (saturation > 0.15f) {
+                chromaticCount++
+            }
+
+            // Avoid washed-out white or dark near-black for chromatic brand selection
+            if (value < 0.15f || (saturation < 0.1f && value > 0.9f)) continue
+
+            // Score by saturation and medium-high luminance
+            val score = saturation * (1f - kotlin.math.abs(value - 0.7f))
+            if (score > bestScore) {
+                bestScore = score
+                bestColor = pixel
+            }
+        }
+
+        if (visiblePixelCount == 0) {
+            // Completely transparent image; fallback to hash-based accent
+            return generateDomainAccentColor(domain)
+        }
+
+        val chromaticRatio = chromaticCount.toFloat() / visiblePixelCount.toFloat()
+        return if (bestScore > 0.15f && chromaticRatio > 0.03f) {
+            // Vibrant chromatic brand icon (e.g. YouTube, Spotify)
+            val r = (bestColor ushr 16) and 0xFF
+            val g = (bestColor ushr 8) and 0xFF
+            val b = bestColor and 0xFF
+            ensureDarkThemeLegibility(Color(r, g, b))
+        } else {
+            // Monochrome icon (e.g. GitHub, X, Notion)
+            val averageBrightness = totalVisibleBrightness / visiblePixelCount.toFloat()
+            if (averageBrightness >= 0.5f) {
+                PLATINUM_WHITE
+            } else {
+                SLATE_GRAY
+            }
         }
     }
 
@@ -242,15 +310,11 @@ object DomainIconManager {
      */
     fun ensureDarkThemeLegibility(color: Color): Color {
         val hsv = FloatArray(3)
-        android.graphics.Color.colorToHSV(
-            android.graphics.Color.argb(
-                (color.alpha * 255).toInt(),
-                (color.red * 255).toInt(),
-                (color.green * 255).toInt(),
-                (color.blue * 255).toInt()
-            ),
-            hsv
-        )
+        val argb = ((color.alpha * 255).toInt() shl 24) or
+                   ((color.red * 255).toInt() shl 16) or
+                   ((color.green * 255).toInt() shl 8) or
+                   (color.blue * 255).toInt()
+        colorToHsv(argb, hsv)
         val hue = hsv[0]
         var saturation = hsv[1]
         var value = hsv[2]

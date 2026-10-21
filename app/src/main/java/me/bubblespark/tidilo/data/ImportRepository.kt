@@ -440,7 +440,8 @@ class ImportRepository internal constructor(
                         bodySnippet = target.bodySnippet.takeIf { it.isNotBlank() },
                         description = target.description.takeIf { it.isNotBlank() },
                         siteName = target.siteName.takeIf { it.isNotBlank() },
-                        isNsfw = target.isNsfw
+                        isNsfw = target.isNsfw,
+                        ogImageUrl = candidateOgImageUrl
                     )
 
                     if (result.isSuccess) {

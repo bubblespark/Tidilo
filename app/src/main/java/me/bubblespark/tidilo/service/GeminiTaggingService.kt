@@ -49,7 +49,8 @@ object GeminiTaggingService {
         bodySnippet: String? = null,
         description: String? = null,
         siteName: String? = null,
-        isNsfw: Boolean = false
+        isNsfw: Boolean = false,
+        ogImageUrl: String? = null
     ): Result<BookmarkItem> = withContext(Dispatchers.IO) {
         runCatching {
             val hasPreparsedData = !bodySnippet.isNullOrBlank()
@@ -59,6 +60,7 @@ object GeminiTaggingService {
             val prompt: String
             val resolvedIsNsfw: Boolean
             var parsedWebPage: ParsedWebPage? = null
+            val effectiveOgImageUrl: String?
 
             if (hasPreparsedData) {
                 // Fast path: Bypass network fetch, DOM parsing, and icon downloads.
@@ -70,6 +72,7 @@ object GeminiTaggingService {
                 val effectiveDescription = description.orEmpty()
                 val effectiveSnippet = bodySnippet.orEmpty()
                 resolvedIsNsfw = isNsfw
+                effectiveOgImageUrl = ogImageUrl?.trim()?.takeIf { it.isNotBlank() }
 
                 prompt = buildPromptWithSnippets(
                     url = realUrl,
@@ -115,6 +118,9 @@ object GeminiTaggingService {
                         faviconUrl = parsed.faviconUrl
                     )
                 }
+                effectiveOgImageUrl = ogImageUrl?.trim()?.takeIf { it.isNotBlank() }
+                    ?: parsed.ogpTags["og:image"]?.trim()?.takeIf { it.isNotBlank() }
+                    ?: parsed.twitterTags["twitter:image"]?.trim()?.takeIf { it.isNotBlank() }
             }
 
             // Run inference with Gemini Nano
@@ -138,7 +144,8 @@ object GeminiTaggingService {
                     subcategory = result.subcategory,
                     entities = result.entities
                 ),
-                isNsfw = resolvedIsNsfw
+                isNsfw = resolvedIsNsfw,
+                ogImageUrl = effectiveOgImageUrl
             )
 
             // Save to Library (BookmarkRepository)

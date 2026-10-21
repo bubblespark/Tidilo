@@ -30,6 +30,7 @@ data class TrashedBookmarkEntity(
     val note: String,
     val isNsfw: Boolean,
     val isAiSkipped: Boolean = false,
+    val ogImageUrl: String? = null,
     val trashedAt: Long
 ) {
     fun toTrashedBookmarkItem(): TrashedBookmarkItem {
@@ -51,7 +52,8 @@ data class TrashedBookmarkEntity(
             updatedAt = updatedAt,
             note = note,
             isNsfw = isNsfw,
-            isAiSkipped = isAiSkipped
+            isAiSkipped = isAiSkipped,
+            ogImageUrl = ogImageUrl
         )
         return TrashedBookmarkItem(
             bookmark = bookmark,
@@ -75,6 +77,7 @@ data class TrashedBookmarkEntity(
                 note = b.note,
                 isNsfw = b.isNsfw,
                 isAiSkipped = b.isAiSkipped,
+                ogImageUrl = b.ogImageUrl,
                 trashedAt = item.trashedAt
             )
         }

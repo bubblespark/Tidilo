@@ -585,7 +585,8 @@ class ImportRepository internal constructor(
             description = target.description,
             tag = Tag.createEmpty(),
             isNsfw = target.isNsfw,
-            isAiSkipped = true
+            isAiSkipped = true,
+            ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
         )
         BookmarkRepository.getInstance().addBookmark(fallbackBookmark)
     }

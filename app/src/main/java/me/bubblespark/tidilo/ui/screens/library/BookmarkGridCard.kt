@@ -77,6 +77,8 @@ fun BookmarkGridCard(
         key1 = domain,
         key2 = ogFilename
     ) {
+        // Reset state immediately on key change to prevent displaying the previous card's image
+        value = domain?.let { OgImageManager.getCachedOgImageBitmap(it, ogFilename) }
         if (domain != null) {
             value = OgImageManager.loadOgImageFromDb(context, domain, ogFilename)
         }

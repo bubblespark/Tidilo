@@ -75,7 +75,8 @@ object OgImageManager {
         }
 
         val dao = AppDatabase.getInstance(context).ogImageDao()
-        val entity = if (!filename.isNullOrBlank()) {
+        val isSpecificRequest = !filename.isNullOrBlank()
+        val entity = if (isSpecificRequest) {
             dao.getOgImage(domain, filename) ?: dao.getLatestOgImageForDomain(domain)
         } else {
             dao.getLatestOgImageForDomain(domain)
@@ -86,7 +87,8 @@ object OgImageManager {
             val imageBitmap = bitmap?.asImageBitmap()
             if (imageBitmap != null) {
                 memoryCache.put(cacheKey(domain, entity.filename), imageBitmap)
-                if (filename.isNullOrBlank() || entity.filename == filename) {
+                // Only populate the domain latest fallback cache when specifically querying for latest (filename is null/blank)
+                if (!isSpecificRequest) {
                     memoryCache.put(fallbackCacheKey(domain), imageBitmap)
                 }
             }

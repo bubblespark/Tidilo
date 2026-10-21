@@ -71,7 +71,7 @@ flowchart TD
 | Specification | Target / Requirement | Rationale |
 | :--- | :--- | :--- |
 | **Minimum SDK** | `minSdk 34` (Android 14) | Required for hardware-accelerated AICore and Gemini Nano system service availability. |
-| **Compile & Target SDK** | `compileSdk 36`, `targetSdk 36` (Android 16 preview / Android 15+) | Full support for modern edge-to-edge system insets and Predictive Back gestures. |
+| **Compile & Target SDK** | `compileSdk 37` (Android 17), `targetSdk 36` (Android 16) | Full support for modern edge-to-edge system insets and Predictive Back gestures. |
 | **JVM Target** | Java 21 | Modern language features, pattern matching, optimized runtime compilation. |
-| **Target Hardware** | Google Pixel 8 / 9 / 10 / 11 series & AICore-enabled hardware | Hardware NPU capability for real-time on-device LLM inference. |
+| **Target Hardware** | Devices that support the **Prompt API** of the ML Kit GenAI API. | Hardware NPU capability for real-time on-device LLM inference. |
 | **Form Factor** | Modern Android smartphones & foldable devices | Edge-to-edge layout, responsive container width (75% floating bar), dynamic system bars. |

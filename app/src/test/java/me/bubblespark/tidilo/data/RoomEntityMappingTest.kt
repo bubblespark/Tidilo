@@ -49,7 +49,8 @@ class RoomEntityMappingTest {
             createdAt = now,
             updatedAt = now + 5000L,
             note = "Important note regarding architecture.",
-            isNsfw = true
+            isNsfw = true,
+            ogImageUrl = "https://example.com/images/article_og.png"
         )
 
         val entity = BookmarkEntity.fromBookmarkItem(original)
@@ -64,6 +65,7 @@ class RoomEntityMappingTest {
         assertEquals(now + 5000L, entity.updatedAt)
         assertEquals("Important note regarding architecture.", entity.note)
         assertTrue(entity.isNsfw)
+        assertEquals("https://example.com/images/article_og.png", entity.ogImageUrl)
 
         val restored = entity.toBookmarkItem()
         assertEquals(original.id, restored.id)
@@ -77,6 +79,8 @@ class RoomEntityMappingTest {
         assertEquals(original.updatedAt, restored.updatedAt)
         assertEquals(original.note, restored.note)
         assertEquals(original.isNsfw, restored.isNsfw)
+        assertEquals(original.ogImageUrl, restored.ogImageUrl)
+        assertEquals("article_og.png", restored.ogImageFilename)
     }
 
     @Test
@@ -91,7 +95,8 @@ class RoomEntityMappingTest {
             createdAt = now,
             updatedAt = now,
             note = "",
-            isNsfw = false
+            isNsfw = false,
+            ogImageUrl = "https://example.com/images/trash_og.png"
         )
         val trashedItem = TrashedBookmarkItem(
             bookmark = bookmark,
@@ -109,6 +114,7 @@ class RoomEntityMappingTest {
         assertEquals(trashedItem.bookmark.title, restored.bookmark.title)
         assertEquals(trashedItem.bookmark.url, restored.bookmark.url)
         assertEquals(trashedItem.trashedAt, restored.trashedAt)
+        assertEquals("https://example.com/images/trash_og.png", restored.bookmark.ogImageUrl)
     }
 
     @Test

@@ -33,7 +33,8 @@ data class BookmarkEntity(
     val updatedAt: Long,
     val note: String = "",
     val isNsfw: Boolean = false,
-    val isAiSkipped: Boolean = false
+    val isAiSkipped: Boolean = false,
+    val ogImageUrl: String? = null
 ) {
     fun toBookmarkItem(): BookmarkItem {
         return BookmarkItem(
@@ -54,7 +55,8 @@ data class BookmarkEntity(
             updatedAt = updatedAt,
             note = note,
             isNsfw = isNsfw,
-            isAiSkipped = isAiSkipped
+            isAiSkipped = isAiSkipped,
+            ogImageUrl = ogImageUrl
         )
     }
 
@@ -72,7 +74,8 @@ data class BookmarkEntity(
                 updatedAt = item.updatedAt,
                 note = item.note,
                 isNsfw = item.isNsfw,
-                isAiSkipped = item.isAiSkipped
+                isAiSkipped = item.isAiSkipped,
+                ogImageUrl = item.ogImageUrl
             )
         }
     }

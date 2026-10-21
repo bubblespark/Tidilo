@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ImportTaskEntity::class,
         OgImageEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -45,6 +45,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `bookmarks` ADD COLUMN `ogImageUrl` TEXT")
+                db.execSQL("ALTER TABLE `trashed_bookmarks` ADD COLUMN `ogImageUrl` TEXT")
+            }
+        }
+
         private const val DATABASE_NAME = "tidilo_database.db"
 
         @Volatile
@@ -57,7 +64,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_3_4)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigration(true)
                     .build()
                     .also { INSTANCE = it }

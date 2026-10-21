@@ -34,22 +34,73 @@ object OgImageManager {
         override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
     }
 
-    fun getCachedOgImageBitmap(domain: String): ImageBitmap? = memoryCache.get(domain)
+    /**
+     * Constructs a composite memory cache key for a domain and specific image filename.
+     */
+    fun cacheKey(domain: String, filename: String): String = "$domain/$filename"
 
-    suspend fun loadOgImageFromDb(context: Context, domain: String): ImageBitmap? = withContext(Dispatchers.IO) {
-        memoryCache.get(domain)?.let { return@withContext it }
+    /**
+     * Constructs a fallback memory cache key for a domain's latest image.
+     */
+    fun fallbackCacheKey(domain: String): String = "$domain/__latest__"
+
+    /**
+     * Retrieves a cached ImageBitmap from in-memory LruCache.
+     * Looks up by (domain, filename) if filename is provided; otherwise checks domain fallback key.
+     */
+    fun getCachedOgImageBitmap(domain: String, filename: String? = null): ImageBitmap? {
+        if (!filename.isNullOrBlank()) {
+            memoryCache.get(cacheKey(domain, filename))?.let { return it }
+        }
+        return memoryCache.get(fallbackCacheKey(domain))
+    }
+
+    /**
+     * Loads a cached OG image from the database on Dispatchers.IO.
+     *
+     * 1. If filename is provided, looks up specific image (domain, filename).
+     * 2. If filename is not provided or specific image is not found, falls back to the latest
+     *    image for the domain.
+     * 3. Stores the decoded ImageBitmap into in-memory LruCache.
+     */
+    suspend fun loadOgImageFromDb(
+        context: Context,
+        domain: String,
+        filename: String? = null
+    ): ImageBitmap? = withContext(Dispatchers.IO) {
+        if (!filename.isNullOrBlank()) {
+            memoryCache.get(cacheKey(domain, filename))?.let { return@withContext it }
+        } else {
+            memoryCache.get(fallbackCacheKey(domain))?.let { return@withContext it }
+        }
+
         val dao = AppDatabase.getInstance(context).ogImageDao()
-        val entity = dao.getLatestOgImageForDomain(domain) ?: return@withContext null
+        val isSpecificRequest = !filename.isNullOrBlank()
+        val entity = if (isSpecificRequest) {
+            dao.getOgImage(domain, filename) ?: dao.getLatestOgImageForDomain(domain)
+        } else {
+            dao.getLatestOgImageForDomain(domain)
+        } ?: return@withContext null
+
         try {
             val bitmap = BitmapFactory.decodeByteArray(entity.imageBlob, 0, entity.imageBlob.size)
             val imageBitmap = bitmap?.asImageBitmap()
             if (imageBitmap != null) {
-                memoryCache.put(domain, imageBitmap)
+                memoryCache.put(cacheKey(domain, entity.filename), imageBitmap)
+                // Only populate the domain latest fallback cache when specifically querying for latest (filename is null/blank)
+                if (!isSpecificRequest) {
+                    memoryCache.put(fallbackCacheKey(domain), imageBitmap)
+                }
             }
             imageBitmap
         } catch (_: Exception) {
             null
         }
+    }
+
+    @VisibleForTesting
+    fun clearMemoryCache() {
+        memoryCache.evictAll()
     }
 
     const val MAX_IMAGE_DIMENSION = 640
@@ -295,7 +346,8 @@ object OgImageManager {
 
         val insertedId = ogImageDao.insertOrIgnore(entity)
         if (insertedId >= 0) {
-            memoryCache.remove(domain)
+            memoryCache.remove(cacheKey(domain, filename))
+            memoryCache.remove(fallbackCacheKey(domain))
         }
         return@withContext insertedId >= 0
     }

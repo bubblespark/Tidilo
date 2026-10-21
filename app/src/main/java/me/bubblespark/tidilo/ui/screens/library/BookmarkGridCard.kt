@@ -67,13 +67,20 @@ fun BookmarkGridCard(
         TimeFormatter.formatRelativeTime(bookmark.createdAt, context)
     }
 
+    val ogFilename = remember(bookmark.url, bookmark.ogImageUrl) {
+        bookmark.ogImageFilename
+    }
+
     // Asynchronously load cached og:image bitmap from database
     val ogBitmap by produceState<ImageBitmap?>(
-        initialValue = domain?.let { OgImageManager.getCachedOgImageBitmap(it) },
-        key1 = domain
+        initialValue = domain?.let { OgImageManager.getCachedOgImageBitmap(it, ogFilename) },
+        key1 = domain,
+        key2 = ogFilename
     ) {
+        // Reset state immediately on key change to prevent displaying the previous card's image
+        value = domain?.let { OgImageManager.getCachedOgImageBitmap(it, ogFilename) }
         if (domain != null) {
-            value = OgImageManager.loadOgImageFromDb(context, domain)
+            value = OgImageManager.loadOgImageFromDb(context, domain, ogFilename)
         }
     }
 

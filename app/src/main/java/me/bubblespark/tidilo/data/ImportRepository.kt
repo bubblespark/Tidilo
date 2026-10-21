@@ -440,7 +440,8 @@ class ImportRepository internal constructor(
                         bodySnippet = target.bodySnippet.takeIf { it.isNotBlank() },
                         description = target.description.takeIf { it.isNotBlank() },
                         siteName = target.siteName.takeIf { it.isNotBlank() },
-                        isNsfw = target.isNsfw
+                        isNsfw = target.isNsfw,
+                        ogImageUrl = candidateOgImageUrl
                     )
 
                     if (result.isSuccess) {
@@ -584,7 +585,8 @@ class ImportRepository internal constructor(
             description = target.description,
             tag = Tag.createEmpty(),
             isNsfw = target.isNsfw,
-            isAiSkipped = true
+            isAiSkipped = true,
+            ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
         )
         BookmarkRepository.getInstance().addBookmark(fallbackBookmark)
     }

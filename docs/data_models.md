@@ -21,7 +21,8 @@ data class BookmarkItem(
     val updatedAt: Long = System.currentTimeMillis(),
     val note: String = "",
     val isNsfw: Boolean = false,
-    val isAiSkipped: Boolean = false
+    val isAiSkipped: Boolean = false,
+    val ogImageUrl: String? = null
 )
 
 @Immutable
@@ -202,10 +203,11 @@ Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt
 
 ## 6. Persistence & Serialization Schemas
 
-All persistence is managed via **Room Database** (`AppDatabase` v3) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
+All persistence is managed via **Room Database** (`AppDatabase` v5) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
 
 1. **Room Database (`AppDatabase`)**:
-   - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL and creation timestamp.
+   - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, and `ogImageUrl` (nullable TEXT) linking to specific cached OG image assets.
+   - **`trashed_bookmarks` table (`TrashedBookmarkEntity`)**: Managed by `TrashDao`, storing trashed items with retention tracking and `ogImageUrl`.
    - **`import_tasks` table (`ImportTaskEntity`)**: Managed by `ImportTaskDao`, storing processing, ready, and error tasks with reactive `Flow<List<ImportTaskEntity>>` observation and status index.
    - **Single Source of Truth & Concurrency**: Room DB serves as the authoritative source of truth for all business operations, state promotions, and AI execution loops (`executeTaskAiAnalysis`). UI StateFlows (`_readyTasks`, `_processingTasks`, `_errorTasks`) are read-only observers of Room. Querying Room directly within `executionMutex.withLock` eliminates race conditions where asynchronous Flow emissions could otherwise lag behind immediate execution checks.
    - **Legacy Migration**: On initial launch of v3, existing task data in legacy `tidilo_queue_prefs` is imported into Room automatically and cleared.

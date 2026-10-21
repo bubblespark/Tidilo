@@ -196,6 +196,7 @@ class OgImageManagerTest {
     @Test
     fun testGenerationToken() = kotlinx.coroutines.runBlocking {
         val initialGen = OgImageManager.getCurrentGeneration()
+        val initialVersion = OgImageManager.cacheVersion.value
         assertTrue("Generation should be non-negative", initialGen >= 0L)
 
         val tempDir = java.nio.file.Files.createTempDirectory("og_image_test").toFile()
@@ -206,7 +207,26 @@ class OgImageManagerTest {
             OgImageManager.clearImageCache(fakeContext)
             val afterGen = OgImageManager.getCurrentGeneration()
             assertTrue("Clearing cache should increment generation", afterGen > initialGen)
-            assertEquals("Cache version should match generation", afterGen, OgImageManager.cacheVersion.value)
+            assertTrue("Clearing cache should increment cache version", OgImageManager.cacheVersion.value > initialVersion)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun testCacheVersionMonotonicityAcrossClears() = kotlinx.coroutines.runBlocking {
+        val tempDir = java.nio.file.Files.createTempDirectory("og_image_test_monotonic").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+            }
+            val v0 = OgImageManager.cacheVersion.value
+            OgImageManager.clearImageCache(fakeContext)
+            val v1 = OgImageManager.cacheVersion.value
+            assertTrue(v1 > v0)
+            OgImageManager.clearImageCache(fakeContext)
+            val v2 = OgImageManager.cacheVersion.value
+            assertTrue(v2 > v1)
         } finally {
             tempDir.deleteRecursively()
         }

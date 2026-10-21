@@ -200,13 +200,13 @@ object OgImageManager {
      */
     suspend fun clearImageCache(context: Context) = withContext(Dispatchers.IO) {
         cacheMutex.withLock {
-            val generation = cacheGeneration.incrementAndGet()
+            cacheGeneration.incrementAndGet()
             memoryCache.evictAll()
             val dir = File(context.cacheDir, "og_images")
             if (dir.exists()) {
                 dir.deleteRecursively()
             }
-            _cacheVersion.value = generation
+            _cacheVersion.value++
         }
     }
 

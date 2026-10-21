@@ -68,6 +68,8 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AppLanguage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.OgImageManager
@@ -663,8 +665,10 @@ fun SettingsScreen(
                     onClick = {
                         showClearCacheConfirmDialog = false
                         scope.launch {
-                            OgImageManager.clearImageCache(context)
-                            DomainIconManager.clearCache(context)
+                            withContext(Dispatchers.IO) {
+                                OgImageManager.clearImageCache(context)
+                                DomainIconManager.clearCache(context)
+                            }
                             Toast.makeText(
                                 context,
                                 context.getString(R.string.settings_clear_image_cache_done),

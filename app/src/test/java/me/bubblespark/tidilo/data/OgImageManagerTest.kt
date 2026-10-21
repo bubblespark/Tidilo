@@ -194,8 +194,21 @@ class OgImageManagerTest {
     }
 
     @Test
-    fun testGenerationToken() {
+    fun testGenerationToken() = kotlinx.coroutines.runBlocking {
         val initialGen = OgImageManager.getCurrentGeneration()
         assertTrue("Generation should be non-negative", initialGen >= 0L)
+
+        val tempDir = java.nio.file.Files.createTempDirectory("og_image_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+            }
+            OgImageManager.clearImageCache(fakeContext)
+            val afterGen = OgImageManager.getCurrentGeneration()
+            assertTrue("Clearing cache should increment generation", afterGen > initialGen)
+            assertEquals("Cache version should match generation", afterGen, OgImageManager.cacheVersion.value)
+        } finally {
+            tempDir.deleteRecursively()
+        }
     }
 }

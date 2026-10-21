@@ -6,7 +6,7 @@ import android.graphics.BitmapFactory
 import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import android.util.LruCache
+import androidx.collection.LruCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +14,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import java.io.ByteArrayOutputStream
@@ -43,6 +45,7 @@ object OgImageManager {
     }
 
     private val cacheGeneration = AtomicLong(0L)
+    private val cacheMutex = Mutex()
 
     private val _cacheVersion = MutableStateFlow(0L)
     val cacheVersion: StateFlow<Long> = _cacheVersion.asStateFlow()
@@ -123,10 +126,11 @@ object OgImageManager {
         }
 
         // 2. Request deduplication
+        val startGen = cacheGeneration.get()
         val deferred = inFlightLoads.computeIfAbsent(key) {
             CoroutineScope(Dispatchers.IO).async {
                 try {
-                    loadOgImageInternal(context, domain, imageKey, isSpecific)
+                    loadOgImageInternal(context, domain, imageKey, isSpecific, startGen)
                 } finally {
                     inFlightLoads.remove(key)
                 }
@@ -144,11 +148,12 @@ object OgImageManager {
         filename: String? = null
     ): ImageBitmap? = loadOgImage(context, domain, filename)
 
-    private fun loadOgImageInternal(
+    private suspend fun loadOgImageInternal(
         context: Context,
         domain: String,
         imageKey: String?,
-        isSpecific: Boolean
+        isSpecific: Boolean,
+        startGen: Long
     ): ImageBitmap? {
         val file = if (isSpecific) {
             val specificFile = if (imageKey != null) getOgImageFile(context, imageKey) else getDomainLatestImageFile(context, domain)
@@ -167,11 +172,15 @@ object OgImageManager {
             val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
             val imageBitmap = bitmap.asImageBitmap()
             val isTargetExact = isSpecific && file.name == imageKey
-            if (isTargetExact) {
-                memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
-            }
-            if (!isSpecific || file.name == getDomainLatestImageFile(context, domain).name) {
-                memoryCache.put(fallbackCacheKey(domain), imageBitmap)
+            cacheMutex.withLock {
+                if (cacheGeneration.get() == startGen) {
+                    if (isTargetExact) {
+                        memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
+                    }
+                    if (!isSpecific || file.name == getDomainLatestImageFile(context, domain).name) {
+                        memoryCache.put(fallbackCacheKey(domain), imageBitmap)
+                    }
+                }
             }
             imageBitmap
         } catch (_: Exception) {
@@ -189,13 +198,15 @@ object OgImageManager {
      * and increments generation token to discard in-flight downloads.
      */
     suspend fun clearImageCache(context: Context) = withContext(Dispatchers.IO) {
-        cacheGeneration.incrementAndGet()
-        memoryCache.evictAll()
-        val dir = File(context.cacheDir, "og_images")
-        if (dir.exists()) {
-            dir.deleteRecursively()
+        cacheMutex.withLock {
+            val generation = cacheGeneration.incrementAndGet()
+            memoryCache.evictAll()
+            val dir = File(context.cacheDir, "og_images")
+            if (dir.exists()) {
+                dir.deleteRecursively()
+            }
+            _cacheVersion.value = generation
         }
-        _cacheVersion.value = System.currentTimeMillis()
     }
 
     const val MAX_IMAGE_DIMENSION = 640
@@ -440,22 +451,23 @@ object OgImageManager {
         if (cacheGeneration.get() != startGen) return@withContext false
 
         // 4. Persist to cacheDir
-        return@withContext try {
-            targetFile.writeBytes(compressed.bytes)
-            runCatching { latestFile.writeBytes(compressed.bytes) }
+        return@withContext cacheMutex.withLock {
+            if (cacheGeneration.get() != startGen) return@withLock false
+            try {
+                getOgImageDir(context)
+                targetFile.writeBytes(compressed.bytes)
+                runCatching { latestFile.writeBytes(compressed.bytes) }
 
-            // Populate memory cache if generation hasn't changed
-            if (cacheGeneration.get() == startGen) {
                 val bitmap = BitmapFactory.decodeByteArray(compressed.bytes, 0, compressed.bytes.size)
                 val imageBitmap = bitmap?.asImageBitmap()
                 if (imageBitmap != null) {
                     memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
                     memoryCache.put(fallbackCacheKey(domain), imageBitmap)
                 }
+                true
+            } catch (_: Exception) {
+                false
             }
-            true
-        } catch (_: Exception) {
-            false
         }
     }
 }

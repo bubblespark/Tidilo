@@ -127,12 +127,13 @@ object OgImageManager {
 
         // 2. Request deduplication
         val startGen = cacheGeneration.get()
-        val deferred = inFlightLoads.computeIfAbsent(key) {
+        val flightKey = "$startGen|$key"
+        val deferred = inFlightLoads.computeIfAbsent(flightKey) {
             CoroutineScope(Dispatchers.IO).async {
                 try {
                     loadOgImageInternal(context, domain, imageKey, isSpecific, startGen)
                 } finally {
-                    inFlightLoads.remove(key)
+                    inFlightLoads.remove(flightKey)
                 }
             }
         }

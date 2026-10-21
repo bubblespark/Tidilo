@@ -110,35 +110,37 @@ object DomainIconManager {
      */
     fun loadIconFromDisk(context: Context, domain: String): ImageBitmap? {
         val normalized = domain.trim().lowercase()
-        memoryCache.get(normalized)?.let { return it }
-        val file = getIconFile(context, normalized)
-        val legacy = getLegacyIconFile(context, normalized)
-        val targetFile = if (!file.exists() || file.length() == 0L) {
-            if (legacy.exists() && legacy.length() > 0L) {
-                val copied = runCatching {
-                    legacy.copyTo(file, overwrite = true)
-                    legacy.delete()
-                    true
-                }.getOrDefault(false)
-                if (copied && file.exists() && file.length() > 0L) {
-                    file
+        return synchronized(cacheLock) load@{
+            memoryCache.get(normalized)?.let { return@load it }
+            val file = getIconFile(context, normalized)
+            val legacy = getLegacyIconFile(context, normalized)
+            val targetFile = if (!file.exists() || file.length() == 0L) {
+                if (legacy.exists() && legacy.length() > 0L) {
+                    val copied = runCatching {
+                        legacy.copyTo(file, overwrite = true)
+                        legacy.delete()
+                        true
+                    }.getOrDefault(false)
+                    if (copied && file.exists() && file.length() > 0L) {
+                        file
+                    } else {
+                        legacy
+                    }
                 } else {
-                    legacy
+                    return@load null
                 }
             } else {
-                return null
+                file
             }
-        } else {
-            file
-        }
 
-        return try {
-            val rawBitmap = BitmapFactory.decodeFile(targetFile.absolutePath) ?: return null
-            val imageBitmap = rawBitmap.asImageBitmap()
-            memoryCache.put(normalized, imageBitmap)
-            imageBitmap
-        } catch (_: Exception) {
-            null
+            try {
+                val rawBitmap = BitmapFactory.decodeFile(targetFile.absolutePath) ?: return@load null
+                val imageBitmap = rawBitmap.asImageBitmap()
+                memoryCache.put(normalized, imageBitmap)
+                imageBitmap
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 

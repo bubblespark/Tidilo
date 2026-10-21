@@ -20,7 +20,7 @@ import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
-import me.bubblespark.tidilo.data.db.OgImageDao
+
 import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.service.AiCoreExecutionException
@@ -34,8 +34,8 @@ import java.util.UUID
 class ImportRepository internal constructor(
     context: Context? = null,
     private val taskDao: ImportTaskDao = context?.let { AppDatabase.getInstance(it).importTaskDao() }
-        ?: throw IllegalArgumentException("taskDao must be provided if context is null"),
-    private val ogImageDao: OgImageDao? = context?.let { AppDatabase.getInstance(it).ogImageDao() }
+        ?: throw IllegalArgumentException("taskDao must be provided if context is null")
+
 ) {
 
     private val appContext: Context? = context?.applicationContext
@@ -412,16 +412,17 @@ class ImportRepository internal constructor(
                     statusText = "Gemini Nano analyzing content..."
                 )
 
-                // 1.5 Cache og:image into database during Processing asynchronously (Issue #57)
-                val activeOgImageDao = ogImageDao ?: appContext?.let { AppDatabase.getInstance(it).ogImageDao() }
+                // 1.5 Cache og:image into cacheDir during Processing asynchronously (Issue #57, #71)
+                val targetContext = appContext
                 val candidateOgImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
-                if (activeOgImageDao != null && !candidateOgImageUrl.isNullOrBlank()) {
+                if (targetContext != null && !candidateOgImageUrl.isNullOrBlank()) {
                     repositoryScope.launch {
                         try {
                             OgImageManager.processAndSaveOgImage(
+                                context = targetContext,
                                 pageUrl = target.url,
-                                ogImageUrl = candidateOgImageUrl,
-                                ogImageDao = activeOgImageDao
+                                ogImageUrl = candidateOgImageUrl
+
                             )
                         } catch (e: CancellationException) {
                             throw e

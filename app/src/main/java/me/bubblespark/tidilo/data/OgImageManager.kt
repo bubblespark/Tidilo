@@ -1,30 +1,38 @@
 package me.bubblespark.tidilo.data
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.annotation.VisibleForTesting
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import me.bubblespark.tidilo.data.db.OgImageDao
-import me.bubblespark.tidilo.data.db.OgImageEntity
-import org.jsoup.Jsoup
-import java.io.ByteArrayOutputStream
-import java.net.URI
-import java.security.MessageDigest
-import android.content.Context
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import me.bubblespark.tidilo.data.db.AppDatabase
 import android.util.LruCache
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
+import org.jsoup.Jsoup
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.net.URI
+import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Manager for downloading, downsampling, compressing, and caching og:image assets in the database.
+ * Manager for downloading, downsampling, compressing, and caching og:image assets in cacheDir.
  *
  * - Downloads og:image during the Processing phase.
- * - Extracts a composite key of (domain, filename) to prevent duplicate downloads.
+ * - Extracts a URL-distinct SHA-256 hash identity (preserving query parameters, removing fragments).
  * - Downsamples safely using BitmapFactory.Options.inSampleSize to avoid OOM errors.
  * - Constrains maximum dimension to 640px while preserving original aspect ratio.
  * - Encodes as WebP lossy, ensuring the final byte array is under 50KB.
+ * - Stores disposable image files under context.cacheDir/og_images.
+ * - Supports generation token-based in-app cache clearing without affecting bookmark data.
  */
 object OgImageManager {
 
@@ -34,10 +42,22 @@ object OgImageManager {
         override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
     }
 
+    private val cacheGeneration = AtomicLong(0L)
+
+    private val _cacheVersion = MutableStateFlow(0L)
+    val cacheVersion: StateFlow<Long> = _cacheVersion.asStateFlow()
+
+    private val inFlightLoads = ConcurrentHashMap<String, Deferred<ImageBitmap?>>()
+
     /**
-     * Constructs a composite memory cache key for a domain and specific image filename.
+     * Returns the current cache generation token.
      */
-    fun cacheKey(domain: String, filename: String): String = "$domain/$filename"
+    fun getCurrentGeneration(): Long = cacheGeneration.get()
+
+    /**
+     * Constructs a composite memory cache key for a domain and specific image key.
+     */
+    fun cacheKey(domain: String, imageKey: String): String = "$domain/$imageKey"
 
     /**
      * Constructs a fallback memory cache key for a domain's latest image.
@@ -46,51 +66,112 @@ object OgImageManager {
 
     /**
      * Retrieves a cached ImageBitmap from in-memory LruCache.
-     * Looks up by (domain, filename) if filename is provided; otherwise checks domain fallback key.
+     * Looks up by (domain, imageKey) if imageKey is provided; otherwise checks domain fallback key.
      */
-    fun getCachedOgImageBitmap(domain: String, filename: String? = null): ImageBitmap? {
-        if (!filename.isNullOrBlank()) {
-            memoryCache.get(cacheKey(domain, filename))?.let { return it }
+    fun getCachedOgImageBitmap(domain: String, imageKey: String? = null): ImageBitmap? {
+        if (!imageKey.isNullOrBlank()) {
+            memoryCache.get(cacheKey(domain, imageKey))?.let { return it }
         }
         return memoryCache.get(fallbackCacheKey(domain))
     }
 
     /**
-     * Loads a cached OG image from the database on Dispatchers.IO.
+     * Directory inside cacheDir storing OG images.
+     */
+    fun getOgImageDir(context: Context): File {
+        val dir = File(context.cacheDir, "og_images")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
+    /**
+     * Resolves the local cache file for a specific image key.
+     */
+    fun getOgImageFile(context: Context, imageKey: String): File {
+        return File(getOgImageDir(context), imageKey)
+    }
+
+    /**
+     * Resolves the local cache file for a domain's latest fallback image.
+     */
+    fun getDomainLatestImageFile(context: Context, domain: String): File {
+        val safeDomain = domain.replace(Regex("[^a-zA-Z0-9.-]"), "_")
+        return File(getOgImageDir(context), "latest_$safeDomain.webp")
+    }
+
+    /**
+     * Loads a cached OG image from cacheDir on Dispatchers.IO.
      *
-     * 1. If filename is provided, looks up specific image (domain, filename).
-     * 2. If filename is not provided or specific image is not found, falls back to the latest
+     * 1. If imageKey is provided, looks up specific image (domain, imageKey).
+     * 2. If imageKey is not provided or specific image is not found, falls back to the latest
      *    image for the domain.
      * 3. Stores the decoded ImageBitmap into in-memory LruCache.
+     */
+    suspend fun loadOgImage(
+        context: Context,
+        domain: String,
+        imageKey: String? = null
+    ): ImageBitmap? = withContext(Dispatchers.IO) {
+        val isSpecific = !imageKey.isNullOrBlank()
+        val key = if (!imageKey.isNullOrBlank()) cacheKey(domain, imageKey) else fallbackCacheKey(domain)
+
+        // 1. Check memory cache first
+        if (isSpecific) {
+            memoryCache.get(key)?.let { return@withContext it }
+        } else {
+            memoryCache.get(fallbackCacheKey(domain))?.let { return@withContext it }
+        }
+
+        // 2. Request deduplication
+        val deferred = inFlightLoads.computeIfAbsent(key) {
+            CoroutineScope(Dispatchers.IO).async {
+                try {
+                    loadOgImageInternal(context, domain, imageKey, isSpecific)
+                } finally {
+                    inFlightLoads.remove(key)
+                }
+            }
+        }
+        deferred.await()
+    }
+
+    /**
+     * Backward-compatible alias for loadOgImage.
      */
     suspend fun loadOgImageFromDb(
         context: Context,
         domain: String,
         filename: String? = null
-    ): ImageBitmap? = withContext(Dispatchers.IO) {
-        if (!filename.isNullOrBlank()) {
-            memoryCache.get(cacheKey(domain, filename))?.let { return@withContext it }
+    ): ImageBitmap? = loadOgImage(context, domain, filename)
+
+    private fun loadOgImageInternal(
+        context: Context,
+        domain: String,
+        imageKey: String?,
+        isSpecific: Boolean
+    ): ImageBitmap? {
+        val file = if (isSpecific) {
+            val specificFile = if (imageKey != null) getOgImageFile(context, imageKey) else getDomainLatestImageFile(context, domain)
+            if (specificFile.exists() && specificFile.length() > 0) {
+                specificFile
+            } else {
+                getDomainLatestImageFile(context, domain)
+            }
         } else {
-            memoryCache.get(fallbackCacheKey(domain))?.let { return@withContext it }
+            getDomainLatestImageFile(context, domain)
         }
 
-        val dao = AppDatabase.getInstance(context).ogImageDao()
-        val isSpecificRequest = !filename.isNullOrBlank()
-        val entity = if (isSpecificRequest) {
-            dao.getOgImage(domain, filename) ?: dao.getLatestOgImageForDomain(domain)
-        } else {
-            dao.getLatestOgImageForDomain(domain)
-        } ?: return@withContext null
+        if (!file.exists() || file.length() == 0L) return null
 
-        try {
-            val bitmap = BitmapFactory.decodeByteArray(entity.imageBlob, 0, entity.imageBlob.size)
-            val imageBitmap = bitmap?.asImageBitmap()
-            if (imageBitmap != null) {
-                memoryCache.put(cacheKey(domain, entity.filename), imageBitmap)
-                // Only populate the domain latest fallback cache when specifically querying for latest (filename is null/blank)
-                if (!isSpecificRequest) {
-                    memoryCache.put(fallbackCacheKey(domain), imageBitmap)
-                }
+        return try {
+            val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
+            val imageBitmap = bitmap.asImageBitmap()
+            val isTargetExact = isSpecific && file.name == imageKey
+            if (isTargetExact) {
+                memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
+            }
+            if (!isSpecific || file.name == getDomainLatestImageFile(context, domain).name) {
+                memoryCache.put(fallbackCacheKey(domain), imageBitmap)
             }
             imageBitmap
         } catch (_: Exception) {
@@ -101,6 +182,20 @@ object OgImageManager {
     @VisibleForTesting
     fun clearMemoryCache() {
         memoryCache.evictAll()
+    }
+
+    /**
+     * Clears all cached OG image files on disk, invalidates in-memory bitmaps,
+     * and increments generation token to discard in-flight downloads.
+     */
+    suspend fun clearImageCache(context: Context) = withContext(Dispatchers.IO) {
+        cacheGeneration.incrementAndGet()
+        memoryCache.evictAll()
+        val dir = File(context.cacheDir, "og_images")
+        if (dir.exists()) {
+            dir.deleteRecursively()
+        }
+        _cacheVersion.value = System.currentTimeMillis()
     }
 
     const val MAX_IMAGE_DIMENSION = 640
@@ -169,33 +264,28 @@ object OgImageManager {
     }
 
     /**
-     * Extracts a clean filename from an image URL, stripping query parameters and hashes.
-     * If the path does not end with a valid filename, falls back to a deterministic SHA-256 hash.
+     * Computes a deterministic, URL-distinct image key from a resolved image URL.
+     * Preserves query parameters (?...) and removes fragment (#...).
+     * Hashes the normalized string using SHA-256.
      */
-    fun extractFilename(imageUrl: String): String {
+    fun computeImageKey(resolvedImageUrl: String): String {
+        val normalized = resolvedImageUrl.trim().substringBefore('#')
         return try {
-            val withoutQuery = imageUrl.substringBefore('?').substringBefore('#')
-            val rawFilename = withoutQuery.substringAfterLast('/')
-            val clean = rawFilename.replace(Regex("[^a-zA-Z0-9._-]"), "_").trim()
-            if (clean.length in 3..120 && clean.contains('.')) {
-                clean
-            } else {
-                fallbackHashFilename(imageUrl)
-            }
+            val digest = MessageDigest.getInstance("SHA-256")
+            val hash = digest.digest(normalized.toByteArray(Charsets.UTF_8))
+            val hex = hash.joinToString("") { "%02x".format(it) }
+            "$hex.webp"
         } catch (_: Exception) {
-            fallbackHashFilename(imageUrl)
+            "${normalized.hashCode().toUInt().toString(16)}.webp"
         }
     }
 
-    private fun fallbackHashFilename(input: String): String {
-        return try {
-            val digest = MessageDigest.getInstance("SHA-256")
-            val hash = digest.digest(input.toByteArray(Charsets.UTF_8))
-            val hex = hash.joinToString("") { "%02x".format(it) }.take(16)
-            "$hex.webp"
-        } catch (_: Exception) {
-            "${input.hashCode().toUInt().toString(16)}.webp"
-        }
+    /**
+     * Extracts a clean filename from an image URL, stripping query parameters and hashes.
+     * Maintained for backward compatibility; prefer computeImageKey for distinct identity.
+     */
+    fun extractFilename(imageUrl: String): String {
+        return computeImageKey(imageUrl)
     }
 
     /**
@@ -297,26 +387,36 @@ object OgImageManager {
     }
 
     /**
-     * Downloads, compresses, and persists an og:image to the database during Processing.
-     * Skips download if the (domain, filename) record already exists in the database.
+     * Downloads, compresses, and persists an og:image to cacheDir during Processing.
+     * Skips download if the imageKey file already exists on disk.
      *
      * @return true if successfully saved or already exists; false if failed.
      */
     suspend fun processAndSaveOgImage(
+        context: Context,
         pageUrl: String,
-        ogImageUrl: String?,
-        ogImageDao: OgImageDao
+        ogImageUrl: String?
     ): Boolean = withContext(Dispatchers.IO) {
         if (ogImageUrl.isNullOrBlank()) return@withContext false
 
         val domain = extractDomain(pageUrl) ?: return@withContext false
         val resolvedUrl = resolveImageUrl(pageUrl, ogImageUrl)
-        val filename = extractFilename(resolvedUrl)
+        val imageKey = computeImageKey(resolvedUrl)
 
-        // 1. Check for duplicate record
-        if (ogImageDao.exists(domain, filename)) {
+        val targetFile = getOgImageFile(context, imageKey)
+        val latestFile = getDomainLatestImageFile(context, domain)
+
+        // 1. Check if file already exists in cacheDir
+        if (targetFile.exists() && targetFile.length() > 0) {
+            runCatching {
+                if (!latestFile.exists() || latestFile.lastModified() < targetFile.lastModified()) {
+                    targetFile.copyTo(latestFile, overwrite = true)
+                }
+            }
             return@withContext true
         }
+
+        val startGen = cacheGeneration.get()
 
         // 2. Fetch raw image bytes from network
         val rawBytes = runCatching {
@@ -330,25 +430,32 @@ object OgImageManager {
             response.bodyAsBytes()
         }.getOrNull() ?: return@withContext false
 
+        // Check generation before CPU-intensive compression
+        if (cacheGeneration.get() != startGen) return@withContext false
+
         // 3. Downsample and compress to WebP under 50KB
         val compressed = compressToWebp(rawBytes) ?: return@withContext false
 
-        // 4. Persist to database
-        val entity = OgImageEntity(
-            domain = domain,
-            filename = filename,
-            imageBlob = compressed.bytes,
-            mimeType = compressed.mimeType,
-            width = compressed.width,
-            height = compressed.height,
-            sizeBytes = compressed.bytes.size
-        )
+        // Check generation before disk write
+        if (cacheGeneration.get() != startGen) return@withContext false
 
-        val insertedId = ogImageDao.insertOrIgnore(entity)
-        if (insertedId >= 0) {
-            memoryCache.remove(cacheKey(domain, filename))
-            memoryCache.remove(fallbackCacheKey(domain))
+        // 4. Persist to cacheDir
+        return@withContext try {
+            targetFile.writeBytes(compressed.bytes)
+            runCatching { latestFile.writeBytes(compressed.bytes) }
+
+            // Populate memory cache if generation hasn't changed
+            if (cacheGeneration.get() == startGen) {
+                val bitmap = BitmapFactory.decodeByteArray(compressed.bytes, 0, compressed.bytes.size)
+                val imageBitmap = bitmap?.asImageBitmap()
+                if (imageBitmap != null) {
+                    memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
+                    memoryCache.put(fallbackCacheKey(domain), imageBitmap)
+                }
+            }
+            true
+        } catch (_: Exception) {
+            false
         }
-        return@withContext insertedId >= 0
     }
 }

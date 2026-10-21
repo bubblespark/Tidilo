@@ -80,7 +80,7 @@ class RoomEntityMappingTest {
         assertEquals(original.note, restored.note)
         assertEquals(original.isNsfw, restored.isNsfw)
         assertEquals(original.ogImageUrl, restored.ogImageUrl)
-        assertEquals("article_og.png", restored.ogImageFilename)
+        assertEquals(me.bubblespark.tidilo.data.OgImageManager.computeImageKey("https://example.com/images/article_og.png"), restored.ogImageFilename)
     }
 
     @Test
@@ -159,5 +159,22 @@ class RoomEntityMappingTest {
         assertTrue(restoredTrash.bookmark.isAiSkipped)
         assertEquals(null, restoredTrash.bookmark.tag.category)
         assertEquals(null, restoredTrash.bookmark.tag.subcategory)
+    }
+
+    @Test
+    fun testMigration5To6_dropsOgImagesTable() {
+        val executedSql = mutableListOf<String>()
+        val proxy = java.lang.reflect.Proxy.newProxyInstance(
+            androidx.sqlite.db.SupportSQLiteDatabase::class.java.classLoader,
+            arrayOf(androidx.sqlite.db.SupportSQLiteDatabase::class.java)
+        ) { _, method, args ->
+            if (method.name == "execSQL" && args != null && args.isNotEmpty()) {
+                executedSql.add(args[0] as String)
+            }
+            null
+        } as androidx.sqlite.db.SupportSQLiteDatabase
+
+        me.bubblespark.tidilo.data.db.AppDatabase.MIGRATION_5_6.migrate(proxy)
+        assertTrue(executedSql.any { it.contains("DROP TABLE IF EXISTS `og_images`") })
     }
 }

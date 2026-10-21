@@ -47,6 +47,7 @@ fun DomainWatermark(
         key1 = domain,
         key2 = iconVersion
     ) {
+        value = DomainIconManager.getCachedIconBitmap(domain)
         val cached = DomainIconManager.getCachedIconBitmap(domain)
         if (cached != null) {
             value = cached

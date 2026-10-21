@@ -39,32 +39,15 @@ data class Tag(
 }
 ```
 
-### 1.3 `OgImageEntity` (Cached OG Images)
-Located in `data/db/OgImageEntity.kt`:
+### 1.3 Disposable Image Caching & URL-Distinct Identity (`cacheDir`)
+Managed in `data/OgImageManager.kt` and `data/DomainIconManager.kt`:
 
-```kotlin
-@Entity(
-    tableName = "og_images",
-    primaryKeys = ["domain", "filename"],
-    indices = [
-        Index(value = ["domain"]),
-        Index(value = ["createdAt"])
-    ]
-)
-data class OgImageEntity(
-    val domain: String,
-    val filename: String,
-    val imageBlob: ByteArray,
-    val mimeType: String = "image/webp",
-    val width: Int,
-    val height: Int,
-    val sizeBytes: Int,
-    val createdAt: Long = System.currentTimeMillis()
-)
-```
-- **Composite Primary Key**: `(domain, filename)` prevents duplicate network downloads across URLs sharing identical images.
-- **Compression & Dimension Standards**: Compressed to WebP lossy format under 50KB with maximum dimension constrained to 640px.
-- **Persistence Timing**: Saved during background AI processing (`PROCESSING_AI`), avoiding CursorWindow bloat in main bookmark queries by keeping images in a dedicated table.
+- **URL-Distinct Image Identity (SHA-256)**:
+  `OgImageManager.computeImageKey(resolvedOgUrl)` normalizes the resolved image URL (preserving query parameters while stripping fragments) and generates a deterministic SHA-256 hash ending in `.webp`. This guarantees bookmarks from the same domain with identical basenames (e.g. `/article-a/og.png` and `/article-b/og.png`) remain completely distinct.
+- **Disposable File Storage (`context.cacheDir`)**:
+  Compressed WebP OG images and PNG domain icons are stored as individual files under `cacheDir/og_images` and `cacheDir/domain_icons`. This enables both the OS "Clear cache" and in-app "Clear image cache" actions without risking user bookmark data.
+- **In-App Cache Clearing & Generation Token**:
+  An atomic generation token (`cacheGeneration: AtomicLong`) invalidates and discards in-flight downloads when cache is cleared. In-memory `LruCache` buffers and derived brand colors are evicted, while reactive `StateFlow` signals (`cacheVersion`, `iconUpdateVersion`) notify visible Compose components to immediately reset state.
 
 ### 1.2 `TrashedBookmarkItem`
 Located in `ui/screens/library/BookmarkItem.kt`:
@@ -203,14 +186,14 @@ Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt
 
 ## 6. Persistence & Serialization Schemas
 
-All persistence is managed via **Room Database** (`AppDatabase` v5) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
+All persistence is managed via **Room Database** (`AppDatabase` v6) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
 
 1. **Room Database (`AppDatabase`)**:
    - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, and `ogImageUrl` (nullable TEXT) linking to specific cached OG image assets.
    - **`trashed_bookmarks` table (`TrashedBookmarkEntity`)**: Managed by `TrashDao`, storing trashed items with retention tracking and `ogImageUrl`.
    - **`import_tasks` table (`ImportTaskEntity`)**: Managed by `ImportTaskDao`, storing processing, ready, and error tasks with reactive `Flow<List<ImportTaskEntity>>` observation and status index.
+   - **Safe Migration & Database Decoupling (v6)**: In version 6, obsolete image BLOB storage (`og_images` table) was cleanly dropped via `MIGRATION_5_6`, liberating database file size while preserving 100% of bookmark, tag, and note data.
    - **Single Source of Truth & Concurrency**: Room DB serves as the authoritative source of truth for all business operations, state promotions, and AI execution loops (`executeTaskAiAnalysis`). UI StateFlows (`_readyTasks`, `_processingTasks`, `_errorTasks`) are read-only observers of Room. Querying Room directly within `executionMutex.withLock` eliminates race conditions where asynchronous Flow emissions could otherwise lag behind immediate execution checks.
-   - **Legacy Migration**: On initial launch of v3, existing task data in legacy `tidilo_queue_prefs` is imported into Room automatically and cleared.
 2. **`tidilo_library_prefs` (`search_history`)**:
    Array of up to 10 strings representing complete queries, ordered latest-first.
 3. **`tidilo_app_config_prefs`**:

@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -71,24 +72,30 @@ fun BookmarkGridCard(
         bookmark.ogImageFilename
     }
 
-    // Asynchronously load cached og:image bitmap from database
+    val cacheVersion by OgImageManager.cacheVersion.collectAsStateWithLifecycle()
+    val iconVersion by DomainIconManager.iconUpdateVersion.collectAsStateWithLifecycle()
+
+    // Asynchronously load cached og:image bitmap from cacheDir
     val ogBitmap by produceState<ImageBitmap?>(
         initialValue = domain?.let { OgImageManager.getCachedOgImageBitmap(it, ogFilename) },
         key1 = domain,
-        key2 = ogFilename
+        key2 = ogFilename,
+        key3 = cacheVersion
     ) {
         // Reset state immediately on key change to prevent displaying the previous card's image
         value = domain?.let { OgImageManager.getCachedOgImageBitmap(it, ogFilename) }
         if (domain != null) {
-            value = OgImageManager.loadOgImageFromDb(context, domain, ogFilename)
+            value = OgImageManager.loadOgImage(context, domain, ogFilename)
         }
     }
 
     // Asynchronously load cached domain icon bitmap
     val domainIconBitmap by produceState<ImageBitmap?>(
         initialValue = domain?.let { DomainIconManager.getCachedIconBitmap(it) },
-        key1 = domain
+        key1 = domain,
+        key2 = iconVersion
     ) {
+        value = domain?.let { DomainIconManager.getCachedIconBitmap(it) }
         if (domain != null) {
             val cached = DomainIconManager.getCachedIconBitmap(domain)
             value = cached ?: withContext(Dispatchers.IO) {

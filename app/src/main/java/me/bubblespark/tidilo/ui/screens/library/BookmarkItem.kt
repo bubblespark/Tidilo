@@ -86,7 +86,7 @@ data class BookmarkItem(
     val ogImageFilename: String?
         get() = ogImageUrl?.takeIf { it.isNotBlank() }?.let { ogUrl ->
             val resolved = OgImageManager.resolveImageUrl(url, ogUrl)
-            OgImageManager.extractFilename(resolved)
+            OgImageManager.computeImageKey(resolved)
         }
 }
 

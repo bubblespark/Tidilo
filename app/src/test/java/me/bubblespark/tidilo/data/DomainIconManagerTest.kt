@@ -398,4 +398,108 @@ class DomainIconManagerTest {
             tempDir.deleteRecursively()
         }
     }
+
+    @Test
+    fun isTransientHttpStatus_correctlyClassifiesStatusCodes() {
+        // Temporary / transient HTTP statuses
+        assertTrue(DomainIconManager.isTransientHttpStatus(408)) // Request Timeout
+        assertTrue(DomainIconManager.isTransientHttpStatus(429)) // Too Many Requests (Rate limit)
+        assertTrue(DomainIconManager.isTransientHttpStatus(500)) // Internal Server Error
+        assertTrue(DomainIconManager.isTransientHttpStatus(502)) // Bad Gateway
+        assertTrue(DomainIconManager.isTransientHttpStatus(503)) // Service Unavailable
+        assertTrue(DomainIconManager.isTransientHttpStatus(504)) // Gateway Timeout
+
+        // Permanent client errors or successful responses
+        assertFalse(DomainIconManager.isTransientHttpStatus(200))
+        assertFalse(DomainIconManager.isTransientHttpStatus(301))
+        assertFalse(DomainIconManager.isTransientHttpStatus(400))
+        assertFalse(DomainIconManager.isTransientHttpStatus(401))
+        assertFalse(DomainIconManager.isTransientHttpStatus(403))
+        assertFalse(DomainIconManager.isTransientHttpStatus(404))
+        assertFalse(DomainIconManager.isTransientHttpStatus(410))
+    }
+
+    @Test
+    fun fetchAndSaveDomainIcon_unsupportedMimeType_writesNegativeMarkerWhenCandidatesFail() = kotlinx.coroutines.runBlocking {
+        val tempDir = java.nio.file.Files.createTempDirectory("domain_mime_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
+            }
+
+            val testDomain = "pdf-domain.com"
+            val testUrl = "https://$testDomain/document.pdf"
+
+            // Target page is a PDF (non-HTML MIME type): server contacted, but discovery completed without icon (non-transient)
+            DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), hasServerContact = true, hasTransientFailure = false) }
+            DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, hasServerContact = true, hasTransientFailure = false) }
+
+            val result = DomainIconManager.fetchAndSaveDomainIcon(fakeContext, testUrl)
+            assertFalse(result.success)
+            assertFalse(result.hadTransientFailure)
+            // Permanent non-HTML failure with completed root fallback and 404 candidates MUST write negative marker
+            assertTrue(DomainIconManager.shouldSkipFetch(fakeContext, testDomain))
+        } finally {
+            DomainIconManager.htmlDiscoverer = null
+            DomainIconManager.httpDownloader = null
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun fetchAndSaveDomainIcon_http429TooManyRequests_doesNotWriteNegativeMarker() = kotlinx.coroutines.runBlocking {
+        val tempDir = java.nio.file.Files.createTempDirectory("domain_429_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
+            }
+
+            val testDomain = "rate-limited-domain.com"
+            val testUrl = "https://$testDomain"
+
+            // HTML discovery hit 429 Too Many Requests (server contacted = true, but transient = true)
+            DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), hasServerContact = true, hasTransientFailure = true) }
+            DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, hasServerContact = true, hasTransientFailure = false) }
+
+            val result = DomainIconManager.fetchAndSaveDomainIcon(fakeContext, testUrl)
+            assertFalse(result.success)
+            assertTrue(result.hadTransientFailure)
+            // HTTP 429 is temporary; must NOT write negative marker
+            assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, testDomain))
+        } finally {
+            DomainIconManager.htmlDiscoverer = null
+            DomainIconManager.httpDownloader = null
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun fetchAndSaveDomainIcon_candidate5xxServerError_doesNotWriteNegativeMarker() = kotlinx.coroutines.runBlocking {
+        val tempDir = java.nio.file.Files.createTempDirectory("domain_5xx_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
+            }
+
+            val testDomain = "server-error-domain.com"
+            val testUrl = "https://$testDomain"
+
+            // HTML discovery found candidate, but downloading candidate returned 503 Service Unavailable (server contacted = true, transient = true)
+            DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(listOf("https://$testDomain/icon.png"), hasServerContact = true, hasTransientFailure = false) }
+            DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, hasServerContact = true, hasTransientFailure = true) }
+
+            val result = DomainIconManager.fetchAndSaveDomainIcon(fakeContext, testUrl)
+            assertFalse(result.success)
+            assertTrue(result.hadTransientFailure)
+            // Candidate 5xx error is temporary; must NOT write negative marker
+            assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, testDomain))
+        } finally {
+            DomainIconManager.htmlDiscoverer = null
+            DomainIconManager.httpDownloader = null
+            tempDir.deleteRecursively()
+        }
+    }
 }

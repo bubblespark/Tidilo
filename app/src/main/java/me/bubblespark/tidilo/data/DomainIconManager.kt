@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jsoup.Jsoup
+import org.jsoup.HttpStatusException
+import org.jsoup.UnsupportedMimeTypeException
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URI
@@ -563,14 +565,23 @@ object DomainIconManager {
 
     internal data class DownloadResult(
         val bytes: ByteArray?,
-        val hasServerContact: Boolean
+        val hasServerContact: Boolean,
+        val hasTransientFailure: Boolean = !hasServerContact
     )
 
     internal data class HtmlDiscoveryResult(
         val iconUrls: List<String>,
         val hasServerContact: Boolean,
-        val hasTransientFailure: Boolean = false
+        val hasTransientFailure: Boolean = !hasServerContact
     )
+
+    /**
+     * Checks if an HTTP status code represents a temporary/transient server error (e.g. 408, 429, 5xx).
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun isTransientHttpStatus(statusCode: Int): Boolean {
+        return statusCode == 408 || statusCode == 429 || statusCode in 500..599
+    }
 
     data class FetchResult(
         val success: Boolean,
@@ -625,8 +636,14 @@ object DomainIconManager {
                     results.add(content)
                 }
             }
-        } catch (_: org.jsoup.HttpStatusException) {
+        } catch (e: HttpStatusException) {
             hasServerContact = true
+            if (isTransientHttpStatus(e.statusCode)) {
+                hasTransientFailure = true
+            }
+        } catch (_: UnsupportedMimeTypeException) {
+            hasServerContact = true
+            // Completed discovery with non-HTML content (e.g. PDF/video), treated as permanent non-icon source
         } catch (_: Exception) {
             hasTransientFailure = true
         }
@@ -702,11 +719,8 @@ object DomainIconManager {
                 try {
                     val download = downloadBytes(candidateUrl)
                     if (download.hasServerContact) hasServerContact = true
-                    val bytes = download.bytes
-                    if (bytes == null) {
-                        if (!download.hasServerContact) hasTransientDownloadFailure = true
-                        continue
-                    }
+                    if (download.hasTransientFailure) hasTransientDownloadFailure = true
+                    val bytes = download.bytes ?: continue
 
                     // Resolution check: exclude candidates smaller than 96x96
                     val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -818,12 +832,17 @@ object DomainIconManager {
                 .timeout(4000)
                 .maxBodySize(5 * 1024 * 1024)
                 .execute()
-            val bytes = if (response.statusCode() in 200..299) response.bodyAsBytes() else null
-            DownloadResult(bytes, hasServerContact = true)
-        } catch (_: org.jsoup.HttpStatusException) {
-            DownloadResult(bytes = null, hasServerContact = true)
+            val statusCode = response.statusCode()
+            val isTransient = isTransientHttpStatus(statusCode)
+            val bytes = if (statusCode in 200..299) response.bodyAsBytes() else null
+            DownloadResult(bytes, hasServerContact = true, hasTransientFailure = isTransient)
+        } catch (e: HttpStatusException) {
+            val isTransient = isTransientHttpStatus(e.statusCode)
+            DownloadResult(bytes = null, hasServerContact = true, hasTransientFailure = isTransient)
+        } catch (_: UnsupportedMimeTypeException) {
+            DownloadResult(bytes = null, hasServerContact = true, hasTransientFailure = false)
         } catch (_: Exception) {
-            DownloadResult(bytes = null, hasServerContact = false)
+            DownloadResult(bytes = null, hasServerContact = false, hasTransientFailure = true)
         }
     }
 }

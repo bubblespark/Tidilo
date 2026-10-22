@@ -296,11 +296,12 @@ class BookmarkRepository private constructor(context: Context) {
                     continue
                 }
                 var groupHadTransientFailure = false
-                for ((index, item) in domainItems.withIndex()) {
-                    val isLast = index == domainItems.lastIndex
+                val uniqueUrls = domainItems.map { it.url }.distinct()
+                for ((index, url) in uniqueUrls.withIndex()) {
+                    val isLast = index == uniqueUrls.lastIndex
                     val result = DomainIconManager.fetchAndSaveDomainIcon(
                         context = appContext,
-                        url = item.url,
+                        url = url,
                         recordFailureMarker = isLast && !groupHadTransientFailure
                     )
                     if (result.hadTransientFailure) {

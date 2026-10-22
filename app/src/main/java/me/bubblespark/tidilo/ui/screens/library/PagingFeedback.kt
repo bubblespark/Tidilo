@@ -36,3 +36,7 @@ internal fun PagingFeedback(state: LoadState, retry: () -> Unit, modifier: Modif
 internal fun boundaryFeedback(prepend: LoadState, append: LoadState): LoadState? =
     listOf(prepend, append).firstOrNull { it is LoadState.Error }
         ?: listOf(prepend, append).firstOrNull { it is LoadState.Loading }
+
+/** Domain cards use aggregate state, independently of any retained bookmark pages. */
+internal fun bookmarkLoadState(state: LoadState, isDomainGrid: Boolean): LoadState =
+    if (isDomainGrid) LoadState.NotLoading(false) else state

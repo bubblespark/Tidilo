@@ -119,7 +119,9 @@ fun LibraryScreen(
     val initializationFailure by viewModel.initializationFailure.collectAsStateWithLifecycle()
     val initialized by viewModel.isInitialized.collectAsStateWithLifecycle()
     val domainGroupsLoading by viewModel.domainGroupsLoading.collectAsStateWithLifecycle()
-    val isLoading = !initialized || bookmarks.loadState.refresh is LoadState.Loading ||
+    val isDomainGrid = filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter == null
+    val refreshState = bookmarkLoadState(bookmarks.loadState.refresh, isDomainGrid)
+    val isLoading = !initialized || refreshState is LoadState.Loading ||
         (filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter == null && domainGroupsLoading)
     val isBarsVisible = LocalBarsVisible.current
     val context = LocalContext.current
@@ -208,9 +210,9 @@ fun LibraryScreen(
                     .fillMaxSize()
                     .padding(top = headerHeight, start = 20.dp, end = 20.dp)
             )
-        } else if (bookmarks.loadState.refresh is LoadState.Error) {
+        } else if (refreshState is LoadState.Error) {
             Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
-                PagingFeedback(bookmarks.loadState.refresh, bookmarks::retry)
+                PagingFeedback(refreshState, bookmarks::retry)
             }
         } else {
             AnimatedContent(
@@ -466,7 +468,7 @@ fun LibraryScreen(
             }
         }
 
-        boundaryFeedback(bookmarks.loadState.prepend, bookmarks.loadState.append)?.let { state ->
+        boundaryFeedback(bookmarkLoadState(bookmarks.loadState.prepend, isDomainGrid), bookmarkLoadState(bookmarks.loadState.append, isDomainGrid))?.let { state ->
             PagingFeedback(state, bookmarks::retry,
                 Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp))
         }
@@ -666,74 +668,7 @@ fun LibraryScreen(
             }
         }
 
-        // Full-screen borderless AI Summary Peek Overlay (Edge-to-Edge, only summary text)
-        AnimatedVisibility(
-            visible = peekBookmark != null,
-            enter = fadeIn(animationSpec = tween(200)),
-            exit = fadeOut(animationSpec = tween(160)),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            val currentPeek = peekBookmark
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.85f))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { peekBookmark = null }
-                    )
-            ) {
-                if (currentPeek != null) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = headerHeight)
-                            .padding(horizontal = 24.dp)
-                            .verticalScroll(rememberScrollState())
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { peekBookmark = null }
-                            )
-                    ) {
-                        // Badge: AI Summary
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.detail_action_ai_summary),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Text(
-                            text = currentPeek.description.ifBlank {
-                                stringResource(R.string.ai_review_no_summary)
-                            },
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                lineHeight = 24.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-
-                        Spacer(modifier = Modifier.height(140.dp))
-                    }
-                }
-            }
-        }
+        BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null }
     }
 }
 
@@ -773,6 +708,79 @@ private fun EmptyLibraryMessage() {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )
+        }
+    }
+}
+
+
+/** Shared borderless summary preview for library and search grid cards. */
+@Composable
+internal fun BookmarkSummaryPeekOverlay(bookmark: BookmarkItem?, headerHeight: androidx.compose.ui.unit.Dp, onDismiss: () -> Unit) {
+    AnimatedVisibility(
+        visible = bookmark != null,
+        enter = fadeIn(animationSpec = tween(200)),
+        exit = fadeOut(animationSpec = tween(160)),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        val currentPeek = bookmark
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.85f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { onDismiss() }
+                )
+        ) {
+            if (currentPeek != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = headerHeight)
+                        .padding(horizontal = 24.dp)
+                        .verticalScroll(rememberScrollState())
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onDismiss() }
+                        )
+                ) {
+                    // Badge: AI Summary
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.detail_action_ai_summary),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = currentPeek.description.ifBlank {
+                            stringResource(R.string.ai_review_no_summary)
+                        },
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            lineHeight = 24.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+
+                    Spacer(modifier = Modifier.height(140.dp))
+                }
+            }
         }
     }
 }

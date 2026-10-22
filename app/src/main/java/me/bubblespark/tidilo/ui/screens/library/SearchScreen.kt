@@ -3,6 +3,8 @@ package me.bubblespark.tidilo.ui.screens.library
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import androidx.paging.LoadState
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.saveable.rememberSaveable
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
@@ -101,6 +103,17 @@ fun SearchScreen(
     val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
     val resultListState = rememberLazyListState()
     val resultGridState = rememberLazyGridState()
+    var lastScrollQuery by rememberSaveable { mutableStateOf(searchQuery) }
+    var peekBookmark by remember { mutableStateOf<BookmarkItem?>(null) }
+    LaunchedEffect(searchQuery) {
+        if (lastScrollQuery != searchQuery) {
+            resultListState.requestScrollToItem(0)
+            resultGridState.requestScrollToItem(0)
+            lastScrollQuery = searchQuery
+            peekBookmark = null
+        }
+    }
+    BackHandler(enabled = peekBookmark != null) { peekBookmark = null }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -291,7 +304,7 @@ fun SearchScreen(
                     items(count = filteredBookmarks.itemCount, key = filteredBookmarks.itemKey { it.id },
                         contentType = { "bookmark_grid_card" }) { index ->
                         val item = filteredBookmarks[index] ?: return@items
-                        BookmarkGridCard(bookmark = item, onClick = {
+                        BookmarkGridCard(bookmark = item, onLongClick = { peekBookmark = item }, onClick = {
                             viewModel.addSearchHistory(searchQuery)
                             onNavigateToDetail(item.id)
                         })
@@ -337,7 +350,7 @@ fun SearchScreen(
 
         // 2. Expressive Header (slides out/in linked with scrolling)
         AnimatedVisibility(
-            visible = isBarsVisible,
+            visible = isBarsVisible && peekBookmark == null,
             enter = slideInVertically(
                 initialOffsetY = { -it },
                 animationSpec = spring(
@@ -467,5 +480,6 @@ fun SearchScreen(
                 }
             }
         }
+        BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null }
     }
 }

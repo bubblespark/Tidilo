@@ -3,7 +3,7 @@
 ## Status and implementation
 
 Implemented on `mod/room-backed-paging`, based on main `56d9a35`. Application
-version: **0.5.6 (code 37)**. Changes remain local until push approval.
+version: **0.5.5 (code 36)**. Review revisions keep the same issue version.
 
 - Removed the active-bookmark full-list observer/cache and eager DAO reads.
 - Timeline, domain drill-down, and search use Room PagingSource with deterministic
@@ -136,4 +136,15 @@ uniformly faster startup or physical-device performance is made.
 - Detail retry flows start with Loading before success/error. AI-review apply ignores repeated taps until completion and clears its guard in finally.
 - Benchmark archive/build subprocesses have 120/900-second timeouts; timeout failures terminate with an explicit message. Wrapper selection uses gradlew.bat on Windows and sh gradlew on POSIX, without requiring executable bits. Three isolated Python tests validate selection and timeout propagation; no full benchmark rerun was needed for these tooling-only changes.
 - The Japanese-translation suggestion remains intentionally deferred under the English-default resource policy, as instructed.
-- Review verification: 162 unit tests, 9 Android SQLite/Paging tests, and 3 Python tests passed. Debug build succeeds. No AICore inference performed. Application version incremented to 0.5.6 (code 37); benchmark numbers above remain measurements of v0.5.5.
+- Review verification: 162 unit tests, 9 Android SQLite/Paging tests, and 3 Python tests passed. Debug build succeeds. No AICore inference performed. The temporary review-only version bump was reverted: Issue #81 and all its review revisions use v0.5.5 (code 36).
+
+
+## Additional UI review corrections
+
+- DomainGrid masks bookmark refresh/prepend/append load states and relies on initialization/domain aggregate state. Retained timeline paging failures cannot show bookmark feedback over domain cards.
+- Library and search grids share the existing summary peek overlay. Search supports long-press preview, tap/back dismissal, and hides its header during preview.
+- Search saves its last query alongside separate list/grid scroll states. An actual query change requests index zero in both layouts and dismisses an obsolete preview; detail return with the same query preserves position. Requests do not wait for detached layouts.
+- Removed the unused updateNsfwByIds DAO method. Entity indexes and the benchmark artifact layout are unchanged, as requested.
+- Version policy: one issue, one application version. Reverted the unnecessary review bump to v0.5.5 (code 36).
+
+- Verification for these UI revisions: 163 unit tests and 9 Android tests passed; debug build passed. Synthetic-only UI checks confirmed search long-press peek/back dismissal and replacing a scrolled query (bookmark 34 onward) with a new query starting at bookmark 0. The initial input-replacement probe appended text because the simulated Ctrl+A was ineffective; the validated check used the actual Clear button. No AICore inference was used.

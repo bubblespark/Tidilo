@@ -77,9 +77,6 @@ interface BookmarkDao {
             entities = entities, isNsfw = isNsfw, updatedAt = updatedAt))
     }
 
-    @Query("UPDATE bookmarks SET isNsfw = :isNsfw WHERE id IN (:ids)")
-    suspend fun updateNsfwByIds(ids: List<String>, isNsfw: Boolean)
-
     @Query("DELETE FROM bookmarks WHERE id = :id")
     suspend fun deleteById(id: String)
 

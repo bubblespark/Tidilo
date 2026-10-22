@@ -8,7 +8,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** Owns one sequential processing session, including work arriving during shutdown. */
+/**
+ * Owns one sequential processing session, including work arriving during shutdown.
+ * [CancellationException] is rethrown to the caller and is never passed to [handleFailure].
+ */
 internal class AiProcessingWorker<T : Any, S : Any>(
     scope: CoroutineScope,
     mutex: Mutex,

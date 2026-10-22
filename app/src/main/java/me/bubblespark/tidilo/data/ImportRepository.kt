@@ -7,6 +7,8 @@ import com.google.mlkit.genai.prompt.GenerativeModel
 import com.google.mlkit.genai.common.GenAiException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,7 +44,10 @@ class ImportRepository internal constructor(
     private val openModel: () -> GenerativeModel = { Generation.getClient() },
     private val analyzeTask: suspend (GenerativeModel, ImportTask) -> Unit = ::analyzeImportTask,
     private val fallbackMode: () -> AiCoreFallbackMode = { AppConfig.aiCoreFallbackMode.value },
-    private val retryIntervalMs: Long = 3000L
+    private val retryIntervalMs: Long = 3000L,
+    private val persistFallback: suspend (BookmarkItem) -> Unit = {
+        BookmarkRepository.getInstance().addBookmarkAndAwait(it)
+    }
 ) {
 
     private val appContext: Context? = context?.applicationContext
@@ -590,16 +595,6 @@ class ImportRepository internal constructor(
     private suspend fun saveBookmarkFallback(target: ImportTask) {
         foregroundRetryCounts.remove(target.id)
         retryNotBefore.remove(target.id)
-        taskDao.deleteById(target.id)
-
-        val domain = DomainIconManager.extractDomain(target.url)
-        DomainPolicyManager.registerDomain(domain, false, target.siteName)
-        if (appContext != null && domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
-            repositoryScope.launch {
-                DomainIconManager.fetchAndSaveDomainIcon(appContext, target.url)
-            }
-        }
-
         val fallbackBookmark = BookmarkItem(
             id = UUID.randomUUID().toString(),
             title = target.title,
@@ -610,7 +605,27 @@ class ImportRepository internal constructor(
             isAiSkipped = true,
             ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
         )
-        BookmarkRepository.getInstance().addBookmark(fallbackBookmark)
+        try {
+            persistFallback(fallbackBookmark)
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            taskDao.updateStatus(
+                target.id, TaskStatus.ERROR.name, "Save failed",
+                "Bookmark persistence failed: ${e.message.orEmpty()}"
+            )
+            return
+        }
+        taskDao.deleteById(target.id)
+        if (appContext != null) {
+            // Domain metadata and image caching are auxiliary to the durable bookmark save.
+            repositoryScope.launch {
+                val domain = DomainIconManager.extractDomain(target.url)
+                DomainPolicyManager.registerDomain(domain, false, target.siteName)
+                if (domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
+                    DomainIconManager.fetchAndSaveDomainIcon(appContext, target.url)
+                }
+            }
+        }
     }
 
     /**

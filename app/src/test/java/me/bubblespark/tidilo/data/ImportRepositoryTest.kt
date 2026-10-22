@@ -759,6 +759,59 @@ class ImportRepositoryTest {
         } finally { job.cancelAndJoin() }
     }
 
+    @Test
+    fun fallbackRetainsImportTaskUntilDurableSaveCompletes() = verifyFallbackPersistence(false)
+
+    @Test
+    fun failedFallbackSaveRetainsRetryableTaskAndRetryCanSucceed() = verifyFallbackPersistence(true)
+
+    private fun verifyFallbackPersistence(initiallyFail: Boolean) = runBlocking {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val dao = FakeImportTaskDao()
+        dao.insertOrUpdate(waitingEntity("fallback"))
+        val saveStarted = CompletableDeferred<Unit>()
+        val releaseSave = CompletableDeferred<Unit>()
+        val firstClosed = CompletableDeferred<Unit>()
+        val secondClosed = CompletableDeferred<Unit>()
+        var closes = 0
+        var failSave = initiallyFail
+        val saved = mutableListOf<BookmarkItem>()
+        try {
+            val repository = ImportRepository(
+                taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
+                openModel = {
+                    fakeModel { if (++closes == 1) firstClosed.complete(Unit) else secondClosed.complete(Unit) }
+                },
+                analyzeTask = { _, _ -> throw AiCoreExecutionException(27, "Battery quota exceeded") },
+                fallbackMode = { AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY },
+                persistFallback = { bookmark ->
+                    saveStarted.complete(Unit)
+                    releaseSave.await()
+                    assertTrue(dao.getTaskById("fallback") != null)
+                    if (failSave) error("Disk write failed")
+                    saved.add(bookmark)
+                }
+            )
+            repository.retryWaitingProcessingTasks()
+            withTimeout(5000) { saveStarted.await() }
+            assertEquals(TaskStatus.PROCESSING_AI.name, dao.getTaskById("fallback")?.status)
+            assertTrue(saved.isEmpty())
+            releaseSave.complete(Unit)
+            withTimeout(5000) { firstClosed.await() }
+            if (initiallyFail) {
+                assertEquals(TaskStatus.ERROR.name, dao.getTaskById("fallback")?.status)
+                assertTrue(saved.isEmpty())
+                failSave = false
+                repository.retryErrorTask("fallback")
+                withTimeout(5000) { secondClosed.await() }
+            }
+            assertNull(dao.getTaskById("fallback"))
+            assertEquals(1, saved.size)
+            assertTrue(saved.single().isAiSkipped)
+        } finally { job.cancelAndJoin() }
+    }
+
     private class FakeImportTaskDao : ImportTaskDao {
         val tasksFlow = MutableStateFlow<List<ImportTaskEntity>>(emptyList())
 

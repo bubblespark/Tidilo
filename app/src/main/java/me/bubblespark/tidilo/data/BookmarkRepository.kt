@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.room.withTransaction
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
@@ -111,6 +112,23 @@ class BookmarkRepository private constructor(context: Context) {
         repositoryScope.launch {
             bookmarkDao.deleteByIdOrUrl(finalItem.id, finalItem.url)
             bookmarkDao.insertOrUpdate(BookmarkEntity.fromBookmarkItem(finalItem))
+            DomainPolicyManager.registerDomain(domain)
+            warmUpDomainIconsAsync(listOf(finalItem))
+        }
+    }
+
+    /** Persists a bookmark before returning, retaining any existing record if replacement fails. */
+    suspend fun addBookmarkAndAwait(item: BookmarkItem) = withContext(Dispatchers.IO) {
+        val domain = DomainIconManager.extractDomain(item.url)
+        val finalItem = if (DomainPolicyManager.isNsfwDomain(domain) && !item.isNsfw) {
+            item.copy(isNsfw = true)
+        } else item
+        database.withTransaction {
+            bookmarkDao.deleteByIdOrUrl(finalItem.id, finalItem.url)
+            bookmarkDao.insertOrUpdate(BookmarkEntity.fromBookmarkItem(finalItem))
+        }
+        // Room publishes the committed bookmark; auxiliary cache work cannot fail the save.
+        repositoryScope.launch {
             DomainPolicyManager.registerDomain(domain)
             warmUpDomainIconsAsync(listOf(finalItem))
         }

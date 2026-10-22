@@ -153,7 +153,7 @@ object GeminiTaggingService {
             )
 
             // Save to Library (BookmarkRepository)
-            BookmarkRepository.getInstance().addBookmark(bookmarkItem)
+            BookmarkRepository.getInstance().addBookmarkAndAwait(bookmarkItem)
 
             bookmarkItem
         }.onFailure { if (it is CancellationException) throw it }

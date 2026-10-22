@@ -253,40 +253,44 @@ object DomainIconManager {
         val hsv = FloatArray(3)
 
         var visiblePixelCount = 0
+        var totalVisibleWeight = 0f
         var totalVisibleBrightness = 0f
-        var chromaticCount = 0
+        var chromaticWeight = 0f
 
         for (pixel in pixels) {
             val alpha = (pixel ushr 24) and 0xFF
-            if (alpha < 120) continue
+            if (alpha == 0) continue
 
+            val alphaWeight = alpha / 255f
             visiblePixelCount++
+            totalVisibleWeight += alphaWeight
+
             colorToHsv(pixel, hsv)
             val saturation = hsv[1]
             val value = hsv[2]
-            totalVisibleBrightness += value
+            totalVisibleBrightness += value * alphaWeight
 
             if (saturation > 0.15f) {
-                chromaticCount++
+                chromaticWeight += alphaWeight
             }
 
             // Avoid washed-out white or dark near-black for chromatic brand selection
             if (value < 0.15f || (saturation < 0.1f && value > 0.9f)) continue
 
-            // Score by saturation and medium-high luminance
-            val score = saturation * (1f - kotlin.math.abs(value - 0.7f))
+            // Score by saturation, medium-high luminance, and alpha weight
+            val score = saturation * (1f - kotlin.math.abs(value - 0.7f)) * alphaWeight
             if (score > bestScore) {
                 bestScore = score
                 bestColor = pixel
             }
         }
 
-        if (visiblePixelCount == 0) {
+        if (visiblePixelCount == 0 || totalVisibleWeight == 0f) {
             // Completely transparent image; fallback to hash-based accent
             return generateDomainAccentColor(domain)
         }
 
-        val chromaticRatio = chromaticCount.toFloat() / visiblePixelCount.toFloat()
+        val chromaticRatio = chromaticWeight / totalVisibleWeight
         return if (bestScore > 0.15f && chromaticRatio > 0.03f) {
             // Vibrant chromatic brand icon (e.g. YouTube, Spotify)
             val r = (bestColor ushr 16) and 0xFF
@@ -295,7 +299,7 @@ object DomainIconManager {
             ensureDarkThemeLegibility(Color(r, g, b))
         } else {
             // Monochrome icon (e.g. GitHub, X, Notion)
-            val averageBrightness = totalVisibleBrightness / visiblePixelCount.toFloat()
+            val averageBrightness = totalVisibleBrightness / totalVisibleWeight
             if (averageBrightness >= 0.5f) {
                 PLATINUM_WHITE
             } else {

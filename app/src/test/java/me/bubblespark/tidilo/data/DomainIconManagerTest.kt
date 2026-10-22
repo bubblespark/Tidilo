@@ -119,6 +119,32 @@ class DomainIconManagerTest {
     }
 
     @Test
+    fun extractDominantColor_semiTransparentWhiteIcon_returnsPlatinumWhite() {
+        val alpha50 = 50 shl 24
+        val pixels = IntArray(24 * 24) { alpha50 or 0x00FFFFFF }
+        val color = DomainIconManager.extractDominantColorFromPixels(pixels, "github.com")
+        assertEquals(DomainIconManager.PLATINUM_WHITE, color)
+    }
+
+    @Test
+    fun extractDominantColor_semiTransparentBlackIcon_returnsSlateGray() {
+        val alpha50 = 50 shl 24
+        val pixels = IntArray(24 * 24) { alpha50 or 0x00000000 }
+        val color = DomainIconManager.extractDominantColorFromPixels(pixels, "x.com")
+        assertEquals(DomainIconManager.SLATE_GRAY, color)
+    }
+
+    @Test
+    fun extractDominantColor_semiTransparentRedIcon_returnsLegibleRed() {
+        val alpha80 = 80 shl 24
+        val pixels = IntArray(24 * 24) { alpha80 or 0x00FF0000 }
+        val color = DomainIconManager.extractDominantColorFromPixels(pixels, "youtube.com")
+        assertNotEquals(DomainIconManager.PLATINUM_WHITE, color)
+        assertNotEquals(DomainIconManager.SLATE_GRAY, color)
+        assertTrue(color.red > color.green)
+    }
+
+    @Test
     fun extractDominantColor_transparentIcon_fallsBackToHashAccent() {
         val pixels = IntArray(24 * 24) { 0x00000000 }
         val color = DomainIconManager.extractDominantColorFromPixels(pixels, "example.com")

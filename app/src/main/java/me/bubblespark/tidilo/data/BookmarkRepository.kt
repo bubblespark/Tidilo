@@ -289,10 +289,27 @@ class BookmarkRepository private constructor(context: Context) {
             DomainPolicyManager.syncDomains(domains)
             DomainIconManager.preloadIcons(appContext, domains)
 
-            for (item in items) {
-                val domain = DomainIconManager.extractDomain(item.url) ?: continue
-                if (!DomainIconManager.hasIcon(appContext, domain)) {
-                    DomainIconManager.fetchAndSaveDomainIcon(appContext, item.url)
+            val domainGroups = items.groupBy { DomainIconManager.extractDomain(it.url) }
+            for ((domain, domainItems) in domainGroups) {
+                if (domain.isNullOrBlank()) continue
+                if (DomainIconManager.hasIcon(appContext, domain) || DomainIconManager.shouldSkipFetch(appContext, domain)) {
+                    continue
+                }
+                var groupHadTransientFailure = false
+                val uniqueUrls = domainItems.map { it.url }.distinct()
+                for ((index, url) in uniqueUrls.withIndex()) {
+                    val isLast = index == uniqueUrls.lastIndex
+                    val result = DomainIconManager.fetchAndSaveDomainIcon(
+                        context = appContext,
+                        url = url,
+                        recordFailureMarker = isLast && !groupHadTransientFailure
+                    )
+                    if (result.hadTransientFailure) {
+                        groupHadTransientFailure = true
+                    }
+                    if (result.success || DomainIconManager.hasIcon(appContext, domain)) {
+                        break
+                    }
                 }
             }
         }

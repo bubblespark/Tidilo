@@ -48,6 +48,8 @@ Managed in `data/OgImageManager.kt` and `data/DomainIconManager.kt`:
   Compressed WebP OG images and PNG domain icons are stored as individual files under `cacheDir/og_images` and `cacheDir/domain_icons`. This enables both the OS "Clear cache" and in-app "Clear image cache" actions without risking user bookmark data.
 - **In-App Cache Clearing & Generation Token**:
   An atomic generation token (`cacheGeneration: AtomicLong`) invalidates and discards in-flight downloads when cache is cleared. In-memory `LruCache` buffers and derived brand colors are evicted, while reactive `StateFlow` signals (`cacheVersion`, `iconUpdateVersion`) notify visible Compose components to immediately reset state.
+- **Negative Caching for Failed Domain Icons (`.none` sentinel)**:
+  When `fetchAndSaveDomainIcon` exhausts all candidates without discovering an icon meeting the 96×96 minimum threshold or encounters non-2xx HTTP responses, a zero-byte marker file (`cacheDir/domain_icons/<domain>.none`) is written. `DomainIconManager.shouldSkipFetch` checks this marker with a 14-day TTL (`NEGATIVE_CACHE_TTL_MS`), preventing unbounded network retries on every app startup (`BookmarkRepository.warmUpDomainIconsAsync`). Markers are invalidated upon manual icon refresh (`clearAllNegativeMarkers`) or cache reset (`clearCache`).
 
 ### 1.2 `TrashedBookmarkItem`
 Located in `ui/screens/library/BookmarkItem.kt`:

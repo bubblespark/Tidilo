@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jsoup.Jsoup
+import org.jsoup.HttpStatusException
+import org.jsoup.UnsupportedMimeTypeException
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URI
@@ -35,6 +37,7 @@ object DomainIconManager {
     const val MIN_ICON_SIZE = 96
     const val MAX_ICON_SIZE = 384
     const val DOMAIN_TIMEOUT_MS = 10_000L
+    const val NEGATIVE_CACHE_TTL_MS = 14L * 24 * 60 * 60 * 1000L // 14 days
     private const val USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
@@ -94,6 +97,73 @@ object DomainIconManager {
     fun hasIcon(context: Context, domain: String): Boolean {
         val file = getIconFile(context, domain)
         return (file.exists() && file.length() > 0) || getLegacyIconFile(context, domain).run { exists() && length() > 0 }
+    }
+
+    private fun getNegativeMarkerFile(context: Context, domain: String): File {
+        val dir = getIconDir(context)
+        return File(dir, "$domain.none")
+    }
+
+    /**
+     * Checks if a domain has a valid negative cache marker (fetch failure within TTL).
+     */
+    fun shouldSkipFetch(context: Context, domain: String): Boolean = synchronized(cacheLock) {
+        val normalized = domain.trim().lowercase()
+        val marker = getNegativeMarkerFile(context, normalized)
+        if (!marker.exists()) return@synchronized false
+        val age = System.currentTimeMillis() - marker.lastModified()
+        if (age in 0 until NEGATIVE_CACHE_TTL_MS) {
+            true
+        } else {
+            marker.delete()
+            false
+        }
+    }
+
+    /**
+     * Writes a zero-byte negative cache sentinel file indicating icon discovery failure.
+     */
+    fun writeNegativeMarker(context: Context, domain: String) {
+        val normalized = domain.trim().lowercase()
+        val marker = getNegativeMarkerFile(context, normalized)
+        synchronized(cacheLock) {
+            try {
+                if (!marker.exists()) {
+                    marker.createNewFile()
+                } else {
+                    marker.setLastModified(System.currentTimeMillis())
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /**
+     * Removes the negative cache marker for the specified domain.
+     */
+    fun removeNegativeMarker(context: Context, domain: String) {
+        val normalized = domain.trim().lowercase()
+        val marker = getNegativeMarkerFile(context, normalized)
+        synchronized(cacheLock) {
+            if (marker.exists()) {
+                marker.delete()
+            }
+        }
+    }
+
+    /**
+     * Removes all negative cache markers from the domain icons storage.
+     */
+    fun clearAllNegativeMarkers(context: Context) {
+        synchronized(cacheLock) {
+            try {
+                val dir = getIconDir(context)
+                if (dir.exists()) {
+                    dir.listFiles { _, name -> name.endsWith(".none") }?.forEach { it.delete() }
+                }
+            } catch (_: Exception) {
+            }
+        }
     }
 
     /**
@@ -380,6 +450,7 @@ object DomainIconManager {
         if (legacy.exists()) {
             legacy.delete()
         }
+        removeNegativeMarker(context, normalized)
         nextVersion()
     }
 
@@ -492,17 +563,53 @@ object DomainIconManager {
         return Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
     }
 
+    internal data class DownloadResult(
+        val bytes: ByteArray?,
+        val hasServerContact: Boolean,
+        val hasTransientFailure: Boolean = !hasServerContact
+    )
+
+    internal data class HtmlDiscoveryResult(
+        val iconUrls: List<String>,
+        val hasServerContact: Boolean,
+        val hasTransientFailure: Boolean = !hasServerContact
+    )
+
+    /**
+     * Checks if an HTTP status code represents a temporary/transient server error (e.g. 408, 429, 5xx).
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun isTransientHttpStatus(statusCode: Int): Boolean {
+        return statusCode == 408 || statusCode == 429 || statusCode in 500..599
+    }
+
+    data class FetchResult(
+        val success: Boolean,
+        val hadTransientFailure: Boolean = false
+    )
+
+    @androidx.annotation.VisibleForTesting
+    internal var httpDownloader: ((String) -> DownloadResult)? = null
+
+    @androidx.annotation.VisibleForTesting
+    internal var htmlDiscoverer: ((String) -> HtmlDiscoveryResult)? = null
+
     /**
      * Discovers icon candidate URLs from HTML markup (<link rel="icon">, <link rel="apple-touch-icon">, etc.).
      */
-    private fun findHtmlIconUrls(pageUrl: String): List<String> {
+    private fun findHtmlIconUrls(pageUrl: String): HtmlDiscoveryResult {
+        htmlDiscoverer?.let { return it.invoke(pageUrl) }
         val results = mutableListOf<String>()
+        var hasServerContact = false
+        var hasTransientFailure = false
         try {
             val doc = Jsoup.connect(pageUrl)
                 .userAgent(USER_AGENT)
                 .timeout(4000)
                 .followRedirects(true)
                 .get()
+
+            hasServerContact = true
 
             // Extract og:site_name and register as domain display name
             val siteName = doc.select("meta[property='og:site_name'], meta[name='og:site_name']").firstOrNull()?.attr("content")?.trim()
@@ -529,9 +636,18 @@ object DomainIconManager {
                     results.add(content)
                 }
             }
+        } catch (e: HttpStatusException) {
+            hasServerContact = true
+            if (isTransientHttpStatus(e.statusCode)) {
+                hasTransientFailure = true
+            }
+        } catch (_: UnsupportedMimeTypeException) {
+            hasServerContact = true
+            // Completed discovery with non-HTML content (e.g. PDF/video), treated as permanent non-icon source
         } catch (_: Exception) {
+            hasTransientFailure = true
         }
-        return results
+        return HtmlDiscoveryResult(results, hasServerContact, hasTransientFailure)
     }
 
     /**
@@ -546,91 +662,122 @@ object DomainIconManager {
         url: String,
         appleTouchIconUrl: String? = null,
         faviconUrl: String? = null,
-        forceRefresh: Boolean = false
-    ): Boolean {
+        forceRefresh: Boolean = false,
+        recordFailureMarker: Boolean = true
+    ): FetchResult {
         val requestGeneration = synchronized(cacheLock) { cacheGeneration }
         return withContext(Dispatchers.IO) {
-        val domain = extractDomain(url) ?: return@withContext false
+            val domain = extractDomain(url) ?: return@withContext FetchResult(success = false, hadTransientFailure = false)
 
-        if (!forceRefresh && hasIcon(context, domain)) {
-            return@withContext true
-        }
-
-        val candidates = LinkedHashSet<String>()
-        if (!appleTouchIconUrl.isNullOrBlank()) candidates.add(appleTouchIconUrl.trim())
-        if (!faviconUrl.isNullOrBlank()) candidates.add(faviconUrl.trim())
-
-        // Discover icons from HTML markup
-        val targetPageUrl = if (url.startsWith("http://") || url.startsWith("https://")) url else "https://$domain"
-        val htmlIcons = findHtmlIconUrls(targetPageUrl)
-        candidates.addAll(htmlIcons)
-
-        // Fallback to domain root HTML if no icons discovered or target is a deep URL
-        val rootPageUrl = "https://$domain"
-        if (targetPageUrl != rootPageUrl && targetPageUrl != "$rootPageUrl/") {
-            candidates.addAll(findHtmlIconUrls(rootPageUrl))
-        }
-
-        // Direct root path candidates
-        candidates.add("https://$domain/apple-touch-icon.png")
-        candidates.add("https://$domain/apple-touch-icon-precomposed.png")
-
-        // Google Favicon service candidates
-        candidates.add("https://www.google.com/s2/favicons?domain=$domain&sz=256")
-        candidates.add("https://www.google.com/s2/favicons?domain=$domain&sz=128")
-
-        var bestBitmap: Bitmap? = null
-        var bestArea = 0
-
-        for (candidateUrl in candidates) {
-            try {
-                val bytes = downloadBytes(candidateUrl) ?: continue
-
-                // Resolution check: exclude candidates smaller than 96x96
-                val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
-                val width = boundsOptions.outWidth
-                val height = boundsOptions.outHeight
-
-                if (width < MIN_ICON_SIZE || height < MIN_ICON_SIZE) {
-                    continue
+            if (!forceRefresh) {
+                if (hasIcon(context, domain)) {
+                    return@withContext FetchResult(success = true, hadTransientFailure = false)
                 }
-
-                val area = width * height
-                if (area > bestArea) {
-                    val rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    if (rawBitmap != null) {
-                        bestBitmap = rawBitmap
-                        bestArea = area
-                    }
+                if (shouldSkipFetch(context, domain)) {
+                    return@withContext FetchResult(success = false, hadTransientFailure = false)
                 }
-            } catch (_: Exception) {
+            } else {
+                removeNegativeMarker(context, domain)
             }
-        }
 
-        if (bestBitmap != null) {
-            val saved = synchronized(cacheLock) {
-                if (requestGeneration != cacheGeneration) {
-                    false
-                } else {
-                    val scaledBitmap = downsampleIfNeeded(bestBitmap, MAX_ICON_SIZE)
-                    val processedBitmap = makeBackgroundTransparent(scaledBitmap)
+            val candidates = LinkedHashSet<String>()
+            if (!appleTouchIconUrl.isNullOrBlank()) candidates.add(appleTouchIconUrl.trim())
+            if (!faviconUrl.isNullOrBlank()) candidates.add(faviconUrl.trim())
 
-                    val file = getIconFile(context, domain)
-                    FileOutputStream(file).use { out ->
-                        processedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            var hasServerContact = false
+            var hasTransientDiscoveryFailure = false
+            var hasTransientDownloadFailure = false
+
+            // Discover icons from HTML markup
+            val targetPageUrl = if (url.startsWith("http://") || url.startsWith("https://")) url else "https://$domain"
+            val htmlDiscovery = findHtmlIconUrls(targetPageUrl)
+            if (htmlDiscovery.hasServerContact) hasServerContact = true
+            if (htmlDiscovery.hasTransientFailure) hasTransientDiscoveryFailure = true
+            candidates.addAll(htmlDiscovery.iconUrls)
+
+            // Fallback to domain root HTML if no icons discovered or target is a deep URL
+            val rootPageUrl = "https://$domain"
+            if (targetPageUrl != rootPageUrl && targetPageUrl != "$rootPageUrl/") {
+                val rootDiscovery = findHtmlIconUrls(rootPageUrl)
+                if (rootDiscovery.hasServerContact) hasServerContact = true
+                if (rootDiscovery.hasTransientFailure) hasTransientDiscoveryFailure = true
+                candidates.addAll(rootDiscovery.iconUrls)
+            }
+
+            // Direct root path candidates
+            candidates.add("https://$domain/apple-touch-icon.png")
+            candidates.add("https://$domain/apple-touch-icon-precomposed.png")
+
+            // Google Favicon service candidates
+            candidates.add("https://www.google.com/s2/favicons?domain=$domain&sz=256")
+            candidates.add("https://www.google.com/s2/favicons?domain=$domain&sz=128")
+
+            var bestBitmap: Bitmap? = null
+            var bestArea = 0
+
+            for (candidateUrl in candidates) {
+                try {
+                    val download = downloadBytes(candidateUrl)
+                    if (download.hasServerContact) hasServerContact = true
+                    if (download.hasTransientFailure) hasTransientDownloadFailure = true
+                    val bytes = download.bytes ?: continue
+
+                    // Resolution check: exclude candidates smaller than 96x96
+                    val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
+                    val width = boundsOptions.outWidth
+                    val height = boundsOptions.outHeight
+
+                    if (width < MIN_ICON_SIZE || height < MIN_ICON_SIZE) {
+                        continue
                     }
 
-                    memoryCache.put(domain, processedBitmap.asImageBitmap())
-                    dominantColorCache.put(domain, extractDominantColor(processedBitmap, domain))
-                    nextVersion()
-                    true
+                    val area = width * height
+                    if (area > bestArea) {
+                        val rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        if (rawBitmap != null) {
+                            bestBitmap = rawBitmap
+                            bestArea = area
+                        }
+                    }
+                } catch (_: Exception) {
                 }
             }
-            return@withContext saved
-        }
 
-        false
+            if (bestBitmap != null) {
+                val saved = synchronized(cacheLock) {
+                    if (requestGeneration != cacheGeneration) {
+                        false
+                    } else {
+                        val scaledBitmap = downsampleIfNeeded(bestBitmap, MAX_ICON_SIZE)
+                        val processedBitmap = makeBackgroundTransparent(scaledBitmap)
+
+                        val file = getIconFile(context, domain)
+                        FileOutputStream(file).use { out ->
+                            processedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        }
+
+                        removeNegativeMarker(context, domain)
+                        memoryCache.put(domain, processedBitmap.asImageBitmap())
+                        dominantColorCache.put(domain, extractDominantColor(processedBitmap, domain))
+                        nextVersion()
+                        true
+                    }
+                }
+                return@withContext FetchResult(success = saved, hadTransientFailure = false)
+            }
+
+            val hadTransientFailure = !hasServerContact || hasTransientDownloadFailure || hasTransientDiscoveryFailure
+
+            synchronized(cacheLock) {
+                if (requestGeneration == cacheGeneration &&
+                    !hadTransientFailure &&
+                    recordFailureMarker
+                ) {
+                    writeNegativeMarker(context, domain)
+                }
+            }
+            FetchResult(success = false, hadTransientFailure = hadTransientFailure)
         }
     }
 
@@ -649,7 +796,7 @@ object DomainIconManager {
                 forceRefresh = true
             )
         }
-        if (result == true) {
+        if (result?.success == true) {
             true
         } else {
             removeIcon(context, domain)
@@ -665,6 +812,7 @@ object DomainIconManager {
         domains: List<String>,
         onProgress: ((current: Int, total: Int, currentDomain: String) -> Unit)? = null
     ) = withContext(Dispatchers.IO) {
+        clearAllNegativeMarkers(context)
         val uniqueDomains = domains.distinct()
         val total = uniqueDomains.size
         for ((index, domain) in uniqueDomains.withIndex()) {
@@ -674,7 +822,8 @@ object DomainIconManager {
         }
     }
 
-    private fun downloadBytes(urlStr: String): ByteArray? {
+    private fun downloadBytes(urlStr: String): DownloadResult {
+        httpDownloader?.let { return it.invoke(urlStr) }
         return try {
             val response = Jsoup.connect(urlStr)
                 .userAgent(USER_AGENT)
@@ -683,13 +832,17 @@ object DomainIconManager {
                 .timeout(4000)
                 .maxBodySize(5 * 1024 * 1024)
                 .execute()
-            if (response.statusCode() in 200..299) {
-                response.bodyAsBytes()
-            } else {
-                null
-            }
+            val statusCode = response.statusCode()
+            val isTransient = isTransientHttpStatus(statusCode)
+            val bytes = if (statusCode in 200..299) response.bodyAsBytes() else null
+            DownloadResult(bytes, hasServerContact = true, hasTransientFailure = isTransient)
+        } catch (e: HttpStatusException) {
+            val isTransient = isTransientHttpStatus(e.statusCode)
+            DownloadResult(bytes = null, hasServerContact = true, hasTransientFailure = isTransient)
+        } catch (_: UnsupportedMimeTypeException) {
+            DownloadResult(bytes = null, hasServerContact = true, hasTransientFailure = false)
         } catch (_: Exception) {
-            null
+            DownloadResult(bytes = null, hasServerContact = false, hasTransientFailure = true)
         }
     }
 }

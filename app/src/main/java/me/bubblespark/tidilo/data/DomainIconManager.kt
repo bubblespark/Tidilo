@@ -267,10 +267,16 @@ object DomainIconManager {
             totalVisibleWeight += alphaWeight
             maxVisibleWeight = kotlin.math.max(maxVisibleWeight, alphaWeight)
 
+            val rgbBrightness = (
+                (((pixel ushr 16) and 0xFF) / 255f) +
+                    (((pixel ushr 8) and 0xFF) / 255f) +
+                    ((pixel and 0xFF) / 255f)
+            ) / 3f
+            totalVisibleBrightness += rgbBrightness * alphaWeight
+
             colorToHsv(pixel, hsv)
             val saturation = hsv[1]
             val value = hsv[2]
-            totalVisibleBrightness += value * alphaWeight
 
             if (saturation > 0.15f) {
                 chromaticWeight += alphaWeight

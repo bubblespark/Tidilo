@@ -135,6 +135,16 @@ class DomainIconManagerTest {
     }
 
     @Test
+    fun extractDominantColor_lowChromaDarkNeutralIcon_returnsSlateGray() {
+        // RGB (128, 108, 108): HSV value is ~0.502 (>= 0.5), but average RGB brightness is ~0.450 (< 0.5).
+        // It fails chromatic scoring and reaches neutral path, selecting SLATE_GRAY.
+        val lowChromaPixel = (0xFF shl 24) or (128 shl 16) or (108 shl 8) or 108
+        val pixels = IntArray(24 * 24) { lowChromaPixel }
+        val color = DomainIconManager.extractDominantColorFromPixels(pixels, "neutral.org")
+        assertEquals(DomainIconManager.SLATE_GRAY, color)
+    }
+
+    @Test
     fun extractDominantColor_semiTransparentRedIcon_returnsLegibleRed() {
         // Uniform alpha=50 red icon (bestScore ~ 0.137) should scale threshold by opacity and retain brand red
         val alpha50 = 50 shl 24

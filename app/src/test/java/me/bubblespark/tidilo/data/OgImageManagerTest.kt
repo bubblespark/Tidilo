@@ -8,6 +8,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.Tag
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.yield
 import org.junit.Test
 
 class OgImageManagerTest {
@@ -194,9 +198,8 @@ class OgImageManagerTest {
     }
 
     @Test
-    fun testGenerationToken() = kotlinx.coroutines.runBlocking {
+    fun testGenerationTokenAndCacheCleared(): Unit = runBlocking {
         val initialGen = OgImageManager.getCurrentGeneration()
-        val initialVersion = OgImageManager.cacheVersion.value
         assertTrue("Generation should be non-negative", initialGen >= 0L)
 
         val tempDir = java.nio.file.Files.createTempDirectory("og_image_test").toFile()
@@ -204,31 +207,62 @@ class OgImageManagerTest {
             val fakeContext = object : android.content.ContextWrapper(null) {
                 override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
             }
+            var clearedReceived = false
+            val job = launch {
+                OgImageManager.cacheClearedEvent.collect {
+                    clearedReceived = true
+                }
+            }
+            yield()
             OgImageManager.clearImageCache(fakeContext)
+            yield()
             val afterGen = OgImageManager.getCurrentGeneration()
             assertTrue("Clearing cache should increment generation", afterGen > initialGen)
-            assertTrue("Clearing cache should increment cache version", OgImageManager.cacheVersion.value > initialVersion)
+            assertTrue("Clearing cache should emit cleared event", clearedReceived)
+            job.cancel()
         } finally {
             tempDir.deleteRecursively()
         }
     }
 
     @Test
-    fun testCacheVersionMonotonicityAcrossClears() = kotlinx.coroutines.runBlocking {
-        val tempDir = java.nio.file.Files.createTempDirectory("og_image_test_monotonic").toFile()
-        try {
-            val fakeContext = object : android.content.ContextWrapper(null) {
-                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+    fun testOgImageScopedObservationFiltersCorrectly(): Unit = runBlocking {
+        val receivedForDomainA = mutableListOf<String>()
+        val receivedForDomainB = mutableListOf<String>()
+
+        val jobA = launch {
+            OgImageManager.observeOgImageUpdates("domain-a.com").collect {
+                receivedForDomainA.add(it)
             }
-            val v0 = OgImageManager.cacheVersion.value
-            OgImageManager.clearImageCache(fakeContext)
-            val v1 = OgImageManager.cacheVersion.value
-            assertTrue(v1 > v0)
-            OgImageManager.clearImageCache(fakeContext)
-            val v2 = OgImageManager.cacheVersion.value
-            assertTrue(v2 > v1)
-        } finally {
-            tempDir.deleteRecursively()
         }
+        val jobB = launch {
+            OgImageManager.observeOgImageUpdates("domain-b.com").collect {
+                receivedForDomainB.add(it)
+            }
+        }
+        kotlinx.coroutines.delay(50)
+        OgImageManager.notifyOgImageUpdated("domain-a.com")
+        kotlinx.coroutines.delay(50)
+
+        assertEquals(listOf("domain-a.com"), receivedForDomainA)
+        assertTrue(receivedForDomainB.isEmpty())
+
+        jobA.cancel()
+        jobB.cancel()
+    }
+
+    @Test
+    fun observeOgImageUpdates_returnsEmptyFlowForBlankDomain(): Unit = runBlocking {
+        val received = mutableListOf<String>()
+        val job = launch {
+            OgImageManager.observeOgImageUpdates("   ").collect {
+                received.add(it)
+            }
+        }
+        yield()
+        OgImageManager.notifyOgImageUpdated("example.com")
+        yield()
+        assertTrue(received.isEmpty())
+        job.cancel()
     }
 }

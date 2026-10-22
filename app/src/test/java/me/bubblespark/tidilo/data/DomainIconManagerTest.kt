@@ -6,6 +6,10 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.yield
 import org.junit.Test
 
 class DomainIconManagerTest {
@@ -49,21 +53,55 @@ class DomainIconManagerTest {
     }
 
     @Test
-    fun testClearCacheIncrementsVersion() = kotlinx.coroutines.runBlocking {
+    fun testClearCacheIncrementsGenerationAndEmitsEvent(): Unit = runBlocking {
         val tempDir = java.nio.file.Files.createTempDirectory("domain_icon_test").toFile()
         try {
             val fakeContext = object : android.content.ContextWrapper(null) {
                 override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
                 override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
             }
-            val initialVersion = DomainIconManager.iconUpdateVersion.value
             val initialGen = DomainIconManager.getCurrentGeneration()
+            var eventReceived = false
+            val job = launch {
+                DomainIconManager.cacheClearedEvent.collect {
+                    eventReceived = true
+                }
+            }
+            yield()
             DomainIconManager.clearCache(fakeContext)
-            assertTrue(DomainIconManager.iconUpdateVersion.value > initialVersion)
+            yield()
             assertTrue(DomainIconManager.getCurrentGeneration() > initialGen)
+            assertTrue(eventReceived)
+            job.cancel()
         } finally {
             tempDir.deleteRecursively()
         }
+    }
+
+    @Test
+    fun testDomainIconScopedObservationFiltersCorrectly(): Unit = runBlocking {
+        val receivedForDomainA = mutableListOf<String>()
+        val receivedForDomainB = mutableListOf<String>()
+
+        val jobA = launch {
+            DomainIconManager.observeIconUpdates("domain-a.com").collect {
+                receivedForDomainA.add(it)
+            }
+        }
+        val jobB = launch {
+            DomainIconManager.observeIconUpdates("domain-b.com").collect {
+                receivedForDomainB.add(it)
+            }
+        }
+        kotlinx.coroutines.delay(50)
+        DomainIconManager.notifyIconUpdated("domain-a.com")
+        kotlinx.coroutines.delay(50)
+
+        assertEquals(listOf("domain-a.com"), receivedForDomainA)
+        assertTrue(receivedForDomainB.isEmpty())
+
+        jobA.cancel()
+        jobB.cancel()
     }
 
 
@@ -186,8 +224,18 @@ class DomainIconManagerTest {
     }
 
     @Test
-    fun iconUpdateVersion_initialValueIsNonNegative() {
-        assertTrue(DomainIconManager.iconUpdateVersion.value >= 0L)
+    fun observeIconUpdates_returnsEmptyFlowForBlankDomain(): Unit = runBlocking {
+        val received = mutableListOf<String>()
+        val job = launch {
+            DomainIconManager.observeIconUpdates("   ").collect {
+                received.add(it)
+            }
+        }
+        yield()
+        DomainIconManager.notifyIconUpdated("example.com")
+        yield()
+        assertTrue(received.isEmpty())
+        job.cancel()
     }
 
     @Test

@@ -48,7 +48,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.BookmarkRepository
+import android.content.Context
 import me.bubblespark.tidilo.data.DomainIconManager
+import me.bubblespark.tidilo.data.DomainPolicy
 import me.bubblespark.tidilo.data.DomainPolicyManager
 
 @Composable
@@ -60,7 +62,6 @@ fun NsfwSettingsScreen(
     val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
     val isNsfwBookmarkable by AppConfig.isNsfwContentBookmarkable.collectAsStateWithLifecycle()
     val policies by DomainPolicyManager.policies.collectAsStateWithLifecycle()
-    val iconVersion by DomainIconManager.iconUpdateVersion.collectAsStateWithLifecycle()
 
     // Ensure all domains from current bookmarks are synced
     val bookmarkRepo = remember { BookmarkRepository.getInstance(context) }
@@ -268,58 +269,10 @@ fun NsfwSettingsScreen(
                     modifier = Modifier.padding(vertical = 8.dp)
                 ) {
                     policies.forEachIndexed { index, policy ->
-                        val isChecked = policy.isNsfw
-                        val iconBitmap = remember(policy.domain, iconVersion) {
-                            DomainIconManager.getIconBitmap(context, policy.domain)
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    DomainPolicyManager.setDomainNsfw(policy.domain, !isChecked)
-                                }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = isChecked,
-                                onCheckedChange = { checked ->
-                                    DomainPolicyManager.setDomainNsfw(policy.domain, checked)
-                                }
-                            )
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            if (iconBitmap != null) {
-                                Image(
-                                    bitmap = iconBitmap,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .clip(CircleShape)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.Language,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                            }
-
-                            Text(
-                                text = policy.domain,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = if (isChecked) FontWeight.SemiBold else FontWeight.Normal,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                        NsfwDomainPolicyItem(
+                            policy = policy,
+                            context = context
+                        )
 
                         if (index < policies.size - 1) {
                             Spacer(
@@ -335,5 +288,69 @@ fun NsfwSettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+@Composable
+private fun NsfwDomainPolicyItem(
+    policy: DomainPolicy,
+    context: Context,
+    modifier: Modifier = Modifier
+) {
+    val isChecked = policy.isNsfw
+    val iconRefreshSignal by remember(policy.domain) {
+        DomainIconManager.observeIconUpdates(policy.domain)
+    }.collectAsStateWithLifecycle(initialValue = "")
+
+    val iconBitmap = remember(policy.domain, iconRefreshSignal) {
+        DomainIconManager.getIconBitmap(context, policy.domain)
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable {
+                DomainPolicyManager.setDomainNsfw(policy.domain, !isChecked)
+            }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = isChecked,
+            onCheckedChange = { checked ->
+                DomainPolicyManager.setDomainNsfw(policy.domain, checked)
+            }
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        if (iconBitmap != null) {
+            Image(
+                bitmap = iconBitmap,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+        } else {
+            Icon(
+                imageVector = Icons.Default.Language,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+        }
+
+        Text(
+            text = policy.domain,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = if (isChecked) FontWeight.SemiBold else FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
     }
 }

@@ -11,9 +11,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -47,8 +52,31 @@ object OgImageManager {
     private val cacheGeneration = AtomicLong(0L)
     private val cacheMutex = Mutex()
 
-    private val _cacheVersion = MutableStateFlow(0L)
-    val cacheVersion: StateFlow<Long> = _cacheVersion.asStateFlow()
+    private val _ogImageUpdatedDomain = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    val ogImageUpdatedDomain: SharedFlow<String> = _ogImageUpdatedDomain.asSharedFlow()
+
+    private val _cacheClearedEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val cacheClearedEvent: SharedFlow<Unit> = _cacheClearedEvent.asSharedFlow()
+
+    /**
+     * Emits a notification that a specific domain's OG image has been saved or updated.
+     */
+    fun notifyOgImageUpdated(domain: String) {
+        val normalized = domain.trim().lowercase()
+        _ogImageUpdatedDomain.tryEmit(normalized)
+    }
+
+    /**
+     * Returns a Flow that emits whenever the given domain's OG image is updated or the full cache is cleared.
+     */
+    fun observeOgImageUpdates(domain: String?): Flow<String> {
+        if (domain.isNullOrBlank()) return emptyFlow()
+        val normalized = domain.trim().lowercase()
+        return merge(
+            ogImageUpdatedDomain.filter { it == normalized },
+            cacheClearedEvent.map { normalized }
+        )
+    }
 
     private val inFlightLoads = ConcurrentHashMap<String, Deferred<ImageBitmap?>>()
 
@@ -206,7 +234,7 @@ object OgImageManager {
             if (dir.exists()) {
                 dir.deleteRecursively()
             }
-            _cacheVersion.value++
+            _cacheClearedEvent.tryEmit(Unit)
         }
     }
 
@@ -465,7 +493,7 @@ object OgImageManager {
                     memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
                     memoryCache.put(fallbackCacheKey(domain), imageBitmap)
                 }
-                _cacheVersion.value++
+                notifyOgImageUpdated(domain)
                 true
             } catch (_: Exception) {
                 false

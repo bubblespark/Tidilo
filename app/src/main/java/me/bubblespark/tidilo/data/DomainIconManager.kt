@@ -9,9 +9,14 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jsoup.Jsoup
@@ -46,19 +51,35 @@ object DomainIconManager {
         override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
     }
 
-    private val _iconUpdateVersion = MutableStateFlow(0L)
-    val iconUpdateVersion: StateFlow<Long> = _iconUpdateVersion.asStateFlow()
+    private val _iconUpdatedDomain = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    val iconUpdatedDomain: SharedFlow<String> = _iconUpdatedDomain.asSharedFlow()
+
+    private val _cacheClearedEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val cacheClearedEvent: SharedFlow<Unit> = _cacheClearedEvent.asSharedFlow()
 
     private val cacheLock = Any()
     private var cacheGeneration = 0L
 
     fun getCurrentGeneration(): Long = synchronized(cacheLock) { cacheGeneration }
 
-    private fun nextVersion(): Long = synchronized(cacheLock) {
-        val current = _iconUpdateVersion.value
-        val next = maxOf(System.currentTimeMillis(), current + 1L)
-        _iconUpdateVersion.value = next
-        next
+    /**
+     * Emits a notification that a specific domain's icon has been saved, updated, or removed.
+     */
+    fun notifyIconUpdated(domain: String) {
+        val normalized = domain.trim().lowercase()
+        _iconUpdatedDomain.tryEmit(normalized)
+    }
+
+    /**
+     * Returns a Flow that emits whenever the given domain's icon is updated or the full cache is cleared.
+     */
+    fun observeIconUpdates(domain: String?): Flow<String> {
+        if (domain.isNullOrBlank()) return emptyFlow()
+        val normalized = domain.trim().lowercase()
+        return merge(
+            iconUpdatedDomain.filter { it == normalized },
+            cacheClearedEvent.map { normalized }
+        )
     }
 
     /**
@@ -451,7 +472,7 @@ object DomainIconManager {
             legacy.delete()
         }
         removeNegativeMarker(context, normalized)
-        nextVersion()
+        notifyIconUpdated(normalized)
     }
 
     /**
@@ -470,7 +491,7 @@ object DomainIconManager {
             if (legacy.exists()) {
                 legacy.deleteRecursively()
             }
-            nextVersion()
+            _cacheClearedEvent.tryEmit(Unit)
         }
     }
 
@@ -760,7 +781,7 @@ object DomainIconManager {
                         removeNegativeMarker(context, domain)
                         memoryCache.put(domain, processedBitmap.asImageBitmap())
                         dominantColorCache.put(domain, extractDominantColor(processedBitmap, domain))
-                        nextVersion()
+                        notifyIconUpdated(domain)
                         true
                     }
                 }

@@ -118,14 +118,16 @@ fun LibraryScreen(
     val localConfig = LocalConfiguration.current
     val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
     var isViewModeMenuExpanded by remember { mutableStateOf(false) }
-    val iconVersion by DomainIconManager.iconUpdateVersion.collectAsStateWithLifecycle()
+    val iconRefreshSignal by remember(selectedDomainFilter) {
+        DomainIconManager.observeIconUpdates(selectedDomainFilter)
+    }.collectAsStateWithLifecycle(initialValue = "")
 
     val selectedDomainColor by produceState<Color?>(
         initialValue = selectedDomainFilter?.let {
             DomainIconManager.getCachedDominantColor(it) ?: DomainIconManager.generateDomainAccentColor(it)
         },
         key1 = selectedDomainFilter,
-        key2 = iconVersion
+        key2 = iconRefreshSignal
     ) {
         val domain = selectedDomainFilter
         if (domain != null) {

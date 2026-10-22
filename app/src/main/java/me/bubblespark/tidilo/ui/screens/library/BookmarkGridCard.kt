@@ -72,15 +72,20 @@ fun BookmarkGridCard(
         bookmark.ogImageFilename
     }
 
-    val cacheVersion by OgImageManager.cacheVersion.collectAsStateWithLifecycle()
-    val iconVersion by DomainIconManager.iconUpdateVersion.collectAsStateWithLifecycle()
+    val ogRefreshSignal by remember(domain) {
+        OgImageManager.observeOgImageUpdates(domain)
+    }.collectAsStateWithLifecycle(initialValue = "")
+
+    val iconRefreshSignal by remember(domain) {
+        DomainIconManager.observeIconUpdates(domain)
+    }.collectAsStateWithLifecycle(initialValue = "")
 
     // Asynchronously load cached og:image bitmap from cacheDir
     val ogBitmap by produceState<ImageBitmap?>(
         initialValue = domain?.let { OgImageManager.getCachedOgImageBitmap(it, ogFilename) },
         key1 = domain,
         key2 = ogFilename,
-        key3 = cacheVersion
+        key3 = ogRefreshSignal
     ) {
         // Reset state immediately on key change to prevent displaying the previous card's image
         value = domain?.let { OgImageManager.getCachedOgImageBitmap(it, ogFilename) }
@@ -93,7 +98,7 @@ fun BookmarkGridCard(
     val domainIconBitmap by produceState<ImageBitmap?>(
         initialValue = domain?.let { DomainIconManager.getCachedIconBitmap(it) },
         key1 = domain,
-        key2 = iconVersion
+        key2 = iconRefreshSignal
     ) {
         value = domain?.let { DomainIconManager.getCachedIconBitmap(it) }
         if (domain != null) {
@@ -105,7 +110,7 @@ fun BookmarkGridCard(
     }
 
     val primaryColor = MaterialTheme.colorScheme.primary
-    val domainAccentColor = remember(domain, primaryColor) {
+    val domainAccentColor = remember(domain, primaryColor, iconRefreshSignal) {
         domain?.let {
             DomainIconManager.getCachedDominantColor(it)
                 ?: DomainIconManager.generateDomainAccentColor(it)

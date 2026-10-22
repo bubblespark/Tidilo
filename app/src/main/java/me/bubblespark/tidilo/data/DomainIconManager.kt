@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.onStart
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jsoup.Jsoup
@@ -51,11 +54,13 @@ object DomainIconManager {
         override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
     }
 
-    private val _iconUpdatedDomain = MutableSharedFlow<String>(extraBufferCapacity = 64)
-    val iconUpdatedDomain: SharedFlow<String> = _iconUpdatedDomain.asSharedFlow()
+    private val domainRevisions = ConcurrentHashMap<String, AtomicLong>()
 
-    private val _cacheClearedEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val cacheClearedEvent: SharedFlow<Unit> = _cacheClearedEvent.asSharedFlow()
+    private val _iconUpdatedDomain = MutableSharedFlow<Pair<String, Long>>(extraBufferCapacity = 64)
+    val iconUpdatedDomain: SharedFlow<Pair<String, Long>> = _iconUpdatedDomain.asSharedFlow()
+
+    private val _cacheClearedEvent = MutableSharedFlow<Long>(extraBufferCapacity = 1)
+    val cacheClearedEvent: SharedFlow<Long> = _cacheClearedEvent.asSharedFlow()
 
     private val cacheLock = Any()
     private var cacheGeneration = 0L
@@ -63,23 +68,38 @@ object DomainIconManager {
     fun getCurrentGeneration(): Long = synchronized(cacheLock) { cacheGeneration }
 
     /**
+     * Returns the composite monotonic revision for a given domain, combining its individual updates
+     * and the global cache clearing generation.
+     */
+    fun getDomainRevision(domain: String): Long {
+        val normalized = domain.trim().lowercase()
+        val rev = domainRevisions[normalized]?.get() ?: 0L
+        return rev + (getCurrentGeneration() * 1_000_000_000L)
+    }
+
+    /**
      * Emits a notification that a specific domain's icon has been saved, updated, or removed.
      */
     fun notifyIconUpdated(domain: String) {
         val normalized = domain.trim().lowercase()
-        _iconUpdatedDomain.tryEmit(normalized)
+        val rev = domainRevisions.computeIfAbsent(normalized) { AtomicLong(0L) }.incrementAndGet()
+        val currentRev = rev + (getCurrentGeneration() * 1_000_000_000L)
+        _iconUpdatedDomain.tryEmit(Pair(normalized, currentRev))
     }
 
     /**
-     * Returns a Flow that emits whenever the given domain's icon is updated or the full cache is cleared.
+     * Returns a Flow that emits a distinct Long revision whenever the given domain's icon is updated
+     * or the full cache is cleared. Immediately emits the current revision upon collection start or resume.
      */
-    fun observeIconUpdates(domain: String?): Flow<String> {
+    fun observeIconUpdates(domain: String?): Flow<Long> {
         if (domain.isNullOrBlank()) return emptyFlow()
         val normalized = domain.trim().lowercase()
         return merge(
-            iconUpdatedDomain.filter { it == normalized },
-            cacheClearedEvent.map { normalized }
-        )
+            iconUpdatedDomain.filter { it.first == normalized }.map { it.second },
+            cacheClearedEvent.map { getDomainRevision(normalized) }
+        ).onStart {
+            emit(getDomainRevision(normalized))
+        }
     }
 
     /**
@@ -491,7 +511,8 @@ object DomainIconManager {
             if (legacy.exists()) {
                 legacy.deleteRecursively()
             }
-            _cacheClearedEvent.tryEmit(Unit)
+            domainRevisions.clear()
+            _cacheClearedEvent.tryEmit(cacheGeneration)
         }
     }
 

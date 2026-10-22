@@ -74,11 +74,11 @@ fun BookmarkGridCard(
 
     val ogRefreshSignal by remember(domain) {
         OgImageManager.observeOgImageUpdates(domain)
-    }.collectAsStateWithLifecycle(initialValue = "")
+    }.collectAsStateWithLifecycle(initialValue = 0L)
 
     val iconRefreshSignal by remember(domain) {
         DomainIconManager.observeIconUpdates(domain)
-    }.collectAsStateWithLifecycle(initialValue = "")
+    }.collectAsStateWithLifecycle(initialValue = 0L)
 
     // Asynchronously load cached og:image bitmap from cacheDir
     val ogBitmap by produceState<ImageBitmap?>(

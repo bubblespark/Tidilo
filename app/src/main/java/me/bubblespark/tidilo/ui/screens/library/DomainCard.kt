@@ -67,7 +67,7 @@ fun DomainCard(
     val context = LocalContext.current
     val iconRefreshSignal by remember(item.domain) {
         DomainIconManager.observeIconUpdates(item.domain)
-    }.collectAsStateWithLifecycle(initialValue = "")
+    }.collectAsStateWithLifecycle(initialValue = 0L)
 
     // Dynamically retrieve or compute the domain's dominant brand color (calibrated for dark-mode visibility)
     val dominantColor by produceState(

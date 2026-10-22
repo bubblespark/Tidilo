@@ -42,7 +42,7 @@ fun DomainWatermark(
     val context = LocalContext.current
     val iconRefreshSignal by remember(domain) {
         DomainIconManager.observeIconUpdates(domain)
-    }.collectAsStateWithLifecycle(initialValue = "")
+    }.collectAsStateWithLifecycle(initialValue = 0L)
 
     val iconBitmap by produceState<ImageBitmap?>(
         initialValue = DomainIconManager.getCachedIconBitmap(domain),

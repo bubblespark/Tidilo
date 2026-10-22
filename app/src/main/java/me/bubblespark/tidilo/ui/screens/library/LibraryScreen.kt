@@ -120,7 +120,7 @@ fun LibraryScreen(
     var isViewModeMenuExpanded by remember { mutableStateOf(false) }
     val iconRefreshSignal by remember(selectedDomainFilter) {
         DomainIconManager.observeIconUpdates(selectedDomainFilter)
-    }.collectAsStateWithLifecycle(initialValue = "")
+    }.collectAsStateWithLifecycle(initialValue = 0L)
 
     val selectedDomainColor by produceState<Color?>(
         initialValue = selectedDomainFilter?.let {

@@ -80,8 +80,8 @@ class DomainIconManagerTest {
 
     @Test
     fun testDomainIconScopedObservationFiltersCorrectly(): Unit = runBlocking {
-        val receivedForDomainA = mutableListOf<String>()
-        val receivedForDomainB = mutableListOf<String>()
+        val receivedForDomainA = mutableListOf<Long>()
+        val receivedForDomainB = mutableListOf<Long>()
 
         val jobA = launch {
             DomainIconManager.observeIconUpdates("domain-a.com").collect {
@@ -93,15 +93,76 @@ class DomainIconManagerTest {
                 receivedForDomainB.add(it)
             }
         }
-        kotlinx.coroutines.delay(50)
+        delay(50)
         DomainIconManager.notifyIconUpdated("domain-a.com")
-        kotlinx.coroutines.delay(50)
+        delay(50)
 
-        assertEquals(listOf("domain-a.com"), receivedForDomainA)
-        assertTrue(receivedForDomainB.isEmpty())
+        // jobA receives initial revision (0L) and updated revision (1L)
+        assertEquals(2, receivedForDomainA.size)
+        assertTrue(receivedForDomainA[1] > receivedForDomainA[0])
+        // jobB only receives its initial revision (0L) and ignores domain-a.com
+        assertEquals(1, receivedForDomainB.size)
 
         jobA.cancel()
         jobB.cancel()
+    }
+
+    @Test
+    fun testDomainIconSuccessiveUpdatesAndClearEmitDistinctRevisions(): Unit = runBlocking {
+        val tempDir = java.nio.file.Files.createTempDirectory("domain_distinct_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
+            }
+            val emissions = mutableListOf<Long>()
+            val job = launch {
+                DomainIconManager.observeIconUpdates("distinct.com").collect {
+                    emissions.add(it)
+                }
+            }
+            delay(50)
+
+            // Successive update 1
+            DomainIconManager.notifyIconUpdated("distinct.com")
+            delay(50)
+
+            // Successive update 2
+            DomainIconManager.notifyIconUpdated("distinct.com")
+            delay(50)
+
+            // Full cache clear
+            DomainIconManager.clearCache(fakeContext)
+            delay(50)
+
+            // Initial, update 1, update 2, clear -> total 4 emissions
+            assertEquals(4, emissions.size)
+            assertEquals(emissions.size, emissions.distinct().size)
+
+            job.cancel()
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun testDomainIconResumingCollectionObservesLatestRevision(): Unit = runBlocking {
+        val domain = "resuming-icon.com"
+        // Simulate background update while no collector is active
+        DomainIconManager.notifyIconUpdated(domain)
+
+        // Resumed collection (e.g. Activity onStart)
+        val emissions = mutableListOf<Long>()
+        val job = launch {
+            DomainIconManager.observeIconUpdates(domain).collect {
+                emissions.add(it)
+            }
+        }
+        delay(50)
+
+        assertTrue("Resuming collection must receive latest revision immediately", emissions.isNotEmpty())
+        assertTrue("Latest revision must be non-zero", emissions.first() > 0L)
+        job.cancel()
     }
 
 
@@ -225,15 +286,15 @@ class DomainIconManagerTest {
 
     @Test
     fun observeIconUpdates_returnsEmptyFlowForBlankDomain(): Unit = runBlocking {
-        val received = mutableListOf<String>()
+        val received = mutableListOf<Long>()
         val job = launch {
             DomainIconManager.observeIconUpdates("   ").collect {
                 received.add(it)
             }
         }
-        yield()
+        delay(50)
         DomainIconManager.notifyIconUpdated("example.com")
-        yield()
+        delay(50)
         assertTrue(received.isEmpty())
         job.cancel()
     }

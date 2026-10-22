@@ -300,7 +300,7 @@ private fun NsfwDomainPolicyItem(
     val isChecked = policy.isNsfw
     val iconRefreshSignal by remember(policy.domain) {
         DomainIconManager.observeIconUpdates(policy.domain)
-    }.collectAsStateWithLifecycle(initialValue = "")
+    }.collectAsStateWithLifecycle(initialValue = 0L)
 
     val iconBitmap = remember(policy.domain, iconRefreshSignal) {
         DomainIconManager.getIconBitmap(context, policy.domain)

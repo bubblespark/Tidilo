@@ -227,8 +227,8 @@ class OgImageManagerTest {
 
     @Test
     fun testOgImageScopedObservationFiltersCorrectly(): Unit = runBlocking {
-        val receivedForDomainA = mutableListOf<String>()
-        val receivedForDomainB = mutableListOf<String>()
+        val receivedForDomainA = mutableListOf<Long>()
+        val receivedForDomainB = mutableListOf<Long>()
 
         val jobA = launch {
             OgImageManager.observeOgImageUpdates("domain-a.com").collect {
@@ -240,28 +240,83 @@ class OgImageManagerTest {
                 receivedForDomainB.add(it)
             }
         }
-        kotlinx.coroutines.delay(50)
+        delay(50)
         OgImageManager.notifyOgImageUpdated("domain-a.com")
-        kotlinx.coroutines.delay(50)
+        delay(50)
 
-        assertEquals(listOf("domain-a.com"), receivedForDomainA)
-        assertTrue(receivedForDomainB.isEmpty())
+        assertEquals(2, receivedForDomainA.size)
+        assertTrue(receivedForDomainA[1] > receivedForDomainA[0])
+        assertEquals(1, receivedForDomainB.size)
 
         jobA.cancel()
         jobB.cancel()
     }
 
     @Test
+    fun testOgImageSuccessiveUpdatesAndClearEmitDistinctRevisions(): Unit = runBlocking {
+        val tempDir = java.nio.file.Files.createTempDirectory("og_distinct_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+            }
+            val emissions = mutableListOf<Long>()
+            val job = launch {
+                OgImageManager.observeOgImageUpdates("distinct-og.com").collect {
+                    emissions.add(it)
+                }
+            }
+            delay(50)
+
+            // Successive update 1
+            OgImageManager.notifyOgImageUpdated("distinct-og.com")
+            delay(50)
+
+            // Successive update 2
+            OgImageManager.notifyOgImageUpdated("distinct-og.com")
+            delay(50)
+
+            // Full cache clear
+            OgImageManager.clearImageCache(fakeContext)
+            delay(50)
+
+            assertEquals(4, emissions.size)
+            assertEquals(emissions.size, emissions.distinct().size)
+
+            job.cancel()
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun testOgImageResumingCollectionObservesLatestRevision(): Unit = runBlocking {
+        val domain = "resuming-og.com"
+        OgImageManager.notifyOgImageUpdated(domain)
+
+        val emissions = mutableListOf<Long>()
+        val job = launch {
+            OgImageManager.observeOgImageUpdates(domain).collect {
+                emissions.add(it)
+            }
+        }
+        delay(50)
+
+        assertTrue("Resuming collection must receive latest revision immediately", emissions.isNotEmpty())
+        assertTrue("Latest revision must be non-zero", emissions.first() > 0L)
+        job.cancel()
+    }
+
+    @Test
     fun observeOgImageUpdates_returnsEmptyFlowForBlankDomain(): Unit = runBlocking {
-        val received = mutableListOf<String>()
+        val received = mutableListOf<Long>()
         val job = launch {
             OgImageManager.observeOgImageUpdates("   ").collect {
                 received.add(it)
             }
         }
-        yield()
+        delay(50)
         OgImageManager.notifyOgImageUpdated("example.com")
-        yield()
+        delay(50)
         assertTrue(received.isEmpty())
         job.cancel()
     }

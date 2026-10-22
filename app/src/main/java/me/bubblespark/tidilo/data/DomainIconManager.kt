@@ -637,7 +637,8 @@ object DomainIconManager {
         url: String,
         appleTouchIconUrl: String? = null,
         faviconUrl: String? = null,
-        forceRefresh: Boolean = false
+        forceRefresh: Boolean = false,
+        recordFailureMarker: Boolean = true
     ): Boolean {
         val requestGeneration = synchronized(cacheLock) { cacheGeneration }
         return withContext(Dispatchers.IO) {
@@ -659,6 +660,7 @@ object DomainIconManager {
         if (!faviconUrl.isNullOrBlank()) candidates.add(faviconUrl.trim())
 
         var hasServerContact = false
+        var hasTransientDownloadFailure = false
 
         // Discover icons from HTML markup
         val targetPageUrl = if (url.startsWith("http://") || url.startsWith("https://")) url else "https://$domain"
@@ -689,7 +691,11 @@ object DomainIconManager {
             try {
                 val download = downloadBytes(candidateUrl)
                 if (download.hasServerContact) hasServerContact = true
-                val bytes = download.bytes ?: continue
+                val bytes = download.bytes
+                if (bytes == null) {
+                    if (!download.hasServerContact) hasTransientDownloadFailure = true
+                    continue
+                }
 
                 // Resolution check: exclude candidates smaller than 96x96
                 val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -737,7 +743,11 @@ object DomainIconManager {
         }
 
         synchronized(cacheLock) {
-            if (requestGeneration == cacheGeneration && hasServerContact) {
+            if (requestGeneration == cacheGeneration &&
+                hasServerContact &&
+                !hasTransientDownloadFailure &&
+                recordFailureMarker
+            ) {
                 writeNegativeMarker(context, domain)
             }
         }

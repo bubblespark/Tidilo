@@ -32,7 +32,7 @@ flowchart TD
     end
 
     subgraph Data_Layer ["Data & Persistence Layer"]
-        BRepo["BookmarkRepository (StateFlow + SharedPreferences)"]
+        BRepo["BookmarkRepository (Room Paging + targeted queries)"]
         QRepo["QueueRepository (StateFlow + Mutex + SharedPreferences)"]
         Config["AppConfig (Language, Debug Flags)"]
     end
@@ -50,13 +50,13 @@ flowchart TD
 ```
 
 ### 2.1 Unidirectional Data Flow (UDF)
-- **State flows down**: Repositories expose immutable `StateFlow<List<T>>` objects. ViewModels transform, filter, and expose these states via `stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ...)`. Composable screens observe states via `collectAsStateWithLifecycle()`.
+- **State flows down**: Bookmark results use Room-backed Paging with finite page retention. Details observe a single ID; SQL aggregates supply domain/tag counts. ViewModels switch query generations before caching them. Compose collects pages with `collectAsLazyPagingItems()` and other state with `collectAsStateWithLifecycle()`.
 - **Events flow up**: User interactions (taps, text input, chip selections) trigger ViewModel functions (`enqueueUrl`, `onSearchQueryChanged`, `updateBookmarkNote`), which delegate mutations to repositories or background services.
 
 ### 2.2 Offline-First & Local Storage (Room SQLite)
 - Bookmark and trash records are persisted in a robust local SQLite database via AndroidX Room (`AppDatabase`, `BookmarkEntity`, `TrashedBookmarkEntity`).
-- Indexed queries on `url`, `createdAt`, `category`, `subcategory`, and `isNsfw` guarantee sub-millisecond retrieval and data integrity with full ACID transaction safety.
-- Reads and updates are memory-cached via in-memory `MutableStateFlow` buffers to ensure instant UI rendering with 0ms perceived lag, reactively synchronized via Room's reactive `Flow` stream.
+- Indexed queries on URL, creation timestamp, category, subcategory, NSFW, and domain support targeted reads; transactions preserve durable write integrity. Performance evidence and limitations are recorded in `issue81-progress.md`.
+- Room is the source of truth. Writes are awaited by ID/domain; Room invalidation refreshes Paging and aggregate observers. Active bookmarks are never cached as an unbounded application-wide list.
 - An automatic migration bridge on startup safely ingests legacy `SharedPreferences` JSON caches into Room on first launch with an empty database.
 
 ### 2.3 On-Device GenAI (AICore & Gemini Nano)

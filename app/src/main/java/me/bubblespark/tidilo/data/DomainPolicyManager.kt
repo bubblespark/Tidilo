@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -197,6 +198,12 @@ object DomainPolicyManager {
     /**
      * Updates the NSFW flag of a specific domain.
      */
+    suspend fun setDomainNsfwAndAwait(domain: String, isNsfw: Boolean) {
+        completeDomainPolicyChange(scope,
+            { BookmarkRepository.getInstance().updateBookmarksNsfwForDomain(domain, isNsfw) },
+            { setDomainNsfw(domain, isNsfw) })
+    }
+
     fun setDomainNsfw(domain: String, isNsfw: Boolean) {
         val normalized = domain.trim().lowercase()
         val existing = domainMap[normalized]
@@ -208,9 +215,6 @@ object DomainPolicyManager {
         notifyStateUpdated()
         scope.launch {
             savePolicies()
-        }
-        runCatching {
-            BookmarkRepository.getInstance().updateBookmarksNsfwForDomain(normalized, isNsfw)
         }
     }
 
@@ -239,3 +243,11 @@ object DomainPolicyManager {
         runCatching { getStorageFile()?.delete() }
     }
 }
+
+/** Once started, both steps belong to the application rather than the settings composition. */
+internal suspend fun completeDomainPolicyChange(
+    scope: CoroutineScope, persist: suspend () -> Unit, publish: () -> Unit
+) = scope.async {
+    persist()
+    publish()
+}.await()

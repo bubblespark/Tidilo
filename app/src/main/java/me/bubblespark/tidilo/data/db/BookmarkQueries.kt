@@ -6,6 +6,10 @@ import me.bubblespark.tidilo.data.Subcategory
 
 /** Compiles bound, literal substring predicates shared by results and tag aggregates. */
 internal object BookmarkQueries {
+    fun count(query: String, showNsfw: Boolean, domain: String? = null): SimpleSQLiteQuery {
+        val (where, args) = predicate(query, showNsfw, domain, emptySet())
+        return SimpleSQLiteQuery("SELECT COUNT(*) FROM bookmarks b WHERE $where", args.toTypedArray())
+    }
     fun results(query: String, showNsfw: Boolean, domain: String? = null): SimpleSQLiteQuery {
         val (where, args) = predicate(query, showNsfw, domain, emptySet())
         return SimpleSQLiteQuery("SELECT b.* FROM bookmarks b WHERE $where ORDER BY b.createdAt DESC, b.id DESC", args.toTypedArray())
@@ -15,8 +19,8 @@ internal object BookmarkQueries {
     fun tags(selected: Set<String>, showNsfw: Boolean, kind: TagKind): SimpleSQLiteQuery {
         val (where, args) = predicate("", showNsfw, null, selected)
         val sql = when (kind) {
-            TagKind.CATEGORY -> "SELECT b.category AS value, COUNT(*) AS count FROM bookmarks b WHERE $where AND b.category IS NOT NULL GROUP BY b.category"
-            TagKind.SUBCATEGORY -> "SELECT b.subcategory AS value, COUNT(*) AS count FROM bookmarks b WHERE $where AND b.subcategory IS NOT NULL GROUP BY b.subcategory"
+            TagKind.CATEGORY -> "SELECT COALESCE(b.category,'None') AS value, COUNT(*) AS count FROM bookmarks b WHERE $where AND b.searchCategory IS NOT NULL GROUP BY b.category, b.searchCategory"
+            TagKind.SUBCATEGORY -> "SELECT COALESCE(b.subcategory,'None') AS value, COUNT(*) AS count FROM bookmarks b WHERE $where AND b.searchSubcategory IS NOT NULL GROUP BY b.subcategory, b.searchSubcategory"
             TagKind.ENTITY -> "SELECT e.value AS value, COUNT(*) AS count FROM bookmarks b JOIN bookmark_entities e ON e.bookmarkId=b.id WHERE $where GROUP BY e.value"
         }
         return SimpleSQLiteQuery(sql, args.toTypedArray())
@@ -60,3 +64,9 @@ internal object BookmarkQueries {
 }
 
 internal enum class TagKind { CATEGORY, SUBCATEGORY, ENTITY }
+
+/** Merges legacy spellings into the exact, case-sensitive buckets displayed by Tag.create. */
+internal fun normalizeTagCounts(rows: List<TagCount>, kind: TagKind): List<TagCount> =
+    if (kind == TagKind.ENTITY) rows else rows.groupBy {
+        it.value.trim().removePrefix("#").trim().ifBlank { "None" }
+    }.map { (value, counts) -> TagCount(value, counts.sumOf { it.count }) }

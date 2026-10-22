@@ -76,6 +76,7 @@ import me.bubblespark.tidilo.data.OgImageManager
 import android.widget.Toast
 import androidx.compose.material.icons.filled.DeleteSweep
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 
 @Composable
 fun SettingsScreen(
@@ -709,21 +710,25 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val domains = bookmarkRepository.bookmarks.value
-                            .mapNotNull { DomainIconManager.extractDomain(it.url) }
-                            .distinct()
-                        totalDomainCount = domains.size
                         processedDomainCount = 0
-                        currentProcessingDomain = domains.firstOrNull() ?: ""
+                        currentProcessingDomain = ""
                         showConfirmDialog = false
                         showProgressDialog = true
                         scope.launch {
-                            DomainIconManager.refreshAllDomainIcons(context, domains) { current, total, domain ->
-                                processedDomainCount = current
-                                totalDomainCount = total
-                                currentProcessingDomain = domain
+                            try {
+                                val domains = bookmarkRepository.distinctDomains()
+                                totalDomainCount = domains.size
+                                DomainIconManager.refreshAllDomainIcons(context, domains) { current, total, domain ->
+                                    processedDomainCount = current
+                                    totalDomainCount = total
+                                    currentProcessingDomain = domain
+                                }
+                            } catch (e: Exception) {
+                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                android.widget.Toast.makeText(context, context.getString(R.string.library_load_failed), android.widget.Toast.LENGTH_LONG).show()
+                            } finally {
+                                showProgressDialog = false
                             }
-                            showProgressDialog = false
                         }
                     }
                 ) {

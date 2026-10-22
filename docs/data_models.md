@@ -208,21 +208,18 @@ All persistence is managed via **Room Database** (`AppDatabase` v7) for robust r
 
 ```mermaid
 sequenceDiagram
-    participant UI as Composable Screen
-    participant VM as ViewModel
-    participant Repo as Repository
-    participant IO as Background (Dispatchers.IO)
-
-    UI->>VM: collectAsStateWithLifecycle()
-    VM->>Repo: Flow combine + WhileSubscribed(5000)
-    Repo-->>VM: StateFlow emit
-    VM-->>UI: Recompose only when state changes
-    UI->>VM: User Action (e.g., Update Note)
-    VM->>Repo: updateBookmarkNote(id, note)
-    Repo->>Repo: Mutate in-memory MutableStateFlow
-    Repo-->>UI: Instant UI update (0ms lag)
-    Repo->>IO: repositoryScope.launch { saveToPrefs() }
-    IO-->>Repo: Disk write completed silently
+    participant UI as Compose Screen
+    participant VM as LibraryViewModel
+    participant Repo as BookmarkRepository
+    participant DB as Room Database
+    UI->>VM: Collect PagingData and lifecycle-aware aggregates
+    VM->>Repo: Switch query/domain/visibility generation
+    Repo->>DB: PagingSource or targeted Flow
+    DB-->>UI: Bounded pages, counts, or one bookmark
+    UI->>VM: Await edit or trash action by ID
+    VM->>DB: Repository transaction
+    DB-->>VM: Committed write or exception
+    DB-->>UI: Invalidation refreshes affected queries
 ```
 
 ---
@@ -249,7 +246,7 @@ Web page fetching uses Desktop Chrome User-Agent (`Windows NT 10.0; Win64; x64`,
 
 ### 8.3 Display Control & Dynamic Count Aggregation
 - **Global Toggle**: `AppConfig.isNsfwContentVisible` (persisted in `tidilo_app_config_prefs`).
-- **Reactive Filter**: `LibraryViewModel.bookmarks` combines `BookmarkRepository.bookmarks` with `AppConfig.isNsfwContentVisible`. When toggled OFF, NSFW bookmarks are completely excluded from `LibraryScreen`, `SearchScreen`, and category/entity counts in `TagSelectionScreen`.
+- **Reactive Filter**: `AppConfig.isNsfwContentVisible` switches Paging generations and SQL aggregate queries. NSFW filtering happens in SQLite before paging or counting, including all tag-selection candidates.
 - **Visual Badge**: Both `BookmarkCard` and `BookmarkDetailScreen` render a prominent `NSFW` pill chip beside the `[category] > [subcategory]` breadcrumb when `bookmark.isNsfw == true`.
 
 ---
@@ -297,5 +294,23 @@ removed. Paging and aggregate queries apply NSFW filtering before fetching or
 counting, and bookmark result order is `createdAt DESC, id DESC`. Entity matching
 uses individual child values, never serialized JSON substrings.
 
-The older full-list presentation is retained temporarily during the Issue #81
-transition. See `issue81-progress.md` for verification and outstanding work.
+The Repository has no eager active-bookmark collection. Timeline, domain results,
+and search expose bounded PagingData; details observe one ID independently of
+loaded pages. Domain/tag counts and settings use SQL aggregates. Page size is 30,
+initial load 60, prefetch 10, max size 150, with placeholders disabled. Generations
+switch with flatMapLatest before cachedIn(viewModelScope).
+
+Derived tags mirror Tag.create, including null/blank defaults, leading # removal,
+trimmed entity values, duplicate occurrences, and truly empty AI-skipped tags.
+Original persisted fields remain untouched. Category/subcategory aggregate
+buckets merge normalized spellings while preserving original case. Comparison
+keys follow the running String ignoreCase implementation, including Android's
+UTF-16 treatment of supplementary letters. The reserved SQLite application_id
+marks the derived format; an onOpen transaction repairs an older prerelease
+format once, before readers, without changing Room's user_version or raw fields.
+
+Aggregate/trash reads wait for initialization. Failed reads publish a recoverable
+state and restart on explicit retry. Trash moves and capacity enforcement share
+one transaction. Domain NSFW changes await the SQL update and policy publication
+in the application scope so navigating away cannot interrupt those two steps.
+See `issue81-progress.md` for verification and measurement limits.

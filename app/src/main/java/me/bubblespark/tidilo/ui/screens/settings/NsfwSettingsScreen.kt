@@ -1,5 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -65,9 +68,10 @@ fun NsfwSettingsScreen(
 
     // Ensure all domains from current bookmarks are synced
     val bookmarkRepo = remember { BookmarkRepository.getInstance(context) }
-    val bookmarks by bookmarkRepo.bookmarks.collectAsStateWithLifecycle()
-    remember(bookmarks) {
-        val domains = bookmarks.mapNotNull { DomainIconManager.extractDomain(it.url) }
+    val initializationFailure by bookmarkRepo.initializationFailure.collectAsStateWithLifecycle()
+    val domains by remember(bookmarkRepo) { bookmarkRepo.observeDomains() }
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    androidx.compose.runtime.LaunchedEffect(domains) {
         DomainPolicyManager.syncDomains(domains)
     }
 
@@ -79,6 +83,7 @@ fun NsfwSettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
     ) {
+        initializationFailure?.let { me.bubblespark.tidilo.ui.screens.library.PagingFeedback(androidx.paging.LoadState.Error(it), bookmarkRepo::retryInitialization) }
         // Header with Back button
         Row(
             modifier = Modifier
@@ -297,6 +302,17 @@ private fun NsfwDomainPolicyItem(
     context: Context,
     modifier: Modifier = Modifier
 ) {
+    val persistenceScope = androidx.compose.runtime.rememberCoroutineScope()
+    val updatePolicy: (Boolean) -> Unit = { checked ->
+        persistenceScope.launch {
+            try {
+                DomainPolicyManager.setDomainNsfwAndAwait(policy.domain, checked)
+            } catch (e: Exception) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                android.widget.Toast.makeText(context, context.getString(R.string.common_save_failed), android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
     val isChecked = policy.isNsfw
     val iconRefreshSignal by remember(policy.domain) {
         DomainIconManager.observeIconUpdates(policy.domain)
@@ -310,7 +326,7 @@ private fun NsfwDomainPolicyItem(
         modifier = modifier
             .fillMaxWidth()
             .clickable {
-                DomainPolicyManager.setDomainNsfw(policy.domain, !isChecked)
+                updatePolicy(!isChecked)
             }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -318,7 +334,7 @@ private fun NsfwDomainPolicyItem(
         Checkbox(
             checked = isChecked,
             onCheckedChange = { checked ->
-                DomainPolicyManager.setDomainNsfw(policy.domain, checked)
+                updatePolicy(checked)
             }
         )
 

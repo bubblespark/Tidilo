@@ -29,6 +29,21 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun importTaskDao(): ImportTaskDao
 
     companion object {
+        /** Repairs an already-installed prerelease v7 once, before Room publishes any queries. */
+        internal val DERIVED_DATA_CALLBACK = object : Callback() {
+            override fun onOpen(db: SupportSQLiteDatabase) {
+                val current = db.query("PRAGMA application_id").use { it.moveToFirst(); it.getInt(0) }
+                if (current == BOOKMARK_DERIVED_FORMAT) return
+                db.beginTransaction()
+                try {
+                    rebuildBookmarkDerivedData(db)
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
+            }
+        }
+
         val MIGRATION_6_7 = bookmarkMigration6To7
 
         val MIGRATION_3_4 = object : Migration(3, 4) {
@@ -72,6 +87,7 @@ abstract class AppDatabase : RoomDatabase() {
                     DATABASE_NAME
                 )
                     .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }
             }

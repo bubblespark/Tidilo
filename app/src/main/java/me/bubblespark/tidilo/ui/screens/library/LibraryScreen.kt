@@ -1,5 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
+import androidx.paging.LoadState
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -66,6 +69,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
@@ -107,12 +111,16 @@ fun LibraryScreen(
     modifier: Modifier = Modifier
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
-    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
+    val bookmarks = viewModel.libraryPages.collectAsLazyPagingItems()
     val filterMode by viewModel.filterMode.collectAsStateWithLifecycle()
     val selectedDomainFilter by viewModel.selectedDomainFilter.collectAsStateWithLifecycle()
     val domainGroups by viewModel.domainGroups.collectAsStateWithLifecycle()
-    val domainFilteredBookmarks by viewModel.domainFilteredBookmarks.collectAsStateWithLifecycle()
-    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val libraryCount by viewModel.libraryCount.collectAsStateWithLifecycle()
+    val initializationFailure by viewModel.initializationFailure.collectAsStateWithLifecycle()
+    val initialized by viewModel.isInitialized.collectAsStateWithLifecycle()
+    val domainGroupsLoading by viewModel.domainGroupsLoading.collectAsStateWithLifecycle()
+    val isLoading = !initialized || bookmarks.loadState.refresh is LoadState.Loading ||
+        (filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter == null && domainGroupsLoading)
     val isBarsVisible = LocalBarsVisible.current
     val context = LocalContext.current
     val localConfig = LocalConfiguration.current
@@ -150,11 +158,15 @@ fun LibraryScreen(
     val domainDetailListState = rememberLazyListState()
     val domainDetailGridState = rememberLazyGridState()
 
+    // Detail return restores the same domain; only an actual filter change resets its position.
+    var lastScrollDomain by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(selectedDomainFilter) {
-        if (selectedDomainFilter != null) {
-            domainDetailListState.scrollToItem(0)
-            domainDetailGridState.scrollToItem(0)
+        if (selectedDomainFilter != null && selectedDomainFilter != lastScrollDomain) {
+            // The other layout may be detached; request both positions without awaiting layout.
+            domainDetailListState.requestScrollToItem(0)
+            domainDetailGridState.requestScrollToItem(0)
         }
+        lastScrollDomain = selectedDomainFilter
     }
 
     val displayState = remember(filterMode, selectedDomainFilter) {
@@ -186,12 +198,20 @@ fun LibraryScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (isLoading) {
+        if (initializationFailure != null) {
+            Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
+                PagingFeedback(LoadState.Error(initializationFailure!!), viewModel::retryInitialization)
+            }
+        } else if (isLoading) {
             SkeletonBookmarkList(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = headerHeight, start = 20.dp, end = 20.dp)
             )
+        } else if (bookmarks.loadState.refresh is LoadState.Error) {
+            Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
+                PagingFeedback(bookmarks.loadState.refresh, bookmarks::retry)
+            }
         } else {
             AnimatedContent(
                 targetState = displayState,
@@ -248,9 +268,7 @@ fun LibraryScreen(
                             ?: DomainIconManager.getCachedDominantColor(currentDomain)
                             ?: DomainIconManager.generateDomainAccentColor(currentDomain)
 
-                        val domainBookmarks = remember(bookmarks, currentDomain) {
-                            LibraryViewModel.filterBookmarksByDomain(bookmarks, currentDomain)
-                        }
+                        val domainBookmarks = bookmarks
 
                         Box(
                             modifier = Modifier
@@ -286,7 +304,7 @@ fun LibraryScreen(
                                     drawRect(brush = cornerGlow)
                                 }
                         ) {
-                            if (domainBookmarks.isEmpty()) {
+                            if (domainBookmarks.itemCount == 0) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -317,10 +335,11 @@ fun LibraryScreen(
                                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                                             ) {
                                                 items(
-                                                    items = domainBookmarks,
-                                                    key = { it.id },
-                                                    contentType = { "bookmark_card" }
-                                                ) { item ->
+                                                count = domainBookmarks.itemCount,
+                                                key = domainBookmarks.itemKey { it.id },
+                                                contentType = { "bookmark_card" }
+                                            ) { index ->
+                                                val item = domainBookmarks[index] ?: return@items
                                                     BookmarkItemCard(
                                                         bookmark = item,
                                                         wordKeywords = emptyList(),
@@ -346,10 +365,11 @@ fun LibraryScreen(
                                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
                                                 items(
-                                                    items = domainBookmarks,
-                                                    key = { it.id },
-                                                    contentType = { "bookmark_grid_card" }
-                                                ) { item ->
+                                                count = domainBookmarks.itemCount,
+                                                key = domainBookmarks.itemKey { it.id },
+                                                contentType = { "bookmark_grid_card" }
+                                            ) { index ->
+                                                val item = domainBookmarks[index] ?: return@items
                                                     BookmarkGridCard(
                                                         bookmark = item,
                                                         onClick = { onNavigateToDetail(item.id) },
@@ -364,7 +384,7 @@ fun LibraryScreen(
                         }
                     }
                     is LibraryDisplayState.NewestFirst -> {
-                        if (bookmarks.isEmpty()) {
+                        if (bookmarks.itemCount == 0) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -395,10 +415,11 @@ fun LibraryScreen(
                                             verticalArrangement = Arrangement.spacedBy(16.dp)
                                         ) {
                                             items(
-                                                items = bookmarks,
-                                                key = { it.id },
+                                                count = bookmarks.itemCount,
+                                                key = bookmarks.itemKey { it.id },
                                                 contentType = { "bookmark_card" }
-                                            ) { item ->
+                                            ) { index ->
+                                                val item = bookmarks[index] ?: return@items
                                                 BookmarkItemCard(
                                                     bookmark = item,
                                                     wordKeywords = emptyList(),
@@ -424,10 +445,11 @@ fun LibraryScreen(
                                             verticalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
                                             items(
-                                                items = bookmarks,
-                                                key = { it.id },
+                                                count = bookmarks.itemCount,
+                                                key = bookmarks.itemKey { it.id },
                                                 contentType = { "bookmark_grid_card" }
-                                            ) { item ->
+                                            ) { index ->
+                                                val item = bookmarks[index] ?: return@items
                                                 BookmarkGridCard(
                                                     bookmark = item,
                                                     onClick = { onNavigateToDetail(item.id) },
@@ -442,6 +464,11 @@ fun LibraryScreen(
                     }
                 }
             }
+        }
+
+        boundaryFeedback(bookmarks.loadState.prepend, bookmarks.loadState.append)?.let { state ->
+            PagingFeedback(state, bookmarks::retry,
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp))
         }
 
         // Expressive Header (slides out/in from top screen edge linked with scrolling, hidden during peek)
@@ -507,11 +534,11 @@ fun LibraryScreen(
                                 isLoading ->
                                     stringResource(R.string.library_subtitle_loading)
                                 filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
-                                    stringResource(R.string.library_subtitle_domain_bookmarks, domainFilteredBookmarks.size)
+                                    stringResource(R.string.library_subtitle_domain_bookmarks, libraryCount)
                                 filterMode == LibraryFilterMode.DOMAIN ->
                                     stringResource(R.string.library_subtitle_domains, domainGroups.size)
                                 else ->
-                                    stringResource(R.string.library_subtitle_tagged_bookmarks, bookmarks.size)
+                                    stringResource(R.string.library_subtitle_tagged_bookmarks, libraryCount)
                             }
 
                             AnimatedContent(

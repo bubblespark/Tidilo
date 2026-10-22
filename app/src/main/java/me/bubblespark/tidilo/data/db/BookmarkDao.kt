@@ -16,11 +16,8 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface BookmarkDao {
 
-    @Query("SELECT * FROM bookmarks ORDER BY createdAt DESC")
-    fun getAllBookmarksFlow(): Flow<List<BookmarkEntity>>
-
-    @Query("SELECT * FROM bookmarks ORDER BY createdAt DESC")
-    suspend fun getAllBookmarks(): List<BookmarkEntity>
+    @RawQuery(observedEntities = [BookmarkEntity::class, BookmarkEntityOccurrence::class])
+    fun observeCount(query: SupportSQLiteQuery): Flow<Int>
 
     @Query("SELECT * FROM bookmarks WHERE id = :id LIMIT 1")
     suspend fun getBookmarkById(id: String): BookmarkEntity?
@@ -42,7 +39,7 @@ interface BookmarkDao {
         val normalized = bookmark.withSearchFields()
         insertRow(normalized)
         deleteOccurrences(bookmark.id)
-        insertOccurrences(bookmark.entities.mapIndexed { index, value ->
+        insertOccurrences(bookmark.logicalTag().entities.mapIndexed { index, value ->
             BookmarkEntityOccurrence(bookmark.id, index, value, bookmarkSearchKey(value))
         })
     }
@@ -114,6 +111,9 @@ interface BookmarkDao {
 
     @Query("SELECT DISTINCT domain FROM bookmarks WHERE domain IS NOT NULL ORDER BY domain")
     suspend fun distinctDomains(): List<String>
+
+    @Query("SELECT DISTINCT domain FROM bookmarks WHERE domain IS NOT NULL ORDER BY domain")
+    fun observeDistinctDomains(): Flow<List<String>>
 
     @Query("SELECT url FROM bookmarks WHERE domain = :domain AND (url > :afterUrl OR :afterUrl IS NULL) GROUP BY url ORDER BY url LIMIT :limit")
     suspend fun domainUrls(domain: String, afterUrl: String?, limit: Int): List<String>

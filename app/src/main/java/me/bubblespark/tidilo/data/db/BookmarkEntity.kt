@@ -49,11 +49,13 @@ data class BookmarkEntity(
     val searchSubcategory: String? = subcategory?.let(::bookmarkSearchKey)
 ) {
     /** Recomputes derived fields after copies, ensuring every DAO write stays consistent. */
+    internal fun logicalTag(): Tag = logicalBookmarkTag(category, subcategory, entities, isAiSkipped)
+
     fun withSearchFields(): BookmarkEntity = copy(
         domain = DomainIconManager.extractDomain(url),
         searchTitle = bookmarkSearchKey(title), searchDescription = bookmarkSearchKey(description),
-        searchUrl = bookmarkSearchKey(url), searchCategory = category?.let(::bookmarkSearchKey),
-        searchSubcategory = subcategory?.let(::bookmarkSearchKey)
+        searchUrl = bookmarkSearchKey(url), searchCategory = logicalTag().category?.let(::bookmarkSearchKey),
+        searchSubcategory = logicalTag().subcategory?.let(::bookmarkSearchKey)
     )
 
     fun toBookmarkItem(): BookmarkItem {
@@ -62,15 +64,7 @@ data class BookmarkEntity(
             title = title,
             url = url,
             description = description,
-            tag = if (isAiSkipped && category == null && subcategory == null && entities.isEmpty()) {
-                Tag.createEmpty()
-            } else {
-                Tag.create(
-                    category = category,
-                    subcategory = subcategory,
-                    entities = entities
-                )
-            },
+            tag = logicalTag(),
             createdAt = createdAt,
             updatedAt = updatedAt,
             note = note,
@@ -100,3 +94,8 @@ data class BookmarkEntity(
         }
     }
 }
+
+/** Mirrors the tags shown on cards while leaving the stored legacy values intact. */
+internal fun logicalBookmarkTag(category: String?, subcategory: String?, entities: List<String>, isAiSkipped: Boolean): Tag =
+    if (isAiSkipped && category == null && subcategory == null && entities.isEmpty()) Tag.createEmpty()
+    else Tag.create(category, subcategory, entities)

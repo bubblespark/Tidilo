@@ -1,85 +1,129 @@
-# Issue #81: Paging migration work log
+# Issue #81: Room-backed Paging verification
 
-## Status
+## Status and implementation
 
-Implementation is in progress on `mod/room-backed-paging`, based on main
-`56d9a35`. DB v7, synchronized derived writes, query factories, and Repository
-Paging APIs are implemented. The application version is 0.5.5 (code 36).
-The existing screens and their eager bookmark observer have not yet been
-switched over; Issue #81 is not complete.
+Implemented on `mod/room-backed-paging`, based on main `56d9a35`. Application
+version: **0.5.5 (code 36)**. Changes remain local until push approval.
 
-## Search compatibility checkpoint
+- Removed the active-bookmark full-list observer/cache and eager DAO reads.
+- Timeline, domain drill-down, and search use Room PagingSource with deterministic
+  `createdAt DESC, id DESC` ordering, SQL NSFW filtering, and stable ID keys in
+  list/grid layouts. Search follows the shared library view-mode preference.
+- Pager generations switch on query/domain/visibility before cachedIn; loading
+  generations prevent presenting old-filter data as new-filter results.
+- Page size 30, prefetch 10, initial size 60, max size 150, no placeholders.
+  An actual Room/Paging integration test traverses 300 rows, checks retention
+  after each append, reloads evicted earlier pages, and observes/edits an off-page ID.
+- Domain/tag aggregates, distinct settings domains, and single-ID detail flows
+  replace full-object reads. Tag counts never depend on loaded pages.
+- Note/field/domain changes target durable rows. Trash insertion, active deletion,
+  and capacity enforcement share one transaction. Import saving stays awaited.
+- Initial/empty/error states are distinct. Initialization and aggregate failures,
+  refresh failures, and both prepend/append failures expose retry. Detail reads
+  distinguish loading, missing, and failure; saves navigate only after success.
+- Domain NSFW changes finish their SQL/policy steps in the application scope,
+  including when the settings composition is disposed.
+- Startup icon preparation reads distinct domains and at most two 64-URL batches,
+  preserving fallback and transient-failure negative-cache behavior.
 
-`BookmarkSearchKey` uses simple Unicode uppercase-then-lowercase mapping by
-code point, without multi-character expansion, normalization, or tokenization.
-Its tests compare the resulting substring matching with the current Kotlin
-ignoreCase behavior, including Japanese, Turkish I variants, Greek sigma,
-Kelvin sign, sharp S, full-width Latin, combining marks, supplementary letters,
-and literal SQL wildcard characters. Case mappings for every Unicode scalar
-value are also compared against JVM ignoreCase equality.
+## Search and tag compatibility
 
-These tests establish comparison-key feasibility, not complete SQL search parity.
-The key is now maintained by DAO writes and the v6-to-v7 migration, and is
-used by the new parameterized SQL query factories.
+Search binds literal substring parameters over derived comparison keys. Tokens
+use full-width-space normalization and AND semantics; ordinary fields are title,
+description, and URL. Tag tokens match category/subcategory or individual entity
+occurrences, including Japanese/English labels. No FTS or tokenization changes.
 
-An in-memory SQL probe on the connected API 36 `sdk_gphone64_x86_64` emulator
-reported SQLite 3.44.3. LIKE matched accented Latin case and sigma variants, but
-did not match either dotted or dotless I against ASCII i, unlike the current
-Kotlin search. Therefore using the device's LIKE behavior directly is insufficient.
-The probe also confirmed JSON array operations and literal `instr` substring
-matching on that environment. This is not evidence for every supported API level;
-Room integration tests on supported environments remain necessary.
+The entity relation preserves duplicates and case-sensitive count buckets. Derived
+values mirror Tag.create: trim whitespace/one leading #, drop blank entities,
+apply None defaults, preserve genuinely empty AI-skipped tags. Raw columns are
+unchanged. Normalized category/subcategory buckets merge equivalent raw spellings.
 
-## Planned persistence representation
+An Android SQLite probe reported version 3.44.3 and showed LIKE differs from Kotlin
+for Turkish I. The comparison key uses uppercase-then-lowercase simple folding,
+without expansion or normalization. The Android runtime also differs from newer
+JDKs on supplementary-letter ignoreCase comparisons: Android compares UTF-16 units.
+The key follows the running String implementation, and all Unicode scalar case
+mappings are checked on both JVM and Android. SQL fixtures additionally test these
+letters, Japanese, sigma, dotted/dotless I, literal percent/underscore, empty and
+standalone # queries, mixed tokens, and cross-entity-boundary exclusion.
 
-- Store nullable normalized domain on active bookmarks only.
-- Store comparison keys for ordinary search fields and category/subcategory IDs.
-- Normalize entity occurrences into a child table keyed by bookmark ID and
-  occurrence position, retaining original values and comparison keys. Do not
-  deduplicate repeated entities when counting occurrences.
-- Maintain derived values and entity rows in the same transaction as bookmark
-  inserts, replacements, tag edits, deletions, and trash restoration.
-- Backfill all derived data during the v6-to-v7 migration using bounded,
-  stable-ID batches. Do not expose partially backfilled results.
-- Bind query values and use literal substring comparisons over comparison keys;
-  map category/subcategory label matches to their existing IDs.
+## Migration and query plans
 
-## Remaining work
+Room v6 upgrades to v7 in stable-ID batches of 256, updating only derived fields
+and child rows before readers are exposed. v3-v6 upgrade paths are explicit;
+there is no destructive fallback. Active bookmarks, trash, and import-task original
+columns are fingerprinted before/after migration with bounded-memory SHA-256.
+Invalid URLs keep a null domain and remain searchable/in the timeline.
 
-1. Record application startup, content readiness, search, scrolling, and memory
-   baselines for isolated 1,000- and 10,000-bookmark fixtures.
-2. Finalize query and aggregate parity against actual SQLite, including combined
-   selected tags, NSFW filtering, original-case count buckets, and empty queries.
-3. Validate additional query combinations and query plans on representative data;
-   validate the minimum supported Android environment in addition to API 36.
-4. Replace full-list repository, settings, details, and UI consumers with the new
-   Paging and aggregate APIs; complete targeted writes and transactional trash moves.
-5. Verify migration, failure handling, page retention, scrolling state, and
-   before/after performance; document results and update the application version.
+SQLite application_id is reserved for the derived format (TID7/TID8 according to
+runtime comparison behavior). A transactional onOpen callback repairs older
+prerelease-v7 derived data once, including the marker, without changing raw fields
+or Room schema identity. Reopen tests verify both repair and skipping repeat work.
 
-Do not treat this checkpoint as completion of Issue #81 or as a performance claim.
+Representative migration/open/count measurements on API 36: **199 ms for 1,000**
+and **2,005 ms for 10,000** bookmarks. This includes opening, migration, validation,
+and the first count. The migration fixture includes raw whitespace/# tags and
+blank/duplicate entities. It is separate from application startup measurements.
 
-## DB foundation verification
+At 10,000 rows, EXPLAIN QUERY PLAN uses index_bookmarks_createdAt for timeline
+ordering, with a temporary sort for tied IDs. Domain retrieval uses
+index_bookmarks_domain plus an order sort. Keep these existing indexes for this
+scope: the measured workload does not justify another composite index yet.
+Substring search still scans comparison keys; future indexing is a separate task.
 
-- Unit tests: 159 passed, zero failures/errors/skips.
-- Android SQLite integration tests: 2 passed on the API 36 emulator. One test
-  exercises search parity, deterministic ordering, NSFW filtering, tag occurrence
-  counts, insert/update/delete synchronization, and rollback. The other covers
-  upgrade paths from v3, v4, v5, and v6, with 1,000- and 10,000-row v6 fixtures.
-- Original columns across bookmarks, trash, and import tasks are compared using
-  bounded-memory SHA-256 fingerprints before and after migration. Room validates
-  the resulting v7 schema; unknown upgrade paths fail instead of deleting data.
-- First measured v6 upgrade/open-and-count time: 172 ms for 1,000 bookmarks and
-  1,419 ms for 10,000 bookmarks on the connected API 36 emulator. These synthetic
-  fixtures have two entity occurrences per bookmark, short descriptions, and
-  twenty domains. Timing includes opening/validation and the first count; it is
-  not a standalone backfill timer, an application startup baseline, or a physical
-  device performance prediction. Larger bodies/entity arrays require further checks.
-- Startup icon preparation now queries distinct domains and walks URL batches of
-  64, retaining at most two batches for last-candidate detection. Existing fallback
-  and transient-failure suppression of negative markers are preserved by the loop.
-- Paging retention defaults: page size 30, prefetch distance 10, initial size 60,
-  max size 150, no placeholders. UI retention and scrolling validation is pending.
+## Comparable application measurements
 
-The instrumentation fixtures use dedicated, randomly named databases, not the
-user's library. Full application before/after measurements remain outstanding.
+Run `python tools/benchmark_issue81.py` from the repository root with Python,
+adb, Java, and the Android SDK available. The script builds baseline/current
+applications with dedicated package suffixes and resets only those guarded test
+packages. It never clears the ordinary debug application's data. Fixtures contain
+1,000 or 10,000 synthetic bookmarks, about 440 description characters, two entity
+occurrences, twenty .invalid domains, no images, and negative icon-cache markers.
+Both builds use the same API 36 emulator and debug configuration. The baseline is
+main 56d9a35 (v0.5.4); the Paging build is v0.5.5. These measurements use list mode.
+
+Three process-cold starts per dataset/build produce the startup/PSS medians below.
+First Paging startup includes migration; later starts do not. Content readiness
+and search timing include UIAutomator polling/IPC and are **upper bounds**, not
+precise render latency. Search is one sample targeting off-page bookmark 42.
+The measurement snapshot precedes the final UI-only domain scroll-restoration fix.
+Scrolling is twelve identical swipes, recorded with dumpsys gfxinfo; frame counts
+vary. PSS is the operating system's process memory estimate, not retained heap size.
+Raw startup samples and scroll percentiles: [results.json](benchmarks/issue81/results.json).
+
+| Build | Rows | TTID median ms | Content-ready upper ms | PSS median KiB | Search upper ms | Janky frames |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Before | 1,000 | 2,135 | 4,648 | 128,243 | 4,016 | 22/224 (9.82%) |
+| Paging | 1,000 | 1,966 | 4,658 | 125,336 | 2,744 | 12/237 (5.06%) |
+| Before | 10,000 | 1,815 | 4,295 | 162,128 | 4,426 | 24/224 (10.71%) |
+| Paging | 10,000 | 1,595 | 4,131 | 125,871 | 2,471 | 22/235 (9.36%) |
+
+The 10,000-row PSS median is about 22% lower (35.4 MiB). Current PSS remains close
+between dataset sizes. Search upper bounds and scroll percentiles improve in this
+run; the small sample and instrumentation overhead do not establish a general
+speedup. Content readiness at 1,000 rows is effectively unchanged. No claim of
+uniformly faster startup or physical-device performance is made.
+
+## Verification and limits
+
+- Unit suite: 162 tests; Android SQLite/Paging suite: 7 tests; zero failures/errors/skips.
+- Coverage includes supported migrations, raw-data fingerprints, legacy tag parity,
+  selected-tag counts, NSFW visibility, write invalidation, bounded retention,
+  reverse paging, off-page detail/edit, transaction rollback, read retry, settings
+  caller cancellation, and prepend error priority.
+- Actual Android UI smoke checks verified a two-column grid, scrolling beyond
+  bookmark 250, detail-return anchor preservation, latest-query-only search,
+  all-library tag totals (10,000), domain totals (20 domains, 500 each), and
+  domain drill-down containing only that domain, domain-list detail return at
+  bookmark 260, and replacement with timeline rows after clearing the filter.
+  Scripted UI polling uses counted
+  labels such as Kotlin (10000), not bare entity names.
+- The debug build is installed on the first connected emulator; no ordinary
+  debug application data was cleared.
+- A fresh independent review found four P2 issues, all addressed with regression
+  coverage. The reviewer could not re-review fixes because its usage quota was
+  exhausted; final fixes were checked by the implementing agent and test suites.
+- Only an API 36 emulator is installed locally. API 34 and physical Pixel runtime
+  verification remain unperformed. No AICore-dependent inference was run.
+- Synthetic benchmarks exclude images, very large bodies, and real-world tag
+  distributions. Measurements are evidence for this environment only.

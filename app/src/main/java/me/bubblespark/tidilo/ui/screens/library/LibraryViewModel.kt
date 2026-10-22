@@ -1,5 +1,16 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import androidx.paging.LoadState
+import androidx.paging.LoadStates
+import androidx.paging.PagingData
+import kotlinx.coroutines.flow.onStart
+import androidx.paging.cachedIn
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.Flow
+import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.data.db.TagKind
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -34,6 +45,7 @@ enum class LibraryFilterMode {
     NEWEST_FIRST
 }
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class LibraryViewModel : ViewModel() {
 
     private val prefs by lazy {
@@ -41,17 +53,6 @@ class LibraryViewModel : ViewModel() {
     }
 
     private val bookmarkRepository = BookmarkRepository.getInstance()
-    val rawBookmarks: StateFlow<List<BookmarkItem>> = bookmarkRepository.bookmarks
-
-    val isLoading: StateFlow<Boolean> = bookmarkRepository.isLoaded
-        .map { !it }
-        .flowOn(Dispatchers.Default)
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = !bookmarkRepository.isLoaded.value
-        )
-
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
@@ -64,20 +65,6 @@ class LibraryViewModel : ViewModel() {
 
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
     val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
-
-    // Bookmark list filtered based on NSFW visibility flag
-    val bookmarks: StateFlow<List<BookmarkItem>> =
-        combine(bookmarkRepository.bookmarks, me.bubblespark.tidilo.config.AppConfig.isNsfwContentVisible) { allItems, isNsfwVisible ->
-            if (isNsfwVisible) allItems else allItems.filter { !it.isNsfw }
-        }
-        .flowOn(Dispatchers.Default)
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = bookmarkRepository.bookmarks.value.let { all ->
-                if (me.bubblespark.tidilo.config.AppConfig.isNsfwContentVisible.value) all else all.filter { !it.isNsfw }
-            }
-        )
 
     private fun loadFilterMode(): LibraryFilterMode {
         val saved = prefs.getString("library_filter_mode", null)
@@ -143,15 +130,13 @@ class LibraryViewModel : ViewModel() {
      * Domain card list (for 2-column grid).
      * Sorted by domain name (A-Z ASCII first, followed by Japanese collator).
      */
+    private val _domainGroupsLoading = MutableStateFlow(true)
+    val domainGroupsLoading = _domainGroupsLoading.asStateFlow()
+
     val domainGroups: StateFlow<List<DomainGroupItem>> =
-        combine(bookmarks, DomainPolicyManager.policies) { currentBookmarks, _ ->
-            val countMap = mutableMapOf<String, Int>()
-            for (b in currentBookmarks) {
-                val domain = DomainIconManager.extractDomain(b.url)
-                if (!domain.isNullOrBlank()) {
-                    countMap[domain] = (countMap[domain] ?: 0) + 1
-                }
-            }
+        combine(AppConfig.isNsfwContentVisible.flatMapLatest { bookmarkRepository.observeDomainCounts(it).onStart { _domainGroupsLoading.value = true } }, DomainPolicyManager.policies) { counts, _ ->
+            _domainGroupsLoading.value = false
+            val countMap = counts.associate { it.domain to it.count }
             val collator = Collator.getInstance(Locale.JAPANESE)
             countMap.map { (domain, count) ->
                 val displayName = DomainPolicyManager.getDisplayName(domain)
@@ -182,36 +167,53 @@ class LibraryViewModel : ViewModel() {
     /**
      * Bookmarks filtered by selected domain (Newest first).
      */
-    val domainFilteredBookmarks: StateFlow<List<BookmarkItem>> =
-        combine(bookmarks, selectedDomainFilter) { currentBookmarks, selectedDomain ->
-            filterBookmarksByDomain(currentBookmarks, selectedDomain)
+    val libraryPages = combine(_selectedDomainFilter, AppConfig.isNsfwContentVisible, bookmarkRepository.isInitialized) { domain, visible, ready -> Triple(domain, visible, ready) }
+        .flatMapLatest { (domain, visible, ready) ->
+            if (ready) bookmarkRepository.pagedBookmarks("", domain, visible).onStart { emit(loadingPage()) }
+            else flowOf(loadingPage())
         }
-        .flowOn(Dispatchers.Default)
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = emptyList()
-        )
+        .cachedIn(viewModelScope)
 
-    fun getBookmarkById(id: String): BookmarkItem? {
-        return rawBookmarks.value.find { it.id == id }
-    }
+    val searchPages = combine(_searchQuery, AppConfig.isNsfwContentVisible, bookmarkRepository.isInitialized) { query, visible, ready -> Triple(query, visible, ready) }
+        .flatMapLatest { (query, visible, ready) ->
+            if (ready) bookmarkRepository.pagedBookmarks(query, null, visible).onStart { emit(loadingPage()) }
+            else flowOf(loadingPage())
+        }
+        .cachedIn(viewModelScope)
 
-    fun updateBookmarkNote(id: String, note: String) {
-        bookmarkRepository.updateBookmarkNote(id, note)
-    }
+    val libraryCount = combine(_selectedDomainFilter, AppConfig.isNsfwContentVisible) { domain, visible -> domain to visible }
+        .flatMapLatest { (domain, visible) -> bookmarkRepository.observeCount("", domain, visible) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) {
+    val searchCount = combine(_searchQuery, AppConfig.isNsfwContentVisible) { query, visible -> query to visible }
+        .flatMapLatest { (query, visible) -> bookmarkRepository.observeCount(query, null, visible) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val isInitialized = bookmarkRepository.isInitialized
+    val initializationFailure = bookmarkRepository.initializationFailure
+    fun retryInitialization() = bookmarkRepository.retryInitialization()
+
+    fun bookmarkDetails(id: String): Flow<BookmarkDetailState> = bookmarkRepository.observeBookmark(id)
+        .map { BookmarkDetailState(it, false) }
+        .catch { emit(BookmarkDetailState(loading = false, error = it)) }
+
+    internal fun tagCounts(selected: Set<String>, kind: TagKind): Flow<Map<String, Int>> =
+        AppConfig.isNsfwContentVisible.flatMapLatest { visible ->
+            bookmarkRepository.observeTagCounts(selected, visible, kind)
+        }.map { rows -> rows.associate { it.value to it.count } }
+
+    val entityNames = tagCounts(emptySet(), TagKind.ENTITY).map { it.keys.toList() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    suspend fun updateBookmarkNote(id: String, note: String) = bookmarkRepository.updateBookmarkNote(id, note)
+
+    suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) =
         bookmarkRepository.updateBookmarkFields(id, description, tag)
-    }
 
-    suspend fun updateBookmarkDetails(id: String, note: String, tag: Tag, isNsfw: Boolean) {
+    suspend fun updateBookmarkDetails(id: String, note: String, tag: Tag, isNsfw: Boolean) =
         bookmarkRepository.updateBookmarkDetails(id, note, tag, isNsfw)
-    }
 
-    fun deleteBookmark(id: String) {
-        bookmarkRepository.moveToTrash(id)
-    }
+    suspend fun deleteBookmark(id: String): Boolean = bookmarkRepository.moveToTrash(id)
 
     init {
         // Load search history on background IO
@@ -274,15 +276,6 @@ class LibraryViewModel : ViewModel() {
      * - Tag search (with '#' prefix): searches Category, Subcategory, or Entities
      * - Bilingual support (case-insensitive)
      */
-    val filteredBookmarks: StateFlow<List<BookmarkItem>> =
-        combine(bookmarks, _searchQuery) { allItems, query ->
-            filterBookmarks(allItems, query)
-        }.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = bookmarks.value
-        )
-
     fun onSearchQueryChanged(query: String) {
         _searchQuery.value = query
     }
@@ -319,6 +312,10 @@ class LibraryViewModel : ViewModel() {
             addSearchHistory(newQuery)
         }
     }
+
+    private fun loadingPage(): PagingData<BookmarkItem> = PagingData.empty(
+        sourceLoadStates = LoadStates(LoadState.Loading, LoadState.NotLoading(false), LoadState.NotLoading(false))
+    )
 
     companion object {
         fun filterBookmarks(items: List<BookmarkItem>, rawQuery: String): List<BookmarkItem> {
@@ -394,3 +391,5 @@ class LibraryViewModel : ViewModel() {
         }
     }
 }
+
+data class BookmarkDetailState(val bookmark: BookmarkItem? = null, val loading: Boolean = true, val error: Throwable? = null)

@@ -93,7 +93,7 @@ fun TagSelectionScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
+    val initializationFailure by viewModel.initializationFailure.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val localConfig = LocalConfiguration.current
 
@@ -108,57 +108,23 @@ fun TagSelectionScreen(
     // Query for tag search input
     var tagSearchQuery by remember { mutableStateOf("") }
 
-    // Calculate total tag occurrence counts across all bookmarks in Library
-    val totalCategoryCounts = remember(bookmarks) {
-        bookmarks.groupingBy { it.tag.category }.eachCount()
-    }
-    val totalSubcategoryCounts = remember(bookmarks) {
-        bookmarks.groupingBy { it.tag.subcategory }.eachCount()
-    }
-    val totalEntityCounts = remember(bookmarks) {
-        bookmarks.flatMap { it.tag.entities }.groupingBy { it }.eachCount()
-    }
+    val totalCategoryCounts by remember(viewModel) { viewModel.tagCounts(emptySet(), me.bubblespark.tidilo.data.db.TagKind.CATEGORY) }
+        .collectAsStateWithLifecycle(initialValue = emptyMap())
+    val totalSubcategoryCounts by remember(viewModel) { viewModel.tagCounts(emptySet(), me.bubblespark.tidilo.data.db.TagKind.SUBCATEGORY) }
+        .collectAsStateWithLifecycle(initialValue = emptyMap())
+    val totalEntityCounts by remember(viewModel) { viewModel.tagCounts(emptySet(), me.bubblespark.tidilo.data.db.TagKind.ENTITY) }
+        .collectAsStateWithLifecycle(initialValue = emptyMap())
+    val activeCategoryCounts by remember(viewModel, selectedTags) { viewModel.tagCounts(selectedTags, me.bubblespark.tidilo.data.db.TagKind.CATEGORY) }
+        .collectAsStateWithLifecycle(initialValue = emptyMap())
+    val activeSubcategoryCounts by remember(viewModel, selectedTags) { viewModel.tagCounts(selectedTags, me.bubblespark.tidilo.data.db.TagKind.SUBCATEGORY) }
+        .collectAsStateWithLifecycle(initialValue = emptyMap())
+    val activeEntityCounts by remember(viewModel, selectedTags) { viewModel.tagCounts(selectedTags, me.bubblespark.tidilo.data.db.TagKind.ENTITY) }
+        .collectAsStateWithLifecycle(initialValue = emptyMap())
 
-    // AND search logic:
-    // Identify bookmarks matching all currently selected tags
-    val activeBookmarks = remember(bookmarks, selectedTags) {
-        if (selectedTags.isEmpty()) {
-            bookmarks
-        } else {
-            bookmarks.filter { item ->
-                selectedTags.all { selected ->
-                    item.tag.category.equals(selected, ignoreCase = true) ||
-                            item.tag.subcategory.equals(selected, ignoreCase = true) ||
-                            item.tag.entities.any { it.equals(selected, ignoreCase = true) }
-                }
-            }
-        }
-    }
-
-    // Always-visible Category / Subcategory:
-    // Candidate list of all defined categories and subcategories (plus any legacy bookmark tags)
-    val allCategoryIds = remember(bookmarks) {
-        (Category.entries.map { it.id } + bookmarks.mapNotNull { it.tag.category }).distinct()
-    }
-    val allSubcategoryIds = remember(bookmarks) {
-        (Subcategory.entries.map { it.id } + bookmarks.mapNotNull { it.tag.subcategory }).distinct()
-    }
-
-    // Occurrence count of each tag within currently active bookmarks
-    val activeCategoryCounts = remember(activeBookmarks) {
-        activeBookmarks.mapNotNull { it.tag.category }.groupingBy { it }.eachCount()
-    }
-    val activeSubcategoryCounts = remember(activeBookmarks) {
-        activeBookmarks.mapNotNull { it.tag.subcategory }.groupingBy { it }.eachCount()
-    }
-    val activeEntityCounts = remember(activeBookmarks) {
-        activeBookmarks.flatMap { it.tag.entities }.groupingBy { it }.eachCount()
-    }
-
-    // Only show entities that have non-zero occurrences in active bookmarks (or are already selected)
-    val validEntityNames = remember(activeBookmarks, selectedTags) {
-        val inActive = activeBookmarks.flatMap { it.tag.entities }.toSet()
-        inActive + selectedTags.filter { totalEntityCounts.containsKey(it) }
+    val allCategoryIds = remember(totalCategoryCounts) { (Category.entries.map { it.id } + totalCategoryCounts.keys).distinct() }
+    val allSubcategoryIds = remember(totalSubcategoryCounts) { (Subcategory.entries.map { it.id } + totalSubcategoryCounts.keys).distinct() }
+    val validEntityNames = remember(activeEntityCounts, totalEntityCounts, selectedTags) {
+        activeEntityCounts.keys + selectedTags.filter { totalEntityCounts.containsKey(it) }
     }
 
     // Filter by tag search input (partial match without '#')
@@ -250,6 +216,7 @@ fun TagSelectionScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
     ) {
+        initializationFailure?.let { PagingFeedback(androidx.paging.LoadState.Error(it), viewModel::retryInitialization) }
         // Top Menu: Back (←) button, title, and Clear button
         Row(
             modifier = Modifier

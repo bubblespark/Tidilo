@@ -617,7 +617,8 @@ class ImportRepositoryTest {
                     attempts.add(task.id)
                     if (task.id == "busy") throw AiCoreExecutionException(9, "AICore busy")
                 },
-                fallbackMode = { AiCoreFallbackMode.DISABLE }
+                fallbackMode = { AiCoreFallbackMode.DISABLE },
+                retryIntervalMs = 10L
             )
             repository.retryWaitingProcessingTasks()
             withTimeout(15000) { closed.await() }

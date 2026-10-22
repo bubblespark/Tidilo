@@ -41,9 +41,11 @@ Tidilo processes and categorizes web bookmarks locally on-device without transmi
 - A conflated channel retains wake-up requests, including requests arriving between the final empty Room query and session shutdown. Repeated requests never start concurrent inference workers.
 - Each processing session holds `executionMutex` once, lazily opens one `GenerativeModel`, and reuses it until no runnable tasks remain or background execution is paused. The model is closed in `finally`, including coroutine cancellation and failure paths. Idle workers hold no model.
 - `GeminiTaggingService.processAndSaveBookmark` and `runNanoInference` use the caller-owned model. Standalone `generateProposal` calls own and close their individual models.
+- Worker cancellation is distinguished from dependency-originated `CancellationException` using the current coroutine's active state. Actual worker cancellation propagates and closes the model; task-level interruptions use existing failure recovery, and session-level interruptions are reported without terminating the signal consumer.
 - Tasks are selected from Room in its existing newest-first order. BUSY and foreground BACKGROUND_USE_BLOCKED retries retain their three-second backoff and maximum of three retries. Other eligible tasks can run during backoff; the session remains open while waiting, and new work wakes the wait early.
 - Cancellation restores waiting tasks to Ready while allowing the active inference to finish. Background suspension preserves waiting tasks for foreground resume. Quota handling, fallback saving, and batch error transitions complete before the next task is selected.
 - Unit tests inject model creation, inference, foreground state, fallback mode, and coroutine scope so session ownership and recovery can be verified without AICore or an emulator inference attempt.
+- Retry interval injection defaults to 3000 milliseconds in production and permits a short interval in retry regression tests.
 
 ---
 

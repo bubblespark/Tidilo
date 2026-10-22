@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.data
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
@@ -18,6 +19,74 @@ import org.junit.Test
 
 class AiProcessingWorkerTest {
     private class Session
+
+    @Test
+    fun taskCancellationRecoversAndLaterWakeUpStillProcessesWork() = runBlocking {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val queue = ConcurrentLinkedQueue(listOf(1))
+        val firstClosed = CompletableDeferred<Unit>()
+        val secondClosed = CompletableDeferred<Unit>()
+        val failures = mutableListOf<Int>()
+        val processed = mutableListOf<Int>()
+        var closes = 0
+        try {
+            val worker = AiProcessingWorker(
+                scope, Mutex(), { queue.poll() }, { Session() },
+                { if (++closes == 1) firstClosed.complete(Unit) else secondClosed.complete(Unit) },
+                { _, task ->
+                    if (task == 1) throw CancellationException("Inference interrupted")
+                    processed.add(task)
+                },
+                { task, exception ->
+                    assertTrue(exception is CancellationException)
+                    failures.add(task)
+                },
+                { throw AssertionError(it) }
+            )
+            worker.wakeUp()
+            withTimeout(5000) { firstClosed.await() }
+            assertTrue(job.isActive)
+            assertEquals(listOf(1), failures)
+            queue.add(2)
+            worker.wakeUp()
+            withTimeout(5000) { secondClosed.await() }
+            assertEquals(listOf(2), processed)
+            assertEquals(2, closes)
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test
+    fun sessionCancellationWithActiveScopeDoesNotTerminateSignalConsumer() = runBlocking {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val failed = CompletableDeferred<Unit>()
+        val finished = CompletableDeferred<Unit>()
+        var firstQuery = true
+        var pending = true
+        try {
+            val worker = AiProcessingWorker(
+                scope, Mutex(), {
+                    if (firstQuery) {
+                        firstQuery = false
+                        throw CancellationException("Query interrupted")
+                    }
+                    if (pending) { pending = false; 1 } else null
+                }, { Session() }, { finished.complete(Unit) },
+                { _, _ -> },
+                { _, exception -> throw AssertionError(exception) },
+                { exception ->
+                    assertTrue(exception is CancellationException)
+                    failed.complete(Unit)
+                }
+            )
+            worker.wakeUp()
+            withTimeout(5000) { failed.await() }
+            worker.wakeUp()
+            withTimeout(5000) { finished.await() }
+            assertTrue(job.isActive)
+        } finally { job.cancelAndJoin() }
+    }
 
     @Test
     fun batchAndRepeatedTriggersShareOneSession() = runBlocking {

@@ -3,6 +3,8 @@ package me.bubblespark.tidilo.data
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -10,7 +12,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Owns one sequential processing session, including work arriving during shutdown.
- * [CancellationException] is rethrown to the caller and is never passed to [handleFailure].
+ * Worker cancellation is rethrown; task-level [CancellationException] is passed to [handleFailure].
  */
 internal class AiProcessingWorker<T : Any, S : Any>(
     scope: CoroutineScope,
@@ -37,7 +39,8 @@ internal class AiProcessingWorker<T : Any, S : Any>(
                                     val activeSession = session ?: openSession().also { session = it }
                                     processTask(activeSession, task)
                                 } catch (e: CancellationException) {
-                                    throw e
+                                    currentCoroutineContext().ensureActive()
+                                    handleFailure(task, e)
                                 } catch (e: Exception) {
                                     handleFailure(task, e)
                                 }
@@ -47,7 +50,8 @@ internal class AiProcessingWorker<T : Any, S : Any>(
                         }
                     }
                 } catch (e: CancellationException) {
-                    throw e
+                    currentCoroutineContext().ensureActive()
+                    reportSessionFailure(e)
                 } catch (e: Exception) {
                     reportSessionFailure(e)
                 }

@@ -41,7 +41,8 @@ class ImportRepository internal constructor(
     private val isAppInForeground: () -> Boolean = { TidiloApplication.instance.isAppInForeground },
     private val openModel: () -> GenerativeModel = { Generation.getClient() },
     private val analyzeTask: suspend (GenerativeModel, ImportTask) -> Unit = ::analyzeImportTask,
-    private val fallbackMode: () -> AiCoreFallbackMode = { AppConfig.aiCoreFallbackMode.value }
+    private val fallbackMode: () -> AiCoreFallbackMode = { AppConfig.aiCoreFallbackMode.value },
+    private val retryIntervalMs: Long = 3000L
 ) {
 
     private val appContext: Context? = context?.applicationContext
@@ -354,7 +355,6 @@ class ImportRepository internal constructor(
     private val foregroundRetryCounts = ConcurrentHashMap<String, Int>()
     private val retryNotBefore = ConcurrentHashMap<String, Long>()
     private val MAX_FOREGROUND_RETRIES = 3
-    private val RETRY_INTERVAL_MS = 3000L
 
     /**
      * Called when the app transitions to active/foreground.
@@ -540,7 +540,7 @@ class ImportRepository internal constructor(
                         status = TaskStatus.WAITING_AI,
                         statusText = "AICore busy • Retrying ($retryCount/$MAX_FOREGROUND_RETRIES)..."
                     )
-                    retryNotBefore[target.id] = System.nanoTime() + RETRY_INTERVAL_MS * 1_000_000L
+                    retryNotBefore[target.id] = System.nanoTime() + retryIntervalMs * 1_000_000L
                 } else {
                     if (isFallbackApplicable(errorCode, throwable)) {
                         saveBookmarkFallback(target)
@@ -559,7 +559,7 @@ class ImportRepository internal constructor(
                         status = TaskStatus.WAITING_AI,
                         statusText = "AICore background blocked • Retrying ($retryCount/$MAX_FOREGROUND_RETRIES)..."
                     )
-                    retryNotBefore[target.id] = System.nanoTime() + RETRY_INTERVAL_MS * 1_000_000L
+                    retryNotBefore[target.id] = System.nanoTime() + retryIntervalMs * 1_000_000L
                 } else {
                     if (isFallbackApplicable(errorCode, throwable)) {
                         saveBookmarkFallback(target)

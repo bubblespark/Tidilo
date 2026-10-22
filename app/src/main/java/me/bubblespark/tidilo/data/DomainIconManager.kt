@@ -9,6 +9,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +49,10 @@ object DomainIconManager {
         override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
     }
 
+    private val _iconUpdatedDomain = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    val iconUpdatedDomain: SharedFlow<String> = _iconUpdatedDomain.asSharedFlow()
+
+    // Only full cache clears invalidate every subscriber.
     private val _iconUpdateVersion = MutableStateFlow(0L)
     val iconUpdateVersion: StateFlow<Long> = _iconUpdateVersion.asStateFlow()
 
@@ -451,7 +458,7 @@ object DomainIconManager {
             legacy.delete()
         }
         removeNegativeMarker(context, normalized)
-        nextVersion()
+        _iconUpdatedDomain.emitUpdate(normalized)
     }
 
     /**
@@ -760,7 +767,7 @@ object DomainIconManager {
                         removeNegativeMarker(context, domain)
                         memoryCache.put(domain, processedBitmap.asImageBitmap())
                         dominantColorCache.put(domain, extractDominantColor(processedBitmap, domain))
-                        nextVersion()
+                        _iconUpdatedDomain.emitUpdate(domain)
                         true
                     }
                 }

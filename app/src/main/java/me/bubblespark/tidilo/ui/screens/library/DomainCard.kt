@@ -39,7 +39,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.bubblespark.tidilo.ui.components.rememberImageRefresh
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.ui.components.DomainWatermark
@@ -65,7 +65,7 @@ fun DomainCard(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val iconVersion by DomainIconManager.iconUpdateVersion.collectAsStateWithLifecycle()
+    val iconVersion = rememberImageRefresh(item.domain, DomainIconManager.iconUpdatedDomain, DomainIconManager.iconUpdateVersion)
 
     // Dynamically retrieve or compute the domain's dominant brand color (calibrated for dark-mode visibility)
     val dominantColor by produceState(

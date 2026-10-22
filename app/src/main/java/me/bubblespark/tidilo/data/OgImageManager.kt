@@ -11,6 +11,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,6 +50,10 @@ object OgImageManager {
     private val cacheGeneration = AtomicLong(0L)
     private val cacheMutex = Mutex()
 
+    private val _imageUpdatedDomain = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    val imageUpdatedDomain: SharedFlow<String> = _imageUpdatedDomain.asSharedFlow()
+
+    // Only full cache clears invalidate every subscriber.
     private val _cacheVersion = MutableStateFlow(0L)
     val cacheVersion: StateFlow<Long> = _cacheVersion.asStateFlow()
 
@@ -465,7 +472,7 @@ object OgImageManager {
                     memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
                     memoryCache.put(fallbackCacheKey(domain), imageBitmap)
                 }
-                _cacheVersion.value++
+                _imageUpdatedDomain.emitUpdate(domain)
                 true
             } catch (_: Exception) {
                 false

@@ -67,6 +67,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import me.bubblespark.tidilo.ui.components.rememberImageRefresh
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -118,7 +119,7 @@ fun LibraryScreen(
     val localConfig = LocalConfiguration.current
     val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
     var isViewModeMenuExpanded by remember { mutableStateOf(false) }
-    val iconVersion by DomainIconManager.iconUpdateVersion.collectAsStateWithLifecycle()
+    val iconVersion = rememberImageRefresh(selectedDomainFilter, DomainIconManager.iconUpdatedDomain, DomainIconManager.iconUpdateVersion)
 
     val selectedDomainColor by produceState<Color?>(
         initialValue = selectedDomainFilter?.let {

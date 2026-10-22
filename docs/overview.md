@@ -64,6 +64,14 @@ flowchart TD
 - Direct communication with the Android OS AICore system service without cloud round-trips, ensuring zero bandwidth consumption, ultra-low latency, and total user privacy.
 - Strict token budgeting: requests configure `maxOutputTokens = 256` to ensure optimal throughput and instant inference.
 
+### 2.4 Image Cache Invalidation
+
+- `DomainIconManager.iconUpdatedDomain` and `OgImageManager.imageUpdatedDomain` expose domain-scoped `SharedFlow<String>` invalidations after image saves; individual icon removal uses the same domain signal.
+- `iconUpdateVersion` and `cacheVersion` are retained exclusively for full cache clears. Existing generation tokens continue to reject stale downloads.
+- Image and dominant-color consumers filter domain events before updating Compose state. Each event receives a distinct identity so repeated updates of the same domain refresh correctly.
+- Lifecycle-aware collection rechecks local caches when collection restarts, covering updates received while the screen was inactive. Shared-flow buffer overflow falls back to suspended emission instead of dropping invalidations.
+
+
 ---
 
 ## 3. Target Environment & Runtime Constraints

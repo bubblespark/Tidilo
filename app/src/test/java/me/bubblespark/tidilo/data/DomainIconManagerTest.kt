@@ -6,9 +6,42 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import org.junit.Test
 
 class DomainIconManagerTest {
+
+    @Test
+    fun removeIconNotifiesOnlyItsDomainWithoutGlobalInvalidation() = kotlinx.coroutines.runBlocking {
+        val tempDir = java.nio.file.Files.createTempDirectory("domain_notification_test").toFile()
+        val received = mutableListOf<String>()
+        val collector = kotlinx.coroutines.CoroutineScope(coroutineContext).launch(
+            start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED
+        ) {
+            DomainIconManager.iconUpdatedDomain.collect { received.add(it) }
+        }
+        try {
+            val context = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
+            }
+            val initialVersion = DomainIconManager.iconUpdateVersion.value
+            DomainIconManager.removeIcon(context, " GitHub.COM ")
+            DomainIconManager.removeIcon(context, "github.com")
+            kotlinx.coroutines.withTimeout(5_000) {
+                while (received.size < 2) kotlinx.coroutines.yield()
+            }
+            assertEquals(listOf("github.com", "github.com"), received)
+            assertEquals(initialVersion, DomainIconManager.iconUpdateVersion.value)
+            DomainIconManager.clearCache(context)
+            assertTrue(DomainIconManager.iconUpdateVersion.value > initialVersion)
+            assertEquals(2, received.size)
+        } finally {
+            collector.cancel()
+            tempDir.deleteRecursively()
+        }
+    }
 
     @Test
     fun extractDomain_removesWwwAndLowerCase() {

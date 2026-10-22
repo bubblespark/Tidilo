@@ -16,7 +16,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.data.DomainIconManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,7 +39,7 @@ fun DomainWatermark(
     if (domain.isNullOrBlank()) return
 
     val context = LocalContext.current
-    val iconVersion by DomainIconManager.iconUpdateVersion.collectAsStateWithLifecycle()
+    val iconVersion = rememberImageRefresh(domain, DomainIconManager.iconUpdatedDomain, DomainIconManager.iconUpdateVersion)
 
     val iconBitmap by produceState<ImageBitmap?>(
         initialValue = DomainIconManager.getCachedIconBitmap(domain),

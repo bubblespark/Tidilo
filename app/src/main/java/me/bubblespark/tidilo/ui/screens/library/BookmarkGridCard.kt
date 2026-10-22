@@ -18,7 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.bubblespark.tidilo.ui.components.rememberImageRefresh
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -72,8 +72,8 @@ fun BookmarkGridCard(
         bookmark.ogImageFilename
     }
 
-    val cacheVersion by OgImageManager.cacheVersion.collectAsStateWithLifecycle()
-    val iconVersion by DomainIconManager.iconUpdateVersion.collectAsStateWithLifecycle()
+    val cacheVersion = rememberImageRefresh(domain, OgImageManager.imageUpdatedDomain, OgImageManager.cacheVersion)
+    val iconVersion = rememberImageRefresh(domain, DomainIconManager.iconUpdatedDomain, DomainIconManager.iconUpdateVersion)
 
     // Asynchronously load cached og:image bitmap from cacheDir
     val ogBitmap by produceState<ImageBitmap?>(

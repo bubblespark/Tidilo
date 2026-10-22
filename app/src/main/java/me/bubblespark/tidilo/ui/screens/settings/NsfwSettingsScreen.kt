@@ -35,6 +35,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,7 +45,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import me.bubblespark.tidilo.ui.components.rememberImageRefresh
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.BookmarkRepository
@@ -60,7 +64,6 @@ fun NsfwSettingsScreen(
     val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
     val isNsfwBookmarkable by AppConfig.isNsfwContentBookmarkable.collectAsStateWithLifecycle()
     val policies by DomainPolicyManager.policies.collectAsStateWithLifecycle()
-    val iconVersion by DomainIconManager.iconUpdateVersion.collectAsStateWithLifecycle()
 
     // Ensure all domains from current bookmarks are synced
     val bookmarkRepo = remember { BookmarkRepository.getInstance(context) }
@@ -269,9 +272,18 @@ fun NsfwSettingsScreen(
                 ) {
                     policies.forEachIndexed { index, policy ->
                         val isChecked = policy.isNsfw
-                        val iconBitmap = remember(policy.domain, iconVersion) {
-                            DomainIconManager.getIconBitmap(context, policy.domain)
+                        val iconVersion = rememberImageRefresh(policy.domain, DomainIconManager.iconUpdatedDomain, DomainIconManager.iconUpdateVersion)
+                        val loadedIconBitmap by produceState(
+                            initialValue = DomainIconManager.getCachedIconBitmap(policy.domain),
+                            key1 = policy.domain,
+                            key2 = iconVersion
+                        ) {
+                            value = DomainIconManager.getCachedIconBitmap(policy.domain)
+                            value = withContext(Dispatchers.IO) {
+                                DomainIconManager.getIconBitmap(context, policy.domain)
+                            }
                         }
+                        val iconBitmap = loadedIconBitmap
 
                         Row(
                             modifier = Modifier

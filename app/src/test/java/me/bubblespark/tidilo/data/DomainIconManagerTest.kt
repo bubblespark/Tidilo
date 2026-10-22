@@ -254,4 +254,58 @@ class DomainIconManagerTest {
             tempDir.deleteRecursively()
         }
     }
+
+    @Test
+    fun fetchAndSaveDomainIcon_networkFailure_doesNotWriteNegativeMarker() = kotlinx.coroutines.runBlocking {
+        val tempDir = java.nio.file.Files.createTempDirectory("domain_offline_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
+            }
+
+            val testDomain = "offline-example.com"
+            val testUrl = "https://$testDomain/article"
+
+            // Simulate offline network failure (no server contact)
+            DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), hasServerContact = false) }
+            DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, hasServerContact = false) }
+
+            val result = DomainIconManager.fetchAndSaveDomainIcon(fakeContext, testUrl)
+            assertFalse(result)
+            // Transient network failure without server contact must NOT write a negative marker
+            assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, testDomain))
+        } finally {
+            DomainIconManager.htmlDiscoverer = null
+            DomainIconManager.httpDownloader = null
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun fetchAndSaveDomainIcon_serverContactedWithNoUsableIcon_writesNegativeMarker() = kotlinx.coroutines.runBlocking {
+        val tempDir = java.nio.file.Files.createTempDirectory("domain_server_contact_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
+            }
+
+            val testDomain = "no-icon-example.com"
+            val testUrl = "https://$testDomain"
+
+            // Simulate successful server contact (e.g. 404 or page without icons)
+            DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), hasServerContact = true) }
+            DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, hasServerContact = true) }
+
+            val result = DomainIconManager.fetchAndSaveDomainIcon(fakeContext, testUrl)
+            assertFalse(result)
+            // Completed discovery with server contact but no usable icon MUST write a negative marker
+            assertTrue(DomainIconManager.shouldSkipFetch(fakeContext, testDomain))
+        } finally {
+            DomainIconManager.htmlDiscoverer = null
+            DomainIconManager.httpDownloader = null
+            tempDir.deleteRecursively()
+        }
+    }
 }

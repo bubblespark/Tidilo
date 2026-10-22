@@ -105,12 +105,12 @@ object DomainIconManager {
     /**
      * Checks if a domain has a valid negative cache marker (fetch failure within TTL).
      */
-    fun shouldSkipFetch(context: Context, domain: String): Boolean {
+    fun shouldSkipFetch(context: Context, domain: String): Boolean = synchronized(cacheLock) {
         val normalized = domain.trim().lowercase()
         val marker = getNegativeMarkerFile(context, normalized)
-        if (!marker.exists()) return false
+        if (!marker.exists()) return@synchronized false
         val age = System.currentTimeMillis() - marker.lastModified()
-        return if (age in 0 until NEGATIVE_CACHE_TTL_MS) {
+        if (age in 0 until NEGATIVE_CACHE_TTL_MS) {
             true
         } else {
             marker.delete()
@@ -124,13 +124,15 @@ object DomainIconManager {
     fun writeNegativeMarker(context: Context, domain: String) {
         val normalized = domain.trim().lowercase()
         val marker = getNegativeMarkerFile(context, normalized)
-        try {
-            if (!marker.exists()) {
-                marker.createNewFile()
-            } else {
-                marker.setLastModified(System.currentTimeMillis())
+        synchronized(cacheLock) {
+            try {
+                if (!marker.exists()) {
+                    marker.createNewFile()
+                } else {
+                    marker.setLastModified(System.currentTimeMillis())
+                }
+            } catch (_: Exception) {
             }
-        } catch (_: Exception) {
         }
     }
 
@@ -140,8 +142,10 @@ object DomainIconManager {
     fun removeNegativeMarker(context: Context, domain: String) {
         val normalized = domain.trim().lowercase()
         val marker = getNegativeMarkerFile(context, normalized)
-        if (marker.exists()) {
-            marker.delete()
+        synchronized(cacheLock) {
+            if (marker.exists()) {
+                marker.delete()
+            }
         }
     }
 
@@ -149,12 +153,14 @@ object DomainIconManager {
      * Removes all negative cache markers from the domain icons storage.
      */
     fun clearAllNegativeMarkers(context: Context) {
-        try {
-            val dir = getIconDir(context)
-            if (dir.exists()) {
-                dir.listFiles { _, name -> name.endsWith(".none") }?.forEach { it.delete() }
+        synchronized(cacheLock) {
+            try {
+                val dir = getIconDir(context)
+                if (dir.exists()) {
+                    dir.listFiles { _, name -> name.endsWith(".none") }?.forEach { it.delete() }
+                }
+            } catch (_: Exception) {
             }
-        } catch (_: Exception) {
         }
     }
 
@@ -555,17 +561,37 @@ object DomainIconManager {
         return Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
     }
 
+    internal data class DownloadResult(
+        val bytes: ByteArray?,
+        val hasServerContact: Boolean
+    )
+
+    internal data class HtmlDiscoveryResult(
+        val iconUrls: List<String>,
+        val hasServerContact: Boolean
+    )
+
+    @androidx.annotation.VisibleForTesting
+    internal var httpDownloader: ((String) -> DownloadResult)? = null
+
+    @androidx.annotation.VisibleForTesting
+    internal var htmlDiscoverer: ((String) -> HtmlDiscoveryResult)? = null
+
     /**
      * Discovers icon candidate URLs from HTML markup (<link rel="icon">, <link rel="apple-touch-icon">, etc.).
      */
-    private fun findHtmlIconUrls(pageUrl: String): List<String> {
+    private fun findHtmlIconUrls(pageUrl: String): HtmlDiscoveryResult {
+        htmlDiscoverer?.let { return it.invoke(pageUrl) }
         val results = mutableListOf<String>()
+        var hasServerContact = false
         try {
             val doc = Jsoup.connect(pageUrl)
                 .userAgent(USER_AGENT)
                 .timeout(4000)
                 .followRedirects(true)
                 .get()
+
+            hasServerContact = true
 
             // Extract og:site_name and register as domain display name
             val siteName = doc.select("meta[property='og:site_name'], meta[name='og:site_name']").firstOrNull()?.attr("content")?.trim()
@@ -592,9 +618,11 @@ object DomainIconManager {
                     results.add(content)
                 }
             }
+        } catch (_: org.jsoup.HttpStatusException) {
+            hasServerContact = true
         } catch (_: Exception) {
         }
-        return results
+        return HtmlDiscoveryResult(results, hasServerContact)
     }
 
     /**
@@ -630,15 +658,20 @@ object DomainIconManager {
         if (!appleTouchIconUrl.isNullOrBlank()) candidates.add(appleTouchIconUrl.trim())
         if (!faviconUrl.isNullOrBlank()) candidates.add(faviconUrl.trim())
 
+        var hasServerContact = false
+
         // Discover icons from HTML markup
         val targetPageUrl = if (url.startsWith("http://") || url.startsWith("https://")) url else "https://$domain"
-        val htmlIcons = findHtmlIconUrls(targetPageUrl)
-        candidates.addAll(htmlIcons)
+        val htmlDiscovery = findHtmlIconUrls(targetPageUrl)
+        if (htmlDiscovery.hasServerContact) hasServerContact = true
+        candidates.addAll(htmlDiscovery.iconUrls)
 
         // Fallback to domain root HTML if no icons discovered or target is a deep URL
         val rootPageUrl = "https://$domain"
         if (targetPageUrl != rootPageUrl && targetPageUrl != "$rootPageUrl/") {
-            candidates.addAll(findHtmlIconUrls(rootPageUrl))
+            val rootDiscovery = findHtmlIconUrls(rootPageUrl)
+            if (rootDiscovery.hasServerContact) hasServerContact = true
+            candidates.addAll(rootDiscovery.iconUrls)
         }
 
         // Direct root path candidates
@@ -654,7 +687,9 @@ object DomainIconManager {
 
         for (candidateUrl in candidates) {
             try {
-                val bytes = downloadBytes(candidateUrl) ?: continue
+                val download = downloadBytes(candidateUrl)
+                if (download.hasServerContact) hasServerContact = true
+                val bytes = download.bytes ?: continue
 
                 // Resolution check: exclude candidates smaller than 96x96
                 val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -701,7 +736,11 @@ object DomainIconManager {
             return@withContext saved
         }
 
-        writeNegativeMarker(context, domain)
+        synchronized(cacheLock) {
+            if (requestGeneration == cacheGeneration && hasServerContact) {
+                writeNegativeMarker(context, domain)
+            }
+        }
         false
         }
     }
@@ -747,7 +786,8 @@ object DomainIconManager {
         }
     }
 
-    private fun downloadBytes(urlStr: String): ByteArray? {
+    private fun downloadBytes(urlStr: String): DownloadResult {
+        httpDownloader?.let { return it.invoke(urlStr) }
         return try {
             val response = Jsoup.connect(urlStr)
                 .userAgent(USER_AGENT)
@@ -756,13 +796,12 @@ object DomainIconManager {
                 .timeout(4000)
                 .maxBodySize(5 * 1024 * 1024)
                 .execute()
-            if (response.statusCode() in 200..299) {
-                response.bodyAsBytes()
-            } else {
-                null
-            }
+            val bytes = if (response.statusCode() in 200..299) response.bodyAsBytes() else null
+            DownloadResult(bytes, hasServerContact = true)
+        } catch (_: org.jsoup.HttpStatusException) {
+            DownloadResult(bytes = null, hasServerContact = true)
         } catch (_: Exception) {
-            null
+            DownloadResult(bytes = null, hasServerContact = false)
         }
     }
 }

@@ -5,6 +5,7 @@ Build logs and raw metrics stay in the ignored plan workspace. UI polling adds
 instrumentation overhead; content-readiness and search timings are upper bounds.
 """
 from pathlib import Path
+import os
 import io
 import json
 import re
@@ -32,11 +33,15 @@ def adb(*args):
     return run(["adb", *args])
 
 
+def gradle_command(target, platform=None):
+    return [str(target / "gradlew.bat")] if (platform or os.name) == "nt" else ["sh", str(target / "gradlew")]
+
+
 def build(label):
     target = WORK / label
     target.mkdir(parents=True, exist_ok=True)
     if label == "baseline":
-        archive = subprocess.check_output(["git", "archive", "--format=zip", BASE], cwd=ROOT)
+        archive = subprocess.check_output(["git", "archive", "--format=zip", BASE], cwd=ROOT, timeout=120)
         with zipfile.ZipFile(io.BytesIO(archive)) as source:
             for entry in source.infolist():
                 resolved = (target / entry.filename).resolve()
@@ -58,7 +63,7 @@ def build(label):
     gradle.write_text(source, encoding="utf-8")
     print(f"Building {label}", flush=True)
     with (WORK / f"build-{label}.log").open("w", encoding="utf-8") as log:
-        result = subprocess.run([str(target / "gradlew.bat"), "assembleDebug", "--no-daemon"], cwd=target, stdout=log, stderr=log)
+        result = subprocess.run([*gradle_command(target), "assembleDebug", "--no-daemon"], cwd=target, stdout=log, stderr=log, timeout=900)
     if result.returncode:
         raise RuntimeError(f"Build failed: {label}; inspect build-{label}.log")
     adb("install", "-r", str(target / "app/build/outputs/apk/debug/app-debug.apk"))
@@ -167,4 +172,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except subprocess.TimeoutExpired as error:
+        raise SystemExit(f"Benchmark failed: process timed out after {error.timeout}s: {error.cmd}") from error

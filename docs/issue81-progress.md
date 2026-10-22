@@ -3,7 +3,7 @@
 ## Status and implementation
 
 Implemented on `mod/room-backed-paging`, based on main `56d9a35`. Application
-version: **0.5.5 (code 36)**. Changes remain local until push approval.
+version: **0.5.6 (code 37)**. Changes remain local until push approval.
 
 - Removed the active-bookmark full-list observer/cache and eager DAO reads.
 - Timeline, domain drill-down, and search use Room PagingSource with deterministic
@@ -127,3 +127,13 @@ uniformly faster startup or physical-device performance is made.
   verification remain unperformed. No AICore-dependent inference was run.
 - Synthetic benchmarks exclude images, very large bodies, and real-world tag
   distributions. Measurements are evidence for this environment only.
+
+
+## PR #85 review corrections
+
+- Added data-preserving v1-to-v2 and v2-to-v3 migrations from historical entity definitions. v1 tables are rebuilt only to relax category nullability and add isAiSkipped=false; original fields/IDs are copied unchanged. v2 adds the import table and indexes. All v1-v6 paths now reach v7. Actual SQLite tests fingerprint original bookmark/trash columns for both earliest versions.
+- Domain NSFW changes await initial policy loading, the bookmark update, and the policy-file write in the application scope. Strict writes propagate failures before success publication; existing unrelated background saves retain their previous best-effort behavior. DB/file stores are still separate and do not form a cross-store crash-atomic transaction.
+- Detail retry flows start with Loading before success/error. AI-review apply ignores repeated taps until completion and clears its guard in finally.
+- Benchmark archive/build subprocesses have 120/900-second timeouts; timeout failures terminate with an explicit message. Wrapper selection uses gradlew.bat on Windows and sh gradlew on POSIX, without requiring executable bits. Three isolated Python tests validate selection and timeout propagation; no full benchmark rerun was needed for these tooling-only changes.
+- The Japanese-translation suggestion remains intentionally deferred under the English-default resource policy, as instructed.
+- Review verification: 162 unit tests, 9 Android SQLite/Paging tests, and 3 Python tests passed. Debug build succeeds. No AICore inference performed. Application version incremented to 0.5.6 (code 37); benchmark numbers above remain measurements of v0.5.5.

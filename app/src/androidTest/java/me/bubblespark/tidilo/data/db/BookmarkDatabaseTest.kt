@@ -30,7 +30,7 @@ class BookmarkDatabaseTest {
     private val context = instrumentation.targetContext
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
-        .addMigrations(AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
+        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
             AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
@@ -245,6 +245,13 @@ class BookmarkDatabaseTest {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     for (statement in schema.split(';').filter { it.isNotBlank() }) {
                         var sql = statement
+                        if (version < 3 && sql.contains("import_tasks")) continue
+                        if (version == 1) {
+                            if (sql.contains("CREATE INDEX") && sql.contains("isAiSkipped")) continue
+                            sql = sql.replace(", `isAiSkipped` INTEGER NOT NULL", "")
+                                .replace("`category` TEXT", "`category` TEXT NOT NULL")
+                                .replace("`subcategory` TEXT", "`subcategory` TEXT NOT NULL")
+                        }
                         if (version < 5 && (sql.contains("CREATE TABLE IF NOT EXISTS `bookmarks`") || sql.contains("CREATE TABLE IF NOT EXISTS `trashed_bookmarks`"))) {
                             sql = sql.replace(", `ogImageUrl` TEXT", "")
                         }
@@ -277,6 +284,57 @@ class BookmarkDatabaseTest {
             }
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    @Test
+    fun domainPolicyPersistenceCompletesBeforeReturnAndReportsWriteFailure() = runBlocking {
+        val folder = java.io.File(context.cacheDir, "issue85-policy-${UUID.randomUUID()}").apply { mkdirs() }
+        val isolated = object : android.content.ContextWrapper(context) {
+            override fun getFilesDir(): java.io.File = folder
+        }
+        try {
+            me.bubblespark.tidilo.data.DomainPolicyManager.setDomainNsfwAndPersist("issue85.invalid", true, isolated)
+            val file = java.io.File(folder, "domain_policies.json")
+            val policies = org.json.JSONArray(file.readText())
+            val saved = (0 until policies.length()).map { policies.getJSONObject(it) }.single { it.getString("domain") == "issue85.invalid" }
+            assertTrue(saved.getBoolean("isNsfw"))
+            assertTrue(file.delete())
+            assertTrue(file.mkdir())
+            try {
+                me.bubblespark.tidilo.data.DomainPolicyManager.setDomainNsfwAndPersist("issue85.invalid", false, isolated)
+                fail("Storage failure must reach the initiating caller")
+            } catch (_: java.io.IOException) { }
+        } finally { folder.deleteRecursively() }
+    }
+
+    @Test
+    fun earliestSchemasPreserveBookmarksAndTrash() = runBlocking {
+        for (version in listOf(1, 2)) {
+            val name = "issue85-early-$version-${UUID.randomUUID()}.db"
+            val helper = legacy(name, version)
+            val old = helper.writableDatabase
+            val snapshots = mutableMapOf<String, Pair<List<String>, String>>()
+            for (table in listOf("bookmarks", "trashed_bookmarks")) {
+                val trash = if (table == "trashed_bookmarks") ",trashedAt" else ""
+                val trashValue = if (trash.isNotEmpty()) ",99" else ""
+                val flag = if (version == 2) ",isAiSkipped" else ""
+                val flagValue = if (version == 2) ",1" else ""
+                old.execSQL("INSERT INTO $table(id,title,url,description,category,subcategory,entities,createdAt,updatedAt,note,isNsfw$flag$trash) VALUES('kept','Title','https://example.com','Description','Article','Tech','[\"Kotlin\"]',11,22,'Important',1$flagValue$trashValue)")
+                val names = columns(old, table)
+                snapshots[table] = names to fingerprint(old, table, names)
+            }
+            helper.close()
+            val db = database(name)
+            try {
+                assertEquals(1, db.bookmarkDao().getCount())
+                assertEquals(1, db.trashDao().getCount())
+                assertEquals(0, db.importTaskDao().getCount())
+                val sql = db.openHelper.readableDatabase
+                for ((table, snapshot) in snapshots) assertEquals(snapshot.second, fingerprint(sql, table, snapshot.first))
+                assertEquals(version == 2, db.bookmarkDao().getBookmarkById("kept")!!.isAiSkipped)
+                assertEquals(listOf("kept"), results(db, "#Kotlin").map { it.id })
+            } finally { db.close(); context.deleteDatabase(name) }
+        }
     }
 
     @Test

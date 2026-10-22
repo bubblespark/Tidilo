@@ -101,6 +101,7 @@ fun BookmarkAiReviewScreen(
 ) {
     val context = LocalContext.current
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
+    var isSaving by remember { mutableStateOf(false) }
     val persistenceScope = androidx.compose.runtime.rememberCoroutineScope()
     var detailRetry by remember(bookmarkId) { mutableStateOf(0) }
     val detailFlow = remember(viewModel, bookmarkId, detailRetry) { viewModel.bookmarkDetails(bookmarkId) }
@@ -471,6 +472,8 @@ fun BookmarkAiReviewScreen(
             ) {
                 Surface(
                     onClick = {
+                        if (isSaving) return@Surface
+                        isSaving = true
                         val finalSummary = if (selectedSummarySource == ProposalSource.PROPOSAL) {
                             proposal.summary
                         } else {
@@ -505,6 +508,8 @@ fun BookmarkAiReviewScreen(
                             } catch (e: Exception) {
                                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                                 Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
+                            } finally {
+                                isSaving = false
                             }
                         }
                     },

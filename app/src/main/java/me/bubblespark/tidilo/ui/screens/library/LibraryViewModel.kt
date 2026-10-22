@@ -196,6 +196,7 @@ class LibraryViewModel : ViewModel() {
     fun bookmarkDetails(id: String): Flow<BookmarkDetailState> = bookmarkRepository.observeBookmark(id)
         .map { BookmarkDetailState(it, false) }
         .catch { emit(BookmarkDetailState(loading = false, error = it)) }
+        .onStart { emit(BookmarkDetailState()) }
 
     internal fun tagCounts(selected: Set<String>, kind: TagKind): Flow<Map<String, Int>> =
         AppConfig.isNsfwContentVisible.flatMapLatest { visible ->

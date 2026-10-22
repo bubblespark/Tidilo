@@ -35,10 +35,8 @@ object DomainPolicyManager {
     private val _policies = MutableStateFlow<List<DomainPolicy>>(emptyList())
     val policies: StateFlow<List<DomainPolicy>> = _policies.asStateFlow()
 
-    init {
-        scope.launch {
-            runCatching { loadPolicies() }
-        }
+    private val initialLoad = scope.launch {
+        runCatching { loadPolicies() }
     }
 
     private fun getStorageFile(context: Context? = null): File? {
@@ -82,9 +80,10 @@ object DomainPolicyManager {
     /**
      * Persists the current domain policies to disk.
      */
-    private fun savePolicies(context: Context? = null) {
+    @Synchronized
+    private fun savePolicies(context: Context? = null, propagateFailure: Boolean = false) {
         try {
-            val file = getStorageFile(context) ?: return
+            val file = getStorageFile(context) ?: if (propagateFailure) throw java.io.IOException("Policy storage unavailable") else return
             val jsonArray = JSONArray()
             domainMap.values.sortedBy { it.domain }.forEach { policy ->
                 val obj = JSONObject().apply {
@@ -97,7 +96,8 @@ object DomainPolicyManager {
                 jsonArray.put(obj)
             }
             file.writeText(jsonArray.toString(2), Charsets.UTF_8)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (propagateFailure) throw e
             // Non-critical persistence failure
         }
     }
@@ -201,20 +201,30 @@ object DomainPolicyManager {
     suspend fun setDomainNsfwAndAwait(domain: String, isNsfw: Boolean) {
         completeDomainPolicyChange(scope,
             { BookmarkRepository.getInstance().updateBookmarksNsfwForDomain(domain, isNsfw) },
-            { setDomainNsfw(domain, isNsfw) })
+            { setDomainNsfwAndPersist(domain, isNsfw) })
+    }
+
+    /** Writes the policy before publishing success and propagates storage failures. */
+    internal suspend fun setDomainNsfwAndPersist(domain: String, isNsfw: Boolean, context: Context? = null) {
+        initialLoad.join()
+        updateDomainNsfw(domain, isNsfw)
+        savePolicies(context, propagateFailure = true)
+        notifyStateUpdated()
     }
 
     fun setDomainNsfw(domain: String, isNsfw: Boolean) {
+        updateDomainNsfw(domain, isNsfw)
+        notifyStateUpdated()
+        scope.launch { savePolicies() }
+    }
+
+    private fun updateDomainNsfw(domain: String, isNsfw: Boolean) {
         val normalized = domain.trim().lowercase()
         val existing = domainMap[normalized]
         if (existing != null) {
             domainMap[normalized] = existing.copy(isNsfw = isNsfw)
         } else {
             domainMap[normalized] = DomainPolicy(normalized, isNsfw, "")
-        }
-        notifyStateUpdated()
-        scope.launch {
-            savePolicies()
         }
     }
 
@@ -246,7 +256,7 @@ object DomainPolicyManager {
 
 /** Once started, both steps belong to the application rather than the settings composition. */
 internal suspend fun completeDomainPolicyChange(
-    scope: CoroutineScope, persist: suspend () -> Unit, publish: () -> Unit
+    scope: CoroutineScope, persist: suspend () -> Unit, publish: suspend () -> Unit
 ) = scope.async {
     persist()
     publish()

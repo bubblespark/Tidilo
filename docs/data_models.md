@@ -289,7 +289,7 @@ rows transactionally; deletion cascades to those rows. Trash has no domain colum
 
 `MIGRATION_6_7` adds the domain index and backfills only derived fields and child
 rows in stable-ID batches of 256. It completes before Room readers are exposed.
-Supported v3-v6 upgrade paths are registered explicitly; destructive fallback is
+Supported v1-v6 upgrade paths are registered explicitly; destructive fallback is
 removed. Paging and aggregate queries apply NSFW filtering before fetching or
 counting, and bookmark result order is `createdAt DESC, id DESC`. Entity matching
 uses individual child values, never serialized JSON substrings.

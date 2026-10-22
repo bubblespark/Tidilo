@@ -272,7 +272,8 @@ class DomainIconManagerTest {
             DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, hasServerContact = false) }
 
             val result = DomainIconManager.fetchAndSaveDomainIcon(fakeContext, testUrl)
-            assertFalse(result)
+            assertFalse(result.success)
+            assertTrue(result.hadTransientFailure)
             // Transient network failure without server contact must NOT write a negative marker
             assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, testDomain))
         } finally {
@@ -299,7 +300,8 @@ class DomainIconManagerTest {
             DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, hasServerContact = true) }
 
             val result = DomainIconManager.fetchAndSaveDomainIcon(fakeContext, testUrl)
-            assertFalse(result)
+            assertFalse(result.success)
+            assertFalse(result.hadTransientFailure)
             // Completed discovery with server contact but no usable icon MUST write a negative marker
             assertTrue(DomainIconManager.shouldSkipFetch(fakeContext, testDomain))
         } finally {
@@ -326,8 +328,37 @@ class DomainIconManagerTest {
             DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, hasServerContact = false) }
 
             val result = DomainIconManager.fetchAndSaveDomainIcon(fakeContext, testUrl)
-            assertFalse(result)
+            assertFalse(result.success)
+            assertTrue(result.hadTransientFailure)
             // Transient download failure must prevent writing negative marker
+            assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, testDomain))
+        } finally {
+            DomainIconManager.htmlDiscoverer = null
+            DomainIconManager.httpDownloader = null
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun fetchAndSaveDomainIcon_transientDiscoveryFailure_doesNotWriteNegativeMarker() = kotlinx.coroutines.runBlocking {
+        val tempDir = java.nio.file.Files.createTempDirectory("domain_discovery_failure_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
+            }
+
+            val testDomain = "discovery-fail-example.com"
+            val testUrl = "https://$testDomain"
+
+            // HTML discovery has transient failure, but candidate download responds with HTTP 404 (server contact = true)
+            DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), hasServerContact = false, hasTransientFailure = true) }
+            DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, hasServerContact = true) }
+
+            val result = DomainIconManager.fetchAndSaveDomainIcon(fakeContext, testUrl)
+            assertFalse(result.success)
+            assertTrue(result.hadTransientFailure)
+            // Transient HTML discovery failure must prevent writing negative marker
             assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, testDomain))
         } finally {
             DomainIconManager.htmlDiscoverer = null
@@ -357,7 +388,8 @@ class DomainIconManagerTest {
                 url = testUrl,
                 recordFailureMarker = false
             )
-            assertFalse(result)
+            assertFalse(result.success)
+            assertFalse(result.hadTransientFailure)
             // Must NOT write marker when recordFailureMarker is false
             assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, testDomain))
         } finally {

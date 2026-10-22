@@ -295,14 +295,18 @@ class BookmarkRepository private constructor(context: Context) {
                 if (DomainIconManager.hasIcon(appContext, domain) || DomainIconManager.shouldSkipFetch(appContext, domain)) {
                     continue
                 }
+                var groupHadTransientFailure = false
                 for ((index, item) in domainItems.withIndex()) {
                     val isLast = index == domainItems.lastIndex
-                    val saved = DomainIconManager.fetchAndSaveDomainIcon(
+                    val result = DomainIconManager.fetchAndSaveDomainIcon(
                         context = appContext,
                         url = item.url,
-                        recordFailureMarker = isLast
+                        recordFailureMarker = isLast && !groupHadTransientFailure
                     )
-                    if (saved || DomainIconManager.hasIcon(appContext, domain)) {
+                    if (result.hadTransientFailure) {
+                        groupHadTransientFailure = true
+                    }
+                    if (result.success || DomainIconManager.hasIcon(appContext, domain)) {
                         break
                     }
                 }

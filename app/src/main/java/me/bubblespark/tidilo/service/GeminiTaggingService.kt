@@ -16,6 +16,7 @@ import me.bubblespark.tidilo.parser.ParsedWebPage
 import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.Tag
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -43,6 +44,7 @@ object GeminiTaggingService {
      * Parses the URL or uses pre-parsed snippets, generates summary and tags using Gemini Nano, and saves into Library.
      */
     suspend fun processAndSaveBookmark(
+        model: GenerativeModel,
         url: String,
         language: AppLanguage,
         preferredTitle: String? = null,
@@ -125,7 +127,9 @@ object GeminiTaggingService {
 
             // Run inference with Gemini Nano
             val aiOutput = try {
-                runNanoInference(prompt)
+                runNanoInference(model, prompt)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 throw mapInferenceException(e)
             }
@@ -149,10 +153,10 @@ object GeminiTaggingService {
             )
 
             // Save to Library (BookmarkRepository)
-            BookmarkRepository.getInstance().addBookmark(bookmarkItem)
+            BookmarkRepository.getInstance().addBookmarkAndAwait(bookmarkItem)
 
             bookmarkItem
-        }
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
     /**
@@ -188,7 +192,14 @@ object GeminiTaggingService {
 
             // 4. Run inference with Gemini Nano
             val aiOutput = try {
-                runNanoInference(prompt)
+                val model = Generation.getClient()
+                try {
+                    runNanoInference(model, prompt)
+                } finally {
+                    model.close()
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 throw mapInferenceException(e)
             }
@@ -211,7 +222,7 @@ object GeminiTaggingService {
             }
 
             result
-        }
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
     private fun isRawUrlOrHost(title: String, url: String): Boolean {
@@ -336,19 +347,13 @@ object GeminiTaggingService {
     /**
      * Executes AICore Gemini Nano inference.
      */
-    private suspend fun runNanoInference(prompt: String): String {
-        var model: GenerativeModel? = null
-        try {
-            model = Generation.getClient()
-            val request = generateContentRequest(TextPart(prompt)) {
-                // Set max output tokens to 256, sufficient for concise summary and JSON
-                maxOutputTokens = 256
-            }
-            val response = model.generateContent(request)
-            return response.candidates.firstOrNull()?.text?.trim().orEmpty()
-        } finally {
-            model?.close()
+    private suspend fun runNanoInference(model: GenerativeModel, prompt: String): String {
+        val request = generateContentRequest(TextPart(prompt)) {
+            // Set max output tokens to 256, sufficient for concise summary and JSON
+            maxOutputTokens = 256
         }
+        val response = model.generateContent(request)
+        return response.candidates.firstOrNull()?.text?.trim().orEmpty()
     }
 
     /**

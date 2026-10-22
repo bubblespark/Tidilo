@@ -152,7 +152,7 @@ data class ImportTask(
 stateDiagram-v2
     [*] --> READY : Import URL (Share Sheet or Manual)
     READY --> WAITING_AI : Promote single / "AI Analysis All"
-    WAITING_AI --> PROCESSING_AI : Coroutine grabs Mutex
+    WAITING_AI --> PROCESSING_AI : Session worker selects eligible task
     PROCESSING_AI --> [*] : Gemini Nano inference succeeds -> Saved to Library
     PROCESSING_AI --> ERROR : HTTP != 200, Rate Limit, or Parse failure
     ERROR --> WAITING_AI : User taps Retry
@@ -195,7 +195,8 @@ All persistence is managed via **Room Database** (`AppDatabase` v6) for robust r
    - **`trashed_bookmarks` table (`TrashedBookmarkEntity`)**: Managed by `TrashDao`, storing trashed items with retention tracking and `ogImageUrl`.
    - **`import_tasks` table (`ImportTaskEntity`)**: Managed by `ImportTaskDao`, storing processing, ready, and error tasks with reactive `Flow<List<ImportTaskEntity>>` observation and status index.
    - **Safe Migration & Database Decoupling (v6)**: In version 6, obsolete image BLOB storage (`og_images` table) was cleanly dropped via `MIGRATION_5_6`, liberating database file size while preserving 100% of bookmark, tag, and note data.
-   - **Single Source of Truth & Concurrency**: Room DB serves as the authoritative source of truth for all business operations, state promotions, and AI execution loops (`executeTaskAiAnalysis`). UI StateFlows (`_readyTasks`, `_processingTasks`, `_errorTasks`) are read-only observers of Room. Querying Room directly within `executionMutex.withLock` eliminates race conditions where asynchronous Flow emissions could otherwise lag behind immediate execution checks.
+   - **Awaited Import Persistence**: Normal and fallback import results await `addBookmarkAndAwait`, which replaces bookmarks by ID or URL inside a Room transaction. Import tasks are deleted only after bookmark persistence succeeds. Fallback persistence failures retain the task in Error for retry. Bookmark persistence and import-task deletion are separate operations; an interruption between them can retain both records, but cannot delete the only durable copy. URL-based replacement makes a repeated save replace the same URL.
+   - **Single Source of Truth & Concurrency**: Room DB serves as the authoritative source of truth for all business operations, state promotions, and the single AI session worker. UI StateFlows (`_readyTasks`, `_processingTasks`, `_errorTasks`) are read-only observers of Room. The worker holds `executionMutex` for the session, queries Room directly for runnable tasks, and awaits task and batch state updates before selecting more work. It rechecks each selected task after model initialization to skip tasks that have been deleted or are no longer runnable. Retry deadlines are transient in-memory state; background and interrupted tasks remain persisted for foreground resume.
 2. **`tidilo_library_prefs` (`search_history`)**:
    Array of up to 10 strings representing complete queries, ordered latest-first.
 3. **`tidilo_app_config_prefs`**:

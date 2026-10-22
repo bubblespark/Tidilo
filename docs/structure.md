@@ -86,6 +86,7 @@ app/src/main/java/com/ykgudev/tidilo/
 ### `me.bubblespark.tidilo.data`
 - Single source of truth for all business entities (`BookmarkItem`, `QueueItem`).
 - Owns persistent storage operations, in-memory caching via `StateFlow`, concurrency synchronization (`Mutex`), and schema migrations.
+- `AiProcessingWorker.kt` owns the persistent sequential import worker, retained wake-up signals, and session resource lifecycle; `ImportRepository` supplies Room task selection, inference, and error recovery.
 - **Rule**: Repositories must never reference Compose APIs or Android Activities.
 
 ### `me.bubblespark.tidilo.parser`

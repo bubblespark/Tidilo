@@ -1,19 +1,22 @@
 package me.bubblespark.tidilo.data
 
 import android.content.Context
+import android.util.Log
+import com.google.mlkit.genai.prompt.Generation
+import com.google.mlkit.genai.prompt.GenerativeModel
 import com.google.mlkit.genai.common.GenAiException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
@@ -30,16 +33,24 @@ import me.bubblespark.tidilo.ui.screens.library.Tag
 import org.json.JSONArray
 import java.net.URI
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 class ImportRepository internal constructor(
     context: Context? = null,
     private val taskDao: ImportTaskDao = context?.let { AppDatabase.getInstance(it).importTaskDao() }
-        ?: throw IllegalArgumentException("taskDao must be provided if context is null")
-
+        ?: throw IllegalArgumentException("taskDao must be provided if context is null"),
+    private val repositoryScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    private val isAppInForeground: () -> Boolean = { TidiloApplication.instance.isAppInForeground },
+    private val openModel: () -> GenerativeModel = { Generation.getClient() },
+    private val analyzeTask: suspend (GenerativeModel, ImportTask) -> Unit = ::analyzeImportTask,
+    private val fallbackMode: () -> AiCoreFallbackMode = { AppConfig.aiCoreFallbackMode.value },
+    private val retryIntervalMs: Long = 3000L,
+    private val persistFallback: suspend (BookmarkItem) -> Unit = {
+        BookmarkRepository.getInstance().addBookmarkAndAwait(it)
+    }
 ) {
 
     private val appContext: Context? = context?.applicationContext
-    private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val executionMutex = Mutex()
 
     private val _processingTasks = MutableStateFlow<List<ImportTask>>(emptyList())
@@ -61,6 +72,7 @@ class ImportRepository internal constructor(
     val aiProcessingProgress: StateFlow<AiProcessingProgress> = _aiProcessingProgress.asStateFlow()
 
     private var batchProgressState = BatchProgressState()
+    @Volatile
     private var isAiCancelPending = false
     private val cancelledTaskIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
@@ -230,9 +242,7 @@ class ImportRepository internal constructor(
             }
             taskDao.insertAll(converted.map { ImportTaskEntity.fromImportTask(it) })
 
-            converted.forEach { item ->
-                executeTaskAiAnalysis(item.id)
-            }
+            startProcessingLoop()
         }
     }
 
@@ -249,7 +259,7 @@ class ImportRepository internal constructor(
                 statusText = "Waiting for AICore slot..."
             )
             taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(promoted))
-            executeTaskAiAnalysis(promoted.id)
+            startProcessingLoop()
         }
     }
 
@@ -275,7 +285,12 @@ class ImportRepository internal constructor(
                     )
                 }
                 taskDao.insertAll(restored.map { ImportTaskEntity.fromImportTask(it) })
+                restored.forEach {
+                    retryNotBefore.remove(it.id)
+                    foregroundRetryCounts.remove(it.id)
+                }
             }
+            startProcessingLoop()
         }
     }
 
@@ -292,7 +307,7 @@ class ImportRepository internal constructor(
                 errorMessage = null
             )
             taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(retried))
-            executeTaskAiAnalysis(retried.id)
+            startProcessingLoop()
         }
     }
 
@@ -342,9 +357,9 @@ class ImportRepository internal constructor(
         }
     }
 
-    private val foregroundRetryCounts = mutableMapOf<String, Int>()
+    private val foregroundRetryCounts = ConcurrentHashMap<String, Int>()
+    private val retryNotBefore = ConcurrentHashMap<String, Long>()
     private val MAX_FOREGROUND_RETRIES = 3
-    private val RETRY_INTERVAL_MS = 3000L
 
     /**
      * Called when the app transitions to active/foreground.
@@ -362,14 +377,22 @@ class ImportRepository internal constructor(
      * Resumes or retries all tasks in the Processing group that are in WAITING_AI or interrupted state.
      */
     fun retryWaitingProcessingTasks() {
-        repositoryScope.launch {
-            val waitingEntities = taskDao.getTasksByStatuses(
-                listOf(TaskStatus.WAITING_AI.name, TaskStatus.PROCESSING_AI.name)
-            )
-            waitingEntities.forEach { entity ->
-                executeTaskAiAnalysis(entity.id)
-            }
-        }
+        startProcessingLoop()
+    }
+
+    private val processingWorker = AiProcessingWorker(
+        scope = repositoryScope,
+        mutex = executionMutex,
+        nextTask = { nextProcessingTask() },
+        openSession = openModel,
+        closeSession = { model: GenerativeModel -> model.close() },
+        processTask = { model, task -> processAiTask(model, task) },
+        handleFailure = { task, exception -> handleExecutionFailure(task, exception) },
+        reportSessionFailure = { exception -> Log.e("ImportRepository", "AI processing session failed", exception) }
+    )
+
+    private fun startProcessingLoop() {
+        processingWorker.wakeUp()
     }
 
     /**
@@ -377,88 +400,102 @@ class ImportRepository internal constructor(
      */
     fun executeTaskAiAnalysis(taskId: String) {
         repositoryScope.launch {
-            executionMutex.withLock {
-                val targetEntity = taskDao.getTaskById(taskId) ?: return@withLock
-                val target = targetEntity.toImportTask()
+            val task = taskDao.getTaskById(taskId) ?: return@launch
+            if (task.status == TaskStatus.WAITING_AI.name || task.status == TaskStatus.PROCESSING_AI.name) {
+                startProcessingLoop()
+            }
+        }
+    }
 
-                // If cancellation is requested and task is in the cancelled queue, restore to READY and skip
-                val shouldCancel = isAiCancelPending && (cancelledTaskIds.contains(taskId) || cancelledTaskIds.isEmpty())
-                if (shouldCancel && target.status == TaskStatus.WAITING_AI) {
-                    cancelledTaskIds.remove(taskId)
-                    val restored = target.copy(status = TaskStatus.READY, statusText = "")
-                    taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(restored))
-                    return@withLock
+    private suspend fun nextProcessingTask(): ImportTask? {
+        while (true) {
+            val candidates = taskDao.getTasksByStatuses(
+                listOf(TaskStatus.WAITING_AI.name, TaskStatus.PROCESSING_AI.name)
+            )
+            if (candidates.isEmpty()) return null
+
+            // If cancellation is requested and task is in the cancelled queue, restore to READY and skip.
+            val (cancelled, runnable) = candidates.partition { entity ->
+                val shouldCancel = isAiCancelPending &&
+                    (cancelledTaskIds.contains(entity.id) || cancelledTaskIds.isEmpty())
+                shouldCancel && entity.status == TaskStatus.WAITING_AI.name
+            }
+            for (entity in cancelled) {
+                taskDao.updateStatus(entity.id, TaskStatus.READY.name, "")
+                retryNotBefore.remove(entity.id)
+                foregroundRetryCounts.remove(entity.id)
+                cancelledTaskIds.remove(entity.id)
+            }
+            if (runnable.isEmpty()) return null
+
+            // If app is currently in background, do not start inference; wait for foreground.
+            if (!isAppInForeground()) {
+                for (entity in runnable) {
+                    updateProcessingTaskStatus(entity.id, TaskStatus.WAITING_AI, "Paused • Retrying when app is active")
                 }
+                return null
+            }
 
-                // If task is no longer in a runnable state (e.g. deleted or already completed/errored), skip
-                if (target.status != TaskStatus.WAITING_AI && target.status != TaskStatus.PROCESSING_AI) {
-                    return@withLock
-                }
+            val now = System.nanoTime()
+            val next = runnable.firstOrNull { (retryNotBefore[it.id] ?: now) <= now }
+            if (next != null) return next.toImportTask()
+            val waitNanos = runnable.minOf { retryNotBefore[it.id] ?: now } - now
+            processingWorker.awaitWork((waitNanos / 1_000_000L).coerceAtLeast(1L))
+        }
+    }
 
-                // If app is currently in background, do not start inference; wait for foreground
-                if (!TidiloApplication.instance.isAppInForeground) {
-                    updateProcessingTaskStatus(
-                        taskId = taskId,
-                        status = TaskStatus.WAITING_AI,
-                        statusText = "Paused • Retrying when app is active"
-                    )
-                    return@withLock
-                }
+    private suspend fun processAiTask(model: GenerativeModel, selected: ImportTask) {
+        val taskId = selected.id
+        // Recheck Room after client initialization; cancellation or deletion may have changed the task.
+        val target = taskDao.getTaskById(taskId)?.toImportTask() ?: return
+        if (target.status != TaskStatus.WAITING_AI && target.status != TaskStatus.PROCESSING_AI) return
+        val shouldCancel = isAiCancelPending &&
+            (cancelledTaskIds.contains(taskId) || cancelledTaskIds.isEmpty())
+        if (shouldCancel && target.status == TaskStatus.WAITING_AI) {
+            updateProcessingTaskStatus(taskId, TaskStatus.READY, "")
+            retryNotBefore.remove(taskId)
+            foregroundRetryCounts.remove(taskId)
+            return
+        }
+        if (!isAppInForeground()) {
+            updateProcessingTaskStatus(taskId, TaskStatus.WAITING_AI, "Paused • Retrying when app is active")
+            return
+        }
 
-                // 1. Update status to PROCESSING_AI
-                updateProcessingTaskStatus(
-                    taskId = taskId,
-                    status = TaskStatus.PROCESSING_AI,
-                    statusText = "Gemini Nano analyzing content..."
-                )
+        // 1. Update status to PROCESSING_AI
+        updateProcessingTaskStatus(
+            taskId = taskId,
+            status = TaskStatus.PROCESSING_AI,
+            statusText = "Gemini Nano analyzing content..."
+        )
 
-                // 1.5 Cache og:image into cacheDir during Processing asynchronously (Issue #57, #71)
-                val targetContext = appContext
-                val candidateOgImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
-                if (targetContext != null && !candidateOgImageUrl.isNullOrBlank()) {
-                    repositoryScope.launch {
-                        try {
-                            OgImageManager.processAndSaveOgImage(
-                                context = targetContext,
-                                pageUrl = target.url,
-                                ogImageUrl = candidateOgImageUrl
-
-                            )
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (_: Exception) {
-                            // Non-critical background image cache failure
-                        }
-                    }
-                }
-
+        // 1.5 Cache og:image into cacheDir during Processing asynchronously (Issue #57, #71)
+        val targetContext = appContext
+        val candidateOgImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
+        if (targetContext != null && !candidateOgImageUrl.isNullOrBlank()) {
+            repositoryScope.launch {
                 try {
-                    // 2. Gemini Nano inference using precomputed metadata -> Save to Library
-                    val result = GeminiTaggingService.processAndSaveBookmark(
-                        url = target.url,
-                        language = AppConfig.currentLanguage.value,
-                        preferredTitle = target.title,
-                        bodySnippet = target.bodySnippet.takeIf { it.isNotBlank() },
-                        description = target.description.takeIf { it.isNotBlank() },
-                        siteName = target.siteName.takeIf { it.isNotBlank() },
-                        isNsfw = target.isNsfw,
+                    OgImageManager.processAndSaveOgImage(
+                        context = targetContext,
+                        pageUrl = target.url,
                         ogImageUrl = candidateOgImageUrl
-                    )
 
-                    if (result.isSuccess) {
-                        // 3. Success: Remove from database and register in library
-                        foregroundRetryCounts.remove(taskId)
-                        taskDao.deleteById(taskId)
-                    } else {
-                        // Failure: check if it should be retried or moved to Error
-                        val throwable = result.exceptionOrNull() ?: Exception("Unknown tagging failure")
-                        handleExecutionFailure(target, throwable)
-                    }
-                } catch (e: Exception) {
-                    handleExecutionFailure(target, e)
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Non-critical background image cache failure
                 }
             }
         }
+
+        // 2. Gemini Nano inference using precomputed metadata -> Save to Library
+        analyzeTask(model, target)
+
+        // 3. Success: Remove from database and register in library
+        foregroundRetryCounts.remove(taskId)
+        retryNotBefore.remove(taskId)
+        taskDao.deleteById(taskId)
     }
 
     /**
@@ -474,9 +511,9 @@ class ImportRepository internal constructor(
      * - Retry limit reached OR any other errors:
      *     - Move current task and all other pending Processing tasks to Error group.
      */
-    private fun handleExecutionFailure(target: ImportTask, throwable: Throwable) {
+    private suspend fun handleExecutionFailure(target: ImportTask, throwable: Throwable) {
         val errorMessage = throwable.message.orEmpty()
-        val isForeground = TidiloApplication.instance.isAppInForeground
+        val isForeground = isAppInForeground()
         val errorCode = extractAiCoreErrorCode(throwable)
 
         // 1. If app is in background, suspend and retain in Processing with WAITING_AI status
@@ -508,12 +545,7 @@ class ImportRepository internal constructor(
                         status = TaskStatus.WAITING_AI,
                         statusText = "AICore busy • Retrying ($retryCount/$MAX_FOREGROUND_RETRIES)..."
                     )
-                    repositoryScope.launch {
-                        delay(RETRY_INTERVAL_MS)
-                        if (TidiloApplication.instance.isAppInForeground) {
-                            executeTaskAiAnalysis(target.id)
-                        }
-                    }
+                    retryNotBefore[target.id] = System.nanoTime() + retryIntervalMs * 1_000_000L
                 } else {
                     if (isFallbackApplicable(errorCode, throwable)) {
                         saveBookmarkFallback(target)
@@ -532,12 +564,7 @@ class ImportRepository internal constructor(
                         status = TaskStatus.WAITING_AI,
                         statusText = "AICore background blocked • Retrying ($retryCount/$MAX_FOREGROUND_RETRIES)..."
                     )
-                    repositoryScope.launch {
-                        delay(RETRY_INTERVAL_MS)
-                        if (TidiloApplication.instance.isAppInForeground) {
-                            executeTaskAiAnalysis(target.id)
-                        }
-                    }
+                    retryNotBefore[target.id] = System.nanoTime() + retryIntervalMs * 1_000_000L
                 } else {
                     if (isFallbackApplicable(errorCode, throwable)) {
                         saveBookmarkFallback(target)
@@ -562,23 +589,12 @@ class ImportRepository internal constructor(
     }
 
     private fun isFallbackApplicable(errorCode: Int?, throwable: Throwable): Boolean {
-        return Companion.isFallbackApplicable(AppConfig.aiCoreFallbackMode.value, errorCode, throwable)
+        return Companion.isFallbackApplicable(fallbackMode(), errorCode, throwable)
     }
 
-    private fun saveBookmarkFallback(target: ImportTask) {
+    private suspend fun saveBookmarkFallback(target: ImportTask) {
         foregroundRetryCounts.remove(target.id)
-        repositoryScope.launch {
-            taskDao.deleteById(target.id)
-        }
-
-        val domain = DomainIconManager.extractDomain(target.url)
-        DomainPolicyManager.registerDomain(domain, false, target.siteName)
-        if (appContext != null && domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
-            repositoryScope.launch {
-                DomainIconManager.fetchAndSaveDomainIcon(appContext, target.url)
-            }
-        }
-
+        retryNotBefore.remove(target.id)
         val fallbackBookmark = BookmarkItem(
             id = UUID.randomUUID().toString(),
             title = target.title,
@@ -589,58 +605,74 @@ class ImportRepository internal constructor(
             isAiSkipped = true,
             ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
         )
-        BookmarkRepository.getInstance().addBookmark(fallbackBookmark)
+        try {
+            persistFallback(fallbackBookmark)
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            taskDao.updateStatus(
+                target.id, TaskStatus.ERROR.name, "Save failed",
+                "Bookmark persistence failed: ${e.message.orEmpty()}"
+            )
+            return
+        }
+        taskDao.deleteById(target.id)
+        if (appContext != null) {
+            // Domain metadata and image caching are auxiliary to the durable bookmark save.
+            repositoryScope.launch {
+                val domain = DomainIconManager.extractDomain(target.url)
+                DomainPolicyManager.registerDomain(domain, false, target.siteName)
+                if (domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
+                    DomainIconManager.fetchAndSaveDomainIcon(appContext, target.url)
+                }
+            }
+        }
     }
 
     /**
      * Moves all tasks currently in Processing back to the Ready group due to battery quota limit.
      */
-    private fun moveAllProcessingToReady() {
+    private suspend fun moveAllProcessingToReady() {
         _quotaExceededDialogVisible.value = true
         foregroundRetryCounts.clear()
-        repositoryScope.launch {
-            val currentProcessing = taskDao.getTasksByStatuses(
-                listOf(TaskStatus.PROCESSING_AI.name, TaskStatus.WAITING_AI.name)
-            ).map { it.toImportTask() }
-            val converted = currentProcessing.map { item ->
-                item.copy(
-                    status = TaskStatus.READY,
-                    statusText = "Ready • Quota exceeded"
-                )
-            }
-            taskDao.insertAll(converted.map { ImportTaskEntity.fromImportTask(it) })
+        retryNotBefore.clear()
+        val currentProcessing = taskDao.getTasksByStatuses(
+            listOf(TaskStatus.PROCESSING_AI.name, TaskStatus.WAITING_AI.name)
+        ).map { it.toImportTask() }
+        val converted = currentProcessing.map { item ->
+            item.copy(
+                status = TaskStatus.READY,
+                statusText = "Ready • Quota exceeded"
+            )
         }
+        taskDao.insertAll(converted.map { ImportTaskEntity.fromImportTask(it) })
     }
 
     /**
      * Removes the failed task and all other tasks in Processing, moving them to the Error group.
      */
-    private fun moveAllProcessingToError(primaryFailedItem: ImportTask, errorMessage: String) {
+    private suspend fun moveAllProcessingToError(primaryFailedItem: ImportTask, errorMessage: String) {
         val fallbackMsg = errorMessage.ifBlank { "Unknown failure" }
         foregroundRetryCounts.clear()
-        repositoryScope.launch {
-            val currentProcessing = taskDao.getTasksByStatuses(
-                listOf(TaskStatus.PROCESSING_AI.name, TaskStatus.WAITING_AI.name)
-            ).map { it.toImportTask() }
-            val errorItemsToAdd = currentProcessing.map { item ->
-                item.copy(
-                    status = TaskStatus.ERROR,
-                    statusText = "Failed",
-                    errorMessage = if (item.id == primaryFailedItem.id) {
-                        fallbackMsg
-                    } else {
-                        "Batch stopped: $fallbackMsg"
-                    }
-                )
-            }
-            taskDao.insertAll(errorItemsToAdd.map { ImportTaskEntity.fromImportTask(it) })
+        retryNotBefore.clear()
+        val currentProcessing = taskDao.getTasksByStatuses(
+            listOf(TaskStatus.PROCESSING_AI.name, TaskStatus.WAITING_AI.name)
+        ).map { it.toImportTask() }
+        val errorItemsToAdd = currentProcessing.map { item ->
+            item.copy(
+                status = TaskStatus.ERROR,
+                statusText = "Failed",
+                errorMessage = if (item.id == primaryFailedItem.id) {
+                    fallbackMsg
+                } else {
+                    "Batch stopped: $fallbackMsg"
+                }
+            )
         }
+        taskDao.insertAll(errorItemsToAdd.map { ImportTaskEntity.fromImportTask(it) })
     }
 
-    private fun updateProcessingTaskStatus(taskId: String, status: TaskStatus, statusText: String) {
-        repositoryScope.launch {
-            taskDao.updateStatus(taskId, status.name, statusText)
-        }
+    private suspend fun updateProcessingTaskStatus(taskId: String, status: TaskStatus, statusText: String) {
+        taskDao.updateStatus(taskId, status.name, statusText)
     }
 
     private fun fetchAndPreparseTaskAsync(taskId: String, url: String) {
@@ -932,4 +964,19 @@ class ImportRepository internal constructor(
             }
         }
     }
+}
+
+/** Runs one import task using the session-owned model. */
+private suspend fun analyzeImportTask(model: GenerativeModel, target: ImportTask) {
+    GeminiTaggingService.processAndSaveBookmark(
+        model = model,
+        url = target.url,
+        language = AppConfig.currentLanguage.value,
+        preferredTitle = target.title,
+        bodySnippet = target.bodySnippet.takeIf { it.isNotBlank() },
+        description = target.description.takeIf { it.isNotBlank() },
+        siteName = target.siteName.takeIf { it.isNotBlank() },
+        isNsfw = target.isNsfw,
+        ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
+    ).getOrThrow()
 }

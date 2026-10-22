@@ -1,6 +1,13 @@
 package me.bubblespark.tidilo.data
 
 import com.google.mlkit.genai.common.GenAiException
+import com.google.mlkit.genai.prompt.GenerativeModel
+import java.lang.reflect.Proxy
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -577,6 +584,178 @@ class ImportRepositoryTest {
         assertEquals(0, finalProgress.totalCount)
         assertEquals(0, finalProgress.completedCount)
         assertNull(finalProgress.currentTaskTitle)
+    }
+
+    private fun fakeModel(onClose: () -> Unit): GenerativeModel = Proxy.newProxyInstance(
+        GenerativeModel::class.java.classLoader,
+        arrayOf(GenerativeModel::class.java)
+    ) { _, method, _ ->
+        check(method.name == "close") { "Unexpected model call: ${method.name}" }
+        onClose()
+        null
+    } as GenerativeModel
+
+    private fun waitingEntity(id: String) = ImportTaskEntity.fromImportTask(
+        ImportTask(id = id, url = "https://example.com/$id", title = id, status = TaskStatus.WAITING_AI, statusText = "")
+    )
+
+    @Test
+    fun processingLoopRetriesBusyTaskWithoutBlockingOtherTasksOrReopeningModel() = runBlocking {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(waitingEntity("busy"), waitingEntity("next")))
+        val closed = CompletableDeferred<Unit>()
+        val attempts = mutableListOf<String>()
+        var opens = 0
+        var closes = 0
+        try {
+            val repository = ImportRepository(
+                taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
+                openModel = { opens++; fakeModel { closes++; closed.complete(Unit) } },
+                analyzeTask = { _, task ->
+                    attempts.add(task.id)
+                    if (task.id == "busy") throw AiCoreExecutionException(9, "AICore busy")
+                },
+                fallbackMode = { AiCoreFallbackMode.DISABLE }
+            )
+            repository.retryWaitingProcessingTasks()
+            withTimeout(15000) { closed.await() }
+            assertEquals(listOf("busy", "next", "busy", "busy", "busy"), attempts)
+            assertEquals(1, opens)
+            assertEquals(1, closes)
+            assertEquals(TaskStatus.ERROR.name, dao.getTaskById("busy")?.status)
+            assertNull(dao.getTaskById("next"))
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test
+    fun processingLoopCancellationFinishesActiveTaskAndRestoresWaitingTasks() = runBlocking {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(waitingEntity("active"), waitingEntity("waiting")))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val closed = CompletableDeferred<Unit>()
+        val processed = mutableListOf<String>()
+        try {
+            val repository = ImportRepository(
+                taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
+                openModel = { fakeModel { closed.complete(Unit) } },
+                analyzeTask = { _, task -> processed.add(task.id); started.complete(Unit); release.await() }
+            )
+            repository.retryWaitingProcessingTasks()
+            withTimeout(5000) { started.await() }
+            repository.cancelProcessing()
+            // Give the repository's queued cancellation update a chance to run.
+            kotlinx.coroutines.yield()
+            assertEquals(TaskStatus.READY.name, dao.getTaskById("waiting")?.status)
+            release.complete(Unit)
+            withTimeout(5000) { closed.await() }
+            assertEquals(listOf("active"), processed)
+            assertNull(dao.getTaskById("active"))
+            assertEquals(TaskStatus.READY.name, dao.getTaskById("waiting")?.status)
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test
+    fun backgroundPauseClosesSessionAndForegroundResumeProcessesInterruptedTasks() = runBlocking {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(waitingEntity("first"), waitingEntity("second")))
+        val paused = CompletableDeferred<Unit>()
+        val finished = CompletableDeferred<Unit>()
+        var foreground = true
+        var opens = 0
+        var closes = 0
+        val processed = mutableListOf<String>()
+        try {
+            val repository = ImportRepository(
+                taskDao = dao, repositoryScope = scope, isAppInForeground = { foreground },
+                openModel = {
+                    opens++
+                    fakeModel { if (++closes == 1) paused.complete(Unit) else finished.complete(Unit) }
+                },
+                analyzeTask = { _, task ->
+                    processed.add(task.id)
+                    if (task.id == "first") foreground = false
+                }
+            )
+            repository.retryWaitingProcessingTasks()
+            withTimeout(5000) { paused.await() }
+            assertEquals(listOf("first"), processed)
+            assertEquals(TaskStatus.WAITING_AI.name, dao.getTaskById("second")?.status)
+            // Simulate the persisted interrupted state handled by the resume entry point.
+            dao.updateStatus("second", TaskStatus.PROCESSING_AI.name, "Interrupted")
+            foreground = true
+            repository.retryWaitingProcessingTasks()
+            withTimeout(5000) { finished.await() }
+            assertEquals(listOf("first", "second"), processed)
+            assertEquals(2, opens)
+            assertEquals(2, closes)
+            assertEquals(0, dao.getCount())
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test
+    fun quotaFailureRestoresBatchBeforeLoopCanStartAnotherInference() = runBlocking {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(waitingEntity("first"), waitingEntity("second")))
+        val closed = CompletableDeferred<Unit>()
+        val attempts = mutableListOf<String>()
+        try {
+            val repository = ImportRepository(
+                taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
+                openModel = { fakeModel { closed.complete(Unit) } },
+                analyzeTask = { _, task ->
+                    attempts.add(task.id)
+                    throw AiCoreExecutionException(27, "Battery quota exceeded")
+                },
+                fallbackMode = { AiCoreFallbackMode.DISABLE }
+            )
+            repository.retryWaitingProcessingTasks()
+            withTimeout(5000) { closed.await() }
+            assertEquals(listOf("first"), attempts)
+            assertTrue(dao.getAllTasks().all { it.status == TaskStatus.READY.name })
+            assertTrue(repository.quotaExceededDialogVisible.value)
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test
+    fun bulkAndIndividualPromotionsUseSameSessionIncludingWorkAddedDuringInference() = runBlocking {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(waitingEntity("bulk").copy(status = TaskStatus.READY.name)))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val closed = CompletableDeferred<Unit>()
+        var opens = 0
+        val processed = mutableListOf<String>()
+        try {
+            val repository = ImportRepository(
+                taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
+                openModel = { opens++; fakeModel { closed.complete(Unit) } },
+                analyzeTask = { _, task ->
+                    processed.add(task.id)
+                    if (task.id == "bulk") { started.complete(Unit); release.await() }
+                }
+            )
+            repository.aiAnalysisAll()
+            withTimeout(5000) { started.await() }
+            dao.insertOrUpdate(waitingEntity("individual").copy(status = TaskStatus.READY.name))
+            repository.promoteTaskToProcessing("individual")
+            kotlinx.coroutines.yield()
+            release.complete(Unit)
+            withTimeout(5000) { closed.await() }
+            assertEquals(listOf("bulk", "individual"), processed)
+            assertEquals(1, opens)
+            assertEquals(0, dao.getCount())
+        } finally { job.cancelAndJoin() }
     }
 
     private class FakeImportTaskDao : ImportTaskDao {

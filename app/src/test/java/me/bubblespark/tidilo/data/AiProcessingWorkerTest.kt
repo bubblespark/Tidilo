@@ -57,7 +57,7 @@ class AiProcessingWorkerTest {
     }
 
     @Test
-    fun sessionCancellationWithActiveScopeDoesNotTerminateSignalConsumer() = runBlocking {
+    fun sessionCancellationWithActiveScopeAutomaticallyResumesWithoutAnotherSignal() = runBlocking {
         val job = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + job)
         val failed = CompletableDeferred<Unit>()
@@ -78,13 +78,71 @@ class AiProcessingWorkerTest {
                 { exception ->
                     assertTrue(exception is CancellationException)
                     failed.complete(Unit)
-                }
+                },
+                selectionRetryDelayMs = 1L
             )
             worker.wakeUp()
             withTimeout(5000) { failed.await() }
+            withTimeout(5000) { finished.await() }
+            assertTrue(job.isActive)
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test
+    fun persistentSelectionFailureStopsAfterBoundedRetriesAndCanBeWokenAgain() = runBlocking {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val exhausted = CompletableDeferred<Unit>()
+        val finished = CompletableDeferred<Unit>()
+        var queries = 0
+        var failures = 0
+        var unavailable = true
+        var pending = true
+        try {
+            val worker = AiProcessingWorker(
+                scope, Mutex(), {
+                    queries++
+                    if (unavailable) throw IllegalStateException("Room temporarily unavailable")
+                    if (pending) { pending = false; 1 } else null
+                }, { Session() }, { finished.complete(Unit) },
+                { _, _ -> }, { _, exception -> throw AssertionError(exception) },
+                { if (++failures == 4) exhausted.complete(Unit) },
+                selectionRetryDelayMs = 1L
+            )
+            worker.wakeUp()
+            withTimeout(5000) { exhausted.await() }
+            yield()
+            assertEquals(4, queries)
+            assertEquals(4, failures)
+            unavailable = false
             worker.wakeUp()
             withTimeout(5000) { finished.await() }
             assertTrue(job.isActive)
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test
+    fun transientSelectionFailureAutomaticallyRetriesWithoutOpeningAnExtraModel() = runBlocking {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val finished = CompletableDeferred<Unit>()
+        var firstQuery = true
+        var pending = true
+        var opens = 0
+        var failures = 0
+        try {
+            val worker = AiProcessingWorker(
+                scope, Mutex(), {
+                    if (firstQuery) { firstQuery = false; error("Transient database failure") }
+                    if (pending) { pending = false; 1 } else null
+                }, { opens++; Session() }, { finished.complete(Unit) },
+                { _, _ -> }, { _, exception -> throw AssertionError(exception) },
+                { failures++ }, selectionRetryDelayMs = 1L
+            )
+            worker.wakeUp()
+            withTimeout(5000) { finished.await() }
+            assertEquals(1, opens)
+            assertEquals(1, failures)
         } finally { job.cancelAndJoin() }
     }
 

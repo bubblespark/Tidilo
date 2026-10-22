@@ -3,6 +3,15 @@ package me.bubblespark.tidilo.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.room.withTransaction
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.map
+import kotlinx.coroutines.flow.Flow
+import me.bubblespark.tidilo.data.db.BookmarkQueries
+import me.bubblespark.tidilo.data.db.TagKind
+import me.bubblespark.tidilo.data.db.TagCount
+import me.bubblespark.tidilo.data.db.DomainCount
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
@@ -58,8 +67,7 @@ class BookmarkRepository private constructor(context: Context) {
                 bookmarkDao.insertAll(initialList.map { BookmarkEntity.fromBookmarkItem(it) })
                 warmUpDomainIconsAsync(initialList)
             } else {
-                val existing = bookmarkDao.getAllBookmarks().map { it.toBookmarkItem() }
-                warmUpDomainIconsAsync(existing)
+                warmUpDomainIconsAsync()
             }
 
             // Check legacy trash in SharedPreferences
@@ -299,39 +307,56 @@ class BookmarkRepository private constructor(context: Context) {
     /**
      * Synchronizes domain policies and fetches missing domain icons in the background.
      */
-    private fun warmUpDomainIconsAsync(items: List<BookmarkItem>) {
+    private fun warmUpDomainIconsAsync(items: List<BookmarkItem>? = null) {
         repositoryScope.launch {
-            val domains = items.mapNotNull { DomainIconManager.extractDomain(it.url) }
-                .distinct()
-
+            val domains = items?.mapNotNull { DomainIconManager.extractDomain(it.url) }?.distinct()
+                ?: bookmarkDao.distinctDomains()
             DomainPolicyManager.syncDomains(domains)
             DomainIconManager.preloadIcons(appContext, domains)
-
-            val domainGroups = items.groupBy { DomainIconManager.extractDomain(it.url) }
-            for ((domain, domainItems) in domainGroups) {
-                if (domain.isNullOrBlank()) continue
-                if (DomainIconManager.hasIcon(appContext, domain) || DomainIconManager.shouldSkipFetch(appContext, domain)) {
-                    continue
-                }
+            for (domain in domains) {
+                if (DomainIconManager.hasIcon(appContext, domain) || DomainIconManager.shouldSkipFetch(appContext, domain)) continue
                 var groupHadTransientFailure = false
-                val uniqueUrls = domainItems.map { it.url }.distinct()
-                for ((index, url) in uniqueUrls.withIndex()) {
-                    val isLast = index == uniqueUrls.lastIndex
-                    val result = DomainIconManager.fetchAndSaveDomainIcon(
-                        context = appContext,
-                        url = url,
-                        recordFailureMarker = isLast && !groupHadTransientFailure
-                    )
-                    if (result.hadTransientFailure) {
-                        groupHadTransientFailure = true
+                var found = false
+                var urls = bookmarkDao.domainUrls(domain, null, 64)
+                while (urls.isNotEmpty() && !found) {
+                    val next = bookmarkDao.domainUrls(domain, urls.last(), 64)
+                    for ((index, url) in urls.withIndex()) {
+                        val isLast = next.isEmpty() && index == urls.lastIndex
+                        val result = DomainIconManager.fetchAndSaveDomainIcon(
+                            context = appContext, url = url,
+                            recordFailureMarker = isLast && !groupHadTransientFailure
+                        )
+                        if (result.hadTransientFailure) groupHadTransientFailure = true
+                        if (result.success || DomainIconManager.hasIcon(appContext, domain)) {
+                            found = true
+                            break
+                        }
                     }
-                    if (result.success || DomainIconManager.hasIcon(appContext, domain)) {
-                        break
-                    }
+                    urls = next
                 }
             }
         }
     }
+
+    /** Each input generation owns a Pager; callers switch generations before caching in the ViewModel. */
+    fun pagedBookmarks(query: String, domain: String?, showNsfw: Boolean): Flow<PagingData<BookmarkItem>> =
+        Pager(PagingConfig(pageSize = 30, prefetchDistance = 10, initialLoadSize = 60,
+            maxSize = 150, enablePlaceholders = false)) {
+            when {
+                query.isNotBlank() -> bookmarkDao.search(BookmarkQueries.results(query, showNsfw, domain))
+                domain != null -> bookmarkDao.byDomain(domain, showNsfw)
+                else -> bookmarkDao.timeline(showNsfw)
+            }
+        }.flow.map { page -> page.map { it.toBookmarkItem() } }
+
+    fun observeBookmark(id: String): Flow<BookmarkItem?> = bookmarkDao.observeById(id).map { it?.toBookmarkItem() }
+
+    fun observeDomainCounts(showNsfw: Boolean): Flow<List<DomainCount>> = bookmarkDao.domainCounts(showNsfw)
+
+    suspend fun distinctDomains(): List<String> = withContext(Dispatchers.IO) { bookmarkDao.distinctDomains() }
+
+    internal fun observeTagCounts(selected: Set<String>, showNsfw: Boolean, kind: TagKind): Flow<List<TagCount>> =
+        bookmarkDao.tagCounts(BookmarkQueries.tags(selected, showNsfw, kind))
 
     companion object {
         const val TRASH_RETENTION_DAYS = 30L

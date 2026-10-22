@@ -14,10 +14,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 @Database(
     entities = [
         BookmarkEntity::class,
+        BookmarkEntityOccurrence::class,
         TrashedBookmarkEntity::class,
         ImportTaskEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -28,6 +29,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun importTaskDao(): ImportTaskDao
 
     companion object {
+        val MIGRATION_6_7 = bookmarkMigration6To7
+
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `import_tasks` ADD COLUMN `ogImageUrl` TEXT")
@@ -68,8 +71,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
-                    .fallbackToDestructiveMigration(true)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     .build()
                     .also { INSTANCE = it }
             }

@@ -188,7 +188,7 @@ Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt
 
 ## 6. Persistence & Serialization Schemas
 
-All persistence is managed via **Room Database** (`AppDatabase` v6) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
+All persistence is managed via **Room Database** (`AppDatabase` v7) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
 
 1. **Room Database (`AppDatabase`)**:
    - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, and `ogImageUrl` (nullable TEXT) linking to specific cached OG image assets.
@@ -278,3 +278,24 @@ data class DomainGroupItem(
 ```
 - **Sorting Rule**: Sorted by `displayName` (fallback to `domain` if empty). ASCII alphanumeric (A–Z, 0–9) characters are ordered first, followed by Japanese kana/kanji ordered via `Collator.getInstance(Locale.JAPANESE)`.
 
+
+## Database v7 derived bookmark data
+
+Active bookmarks carry nullable `domain` plus Unicode comparison keys for title,
+description, URL, category, and subcategory. `BookmarkEntity.fromBookmarkItem`
+and transactional DAO writes compute these fields with the existing domain
+normalizer and `bookmarkSearchKey`. Original user fields remain unchanged.
+`bookmark_entities` stores `(bookmarkId, position, value, searchValue)` with a
+cascading foreign key, preserving duplicate entity occurrences and original-case
+count buckets. Replacements, field/tag edits, and bulk writes refresh the child
+rows transactionally; deletion cascades to those rows. Trash has no domain column.
+
+`MIGRATION_6_7` adds the domain index and backfills only derived fields and child
+rows in stable-ID batches of 256. It completes before Room readers are exposed.
+Supported v3-v6 upgrade paths are registered explicitly; destructive fallback is
+removed. Paging and aggregate queries apply NSFW filtering before fetching or
+counting, and bookmark result order is `createdAt DESC, id DESC`. Entity matching
+uses individual child values, never serialized JSON substrings.
+
+The older full-list presentation is retained temporarily during the Issue #81
+transition. See `issue81-progress.md` for verification and outstanding work.

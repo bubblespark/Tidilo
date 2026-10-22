@@ -55,3 +55,12 @@ This document provides the canonical catalog of all programming languages, SDKs,
 | :--- | :--- | :--- |
 | **JUnit 4** | `4.13.2` | Core JVM unit testing framework for repositories, ViewModels, parsers. |
 | **org.json** | `20240303` | Mock JSON implementations for pure JVM unit tests without Android runtime stubs. |
+
+## Issue #81 database paging dependencies
+
+- Paging runtime and Compose: `3.5.3`, pinned through the version catalog.
+- Room Paging adapter: `2.8.5`, matching the existing Room runtime/compiler.
+- Android integration test runner: `1.7.0`; AndroidX JUnit extension: `1.3.0`.
+- [Paging release notes](https://developer.android.com/jetpack/androidx/releases/paging)
+  document the selected release. Actual dependency resolution, debug compilation,
+  and connected Android SQLite tests pass with the project's current toolchain.

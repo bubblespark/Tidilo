@@ -35,6 +35,7 @@ object DomainIconManager {
     const val MIN_ICON_SIZE = 96
     const val MAX_ICON_SIZE = 384
     const val DOMAIN_TIMEOUT_MS = 10_000L
+    const val NEGATIVE_CACHE_TTL_MS = 14L * 24 * 60 * 60 * 1000L // 14 days
     private const val USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
@@ -94,6 +95,67 @@ object DomainIconManager {
     fun hasIcon(context: Context, domain: String): Boolean {
         val file = getIconFile(context, domain)
         return (file.exists() && file.length() > 0) || getLegacyIconFile(context, domain).run { exists() && length() > 0 }
+    }
+
+    private fun getNegativeMarkerFile(context: Context, domain: String): File {
+        val dir = getIconDir(context)
+        return File(dir, "$domain.none")
+    }
+
+    /**
+     * Checks if a domain has a valid negative cache marker (fetch failure within TTL).
+     */
+    fun shouldSkipFetch(context: Context, domain: String): Boolean {
+        val normalized = domain.trim().lowercase()
+        val marker = getNegativeMarkerFile(context, normalized)
+        if (!marker.exists()) return false
+        val age = System.currentTimeMillis() - marker.lastModified()
+        return if (age in 0 until NEGATIVE_CACHE_TTL_MS) {
+            true
+        } else {
+            marker.delete()
+            false
+        }
+    }
+
+    /**
+     * Writes a zero-byte negative cache sentinel file indicating icon discovery failure.
+     */
+    fun writeNegativeMarker(context: Context, domain: String) {
+        val normalized = domain.trim().lowercase()
+        val marker = getNegativeMarkerFile(context, normalized)
+        try {
+            if (!marker.exists()) {
+                marker.createNewFile()
+            } else {
+                marker.setLastModified(System.currentTimeMillis())
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Removes the negative cache marker for the specified domain.
+     */
+    fun removeNegativeMarker(context: Context, domain: String) {
+        val normalized = domain.trim().lowercase()
+        val marker = getNegativeMarkerFile(context, normalized)
+        if (marker.exists()) {
+            marker.delete()
+        }
+    }
+
+    /**
+     * Removes all negative cache markers from the domain icons storage.
+     */
+    fun clearAllNegativeMarkers(context: Context) {
+        try {
+            val dir = getIconDir(context)
+            if (dir.exists()) {
+                dir.listFiles { _, name -> name.endsWith(".none") }?.forEach { it.delete() }
+            }
+        } catch (_: Exception) {
+        }
     }
 
     /**
@@ -380,6 +442,7 @@ object DomainIconManager {
         if (legacy.exists()) {
             legacy.delete()
         }
+        removeNegativeMarker(context, normalized)
         nextVersion()
     }
 
@@ -552,8 +615,15 @@ object DomainIconManager {
         return withContext(Dispatchers.IO) {
         val domain = extractDomain(url) ?: return@withContext false
 
-        if (!forceRefresh && hasIcon(context, domain)) {
-            return@withContext true
+        if (!forceRefresh) {
+            if (hasIcon(context, domain)) {
+                return@withContext true
+            }
+            if (shouldSkipFetch(context, domain)) {
+                return@withContext false
+            }
+        } else {
+            removeNegativeMarker(context, domain)
         }
 
         val candidates = LinkedHashSet<String>()
@@ -621,6 +691,7 @@ object DomainIconManager {
                         processedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                     }
 
+                    removeNegativeMarker(context, domain)
                     memoryCache.put(domain, processedBitmap.asImageBitmap())
                     dominantColorCache.put(domain, extractDominantColor(processedBitmap, domain))
                     nextVersion()
@@ -630,6 +701,7 @@ object DomainIconManager {
             return@withContext saved
         }
 
+        writeNegativeMarker(context, domain)
         false
         }
     }
@@ -665,6 +737,7 @@ object DomainIconManager {
         domains: List<String>,
         onProgress: ((current: Int, total: Int, currentDomain: String) -> Unit)? = null
     ) = withContext(Dispatchers.IO) {
+        clearAllNegativeMarkers(context)
         val uniqueDomains = domains.distinct()
         val total = uniqueDomains.size
         for ((index, domain) in uniqueDomains.withIndex()) {

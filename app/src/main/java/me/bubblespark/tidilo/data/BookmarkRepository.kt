@@ -291,7 +291,7 @@ class BookmarkRepository private constructor(context: Context) {
 
             for (item in items) {
                 val domain = DomainIconManager.extractDomain(item.url) ?: continue
-                if (!DomainIconManager.hasIcon(appContext, domain)) {
+                if (!DomainIconManager.hasIcon(appContext, domain) && !DomainIconManager.shouldSkipFetch(appContext, domain)) {
                     DomainIconManager.fetchAndSaveDomainIcon(appContext, item.url)
                 }
             }

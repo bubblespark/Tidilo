@@ -5,6 +5,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class DomainIconManagerTest {
@@ -187,5 +188,70 @@ class DomainIconManagerTest {
     @Test
     fun iconUpdateVersion_initialValueIsNonNegative() {
         assertTrue(DomainIconManager.iconUpdateVersion.value >= 0L)
+    }
+
+    @Test
+    fun constants_verifyNegativeCacheTtl() {
+        assertEquals(14L * 24 * 60 * 60 * 1000L, DomainIconManager.NEGATIVE_CACHE_TTL_MS)
+    }
+
+    @Test
+    fun shouldSkipFetch_lifecycleAndTtlVerification() {
+        val tempDir = java.nio.file.Files.createTempDirectory("domain_negative_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
+            }
+
+            val domain = "example.com"
+
+            // 1. Initially no marker: shouldSkipFetch returns false
+            assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, domain))
+
+            // 2. Write negative marker: shouldSkipFetch returns true
+            DomainIconManager.writeNegativeMarker(fakeContext, domain)
+            assertTrue(DomainIconManager.shouldSkipFetch(fakeContext, domain))
+
+            // 3. Remove marker: shouldSkipFetch returns false
+            DomainIconManager.removeNegativeMarker(fakeContext, domain)
+            assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, domain))
+
+            // 4. Write marker and expire TTL: shouldSkipFetch returns false and deletes marker
+            DomainIconManager.writeNegativeMarker(fakeContext, domain)
+            val markerFile = java.io.File(fakeContext.cacheDir, "domain_icons/$domain.none")
+            assertTrue(markerFile.exists())
+
+            // Expire marker to 15 days ago
+            val expiredTime = System.currentTimeMillis() - DomainIconManager.NEGATIVE_CACHE_TTL_MS - 86_400_000L
+            markerFile.setLastModified(expiredTime)
+
+            assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, domain))
+            assertFalse(markerFile.exists())
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun clearAllNegativeMarkers_removesAllNoneFiles() {
+        val tempDir = java.nio.file.Files.createTempDirectory("domain_clear_test").toFile()
+        try {
+            val fakeContext = object : android.content.ContextWrapper(null) {
+                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
+                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
+            }
+
+            DomainIconManager.writeNegativeMarker(fakeContext, "domain1.com")
+            DomainIconManager.writeNegativeMarker(fakeContext, "domain2.com")
+            assertTrue(DomainIconManager.shouldSkipFetch(fakeContext, "domain1.com"))
+            assertTrue(DomainIconManager.shouldSkipFetch(fakeContext, "domain2.com"))
+
+            DomainIconManager.clearAllNegativeMarkers(fakeContext)
+            assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, "domain1.com"))
+            assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, "domain2.com"))
+        } finally {
+            tempDir.deleteRecursively()
+        }
     }
 }

@@ -136,8 +136,9 @@ class DomainIconManagerTest {
 
     @Test
     fun extractDominantColor_semiTransparentRedIcon_returnsLegibleRed() {
-        val alpha80 = 80 shl 24
-        val pixels = IntArray(24 * 24) { alpha80 or 0x00FF0000 }
+        // Uniform alpha=50 red icon (bestScore ~ 0.137) should scale threshold by opacity and retain brand red
+        val alpha50 = 50 shl 24
+        val pixels = IntArray(24 * 24) { alpha50 or 0x00FF0000 }
         val color = DomainIconManager.extractDominantColorFromPixels(pixels, "youtube.com")
         assertNotEquals(DomainIconManager.PLATINUM_WHITE, color)
         assertNotEquals(DomainIconManager.SLATE_GRAY, color)

@@ -254,6 +254,7 @@ object DomainIconManager {
 
         var visiblePixelCount = 0
         var totalVisibleWeight = 0f
+        var maxVisibleWeight = 0f
         var totalVisibleBrightness = 0f
         var chromaticWeight = 0f
 
@@ -264,6 +265,7 @@ object DomainIconManager {
             val alphaWeight = alpha / 255f
             visiblePixelCount++
             totalVisibleWeight += alphaWeight
+            maxVisibleWeight = kotlin.math.max(maxVisibleWeight, alphaWeight)
 
             colorToHsv(pixel, hsv)
             val saturation = hsv[1]
@@ -291,7 +293,7 @@ object DomainIconManager {
         }
 
         val chromaticRatio = chromaticWeight / totalVisibleWeight
-        return if (bestScore > 0.15f && chromaticRatio > 0.03f) {
+        return if (bestScore > 0.15f * maxVisibleWeight && chromaticRatio > 0.03f) {
             // Vibrant chromatic brand icon (e.g. YouTube, Spotify)
             val r = (bestColor ushr 16) and 0xFF
             val g = (bestColor ushr 8) and 0xFF

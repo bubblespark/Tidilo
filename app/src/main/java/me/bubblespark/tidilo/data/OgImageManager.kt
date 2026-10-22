@@ -11,9 +11,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -47,8 +54,51 @@ object OgImageManager {
     private val cacheGeneration = AtomicLong(0L)
     private val cacheMutex = Mutex()
 
-    private val _cacheVersion = MutableStateFlow(0L)
-    val cacheVersion: StateFlow<Long> = _cacheVersion.asStateFlow()
+    private val domainRevisions = ConcurrentHashMap<String, AtomicLong>()
+
+    private val _ogImageUpdatedDomain = MutableSharedFlow<Pair<String, Long>>(extraBufferCapacity = 64)
+    val ogImageUpdatedDomain: SharedFlow<Pair<String, Long>> = _ogImageUpdatedDomain.asSharedFlow()
+
+    private val _cacheClearedEvent = MutableSharedFlow<Long>(extraBufferCapacity = 1)
+    val cacheClearedEvent: SharedFlow<Long> = _cacheClearedEvent.asSharedFlow()
+
+    /**
+     * Returns the composite monotonic revision for a given domain, combining its individual updates
+     * and the global cache clearing generation.
+     */
+    fun getDomainRevision(domain: String): Long {
+        val normalized = domain.trim().lowercase()
+        val rev = domainRevisions[normalized]?.get() ?: 0L
+        return rev + (cacheGeneration.get() * 1_000_000_000L)
+    }
+
+    /**
+     * Emits a notification that a specific domain's OG image has been saved or updated.
+     */
+    fun notifyOgImageUpdated(domain: String) {
+        val normalized = domain.trim().lowercase()
+        val rev = domainRevisions.computeIfAbsent(normalized) { AtomicLong(0L) }.incrementAndGet()
+        val currentRev = rev + (cacheGeneration.get() * 1_000_000_000L)
+        _ogImageUpdatedDomain.tryEmit(Pair(normalized, currentRev))
+    }
+
+    /**
+     * Returns a Flow that emits a distinct Long revision whenever the given domain's OG image is updated
+     * or the full cache is cleared. Immediately emits the current revision upon collection start or resume.
+     */
+    fun observeOgImageUpdates(domain: String?): Flow<Long> {
+        if (domain.isNullOrBlank()) return emptyFlow()
+        val normalized = domain.trim().lowercase()
+        return merge(
+            ogImageUpdatedDomain
+                .onSubscription { emit(normalized to getDomainRevision(normalized)) }
+                .filter { it.first == normalized }
+                .map { it.second },
+            cacheClearedEvent
+                .onSubscription { emit(getDomainRevision(normalized)) }
+                .map { getDomainRevision(normalized) }
+        ).distinctUntilChanged()
+    }
 
     private val inFlightLoads = ConcurrentHashMap<String, Deferred<ImageBitmap?>>()
 
@@ -206,7 +256,8 @@ object OgImageManager {
             if (dir.exists()) {
                 dir.deleteRecursively()
             }
-            _cacheVersion.value++
+            domainRevisions.clear()
+            _cacheClearedEvent.tryEmit(cacheGeneration.get())
         }
     }
 
@@ -465,7 +516,7 @@ object OgImageManager {
                     memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
                     memoryCache.put(fallbackCacheKey(domain), imageBitmap)
                 }
-                _cacheVersion.value++
+                notifyOgImageUpdated(domain)
                 true
             } catch (_: Exception) {
                 false

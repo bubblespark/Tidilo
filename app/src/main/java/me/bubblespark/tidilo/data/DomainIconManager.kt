@@ -9,9 +9,18 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.onSubscription
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jsoup.Jsoup
@@ -46,19 +55,56 @@ object DomainIconManager {
         override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
     }
 
-    private val _iconUpdateVersion = MutableStateFlow(0L)
-    val iconUpdateVersion: StateFlow<Long> = _iconUpdateVersion.asStateFlow()
+    private val domainRevisions = ConcurrentHashMap<String, AtomicLong>()
+
+    private val _iconUpdatedDomain = MutableSharedFlow<Pair<String, Long>>(extraBufferCapacity = 64)
+    val iconUpdatedDomain: SharedFlow<Pair<String, Long>> = _iconUpdatedDomain.asSharedFlow()
+
+    private val _cacheClearedEvent = MutableSharedFlow<Long>(extraBufferCapacity = 1)
+    val cacheClearedEvent: SharedFlow<Long> = _cacheClearedEvent.asSharedFlow()
 
     private val cacheLock = Any()
+    @Volatile
     private var cacheGeneration = 0L
 
-    fun getCurrentGeneration(): Long = synchronized(cacheLock) { cacheGeneration }
+    fun getCurrentGeneration(): Long = cacheGeneration
 
-    private fun nextVersion(): Long = synchronized(cacheLock) {
-        val current = _iconUpdateVersion.value
-        val next = maxOf(System.currentTimeMillis(), current + 1L)
-        _iconUpdateVersion.value = next
-        next
+    /**
+     * Returns the composite monotonic revision for a given domain, combining its individual updates
+     * and the global cache clearing generation.
+     */
+    fun getDomainRevision(domain: String): Long {
+        val normalized = domain.trim().lowercase()
+        val rev = domainRevisions[normalized]?.get() ?: 0L
+        return rev + (getCurrentGeneration() * 1_000_000_000L)
+    }
+
+    /**
+     * Emits a notification that a specific domain's icon has been saved, updated, or removed.
+     */
+    fun notifyIconUpdated(domain: String) {
+        val normalized = domain.trim().lowercase()
+        val rev = domainRevisions.computeIfAbsent(normalized) { AtomicLong(0L) }.incrementAndGet()
+        val currentRev = rev + (getCurrentGeneration() * 1_000_000_000L)
+        _iconUpdatedDomain.tryEmit(Pair(normalized, currentRev))
+    }
+
+    /**
+     * Returns a Flow that emits a distinct Long revision whenever the given domain's icon is updated
+     * or the full cache is cleared. Immediately emits the current revision upon collection start or resume.
+     */
+    fun observeIconUpdates(domain: String?): Flow<Long> {
+        if (domain.isNullOrBlank()) return emptyFlow()
+        val normalized = domain.trim().lowercase()
+        return merge(
+            iconUpdatedDomain
+                .onSubscription { emit(normalized to getDomainRevision(normalized)) }
+                .filter { it.first == normalized }
+                .map { it.second },
+            cacheClearedEvent
+                .onSubscription { emit(getDomainRevision(normalized)) }
+                .map { getDomainRevision(normalized) }
+        ).distinctUntilChanged()
     }
 
     /**
@@ -451,7 +497,7 @@ object DomainIconManager {
             legacy.delete()
         }
         removeNegativeMarker(context, normalized)
-        nextVersion()
+        notifyIconUpdated(normalized)
     }
 
     /**
@@ -470,7 +516,8 @@ object DomainIconManager {
             if (legacy.exists()) {
                 legacy.deleteRecursively()
             }
-            nextVersion()
+            domainRevisions.clear()
+            _cacheClearedEvent.tryEmit(cacheGeneration)
         }
     }
 
@@ -760,7 +807,7 @@ object DomainIconManager {
                         removeNegativeMarker(context, domain)
                         memoryCache.put(domain, processedBitmap.asImageBitmap())
                         dominantColorCache.put(domain, extractDominantColor(processedBitmap, domain))
-                        nextVersion()
+                        notifyIconUpdated(domain)
                         true
                     }
                 }

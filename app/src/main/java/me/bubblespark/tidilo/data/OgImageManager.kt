@@ -19,7 +19,8 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -89,11 +90,14 @@ object OgImageManager {
         if (domain.isNullOrBlank()) return emptyFlow()
         val normalized = domain.trim().lowercase()
         return merge(
-            ogImageUpdatedDomain.filter { it.first == normalized }.map { it.second },
-            cacheClearedEvent.map { getDomainRevision(normalized) }
-        ).onStart {
-            emit(getDomainRevision(normalized))
-        }
+            ogImageUpdatedDomain
+                .onSubscription { emit(normalized to getDomainRevision(normalized)) }
+                .filter { it.first == normalized }
+                .map { it.second },
+            cacheClearedEvent
+                .onSubscription { emit(getDomainRevision(normalized)) }
+                .map { getDomainRevision(normalized) }
+        ).distinctUntilChanged()
     }
 
     private val inFlightLoads = ConcurrentHashMap<String, Deferred<ImageBitmap?>>()

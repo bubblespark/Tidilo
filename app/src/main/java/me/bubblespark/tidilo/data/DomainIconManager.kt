@@ -17,7 +17,8 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.onSubscription
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.withContext
@@ -63,9 +64,10 @@ object DomainIconManager {
     val cacheClearedEvent: SharedFlow<Long> = _cacheClearedEvent.asSharedFlow()
 
     private val cacheLock = Any()
+    @Volatile
     private var cacheGeneration = 0L
 
-    fun getCurrentGeneration(): Long = synchronized(cacheLock) { cacheGeneration }
+    fun getCurrentGeneration(): Long = cacheGeneration
 
     /**
      * Returns the composite monotonic revision for a given domain, combining its individual updates
@@ -95,11 +97,14 @@ object DomainIconManager {
         if (domain.isNullOrBlank()) return emptyFlow()
         val normalized = domain.trim().lowercase()
         return merge(
-            iconUpdatedDomain.filter { it.first == normalized }.map { it.second },
-            cacheClearedEvent.map { getDomainRevision(normalized) }
-        ).onStart {
-            emit(getDomainRevision(normalized))
-        }
+            iconUpdatedDomain
+                .onSubscription { emit(normalized to getDomainRevision(normalized)) }
+                .filter { it.first == normalized }
+                .map { it.second },
+            cacheClearedEvent
+                .onSubscription { emit(getDomainRevision(normalized)) }
+                .map { getDomainRevision(normalized) }
+        ).distinctUntilChanged()
     }
 
     /**

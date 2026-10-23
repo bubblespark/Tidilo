@@ -1,5 +1,11 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
+import androidx.paging.LoadState
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.saveable.rememberSaveable
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -28,6 +34,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -87,7 +97,23 @@ fun SearchScreen(
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchHistory by viewModel.searchHistory.collectAsStateWithLifecycle()
-    val filteredBookmarks by viewModel.filteredBookmarks.collectAsStateWithLifecycle()
+    val initializationFailure by viewModel.initializationFailure.collectAsStateWithLifecycle()
+    val searchCount by viewModel.searchCount.collectAsStateWithLifecycle()
+    val filteredBookmarks = viewModel.searchPages.collectAsLazyPagingItems()
+    val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
+    val resultListState = rememberLazyListState()
+    val resultGridState = rememberLazyGridState()
+    var lastScrollQuery by rememberSaveable { mutableStateOf(searchQuery) }
+    var peekBookmark by remember { mutableStateOf<BookmarkItem?>(null) }
+    LaunchedEffect(searchQuery) {
+        if (lastScrollQuery != searchQuery) {
+            resultListState.requestScrollToItem(0)
+            resultGridState.requestScrollToItem(0)
+            lastScrollQuery = searchQuery
+            peekBookmark = null
+        }
+    }
+    BackHandler(enabled = peekBookmark != null) { peekBookmark = null }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -246,7 +272,19 @@ fun SearchScreen(
             }
         } else {
             // Search execution results
-            if (filteredBookmarks.isEmpty()) {
+            if (initializationFailure != null) {
+                Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
+                    PagingFeedback(LoadState.Error(initializationFailure!!), viewModel::retryInitialization)
+                }
+            } else if (filteredBookmarks.loadState.refresh is LoadState.Loading) {
+                Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator()
+                }
+            } else if (filteredBookmarks.loadState.refresh is LoadState.Error) {
+                Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
+                    PagingFeedback(filteredBookmarks.loadState.refresh, filteredBookmarks::retry)
+                }
+            } else if (filteredBookmarks.itemCount == 0) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -254,8 +292,27 @@ fun SearchScreen(
                 ) {
                     EmptySearchResult(query = searchQuery)
                 }
+            } else if (viewMode == LibraryViewMode.GRID) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    state = resultGridState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = headerHeight, bottom = 140.dp, start = 20.dp, end = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(count = filteredBookmarks.itemCount, key = filteredBookmarks.itemKey { it.id },
+                        contentType = { "bookmark_grid_card" }) { index ->
+                        val item = filteredBookmarks[index] ?: return@items
+                        BookmarkGridCard(bookmark = item, onLongClick = { peekBookmark = item }, onClick = {
+                            viewModel.addSearchHistory(searchQuery)
+                            onNavigateToDetail(item.id)
+                        })
+                    }
+                }
             } else {
                 LazyColumn(
+                    state = resultListState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
                         top = headerHeight,
@@ -266,10 +323,11 @@ fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(
-                        items = filteredBookmarks,
-                        key = { it.id },
+                        count = filteredBookmarks.itemCount,
+                        key = filteredBookmarks.itemKey { it.id },
                         contentType = { "bookmark_card" }
-                    ) { item ->
+                    ) { index ->
+                        val item = filteredBookmarks[index] ?: return@items
                         BookmarkItemCard(
                             bookmark = item,
                             wordKeywords = wordKeywords,
@@ -285,9 +343,14 @@ fun SearchScreen(
             }
         }
 
+        boundaryFeedback(filteredBookmarks.loadState.prepend, filteredBookmarks.loadState.append)?.let { state ->
+            PagingFeedback(state, filteredBookmarks::retry,
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp))
+        }
+
         // 2. Expressive Header (slides out/in linked with scrolling)
         AnimatedVisibility(
-            visible = isBarsVisible,
+            visible = isBarsVisible && peekBookmark == null,
             enter = slideInVertically(
                 initialOffsetY = { -it },
                 animationSpec = spring(
@@ -327,7 +390,7 @@ fun SearchScreen(
                                 text = if (searchQuery.isBlank()) {
                                     stringResource(R.string.search_header_subtitle_keywords)
                                 } else {
-                                    stringResource(R.string.search_header_subtitle_results, filteredBookmarks.size)
+                                    stringResource(R.string.search_header_subtitle_results, searchCount)
                                 },
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary
@@ -417,5 +480,6 @@ fun SearchScreen(
                 }
             }
         }
+        BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null }
     }
 }

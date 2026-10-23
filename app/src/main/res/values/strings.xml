@@ -267,4 +267,6 @@
     <string name="subcategory_hobby">Hobby</string>
     <string name="subcategory_adult">Adult</string>
     <string name="subcategory_education">Education</string>
+    <string name="common_save_failed">Could not save changes. Please try again.</string>
+    <string name="library_load_failed">Could not load bookmarks.</string>
 </resources>

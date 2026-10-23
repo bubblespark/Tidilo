@@ -467,3 +467,20 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Shared View Mode Synchronization**:
   - The active `LibraryViewMode` (`LIST` or `GRID`) is uniformly applied to both the primary **Newest First** list and the **Domain > BookmarkList (Drill-Down)** list.
   - Layout transitions between `LIST` and `GRID` use `AnimatedContent` with smooth Crossfade (`fadeIn(220ms)` + `fadeOut(180ms)`).
+
+
+### 6.16 Paged bookmark results
+
+- Timeline, domain drill-down, and search render LazyPagingItems with stable bookmark-ID keys in list and two-column grid layouts.
+- Initial load, refresh error, and true empty results are distinct states. Initial loading never displays an empty-library message. Domain grids also wait for their first aggregate result.
+- Prepend and append loading/error feedback supports retry after earlier or later pages have been evicted. An error takes precedence over another direction's spinner.
+- Query/domain/NSFW changes switch Pager generations and clear old-filter content through a loading generation. Separate remembered list/grid scroll states are retained. Domain positions reset only when the selected filter changes, including across detail return.
+- Detail and AI-review screens remember a single-ID observation per ID/retry and distinguish loading, missing/deleted, and failed reads. Saving or trashing only navigates after the database operation succeeds; failures retain the screen and show a retryable action/message.
+- Tag selection counts come from all matching database rows, independently of loaded pages. Settings domain lists use distinct-domain queries.
+
+
+Paged UI review details: domain-card grids use domain aggregation state exclusively;
+bookmark load/error feedback belongs only to timeline and domain bookmark results.
+Search grid cards share the library summary peek overlay and dismiss it on tap,
+back, or query change. A changed query resets both layout positions with a
+non-suspending request; returning from details with the same query preserves them.

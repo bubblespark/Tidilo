@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS `bookmarks` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `url` TEXT NOT NULL, `description` TEXT NOT NULL, `category` TEXT, `subcategory` TEXT, `entities` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `note` TEXT NOT NULL, `isNsfw` INTEGER NOT NULL, `isAiSkipped` INTEGER NOT NULL, `ogImageUrl` TEXT, PRIMARY KEY(`id`));
+CREATE INDEX IF NOT EXISTS `index_bookmarks_url` ON `bookmarks` (`url`);
+CREATE INDEX IF NOT EXISTS `index_bookmarks_createdAt` ON `bookmarks` (`createdAt`);
+CREATE INDEX IF NOT EXISTS `index_bookmarks_category` ON `bookmarks` (`category`);
+CREATE INDEX IF NOT EXISTS `index_bookmarks_subcategory` ON `bookmarks` (`subcategory`);
+CREATE INDEX IF NOT EXISTS `index_bookmarks_isNsfw` ON `bookmarks` (`isNsfw`);
+CREATE INDEX IF NOT EXISTS `index_bookmarks_isAiSkipped` ON `bookmarks` (`isAiSkipped`);
+CREATE TABLE IF NOT EXISTS `trashed_bookmarks` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `url` TEXT NOT NULL, `description` TEXT NOT NULL, `category` TEXT, `subcategory` TEXT, `entities` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `note` TEXT NOT NULL, `isNsfw` INTEGER NOT NULL, `isAiSkipped` INTEGER NOT NULL, `ogImageUrl` TEXT, `trashedAt` INTEGER NOT NULL, PRIMARY KEY(`id`));
+CREATE INDEX IF NOT EXISTS `index_trashed_bookmarks_trashedAt` ON `trashed_bookmarks` (`trashedAt`);
+CREATE TABLE IF NOT EXISTS `import_tasks` (`id` TEXT NOT NULL, `url` TEXT NOT NULL, `title` TEXT NOT NULL, `status` TEXT NOT NULL, `statusText` TEXT NOT NULL, `errorMessage` TEXT, `assignedTags` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `isNsfw` INTEGER NOT NULL, `siteName` TEXT NOT NULL, `description` TEXT NOT NULL, `bodySnippet` TEXT NOT NULL, `ogImageUrl` TEXT, PRIMARY KEY(`id`));
+CREATE INDEX IF NOT EXISTS `index_import_tasks_url` ON `import_tasks` (`url`);
+CREATE INDEX IF NOT EXISTS `index_import_tasks_status` ON `import_tasks` (`status`);
+CREATE INDEX IF NOT EXISTS `index_import_tasks_createdAt` ON `import_tasks` (`createdAt`);

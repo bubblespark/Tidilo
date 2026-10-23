@@ -1,5 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
+
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -98,12 +101,25 @@ fun BookmarkAiReviewScreen(
 ) {
     val context = LocalContext.current
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
-    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
-
-    val bookmark = remember(bookmarks, bookmarkId) {
-        bookmarks.find { it.id == bookmarkId }
+    var isSaving by remember { mutableStateOf(false) }
+    val persistenceScope = androidx.compose.runtime.rememberCoroutineScope()
+    var detailRetry by remember(bookmarkId) { mutableStateOf(0) }
+    val detailFlow = remember(viewModel, bookmarkId, detailRetry) { viewModel.bookmarkDetails(bookmarkId) }
+    val detailState by detailFlow.collectAsStateWithLifecycle(initialValue = BookmarkDetailState())
+    val bookmark = detailState.bookmark
+    if (detailState.loading) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            androidx.compose.material3.CircularProgressIndicator()
+        }
+        return
     }
 
+    if (detailState.error != null) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            PagingFeedback(androidx.paging.LoadState.Error(detailState.error!!), { detailRetry++ })
+        }
+        return
+    }
     if (bookmark == null) {
         Box(
             modifier = modifier.fillMaxSize(),
@@ -456,6 +472,8 @@ fun BookmarkAiReviewScreen(
             ) {
                 Surface(
                     onClick = {
+                        if (isSaving) return@Surface
+                        isSaving = true
                         val finalSummary = if (selectedSummarySource == ProposalSource.PROPOSAL) {
                             proposal.summary
                         } else {
@@ -472,19 +490,28 @@ fun BookmarkAiReviewScreen(
                             bookmark.tag
                         }
 
-                        viewModel.updateBookmarkFields(
-                            id = bookmark.id,
-                            description = finalSummary,
-                            tag = finalTag
-                        )
+                        persistenceScope.launch {
+                            try {
+                                viewModel.updateBookmarkFields(
+                                    id = bookmark.id,
+                                    description = finalSummary,
+                                    tag = finalTag
+                                )
 
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.ai_review_applied_toast),
-                            Toast.LENGTH_SHORT
-                        ).show()
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.ai_review_applied_toast),
+                                    Toast.LENGTH_SHORT
+                                ).show()
 
-                        onNavigateBack()
+                                onNavigateBack()
+                            } catch (e: Exception) {
+                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
+                            } finally {
+                                isSaving = false
+                            }
+                        }
                     },
                     modifier = Modifier.size(86.dp),
                     shape = CircleShape,

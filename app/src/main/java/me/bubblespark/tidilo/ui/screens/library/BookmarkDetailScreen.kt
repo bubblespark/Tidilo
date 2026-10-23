@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import kotlinx.coroutines.ensureActive
+
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -132,12 +134,23 @@ fun BookmarkDetailScreen(
     val clipboard = LocalClipboard.current
     val coroutineScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
-    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
-
-    val bookmark = remember(bookmarks, bookmarkId) {
-        bookmarks.find { it.id == bookmarkId }
+    var detailRetry by remember(bookmarkId) { mutableStateOf(0) }
+    val detailFlow = remember(viewModel, bookmarkId, detailRetry) { viewModel.bookmarkDetails(bookmarkId) }
+    val detailState by detailFlow.collectAsStateWithLifecycle(initialValue = BookmarkDetailState())
+    val bookmark = detailState.bookmark
+    if (detailState.loading) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            androidx.compose.material3.CircularProgressIndicator()
+        }
+        return
     }
 
+    if (detailState.error != null) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            PagingFeedback(androidx.paging.LoadState.Error(detailState.error!!), { detailRetry++ })
+        }
+        return
+    }
     if (bookmark == null) {
         Box(
             modifier = modifier.fillMaxSize(),
@@ -295,6 +308,9 @@ fun BookmarkDetailScreen(
                             try {
                                 viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsNsfw)
                                 onNavigateBack()
+                            } catch (e: Exception) {
+                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
                             } finally {
                                 isSaving = false
                             }
@@ -924,8 +940,14 @@ fun BookmarkDetailScreen(
                 TextButton(
                     onClick = {
                         showDeleteConfirmDialog = false
-                        viewModel.deleteBookmark(bookmark.id)
-                        onNavigateBack()
+                        coroutineScope.launch {
+                            try {
+                                if (viewModel.deleteBookmark(bookmark.id)) onNavigateBack()
+                            } catch (e: Exception) {
+                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
+                            }
+                        }
                     }
                 ) {
                     Text(
@@ -976,9 +998,7 @@ fun BookmarkDetailScreen(
     }
 
     if (showEntityBottomSheet) {
-        val allLibraryEntities = remember(bookmarks) {
-            bookmarks.flatMap { it.tag.entities }.distinct()
-        }
+        val allLibraryEntities by viewModel.entityNames.collectAsStateWithLifecycle()
         EntityTagPickerBottomSheet(
             selectedEntities = draftEntities,
             allEntities = (allLibraryEntities + draftEntities).distinct(),

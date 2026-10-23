@@ -51,6 +51,14 @@ internal class RssIngestionStore(private val database: AppDatabase) {
         rss.feed(feedId)?.let { enforceRetentionLocked(it) }
     }
 
+    suspend fun restoreTask(task: ImportTaskEntity) = database.withTransaction {
+        val feed = task.rssFeedId?.let { rss.feed(it) } ?: return@withTransaction
+        if (task.status != "ERROR" && (feed.deleted || feed.mode != "AI")) return@withTransaction
+        if (rss.rssWriteConflict(task.url, task.id)) return@withTransaction
+        database.importTaskDao().insertOrUpdate(task)
+        reconcilePending()
+    }
+
     private suspend fun enforceRetentionLocked(feed: RssFeedEntity) {
         val limit = feed.retentionLimit ?: return
         require(limit in 10..500)
@@ -69,3 +77,5 @@ internal class RssIngestionStore(private val database: AppDatabase) {
         }
     }
 }
+
+internal class RssImportSkipped : Exception("RSS item already exists or its subscription was removed")

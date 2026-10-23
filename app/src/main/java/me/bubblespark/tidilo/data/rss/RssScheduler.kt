@@ -39,7 +39,7 @@ internal object RssScheduler {
         else setRequiredNetworkType(NetworkType.CONNECTED)
     }.build()
 
-    suspend fun reschedule(context: Context, force: Boolean = true) = withContext(Dispatchers.IO) {
+    suspend fun reschedule(context: Context, force: Boolean = false) = withContext(Dispatchers.IO) {
         lock.withLock {
             val preferences = RssPreferences.getInstance(context)
             preferences.initialize()
@@ -50,6 +50,10 @@ internal object RssScheduler {
                 return@withLock
             }
             val settings = preferences.state.value
+            val manual = manager.getWorkInfosForUniqueWork(MANUAL).get().firstOrNull { !it.state.isFinished }
+            if (manual != null) manager.updateWork(OneTimeWorkRequestBuilder<RssFetchWorker>()
+                .setId(manual.id).setInputData(workDataOf("requestedAt" to preferences.manualRequestedAt()))
+                .setConstraints(constraints(settings.wifiOnly)).build()).get()
             val zone = ZoneId.systemDefault()
             val tag = "rss:${settings.hour}:${settings.minute}:${settings.wifiOnly}:$zone"
             val current = manager.getWorkInfosForUniqueWork(DAILY).get().firstOrNull { !it.state.isFinished }
@@ -68,10 +72,16 @@ internal object RssScheduler {
     suspend fun fetchNow(context: Context) = withContext(Dispatchers.IO) {
         val preferences = RssPreferences.getInstance(context)
         preferences.initialize()
-        WorkManager.getInstance(context).enqueueUniqueWork(MANUAL, ExistingWorkPolicy.KEEP,
-            OneTimeWorkRequestBuilder<RssFetchWorker>()
-                .setInputData(workDataOf("requestedAt" to System.currentTimeMillis()))
-                .setConstraints(constraints(preferences.state.value.wifiOnly)).build()).result.get()
+        lock.withLock {
+            val manager = WorkManager.getInstance(context)
+            if (manager.getWorkInfosForUniqueWork(MANUAL).get().any { !it.state.isFinished }) return@withLock
+            val requestedAt = System.currentTimeMillis()
+            preferences.recordManualRequest(requestedAt)
+            manager.enqueueUniqueWork(MANUAL, ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequestBuilder<RssFetchWorker>()
+                    .setInputData(workDataOf("requestedAt" to requestedAt))
+                    .setConstraints(constraints(preferences.state.value.wifiOnly)).build()).result.get()
+        }
     }
 }
 
@@ -80,7 +90,7 @@ class RssScheduleReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            try { RssScheduler.reschedule(context) } finally { pending.finish() }
+            try { RssScheduler.reschedule(context, force = true) } finally { pending.finish() }
         }
     }
 }

@@ -4,10 +4,12 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.os.SystemClock
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.SocketTimeoutException
 import java.nio.charset.Charset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -31,17 +33,25 @@ internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boole
 
     suspend fun request(url: String, headers: Map<String, String>): RssHttpPage = withContext(Dispatchers.IO) {
         val network = availableNetwork() ?: throw RssWifiUnavailable()
+        val deadline = SystemClock.elapsedRealtime() + 30_000L
+        fun remaining(): Int = (deadline - SystemClock.elapsedRealtime()).let {
+            if (it <= 0) throw SocketTimeoutException("RSS request exceeded 30 seconds")
+            it.coerceAtMost(10_000L).toInt()
+        }
         var currentUrl = url
         repeat(6) {
             currentCoroutineContext().ensureActive()
             val connection = network.openConnection(URL(currentUrl)) as HttpURLConnection
             try {
-                connection.connectTimeout = 10_000
-                connection.readTimeout = 10_000
+                connection.connectTimeout = remaining()
+                connection.readTimeout = remaining()
                 connection.instanceFollowRedirects = false
                 connection.setRequestProperty("User-Agent", "Tidilo RSS/1.0")
                 headers.forEach { (key, value) -> connection.setRequestProperty(key, value) }
+                connection.connect()
+                connection.readTimeout = remaining()
                 val status = connection.responseCode
+                remaining()
                 if (status in listOf(301, 302, 303, 307, 308)) {
                     currentUrl = RssFeedParser.httpUrl(currentUrl, connection.getHeaderField("Location").orEmpty())
                         ?: throw IOException("Invalid feed redirect")
@@ -56,7 +66,9 @@ internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boole
                             currentCoroutineContext().ensureActive()
                             val caps = connectivity.getNetworkCapabilities(network)
                             if (wifiOnly() && caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true) throw RssWifiUnavailable()
+                            connection.readTimeout = remaining()
                             val read = input.read(buffer)
+                            remaining()
                             if (read < 0) break
                             if (output.size() + read > MAX_BYTES) throw IOException("RSS response exceeds 2 MB")
                             output.write(buffer, 0, read)

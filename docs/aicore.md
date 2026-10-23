@@ -275,3 +275,7 @@ Developers and QA can test and inspect AICore behavior using:
 ## Local Inference Usage Accounting
 
 The production `GeminiTaggingService.runNanoInference` and debug `DebugPromptTester` SDK calls are wrapped by `AiCoreUsageRepository`. Counting occurs at the SDK attempt boundary, including retries; setup, parsing, and persistence are excluded. Results and cancellation retain their original behavior even if statistics cannot be saved. Settings Summary exposes daily outcomes and the first quota-27 detection benchmark per start date, without suggesting a fixed quota or midnight reset. See [Application Summary](application_summary.md) for the complete contract.
+
+## RSS Foreground Inference
+
+RSS workers never invoke AICore. RSS tasks always use publisher XML metadata, even with an empty body snippet; startup article preparse and Readability are excluded. The foreground worker atomically claims valid tasks, prioritizes manual waiters, and preserves RSS first-seen/publication/source fields through AI success and fallback. The five-task cap applies only to unstarted tasks per feed; it is unrelated to retention or an SDK quota. See [RSS and Atom Subscriptions](rss.md).

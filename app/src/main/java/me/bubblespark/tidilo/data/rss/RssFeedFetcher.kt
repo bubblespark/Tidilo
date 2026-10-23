@@ -33,6 +33,7 @@ internal class RssFeedFetcher(private val request: suspend (String, Map<String, 
                 ?: document.selectFirst("meta[name=twitter:image]")?.attr("content")
             entry.copy(imageUrl = raw?.let { RssFeedParser.httpUrl(page.url, it) })
         } catch (cancelled: CancellationException) { throw cancelled }
+        catch (wifi: RssWifiUnavailable) { throw wifi }
         catch (_: Exception) { entry }
     }
 }

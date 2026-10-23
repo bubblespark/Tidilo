@@ -1,0 +1,210 @@
+package me.bubblespark.tidilo.ui.screens.settings
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
+import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.data.db.RssFeedEntity
+import me.bubblespark.tidilo.data.rss.RssSettings
+
+@Composable
+fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = viewModel()) {
+    val feeds by model.feeds.collectAsStateWithLifecycle()
+    val settings by model.settings.collectAsStateWithLifecycle()
+    val busy by model.busy.collectAsStateWithLifecycle()
+    val error by model.error.collectAsStateWithLifecycle()
+    val wifi by model.wifi.collectAsStateWithLifecycle()
+    LifecycleResumeEffect(model) {
+        model.startListening()
+        onPauseOrDispose { model.stopListening() }
+    }
+    RssSettingsContent(feeds, settings, busy, error, wifi, onNavigateBack, model::retry,
+        model::saveSettings, model::saveFeed, model::deleteFeed, model::fetchNow, model::clearError)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun RssSettingsContent(
+    feeds: SummaryLoad<List<RssFeedEntity>>, settings: RssSettings, busy: Boolean, error: String?, wifi: Boolean,
+    onBack: () -> Unit, onRetry: () -> Unit, onSettings: (RssSettings) -> Unit,
+    onFeed: (RssFeedEntity?, String, String, Int?, Boolean) -> Unit, onDelete: (String) -> Unit,
+    onFetch: () -> Unit, onDismissError: () -> Unit
+) {
+    var showTime by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<RssFeedEntity?>(null) }
+    var showEditor by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf<RssFeedEntity?>(null) }
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+        .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back)) }
+            Text(stringResource(R.string.rss_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        }
+        RssCard {
+            Text(stringResource(R.string.rss_schedule), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            TextButton(onClick = { showTime = true }, enabled = !busy) {
+                Text(String.format(Locale.US, "%02d:%02d", settings.hour, settings.minute))
+            }
+            Row(Modifier.fillMaxWidth().toggleable(settings.wifiOnly, enabled = !busy, role = Role.Switch,
+                onValueChange = { onSettings(settings.copy(wifiOnly = it)) }), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.rss_wifi_only), Modifier.weight(1f))
+                Switch(checked = settings.wifiOnly, onCheckedChange = null, enabled = !busy)
+            }
+            Text(stringResource(R.string.rss_schedule_note), style = MaterialTheme.typography.bodySmall)
+            if (settings.wifiOnly && !wifi) Text(stringResource(R.string.rss_waiting_wifi), color = MaterialTheme.colorScheme.primary)
+            TextButton(onClick = onFetch, enabled = !busy && (feeds as? SummaryLoad.Ready)?.value?.isNotEmpty() == true) {
+                Text(stringResource(R.string.rss_fetch_now))
+            }
+        }
+        val ready = (feeds as? SummaryLoad.Ready)?.value.orEmpty()
+        val aiFeeds = ready.count { it.mode == "AI" }
+        RssCard {
+            Text(stringResource(R.string.rss_max_queue, aiFeeds * 5, aiFeeds))
+            if (aiFeeds * 5 > 20) Text(stringResource(R.string.rss_quota_warning), color = MaterialTheme.colorScheme.error)
+            Text(stringResource(R.string.rss_queue_note), style = MaterialTheme.typography.bodySmall)
+        }
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (error != null) RssCard {
+            Text(error, color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = onDismissError) { Text(stringResource(R.string.rss_dismiss)) }
+        }
+        Button(onClick = { editing = null; showEditor = true }, enabled = !busy) { Text(stringResource(R.string.rss_add_feed)) }
+        when (feeds) {
+            SummaryLoad.Loading -> Text(stringResource(R.string.summary_loading))
+            SummaryLoad.Error -> {
+                Text(stringResource(R.string.summary_error))
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.summary_retry)) }
+            }
+            is SummaryLoad.Ready -> {
+                if (ready.isEmpty()) Text(stringResource(R.string.rss_no_feeds))
+                ready.forEach { feed ->
+                    key(feed.id) {
+                        RssCard {
+                            Text(feed.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(feed.url, style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(if (feed.mode == "AI") R.string.rss_ai_mode else R.string.rss_direct_mode))
+                            Text(stringResource(R.string.rss_retention_display,
+                                feed.retentionLimit?.toString() ?: stringResource(R.string.rss_unlimited)))
+                            Text(stringResource(R.string.rss_last_attempt, rssTime(feed.lastAttemptAt)), style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.rss_last_success, rssTime(feed.lastSuccessAt)), style = MaterialTheme.typography.bodySmall)
+                            feed.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            Row {
+                                TextButton(onClick = { editing = feed; showEditor = true }, enabled = !busy) { Text(stringResource(R.string.rss_edit)) }
+                                TextButton(onClick = { deleting = feed }, enabled = !busy) { Text(stringResource(R.string.rss_delete)) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+    }
+    if (showTime) {
+        val time = rememberTimePickerState(settings.hour, settings.minute, is24Hour = true)
+        AlertDialog(onDismissRequest = { showTime = false }, title = { Text(stringResource(R.string.rss_schedule)) },
+            text = { TimePicker(time) }, confirmButton = {
+                TextButton(onClick = { onSettings(settings.copy(hour = time.hour, minute = time.minute)); showTime = false }) {
+                    Text(stringResource(R.string.rss_save))
+                }
+            }, dismissButton = { TextButton(onClick = { showTime = false }) { Text(stringResource(R.string.rss_cancel)) } })
+    }
+    if (showEditor) RssFeedEditor(editing, onDismiss = { showEditor = false }) { url, mode, limit, convert ->
+        onFeed(editing, url, mode, limit, convert)
+        showEditor = false
+    }
+    deleting?.let { feed ->
+        AlertDialog(onDismissRequest = { deleting = null }, title = { Text(stringResource(R.string.rss_delete)) },
+            text = { Text(stringResource(R.string.rss_delete_note)) },
+            confirmButton = { TextButton(onClick = { onDelete(feed.id); deleting = null }) { Text(stringResource(R.string.rss_delete)) } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.rss_cancel)) } })
+    }
+}
+
+@Composable
+private fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onSave: (String, String, Int?, Boolean) -> Unit) {
+    var url by remember(original) { mutableStateOf(original?.url.orEmpty()) }
+    var mode by remember(original) { mutableStateOf(original?.mode ?: "DIRECT") }
+    var unlimited by remember(original) { mutableStateOf(original != null && original.retentionLimit == null) }
+    var limit by remember(original) { mutableStateOf((original?.retentionLimit ?: 100).toString()) }
+    var convert by remember { mutableStateOf(false) }
+    val validLimit = unlimited || limit.toIntOrNull()?.let { it in 10..500 } == true
+    AlertDialog(onDismissRequest = onDismiss,
+        title = { Text(stringResource(if (original == null) R.string.rss_add_feed else R.string.rss_edit)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(url, { url = it }, label = { Text(stringResource(R.string.rss_feed_url)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
+                Column(Modifier.selectableGroup()) {
+                    Row(Modifier.fillMaxWidth().selectable(mode == "DIRECT", role = Role.RadioButton,
+                        onClick = { mode = "DIRECT" }), verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = mode == "DIRECT", onClick = null)
+                        Text(stringResource(R.string.rss_direct_mode))
+                    }
+                    Row(Modifier.fillMaxWidth().selectable(mode == "AI", role = Role.RadioButton,
+                        onClick = { mode = "AI" }), verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = mode == "AI", onClick = null)
+                        Text(stringResource(R.string.rss_ai_mode))
+                    }
+                }
+                Row(Modifier.fillMaxWidth().toggleable(unlimited, role = Role.Checkbox,
+                    onValueChange = { unlimited = it }), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(unlimited, null)
+                    Text(stringResource(R.string.rss_unlimited))
+                }
+                if (!unlimited) OutlinedTextField(limit, { limit = it },
+                    label = { Text(stringResource(R.string.rss_retention_input)) }, isError = !validLimit,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                Text(stringResource(R.string.rss_retention_note), style = MaterialTheme.typography.bodySmall)
+                if (original?.mode == "AI" && mode == "DIRECT") {
+                    Text(stringResource(R.string.rss_mode_change_note), style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.fillMaxWidth().toggleable(convert, role = Role.Checkbox,
+                        onValueChange = { convert = it }), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(convert, null)
+                        Text(stringResource(R.string.rss_convert_pending))
+                    }
+                }
+                if (original != null && url.trim() != original.url) Text(stringResource(R.string.rss_url_change_note),
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(url.trim(), mode, if (unlimited) null else limit.toInt(), convert) },
+            enabled = url.isNotBlank() && validLimit) { Text(stringResource(R.string.rss_save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.rss_cancel)) } })
+}
+
+@Composable
+private fun RssCard(content: @Composable ColumnScope.() -> Unit) {
+    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    }
+}
+
+private fun rssTime(value: Long?): String = value?.let {
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT).format(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()))
+} ?: "—"

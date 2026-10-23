@@ -18,7 +18,7 @@ class RssFetchWorker(context: Context, parameters: WorkerParameters) : Coroutine
             val since = inputData.getLong("requestedAt", boundary.toInstant().toEpochMilli())
             val success = RssRepository.getInstance(applicationContext).fetchAll(since)
             if (success) {
-                RssScheduler.reschedule(applicationContext)
+                RssScheduler.reschedule(applicationContext, force = true)
                 Result.success()
             } else Result.retry()
         } catch (cancelled: CancellationException) { throw cancelled }

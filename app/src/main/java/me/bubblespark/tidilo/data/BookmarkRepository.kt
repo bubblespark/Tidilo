@@ -130,13 +130,23 @@ class BookmarkRepository private constructor(context: Context) {
             item.copy(isNsfw = true)
         } else item
         database.withTransaction {
+            if (finalItem.rssFeedId != null) {
+                val feed = database.rssDao().feed(finalItem.rssFeedId)
+                val blocked = database.rssDao().rssWriteConflict(finalItem.url, finalItem.id)
+                if (feed == null || feed.deleted || blocked ||
+                    (finalItem.isNsfw && !me.bubblespark.tidilo.config.AppConfig.isNsfwContentBookmarkable.value)) {
+                    throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
+                }
+            }
             bookmarkDao.deleteByIdOrUrl(finalItem.id, finalItem.url)
             bookmarkDao.insertOrUpdate(BookmarkEntity.fromBookmarkItem(finalItem))
+            finalItem.rssFeedId?.let { me.bubblespark.tidilo.data.rss.RssIngestionStore(database).enforceRetention(it) }
         }
         // Room publishes the committed bookmark; auxiliary cache work cannot fail the save.
         repositoryScope.launch {
             DomainPolicyManager.registerDomain(domain)
             warmUpDomainIconsAsync(listOf(finalItem))
+            if (finalItem.rssFeedId != null) me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).cleanup()
         }
     }
 
@@ -227,11 +237,11 @@ class BookmarkRepository private constructor(context: Context) {
     }
 
     /** Each input generation owns a Pager; callers switch generations before caching in the ViewModel. */
-    fun pagedBookmarks(query: String, domain: String?, showNsfw: Boolean): Flow<PagingData<BookmarkItem>> =
+    fun pagedBookmarks(query: String, domain: String?, showNsfw: Boolean, source: BookmarkSource = BookmarkSource.ALL): Flow<PagingData<BookmarkItem>> =
         Pager(PagingConfig(pageSize = 30, prefetchDistance = 10, initialLoadSize = 60,
             maxSize = 150, enablePlaceholders = false)) {
             when {
-                query.isNotBlank() -> bookmarkDao.search(BookmarkQueries.results(query, showNsfw, domain))
+                query.isNotBlank() || source != BookmarkSource.ALL -> bookmarkDao.search(BookmarkQueries.results(query, showNsfw, domain, source))
                 domain != null -> bookmarkDao.byDomain(domain, showNsfw)
                 else -> bookmarkDao.timeline(showNsfw)
             }
@@ -239,12 +249,12 @@ class BookmarkRepository private constructor(context: Context) {
 
     fun observeBookmark(id: String): Flow<BookmarkItem?> = bookmarkDao.observeById(id).map { it?.toBookmarkItem() }
 
-    fun observeDomainCounts(showNsfw: Boolean): Flow<List<DomainCount>> = observeSafely { bookmarkDao.domainCounts(showNsfw) }
+    fun observeDomainCounts(showNsfw: Boolean, source: BookmarkSource = BookmarkSource.ALL): Flow<List<DomainCount>> = observeSafely { bookmarkDao.domainCounts(showNsfw, source.sqlValue) }
 
     fun observeCollectionCounts(): Flow<CollectionCounts> = observeSafely { bookmarkDao.observeCollectionCounts() }
 
-    fun observeCount(query: String, domain: String?, showNsfw: Boolean): Flow<Int> =
-        observeSafely { bookmarkDao.observeCount(BookmarkQueries.count(query, showNsfw, domain)) }
+    fun observeCount(query: String, domain: String?, showNsfw: Boolean, source: BookmarkSource = BookmarkSource.ALL): Flow<Int> =
+        observeSafely { bookmarkDao.observeCount(BookmarkQueries.count(query, showNsfw, domain, source)) }
 
     suspend fun distinctDomains(): List<String> = withContext(Dispatchers.IO) { bookmarkDao.distinctDomains() }
 

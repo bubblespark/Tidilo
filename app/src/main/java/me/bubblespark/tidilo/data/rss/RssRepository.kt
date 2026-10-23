@@ -5,6 +5,11 @@ import androidx.room.withTransaction
 import java.io.IOException
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -12,6 +17,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.DomainIconManager
+import me.bubblespark.tidilo.data.DomainPolicyManager
+import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.RssFeedEntity
@@ -55,7 +62,7 @@ internal class RssRepository private constructor(private val context: Context) {
     suspend fun edit(id: String, mode: String, limit: Int?, convertPending: Boolean) = withContext(Dispatchers.IO) {
         require(mode in setOf("AI", "DIRECT"))
         require(limit == null || limit in 10..500)
-        operation.withLock {
+        run {
             db.withTransaction {
                 val previous = requireNotNull(dao.feed(id))
                 require(!previous.deleted)
@@ -64,10 +71,11 @@ internal class RssRepository private constructor(private val context: Context) {
                 if (previous.mode == "AI" && mode == "DIRECT") {
                     val pending = dao.pending(id)
                     if (convertPending) for (task in pending) {
-                        if (db.bookmarkDao().getBookmarkByUrl(task.url) == null) {
+                        val nsfw = task.isNsfw || DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(task.url))
+                        if ((!nsfw || AppConfig.isNsfwContentBookmarkable.value) && !dao.rssWriteConflict(task.url, task.id)) {
                             db.bookmarkDao().insertOrUpdate(me.bubblespark.tidilo.data.db.BookmarkEntity(
                                 task.id, task.title, task.url, task.description, createdAt = task.createdAt, updatedAt = System.currentTimeMillis(),
-                                isNsfw = task.isNsfw, isAiSkipped = true, ogImageUrl = task.ogImageUrl,
+                                isNsfw = nsfw, isAiSkipped = true, ogImageUrl = task.ogImageUrl,
                                 rssFeedId = id, rssPublishedAt = task.rssPublishedAt))
                         }
                     }
@@ -81,7 +89,7 @@ internal class RssRepository private constructor(private val context: Context) {
     }
 
     suspend fun delete(id: String) = withContext(Dispatchers.IO) {
-        operation.withLock {
+        run {
             db.withTransaction {
                 val feed = requireNotNull(dao.feed(id))
                 dao.putFeed(feed.copy(deleted = true, revision = feed.revision + 1))
@@ -115,11 +123,31 @@ internal class RssRepository private constructor(private val context: Context) {
 
     private suspend fun ingestFetched(feed: RssFeedEntity, fetched: RssFetchedFeed) {
         val entries = fetched.document?.entries.orEmpty()
-        val unseen = entries.filter { !dao.hasSeen(feed.id, it.key, it.url) && !dao.urlExists(it.url) }
-        val selected = if (feed.mode == "AI") unseen.sortedByDescending { it.publishedAt ?: System.currentTimeMillis() }.take(5) else unseen
-        val enriched = selected.associate { it.url to fetcher.enrich(it) }
         val now = System.currentTimeMillis()
-        val accepted = store.ingest(feed, entries.map { enriched[it.url] ?: it }, now)
+        var accepted = true
+        if (feed.mode == "DIRECT") {
+            // Bounded windows limit resource use, not ingestion: every supplied entry is processed.
+            for (window in entries.chunked(20)) {
+                val current = dao.feed(feed.id)
+                if (current == null || current.deleted || current.revision != feed.revision) return
+                val semaphore = Semaphore(4)
+                val enriched = coroutineScope {
+                    window.map { entry -> async {
+                        semaphore.withPermit {
+                            if (dao.hasSeen(feed.id, entry.key, entry.url) || dao.urlExists(entry.url)) entry
+                            else fetcher.enrich(entry)
+                        }
+                    } }.awaitAll()
+                }
+                if (!store.ingest(feed, enriched, now)) return
+            }
+            if (entries.isEmpty()) accepted = store.ingest(feed, emptyList(), now)
+        } else {
+            val unseen = entries.filter { !dao.hasSeen(feed.id, it.key, it.url) && !dao.urlExists(it.url) }
+            val selected = unseen.sortedWith(compareByDescending<me.bubblespark.tidilo.parser.RssEntry> { it.publishedAt ?: now }.thenBy { it.url }).take(5)
+            val enriched = selected.associate { it.url to fetcher.enrich(it) }
+            accepted = store.ingest(feed, entries.map { enriched[it.url] ?: it }, now)
+        }
         if (accepted) {
             db.withTransaction {
                 val current = dao.feed(feed.id)

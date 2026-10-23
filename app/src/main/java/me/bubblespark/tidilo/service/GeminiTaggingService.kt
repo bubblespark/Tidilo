@@ -54,10 +54,13 @@ object GeminiTaggingService {
         description: String? = null,
         siteName: String? = null,
         isNsfw: Boolean = false,
-        ogImageUrl: String? = null
+        ogImageUrl: String? = null,
+        rssFeedId: String? = null,
+        rssPublishedAt: Long? = null,
+        rssFirstSeenAt: Long? = null
     ): Result<BookmarkItem> = withContext(Dispatchers.IO) {
         runCatching {
-            val hasPreparsedData = !bodySnippet.isNullOrBlank()
+            val hasPreparsedData = rssFeedId != null || !bodySnippet.isNullOrBlank()
 
             val realUrl: String
             val finalTitle: String
@@ -151,6 +154,8 @@ object GeminiTaggingService {
                     entities = result.entities
                 ),
                 isNsfw = resolvedIsNsfw,
+                createdAt = rssFirstSeenAt ?: System.currentTimeMillis(),
+                rssFeedId = rssFeedId, rssPublishedAt = rssPublishedAt,
                 ogImageUrl = effectiveOgImageUrl
             )
 

@@ -81,6 +81,11 @@ class ImportRepository internal constructor(
     }
 
     init {
+        if (appContext != null) repositoryScope.launch {
+            me.bubblespark.tidilo.data.rss.RssRepository.acquisitions.collect {
+                if (isAppInForeground() && AppConfig.isAutoRunAiOnActive.value) aiAnalysisAll()
+            }
+        }
         context?.let {
             repositoryScope.launch {
                 if (taskDao.getCount() == 0) {
@@ -240,7 +245,7 @@ class ImportRepository internal constructor(
                     statusText = "Waiting for AICore slot..."
                 )
             }
-            taskDao.insertAll(converted.map { ImportTaskEntity.fromImportTask(it) })
+            converted.forEach { taskDao.updateStatus(it.id, it.status.name, it.statusText, it.errorMessage) }
 
             startProcessingLoop()
         }
@@ -258,7 +263,7 @@ class ImportRepository internal constructor(
                 status = TaskStatus.WAITING_AI,
                 statusText = "Waiting for AICore slot..."
             )
-            taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(promoted))
+            taskDao.updateStatus(promoted.id, promoted.status.name, promoted.statusText, promoted.errorMessage)
             startProcessingLoop()
         }
     }
@@ -284,12 +289,13 @@ class ImportRepository internal constructor(
                         statusText = ""
                     )
                 }
-                taskDao.insertAll(restored.map { ImportTaskEntity.fromImportTask(it) })
+                restored.forEach { taskDao.updateStatus(it.id, it.status.name, it.statusText, it.errorMessage) }
                 restored.forEach {
                     retryNotBefore.remove(it.id)
                     foregroundRetryCounts.remove(it.id)
                 }
             }
+            reconcileRssPending()
             startProcessingLoop()
         }
     }
@@ -306,7 +312,7 @@ class ImportRepository internal constructor(
                 statusText = "Waiting for AICore slot...",
                 errorMessage = null
             )
-            taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(retried))
+            taskDao.updateStatus(retried.id, retried.status.name, retried.statusText, retried.errorMessage)
             startProcessingLoop()
         }
     }
@@ -330,7 +336,7 @@ class ImportRepository internal constructor(
      */
     fun restoreReadyTask(task: ImportTask, index: Int = 0) {
         repositoryScope.launch {
-            taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(task))
+            restoreTask(task)
         }
     }
 
@@ -353,8 +359,19 @@ class ImportRepository internal constructor(
      */
     fun restoreErrorTask(task: ImportTask, index: Int = 0) {
         repositoryScope.launch {
-            taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(task))
+            restoreTask(task)
         }
+    }
+
+    private suspend fun restoreTask(task: ImportTask) {
+        if (task.rssFeedId != null && appContext != null) {
+            me.bubblespark.tidilo.data.rss.RssIngestionStore(AppDatabase.getInstance(appContext))
+                .restoreTask(ImportTaskEntity.fromImportTask(task))
+        } else taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(task))
+    }
+
+    private suspend fun reconcileRssPending() {
+        appContext?.let { me.bubblespark.tidilo.data.rss.RssIngestionStore(AppDatabase.getInstance(it)).reconcilePending() }
     }
 
     private val foregroundRetryCounts = ConcurrentHashMap<String, Int>()
@@ -408,6 +425,8 @@ class ImportRepository internal constructor(
     }
 
     private suspend fun nextProcessingTask(): ImportTask? {
+        taskDao.rejectUnavailableRss()
+        reconcileRssPending()
         while (true) {
             val candidates = taskDao.getTasksByStatuses(
                 listOf(TaskStatus.WAITING_AI.name, TaskStatus.PROCESSING_AI.name)
@@ -437,9 +456,10 @@ class ImportRepository internal constructor(
             }
 
             val now = System.nanoTime()
-            val next = runnable.firstOrNull { (retryNotBefore[it.id] ?: now) <= now }
+            val prioritized = runnable.filter { it.rssFeedId == null }.ifEmpty { runnable }
+            val next = prioritized.firstOrNull { (retryNotBefore[it.id] ?: now) <= now }
             if (next != null) return next.toImportTask()
-            val waitNanos = runnable.minOf { retryNotBefore[it.id] ?: now } - now
+            val waitNanos = prioritized.minOf { retryNotBefore[it.id] ?: now } - now
             processingWorker.awaitWork((waitNanos / 1_000_000L).coerceAtLeast(1L))
         }
     }
@@ -463,11 +483,10 @@ class ImportRepository internal constructor(
         }
 
         // 1. Update status to PROCESSING_AI
-        updateProcessingTaskStatus(
-            taskId = taskId,
-            status = TaskStatus.PROCESSING_AI,
-            statusText = "Gemini Nano analyzing content..."
-        )
+        if (taskDao.claimForAi(taskId, "Gemini Nano analyzing content...") != 1) {
+            taskDao.rejectUnavailableRss()
+            return
+        }
 
         // 1.5 Cache og:image into cacheDir during Processing asynchronously (Issue #57, #71)
         val targetContext = appContext
@@ -512,6 +531,10 @@ class ImportRepository internal constructor(
      *     - Move current task and all other pending Processing tasks to Error group.
      */
     private suspend fun handleExecutionFailure(target: ImportTask, throwable: Throwable) {
+        if (throwable is me.bubblespark.tidilo.data.rss.RssImportSkipped) {
+            taskDao.deleteById(target.id)
+            return
+        }
         val errorMessage = throwable.message.orEmpty()
         val isForeground = isAppInForeground()
         val errorCode = extractAiCoreErrorCode(throwable)
@@ -603,11 +626,17 @@ class ImportRepository internal constructor(
             tag = Tag.createEmpty(),
             isNsfw = target.isNsfw,
             isAiSkipped = true,
-            ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
+            ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() },
+            createdAt = if (target.rssFeedId != null) target.createdAt else System.currentTimeMillis(),
+            rssFeedId = target.rssFeedId, rssPublishedAt = target.rssPublishedAt
         )
         try {
             persistFallback(fallbackBookmark)
         } catch (e: Exception) {
+            if (e is me.bubblespark.tidilo.data.rss.RssImportSkipped) {
+                taskDao.deleteById(target.id)
+                return
+            }
             currentCoroutineContext().ensureActive()
             taskDao.updateStatus(
                 target.id, TaskStatus.ERROR.name, "Save failed",
@@ -644,7 +673,8 @@ class ImportRepository internal constructor(
                 statusText = "Ready • Quota exceeded"
             )
         }
-        taskDao.insertAll(converted.map { ImportTaskEntity.fromImportTask(it) })
+        converted.forEach { taskDao.updateStatus(it.id, it.status.name, it.statusText, it.errorMessage) }
+        reconcileRssPending()
     }
 
     /**
@@ -668,7 +698,7 @@ class ImportRepository internal constructor(
                 }
             )
         }
-        taskDao.insertAll(errorItemsToAdd.map { ImportTaskEntity.fromImportTask(it) })
+        errorItemsToAdd.forEach { taskDao.updateStatus(it.id, it.status.name, it.statusText, it.errorMessage) }
     }
 
     private suspend fun updateProcessingTaskStatus(taskId: String, status: TaskStatus, statusText: String) {
@@ -678,6 +708,8 @@ class ImportRepository internal constructor(
     private fun fetchAndPreparseTaskAsync(taskId: String, url: String) {
         repositoryScope.launch {
             try {
+                val task = taskDao.getTaskById(taskId) ?: return@launch
+                if (task.rssFeedId != null) return@launch
                 val parsed = WebPageParser.parseUrl(url).getOrNull() ?: return@launch
                 val realTitle = parsed.ogpTags["og:title"]?.trim()?.takeIf { it.isNotBlank() }
                     ?: parsed.title?.trim()?.takeIf { it.isNotBlank() }
@@ -725,9 +757,7 @@ class ImportRepository internal constructor(
 
     private fun fetchTitlesForReadyTasks() {
         repositoryScope.launch {
-            val toFetch = _readyTasks.value.filter {
-                isRawUrlOrHost(it.title, it.url) || it.bodySnippet.isBlank()
-            }
+            val toFetch = _readyTasks.value.filter(::needsArticlePreparse)
             toFetch.forEach { item ->
                 fetchAndPreparseTaskAsync(item.id, item.url)
             }
@@ -816,6 +846,8 @@ class ImportRepository internal constructor(
     )
 
     companion object {
+        internal fun needsArticlePreparse(task: ImportTask): Boolean =
+            task.rssFeedId == null && (isRawUrlOrHost(task.title, task.url) || task.bodySnippet.isBlank())
         @Volatile
         private var INSTANCE: ImportRepository? = null
 
@@ -977,6 +1009,9 @@ private suspend fun analyzeImportTask(model: GenerativeModel, target: ImportTask
         description = target.description.takeIf { it.isNotBlank() },
         siteName = target.siteName.takeIf { it.isNotBlank() },
         isNsfw = target.isNsfw,
-        ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() }
+        ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() },
+        rssFeedId = target.rssFeedId,
+        rssPublishedAt = target.rssPublishedAt,
+        rssFirstSeenAt = if (target.rssFeedId != null) target.createdAt else null
     ).getOrThrow()
 }

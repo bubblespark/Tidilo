@@ -46,52 +46,52 @@
 
 ### 1. Persist subscriptions and source metadata
 
-- [ ] Add RssFeedEntity/Dao, durable RssSeenItemEntity/Dao, and necessary source/publication fields in BookmarkItem, BookmarkEntity, ImportTask/Entity, and TrashedBookmarkEntity mappings.
-- [ ] Store schedule preferences separately from feed/item receipts; retain source metadata for deleted subscriptions without cascading saved content.
-- [ ] Add migration7To8 and relevant indexes; register the migration and verify existing upgrade paths preserve user records.
-- [ ] Tests first: legacy migration fingerprints, source round trips, source-preserving edits/trash/restore, receipt uniqueness and transaction rollback.
+- [x] Add RssFeedEntity/Dao, durable RssSeenItemEntity/Dao, and necessary source/publication fields in BookmarkItem, BookmarkEntity, ImportTask/Entity, and TrashedBookmarkEntity mappings.
+- [x] Store schedule preferences separately from feed/item receipts; retain source metadata for deleted subscriptions without cascading saved content.
+- [x] Add migration7To8 and relevant indexes; register the migration and verify existing upgrade paths preserve user records.
+- [x] Tests first: legacy migration fingerprints, source round trips, source-preserving edits/trash/restore, receipt uniqueness and transaction rollback.
 
 ### 2. Parse and fetch feed metadata
 
-- [ ] Add parser/RssFeedParser.kt with normalized feed/entry models. Parse RSS2, Atom alternate links, RDF items, namespaced media, CDATA/escaped HTML, and publication dates.
-- [ ] Add data/rss/RssFeedFetcher.kt for bounded IO, HTTP validators, registration validation, and isolated feed errors.
-- [ ] Reuse/extract a metadata-only OGP reader; never invoke Readability for RSS. Inline XML image wins over article OGP; resolve relative and xml:base URLs against the final response URL.
-- [ ] Fixture tests first: each format, namespaces, invalid/absent dates, reordered/backdated entries, no text, invalid URLs/XML, duplicate IDs/URLs, HTML text/images, 304 and transient failures.
+- [x] Add parser/RssFeedParser.kt with normalized feed/entry models. Parse RSS2, Atom alternate links, RDF items, namespaced media, CDATA/escaped HTML, and publication dates.
+- [x] Add data/rss/RssFeedFetcher.kt for bounded IO, HTTP validators, registration validation, and isolated feed errors.
+- [x] Reuse/extract a metadata-only OGP reader; never invoke Readability for RSS. Inline XML image wins over article OGP; resolve relative and xml:base URLs against the final response URL.
+- [x] Fixture tests first: each format, namespaces, invalid/absent dates, reordered/backdated entries, no text, invalid URLs/XML, duplicate IDs/URLs, HTML text/images, 304 and transient failures.
 
 ### 3. Ingest and retain transactionally
 
-- [ ] Add data/rss/RssIngestionRepository.kt to coordinate receipts, source-aware duplicate checks, Direct writes, newest-five queue replacement, and retention.
-- [ ] Add targeted SQL queries for existing URLs/IDs, unstarted tasks, and oldest feed-owned bookmarks. Avoid full-library collections.
-- [ ] Add reference-aware, in-flight-safe per-image cleanup through OgImageManager rather than clear-all helpers.
-- [ ] Tests first: concurrent fetches, commit failure/retry, stable top-five selection, late articles, purged-item replay, shared URLs/images, RSS duplicate skipping without manual-flow changes, limit changes, deletion during fetch/save, trash restoration.
+- [x] Add data/rss/RssRepository.kt and RssIngestionStore.kt to coordinate receipts, source-aware duplicate checks, Direct writes, newest-five queue replacement, and retention.
+- [x] Add targeted SQL queries for existing URLs/IDs, unstarted tasks, and oldest feed-owned bookmarks. Avoid full-library collections.
+- [x] Add reference-aware, in-flight-safe per-image cleanup through OgImageManager rather than clear-all helpers.
+- [x] Tests first: concurrent fetches, commit failure/retry, stable top-five selection, late articles, purged-item replay, shared URLs/images, RSS duplicate skipping without manual-flow changes, limit changes, deletion during fetch/save, trash restoration.
 
 ### 4. Integrate foreground AI processing
 
-- [ ] Add an explicit RSS preparsed import path and propagate source metadata through success, Direct fallback, retry, cancellation, undo, and AI-review updates.
-- [ ] Select manual work before RSS at every worker iteration; do not preempt an active inference. Reuse existing session ownership, foreground gating, quota handling, and usage recording.
-- [ ] Split Ready and Ready - RSS in ImportViewModel/ImportScreen with independent expansion and More Items state; reuse swipe/undo actions. Show feed provenance on RSS errors.
-- [ ] Tests first: manual precedence, foreground gating, no RSS Readability fallback for empty snippets, cancellation/undo cap reconciliation, quota return, retry outcomes and metadata retention.
+- [x] Add an explicit RSS preparsed import path and propagate source metadata through success, Direct fallback, retry, cancellation, undo, and AI-review updates.
+- [x] Select manual work before RSS at every worker iteration; do not preempt an active inference. Reuse existing session ownership, foreground gating, quota handling, and usage recording.
+- [x] Split Ready and Ready - RSS in ImportViewModel/ImportScreen with independent expansion and More Items state; reuse swipe/undo actions. Show feed provenance on RSS errors.
+- [x] Tests first: manual precedence, foreground gating, no RSS Readability fallback for empty snippets, cancellation/undo cap reconciliation, quota return, retry outcomes and metadata retention.
 
 ### 5. Schedule background fetching
 
-- [ ] Add WorkManager dependency, data/rss/RssFetchWorker.kt, and RssScheduler.kt. Use unique scheduled/manual work and prevent overlapping ingestion of the same feed.
-- [ ] Reschedule when local clock/timezone/preferences change; cancel scheduled work when no active subscriptions remain. Persist success/error state and expose observed scheduling status.
-- [ ] Tests first: next-run boundaries and DST, changed schedule, duplicate wakeups, network constraints, partial feed failures, process restart, removed subscriptions, and no background AICore calls.
+- [x] Add WorkManager dependency, data/rss/RssFetchWorker.kt, and RssScheduler.kt. Use unique scheduled/manual work and prevent overlapping ingestion of the same feed.
+- [x] Reschedule when local clock/timezone/preferences change; cancel scheduled work when no active subscriptions remain. Persist success/error state and expose observed scheduling status.
+- [x] Tests first: next-run boundaries and DST, changed schedule, duplicate wakeups, network constraints, partial feed failures, process restart, removed subscriptions, and no background AICore calls.
 
 ### 6. Settings and source-scoped browsing
 
-- [ ] Add RssSettingsScreen/ViewModel, feed add/edit/delete UI, Material3 TimePicker, import mode/retention controls, maximum queue indicator and heuristic warning, statuses/retry/Fetch now.
-- [ ] Add Screen.RssSettings and Settings entry using the existing circular icon style; English resources only.
-- [ ] Extend LibraryFilterMode persistence and controls with RSS; add explicit source scope to pages, counts and domain queries. Reset incompatible domain selection when changing scope.
-- [ ] Keep Search and Tag Selection scoped to ALL, respecting NSFW visibility. Keep Summary total counts inclusive of both sources.
-- [ ] SQL/UI tests first: manual/RSS lists and counts, domain drill-down, combined search/tags, filter persistence, empty/error/loading states, navigation, schedule picker, large font and accessibility.
+- [x] Add RssSettingsScreen/ViewModel, feed add/edit/delete UI, Material3 TimePicker, import mode/retention controls, maximum queue indicator and heuristic warning, statuses/retry/Fetch now.
+- [x] Add Screen.RssSettings and Settings entry using the existing circular icon style; English resources only.
+- [x] Extend LibraryFilterMode persistence and controls with RSS; add explicit source scope to pages, counts and domain queries. Reset incompatible domain selection when changing scope.
+- [x] Keep Search and Tag Selection scoped to ALL, respecting NSFW visibility. Keep Summary total counts inclusive of both sources.
+- [x] SQL/UI tests first: manual/RSS lists and counts, domain drill-down, combined search/tags, filter persistence, empty/error/loading states, navigation, schedule picker, large font and accessibility.
 
 ### 7. Final verification and documentation
 
-- [ ] Run all JVM tests before every commit. Build debug/test APKs; run migration/instrumented tests with controlled feed fixtures and fake AI results. Install debug on first connected device without clearing its data.
-- [ ] Review shared-file cleanup, concurrent state transitions, data preservation, background/foreground separation, and retention semantics independently.
-- [ ] Update docs/overview.md, data_models.md, ui_design.md, aicore.md, tech_stack.md, structure.md, application_summary.md as relevant, plus .agents task history.
-- [ ] Commit locally; push/PR only after user approval. Keep the one-version-increment-per-PR rule.
+- [x] Run all JVM tests before every commit. Build debug/test APKs; run migration/instrumented tests with controlled feed fixtures and fake AI results. Install debug on first connected device without clearing its data.
+- [x] Review shared-file cleanup, concurrent state transitions, data preservation, background/foreground separation, and retention semantics independently.
+- [x] Update docs/overview.md, data_models.md, ui_design.md, aicore.md, tech_stack.md, structure.md, application_summary.md as relevant, plus .agents task history.
+- [x] Commit locally; push/PR only after user approval. Keep the one-version-increment-per-PR rule.
 
 ## Review Focus
 
@@ -125,3 +125,12 @@
 - Ruling: add indexed canonical ogImageKey columns to bookmark/trash/import rows and backfill existing image references in migration7To8. Shared relative/absolute image aliases must be protected without loading full bookmark collections.
 - Ruling: use WorkManager2.12.0 stable (official release2026-09-23); Wi-Fi transport constraints use its required NetworkRequest API, plus connections bound to a validated Wi-Fi network.
 - Scheduler/repository orchestration scaffold compiles; foreground queue integration, UI/source scopes, extended race tests, and final review remain. Version allocated once:v0.5.9/code40.
+
+## Final Execution Notes
+
+- Completed persistence, parser, conditional acquisition, count retention, foreground queue integration, source-scoped Library, Settings, and Wi-Fi-aware scheduling. See docs/rss.md for the implemented behavior.
+- Refinement: a fetch mutex serializes acquisitions; edit/delete transactions increment revisions immediately instead of waiting for network IO. Each ingestion window and final write rejects a stale revision, so an in-flight request cannot overwrite a later edit/delete.
+- Independent review identified RSS startup preparse leakage, claim races, stale error inserts, unlabeled controls, and missing HTTP total deadlines. Corrected each; an additional invalid-subscription retry loop was caught and fixed with atomic rejection and a worker regression test.
+- Verification: 202 JVM tests pass with no failures/errors/skips. Debug and Android-test APK builds pass. Android validation covers legacy v1-v7 upgrades, transactional receipts/retention, source queries, task claim/rejection, Undo cap, Wi-Fi constraints, shared cache aliases, in-flight image deletion, controls, and real Settings navigation. Screenshots inspected; final debug app installed without clearing data.
+- Validation boundaries: automated network/AI scenarios use fixtures/fakes. Actual supported-device AICore inference, real Wi-Fi/cellular handover, and OS power-management delivery timing require physical-device validation. No new trash-restore interface was introduced; source mapping and the save path preserve/enforce ownership. These boundaries do not block the requested implementation.
+- Version increment allocated once for this PR: v0.5.9/code40. Commits remain local; push and PR creation require the user's later approval.

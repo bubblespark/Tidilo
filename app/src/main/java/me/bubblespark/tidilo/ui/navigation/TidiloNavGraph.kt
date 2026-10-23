@@ -213,11 +213,15 @@ fun TidiloNavGraph(
                 onNavigateToNsfwContents = {
                     navController.navigate(Screen.NsfwContents.route)
                 },
+                onNavigateToRss = { navController.navigate(Screen.RssSettings.route) },
                 onNavigateToSummary = { navController.navigate(Screen.Summary.route) },
                 onNavigateToDebug = {
                     navController.navigate(Screen.SettingsDebug.route)
                 }
             )
+        }
+        composable(Screen.RssSettings.route) {
+            me.bubblespark.tidilo.ui.screens.settings.RssSettingsScreen(onNavigateBack = { navController.popBackStack() })
         }
         composable(Screen.Summary.route) {
             me.bubblespark.tidilo.ui.screens.settings.SummaryScreen(

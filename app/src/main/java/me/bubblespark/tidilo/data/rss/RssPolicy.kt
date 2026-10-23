@@ -8,7 +8,7 @@ import me.bubblespark.tidilo.data.db.ImportTaskEntity
 internal fun selectRssPending(existing: List<ImportTaskEntity>, fresh: List<ImportTaskEntity>): List<ImportTaskEntity> =
     (existing + fresh).distinctBy { it.url }.sortedWith(
         compareByDescending<ImportTaskEntity> { it.rssPublishedAt ?: it.createdAt }
-            .thenByDescending { it.createdAt }.thenBy { it.id }
+            .thenByDescending { it.createdAt }.thenBy { it.url }.thenBy { it.id }
     ).take(5)
 
 internal fun nextRssFetchAt(now: Instant, time: LocalTime, zone: ZoneId): Instant {

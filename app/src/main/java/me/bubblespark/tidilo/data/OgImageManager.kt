@@ -87,8 +87,8 @@ object OgImageManager {
             val exact = getOgImageFile(context, imageKey)
             val latest = getDomainLatestImageFile(context, domain)
             val matchesLatest = removeLatest && exact.isFile && latest.isFile && exact.readBytes().contentEquals(latest.readBytes())
-            if (exact.exists() && !exact.delete()) throw IOException("Could not remove RSS image")
             if (matchesLatest && !latest.delete()) throw IOException("Could not remove RSS image copy")
+            if (exact.exists() && !exact.delete()) throw IOException("Could not remove RSS image")
             memoryCache.snapshot().keys.filter { it.endsWith("/$imageKey") }.forEach { memoryCache.remove(it) }
             if (matchesLatest) memoryCache.remove(fallbackCacheKey(domain))
             notifyExactImageUpdated(domain, imageKey)
@@ -253,6 +253,9 @@ object OgImageManager {
         isSpecific: Boolean,
         startGen: Long
     ): ImageBitmap? {
+        val epoch = imageKey?.let { imageEpochs.computeIfAbsent(it) { AtomicLong(0) } }
+        val startEpoch = epoch?.get()
+        val domainRevision = getDomainRevision(domain)
         val file = if (isSpecific) {
             getOgImageFile(context, requireNotNull(imageKey))
         } else {
@@ -267,7 +270,8 @@ object OgImageManager {
             val isTargetExact = isSpecific && file.name == imageKey
             cacheMutex.withLock {
                 currentCoroutineContext().ensureActive()
-                if (cacheGeneration.get() != startGen) return@withLock null
+                if (cacheGeneration.get() != startGen || epoch?.get() != startEpoch ||
+                    (!isSpecific && getDomainRevision(domain) != domainRevision)) return@withLock null
                 if (isTargetExact) {
                     memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
                 }

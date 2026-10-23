@@ -89,6 +89,27 @@ class OgImageCardTest {
             withTimeout(5000) {
                 while (OgImageManager.getCachedOgImageBitmap(domain, b.ogImageFilename) == null) delay(10)
             }
+            // A notification for the same image on another domain must not erase A's displayed bitmap.
+            repeat(3) { nextFrame() }
+            val before = instrumentation.uiAutomation.takeScreenshot()
+            val displayedColor = before.getPixel(before.width / 2, before.width / 4)
+            before.recycle()
+            assertTrue("The image must be visible before the notification",
+                android.graphics.Color.blue(displayedColor) > 240 &&
+                    android.graphics.Color.red(displayedColor) < 10 && android.graphics.Color.green(displayedColor) < 10)
+            OgImageManager.clearMemoryCache()
+            OgImageManager.getOgImageFile(context, a.ogImageFilename!!).delete()
+            assertNotNull(OgImageManager.loadOrFetchOgImage(
+                context, "https://other.example/a", "other.example", a.ogImageUrl
+            ))
+            repeat(3) { nextFrame() }
+            val retained = instrumentation.uiAutomation.takeScreenshot()
+            try {
+                assertEquals("A missing domain cache entry must not erase the rendered image",
+                    displayedColor, retained.getPixel(retained.width / 2, retained.width / 4))
+            } finally {
+                retained.recycle()
+            }
             assertEquals(generation, OgImageManager.getCurrentGeneration())
             instrumentation.runOnMainSync { fallback.value = true }
             repeat(3) { nextFrame() }
@@ -97,7 +118,7 @@ class OgImageCardTest {
                 screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
             }
             screenshot.recycle()
-            assertEquals(2, calls.values.sumOf { it.get() })
+            assertEquals(3, calls.values.sumOf { it.get() })
         } finally {
             OgImageManager.imageDownloader = null
             gates.values.forEach { it.complete(Unit) }
@@ -106,6 +127,7 @@ class OgImageCardTest {
                 OgImageManager.getOgImageFile(context, item.ogImageFilename!!).delete()
             }
             OgImageManager.getDomainLatestImageFile(context, domain).delete()
+            OgImageManager.getDomainLatestImageFile(context, "other.example").delete()
         }
     }
 }

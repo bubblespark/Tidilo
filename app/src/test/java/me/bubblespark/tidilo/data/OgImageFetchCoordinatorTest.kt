@@ -106,8 +106,27 @@ class OgImageFetchCoordinatorTest {
         } }
         entered.await()
         coordinator.clear()
-        old.join()
+        assertNull(withTimeout(5000) { old.await() })
         assertEquals(12, coordinator.fetch("same", 1) { 12 })
         assertNull(coordinator.fetch("different", 0) { error("Stale generation executed") })
+    }
+
+    @Test
+    fun callerCancellationStillPropagatesWhenCacheIsCleared() = runBlocking {
+        val coordinator = OgImageFetchCoordinator<Int>()
+        val entered = CompletableDeferred<Unit>()
+        val caller = async { coordinator.fetch("same", 0) {
+            entered.complete(Unit)
+            awaitCancellation()
+        } }
+        entered.await()
+        caller.cancel()
+        coordinator.clear()
+        try {
+            caller.await()
+            fail("Caller cancellation must propagate")
+        } catch (_: CancellationException) {
+            assertTrue(caller.isCancelled)
+        }
     }
 }

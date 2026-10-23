@@ -95,7 +95,7 @@ fun BookmarkGridCard(
                 coroutineScope {
                     launch {
                         OgImageManager.observeExactImageUpdates(ogFilename).collect {
-                            value = OgImageManager.getCachedOgImageBitmap(domain, ogFilename)
+                            OgImageManager.getCachedOgImageBitmap(domain, ogFilename)?.let { value = it }
                         }
                     }
                     value = OgImageManager.loadOrFetchOgImage(context, bookmark.url, domain, bookmark.ogImageUrl)

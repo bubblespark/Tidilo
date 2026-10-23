@@ -24,6 +24,7 @@ The transport accepts HTTP/HTTPS, follows at most ten redirects, limits the resp
 - Cancellation and obsolete generations do not create failure records.
 - Clearing image caches invalidates queued/active shared work and resets failure suppression. Old-generation disk writes, memory publications, and failure records are rejected.
 - Cache clearing provides temporary storage relief. Preview images are downloaded again when their bookmarks are displayed; bookmarks and notes remain unchanged.
+- Cache invalidation returns `null` to still-active callers; cancellation of the caller itself continues to propagate. Exact-image revision entries are released before publishing the new generation, which recreates card subscriptions. Completion observers retain the displayed bitmap when their domain's memory entry is absent.
 
 Cards recreate image state only when the page/image identity or cache generation changes. Exact-image completion notifications update the bitmap without restarting the active producer. Domain-wide completion notifications remain available for compatibility but do not drive grid image producers.
 

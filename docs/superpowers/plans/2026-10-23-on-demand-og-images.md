@@ -34,3 +34,10 @@
 - Review: An independent reviewer found a last-caller cancellation race in failure publication. The worker now checks cancellation inside the same lock used by last-caller removal, preventing post-cancellation negative-cache publication.
 - Final verification: 169 JVM tests passed with zero failures, errors, or skips. Both debug APK builds passed. Direct Android instrumentation passed all 16 tests on emulator-5554 (API 36), including the existing ten database tests, five image tests, and the Compose sibling/fallback test. The final debug APK was installed with existing data retained. No AICore inference or external-network image test was performed.
 - Visual verification: Inspected the screenshot captured by the Compose test and confirmed the rounded Link icon on the domain-accent gradient, without initials. Independent follow-up review confirmed the cancellation fix and sibling-completion coverage; no further blocker was found.
+
+## PR #86 review corrections
+
+- Addressed approved comments 2, 3, and 4 only; HTTP worker cancellation structure remains unchanged.
+- Retained rendered images on null exact-cache notifications, released exact-image revision entries before publishing a new generation, and returned null to active callers when clearing invalidates a shared fetch. Actual caller cancellation still propagates.
+- Reproduced the stale-result JVM failure and all three Android regressions before fixes. Verified 170 JVM tests, seven targeted Android image/card tests, both debug APK builds, and final debug installation on emulator-5554. Independent read-only review found no blocker.
+- Incremented the application patch version to v0.5.7 (code 38) per the repository change policy.

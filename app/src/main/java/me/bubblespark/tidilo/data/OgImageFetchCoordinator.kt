@@ -60,7 +60,14 @@ internal class OgImageFetchCoordinator<T : Any>(
             }.also { it.callers++ }
         }
         try {
-            val result = flight.result.await()
+            val result = try {
+                flight.result.await()
+            } catch (cancelled: CancellationException) {
+                // Caller cancellation propagates; cache invalidation is an ordinary cache miss.
+                currentCoroutineContext().ensureActive()
+                if (generation.get() != startGeneration) return null
+                throw cancelled
+            }
             return if (generation.get() == startGeneration) result else null
         } finally {
             synchronized(lock) {

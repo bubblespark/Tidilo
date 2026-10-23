@@ -8,6 +8,7 @@ import java.util.UUID
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
 import org.junit.After
 import org.junit.Before
@@ -111,11 +112,30 @@ class OgImageRecoveryTest {
         entered.await()
         OgImageManager.clearImageCache(context)
         release.complete(Unit)
-        old.join()
+        assertNull(withTimeout(5000) { old.await() })
         assertNull(OgImageManager.getCachedOgImageBitmap("example.com", OgImageManager.computeImageKey("https://example.com/cover")))
         assertFalse(OgImageManager.getOgImageFile(context, OgImageManager.computeImageKey("https://example.com/cover")).exists())
         OgImageManager.imageDownloader = { bytes }
         assertNotNull(OgImageManager.loadOrFetchOgImage(context, "https://example.com/a", "example.com", "/cover"))
+    }
+
+    @Test
+    fun clearReleasesExactImageRevisionsAndNewSubscriptionReceivesCompletion() = runBlocking {
+        val image = "https://example.com/revision.png"
+        val key = OgImageManager.computeImageKey(image)
+        val bytes = imageBytes()
+        OgImageManager.imageDownloader = { bytes }
+        val old = OgImageManager.observeExactImageUpdates(key)
+        assertNotNull(OgImageManager.loadOrFetchOgImage(context, "https://example.com/a", "example.com", image))
+        assertEquals(1L, old.value)
+        OgImageManager.clearImageCache(context)
+        val fresh = OgImageManager.observeExactImageUpdates(key)
+        assertEquals(0L, fresh.value)
+        val completed = async(start = CoroutineStart.UNDISPATCHED) {
+            fresh.first { it > 0L }
+        }
+        assertNotNull(OgImageManager.loadOrFetchOgImage(context, "https://example.com/a", "example.com", image))
+        assertEquals(1L, withTimeout(5000) { completed.await() })
     }
 
     @Test

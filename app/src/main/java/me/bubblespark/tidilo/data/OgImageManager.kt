@@ -285,6 +285,7 @@ object OgImageManager {
                 dir.deleteRecursively()
             }
             domainRevisions.clear()
+            imageRevisions.clear()
             _cacheGenerationState.value = cacheGeneration.get()
             _cacheClearedEvent.tryEmit(cacheGeneration.get())
         }

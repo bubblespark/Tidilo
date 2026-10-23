@@ -24,18 +24,36 @@ import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.jsoup.Jsoup
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URI
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+import java.net.HttpURLConnection
+import java.net.URL
+import java.io.IOException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Manager for downloading, downsampling, compressing, and caching og:image assets in cacheDir.
  *
- * - Downloads og:image during the Processing phase.
+ * - Downloads og:image during import and on-demand when a grid card needs it.
  * - Extracts a URL-distinct SHA-256 hash identity (preserving query parameters, removing fragments).
  * - Downsamples safely using BitmapFactory.Options.inSampleSize to avoid OOM errors.
  * - Constrains maximum dimension to 640px while preserving original aspect ratio.
@@ -51,7 +69,14 @@ object OgImageManager {
         override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
     }
 
-    private val cacheGeneration = AtomicLong(0L)
+    private val downloads = OgImageFetchCoordinator<ImageBitmap>()
+    private val cacheGeneration = downloads.generation
+    private val _cacheGenerationState = MutableStateFlow(0L)
+    val cacheGenerationState: StateFlow<Long> = _cacheGenerationState.asStateFlow()
+    private val imageRevisions = ConcurrentHashMap<String, MutableStateFlow<Long>>()
+
+    @VisibleForTesting
+    internal var imageDownloader: (suspend (String) -> ByteArray?)? = null
     private val cacheMutex = Mutex()
 
     private val domainRevisions = ConcurrentHashMap<String, AtomicLong>()
@@ -80,6 +105,16 @@ object OgImageManager {
         val rev = domainRevisions.computeIfAbsent(normalized) { AtomicLong(0L) }.incrementAndGet()
         val currentRev = rev + (cacheGeneration.get() * 1_000_000_000L)
         _ogImageUpdatedDomain.tryEmit(Pair(normalized, currentRev))
+    }
+
+    /** Exact-image notifications update observers without invalidating sibling card requests. */
+    fun observeExactImageUpdates(imageKey: String): StateFlow<Long> =
+        imageRevisions.computeIfAbsent(imageKey) { MutableStateFlow(0L) }.asStateFlow()
+
+    private fun notifyExactImageUpdated(domain: String, imageKey: String) {
+        val revision = imageRevisions.computeIfAbsent(imageKey) { MutableStateFlow(0L) }
+        revision.value += 1
+        notifyOgImageUpdated(domain)
     }
 
     /**
@@ -123,7 +158,7 @@ object OgImageManager {
      */
     fun getCachedOgImageBitmap(domain: String, imageKey: String? = null): ImageBitmap? {
         if (!imageKey.isNullOrBlank()) {
-            memoryCache.get(cacheKey(domain, imageKey))?.let { return it }
+            return memoryCache.get(cacheKey(domain, imageKey))
         }
         return memoryCache.get(fallbackCacheKey(domain))
     }
@@ -156,8 +191,7 @@ object OgImageManager {
      * Loads a cached OG image from cacheDir on Dispatchers.IO.
      *
      * 1. If imageKey is provided, looks up specific image (domain, imageKey).
-     * 2. If imageKey is not provided or specific image is not found, falls back to the latest
-     *    image for the domain.
+     * 2. Only when imageKey is not provided, looks up the latest image for the domain.
      * 3. Stores the decoded ImageBitmap into in-memory LruCache.
      */
     suspend fun loadOgImage(
@@ -179,14 +213,11 @@ object OgImageManager {
         val startGen = cacheGeneration.get()
         val flightKey = "$startGen|$key"
         val deferred = inFlightLoads.computeIfAbsent(flightKey) {
-            CoroutineScope(Dispatchers.IO).async {
-                try {
-                    loadOgImageInternal(context, domain, imageKey, isSpecific, startGen)
-                } finally {
-                    inFlightLoads.remove(flightKey)
-                }
+            CoroutineScope(Dispatchers.IO + SupervisorJob()).async(start = CoroutineStart.LAZY) {
+                loadOgImageInternal(context, domain, imageKey, isSpecific, startGen)
             }
         }
+        deferred.invokeOnCompletion { inFlightLoads.remove(flightKey, deferred) }
         deferred.await()
     }
 
@@ -207,12 +238,7 @@ object OgImageManager {
         startGen: Long
     ): ImageBitmap? {
         val file = if (isSpecific) {
-            val specificFile = if (imageKey != null) getOgImageFile(context, imageKey) else getDomainLatestImageFile(context, domain)
-            if (specificFile.exists() && specificFile.length() > 0) {
-                specificFile
-            } else {
-                getDomainLatestImageFile(context, domain)
-            }
+            getOgImageFile(context, requireNotNull(imageKey))
         } else {
             getDomainLatestImageFile(context, domain)
         }
@@ -224,16 +250,18 @@ object OgImageManager {
             val imageBitmap = bitmap.asImageBitmap()
             val isTargetExact = isSpecific && file.name == imageKey
             cacheMutex.withLock {
-                if (cacheGeneration.get() == startGen) {
-                    if (isTargetExact) {
-                        memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
-                    }
-                    if (!isSpecific || file.name == getDomainLatestImageFile(context, domain).name) {
-                        memoryCache.put(fallbackCacheKey(domain), imageBitmap)
-                    }
+                currentCoroutineContext().ensureActive()
+                if (cacheGeneration.get() != startGen) return@withLock null
+                if (isTargetExact) {
+                    memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
                 }
+                if (!isSpecific) {
+                    memoryCache.put(fallbackCacheKey(domain), imageBitmap)
+                }
+                imageBitmap
             }
-            imageBitmap
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             null
         }
@@ -250,13 +278,15 @@ object OgImageManager {
      */
     suspend fun clearImageCache(context: Context) = withContext(Dispatchers.IO) {
         cacheMutex.withLock {
-            cacheGeneration.incrementAndGet()
+            downloads.clear()
             memoryCache.evictAll()
             val dir = File(context.cacheDir, "og_images")
             if (dir.exists()) {
                 dir.deleteRecursively()
             }
             domainRevisions.clear()
+            imageRevisions.clear()
+            _cacheGenerationState.value = cacheGeneration.get()
             _cacheClearedEvent.tryEmit(cacheGeneration.get())
         }
     }
@@ -449,9 +479,139 @@ object OgImageManager {
         }
     }
 
+    /** Loads only this bookmark's image, sharing missing-image work with imports and other cards. */
+    suspend fun loadOrFetchOgImage(
+        context: Context,
+        pageUrl: String,
+        domain: String,
+        ogImageUrl: String?
+    ): ImageBitmap? = withContext(Dispatchers.IO) {
+        if (ogImageUrl.isNullOrBlank()) return@withContext null
+        val startGen = cacheGeneration.get()
+        val resolvedUrl = resolveImageUrl(pageUrl, ogImageUrl).substringBefore('#')
+        val imageKey = computeImageKey(resolvedUrl)
+        loadOgImage(context, domain, imageKey)?.let {
+            return@withContext if (cacheGeneration.get() == startGen) it else null
+        }
+        val result = downloads.fetch(imageKey, startGen) {
+            // Another request may have populated the cache while this one waited for a permit.
+            loadOgImage(context, domain, imageKey)?.let { return@fetch it }
+            currentCoroutineContext().ensureActive()
+            if (cacheGeneration.get() != startGen) return@fetch null
+            val downloader = imageDownloader
+            val raw = if (downloader != null) downloader(resolvedUrl) else downloadImage(resolvedUrl)
+            if (raw == null || raw.size > MAX_DOWNLOAD_BYTES) throw PermanentOgImageFailure()
+            currentCoroutineContext().ensureActive()
+            if (cacheGeneration.get() != startGen) return@fetch null
+            val compressed = compressToWebp(raw) ?: throw PermanentOgImageFailure()
+            currentCoroutineContext().ensureActive()
+            val bitmap = BitmapFactory.decodeByteArray(compressed.bytes, 0, compressed.bytes.size)
+                ?.asImageBitmap() ?: throw PermanentOgImageFailure()
+            cacheMutex.withLock {
+                currentCoroutineContext().ensureActive()
+                if (cacheGeneration.get() != startGen) return@withLock null
+                writeAtomically(getOgImageFile(context, imageKey), compressed.bytes)
+                // Legacy domain previews remain available only to callers explicitly requesting them.
+                runCatching { writeAtomically(getDomainLatestImageFile(context, domain), compressed.bytes) }
+                memoryCache.put(cacheKey(domain, imageKey), bitmap)
+                memoryCache.put(fallbackCacheKey(domain), bitmap)
+                notifyExactImageUpdated(domain, imageKey)
+                bitmap
+            }
+        }
+        cacheMutex.withLock {
+            currentCoroutineContext().ensureActive()
+            if (cacheGeneration.get() != startGen) return@withLock null
+            // The same image URL can be shared by pages on different domains.
+            if (result != null) memoryCache.put(cacheKey(domain, imageKey), result)
+            result
+        }
+    }
+
+    private fun writeAtomically(target: File, bytes: ByteArray) {
+        val temporary = File.createTempFile("og-", ".tmp", target.parentFile)
+        try {
+            temporary.writeBytes(bytes)
+            java.nio.file.Files.move(temporary.toPath(), target.toPath(),
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            temporary.delete()
+        }
+    }
+
+    /** Disconnect on cancellation and await the blocking worker before releasing its semaphore permit. */
+    private suspend fun downloadImage(resolvedUrl: String): ByteArray {
+        try {
+            return withTimeout(TIMEOUT_MS.toLong()) {
+                coroutineScope {
+                    suspendCancellableCoroutine { continuation ->
+                        val connection = AtomicReference<HttpURLConnection?>()
+                        val worker = launch(Dispatchers.IO) {
+                            try {
+                                var url = URL(resolvedUrl)
+                                var bytes: ByteArray? = null
+                                for (redirect in 0..10) {
+                                    if (url.protocol != "http" && url.protocol != "https") throw PermanentOgImageFailure()
+                                    currentCoroutineContext().ensureActive()
+                                    val http = url.openConnection() as HttpURLConnection
+                                    connection.set(http)
+                                    try {
+                                        currentCoroutineContext().ensureActive()
+                                        http.connectTimeout = TIMEOUT_MS
+                                        http.readTimeout = TIMEOUT_MS
+                                        http.instanceFollowRedirects = false
+                                        http.setRequestProperty("User-Agent", USER_AGENT)
+                                        val status = http.responseCode
+                                        if (status in listOf(301, 302, 303, 307, 308)) {
+                                            val location = http.getHeaderField("Location") ?: throw PermanentOgImageFailure()
+                                            url = URL(url, location)
+                                            continue
+                                        }
+                                        if (status !in 200..299) {
+                                            if (status in 400..499 && status != 408 && status != 429) throw PermanentOgImageFailure()
+                                            throw IOException("Image HTTP status $status")
+                                        }
+                                        if (http.contentLengthLong > MAX_DOWNLOAD_BYTES) throw PermanentOgImageFailure()
+                                        bytes = http.inputStream.use { input ->
+                                            val output = ByteArrayOutputStream()
+                                            val buffer = ByteArray(8192)
+                                            while (true) {
+                                                currentCoroutineContext().ensureActive()
+                                                val count = input.read(buffer)
+                                                if (count < 0) break
+                                                if (output.size() + count > MAX_DOWNLOAD_BYTES) throw PermanentOgImageFailure()
+                                                output.write(buffer, 0, count)
+                                            }
+                                            output.toByteArray()
+                                        }
+                                        break
+                                    } finally {
+                                        http.disconnect()
+                                        connection.compareAndSet(http, null)
+                                    }
+                                }
+                                continuation.resume(bytes ?: throw PermanentOgImageFailure())
+                            } catch (failure: Exception) {
+                                continuation.resumeWithException(failure)
+                            }
+                        }
+                        continuation.invokeOnCancellation {
+                            worker.cancel()
+                            connection.get()?.disconnect()
+                        }
+                    }
+                }
+            }
+        } catch (timeout: TimeoutCancellationException) {
+            currentCoroutineContext().ensureActive()
+            throw IOException("Image download timed out", timeout)
+        }
+    }
+
     /**
      * Downloads, compresses, and persists an og:image to cacheDir during Processing.
-     * Skips download if the imageKey file already exists on disk.
+     * Shares on-demand recovery and validates existing files before treating them as cached.
      *
      * @return true if successfully saved or already exists; false if failed.
      */
@@ -459,68 +619,8 @@ object OgImageManager {
         context: Context,
         pageUrl: String,
         ogImageUrl: String?
-    ): Boolean = withContext(Dispatchers.IO) {
-        if (ogImageUrl.isNullOrBlank()) return@withContext false
-
-        val domain = extractDomain(pageUrl) ?: return@withContext false
-        val resolvedUrl = resolveImageUrl(pageUrl, ogImageUrl)
-        val imageKey = computeImageKey(resolvedUrl)
-
-        val targetFile = getOgImageFile(context, imageKey)
-        val latestFile = getDomainLatestImageFile(context, domain)
-
-        // 1. Check if file already exists in cacheDir
-        if (targetFile.exists() && targetFile.length() > 0) {
-            runCatching {
-                if (!latestFile.exists() || latestFile.lastModified() < targetFile.lastModified()) {
-                    targetFile.copyTo(latestFile, overwrite = true)
-                }
-            }
-            return@withContext true
-        }
-
-        val startGen = cacheGeneration.get()
-
-        // 2. Fetch raw image bytes from network
-        val rawBytes = runCatching {
-            val response = Jsoup.connect(resolvedUrl)
-                .userAgent(USER_AGENT)
-                .timeout(TIMEOUT_MS)
-                .maxBodySize(MAX_DOWNLOAD_BYTES)
-                .ignoreContentType(true)
-                .followRedirects(true)
-                .execute()
-            response.bodyAsBytes()
-        }.getOrNull() ?: return@withContext false
-
-        // Check generation before CPU-intensive compression
-        if (cacheGeneration.get() != startGen) return@withContext false
-
-        // 3. Downsample and compress to WebP under 50KB
-        val compressed = compressToWebp(rawBytes) ?: return@withContext false
-
-        // Check generation before disk write
-        if (cacheGeneration.get() != startGen) return@withContext false
-
-        // 4. Persist to cacheDir
-        return@withContext cacheMutex.withLock {
-            if (cacheGeneration.get() != startGen) return@withLock false
-            try {
-                getOgImageDir(context)
-                targetFile.writeBytes(compressed.bytes)
-                runCatching { latestFile.writeBytes(compressed.bytes) }
-
-                val bitmap = BitmapFactory.decodeByteArray(compressed.bytes, 0, compressed.bytes.size)
-                val imageBitmap = bitmap?.asImageBitmap()
-                if (imageBitmap != null) {
-                    memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
-                    memoryCache.put(fallbackCacheKey(domain), imageBitmap)
-                }
-                notifyOgImageUpdated(domain)
-                true
-            } catch (_: Exception) {
-                false
-            }
-        }
+    ): Boolean {
+        val domain = extractDomain(pageUrl) ?: return false
+        return loadOrFetchOgImage(context, pageUrl, domain, ogImageUrl) != null
     }
 }

@@ -447,8 +447,9 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Fully uniform vertical height across all cards: fixed image aspect ratio `1.91f` combined with fixed-height information container (`116.dp`).
 - **Top Image Region (1.91:1 Aspect Ratio)**:
   - Fixed ratio `1.91f` matching standard Open Graph (OGP) dimensions (1200x630), clipped to card top corners (`topStart = 16.dp, topEnd = 16.dp`).
-  - When cached og:image exists: Decodes WebP from local database and displays using `ContentScale.Crop`.
-  - When og:image is absent: Displays domain accent gradient background with centered domain favicon (`36.dp`) or first-letter glyph placeholder, ensuring uniform card heights across the grid.
+  - When the bookmark's exact og:image is cached: Decodes WebP from local cache storage and displays using `ContentScale.Crop`.
+  - When og:image is absent or pending: Displays the domain accent gradient with a centered cached domain favicon (`36.dp`), then a bundled Material Rounded Link icon (`24.dp` inside a `36.dp` rounded container) if no icon exists. Uses the theme primary color when the domain is unavailable. Never uses initials or another bookmark's OG image.
+  - Missing/corrupt previews with a persisted OG URL recover on demand through shared, four-worker-limited background requests. Exact-image completion updates cards without restarting sibling downloads. See [Bookmark Preview Cache](og_image_cache.md) for cancellation, retry, and cache-clear semantics.
 - **Bottom Information Hierarchy (Fixed Height: 116dp)**:
   - ❶ **Domain Name**: Subtle caption (`labelSmall`, `11.sp`, `lineHeight = 15.sp`, `color = MaterialTheme.colorScheme.outline`, single-line ellipsis).
   - ❷ **Bookmark Title**: Positioned immediately below the domain name. High-readability 3-line reservation (`minLines = 3, maxLines = 3`, `style = MaterialTheme.typography.titleSmall`, `FontWeight.SemiBold`, `overflow = TextOverflow.Ellipsis`).

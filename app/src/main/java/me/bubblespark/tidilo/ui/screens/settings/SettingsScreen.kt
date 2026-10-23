@@ -61,7 +61,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
-import me.bubblespark.tidilo.ui.components.SummarizeIcon
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AppLanguage
@@ -464,7 +465,7 @@ fun SettingsScreen(
                     modifier = Modifier.size(40.dp)
                 ) {
                     BoxContent(
-                        icon = SummarizeIcon,
+                        icon = ImageVector.vectorResource(R.drawable.ic_summarize),
                         tint = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }

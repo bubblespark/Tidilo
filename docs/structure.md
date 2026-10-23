@@ -34,15 +34,10 @@ app/src/main/java/com/ykgudev/tidilo/
 │
 └── ui/                                  # Presentation layer (100% Jetpack Compose)
     ├── components/                      # Shared reusable UI elements
-    │   ├── ArrowDownwardIcon.kt         # Material Symbols Outlined arrow_downward vector icon definition
     │   ├── DomainWatermark.kt           # Shared 195dp, 50% saturation, 0.14 alpha domain icon watermark
-    │   ├── DomainIconState.kt           # Generation-scoped icon loading and completion observation
-    │   ├── SummarizeIcon.kt             # Material Symbols Outlined summarize vector for the Settings entry
-    │   ├── FilterListIcon.kt            # Material Symbols Outlined filter_list vector icon definition
-    │   └── MenuOpenIcon.kt              # Material Symbols Outlined menu_open vector icon definition
+    │   └── DomainIconState.kt           # Generation-scoped icon loading and completion observation
     │
-    ├── icons/                           # Custom SVG / Vector icons
-    │   └── ResetWrench.kt               # Custom wrench icon for resetting settings
+    ├── icons/                           # Custom SVG / Vector icon assets and definitions
     │
     ├── navigation/                      # Navigation and root shell components
     │   ├── BarsState.kt                 # CompositionLocal for scroll-based bar visibility (LocalBarsVisible)

@@ -26,7 +26,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import me.bubblespark.tidilo.ui.icons.ResetWrench
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -115,7 +116,7 @@ fun GenerateContentRequestScreen(
                 modifier = Modifier.size(44.dp)
             ) {
                 Icon(
-                    imageVector = ResetWrench,
+                    imageVector = ImageVector.vectorResource(R.drawable.ic_reset_wrench),
                     contentDescription = stringResource(R.string.gcr_reset_default_content_desc),
                     tint = MaterialTheme.colorScheme.onSurface
                 )

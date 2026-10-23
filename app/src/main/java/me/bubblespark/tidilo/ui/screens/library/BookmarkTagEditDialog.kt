@@ -62,7 +62,8 @@ import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.Subcategory
-import me.bubblespark.tidilo.ui.components.ListAltIcon
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -391,7 +392,7 @@ fun BookmarkTagEditDialog(
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
-                                    imageVector = ListAltIcon,
+                                    imageVector = ImageVector.vectorResource(R.drawable.ic_list_alt),
                                     contentDescription = stringResource(R.string.detail_tag_select_entities),
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(22.dp)

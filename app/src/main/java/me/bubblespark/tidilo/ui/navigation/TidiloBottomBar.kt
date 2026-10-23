@@ -59,6 +59,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -67,9 +69,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import me.bubblespark.tidilo.data.AiProcessingProgress
 import me.bubblespark.tidilo.ui.components.AiProcessingIndicatorButton
 import me.bubblespark.tidilo.ui.components.AiProcessingSpeechBubble
-import me.bubblespark.tidilo.ui.components.ArrowDownwardIcon
-import me.bubblespark.tidilo.ui.components.DomainIcon
-import me.bubblespark.tidilo.ui.components.FilterListIcon
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
 
 /**
@@ -445,7 +444,7 @@ fun TidiloBottomBar(
                                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
                             ) {
                                 Icon(
-                                    imageVector = DomainIcon,
+                                    imageVector = ImageVector.vectorResource(R.drawable.ic_domain),
                                     contentDescription = null,
                                     modifier = Modifier.size(28.dp),
                                     tint = if (isDomainActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
@@ -483,7 +482,7 @@ fun TidiloBottomBar(
                                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
                             ) {
                                 Icon(
-                                    imageVector = ArrowDownwardIcon,
+                                    imageVector = ImageVector.vectorResource(R.drawable.ic_arrow_downward),
                                     contentDescription = null,
                                     modifier = Modifier.size(28.dp),
                                     tint = if (isNewestActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
@@ -548,7 +547,7 @@ fun TidiloBottomBar(
                                 }
                                 Screen.Library.route -> {
                                     Icon(
-                                        imageVector = FilterListIcon,
+                                        imageVector = ImageVector.vectorResource(R.drawable.ic_filter_list),
                                         contentDescription = stringResource(R.string.bottom_bar_filter_menu),
                                         tint = iconColor,
                                         modifier = Modifier.size(iconSize)

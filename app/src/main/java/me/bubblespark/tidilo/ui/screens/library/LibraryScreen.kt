@@ -55,7 +55,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalConfiguration
-import me.bubblespark.tidilo.ui.components.Dashboard2GearIcon
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -587,7 +588,7 @@ fun LibraryScreen(
                                 modifier = Modifier.size(44.dp)
                             ) {
                                 Icon(
-                                    imageVector = Dashboard2GearIcon,
+                                    imageVector = ImageVector.vectorResource(R.drawable.ic_dashboard_2_gear),
                                     contentDescription = stringResource(R.string.library_view_mode_menu_desc),
                                     tint = MaterialTheme.colorScheme.onSurface
                                 )

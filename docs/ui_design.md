@@ -136,7 +136,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
     - **Perfect Circle Guarantee**: Outer `BoxWithConstraints` expands to `containerHeight = maxOf(barHeight, buttonSize)` with `requiredSize(buttonSize)`, preventing parent height constraints from clamping the vertical dimension to `barHeight` (68dp) and ensuring a pristine 1:1 circular aspect ratio (`86dp × 86dp`) in all states.
     - When navigation reappears (scroll up): Smoothly contracts back to 56dp container / 28dp icon with low bouncy spring animation.
   - **Contextual Behavior**:
-    - `LibraryScreen`: Filter FAB menu toggle button (`FilterListIcon` / `Icons.Default.Close`). Expands a Material 3 Expressive pill menu with two persistent options: "Domain" on top (`DomainIcon`, 28dp) and "Newest first" below (`ArrowDownwardIcon`, 28dp). The active mode pill is highlighted using `primaryContainer` / `onPrimaryContainer`, and inactive using `secondaryContainer` / `onSecondaryContainer`. The pill size matches `BookmarkDetailScreen`'s FAB menu exactly (`horizontal = 24dp, vertical = 16dp`, typography `titleMedium`, SemiBold) and remains invariant regardless of the FAB container's 56dp/86dp scaling state, aligning flush to the right edge of the FAB. When expanded, the floating navigation bar hides downwards using official Edge-to-Edge slide-out animation, returning on dismissal.
+    - `LibraryScreen`: Filter FAB menu toggle button (`R.drawable.ic_filter_list` / `Icons.Default.Close`). Expands a Material 3 Expressive pill menu with two persistent options: "Domain" on top (`R.drawable.ic_domain`, 28dp) and "Newest first" below (`R.drawable.ic_arrow_downward`, 28dp). The active mode pill is highlighted using `primaryContainer` / `onPrimaryContainer`, and inactive using `secondaryContainer` / `onSecondaryContainer`. The pill size matches `BookmarkDetailScreen`'s FAB menu exactly (`horizontal = 24dp, vertical = 16dp`, typography `titleMedium`, SemiBold) and remains invariant regardless of the FAB container's 56dp/86dp scaling state, aligning flush to the right edge of the FAB. When expanded, the floating navigation bar hides downwards using official Edge-to-Edge slide-out animation, returning on dismissal.
     - `SearchScreen`: Search action button (`Icons.Default.Search`). Tapping requests focus to top search input bar and guarantees keyboard expansion (`keyboardController?.show()`) even if the input was already focused while the keyboard was dismissed. (Settings button on Search header removed).
     - `ImportScreen`: Filled accent sparkle button (`Icons.Default.AutoAwesome`) triggering batch `aiAnalysisAll()` execution. (Consists of 2 sections: Ready, Error; tapping 'AI Analysis All' promotes items directly to processing without confirmation dialogs, while individual items are operated via swipe gestures).
 - **Left-Side AI Processing Status Indicator (`AiProcessingIndicatorButton` & `AiProcessingSpeechBubble`)**:
@@ -185,7 +185,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
   - Positioned **directly beneath the Top Header Row** inside a `Box(Modifier.fillMaxWidth())` at `Alignment.TopEnd` with `offset(x = 20.dp)` (offset precisely counterbalances parent `padding(horizontal = 20.dp)`).
   - **Zero Bleed-off**: Flushes completely against the physical right screen edge and top header bottom boundary without clipping outside the screen or encroaching into the header bar. Rendered using shared watermark parameters (`195dp`, 50% saturation, `0.14f` alpha, `RoundedCornerShape(20.dp)`).
 - **Material 3 Expressive FAB Menu (`FloatingActionButtonMenu`)**:
-  - **Parent Toggle FAB**: Conforms to the mandatory bottom-right action button standard (**86dp CircleShape container, 40dp icon, 10dp elevation, bottom = 16dp, end = 16dp margin**). Toggles between `MenuOpenIcon` and `Close`.
+  - **Parent Toggle FAB**: Conforms to the mandatory bottom-right action button standard (**86dp CircleShape container, 40dp icon, 10dp elevation, bottom = 16dp, end = 16dp margin**). Toggles between `R.drawable.ic_menu_open` and `Close`.
   - **Menu Items (`FabMenuItem`)**: Expanded dynamically to follow the enlarged 86dp FAB scale:
     - Shape: Single unified large pill button (`CircleShape`, `tonalElevation = 4.dp`, `shadowElevation = 6.dp`).
     - Internal Layout: `[28dp Icon] + [14dp Spacer] + [Label (titleMedium, SemiBold)]` with `horizontal = 24.dp, vertical = 16.dp` padding.
@@ -201,7 +201,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
     - Centralized `AlertDialog` managing Category (7 options), Subcategory (11 options), NSFW status toggle, and assigned Entities in one place.
     - **Category & Subcategory Dropdowns**: Single-select dropdown menus displaying localized strings.
     - **NSFW Content Toggle Section**: Positioned between Subcategory and Entity sections. Contains a Material 3 `Switch` allowing users to mark bookmarks as NSFW. When `AppConfig.isNsfwContentVisible` is OFF (NSFW hidden in Settings) and the toggle is ON, displays a contextual warning banner beneath the switch: `If you save while “ON” is selected, that bookmark will be hidden. (See “NSFW Contents” in Settings.)`.
-    - **Entity Section Header**: Features borderless action icon buttons: `+` (Add new entity via `AddEntityDialog`) and `List Alt` (`ListAltIcon`, opens existing entity picker bottom sheet).
+    - **Entity Section Header**: Features borderless action icon buttons: `+` (Add new entity via `AddEntityDialog`) and `List Alt` (`R.drawable.ic_list_alt`, opens existing entity picker bottom sheet).
     - **Entity Preview Chips**: Rendered identically to Detail screen's chip style (`AssistChip`, 10dp rounded corners, tag icon) **without delete buttons** to maintain a clean layout.
   - **Screen-Level Bottom Sheet Anchor (`EntityTagPickerBottomSheet`)**:
     - Positioned at the root screen level (`BookmarkDetailScreen`) rather than inside the dialog's window tree.
@@ -414,7 +414,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Header Action Button & Material Symbols Icon**:
   - Placed immediately to the left of the Settings button in `LibraryScreen.kt`'s frosted header row.
   - Sized at `44.dp` matching the Settings `IconButton`.
-  - Displays `Dashboard2GearIcon` (Material Symbols Outlined `dashboard_2_gear`, 24dp), providing visual affordance for layout/dashboard customization.
+  - Displays `R.drawable.ic_dashboard_2_gear` (Material Symbols Outlined `dashboard_2_gear`, 24dp), providing visual affordance for layout/dashboard customization.
 - **Dropdown Menu Positioning & Container Geometry**:
   - Anchored directly to the button container using Material 3 `DropdownMenu`.
   - Width is fixed to `200.dp`, providing a generous and polished layout that avoids feeling narrow or cramped.
@@ -429,8 +429,8 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Accessibility (A11y)**:
   - Each `DropdownMenuItem` declares `Modifier.semantics { selected = isSelected }`, ensuring screen readers and accessibility services (TalkBack) accurately announce the active mode.
 - **Menu Items (`LibraryViewMode`)**:
-  - `LIST`: "List" (`R.string.library_view_mode_list`), icon `ListSymbolIcon` (Material Symbols Outlined `list`).
-  - `GRID`: "Grid" (`R.string.library_view_mode_grid`), icon `GridViewSymbolIcon` (Material Symbols Outlined `grid_view`).
+  - `LIST`: "List" (`R.string.library_view_mode_list`), icon `R.drawable.ic_list` (Material Symbols Outlined `list`).
+  - `GRID`: "Grid" (`R.string.library_view_mode_grid`), icon `R.drawable.ic_grid_view` (Material Symbols Outlined `grid_view`).
 - **State & Scope Boundary**:
   - Selected view mode is tracked and persisted via `LibraryViewModel.viewMode` (saved in `tidilo_library_prefs`).
   - Tapping an item updates selection state and dismisses the menu, smoothly transitioning the bookmark list layout via AnimatedContent crossfade.

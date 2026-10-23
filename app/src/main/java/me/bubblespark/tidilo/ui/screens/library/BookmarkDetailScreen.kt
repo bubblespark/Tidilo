@@ -65,7 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.ui.components.DomainWatermark
-import me.bubblespark.tidilo.ui.components.MenuOpenIcon
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -871,7 +871,7 @@ fun BookmarkDetailScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (isFabMenuExpanded) Icons.Default.Close else MenuOpenIcon,
+                        imageVector = if (isFabMenuExpanded) Icons.Default.Close else ImageVector.vectorResource(R.drawable.ic_menu_open),
                         contentDescription = stringResource(if (isFabMenuExpanded) R.string.detail_fab_close else R.string.detail_fab_open),
                         modifier = Modifier.size(40.dp)
                     )

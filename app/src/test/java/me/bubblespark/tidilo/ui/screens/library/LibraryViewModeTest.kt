@@ -1,10 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.R
-import me.bubblespark.tidilo.ui.components.GridViewSymbolIcon
-import me.bubblespark.tidilo.ui.components.ListSymbolIcon
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -22,13 +19,7 @@ class LibraryViewModeTest {
     fun testLibraryViewModeResourceIds() {
         assertEquals(R.string.library_view_mode_list, LibraryViewMode.LIST.labelRes)
         assertEquals(R.string.library_view_mode_grid, LibraryViewMode.GRID.labelRes)
-    }
-
-    @Test
-    fun testLibraryViewModeIcons() {
-        assertNotNull(LibraryViewMode.LIST.icon)
-        assertEquals(ListSymbolIcon, LibraryViewMode.LIST.icon)
-        assertNotNull(LibraryViewMode.GRID.icon)
-        assertEquals(GridViewSymbolIcon, LibraryViewMode.GRID.icon)
+        assertEquals(R.drawable.ic_list, LibraryViewMode.LIST.iconRes)
+        assertEquals(R.drawable.ic_grid_view, LibraryViewMode.GRID.iconRes)
     }
 }

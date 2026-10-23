@@ -54,3 +54,11 @@ Library's Newest First and Domain modes show manual bookmarks only. RSS mode sho
 JVM fixtures cover formats, metadata, HTTP validators/failure handling, stable selection, scheduling/DST, source mapping, manual queue priority, empty RSS bodies, first-seen fallback, and subscription-removal races. Android tests exercise real Room upgrade paths, source queries, receipt rollback/replay, concurrent ingestion, retention, task claims, Undo, canonical image references, Wi-Fi constraints, in-flight image deletion, and labeled Settings controls. Network and AI work in automated tests use fixtures or fakes. Actual AICore inference and real mobile/Wi-Fi handover require a physical supported device; the emulator does not provide AICore.
 
 The feed editor groups Direct/AI Analyze under Import Mode and Unlimited/retained count under Max saved items. New feeds default to30; editing existing subscriptions preserves their settings. Fetch now uses a filled Material button.
+
+## Acquisition reliability and HTTP policy
+
+Requests prefer validated Wi-Fi even when Wi-Fi-only is OFF; another validated network is allowed only as fallback. Failed acquisition requests stop retrying at the fifth attempt (zero-based runAttemptCount4), retain the feed error, and realign the next daily schedule. Missing Wi-Fi remains a connectivity wait and does not itself terminate the request. Clock/timezone receiver failures are logged and always finish the asynchronous receiver.
+
+Arbitrary user-provided HTTP feeds remain supported intentionally. The manifest therefore permits cleartext HTTP throughout the app, including page and image connections. HTTP traffic has no transport encryption or integrity protection: a network observer can read it, and an on-path attacker can modify XML, metadata, article links, images, or content used in an on-device prompt. HTTPS should be preferred when the publisher supports it. A fixed-domain network-security allowlist cannot cover arbitrary hosts added at runtime. This policy does not add cloud AI or upload bookmark content.
+
+Atom body selection distinguishes the Atom namespace from Media RSS regardless of prefix spelling. Missing, blank, or malformed AI summaries retain a nonblank feed description before falling back to the title. Manual task priority and deterministic undated-entry URL/ID tie-breaking are unchanged.

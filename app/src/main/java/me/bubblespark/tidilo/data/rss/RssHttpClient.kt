@@ -23,13 +23,12 @@ internal class RssWifiUnavailable : IOException("Waiting for Wi-Fi")
 internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boolean) {
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
 
-    fun availableNetwork(): Network? = connectivity.allNetworks.firstOrNull { network ->
-        connectivity.getNetworkCapabilities(network)?.let { caps ->
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) &&
-                (!wifiOnly() || caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI))
-        } == true
-    }
+    fun availableNetwork(): Network? = selectRssNetwork(connectivity.allNetworks.mapNotNull { network ->
+        val caps = connectivity.getNetworkCapabilities(network) ?: return@mapNotNull null
+        if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
+            network to caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) else null
+    }, wifiOnly())
 
     suspend fun request(url: String, headers: Map<String, String>): RssHttpPage = withContext(Dispatchers.IO) {
         val network = availableNetwork() ?: throw RssWifiUnavailable()
@@ -89,3 +88,7 @@ internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boole
 
     companion object { private const val MAX_BYTES = 2 * 1024 * 1024 }
 }
+
+/** Candidates have already passed Internet validation; Wi-Fi wins regardless of enumeration order. */
+internal fun <T> selectRssNetwork(candidates: List<Pair<T, Boolean>>, wifiOnly: Boolean): T? =
+    candidates.firstOrNull { it.second }?.first ?: if (wifiOnly) null else candidates.firstOrNull()?.first

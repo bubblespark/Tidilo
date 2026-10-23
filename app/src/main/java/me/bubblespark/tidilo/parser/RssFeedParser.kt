@@ -44,7 +44,12 @@ internal object RssFeedParser {
         val key = item.child(if (atom) "id" else "guid")?.text()?.trim()?.takeIf { it.isNotEmpty() }
             ?: item.attr("rdf:about").takeIf { it.isNotBlank() } ?: url
         val description = item.child(if (atom) "summary" else "description")
-        val content = item.children().firstOrNull { it.localName() == if (atom) "content" else "encoded" }
+        val content = item.children().firstOrNull {
+            if (atom) it.localName() == "content" &&
+                (it.namespaceUri() == "http://www.w3.org/2005/Atom" ||
+                    (it.tagName() == "content" && it.namespaceUri().isNullOrEmpty()))
+            else it.localName() == "encoded"
+        }
         val html = (content ?: description)?.let(::html).orEmpty()
         val snippet = Jsoup.parse(html).text().replace(Regex("\\s+"), " ").trim().take(800)
         val image = item.children().firstNotNullOfOrNull { element ->
@@ -67,6 +72,11 @@ internal object RssFeedParser {
     }
 
     private fun Element.localName() = tagName().substringAfterLast(':').lowercase()
+    private fun Element.namespaceUri(): String? {
+        val prefix = tagName().substringBefore(':', "")
+        val attribute = if (prefix.isEmpty()) "xmlns" else "xmlns:$prefix"
+        return generateSequence(this) { it.parent() }.firstOrNull { it.hasAttr(attribute) }?.attr(attribute)
+    }
     private fun Element.child(name: String) = children().firstOrNull { it.localName() == name.lowercase() }
     private fun html(element: Element): String = if (element.children().isEmpty()) element.wholeText() else element.html()
     private fun plain(element: Element) = Jsoup.parse(html(element)).text().trim()

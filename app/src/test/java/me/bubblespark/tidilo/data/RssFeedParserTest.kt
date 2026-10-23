@@ -5,6 +5,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssFeedParserTest {
+    @Test fun atomBodyDoesNotSelectMediaContentEvenWithAnArbitraryPrefix() {
+        val xml = """<a:feed xmlns:a="http://www.w3.org/2005/Atom" xmlns:m="http://search.yahoo.com/mrss/"><a:entry><a:link href="https://example.com/post"/><m:content url="https://example.com/image.png"/><a:content type="html">&lt;p&gt;Actual body&lt;/p&gt;</a:content></a:entry></a:feed>"""
+        val entry = RssFeedParser.parse(xml, "https://example.com/feed").entries.single()
+        assertEquals("Actual body", entry.bodySnippet)
+        val summaryOnly = xml.replace("<a:content type=\"html\">&lt;p&gt;Actual body&lt;/p&gt;</a:content>", "<a:summary>Summary body</a:summary>")
+        assertEquals("Summary body", RssFeedParser.parse(summaryOnly, "https://example.com/feed").entries.single().bodySnippet)
+    }
     @Test fun rssUsesEncodedContentMediaAndPublicationWithoutHtml() {
         val xml = """<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>Feed &amp; News</title><item><guid>urn:one</guid><link>/post?a=1&amp;b=2#anchor</link><title><![CDATA[<b>Hello</b>]]></title><description><![CDATA[<p>Short &amp; sweet</p>]]></description><content:encoded><![CDATA[<p>Long content</p><img src="/inline.png">]]></content:encoded><media:thumbnail url="/media.png"/><pubDate>Fri, 23 Oct 2026 12:00:00 GMT</pubDate></item></channel></rss>"""
         val parsed = RssFeedParser.parse(xml, "https://example.com/feed.xml")

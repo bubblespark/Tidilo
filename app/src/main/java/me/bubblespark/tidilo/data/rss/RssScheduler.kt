@@ -3,6 +3,8 @@ package me.bubblespark.tidilo.data.rss
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import androidx.work.Constraints
@@ -90,7 +92,10 @@ class RssScheduleReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            try { RssScheduler.reschedule(context, force = true) } finally { pending.finish() }
+            try { RssScheduler.reschedule(context, force = true) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { Log.w("RssScheduleReceiver", "RSS reschedule failed", error) }
+            finally { pending.finish() }
         }
     }
 }

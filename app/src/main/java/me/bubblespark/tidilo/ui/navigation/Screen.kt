@@ -45,6 +45,11 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.Search
     )
 
+    data object RssSettings : Screen(
+        route = "settings_rss", title = "RSS", titleRes = R.string.rss_title,
+        selectedIcon = Icons.Filled.CollectionsBookmark, unselectedIcon = Icons.Outlined.CollectionsBookmark
+    )
+
     data object Summary : Screen(
         route = "settings_summary",
         title = "Summary",

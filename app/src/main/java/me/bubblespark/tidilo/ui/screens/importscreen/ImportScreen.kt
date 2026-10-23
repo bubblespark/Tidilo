@@ -118,7 +118,11 @@ fun ImportScreen(
     initialSharedUrl: String? = null,
     modifier: Modifier = Modifier
 ) {
-    val readyTasks by viewModel.readyTasks.collectAsStateWithLifecycle()
+    val allReadyTasks by viewModel.readyTasks.collectAsStateWithLifecycle()
+    val readyTasks = allReadyTasks.filter { it.rssFeedId == null }
+    val rssReadyTasks = allReadyTasks.filter { it.rssFeedId != null }
+    var isRssReadyExpanded by remember { mutableStateOf(true) }
+    var showAllRssReady by remember { mutableStateOf(false) }
     val importingTasks by viewModel.importingTasks.collectAsStateWithLifecycle()
     val errorTasks by viewModel.errorTasks.collectAsStateWithLifecycle()
 
@@ -202,7 +206,7 @@ fun ImportScreen(
     val bounceOffset = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         delay(300)
-        if (readyTasks.isNotEmpty() || errorTasks.isNotEmpty()) {
+        if (allReadyTasks.isNotEmpty() || errorTasks.isNotEmpty()) {
             bounceOffset.animateTo(
                 targetValue = 24f,
                 animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
@@ -300,6 +304,33 @@ fun ImportScreen(
             }
 
             item { Spacer(modifier = Modifier.height(4.dp)) }
+
+            item(key = "rss_ready_header", contentType = "section_header") {
+                CollapsibleGroupHeader(
+                    title = stringResource(R.string.rss_ready), count = rssReadyTasks.size,
+                    color = MaterialTheme.colorScheme.secondary, isExpanded = isRssReadyExpanded,
+                    onToggle = { isRssReadyExpanded = !isRssReadyExpanded }
+                )
+            }
+            if (isRssReadyExpanded) {
+                if (rssReadyTasks.isEmpty()) {
+                    item(key = "rss_ready_empty", contentType = "empty_section") {
+                        EmptyGroupCard(stringResource(R.string.rss_ready_empty), stringResource(R.string.rss_ready_hint))
+                    }
+                } else {
+                    items(items = if (showAllRssReady) rssReadyTasks else rssReadyTasks.take(5),
+                        key = { it.id }, contentType = { "import_task" }) { item ->
+                        SwipeableTaskCard(item = item, bounceOffsetDp = bounceOffset.value,
+                            onSwipeRight = { viewModel.promoteToProcessing(item.id) },
+                            onSwipeLeft = { triggerDeleteReady(item) },
+                            modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null))
+                    }
+                    if (rssReadyTasks.size > 5) item(key = "rss_ready_more", contentType = "more_items") {
+                        MoreItemsButton(hiddenCount = rssReadyTasks.size - 5, isExpanded = showAllRssReady,
+                            onClick = { showAllRssReady = !showAllRssReady })
+                    }
+                }
+            }
 
             // ==================== 3. Error Group (defaults to open) ====================
             item {
@@ -796,6 +827,10 @@ private fun TaskCard(
                     }
                 }
 
+                if (item.rssFeedId != null) Text(
+                    stringResource(R.string.rss_source, item.siteName),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary
+                )
                 Text(
                     text = item.title.ifBlank { item.url },
                     style = MaterialTheme.typography.titleMedium,

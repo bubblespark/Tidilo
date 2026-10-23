@@ -54,10 +54,13 @@ object GeminiTaggingService {
         description: String? = null,
         siteName: String? = null,
         isNsfw: Boolean = false,
-        ogImageUrl: String? = null
+        ogImageUrl: String? = null,
+        rssFeedId: String? = null,
+        rssPublishedAt: Long? = null,
+        rssFirstSeenAt: Long? = null
     ): Result<BookmarkItem> = withContext(Dispatchers.IO) {
         runCatching {
-            val hasPreparsedData = !bodySnippet.isNullOrBlank()
+            val hasPreparsedData = rssFeedId != null || !bodySnippet.isNullOrBlank()
 
             val realUrl: String
             val finalTitle: String
@@ -137,7 +140,7 @@ object GeminiTaggingService {
             }
 
             // Parse JSON and normalize results
-            val result = parseAiResponse(aiOutput, finalTitle, parsedWebPage)
+            val result = parseAiResponse(aiOutput, finalTitle, parsedWebPage, description)
 
             // Construct BookmarkItem with resolved URL
             val bookmarkItem = BookmarkItem(
@@ -151,6 +154,8 @@ object GeminiTaggingService {
                     entities = result.entities
                 ),
                 isNsfw = resolvedIsNsfw,
+                createdAt = rssFirstSeenAt ?: System.currentTimeMillis(),
+                rssFeedId = rssFeedId, rssPublishedAt = rssPublishedAt,
                 ogImageUrl = effectiveOgImageUrl
             )
 
@@ -366,7 +371,8 @@ object GeminiTaggingService {
     fun parseAiResponse(
         rawOutput: String,
         fallbackTitle: String,
-        parsedWebPage: ParsedWebPage?
+        parsedWebPage: ParsedWebPage?,
+        fallbackDescription: String? = null
     ): TaggingResult {
         val cleanJson = extractJsonSubstring(rawOutput)
 
@@ -376,6 +382,7 @@ object GeminiTaggingService {
                 val summary = json.optString("summary").trim().ifBlank {
                     parsedWebPage?.ogpTags?.get("og:description")
                         ?: parsedWebPage?.standardMetaTags?.get("description")
+                        ?: fallbackDescription?.takeIf { it.isNotBlank() }
                         ?: fallbackTitle
                 }
 
@@ -414,6 +421,7 @@ object GeminiTaggingService {
         // Fallback
         val fallbackSummary = parsedWebPage?.ogpTags?.get("og:description")
             ?: parsedWebPage?.standardMetaTags?.get("description")
+            ?: fallbackDescription?.takeIf { it.isNotBlank() }
             ?: fallbackTitle
 
         return TaggingResult(

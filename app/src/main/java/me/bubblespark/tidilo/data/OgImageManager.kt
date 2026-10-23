@@ -78,6 +78,23 @@ object OgImageManager {
     @VisibleForTesting
     internal var imageDownloader: (suspend (String) -> ByteArray?)? = null
     private val cacheMutex = Mutex()
+    private val imageEpochs = ConcurrentHashMap<String, AtomicLong>()
+
+    /** Called after a transactional reference check; invalidate only this deleted image's work. */
+    internal suspend fun deleteUnreferencedImage(context: Context, domain: String, imageKey: String, removeLatest: Boolean) = withContext(Dispatchers.IO) {
+        cacheMutex.withLock {
+            imageEpochs.computeIfAbsent(imageKey) { AtomicLong(0) }.incrementAndGet()
+            val exact = getOgImageFile(context, imageKey)
+            val latest = getDomainLatestImageFile(context, domain)
+            val matchesLatest = removeLatest && exact.isFile && latest.isFile &&
+                exact.length() == latest.length() && exact.readBytes().contentEquals(latest.readBytes())
+            if (matchesLatest && !latest.delete()) throw IOException("Could not remove RSS image copy")
+            if (exact.exists() && !exact.delete()) throw IOException("Could not remove RSS image")
+            memoryCache.snapshot().keys.filter { it.endsWith("/$imageKey") }.forEach { memoryCache.remove(it) }
+            if (matchesLatest) memoryCache.remove(fallbackCacheKey(domain))
+            notifyExactImageUpdated(domain, imageKey)
+        }
+    }
 
     private val domainRevisions = ConcurrentHashMap<String, AtomicLong>()
 
@@ -237,6 +254,9 @@ object OgImageManager {
         isSpecific: Boolean,
         startGen: Long
     ): ImageBitmap? {
+        val epoch = imageKey?.let { imageEpochs.computeIfAbsent(it) { AtomicLong(0) } }
+        val startEpoch = epoch?.get()
+        val domainRevision = getDomainRevision(domain)
         val file = if (isSpecific) {
             getOgImageFile(context, requireNotNull(imageKey))
         } else {
@@ -251,7 +271,8 @@ object OgImageManager {
             val isTargetExact = isSpecific && file.name == imageKey
             cacheMutex.withLock {
                 currentCoroutineContext().ensureActive()
-                if (cacheGeneration.get() != startGen) return@withLock null
+                if (cacheGeneration.get() != startGen || epoch?.get() != startEpoch ||
+                    (!isSpecific && getDomainRevision(domain) != domainRevision)) return@withLock null
                 if (isTargetExact) {
                     memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
                 }
@@ -490,6 +511,8 @@ object OgImageManager {
         val startGen = cacheGeneration.get()
         val resolvedUrl = resolveImageUrl(pageUrl, ogImageUrl).substringBefore('#')
         val imageKey = computeImageKey(resolvedUrl)
+        val epoch = imageEpochs.computeIfAbsent(imageKey) { AtomicLong(0) }
+        val startEpoch = epoch.get()
         loadOgImage(context, domain, imageKey)?.let {
             return@withContext if (cacheGeneration.get() == startGen) it else null
         }
@@ -509,7 +532,7 @@ object OgImageManager {
                 ?.asImageBitmap() ?: throw PermanentOgImageFailure()
             cacheMutex.withLock {
                 currentCoroutineContext().ensureActive()
-                if (cacheGeneration.get() != startGen) return@withLock null
+                if (cacheGeneration.get() != startGen || epoch.get() != startEpoch) return@withLock null
                 writeAtomically(getOgImageFile(context, imageKey), compressed.bytes)
                 // Legacy domain previews remain available only to callers explicitly requesting them.
                 runCatching { writeAtomically(getDomainLatestImageFile(context, domain), compressed.bytes) }
@@ -521,7 +544,7 @@ object OgImageManager {
         }
         cacheMutex.withLock {
             currentCoroutineContext().ensureActive()
-            if (cacheGeneration.get() != startGen) return@withLock null
+            if (cacheGeneration.get() != startGen || epoch.get() != startEpoch) return@withLock null
             // The same image URL can be shared by pages on different domains.
             if (result != null) memoryCache.put(cacheKey(domain, imageKey), result)
             result

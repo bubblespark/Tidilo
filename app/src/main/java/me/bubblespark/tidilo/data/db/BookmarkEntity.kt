@@ -14,6 +14,8 @@ import me.bubblespark.tidilo.ui.screens.library.Tag
 @Entity(
     tableName = "bookmarks",
     indices = [
+        Index(value = ["ogImageKey"]),
+        Index(value = ["rssFeedId"]),
         Index(value = ["url"], unique = false),
         Index(value = ["createdAt"]),
         Index(value = ["category"]),
@@ -46,12 +48,16 @@ data class BookmarkEntity(
     @ColumnInfo(defaultValue = "''")
     val searchUrl: String = bookmarkSearchKey(url),
     val searchCategory: String? = category?.let(::bookmarkSearchKey),
-    val searchSubcategory: String? = subcategory?.let(::bookmarkSearchKey)
+    val searchSubcategory: String? = subcategory?.let(::bookmarkSearchKey),
+    val rssFeedId: String? = null,
+    val rssPublishedAt: Long? = null,
+    val ogImageKey: String? = bookmarkOgImageKey(url, ogImageUrl)
 ) {
     /** Recomputes derived fields after copies, ensuring every DAO write stays consistent. */
     internal fun logicalTag(): Tag = logicalBookmarkTag(category, subcategory, entities, isAiSkipped)
 
     fun withSearchFields(): BookmarkEntity = copy(
+        ogImageKey = bookmarkOgImageKey(url, ogImageUrl),
         domain = DomainIconManager.extractDomain(url),
         searchTitle = bookmarkSearchKey(title), searchDescription = bookmarkSearchKey(description),
         searchUrl = bookmarkSearchKey(url), searchCategory = logicalTag().category?.let(::bookmarkSearchKey),
@@ -70,6 +76,8 @@ data class BookmarkEntity(
             note = note,
             isNsfw = isNsfw,
             isAiSkipped = isAiSkipped,
+            rssFeedId = rssFeedId,
+            rssPublishedAt = rssPublishedAt,
             ogImageUrl = ogImageUrl
         )
     }
@@ -89,6 +97,8 @@ data class BookmarkEntity(
                 note = item.note,
                 isNsfw = item.isNsfw,
                 isAiSkipped = item.isAiSkipped,
+                rssFeedId = item.rssFeedId,
+                rssPublishedAt = item.rssPublishedAt,
                 ogImageUrl = item.ogImageUrl
             )
         }

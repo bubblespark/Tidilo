@@ -491,3 +491,7 @@ non-suspending request; returning from details with the same query preserves the
 ## Application Summary
 
 Settings > Data Management includes a Summary entry showing AICore usage, collection counts, and physical cache storage in rounded tonal cards. Daily bars have date/count accessibility descriptions and distinguish unrecorded dates from zero. Sections expose independent loading/retry states. Storage refresh runs on entry/resume/manual request and includes its measurement timestamp. Quota information is historical, never a remaining-capacity gauge. See [Application Summary](application_summary.md) for exact counting and formatting rules.
+
+## RSS Settings and Library Scope
+
+Settings > Data Management > RSS uses the shared circular icon treatment. The screen places a Material3 daily time picker above a labeled Wi-Fi-only switch, followed by queue guidance, feed management, and per-feed status. Selection rows combine labels and controls for accessibility. Import has independent Ready and Ready - RSS sections; Library adds an RSS source filter. See [RSS and Atom Subscriptions](rss.md) for defaults, limits, and user-visible lifecycle behavior.

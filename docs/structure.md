@@ -19,6 +19,8 @@ app/src/main/java/com/ykgudev/tidilo/
 │   ├── AiCoreUsageRepository.kt         # Durable local inference usage aggregates and SDK attempt tracking
 │   ├── CacheStorageRepository.kt        # Physical cache measurement and binary-unit formatting
 │   ├── CollectionCounts.kt              # Atomic active/trash count projection
+│   ├── BookmarkSource.kt                # Explicit ALL/MANUAL/RSS SQL query scope
+│   ├── rss/                             # Feed acquisition, transactional ingestion, retention, preferences, scheduling
 │   ├── BookmarkRepository.kt            # Bookmark CRUD, Trash lifecycle (30-day, 100-cap), JSON serialization
 │   ├── DomainIconManager.kt             # Shared on-demand domain icon recovery, caching, color, and transparency
 │   ├── DomainIconResolver.kt            # Prioritized HTML discovery and short-circuit icon selection
@@ -27,6 +29,7 @@ app/src/main/java/com/ykgudev/tidilo/
 │
 ├── parser/                              # Web extraction and DOM analysis engine
 │   ├── WebPageData.kt                   # Data models: ParsedWebPage, WebMetaTag, JsonLdItem, ExtractedArticle
+│   ├── RssFeedParser.kt                 # RSS2/Atom/RDF XML and normalized publisher metadata
 │   └── WebPageParser.kt                 # Jsoup scraper, Readability4J integration, URL normalization
 │
 ├── service/                             # Foundation model integration & AI pipelines
@@ -70,6 +73,8 @@ app/src/main/java/com/ykgudev/tidilo/
     │       ├── SummaryScreen.kt                   # Usage, collection, and cache statistics
     │       ├── SummaryViewModel.kt                # Independent section states and resumed lifecycle refresh
     │       ├── SummaryDate.kt                     # DST-aware local midnight scheduling
+    │       ├── RssSettingsScreen.kt               # Subscription editor, daily time and Wi-Fi-only controls
+    │       ├── RssSettingsViewModel.kt            # Feed/settings state and lifecycle network observation
     │       └── SettingsScreen.kt                  # App language selection, image cache clearing, Debug navigation
     │
     └── theme/                           # Design tokens & Material 3 theme styling

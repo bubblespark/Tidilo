@@ -28,6 +28,14 @@ import org.junit.Test
 class ImportRepositoryTest {
 
     @Test
+    fun emptyRssBodyDoesNotTriggerArticlePreparse() {
+        val rss = ImportTask(id = "rss", url = "https://example.com/rss", title = "Feed title",
+            status = TaskStatus.READY, statusText = "", rssFeedId = "feed")
+        assertFalse(ImportRepository.needsArticlePreparse(rss))
+        assertTrue(ImportRepository.needsArticlePreparse(rss.copy(rssFeedId = null)))
+    }
+
+    @Test
     fun testRemoveAndRestoreReadyTaskLogic() {
         val item1 = ImportTask(id = "1", url = "https://example.com/1", title = "Item 1", status = TaskStatus.READY, statusText = "Ready")
         val item2 = ImportTask(id = "2", url = "https://example.com/2", title = "Item 2", status = TaskStatus.READY, statusText = "Ready")
@@ -765,11 +773,14 @@ class ImportRepositoryTest {
     @Test
     fun failedFallbackSaveRetainsRetryableTaskAndRetryCanSucceed() = verifyFallbackPersistence(true)
 
-    private fun verifyFallbackPersistence(initiallyFail: Boolean) = runBlocking {
+    @Test
+    fun rssFallbackPreservesFirstSeenDateWithoutPublication() = verifyFallbackPersistence(false, rss = true)
+
+    private fun verifyFallbackPersistence(initiallyFail: Boolean, rss: Boolean = false) = runBlocking {
         val job = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + job)
         val dao = FakeImportTaskDao()
-        dao.insertOrUpdate(waitingEntity("fallback"))
+        dao.insertOrUpdate(waitingEntity("fallback").copy(rssFeedId = if (rss) "feed" else null, createdAt = 7))
         val saveStarted = CompletableDeferred<Unit>()
         val releaseSave = CompletableDeferred<Unit>()
         val firstClosed = CompletableDeferred<Unit>()
@@ -809,11 +820,56 @@ class ImportRepositoryTest {
             assertNull(dao.getTaskById("fallback"))
             assertEquals(1, saved.size)
             assertTrue(saved.single().isAiSkipped)
+            if (rss) {
+                assertEquals("feed", saved.single().rssFeedId)
+                assertEquals(7L, saved.single().createdAt)
+                assertNull(saved.single().rssPublishedAt)
+            }
         } finally { job.cancelAndJoin() }
+    }
+
+    @Test
+    fun manualTasksRunBeforeNewerRssTasks() = runBlocking {
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(
+            ImportTaskEntity("rss", "https://example.com/rss", "RSS", "WAITING_AI", "", createdAt = 20, rssFeedId = "feed"),
+            ImportTaskEntity("manual", "https://example.com/manual", "Manual", "WAITING_AI", "", createdAt = 10)))
+        val root = SupervisorJob()
+        val done = CompletableDeferred<Unit>()
+        val processed = mutableListOf<String>()
+        val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + root),
+            isAppInForeground = { true }, openModel = { fakeModel { done.complete(Unit) } },
+            analyzeTask = { _, task -> processed.add(task.id) })
+        try {
+            repository.retryWaitingProcessingTasks()
+            withTimeout(3000) { done.await() }
+            assertEquals(listOf("manual", "rss"), processed)
+        } finally { root.cancelAndJoin() }
+    }
+
+    @Test
+    fun subscriptionRemovedDuringClaimStopsWithoutInferenceOrBusyLoop() = runBlocking {
+        val dao = FakeImportTaskDao()
+        dao.insertOrUpdate(ImportTaskEntity("rss", "https://example.com/rss", "RSS", "WAITING_AI", "", createdAt = 1, rssFeedId = "feed"))
+        dao.beforeClaim = { dao.unavailableIds = setOf("rss") }
+        val root = SupervisorJob()
+        val closed = CompletableDeferred<Unit>()
+        var attempts = 0
+        val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + root),
+            isAppInForeground = { true }, openModel = { fakeModel { closed.complete(Unit) } },
+            analyzeTask = { _, _ -> attempts++ })
+        try {
+            repository.retryWaitingProcessingTasks()
+            withTimeout(3000) { closed.await() }
+            assertEquals(0, attempts)
+            assertEquals("ERROR", dao.getTaskById("rss")?.status)
+        } finally { root.cancelAndJoin() }
     }
 
     private class FakeImportTaskDao : ImportTaskDao {
         val tasksFlow = MutableStateFlow<List<ImportTaskEntity>>(emptyList())
+        var unavailableIds = emptySet<String>()
+        var beforeClaim: () -> Unit = {}
 
         override fun getAllTasksFlow(): Flow<List<ImportTaskEntity>> = tasksFlow
 
@@ -851,6 +907,23 @@ class ImportRepositoryTest {
         override suspend fun updateStatus(id: String, status: String, statusText: String, errorMessage: String?) {
             val existing = getTaskById(id) ?: return
             insertOrUpdate(existing.copy(status = status, statusText = statusText, errorMessage = errorMessage))
+        }
+
+        override suspend fun claimForAi(id: String, statusText: String): Int {
+            beforeClaim()
+            delay(1)
+            if (id in unavailableIds) return 0
+            val task = getTaskById(id) ?: return 0
+            if (task.status !in listOf("WAITING_AI", "PROCESSING_AI")) return 0
+            updateStatus(id, "PROCESSING_AI", statusText, null)
+            return 1
+        }
+
+        override suspend fun rejectUnavailableRss() {
+            tasksFlow.value = tasksFlow.value.map {
+                if (it.id in unavailableIds && it.status in listOf("WAITING_AI", "PROCESSING_AI"))
+                    it.copy(status = "ERROR", statusText = "Subscription unavailable") else it
+            }
         }
 
         override suspend fun deleteById(id: String) {

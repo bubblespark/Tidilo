@@ -106,8 +106,8 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE id = :id")
     fun observeById(id: String): Flow<BookmarkEntity?>
 
-    @Query("SELECT domain, COUNT(*) AS count FROM bookmarks WHERE domain IS NOT NULL AND (:showNsfw OR NOT isNsfw) GROUP BY domain")
-    fun domainCounts(showNsfw: Boolean): Flow<List<DomainCount>>
+    @Query("SELECT domain, COUNT(*) AS count FROM bookmarks WHERE domain IS NOT NULL AND (:showNsfw OR NOT isNsfw) AND (:source=0 OR (:source=1 AND rssFeedId IS NULL) OR (:source=2 AND rssFeedId IS NOT NULL)) GROUP BY domain")
+    fun domainCounts(showNsfw: Boolean, source: Int = 0): Flow<List<DomainCount>>
 
     @Query("SELECT DISTINCT domain FROM bookmarks WHERE domain IS NOT NULL ORDER BY domain")
     suspend fun distinctDomains(): List<String>

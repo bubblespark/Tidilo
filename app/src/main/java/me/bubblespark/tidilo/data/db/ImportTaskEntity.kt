@@ -12,6 +12,8 @@ import me.bubblespark.tidilo.data.TaskStatus
 @Entity(
     tableName = "import_tasks",
     indices = [
+        Index(value = ["ogImageKey"]),
+        Index(value = ["rssFeedId"]),
         Index(value = ["url"]),
         Index(value = ["status"]),
         Index(value = ["createdAt"])
@@ -31,7 +33,10 @@ data class ImportTaskEntity(
     val siteName: String = "",
     val description: String = "",
     val bodySnippet: String = "",
-    val ogImageUrl: String? = null
+    val ogImageUrl: String? = null,
+    val rssFeedId: String? = null,
+    val rssPublishedAt: Long? = null,
+    val ogImageKey: String? = bookmarkOgImageKey(url, ogImageUrl)
 ) {
     fun toImportTask(): ImportTask {
         val taskStatus = runCatching {
@@ -54,6 +59,8 @@ data class ImportTaskEntity(
             siteName = siteName,
             description = description,
             bodySnippet = bodySnippet,
+            rssFeedId = rssFeedId,
+            rssPublishedAt = rssPublishedAt,
             ogImageUrl = ogImageUrl
         )
     }
@@ -73,6 +80,8 @@ data class ImportTaskEntity(
                 siteName = task.siteName,
                 description = task.description,
                 bodySnippet = task.bodySnippet,
+                rssFeedId = task.rssFeedId,
+                rssPublishedAt = task.rssPublishedAt,
                 ogImageUrl = task.ogImageUrl
             )
         }

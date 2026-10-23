@@ -43,6 +43,30 @@ class OgImageRecoveryTest {
     }
 
     @Test
+    fun retentionDeletionRejectsInflightImageAndPreservesUnrelatedLatest() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val bytes = imageBytes()
+        val page = "https://example.com/rss"
+        val image = "https://example.com/retained-cover"
+        val key = OgImageManager.computeImageKey(image)
+        OgImageManager.imageDownloader = { entered.complete(Unit); release.await(); bytes }
+        val old = async { OgImageManager.loadOrFetchOgImage(context, page, "example.com", image) }
+        entered.await()
+        OgImageManager.deleteUnreferencedImage(context, "example.com", key, true)
+        release.complete(Unit)
+        assertNull(withTimeout(5000) { old.await() })
+        assertFalse(OgImageManager.getOgImageFile(context, key).exists())
+        OgImageManager.imageDownloader = { bytes }
+        assertNotNull(OgImageManager.loadOrFetchOgImage(context, page, "example.com", image))
+        val latest = OgImageManager.getDomainLatestImageFile(context, "example.com")
+        latest.writeText("unrelated")
+        OgImageManager.deleteUnreferencedImage(context, "example.com", key, true)
+        assertEquals("unrelated", latest.readText())
+        assertNull(OgImageManager.getCachedOgImageBitmap("example.com", key))
+    }
+
+    @Test
     fun concurrentImportAndCardsShareOneCompressedImage() = runBlocking {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()

@@ -162,6 +162,7 @@ class RssSettingsScreenTest {
             val unlimitedLabel = node("Unlimited") { it.text?.toString() == "Unlimited" }
             assertTrue(unlimitedLabel.parent.isCheckable)
             click(unlimitedLabel)
+            instrumentation.waitForIdleSync()
             click(node("Save feed") { it.text?.toString() == "Save" })
             withTimeout(3000) { while (savedUrl == null) delay(20) }
             assertEquals("https://example.com/feed.xml", savedUrl)

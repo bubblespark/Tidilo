@@ -53,4 +53,4 @@ Library's Newest First and Domain modes show manual bookmarks only. RSS mode sho
 
 JVM fixtures cover formats, metadata, HTTP validators/failure handling, stable selection, scheduling/DST, source mapping, manual queue priority, empty RSS bodies, first-seen fallback, and subscription-removal races. Android tests exercise real Room upgrade paths, source queries, receipt rollback/replay, concurrent ingestion, retention, task claims, Undo, canonical image references, Wi-Fi constraints, in-flight image deletion, and labeled Settings controls. Network and AI work in automated tests use fixtures or fakes. Actual AICore inference and real mobile/Wi-Fi handover require a physical supported device; the emulator does not provide AICore.
 
-The feed editor groups Direct/AI Analyze under Import Mode and Unlimited/retained count under Max saved items. New feeds default to30; editing existing subscriptions preserves their settings.
+The feed editor groups Direct/AI Analyze under Import Mode and Unlimited/retained count under Max saved items. New feeds default to30; editing existing subscriptions preserves their settings. Fetch now uses a filled Material button.

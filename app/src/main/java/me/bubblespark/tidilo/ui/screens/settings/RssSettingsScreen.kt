@@ -73,7 +73,7 @@ internal fun RssSettingsContent(
             }
             Text(stringResource(R.string.rss_schedule_note), style = MaterialTheme.typography.bodySmall)
             if (settings.wifiOnly && !wifi) Text(stringResource(R.string.rss_waiting_wifi), color = MaterialTheme.colorScheme.primary)
-            TextButton(onClick = onFetch, enabled = !busy && (feeds as? SummaryLoad.Ready)?.value?.any { it.enabled } == true) {
+            Button(onClick = onFetch, enabled = !busy && (feeds as? SummaryLoad.Ready)?.value?.any { it.enabled } == true) {
                 Text(stringResource(R.string.rss_fetch_now))
             }
         }

@@ -42,5 +42,7 @@ data class ImportTask(
     val siteName: String = "",
     val description: String = "",
     val bodySnippet: String = "",
-    val ogImageUrl: String? = null
+    val ogImageUrl: String? = null,
+    val rssFeedId: String? = null,
+    val rssPublishedAt: Long? = null
 )

@@ -35,6 +35,7 @@ This document provides the canonical catalog of all programming languages, SDKs,
 | **Lifecycle ViewModel Compose** | `2.11.0` | `androidx-lifecycle-viewmodel-compose` | Compose integration for ViewModel instantiation (`viewModel()`). |
 | **Activity Compose** | `1.13.0` | `androidx-activity-compose` | `ComponentActivity.setContent`, `enableEdgeToEdge()`, `BackHandler`. |
 | **Room** | `2.8.5` | `androidx-room-runtime`, `androidx-room-ktx`, `androidx-room-compiler` | SQLite persistence, reactive DAOs, and flow queries. |
+| **WorkManager** | `2.12.0` | `androidx-work-runtime-ktx` | RSS daily/manual acquisition, transport-aware network constraints, persisted retries. |
 | **Core KTX** | `1.19.1` | `androidx-core-ktx` | Kotlin extensions for core Android platform APIs. |
 
 ---

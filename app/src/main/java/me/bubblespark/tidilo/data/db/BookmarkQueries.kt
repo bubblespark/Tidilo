@@ -1,17 +1,18 @@
 package me.bubblespark.tidilo.data.db
 
 import androidx.sqlite.db.SimpleSQLiteQuery
+import me.bubblespark.tidilo.data.BookmarkSource
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.Subcategory
 
 /** Compiles bound, literal substring predicates shared by results and tag aggregates. */
 internal object BookmarkQueries {
-    fun count(query: String, showNsfw: Boolean, domain: String? = null): SimpleSQLiteQuery {
-        val (where, args) = predicate(query, showNsfw, domain, emptySet())
+    fun count(query: String, showNsfw: Boolean, domain: String? = null, source: BookmarkSource = BookmarkSource.ALL): SimpleSQLiteQuery {
+        val (where, args) = predicate(query, showNsfw, domain, emptySet(), source)
         return SimpleSQLiteQuery("SELECT COUNT(*) FROM bookmarks b WHERE $where", args.toTypedArray())
     }
-    fun results(query: String, showNsfw: Boolean, domain: String? = null): SimpleSQLiteQuery {
-        val (where, args) = predicate(query, showNsfw, domain, emptySet())
+    fun results(query: String, showNsfw: Boolean, domain: String? = null, source: BookmarkSource = BookmarkSource.ALL): SimpleSQLiteQuery {
+        val (where, args) = predicate(query, showNsfw, domain, emptySet(), source)
         return SimpleSQLiteQuery("SELECT b.* FROM bookmarks b WHERE $where ORDER BY b.createdAt DESC, b.id DESC", args.toTypedArray())
     }
 
@@ -26,9 +27,14 @@ internal object BookmarkQueries {
         return SimpleSQLiteQuery(sql, args.toTypedArray())
     }
 
-    private fun predicate(query: String, showNsfw: Boolean, domain: String?, selected: Set<String>): Pair<String, MutableList<Any>> {
+    private fun predicate(query: String, showNsfw: Boolean, domain: String?, selected: Set<String>, source: BookmarkSource = BookmarkSource.ALL): Pair<String, MutableList<Any>> {
         val clauses = mutableListOf<String>()
         val args = mutableListOf<Any>()
+        when (source) {
+            BookmarkSource.MANUAL -> clauses.add("b.rssFeedId IS NULL")
+            BookmarkSource.RSS -> clauses.add("b.rssFeedId IS NOT NULL")
+            BookmarkSource.ALL -> Unit
+        }
         if (!showNsfw) clauses.add("b.isNsfw=0")
         if (domain != null) { clauses.add("b.domain=?"); args.add(domain) }
         for (tag in selected) {

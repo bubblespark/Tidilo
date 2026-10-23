@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.stateIn
 
 import android.content.Context
 import me.bubblespark.tidilo.TidiloApplication
+import me.bubblespark.tidilo.data.BookmarkSource
 import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.DomainIconManager
@@ -42,7 +43,8 @@ import kotlinx.coroutines.launch
 
 enum class LibraryFilterMode {
     DOMAIN,
-    NEWEST_FIRST
+    NEWEST_FIRST,
+    RSS
 }
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -68,11 +70,7 @@ class LibraryViewModel : ViewModel() {
 
     private fun loadFilterMode(): LibraryFilterMode {
         val saved = prefs.getString("library_filter_mode", null)
-        return if (saved == LibraryFilterMode.DOMAIN.name) {
-            LibraryFilterMode.DOMAIN
-        } else {
-            LibraryFilterMode.NEWEST_FIRST
-        }
+        return LibraryFilterMode.entries.firstOrNull { it.name == saved } ?: LibraryFilterMode.NEWEST_FIRST
     }
 
     private fun saveFilterMode(mode: LibraryFilterMode) {
@@ -134,7 +132,7 @@ class LibraryViewModel : ViewModel() {
     val domainGroupsLoading = _domainGroupsLoading.asStateFlow()
 
     val domainGroups: StateFlow<List<DomainGroupItem>> =
-        combine(AppConfig.isNsfwContentVisible.flatMapLatest { bookmarkRepository.observeDomainCounts(it).onStart { _domainGroupsLoading.value = true } }, DomainPolicyManager.policies) { counts, _ ->
+        combine(AppConfig.isNsfwContentVisible.flatMapLatest { bookmarkRepository.observeDomainCounts(it, BookmarkSource.MANUAL).onStart { _domainGroupsLoading.value = true } }, DomainPolicyManager.policies) { counts, _ ->
             _domainGroupsLoading.value = false
             val countMap = counts.associate { it.domain to it.count }
             val collator = Collator.getInstance(Locale.JAPANESE)
@@ -167,9 +165,10 @@ class LibraryViewModel : ViewModel() {
     /**
      * Bookmarks filtered by selected domain (Newest first).
      */
-    val libraryPages = combine(_selectedDomainFilter, AppConfig.isNsfwContentVisible, bookmarkRepository.isInitialized) { domain, visible, ready -> Triple(domain, visible, ready) }
-        .flatMapLatest { (domain, visible, ready) ->
-            if (ready) bookmarkRepository.pagedBookmarks("", domain, visible).onStart { emit(loadingPage()) }
+    val libraryPages = combine(_selectedDomainFilter, AppConfig.isNsfwContentVisible, bookmarkRepository.isInitialized, _filterMode) { domain, visible, ready, mode -> Triple(domain, visible, ready) to mode }
+        .flatMapLatest { (state, mode) ->
+            val (domain, visible, ready) = state
+            if (ready) bookmarkRepository.pagedBookmarks("", domain, visible, if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL).onStart { emit(loadingPage()) }
             else flowOf(loadingPage())
         }
         .cachedIn(viewModelScope)
@@ -181,8 +180,8 @@ class LibraryViewModel : ViewModel() {
         }
         .cachedIn(viewModelScope)
 
-    val libraryCount = combine(_selectedDomainFilter, AppConfig.isNsfwContentVisible) { domain, visible -> domain to visible }
-        .flatMapLatest { (domain, visible) -> bookmarkRepository.observeCount("", domain, visible) }
+    val libraryCount = combine(_selectedDomainFilter, AppConfig.isNsfwContentVisible, _filterMode) { domain, visible, mode -> Triple(domain, visible, mode) }
+        .flatMapLatest { (domain, visible, mode) -> bookmarkRepository.observeCount("", domain, visible, if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val searchCount = combine(_searchQuery, AppConfig.isNsfwContentVisible) { query, visible -> query to visible }

@@ -160,6 +160,11 @@ fun LibraryScreen(
     val domainDetailListState = rememberLazyListState()
     val domainDetailGridState = rememberLazyGridState()
 
+    LaunchedEffect(filterMode) {
+        newestFirstListState.requestScrollToItem(0)
+        newestFirstGridState.requestScrollToItem(0)
+    }
+
     // Detail return restores the same domain; only an actual filter change resets its position.
     var lastScrollDomain by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(selectedDomainFilter) {
@@ -528,6 +533,7 @@ fun LibraryScreen(
                         Column {
                             val defaultTitle = stringResource(R.string.library_header_title)
                             val headerTitle = when {
+                                filterMode == LibraryFilterMode.RSS -> stringResource(R.string.rss_title)
                                 filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
                                     DomainPolicyManager.getDisplayName(selectedDomainFilter)
                                 else -> defaultTitle

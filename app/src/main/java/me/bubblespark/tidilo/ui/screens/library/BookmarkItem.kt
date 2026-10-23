@@ -77,7 +77,9 @@ data class BookmarkItem(
     val note: String = "",
     val isNsfw: Boolean = false,
     val isAiSkipped: Boolean = false,
-    val ogImageUrl: String? = null
+    val ogImageUrl: String? = null,
+    val rssFeedId: String? = null,
+    val rssPublishedAt: Long? = null
 ) {
     /**
      * Resolves the extracted OG image filename for this bookmark using OgImageManager,

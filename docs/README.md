@@ -15,6 +15,7 @@ This documentation provides developers with a clear, authoritative blueprint of 
 | **[ui_design.md](ui_design.md)** | **UI Design & M3 Expressive** | Material 3 Expressive guidelines, Color tokens, Typography, Shape system, Spring animations, Edge-to-Edge insets, Scrims. |
 | **[data_models.md](data_models.md)** | **Data Models & State Flows** | `BookmarkItem`, `Tag`, `Taxonomy` (7 Categories, 11 Subcategories), `QueueItem` state machine, JSON schemas, Flow lifecycles. |
 | **[aicore.md](aicore.md)** | **AICore & Prompt Engineering** | Gemini Nano on-device AI architecture, prompt rules, model options, summary tuning, output parsing pipeline. |
+| **[rss.md](rss.md)** | **RSS and Atom Subscriptions** | Wi-Fi-aware scheduling, XML metadata, Direct/AI modes, receipt deduplication, source filters, and count retention. |
 | **[coding_conventions.md](coding_conventions.md)** | **Coding Conventions & Best Practices** | Recomposition control, `collectAsStateWithLifecycle`, lazy item keys, coroutine threading, naming rules, error safety. |
 
 ---

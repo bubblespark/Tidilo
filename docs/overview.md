@@ -58,6 +58,7 @@ flowchart TD
 - Indexed queries on URL, creation timestamp, category, subcategory, NSFW, and domain support targeted reads; transactions preserve durable write integrity. Performance evidence and limitations are recorded in `issue81-progress.md`.
 - Room is the source of truth. Writes are awaited by ID/domain; Room invalidation refreshes Paging and aggregate observers. Active bookmarks are never cached as an unbounded application-wide list.
 - An automatic migration bridge on startup safely ingests legacy `SharedPreferences` JSON caches into Room on first launch with an empty database.
+- Disposable OG previews remain in `cacheDir/og_images`. Imports and grid cards share exact-image recovery with four concurrent workers, reference-counted cancellation, generation-safe clearing, and failure backoff. See [Bookmark Preview Cache](og_image_cache.md).
 
 ### 2.3 On-Device GenAI (AICore & Gemini Nano)
 - Powered by `com.google.mlkit:genai-prompt:1.0.0-beta2`.

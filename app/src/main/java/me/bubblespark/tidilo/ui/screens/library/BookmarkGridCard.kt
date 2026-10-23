@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
@@ -72,25 +78,29 @@ fun BookmarkGridCard(
         bookmark.ogImageFilename
     }
 
-    val ogRefreshSignal by remember(domain) {
-        OgImageManager.observeOgImageUpdates(domain)
-    }.collectAsStateWithLifecycle(initialValue = 0L)
+    val cacheGeneration by OgImageManager.cacheGenerationState.collectAsStateWithLifecycle()
 
     val iconRefreshSignal by remember(domain) {
         DomainIconManager.observeIconUpdates(domain)
     }.collectAsStateWithLifecycle(initialValue = 0L)
 
-    // Asynchronously load cached og:image bitmap from cacheDir
-    val ogBitmap by produceState<ImageBitmap?>(
-        initialValue = domain?.let { OgImageManager.getCachedOgImageBitmap(it, ogFilename) },
-        key1 = domain,
-        key2 = ogFilename,
-        key3 = ogRefreshSignal
-    ) {
-        // Reset state immediately on key change to prevent displaying the previous card's image
-        value = domain?.let { OgImageManager.getCachedOgImageBitmap(it, ogFilename) }
-        if (domain != null) {
-            value = OgImageManager.loadOgImage(context, domain, ogFilename)
+    // Each identity owns fresh state; completion notifications never restart active downloads.
+    val ogBitmap by key(context, bookmark.url, domain, ogFilename, cacheGeneration) {
+        produceState<ImageBitmap?>(
+            initialValue = if (domain != null && ogFilename != null) {
+                OgImageManager.getCachedOgImageBitmap(domain, ogFilename)
+            } else null
+        ) {
+            if (domain != null && ogFilename != null) {
+                coroutineScope {
+                    launch {
+                        OgImageManager.observeExactImageUpdates(ogFilename).collect {
+                            value = OgImageManager.getCachedOgImageBitmap(domain, ogFilename)
+                        }
+                    }
+                    value = OgImageManager.loadOrFetchOgImage(context, bookmark.url, domain, bookmark.ogImageUrl)
+                }
+            }
         }
     }
 
@@ -170,8 +180,7 @@ fun BookmarkGridCard(
                                 .clip(RoundedCornerShape(8.dp))
                         )
                     } else {
-                        // First letter fallback
-                        val initial = domainDisplayName.firstOrNull()?.uppercaseChar()?.toString() ?: "•"
+                        // A bundled link icon is always available, including offline.
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
@@ -179,11 +188,11 @@ fun BookmarkGridCard(
                                 .background(domainAccentColor.copy(alpha = 0.30f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = initial,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = domainAccentColor
+                            Icon(
+                                imageVector = Icons.Rounded.Link,
+                                contentDescription = null,
+                                tint = domainAccentColor,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                     }

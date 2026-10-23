@@ -17,8 +17,8 @@ app/src/main/java/com/ykgudev/tidilo/
 │
 ├── data/                                # Data layer & local storage
 │   ├── BookmarkRepository.kt            # Bookmark CRUD, Trash lifecycle (30-day, 100-cap), JSON serialization
-    │   ├── DomainIconManager.kt             # Shared on-demand domain icon recovery, caching, color, and transparency
-    │   ├── DomainIconResolver.kt            # Prioritized HTML discovery and short-circuit icon selection
+│   ├── DomainIconManager.kt             # Shared on-demand domain icon recovery, caching, color, and transparency
+│   ├── DomainIconResolver.kt            # Prioritized HTML discovery and short-circuit icon selection
 │   ├── QueueRepository.kt               # Queue state machine (Running, Queuing, Error, Completed), Mutex
 │   └── Taxonomy.kt                      # 7 Top-Level Categories & 11 Subcategories definition and i18n
 │

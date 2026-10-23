@@ -223,7 +223,6 @@ class BookmarkRepository private constructor(context: Context) {
                 ?: bookmarkDao.distinctDomains()
             DomainPolicyManager.syncDomains(domains)
             DomainIconManager.preloadIcons(appContext, domains)
-
         }
     }
 

@@ -305,7 +305,7 @@
     <string name="rss_schedule">Daily fetch time</string>
     <string name="rss_wifi_only">Fetch only over Wi-Fi</string>
     <string name="rss_schedule_note">Runs around the selected local time. System battery controls may delay fetching. Wi-Fi-only applies to scheduled and manual RSS fetching.</string>
-    <string name="rss_waiting_wifi">Waiting for Wi-Fi</string>
+    <string name="rss_wifi_blocked">Cannot fetch: Wi-Fi is not connected.</string>
     <string name="rss_fetch_now">Fetch now</string>
     <string name="rss_max_queue">Maximum AI queue: %1$d items</string>
     <string name="rss_quota_warning">A large AI queue may reach AICore usage restrictions. Consider Direct mode or the AICore fallback setting. This warning is an estimate, not a fixed SDK quota.</string>

@@ -31,7 +31,7 @@ class RssSettingsViewModel(application: Application) : AndroidViewModel(applicat
     val busy = _busy.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
-    private val _wifi = MutableStateFlow(false)
+    private val _wifi = MutableStateFlow<Boolean?>(null)
     val wifi = _wifi.asStateFlow()
     private val connectivity = application.getSystemService(ConnectivityManager::class.java)
     private var listening = false
@@ -66,6 +66,7 @@ class RssSettingsViewModel(application: Application) : AndroidViewModel(applicat
         if (!listening) return
         listening = false
         connectivity.unregisterNetworkCallback(callback)
+        _wifi.value = null
     }
 
     @Suppress("DEPRECATION")

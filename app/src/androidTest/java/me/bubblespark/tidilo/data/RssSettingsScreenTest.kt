@@ -111,6 +111,7 @@ class RssSettingsScreenTest {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         val settings = mutableStateOf(RssSettings())
+        val wifi = mutableStateOf<Boolean?>(null)
         var savedMode: String? = null
         var savedLimit: Int? = 1
         var savedUrl: String? = null
@@ -118,18 +119,30 @@ class RssSettingsScreenTest {
         try {
             instrumentation.runOnMainSync {
                 activity.setContent { MaterialTheme {
-                    RssSettingsContent(SummaryLoad.Ready(emptyList()), settings.value, false, null, false,
+                    RssSettingsContent(SummaryLoad.Ready(emptyList()), settings.value, false, null, wifi.value,
                         onBack = { backed = true }, onRetry = {}, onSettings = { settings.value = it },
                         onFeed = { _, url, mode, limit, _ -> savedUrl = url; savedMode = mode; savedLimit = limit },
                         onDelete = {}, onFetch = {}, onDismissError = {})
                 } }
             }
             node("Initial midnight") { it.text?.toString() == "00:00" }
-            node("Wi-Fi wait status") { it.text?.toString() == "Waiting for Wi-Fi" }
+            assertNull(find { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." })
+            instrumentation.runOnMainSync { wifi.value = false }
+            val blocked = node("Wi-Fi blocked status") { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." }
+            val timeBounds = android.graphics.Rect()
+            val blockedBounds = android.graphics.Rect()
+            node("Time control") { it.text?.toString() == "00:00" }.getBoundsInScreen(timeBounds)
+            blocked.getBoundsInScreen(blockedBounds)
+            assertTrue("Warning appears beside the time", blockedBounds.left > timeBounds.right)
+            val blockedScreenshot = instrumentation.uiAutomation.takeScreenshot()
+            try { File(context.getExternalFilesDir(null), "issue91-wifi-blocked.png").outputStream().use {
+                blockedScreenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
+            } } finally { blockedScreenshot.recycle() }
             val wifiLabel = node("Wi-Fi label") { it.text?.toString() == "Fetch only over Wi-Fi" }
             assertTrue(wifiLabel.parent.isCheckable)
             click(wifiLabel)
             withTimeout(3000) { while (settings.value.wifiOnly) delay(20) }
+            withTimeout(3000) { while (find { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." } != null) delay(20) }
             click(node("Time picker") { it.text?.toString() == "00:00" })
             click(node("Cancel time") { it.text?.toString() == "Cancel" })
             assertEquals(0, settings.value.hour)

@@ -45,7 +45,7 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RssSettingsContent(
-    feeds: SummaryLoad<List<RssFeedEntity>>, settings: RssSettings, busy: Boolean, error: String?, wifi: Boolean,
+    feeds: SummaryLoad<List<RssFeedEntity>>, settings: RssSettings, busy: Boolean, error: String?, wifi: Boolean?,
     onBack: () -> Unit, onRetry: () -> Unit, onSettings: (RssSettings) -> Unit,
     onFeed: (RssFeedEntity?, String, String, Int?, Boolean) -> Unit, onDelete: (String) -> Unit,
     onFetch: () -> Unit, onDismissError: () -> Unit, onEnabled: (String, Boolean) -> Unit = { _, _ -> }
@@ -63,8 +63,16 @@ internal fun RssSettingsContent(
         }
         RssCard {
             Text(stringResource(R.string.rss_schedule), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            TextButton(onClick = { showTime = true }, enabled = !busy) {
-                Text(String.format(Locale.US, "%02d:%02d", settings.hour, settings.minute))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = { showTime = true }, enabled = !busy,
+                    shape = RoundedCornerShape(8.dp), modifier = Modifier.defaultMinSize(minWidth = 96.dp, minHeight = 56.dp)) {
+                    Text(String.format(Locale.US, "%02d:%02d", settings.hour, settings.minute),
+                        style = MaterialTheme.typography.titleMedium)
+                }
+                if (settings.wifiOnly && wifi == false) Text(stringResource(R.string.rss_wifi_blocked),
+                    modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
             }
             Row(Modifier.fillMaxWidth().toggleable(settings.wifiOnly, enabled = !busy, role = Role.Switch,
                 onValueChange = { onSettings(settings.copy(wifiOnly = it)) }), verticalAlignment = Alignment.CenterVertically) {
@@ -72,7 +80,6 @@ internal fun RssSettingsContent(
                 Switch(checked = settings.wifiOnly, onCheckedChange = null, enabled = !busy)
             }
             Text(stringResource(R.string.rss_schedule_note), style = MaterialTheme.typography.bodySmall)
-            if (settings.wifiOnly && !wifi) Text(stringResource(R.string.rss_waiting_wifi), color = MaterialTheme.colorScheme.primary)
             Button(onClick = onFetch, enabled = !busy && (feeds as? SummaryLoad.Ready)?.value?.any { it.enabled } == true) {
                 Text(stringResource(R.string.rss_fetch_now))
             }

@@ -34,12 +34,12 @@
 1. Daily time means local-time approximate scheduling, not an exact alarm. Use unique periodic work with network connectivity, initial alignment, and next-time correction after execution/timezone/time/DST/settings changes. Show last attempt, last success, and per-feed error; add Fetch now. Retry transient failures with backoff, isolate failures per feed, and avoid replaying successful feeds on retry.
 2. Count READY plus WAITING_AI RSS tasks as the five unstarted tasks per feed. Replace only the oldest unstarted RSS work; never replace PROCESSING_AI or ERROR tasks. Reconcile the cap when cancellation/quota handling returns waiting work to READY. An already-running RSS inference finishes; manual waiting work runs before the next RSS attempt. The queue indicator is five times active AI subscriptions and excludes running/error tasks.
 3. Use durable feed/item receipts (GUID or Atom ID plus normalized URL fallback), not timestamp-only cursors. Mark intentionally rolled-out/retention-deleted items consumed; malformed/failed-to-persist items remain retryable. Serialize fetch/edit/delete per feed and commit receipts, queue changes, bookmark writes, and retention selection transactionally. Check library, queue, and trash for cross-source duplicates; preserve query strings and avoid aggressive URL merging.
-4. Initial AI fetch keeps the newest five valid unseen entries. Initial Direct fetch imports the supplied entries up to its retention limit, or all supplied entries for Unlimited. Use publication time with first-seen time fallback and stable tie-breaking; do not treat Atom updated time as a new publication. Sort existing unstarted tasks and new entries together. Discarded older entries are recorded as consumed.
+4. AI Analyze queues at most the newest five unstarted entries per feed. Direct bypasses Ready tasks and imports all valid unseen entries supplied by the feed without an ingestion-count limit. Unlimited or a configured item count controls automatic deletion only, independently of ingestion or queue limits. Use publication time with first-seen time fallback and stable tie-breaking; do not treat Atom updated time as a new publication. Sort existing unstarted tasks and new entries together. Discarded older entries are recorded as consumed.
 5. Retention permanently deletes only active RSS-owned bookmarks for that feed, bypassing Trash; order by source publication time with first-seen fallback. Apply after each save and when reducing a limit. Never delete manual records or a currently running task. Preserve RSS ownership/publication metadata through trash/restore and AI review. A restored RSS bookmark is subject to its feed limit again, with that consequence disclosed.
 6. Retention cache cleanup runs after DB commit and deletes only image keys no longer referenced by active bookmarks, trash, or tasks. Preserve shared domain icons and unrelated latest copies; remove a domain-latest copy only when ownership can be verified. Coordinate with in-flight recovery and memory-cache invalidation; failed cleanup remains retryable.
 7. Feed deletion stops fetching, removes unstarted RSS tasks, and preserves saved RSS bookmarks by default. Retain source identity/display metadata so they do not leak into manual Library. Recheck removed feeds before committing an in-flight result. Changing mode affects future ingestion; offer explicit handling of existing unstarted tasks when switching to Direct. Treat a feed URL change as replacement registration so receipts do not cross unrelated feeds.
-8. Never overwrite a manual bookmark from RSS. When the user manually saves an existing RSS URL, promote the existing record to manual ownership and preserve its note/tags. Consider a Keep in Library action on RSS article details to escape rolling retention.
-9. Set a clearly labeled heuristic queue warning above 20 possible RSS attempts (provisional product default, not an SDK quota). Historical quota detections may be shown as context, never as a remaining-capacity calculation. Explain that five tasks per feed does not bound retries, running tasks, or manual/debug usage. Default new feeds to Direct, retention100; propose default daily time09:00 local, with AI Analyze explicitly selectable.
+8. User clarification: RSS ingestion skips a URL already registered manually or via RSS, without overwriting or promoting the existing record. The reverse case, manually importing a URL already saved via RSS, retains current manual-import behavior and is deferred to a later issue. Do not add manual ownership promotion or a Keep in Library action in issue91.
+9. Set a clearly labeled heuristic queue warning above 20 possible RSS attempts (provisional product default, not an SDK quota). Historical quota detections may be shown as context, never as a remaining-capacity calculation. Explain that five tasks per feed does not bound retries, running tasks, or manual/debug usage. Default new feeds to Direct, retention100; use the user-proposed default daily time00:00 local, with AI Analyze explicitly selectable.
 10. Registration validates an actual RSS2/Atom/RDF document and HTTP(S) item/image URLs; use redirects/xml:base/relative resolution. Feed title falls back to host when absent. Fetch fully on first registration, then use ETag/Last-Modified. Limit network response size, duration, and concurrency without silently dropping queued work. Image/OGP failure does not discard valid feed text. Preserve domain NSFW policy and global bookmarkability rules. Feed requests do not include app content.
 
 ## Tasks and Verification
@@ -63,7 +63,7 @@
 - [ ] Add data/rss/RssIngestionRepository.kt to coordinate receipts, source-aware duplicate checks, Direct writes, newest-five queue replacement, and retention.
 - [ ] Add targeted SQL queries for existing URLs/IDs, unstarted tasks, and oldest feed-owned bookmarks. Avoid full-library collections.
 - [ ] Add reference-aware, in-flight-safe per-image cleanup through OgImageManager rather than clear-all helpers.
-- [ ] Tests first: concurrent fetches, commit failure/retry, stable top-five selection, late articles, purged-item replay, shared URLs/images, manual promotion, limit changes, deletion during fetch/save, trash restoration.
+- [ ] Tests first: concurrent fetches, commit failure/retry, stable top-five selection, late articles, purged-item replay, shared URLs/images, RSS duplicate skipping without manual-flow changes, limit changes, deletion during fetch/save, trash restoration.
 
 ### 4. Integrate foreground AI processing
 
@@ -95,8 +95,15 @@
 
 ## Review Focus
 
-- A feed result arriving after a manual save, feed deletion, or mode change must not overwrite newer decisions.
+- A feed result arriving after a manual save, feed deletion, or mode change must not overwrite newer decisions; reverse-direction manual-import deduplication is explicitly deferred.
 - Queue rollback, quota handling, retries and undo must not bypass the per-feed unstarted-task cap.
 - Missing XML body text must not accidentally trigger article Readability scraping.
 - Retention and image cleanup must preserve manually owned content and shared/in-flight image references.
 - Local daily scheduling is best effort; failures and last successful refresh must remain visible without implying exact execution.
+
+## User Clarifications (2026-10-24)
+
+- Queue capacity and retention are independent. AI Analyze has five unstarted tasks per feed; Direct has no Ready task or ingestion-count cap. Count-based retention is automatic deletion, not a Direct import limit or day-based expiry.
+- Skip RSS ingestion of URLs already registered manually or through RSS. Do not alter the reverse manual-after-RSS case in this issue; its resolution belongs to a later issue.
+- Change the proposed default daily time to00:00 local. Midnight does not guarantee Wi-Fi or charging; network restrictions beyond connectivity remain a separate, unapproved product decision.
+- Other proposals remain subject to user approval. No application implementation has started.

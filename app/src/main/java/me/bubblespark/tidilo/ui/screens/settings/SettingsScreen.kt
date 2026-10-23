@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.ui.components.SummarizeIcon
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AppLanguage
@@ -457,6 +458,17 @@ fun SettingsScreen(
             )
         ) {
             Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    BoxContent(
+                        icon = SummarizeIcon,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.summary_title), style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold)

@@ -1,6 +1,6 @@
 # Application Summary
 
-Settings > Data Management > Summary (`Screen.Summary`, route `settings_summary`) displays statistics stored and calculated on the device. The screen never invokes AICore, downloads model assets, or sends telemetry.
+Settings > Data Management > Summary (`Screen.Summary`, route `settings_summary`) displays statistics stored and calculated on the device. Its Settings entry uses the Material Symbols Outlined Summarize vector (24dp, weight400, FILL0, GRAD0, ROND50), displayed through the shared 20dp icon helper inside the standard 40dp primary-container circle with 16dp text spacing. The screen never invokes AICore, downloads model assets, or sends telemetry.
 
 ## Inference usage
 

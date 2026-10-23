@@ -60,7 +60,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.Subcategory
-import me.bubblespark.tidilo.ui.components.SortIcon
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 
 data class TagItem(
     val id: String,
@@ -376,7 +377,7 @@ fun TagSelectionScreen(
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            imageVector = SortIcon,
+                            imageVector = ImageVector.vectorResource(R.drawable.ic_sort),
                             contentDescription = stringResource(R.string.tag_sort_content_desc),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )

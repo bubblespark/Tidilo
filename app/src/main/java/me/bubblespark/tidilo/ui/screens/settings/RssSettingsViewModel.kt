@@ -94,6 +94,7 @@ class RssSettingsViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun deleteFeed(id: String) = action { repository.delete(id) }
+    fun setEnabled(id: String, enabled: Boolean) = action { repository.setEnabled(id, enabled) }
     fun fetchNow() = action { RssScheduler.fetchNow(getApplication()) }
     fun clearError() { _error.value = null }
 

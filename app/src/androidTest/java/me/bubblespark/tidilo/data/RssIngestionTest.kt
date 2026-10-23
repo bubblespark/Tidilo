@@ -17,6 +17,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssIngestionTest {
+    @Test fun disablingSkipsAcquisitionAndStaleIngestionButKeepsPendingTasks() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
+        try {
+            val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", mode = "AI")
+            db.rssDao().putFeed(feed)
+            val store = RssIngestionStore(db)
+            store.ingest(feed, listOf(entry(1)), 100)
+            db.rssDao().putFeed(feed.copy(enabled = false, revision = 1))
+            assertTrue(db.rssDao().enabledFeeds().isEmpty())
+            assertEquals(1, db.rssDao().activeFeeds().size)
+            assertFalse(store.ingest(feed, listOf(entry(2)), 200))
+            assertFalse(store.ingest(feed.copy(enabled = false, revision = 1), listOf(entry(2)), 200))
+            assertEquals(1, db.rssDao().pending(feed.id).size)
+            assertFalse(db.rssDao().hasSeen(feed.id, entry(2).key, entry(2).url))
+            val resumed = feed.copy(revision = 2)
+            db.rssDao().putFeed(resumed)
+            assertEquals(1, db.rssDao().enabledFeeds().size)
+            assertTrue(store.ingest(resumed, listOf(entry(2)), 300))
+            assertEquals(2, db.rssDao().pending(feed.id).size)
+        } finally { db.close() }
+    }
     @Test fun wifiConstraintRequiresWifiTransportAndUndoReconcilesFiveTasks() = runBlocking {
         val wifiRequest = me.bubblespark.tidilo.data.rss.RssScheduler.constraints(true).requiredNetworkRequest
         assertNotNull(wifiRequest)

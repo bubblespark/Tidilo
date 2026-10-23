@@ -19,7 +19,7 @@ internal class RssIngestionStore(private val database: AppDatabase) {
     /** Receipt and content changes commit together; stale fetches cannot resurrect deleted feeds. */
     suspend fun ingest(feed: RssFeedEntity, entries: List<RssEntry>, now: Long): Boolean = database.withTransaction {
         val current = rss.feed(feed.id) ?: return@withTransaction false
-        if (current.deleted || current.revision != feed.revision) return@withTransaction false
+        if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
         require(current.mode in setOf("AI", "DIRECT"))
         val fresh = mutableListOf<ImportTaskEntity>()
         for (entry in entries.distinctBy { it.url }) {

@@ -190,7 +190,7 @@ Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt
 
 ## 6. Persistence & Serialization Schemas
 
-All persistence is managed via **Room Database** (`AppDatabase` v8) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
+All persistence is managed via **Room Database** (`AppDatabase` v9) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
 
 1. **Room Database (`AppDatabase`)**:
    - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, and `ogImageUrl` (nullable TEXT) linking to specific cached OG image assets.
@@ -336,4 +336,4 @@ is outside this handled policy-write failure boundary.
 
 ## RSS Source and Receipt Persistence
 
-Room8 source fields, receipt transactions, indexed image references, queue claims, and count retention are specified in [RSS and Atom Subscriptions](rss.md). Manual records retain null RSS ownership; trash mappings and targeted bookmark edits preserve ownership and publication time. Source-aware Library queries use MANUAL or RSS; search/tag queries use ALL.
+Room9 source fields, receipt transactions, indexed image references, queue claims, and count retention are specified in [RSS and Atom Subscriptions](rss.md). Manual records retain null RSS ownership; trash mappings and targeted bookmark edits preserve ownership and publication time. Source-aware Library queries use MANUAL or RSS; search/tag queries use ALL.

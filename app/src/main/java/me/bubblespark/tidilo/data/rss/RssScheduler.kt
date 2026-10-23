@@ -44,7 +44,7 @@ internal object RssScheduler {
             val preferences = RssPreferences.getInstance(context)
             preferences.initialize()
             val manager = WorkManager.getInstance(context)
-            if (AppDatabase.getInstance(context).rssDao().activeFeeds().isEmpty()) {
+            if (AppDatabase.getInstance(context).rssDao().enabledFeeds().isEmpty()) {
                 manager.cancelUniqueWork(DAILY).result.get()
                 manager.cancelUniqueWork(MANUAL).result.get()
                 return@withLock

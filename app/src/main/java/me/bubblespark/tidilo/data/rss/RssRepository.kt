@@ -99,12 +99,22 @@ internal class RssRepository private constructor(private val context: Context) {
         }
     }
 
+    suspend fun setEnabled(id: String, enabled: Boolean) = withContext(Dispatchers.IO) {
+        db.withTransaction {
+            val feed = requireNotNull(dao.feed(id))
+            require(!feed.deleted)
+            dao.putFeed(feed.copy(enabled = enabled, revision = feed.revision + 1))
+        }
+        RssScheduler.reschedule(context)
+    }
+
     /** Successful feeds are skipped on retries of the same scheduled/manual request. */
     suspend fun fetchAll(since: Long): Boolean = withContext(Dispatchers.IO) {
         preferences.initialize()
         operation.withLock {
             var transientFailure = false
-            for (feed in dao.activeFeeds()) {
+            for (feed in dao.enabledFeeds()) {
+                if (dao.feed(feed.id)?.let { it.enabled && !it.deleted && it.revision == feed.revision } != true) continue
                 if ((feed.lastSuccessAt ?: Long.MIN_VALUE) >= since) continue
                 try {
                     val fetched = fetcher.fetch(feed.url, feed.etag, feed.lastModified)
@@ -129,7 +139,7 @@ internal class RssRepository private constructor(private val context: Context) {
             // Bounded windows limit resource use, not ingestion: every supplied entry is processed.
             for (window in entries.chunked(20)) {
                 val current = dao.feed(feed.id)
-                if (current == null || current.deleted || current.revision != feed.revision) return
+                if (current == null || current.deleted || !current.enabled || current.revision != feed.revision) return
                 val semaphore = Semaphore(4)
                 val enriched = coroutineScope {
                     window.map { entry -> async {
@@ -151,7 +161,7 @@ internal class RssRepository private constructor(private val context: Context) {
         if (accepted) {
             db.withTransaction {
                 val current = dao.feed(feed.id)
-                if (current != null && !current.deleted && current.revision == feed.revision) {
+                if (current != null && !current.deleted && current.enabled && current.revision == feed.revision) {
                     dao.putFeed(current.copy(title = fetched.document?.title ?: current.title,
                         etag = fetched.page.etag ?: current.etag, lastModified = fetched.page.lastModified ?: current.lastModified,
                         lastAttemptAt = now, lastSuccessAt = now, error = null))

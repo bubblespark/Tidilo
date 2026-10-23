@@ -21,7 +21,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RssImageCleanupEntity::class,
         ImportTaskEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -81,6 +81,11 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         val MIGRATION_7_8 = rssMigration7To8
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE rss_feeds ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
+            }
+        }
 
         val MIGRATION_6_7 = bookmarkMigration6To7
 
@@ -124,7 +129,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }

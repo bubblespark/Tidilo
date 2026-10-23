@@ -22,10 +22,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import java.util.Locale
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.RssFeedEntity
@@ -43,7 +39,7 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
         onPauseOrDispose { model.stopListening() }
     }
     RssSettingsContent(feeds, settings, busy, error, wifi, onNavigateBack, model::retry,
-        model::saveSettings, model::saveFeed, model::deleteFeed, model::fetchNow, model::clearError)
+        model::saveSettings, model::saveFeed, model::deleteFeed, model::fetchNow, model::clearError, model::setEnabled)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,7 +48,7 @@ internal fun RssSettingsContent(
     feeds: SummaryLoad<List<RssFeedEntity>>, settings: RssSettings, busy: Boolean, error: String?, wifi: Boolean,
     onBack: () -> Unit, onRetry: () -> Unit, onSettings: (RssSettings) -> Unit,
     onFeed: (RssFeedEntity?, String, String, Int?, Boolean) -> Unit, onDelete: (String) -> Unit,
-    onFetch: () -> Unit, onDismissError: () -> Unit
+    onFetch: () -> Unit, onDismissError: () -> Unit, onEnabled: (String, Boolean) -> Unit = { _, _ -> }
 ) {
     var showTime by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<RssFeedEntity?>(null) }
@@ -77,14 +73,14 @@ internal fun RssSettingsContent(
             }
             Text(stringResource(R.string.rss_schedule_note), style = MaterialTheme.typography.bodySmall)
             if (settings.wifiOnly && !wifi) Text(stringResource(R.string.rss_waiting_wifi), color = MaterialTheme.colorScheme.primary)
-            TextButton(onClick = onFetch, enabled = !busy && (feeds as? SummaryLoad.Ready)?.value?.isNotEmpty() == true) {
+            TextButton(onClick = onFetch, enabled = !busy && (feeds as? SummaryLoad.Ready)?.value?.any { it.enabled } == true) {
                 Text(stringResource(R.string.rss_fetch_now))
             }
         }
         val ready = (feeds as? SummaryLoad.Ready)?.value.orEmpty()
-        val aiFeeds = ready.count { it.mode == "AI" }
+        val aiFeeds = ready.count { it.enabled && it.mode == "AI" }
         RssCard {
-            Text(stringResource(R.string.rss_max_queue, aiFeeds * 5, aiFeeds))
+            Text(stringResource(R.string.rss_max_queue, aiFeeds * 5), style = MaterialTheme.typography.bodySmall)
             if (aiFeeds * 5 > 20) Text(stringResource(R.string.rss_quota_warning), color = MaterialTheme.colorScheme.error)
             Text(stringResource(R.string.rss_queue_note), style = MaterialTheme.typography.bodySmall)
         }
@@ -107,11 +103,15 @@ internal fun RssSettingsContent(
                         RssCard {
                             Text(feed.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(feed.url, style = MaterialTheme.typography.bodySmall)
-                            Text(stringResource(if (feed.mode == "AI") R.string.rss_ai_mode else R.string.rss_direct_mode))
+                            Text(stringResource(R.string.rss_mode_display,
+                                stringResource(if (feed.mode == "AI") R.string.rss_ai_mode else R.string.rss_direct_mode)))
                             Text(stringResource(R.string.rss_retention_display,
                                 feed.retentionLimit?.toString() ?: stringResource(R.string.rss_unlimited)))
-                            Text(stringResource(R.string.rss_last_attempt, rssTime(feed.lastAttemptAt)), style = MaterialTheme.typography.bodySmall)
-                            Text(stringResource(R.string.rss_last_success, rssTime(feed.lastSuccessAt)), style = MaterialTheme.typography.bodySmall)
+                            Row(Modifier.fillMaxWidth().toggleable(feed.enabled, enabled = !busy, role = Role.Checkbox,
+                                onValueChange = { onEnabled(feed.id, it) }), verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(feed.enabled, null, enabled = !busy)
+                                Text(stringResource(R.string.rss_enabled))
+                            }
                             feed.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                             Row {
                                 TextButton(onClick = { editing = feed; showEditor = true }, enabled = !busy) { Text(stringResource(R.string.rss_edit)) }
@@ -150,7 +150,7 @@ private fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onSav
     var url by remember(original) { mutableStateOf(original?.url.orEmpty()) }
     var mode by remember(original) { mutableStateOf(original?.mode ?: "DIRECT") }
     var unlimited by remember(original) { mutableStateOf(original != null && original.retentionLimit == null) }
-    var limit by remember(original) { mutableStateOf((original?.retentionLimit ?: 100).toString()) }
+    var limit by remember(original) { mutableStateOf((original?.retentionLimit ?: 30).toString()) }
     var convert by remember { mutableStateOf(false) }
     val validLimit = unlimited || limit.toIntOrNull()?.let { it in 10..500 } == true
     AlertDialog(onDismissRequest = onDismiss,
@@ -159,6 +159,8 @@ private fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onSav
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(url, { url = it }, label = { Text(stringResource(R.string.rss_feed_url)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
+                HorizontalDivider()
+                Text(stringResource(R.string.rss_import_mode), style = MaterialTheme.typography.titleSmall)
                 Column(Modifier.selectableGroup()) {
                     Row(Modifier.fillMaxWidth().selectable(mode == "DIRECT", role = Role.RadioButton,
                         onClick = { mode = "DIRECT" }), verticalAlignment = Alignment.CenterVertically) {
@@ -171,6 +173,8 @@ private fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onSav
                         Text(stringResource(R.string.rss_ai_mode))
                     }
                 }
+                HorizontalDivider()
+                Text(stringResource(R.string.rss_max_saved_items), style = MaterialTheme.typography.titleSmall)
                 Row(Modifier.fillMaxWidth().toggleable(unlimited, role = Role.Checkbox,
                     onValueChange = { unlimited = it }), verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(unlimited, null)
@@ -204,7 +208,3 @@ private fun RssCard(content: @Composable ColumnScope.() -> Unit) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
     }
 }
-
-private fun rssTime(value: Long?): String = value?.let {
-    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT).format(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()))
-} ?: "—"

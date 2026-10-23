@@ -14,6 +14,9 @@ interface RssDao {
     @Query("SELECT * FROM rss_feeds WHERE deleted = 0 ORDER BY id")
     suspend fun activeFeeds(): List<RssFeedEntity>
 
+    @Query("SELECT * FROM rss_feeds WHERE deleted = 0 AND enabled = 1 ORDER BY id")
+    suspend fun enabledFeeds(): List<RssFeedEntity>
+
     @Query("SELECT * FROM rss_feeds WHERE id = :id")
     suspend fun feed(id: String): RssFeedEntity?
 

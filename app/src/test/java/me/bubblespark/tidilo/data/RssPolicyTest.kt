@@ -10,6 +10,9 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssPolicyTest {
+    @Test fun newSubscriptionsDefaultToThirtySavedItems() {
+        assertEquals(30, me.bubblespark.tidilo.data.db.RssFeedEntity("feed", "https://example.com/feed", "Feed").retentionLimit)
+    }
     @Test fun pendingTasksKeepNewestFiveIncludingExistingAiWaiters() {
         fun task(id: Int, waiting: Boolean = false) = ImportTaskEntity(id.toString(), "https://example.com/$id", "Post",
             if (waiting) "WAITING_AI" else "READY", "", createdAt = id.toLong(), rssFeedId = "feed", rssPublishedAt = id.toLong())

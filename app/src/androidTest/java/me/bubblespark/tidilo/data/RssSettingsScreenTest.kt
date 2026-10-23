@@ -53,6 +53,35 @@ class RssSettingsScreenTest {
         assertTrue(target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true)
     }
 
+    @Test fun feedCardLabelsEnabledAndErrorsReplaceTimestamps(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val feed = mutableStateOf(me.bubblespark.tidilo.data.db.RssFeedEntity("feed", "https://example.com/feed", "Example",
+            retentionLimit = null, error = "HTTP 500", lastAttemptAt = 100, lastSuccessAt = 50))
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(listOf(feed.value)), RssSettings(), false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> }, onDelete = {},
+                    onFetch = {}, onDismissError = {}, onEnabled = { id, value ->
+                        assertEquals("feed", id); feed.value = feed.value.copy(enabled = value)
+                    })
+            } } }
+            node("Simple queue guidance") { it.text?.toString() == "Maximum AI queue: 0 items" }
+            repeat(8) {
+                if (find { it.text?.toString() == "Enabled" } == null) {
+                    find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                    delay(100)
+                }
+            }
+            node("Mode label") { it.text?.toString() == "Import Mode: Direct" }
+            node("Retention label") { it.text?.toString() == "Max saved items: Unlimited" }
+            node("Fetch error") { it.text?.toString() == "HTTP 500" }
+            assertNull(find { it.text?.toString()?.startsWith("Last attempt:") == true || it.text?.toString()?.startsWith("Last success:") == true })
+            click(node("Enabled checkbox label") { it.text?.toString() == "Enabled" })
+            withTimeout(3000) { while (feed.value.enabled) delay(20) }
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
     @Test fun settingsRssNavigationAndBack(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
@@ -110,7 +139,10 @@ class RssSettingsScreenTest {
                 screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
             } } finally { screenshot.recycle() }
             click(node("Add feed") { it.text?.toString() == "Add feed" })
-            val input = node("Feed URL input") { it.isEditable && it.text?.toString() != "100" }
+            node("Import Mode section") { it.text?.toString() == "Import Mode" }
+            node("Max saved items section") { it.text?.toString() == "Max saved items" }
+            node("Default retention") { it.isEditable && it.text?.toString() == "30" }
+            val input = node("Feed URL input") { it.isEditable && it.text?.toString() != "30" }
             assertTrue(input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
                 putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "https://example.com/feed.xml")
             }))

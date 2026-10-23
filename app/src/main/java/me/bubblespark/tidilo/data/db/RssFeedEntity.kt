@@ -11,14 +11,15 @@ data class RssFeedEntity(
     val url: String,
     val title: String,
     val mode: String = "DIRECT",
-    val retentionLimit: Int? = 100,
+    val retentionLimit: Int? = 30,
     val deleted: Boolean = false,
     val revision: Long = 0,
     val etag: String? = null,
     val lastModified: String? = null,
     val lastAttemptAt: Long? = null,
     val lastSuccessAt: Long? = null,
-    val error: String? = null
+    val error: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "1") val enabled: Boolean = true
 )
 
 /** Durable receipts prevent retained-out and rolled-out entries from reappearing. */

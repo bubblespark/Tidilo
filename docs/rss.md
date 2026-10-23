@@ -1,6 +1,6 @@
 # RSS and Atom Subscriptions
 
-Settings > Data Management > RSS (`settings_rss`) manages RSS 2, Atom, and RDF subscriptions. All subscription state, receipts, article content, and AI output remain on the device. Feed acquisition requests the publisher's XML and, when necessary, page metadata; it does not send bookmark content to an AI service.
+Settings > Data Management is ordered Summary, RSS, Clear Image Cache. RSS (`settings_rss`) manages RSS 2, Atom, and RDF subscriptions. All subscription state, receipts, article content, and AI output remain on the device. Feed acquisition requests the publisher's XML and, when necessary, page metadata; it does not send bookmark content to an AI service.
 
 ## Settings and acquisition
 
@@ -10,7 +10,7 @@ Settings > Data Management > RSS (`settings_rss`) manages RSS 2, Atom, and RDF s
 - WorkManager owns unique daily periodic work and unique manual work. Startup, preference edits, clock/timezone changes, and successful execution correct scheduling. Updating Wi-Fi policy also updates a pending manual request's constraints without losing its original request time.
 - ETag and Last-Modified validators support 304 responses. Individual feed failures do not prevent other feeds from importing. Transient failures retry with WorkManager backoff; feeds already successful for that request are skipped on retry.
 - Each response is limited to 2 MB and a 30-second monotonic deadline, with individual connect/read timeouts of at most 10 seconds and at most six connection attempts including redirects. Direct enrichment uses windows of 20 entries and at most four simultaneous requests. These bounds do not impose an article-count ingestion limit.
-- Feed cards show fetched title, URL, mode, retention, last attempt, last success, and errors. Fetch now provides an explicit refresh/retry. Registration validates a real supported XML document, not an HTML page or an arbitrary URL.
+- Feed cards show fetched title, URL, Import Mode, Max saved items, an Enabled checkbox, and errors. Attempt/success timestamps are internal only. A successful acquisition clears the previous error. Disabled feeds are excluded from scheduled and manual acquisition while saved articles and pending AI tasks remain. Fetch now provides an explicit refresh/retry. Registration validates a real supported XML document, not an HTML page or an arbitrary URL.
 
 ## Parsing and images
 
@@ -20,18 +20,18 @@ Title, description, and the first 800 characters of body text come from XML. RSS
 
 ## Modes, queue, and inference
 
-New feeds default to **Direct**, with a retention count of **100**.
+New feeds default to **Direct**, with a retention count of **30**.
 
 - **Direct** saves every valid unseen entry supplied by the fetched feed. It bypasses Ready tasks and does not invoke AICore. It has no ingestion-count cap.
 - **AI Analyze** keeps the newest **five unstarted tasks per feed**, counting READY and WAITING_AI together. Existing unstarted tasks and new entries compete by publication time, then first-seen time and stable URL/ID ties. PROCESSING_AI and ERROR are outside that cap. Dropped older entries are recorded as consumed.
 - Import displays Ready, Ready - RSS, and Error separately. Each Ready section has independent expansion and five-item preview/More controls, with the existing swipe and Undo actions. RSS errors retain feed provenance.
 - The foreground import worker selects waiting manual tasks before RSS tasks at every iteration. An already active inference finishes normally. Scheduled workers only acquire and persist data; they never invoke AICore. Foreground auto-run settings continue to govern automatic promotion and inference.
 - Inference starts only after an atomic SQL claim checks the task and its subscription. Removed or no-longer-AI subscriptions move invalid retry waiters back to Error, avoiding a repeated selection loop. Cancellation, quota rollback, and Undo reconcile the unstarted-task cap. AI success and fallback preserve RSS ownership, publication date, and first-seen time.
-- Maximum Ready - RSS Queue is five times the number of active AI feeds. A warning above 20 possible tasks is a heuristic, not an SDK quota or remaining-capacity estimate. Running tasks, errors, retries, manual imports, and debug usage are separate.
+- Maximum AI queue is shown in small text and equals five times the number of enabled AI feeds. A warning above 20 possible tasks is a heuristic, not an SDK quota or remaining-capacity estimate. Running tasks, errors, retries, manual imports, and debug usage are separate.
 
 ## Persistence, duplicates, and lifecycle
 
-Room schema **8**, through `MIGRATION_7_8`, adds `rss_feeds`, `rss_seen_items`, and `rss_image_cleanup`. Nullable `rssFeedId` and `rssPublishedAt` fields on bookmarks, trash, and import tasks preserve existing manual rows and source identity. Indexed `ogImageKey` fields are backfilled from existing image URLs for targeted reference checks. Search-derived columns and normalized tag occurrences remain maintained by the existing DAO transactions.
+Room schema **9** adds an enabled flag through `MIGRATION_8_9` (existing subscriptions remain enabled and retain their configured counts). The original RSS schema, through `MIGRATION_7_8`, adds `rss_feeds`, `rss_seen_items`, and `rss_image_cleanup`. Nullable `rssFeedId` and `rssPublishedAt` fields on bookmarks, trash, and import tasks preserve existing manual rows and source identity. Indexed `ogImageKey` fields are backfilled from existing image URLs for targeted reference checks. Search-derived columns and normalized tag occurrences remain maintained by the existing DAO transactions.
 
 Receipts use feed identity plus GUID/Atom ID, with normalized URL fallback and a URL lookup. Receipt insertion, duplicate checks, content/queue changes, and retention selection commit transactionally. A failed transaction does not consume an entry. RSS ingestion skips URLs already present in the library, trash, or import queue, preserving the existing record. Retention deletion and queue replacement do not cause receipt replay. The reverse case, manually saving a URL already acquired by RSS, intentionally retains existing behavior and belongs to a later issue.
 
@@ -52,3 +52,5 @@ Library's Newest First and Domain modes show manual bookmarks only. RSS mode sho
 ## Verification boundaries
 
 JVM fixtures cover formats, metadata, HTTP validators/failure handling, stable selection, scheduling/DST, source mapping, manual queue priority, empty RSS bodies, first-seen fallback, and subscription-removal races. Android tests exercise real Room upgrade paths, source queries, receipt rollback/replay, concurrent ingestion, retention, task claims, Undo, canonical image references, Wi-Fi constraints, in-flight image deletion, and labeled Settings controls. Network and AI work in automated tests use fixtures or fakes. Actual AICore inference and real mobile/Wi-Fi handover require a physical supported device; the emulator does not provide AICore.
+
+The feed editor groups Direct/AI Analyze under Import Mode and Unlimited/retained count under Max saved items. New feeds default to30; editing existing subscriptions preserves their settings.

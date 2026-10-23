@@ -307,7 +307,7 @@
     <string name="rss_schedule_note">Runs around the selected local time. System battery controls may delay fetching. Wi-Fi-only applies to scheduled and manual RSS fetching.</string>
     <string name="rss_waiting_wifi">Waiting for Wi-Fi</string>
     <string name="rss_fetch_now">Fetch now</string>
-    <string name="rss_max_queue">Max Ready - RSS Queue: %1$d items (%2$d AI Analyze feeds × 5)</string>
+    <string name="rss_max_queue">Maximum AI queue: %1$d items</string>
     <string name="rss_quota_warning">A large AI queue may reach AICore usage restrictions. Consider Direct mode or the AICore fallback setting. This warning is an estimate, not a fixed SDK quota.</string>
     <string name="rss_queue_note">Each AI feed keeps its newest 5 unstarted tasks, including AI waiters. Running tasks, errors, retries, and manual usage are separate.</string>
     <string name="rss_dismiss">Dismiss</string>
@@ -315,11 +315,13 @@
     <string name="rss_no_feeds">No feed subscriptions yet</string>
     <string name="rss_ai_mode">AI Analyze</string>
     <string name="rss_direct_mode">Direct</string>
-    <string name="rss_retention_display">Retention: %1$s</string>
+    <string name="rss_retention_display">Max saved items: %1$s</string>
+    <string name="rss_mode_display">Import Mode: %1$s</string>
+    <string name="rss_import_mode">Import Mode</string>
+    <string name="rss_max_saved_items">Max saved items</string>
+    <string name="rss_enabled">Enabled</string>
     <string name="rss_retention_input">Retained items (10–500)</string>
     <string name="rss_unlimited">Unlimited</string>
-    <string name="rss_last_attempt">Last attempt: %1$s</string>
-    <string name="rss_last_success">Last success: %1$s</string>
     <string name="rss_edit">Edit feed</string>
     <string name="rss_delete">Delete feed</string>
     <string name="rss_save">Save</string>

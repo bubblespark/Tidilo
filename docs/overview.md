@@ -59,6 +59,7 @@ flowchart TD
 - Room is the source of truth. Writes are awaited by ID/domain; Room invalidation refreshes Paging and aggregate observers. Active bookmarks are never cached as an unbounded application-wide list.
 - An automatic migration bridge on startup safely ingests legacy `SharedPreferences` JSON caches into Room on first launch with an empty database.
 - Disposable OG previews remain in `cacheDir/og_images`. Imports and grid cards share exact-image recovery with four concurrent workers, reference-counted cancellation, generation-safe clearing, and failure backoff. See [Bookmark Preview Cache](og_image_cache.md).
+- Domain icons recover on display through an independent four-worker pipeline shared with imports. Startup retains policy synchronization and disk preload without network backfill. Candidate resolution short-circuits by priority; permanent absence markers expire after 14 days and transient failures back off for 60 seconds. See [Domain Icon Recovery](domain_icon_cache.md).
 
 ### 2.3 On-Device GenAI (AICore & Gemini Nano)
 - Powered by `com.google.mlkit:genai-prompt:1.0.0-beta2`.

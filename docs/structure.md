@@ -17,7 +17,8 @@ app/src/main/java/com/ykgudev/tidilo/
 │
 ├── data/                                # Data layer & local storage
 │   ├── BookmarkRepository.kt            # Bookmark CRUD, Trash lifecycle (30-day, 100-cap), JSON serialization
-│   ├── DomainIconManager.kt             # Domain icon fetching, resolution selection, 384px downsampling, transparency
+    │   ├── DomainIconManager.kt             # Shared on-demand domain icon recovery, caching, color, and transparency
+    │   ├── DomainIconResolver.kt            # Prioritized HTML discovery and short-circuit icon selection
 │   ├── QueueRepository.kt               # Queue state machine (Running, Queuing, Error, Completed), Mutex
 │   └── Taxonomy.kt                      # 7 Top-Level Categories & 11 Subcategories definition and i18n
 │
@@ -32,6 +33,7 @@ app/src/main/java/com/ykgudev/tidilo/
     ├── components/                      # Shared reusable UI elements
     │   ├── ArrowDownwardIcon.kt         # Material Symbols Outlined arrow_downward vector icon definition
     │   ├── DomainWatermark.kt           # Shared 195dp, 50% saturation, 0.14 alpha domain icon watermark
+    │   ├── DomainIconState.kt           # Generation-scoped icon loading and completion observation
     │   ├── FilterListIcon.kt            # Material Symbols Outlined filter_list vector icon definition
     │   └── MenuOpenIcon.kt              # Material Symbols Outlined menu_open vector icon definition
     │
@@ -66,7 +68,7 @@ app/src/main/java/com/ykgudev/tidilo/
     │       ├── GenerateContentRequestScreen.kt    # Fine-grained tuning for Gemini Nano inference
     │       ├── GenerateContentRequestViewModel.kt # State management for inference parameters
     │       ├── SettingsDebugScreen.kt             # Diagnostics: AICore prompt API tests & Web Parser workbench
-    │       └── SettingsScreen.kt                  # App language selection, domain icon refresh, Debug navigation
+    │       └── SettingsScreen.kt                  # App language selection, image cache clearing, Debug navigation
     │
     └── theme/                           # Design tokens & Material 3 theme styling
         ├── Color.kt                     # M3 light/dark palette, primary/secondary/container colors

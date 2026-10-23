@@ -752,6 +752,7 @@ private fun TaskCard(
             if (!domain.isNullOrBlank()) {
                 DomainWatermark(
                     domain = domain,
+                    pageUrl = item.url,
                     size = 80.dp,
                     alpha = 0.22f,
                     modifier = Modifier.align(Alignment.TopEnd)
@@ -897,6 +898,7 @@ private fun ImportingTaskCard(
             if (!domain.isNullOrBlank()) {
                 DomainWatermark(
                     domain = domain,
+                    pageUrl = item.url,
                     size = 80.dp,
                     alpha = 0.22f,
                     modifier = Modifier.align(Alignment.TopEnd)

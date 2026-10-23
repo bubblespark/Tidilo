@@ -187,12 +187,6 @@
     <string name="settings_nsfw_title">NSFW コンテンツ</string>
     <string name="settings_nsfw_subtitle">表示設定とドメイン管理</string>
     <string name="settings_section_data">データ管理</string>
-    <string name="settings_refetch_icons_title">ドメインアイコンの再取得</string>
-    <string name="settings_refetch_icons_subtitle">保存されている全てのドメインに対してアイコンを再取得</string>
-    <string name="settings_refetch_icons_dialog_title">ドメインアイコンの再ダウンロード</string>
-    <string name="settings_refetch_icons_dialog_message">全てのドメインに対してアイコンを再ダウンロードしますか？\n（通信環境によっては完了までに時間がかかる場合があります）</string>
-    <string name="settings_refetch_icons_progress_title">ドメインアイコンをダウンロード中</string>
-    <string name="settings_refetch_icons_preparing">準備中…</string>
     <string name="settings_clear_image_cache_title">画像キャッシュの消去</string>
     <string name="settings_clear_image_cache_subtitle">プレビュー画像およびドメインアイコンのキャッシュを削除</string>
     <string name="settings_clear_image_cache_dialog_title">画像キャッシュの消去</string>

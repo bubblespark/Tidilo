@@ -38,7 +38,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
@@ -48,7 +47,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,10 +57,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
@@ -70,7 +66,6 @@ import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AppLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.OgImageManager
 import android.widget.Toast
@@ -91,17 +86,11 @@ fun SettingsScreen(
     val aiCoreFallbackMode by AppConfig.aiCoreFallbackMode.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val localConfig = LocalConfiguration.current
-    val bookmarkRepository = remember { BookmarkRepository.getInstance(context) }
     val scope = rememberCoroutineScope()
 
     var showFallbackDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
-    var showConfirmDialog by remember { mutableStateOf(false) }
     var showClearCacheConfirmDialog by remember { mutableStateOf(false) }
-    var showProgressDialog by remember { mutableStateOf(false) }
-    var currentProcessingDomain by remember { mutableStateOf("") }
-    var processedDomainCount by remember { mutableIntStateOf(0) }
-    var totalDomainCount by remember { mutableIntStateOf(0) }
 
     Column(
         modifier = modifier
@@ -458,65 +447,6 @@ fun SettingsScreen(
             modifier = Modifier.padding(start = 4.dp, bottom = 12.dp)
         )
 
-        // Refresh Domain Icons Card
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { showConfirmDialog = true },
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        BoxContent(
-                            icon = Icons.Default.Refresh,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            text = stringResource(R.string.settings_refetch_icons_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = stringResource(R.string.settings_refetch_icons_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                }
-
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
         // Clear Image Cache Card
         Card(
             modifier = Modifier
@@ -691,123 +621,6 @@ fun SettingsScreen(
                 }
             }
         )
-    }
-
-    if (showConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showConfirmDialog = false },
-            title = {
-                Text(
-                    text = stringResource(R.string.settings_refetch_icons_dialog_title),
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = stringResource(R.string.settings_refetch_icons_dialog_message)
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        processedDomainCount = 0
-                        currentProcessingDomain = ""
-                        showConfirmDialog = false
-                        showProgressDialog = true
-                        scope.launch {
-                            try {
-                                val domains = bookmarkRepository.distinctDomains()
-                                totalDomainCount = domains.size
-                                DomainIconManager.refreshAllDomainIcons(context, domains) { current, total, domain ->
-                                    processedDomainCount = current
-                                    totalDomainCount = total
-                                    currentProcessingDomain = domain
-                                }
-                            } catch (e: Exception) {
-                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                                android.widget.Toast.makeText(context, context.getString(R.string.library_load_failed), android.widget.Toast.LENGTH_LONG).show()
-                            } finally {
-                                showProgressDialog = false
-                            }
-                        }
-                    }
-                ) {
-                    Text(stringResource(R.string.common_ok))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmDialog = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            },
-            shape = RoundedCornerShape(24.dp)
-        )
-    }
-
-    if (showProgressDialog) {
-        Dialog(
-            onDismissRequest = { /* Non-dismissible */ },
-            properties = DialogProperties(
-                dismissOnBackPress = false,
-                dismissOnClickOutside = false
-            )
-        ) {
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                tonalElevation = 6.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.settings_refetch_icons_progress_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    LinearProgressIndicator(
-                        progress = {
-                            if (totalDomainCount > 0) {
-                                (processedDomainCount.toFloat() / totalDomainCount.toFloat()).coerceIn(0f, 1f)
-                            } else 0f
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = currentProcessingDomain.ifEmpty {
-                                stringResource(R.string.settings_refetch_icons_preparing)
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "$processedDomainCount / $totalDomainCount",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-        }
     }
 
     if (showFallbackDialog) {

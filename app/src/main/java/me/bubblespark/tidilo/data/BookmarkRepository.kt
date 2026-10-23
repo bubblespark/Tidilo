@@ -215,7 +215,7 @@ class BookmarkRepository private constructor(context: Context) {
     }
 
     /**
-     * Synchronizes domain policies and fetches missing domain icons in the background.
+     * Synchronizes domain policies and preloads cached icons without network access.
      */
     private fun warmUpDomainIconsAsync(items: List<BookmarkItem>? = null) {
         repositoryScope.launch {
@@ -223,28 +223,7 @@ class BookmarkRepository private constructor(context: Context) {
                 ?: bookmarkDao.distinctDomains()
             DomainPolicyManager.syncDomains(domains)
             DomainIconManager.preloadIcons(appContext, domains)
-            for (domain in domains) {
-                if (DomainIconManager.hasIcon(appContext, domain) || DomainIconManager.shouldSkipFetch(appContext, domain)) continue
-                var groupHadTransientFailure = false
-                var found = false
-                var urls = bookmarkDao.domainUrls(domain, null, 64)
-                while (urls.isNotEmpty() && !found) {
-                    val next = bookmarkDao.domainUrls(domain, urls.last(), 64)
-                    for ((index, url) in urls.withIndex()) {
-                        val isLast = next.isEmpty() && index == urls.lastIndex
-                        val result = DomainIconManager.fetchAndSaveDomainIcon(
-                            context = appContext, url = url,
-                            recordFailureMarker = isLast && !groupHadTransientFailure
-                        )
-                        if (result.hadTransientFailure) groupHadTransientFailure = true
-                        if (result.success || DomainIconManager.hasIcon(appContext, domain)) {
-                            found = true
-                            break
-                        }
-                    }
-                    urls = next
-                }
-            }
+
         }
     }
 

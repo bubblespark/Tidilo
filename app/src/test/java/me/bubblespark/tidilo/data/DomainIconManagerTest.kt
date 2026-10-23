@@ -39,7 +39,6 @@ class DomainIconManagerTest {
     fun constants_verifyResolutionAndTimeoutSpecifications() {
         assertEquals(96, DomainIconManager.MIN_ICON_SIZE)
         assertEquals(384, DomainIconManager.MAX_ICON_SIZE)
-        assertEquals(10_000L, DomainIconManager.DOMAIN_TIMEOUT_MS)
     }
 
     @Test
@@ -343,28 +342,6 @@ class DomainIconManagerTest {
     }
 
     @Test
-    fun clearAllNegativeMarkers_removesAllNoneFiles() {
-        val tempDir = java.nio.file.Files.createTempDirectory("domain_clear_test").toFile()
-        try {
-            val fakeContext = object : android.content.ContextWrapper(null) {
-                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
-                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
-            }
-
-            DomainIconManager.writeNegativeMarker(fakeContext, "domain1.com")
-            DomainIconManager.writeNegativeMarker(fakeContext, "domain2.com")
-            assertTrue(DomainIconManager.shouldSkipFetch(fakeContext, "domain1.com"))
-            assertTrue(DomainIconManager.shouldSkipFetch(fakeContext, "domain2.com"))
-
-            DomainIconManager.clearAllNegativeMarkers(fakeContext)
-            assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, "domain1.com"))
-            assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, "domain2.com"))
-        } finally {
-            tempDir.deleteRecursively()
-        }
-    }
-
-    @Test
     fun fetchAndSaveDomainIcon_networkFailure_doesNotWriteNegativeMarker() = kotlinx.coroutines.runBlocking {
         val tempDir = java.nio.file.Files.createTempDirectory("domain_offline_test").toFile()
         try {
@@ -468,38 +445,6 @@ class DomainIconManagerTest {
             assertFalse(result.success)
             assertTrue(result.hadTransientFailure)
             // Transient HTML discovery failure must prevent writing negative marker
-            assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, testDomain))
-        } finally {
-            DomainIconManager.htmlDiscoverer = null
-            DomainIconManager.httpDownloader = null
-            tempDir.deleteRecursively()
-        }
-    }
-
-    @Test
-    fun fetchAndSaveDomainIcon_recordFailureMarkerFalse_doesNotWriteMarker() = kotlinx.coroutines.runBlocking {
-        val tempDir = java.nio.file.Files.createTempDirectory("domain_no_marker_test").toFile()
-        try {
-            val fakeContext = object : android.content.ContextWrapper(null) {
-                override fun getCacheDir(): java.io.File = java.io.File(tempDir, "cache").apply { mkdirs() }
-                override fun getFilesDir(): java.io.File = java.io.File(tempDir, "files").apply { mkdirs() }
-            }
-
-            val testDomain = "multi-url-example.com"
-            val testUrl = "https://$testDomain/page1"
-
-            DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), hasServerContact = true) }
-            DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, hasServerContact = true) }
-
-            // Intermediate URL of a domain group with recordFailureMarker = false
-            val result = DomainIconManager.fetchAndSaveDomainIcon(
-                context = fakeContext,
-                url = testUrl,
-                recordFailureMarker = false
-            )
-            assertFalse(result.success)
-            assertFalse(result.hadTransientFailure)
-            // Must NOT write marker when recordFailureMarker is false
             assertFalse(DomainIconManager.shouldSkipFetch(fakeContext, testDomain))
         } finally {
             DomainIconManager.htmlDiscoverer = null

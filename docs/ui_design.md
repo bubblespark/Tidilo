@@ -239,7 +239,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 ### 6.5 `DomainWatermark`
 - **Dimensions & Effects**: Default `195dp` size, `ColorMatrix` with 50% saturation (`0.50f`), 0.14f alpha, clipped with `RoundedCornerShape(20.dp)`.
 - **Shared Consistency**: Shared seamlessly between card feeds (`BookmarkCard`, `SearchScreen`), domain grid (`DomainCard`), and detail views (`BookmarkDetailScreen`).
-- **Asynchronous & Non-Blocking Performance**: Uses `produceState<ImageBitmap?>` to resolve icons without blocking the main UI thread. In-memory hits (`DomainIconManager.getCachedIconBitmap`) render instantaneously (0ms), while cold disk cache reads are dispatched asynchronously on `Dispatchers.IO` (`DomainIconManager.loadIconFromDisk`), with redundant background transparency recalculations completely eliminated.
+- **Asynchronous & Non-Blocking Performance**: Uses `rememberDomainIcon` to resolve cached icons and recover missing icons without blocking the UI. Imports and visible consumers share bounded per-domain requests. Completion updates bitmaps and accent colors without restarting active icon producers; cache generation changes recreate them. See [Domain Icon Recovery](domain_icon_cache.md).
 
 ### 6.6 Dynamic Swipe-Action Import Cards (Ready & Error Groups)
 - **Component**: Custom high-performance gesture layer utilizing Compose Foundation `Modifier.draggable(Orientation.Horizontal)` and `Animatable` layout offset, eliminating `SwipeToDismissBox` quirks and deprecations.
@@ -283,7 +283,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 
 ### 6.7 NSFW Contents Settings & Badge Specification
 - **Settings Screen Menu Icons (`SettingsScreen.kt`)**:
-  - All menu card icon containers are unified to `primaryContainer` with icon tint `onPrimaryContainer` (`Language`, `NSFW Contents`, `Re-fetch Domain Icons`, `Debug`, `GenerateContentRequest`), ensuring visual consistency across all Material 3 Expressive settings cards.
+  - All menu card icon containers use `primaryContainer` with icon tint `onPrimaryContainer`. Manual domain icon re-fetch is removed; cache clearing remains available and explains automatic preview/icon recovery.
 - **NSFW Settings Screen (`NsfwSettingsScreen.kt`)**:
   - Clean top bar with `Icons.AutoMirrored.Filled.ArrowBack`.
   - Top options configured as 20dp rounded cards (`surfaceContainerHigh`):
@@ -450,6 +450,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - When the bookmark's exact og:image is cached: Decodes WebP from local cache storage and displays using `ContentScale.Crop`.
   - When og:image is absent or pending: Displays the domain accent gradient with a centered cached domain favicon (`36.dp`), then a bundled Material Rounded Link icon (`24.dp` inside a `36.dp` rounded container) if no icon exists. Uses the theme primary color when the domain is unavailable. Never uses initials or another bookmark's OG image.
   - Missing/corrupt previews with a persisted OG URL recover on demand through shared, four-worker-limited background requests. Exact-image completion updates cards without restarting sibling downloads. See [Bookmark Preview Cache](og_image_cache.md) for cancellation, retry, and cache-clear semantics.
+  - Domain icon network recovery waits for a completed OG miss, or starts immediately when no OG URL exists. Cached icons may display during OG loading. Successful OG previews do not trigger icon network recovery from that card.
 - **Bottom Information Hierarchy (Fixed Height: 116dp)**:
   - ❶ **Domain Name**: Subtle caption (`labelSmall`, `11.sp`, `lineHeight = 15.sp`, `color = MaterialTheme.colorScheme.outline`, single-line ellipsis).
   - ❷ **Bookmark Title**: Positioned immediately below the domain name. High-readability 3-line reservation (`minLines = 3, maxLines = 3`, `style = MaterialTheme.typography.titleSmall`, `FontWeight.SemiBold`, `overflow = TextOverflow.Ellipsis`).

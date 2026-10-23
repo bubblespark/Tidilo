@@ -40,8 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import me.bubblespark.tidilo.R
@@ -49,6 +47,9 @@ import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.ui.util.TimeFormatter
+import me.bubblespark.tidilo.ui.components.rememberDomainIcon
+
+private data class OgPreviewState(val bitmap: ImageBitmap?, val resolved: Boolean)
 
 /**
  * Modern 2-column Grid bookmark card with 1.91:1 og:image header,
@@ -84,40 +85,24 @@ fun BookmarkGridCard(
         DomainIconManager.observeIconUpdates(domain)
     }.collectAsStateWithLifecycle(initialValue = 0L)
 
-    // Each identity owns fresh state; completion notifications never restart active downloads.
-    val ogBitmap by key(context, bookmark.url, domain, ogFilename, cacheGeneration) {
-        produceState<ImageBitmap?>(
-            initialValue = if (domain != null && ogFilename != null) {
-                OgImageManager.getCachedOgImageBitmap(domain, ogFilename)
-            } else null
-        ) {
+    // Track completion explicitly: a null bitmap alone cannot distinguish pending from failed.
+    val ogState by key(context, bookmark.url, domain, ogFilename, cacheGeneration) {
+        val cached = if (domain != null && ogFilename != null) OgImageManager.getCachedOgImageBitmap(domain, ogFilename) else null
+        produceState(initialValue = OgPreviewState(cached, cached != null || ogFilename == null)) {
             if (domain != null && ogFilename != null) {
                 coroutineScope {
                     launch {
                         OgImageManager.observeExactImageUpdates(ogFilename).collect {
-                            OgImageManager.getCachedOgImageBitmap(domain, ogFilename)?.let { value = it }
+                            OgImageManager.getCachedOgImageBitmap(domain, ogFilename)?.let { value = OgPreviewState(it, true) }
                         }
                     }
-                    value = OgImageManager.loadOrFetchOgImage(context, bookmark.url, domain, bookmark.ogImageUrl)
+                    value = OgPreviewState(OgImageManager.loadOrFetchOgImage(context, bookmark.url, domain, bookmark.ogImageUrl), true)
                 }
             }
         }
     }
-
-    // Asynchronously load cached domain icon bitmap
-    val domainIconBitmap by produceState<ImageBitmap?>(
-        initialValue = domain?.let { DomainIconManager.getCachedIconBitmap(it) },
-        key1 = domain,
-        key2 = iconRefreshSignal
-    ) {
-        value = domain?.let { DomainIconManager.getCachedIconBitmap(it) }
-        if (domain != null) {
-            val cached = DomainIconManager.getCachedIconBitmap(domain)
-            value = cached ?: withContext(Dispatchers.IO) {
-                DomainIconManager.loadIconFromDisk(context, domain)
-            }
-        }
-    }
+    val ogBitmap = ogState.bitmap
+    val domainIconBitmap by rememberDomainIcon(domain, bookmark.url, ogState.resolved && ogBitmap == null)
 
     val primaryColor = MaterialTheme.colorScheme.primary
     val domainAccentColor = remember(domain, primaryColor, iconRefreshSignal) {

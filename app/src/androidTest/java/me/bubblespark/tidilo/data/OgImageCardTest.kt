@@ -53,6 +53,8 @@ class OgImageCardTest {
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         ) as ComponentActivity
         try {
+            DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), true, false) }
+            DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, true, false) }
             OgImageManager.imageDownloader = { url ->
                 val id = if (url.contains("/a.png")) "a" else "b"
                 calls.computeIfAbsent(id) { AtomicInteger() }.incrementAndGet()
@@ -120,6 +122,8 @@ class OgImageCardTest {
             screenshot.recycle()
             assertEquals(3, calls.values.sumOf { it.get() })
         } finally {
+            DomainIconManager.htmlDiscoverer = null
+            DomainIconManager.httpDownloader = null
             OgImageManager.imageDownloader = null
             gates.values.forEach { it.complete(Unit) }
             instrumentation.runOnMainSync { activity.finish() }

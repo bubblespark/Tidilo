@@ -112,9 +112,6 @@ interface BookmarkDao {
     @Query("SELECT DISTINCT domain FROM bookmarks WHERE domain IS NOT NULL ORDER BY domain")
     fun observeDistinctDomains(): Flow<List<String>>
 
-    @Query("SELECT url FROM bookmarks WHERE domain = :domain AND (url > :afterUrl OR :afterUrl IS NULL) GROUP BY url ORDER BY url LIMIT :limit")
-    suspend fun domainUrls(domain: String, afterUrl: String?, limit: Int): List<String>
-
     @Query("UPDATE bookmarks SET isNsfw = :isNsfw WHERE domain = :domain")
     suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean)
 

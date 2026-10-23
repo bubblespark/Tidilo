@@ -23,6 +23,9 @@ interface RssDao {
     @Query("SELECT * FROM rss_feeds WHERE url = :url")
     suspend fun feedByUrl(url: String): RssFeedEntity?
 
+    @Query("SELECT COUNT(*) FROM bookmarks WHERE rssFeedId = :feedId")
+    suspend fun savedCount(feedId: String): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putFeed(feed: RssFeedEntity)
 

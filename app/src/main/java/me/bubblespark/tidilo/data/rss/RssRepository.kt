@@ -36,7 +36,7 @@ internal class RssRepository private constructor(private val context: Context) {
     val feeds = dao.observeFeeds()
     val settings = preferences.state
 
-    suspend fun register(url: String, mode: String, limit: Int?): String = withContext(Dispatchers.IO) {
+    suspend fun register(url: String, mode: String, limit: Int?, confirmed: RssRegistrationSnapshot? = null): String = withContext(Dispatchers.IO) {
         preferences.initialize()
         val normalized = RssFeedParser.httpUrl(url, url) ?: throw IllegalArgumentException("Enter an HTTP or HTTPS feed URL")
         require(mode in setOf("AI", "DIRECT"))
@@ -44,12 +44,14 @@ internal class RssRepository private constructor(private val context: Context) {
         operation.withLock {
             val old = dao.feedByUrl(normalized)
             require(old == null || old.deleted) { "This feed is already registered" }
+            val snapshot = store.registrationSnapshot(normalized)
+            if (snapshot != null && snapshot != confirmed) throw RssRegistrationConfirmationRequired(snapshot)
             val fetched = fetcher.fetch(normalized, null, null)
             val document = requireNotNull(fetched.document) { "Feed returned no document" }
             val feed = RssFeedEntity(old?.id ?: UUID.randomUUID().toString(), normalized, document.title, mode, limit,
                 revision = (old?.revision ?: -1) + 1)
             // A validated subscription is retained even if its first article-metadata request fails.
-            db.withTransaction { dao.putFeed(feed) }
+            store.registerFeed(feed, confirmed)
             try {
                 ingestFetched(feed, fetched)
             } catch (cancelled: CancellationException) { throw cancelled }

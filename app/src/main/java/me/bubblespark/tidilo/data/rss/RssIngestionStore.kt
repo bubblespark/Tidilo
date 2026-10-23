@@ -16,6 +16,24 @@ import me.bubblespark.tidilo.data.db.RssSeenItemEntity
 internal class RssIngestionStore(private val database: AppDatabase) {
     private val rss = database.rssDao()
 
+    suspend fun registrationSnapshot(url: String): RssRegistrationSnapshot? = database.withTransaction {
+        val old = rss.feedByUrl(url) ?: return@withTransaction null
+        require(old.deleted) { "This feed is already registered" }
+        val count = rss.savedCount(old.id)
+        if (count == 0) null else RssRegistrationSnapshot(old.id, old.revision, count)
+    }
+
+    /** Recheck consent after network validation before enabling any retention or acquisition. */
+    suspend fun registerFeed(feed: RssFeedEntity, confirmed: RssRegistrationSnapshot?) = database.withTransaction {
+        val actual = registrationSnapshot(feed.url)
+        if (actual != null && actual != confirmed) throw RssRegistrationConfirmationRequired(actual)
+        val old = rss.feedByUrl(feed.url)
+        require(feed.id == (old?.id ?: feed.id) && feed.revision == (old?.revision ?: -1) + 1) {
+            "Subscription changed. Please try again."
+        }
+        rss.putFeed(feed)
+    }
+
     /** Receipt and content changes commit together; stale fetches cannot resurrect deleted feeds. */
     suspend fun ingest(feed: RssFeedEntity, entries: List<RssEntry>, now: Long): Boolean = database.withTransaction {
         val current = rss.feed(feed.id) ?: return@withTransaction false
@@ -79,3 +97,7 @@ internal class RssIngestionStore(private val database: AppDatabase) {
 }
 
 internal class RssImportSkipped : Exception("RSS item already exists or its subscription was removed")
+
+internal data class RssRegistrationSnapshot(val feedId: String, val revision: Long, val savedCount: Int)
+internal class RssRegistrationConfirmationRequired(val snapshot: RssRegistrationSnapshot) :
+    Exception("Existing feed articles require confirmation")

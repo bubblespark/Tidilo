@@ -326,6 +326,11 @@
     <string name="rss_delete">Delete feed</string>
     <string name="rss_save">Save</string>
     <string name="rss_cancel">Cancel</string>
+    <string name="rss_register">Register</string>
+    <string name="rss_register_existing_title">Resume this feed?</string>
+    <string name="rss_register_existing_count">This feed has %1$d saved articles. Re-registering resumes the same feed.</string>
+    <string name="rss_register_existing_limit">Up to %1$d articles will be kept, including newly fetched articles. Older articles above this limit will be permanently deleted without going to Trash, starting with the initial fetch after registration.</string>
+    <string name="rss_register_existing_unlimited">Existing articles will be kept with no automatic count deletion.</string>
     <string name="rss_feed_url">Feed URL</string>
     <string name="rss_retention_note">Oldest RSS bookmarks above this count are permanently deleted, without going to Trash. This does not limit Direct ingestion. Restored RSS bookmarks are subject to this limit again.</string>
     <string name="rss_delete_note">Stop fetching and remove unstarted tasks. Saved articles remain in RSS and search.</string>

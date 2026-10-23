@@ -23,6 +23,8 @@ internal class RssWifiUnavailable : IOException("Waiting for Wi-Fi")
 internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boolean) {
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
 
+    // Enumerate non-default routes too: prefer validated Wi-Fi and bind requests to it without cellular fallback.
+    @Suppress("DEPRECATION")
     fun availableNetwork(): Network? = selectRssNetwork(connectivity.allNetworks.mapNotNull { network ->
         val caps = connectivity.getNetworkCapabilities(network) ?: return@mapNotNull null
         if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&

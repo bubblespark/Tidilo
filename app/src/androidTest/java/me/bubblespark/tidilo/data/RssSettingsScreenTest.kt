@@ -21,6 +21,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSettingsScreenTest {
+    @Test fun resubscriptionDialogExplainsImmediateDeletionAndRequiresExplicitChoice(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        var accepted = false
+        var dismissed = false
+        val limit = mutableStateOf<Int?>(30)
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                me.bubblespark.tidilo.ui.screens.settings.RssRegistrationDialog(100, limit.value, false,
+                    onConfirm = { accepted = true }, onDismiss = { dismissed = true })
+            } } }
+            node("Existing count") { it.text?.toString()?.contains("100 saved articles") == true }
+            node("Immediate permanent deletion warning") { it.text?.toString()?.contains("initial fetch after registration") == true }
+            assertFalse(accepted)
+            click(node("Cancel registration") { it.text?.toString() == "Cancel" })
+            assertTrue(dismissed)
+            assertFalse(accepted)
+            instrumentation.runOnMainSync { limit.value = null }
+            node("Unlimited explanation") { it.text?.toString()?.contains("no automatic count deletion") == true }
+            click(node("Confirm registration") { it.text?.toString() == "Register" })
+            assertTrue(accepted)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
 

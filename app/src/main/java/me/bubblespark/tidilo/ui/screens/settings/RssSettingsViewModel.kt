@@ -20,6 +20,13 @@ import me.bubblespark.tidilo.data.rss.RssPreferences
 import me.bubblespark.tidilo.data.rss.RssRepository
 import me.bubblespark.tidilo.data.rss.RssScheduler
 import me.bubblespark.tidilo.data.rss.RssSettings
+import me.bubblespark.tidilo.data.rss.RssRegistrationSnapshot
+import me.bubblespark.tidilo.data.rss.RssRegistrationConfirmationRequired
+
+internal data class RssRegistrationRequest(
+    val original: RssFeedEntity?, val url: String, val mode: String, val limit: Int?, val convert: Boolean,
+    val snapshot: RssRegistrationSnapshot
+)
 
 class RssSettingsViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = RssRepository.getInstance(application)
@@ -33,6 +40,8 @@ class RssSettingsViewModel(application: Application) : AndroidViewModel(applicat
     val error = _error.asStateFlow()
     private val _wifi = MutableStateFlow<Boolean?>(null)
     val wifi = _wifi.asStateFlow()
+    private val _registration = MutableStateFlow<RssRegistrationRequest?>(null)
+    internal val registration = _registration.asStateFlow()
     private val connectivity = application.getSystemService(ConnectivityManager::class.java)
     private var listening = false
     private var feedsJob: Job? = null
@@ -84,14 +93,30 @@ class RssSettingsViewModel(application: Application) : AndroidViewModel(applicat
         RssScheduler.reschedule(getApplication(), force = true)
     }
 
-    fun saveFeed(original: RssFeedEntity?, url: String, mode: String, limit: Int?, convert: Boolean) = action {
-        if (original == null) repository.register(url, mode, limit)
-        else if (original.url == url.trim()) repository.edit(original.id, mode, limit, convert)
-        else {
-            // Validate/create the replacement first; an invalid new URL leaves the old feed intact.
-            repository.register(url, mode, limit)
-            repository.delete(original.id)
+    fun saveFeed(original: RssFeedEntity?, url: String, mode: String, limit: Int?, convert: Boolean) =
+        saveFeed(original, url, mode, limit, convert, null)
+
+    private fun saveFeed(original: RssFeedEntity?, url: String, mode: String, limit: Int?, convert: Boolean,
+        confirmed: RssRegistrationSnapshot?) = action {
+        try {
+            if (original == null) repository.register(url, mode, limit, confirmed)
+            else if (original.url == url.trim()) repository.edit(original.id, mode, limit, convert)
+            else {
+                // Validate/create the replacement first; an invalid new URL leaves the old feed intact.
+                repository.register(url, mode, limit, confirmed)
+                repository.delete(original.id)
+            }
+        } catch (required: RssRegistrationConfirmationRequired) {
+            _registration.value = RssRegistrationRequest(original, url, mode, limit, convert, required.snapshot)
         }
+    }
+
+    fun dismissRegistration() { _registration.value = null }
+    fun confirmRegistration() {
+        val request = _registration.value ?: return
+        if (_busy.value) return
+        _registration.value = null
+        saveFeed(request.original, request.url, request.mode, request.limit, request.convert, request.snapshot)
     }
 
     fun deleteFeed(id: String) = action { repository.delete(id) }

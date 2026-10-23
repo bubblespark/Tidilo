@@ -62,3 +62,11 @@ Requests prefer validated Wi-Fi even when Wi-Fi-only is OFF; another validated n
 Arbitrary user-provided HTTP feeds remain supported intentionally. The manifest therefore permits cleartext HTTP throughout the app, including page and image connections. HTTP traffic has no transport encryption or integrity protection: a network observer can read it, and an on-path attacker can modify XML, metadata, article links, images, or content used in an on-device prompt. HTTPS should be preferred when the publisher supports it. A fixed-domain network-security allowlist cannot cover arbitrary hosts added at runtime. This policy does not add cloud AI or upload bookmark content.
 
 Atom body selection distinguishes the Atom namespace from Media RSS regardless of prefix spelling. Missing, blank, or malformed AI summaries retain a nonblank feed description before falling back to the title. Manual task priority and deterministic undated-entry URL/ID tie-breaking are unchanged.
+
+## Re-registering the same feed
+
+A normalized feed URL remains unique. Re-registration reuses the original subscription ID and consumed-item receipts; it does not create duplicate feeds or detach old articles from retention. While unsubscribed, saved articles remain. Once re-registered, both existing and newly acquired articles are subject to the newly selected retention limit.
+
+If active RSS bookmarks already exist for that feed, registration first asks for confirmation showing their count. A count limit warns that oldest excess articles are permanently removed without Trash, starting with the initial fetch after registration. Unlimited explains that existing articles remain without count deletion. Cancel leaves the subscription and articles unchanged. The repository checks consent before network validation and rechecks ID, revision, and count transactionally before reactivating the subscription. A changed count requires another confirmation. Only active RSS-owned bookmarks for that feed are counted; manual records and Trash are outside this retention scope.
+
+The deprecated network enumeration is intentionally retained with a local suppression and explanatory comment: non-default validated Wi-Fi routes must be discoverable for explicit connection binding. Cached image ownership checks compare file lengths before allocating bytes for an equality comparison.

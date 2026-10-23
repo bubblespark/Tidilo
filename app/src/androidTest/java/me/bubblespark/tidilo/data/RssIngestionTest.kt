@@ -17,6 +17,43 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssIngestionTest {
+    @Test fun resubscriptionRequiresCurrentConsentAndReusesIdentityAndReceipts() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
+        try {
+            val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", retentionLimit = 100)
+            val store = RssIngestionStore(db)
+            db.rssDao().putFeed(feed)
+            store.ingest(feed, (1..20).map(::entry), 100)
+            db.rssDao().putFeed(feed.copy(deleted = true, revision = 1))
+            val consent = store.registrationSnapshot(feed.url)!!
+            assertEquals(20, consent.savedCount)
+            val resumed = feed.copy(retentionLimit = 10, revision = 2)
+            try { store.registerFeed(resumed, null); fail("Consent required") }
+            catch (required: me.bubblespark.tidilo.data.rss.RssRegistrationConfirmationRequired) {
+                assertEquals(consent, required.snapshot)
+            }
+            assertTrue(db.rssDao().feed(feed.id)!!.deleted)
+            assertEquals(20, db.rssDao().savedCount(feed.id))
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity("extra", "Late save", entry(21).url, "", createdAt = 200, updatedAt = 200, rssFeedId = feed.id, rssPublishedAt = 21))
+            try { store.registerFeed(resumed, consent); fail("Changed count requires new consent") }
+            catch (required: me.bubblespark.tidilo.data.rss.RssRegistrationConfirmationRequired) {
+                assertEquals(21, required.snapshot.savedCount)
+            }
+            assertTrue(db.rssDao().feed(feed.id)!!.deleted)
+            store.registerFeed(resumed, store.registrationSnapshot(feed.url))
+            store.ingest(resumed, emptyList(), 300)
+            assertEquals(10, db.rssDao().savedCount(feed.id))
+            assertEquals(feed.id, db.rssDao().feedByUrl(feed.url)!!.id)
+            assertEquals(1, db.rssDao().activeFeeds().size)
+            assertTrue(db.rssDao().hasSeen(feed.id, entry(1).key, entry(1).url))
+            assertNull(db.bookmarkDao().getBookmarkByUrl(entry(1).url))
+            db.rssDao().putFeed(resumed.copy(deleted = true, revision = 3))
+            val unlimited = resumed.copy(retentionLimit = null, revision = 4)
+            store.registerFeed(unlimited, store.registrationSnapshot(feed.url))
+            store.ingest(unlimited, emptyList(), 400)
+            assertEquals(10, db.rssDao().savedCount(feed.id))
+        } finally { db.close() }
+    }
     @Test fun disablingSkipsAcquisitionAndStaleIngestionButKeepsPendingTasks() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
         try {

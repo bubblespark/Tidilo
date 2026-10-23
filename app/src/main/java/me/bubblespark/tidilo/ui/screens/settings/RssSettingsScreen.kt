@@ -34,12 +34,28 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
     val busy by model.busy.collectAsStateWithLifecycle()
     val error by model.error.collectAsStateWithLifecycle()
     val wifi by model.wifi.collectAsStateWithLifecycle()
+    val registration by model.registration.collectAsStateWithLifecycle()
     LifecycleResumeEffect(model) {
         model.startListening()
         onPauseOrDispose { model.stopListening() }
     }
     RssSettingsContent(feeds, settings, busy, error, wifi, onNavigateBack, model::retry,
         model::saveSettings, model::saveFeed, model::deleteFeed, model::fetchNow, model::clearError, model::setEnabled)
+    registration?.let {
+        RssRegistrationDialog(it.snapshot.savedCount, it.limit, busy, model::confirmRegistration, model::dismissRegistration)
+    }
+}
+
+@Composable
+internal fun RssRegistrationDialog(count: Int, limit: Int?, busy: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.rss_register_existing_title)) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.rss_register_existing_count, count))
+            Text(if (limit == null) stringResource(R.string.rss_register_existing_unlimited)
+                else stringResource(R.string.rss_register_existing_limit, limit))
+        } },
+        confirmButton = { TextButton(onClick = onConfirm, enabled = !busy) { Text(stringResource(R.string.rss_register)) } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.rss_cancel)) } })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

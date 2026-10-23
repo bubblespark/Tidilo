@@ -86,7 +86,8 @@ object OgImageManager {
             imageEpochs.computeIfAbsent(imageKey) { AtomicLong(0) }.incrementAndGet()
             val exact = getOgImageFile(context, imageKey)
             val latest = getDomainLatestImageFile(context, domain)
-            val matchesLatest = removeLatest && exact.isFile && latest.isFile && exact.readBytes().contentEquals(latest.readBytes())
+            val matchesLatest = removeLatest && exact.isFile && latest.isFile &&
+                exact.length() == latest.length() && exact.readBytes().contentEquals(latest.readBytes())
             if (matchesLatest && !latest.delete()) throw IOException("Could not remove RSS image copy")
             if (exact.exists() && !exact.delete()) throw IOException("Could not remove RSS image")
             memoryCache.snapshot().keys.filter { it.endsWith("/$imageKey") }.forEach { memoryCache.remove(it) }

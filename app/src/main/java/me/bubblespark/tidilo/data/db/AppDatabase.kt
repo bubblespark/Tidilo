@@ -16,13 +16,18 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         BookmarkEntity::class,
         BookmarkEntityOccurrence::class,
         TrashedBookmarkEntity::class,
+        RssFeedEntity::class,
+        RssSeenItemEntity::class,
+        RssImageCleanupEntity::class,
         ImportTaskEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
+
+    abstract fun rssDao(): RssDao
 
     abstract fun bookmarkDao(): BookmarkDao
     abstract fun trashDao(): TrashDao
@@ -75,6 +80,8 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_7_8 = rssMigration7To8
+
         val MIGRATION_6_7 = bookmarkMigration6To7
 
         val MIGRATION_3_4 = object : Migration(3, 4) {
@@ -117,7 +124,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }

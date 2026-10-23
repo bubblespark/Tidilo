@@ -13,6 +13,7 @@ import me.bubblespark.tidilo.ui.screens.library.TrashedBookmarkItem
 @Entity(
     tableName = "trashed_bookmarks",
     indices = [
+        Index(value = ["ogImageKey"]),
         Index(value = ["trashedAt"])
     ]
 )
@@ -31,7 +32,10 @@ data class TrashedBookmarkEntity(
     val isNsfw: Boolean,
     val isAiSkipped: Boolean = false,
     val ogImageUrl: String? = null,
-    val trashedAt: Long
+    val trashedAt: Long,
+    val rssFeedId: String? = null,
+    val rssPublishedAt: Long? = null,
+    val ogImageKey: String? = bookmarkOgImageKey(url, ogImageUrl)
 ) {
     fun toTrashedBookmarkItem(): TrashedBookmarkItem {
         val bookmark = BookmarkItem(
@@ -53,6 +57,8 @@ data class TrashedBookmarkEntity(
             note = note,
             isNsfw = isNsfw,
             isAiSkipped = isAiSkipped,
+            rssFeedId = rssFeedId,
+            rssPublishedAt = rssPublishedAt,
             ogImageUrl = ogImageUrl
         )
         return TrashedBookmarkItem(
@@ -77,6 +83,8 @@ data class TrashedBookmarkEntity(
                 note = b.note,
                 isNsfw = b.isNsfw,
                 isAiSkipped = b.isAiSkipped,
+                rssFeedId = b.rssFeedId,
+                rssPublishedAt = b.rssPublishedAt,
                 ogImageUrl = b.ogImageUrl,
                 trashedAt = item.trashedAt
             )

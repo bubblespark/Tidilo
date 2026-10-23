@@ -31,7 +31,7 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showNsfw: Boolean = true): List<BookmarkEntity> {
@@ -258,6 +258,7 @@ class BookmarkDatabaseTest {
                         if (version < 4 && sql.contains("CREATE TABLE IF NOT EXISTS `import_tasks`")) sql = sql.replace(", `ogImageUrl` TEXT", "")
                         db.execSQL(sql)
                     }
+                    if (version == 7) AppDatabase.MIGRATION_6_7.migrate(db)
                     if (version in 4..5) db.execSQL("CREATE TABLE og_images (id TEXT PRIMARY KEY)")
                 }
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = error("Unexpected legacy upgrade")
@@ -385,7 +386,7 @@ class BookmarkDatabaseTest {
 
     @Test
     fun supportedUpgradePathsPreserveDataAndBoundedBackfillCompletesBeforeReads() = runBlocking {
-        for ((version, count) in listOf(3 to 3, 4 to 3, 5 to 3, 6 to 1000, 6 to 10000)) {
+        for ((version, count) in listOf(3 to 3, 4 to 3, 5 to 3, 6 to 1000, 6 to 10000, 7 to 1000)) {
             val name = "issue81-migration-${UUID.randomUUID()}.db"
             val helper = legacy(name, version)
             val old = helper.writableDatabase
@@ -400,6 +401,7 @@ class BookmarkDatabaseTest {
                 }
                 old.execSQL("INSERT INTO trashed_bookmarks(id,title,url,description,entities,createdAt,updatedAt,note,isNsfw,isAiSkipped,trashedAt) VALUES('trash','trash','https://example.com','desc','[]',1,2,'trash note',0,0,3)")
                 old.execSQL("INSERT INTO import_tasks(id,url,title,status,statusText,assignedTags,createdAt,isNsfw,siteName,description,bodySnippet) VALUES('import','https://example.com','import','READY','Ready','[]',1,0,'site','desc','body')")
+                if (version == 7) rebuildBookmarkDerivedData(old)
                 for (table in listOf("bookmarks", "trashed_bookmarks", "import_tasks")) {
                     val names = columns(old, table)
                     snapshots[table] = names to fingerprint(old, table, names)

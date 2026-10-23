@@ -1,6 +1,6 @@
 # RSS Feed Ingestion Implementation Plan
 
-> **For agentic workers:** Use superpowers:executing-plans to implement this plan task by task after user approval. This is a proposal, not an approved implementation specification.
+> **For agentic workers:** Use superpowers:executing-plans to implement this plan task by task after user approval. Approved by the user on 2026-10-24, including all subsequent discussion corrections.
 
 **Goal:** Implement issue #91: RSS/Atom ingestion, daily fetching, per-feed retention, manual-priority AI queues, and an RSS-only Library mode with combined search/tag retrieval.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Kotlin, Compose Material 3 TimePicker, Room, existing Jsoup XML parser, AndroidX WorkManager (stable compatible version verified at implementation time). No additional XML parser dependency.
 
-**Spec:** https://github.com/bubblespark/Tidilo/issues/91 plus the proposed decisions below. User approval of these decisions is pending.
+**Spec:** https://github.com/bubblespark/Tidilo/issues/91 plus the proposed decisions below. Approved with the clarifications below.
 
 ## Global Constraints
 
@@ -29,7 +29,7 @@
 - Library pages, counts, domain aggregation, search, and tag counts currently share source-agnostic data. Library gets MANUAL/RSS scope; search/tags retain ALL scope and existing NSFW rules.
 - OG cache identity is based on image URL, with separate domain-latest copies. Deleting one RSS bookmark cannot indiscriminately delete shared cached images.
 
-## Proposed Decisions Requiring Approval
+## Approved Decisions
 
 1. Daily time means local-time approximate scheduling, not an exact alarm. Use unique periodic work with network connectivity, initial alignment, and next-time correction after execution/timezone/time/DST/settings changes. Show last attempt, last success, and per-feed error; add Fetch now. Retry transient failures with backoff, isolate failures per feed, and avoid replaying successful feeds on retry.
 2. Count READY plus WAITING_AI RSS tasks as the five unstarted tasks per feed. Replace only the oldest unstarted RSS work; never replace PROCESSING_AI or ERROR tasks. Reconcile the cap when cancellation/quota handling returns waiting work to READY. An already-running RSS inference finishes; manual waiting work runs before the next RSS attempt. The queue indicator is five times active AI subscriptions and excludes running/error tasks.
@@ -105,5 +105,23 @@
 
 - Queue capacity and retention are independent. AI Analyze has five unstarted tasks per feed; Direct has no Ready task or ingestion-count cap. Count-based retention is automatic deletion, not a Direct import limit or day-based expiry.
 - Skip RSS ingestion of URLs already registered manually or through RSS. Do not alter the reverse manual-after-RSS case in this issue; its resolution belongs to a later issue.
-- Change the proposed default daily time to00:00 local. Midnight does not guarantee Wi-Fi or charging; network restrictions beyond connectivity remain a separate, unapproved product decision.
-- Other proposals remain subject to user approval. No application implementation has started.
+- Change the proposed default daily time to00:00 local. Midnight does not guarantee Wi-Fi or charging; Wi-Fi-only fetching is approved as detailed below.
+- All proposals and discussion corrections were approved for implementation.
+
+## Approved Wi-Fi Policy
+
+- Show Fetch only over Wi-Fi directly below the daily time picker; default ON, daily time00:00 local.
+- Apply to scheduled and Fetch now feed/associated metadata requests. OFF permits mobile data.
+- Require validated Wi-Fi transport, not merely UNMETERED. Pending work waits for Wi-Fi without accumulating one job per missed day. A lost Wi-Fi connection must not transfer in-flight feed traffic onto cellular.
+- Display Waiting for Wi-Fi. Preserve foreground/manual library networking behavior outside RSS acquisition.
+
+## Execution Ledger
+
+- Baseline: feat/rss-ingestion, clean checkout based on main63f4c0c;188 existing JVM tests successful.
+- Ruling: reuse this dedicated feature branch and current checkout following the established session workflow; no additional worktree is needed.
+
+- Task1/2 core implemented: Room8 source metadata and migrations, feed/receipt/cleanup tables, RSS2/Atom/RDF parser, bounded network-bound acquisition and conditional fetching. Mapping and parser/fetcher/policy tests observed RED then GREEN.
+- Store tests observed RED then GREEN: Direct retention/replay, cross-source duplicate protection, concurrent newest-five replacement, deleted-feed revision protection. Android database+store tests: OK(12 tests), including legacy v1-v7 upgrades.
+- Ruling: add indexed canonical ogImageKey columns to bookmark/trash/import rows and backfill existing image references in migration7To8. Shared relative/absolute image aliases must be protected without loading full bookmark collections.
+- Ruling: use WorkManager2.12.0 stable (official release2026-09-23); Wi-Fi transport constraints use its required NetworkRequest API, plus connections bound to a validated Wi-Fi network.
+- Scheduler/repository orchestration scaffold compiles; foreground queue integration, UI/source scopes, extended race tests, and final review remain. Version allocated once:v0.5.9/code40.

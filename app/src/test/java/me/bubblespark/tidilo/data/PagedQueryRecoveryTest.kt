@@ -38,9 +38,10 @@ class PagedQueryRecoveryTest {
         val release = CompletableDeferred<Unit>()
         val published = CompletableDeferred<Unit>()
         val caller = launch {
-            completeDomainPolicyChange(scope, {
+            completeDomainPolicyChange(scope, { publish ->
                 committed.complete(Unit)
                 release.await()
+                publish()
             }, { published.complete(Unit) })
         }
         try {

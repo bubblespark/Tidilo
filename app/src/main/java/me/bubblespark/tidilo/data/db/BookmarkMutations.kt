@@ -11,3 +11,11 @@ internal suspend fun AppDatabase.moveBookmarkToTrash(id: String, now: Long, capa
     trashDao().enforceCapacity(capacity)
     true
 }
+
+/** A failed policy write rolls back each row's original flag without a full-library snapshot. */
+internal suspend fun AppDatabase.updateDomainNsfwWithPolicy(
+    domain: String, isNsfw: Boolean, persistPolicy: suspend () -> Unit
+) = withTransaction {
+    bookmarkDao().updateDomainNsfw(domain, isNsfw)
+    persistPolicy()
+}

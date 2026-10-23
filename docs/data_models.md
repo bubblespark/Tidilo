@@ -314,3 +314,15 @@ state and restart on explicit retry. Trash moves and capacity enforcement share
 one transaction. Domain NSFW changes await the SQL update and policy publication
 in the application scope so navigating away cannot interrupt those two steps.
 See `issue81-progress.md` for verification and measurement limits.
+
+
+Domain policy failure handling: the domain-wide SQL flag update and policy-save
+callback execute inside one Room transaction. A policy-file exception rolls back
+each original flag automatically, including mixed values, without collecting all
+bookmarks. The policy manager stages the proposed entry and publishes it only
+after file persistence succeeds. Policy mutation/file-writing sections are
+serialized; writes use a sibling temporary file and atomic replacement. The
+operation retains application-scope ownership when its UI caller is cancelled.
+Room and the JSON file still cannot provide a crash-atomic transaction across
+stores: process death or a DB commit failure after a successful file replacement
+is outside this handled policy-write failure boundary.

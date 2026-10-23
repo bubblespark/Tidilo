@@ -303,8 +303,54 @@ class BookmarkDatabaseTest {
             try {
                 me.bubblespark.tidilo.data.DomainPolicyManager.setDomainNsfwAndPersist("issue85.invalid", false, isolated)
                 fail("Storage failure must reach the initiating caller")
-            } catch (_: java.io.IOException) { }
+            } catch (_: java.io.IOException) {
+                assertTrue(me.bubblespark.tidilo.data.DomainPolicyManager.isNsfwDomain("issue85.invalid"))
+                assertTrue(me.bubblespark.tidilo.data.DomainPolicyManager.policies.value.single { it.domain == "issue85.invalid" }.isNsfw)
+            }
+            try {
+                me.bubblespark.tidilo.data.DomainPolicyManager.setDomainNsfwAndPersist("new-issue85.invalid", true, isolated)
+                fail("New policy must not be published after failure")
+            } catch (_: java.io.IOException) {
+                assertFalse(me.bubblespark.tidilo.data.DomainPolicyManager.isNsfwDomain("new-issue85.invalid"))
+                assertTrue(me.bubblespark.tidilo.data.DomainPolicyManager.policies.value.none { it.domain == "new-issue85.invalid" })
+            }
+            assertTrue(file.delete())
+            me.bubblespark.tidilo.data.DomainPolicyManager.setDomainNsfwAndPersist("issue85.invalid", false, isolated)
+            assertFalse(me.bubblespark.tidilo.data.DomainPolicyManager.isNsfwDomain("issue85.invalid"))
+            assertTrue(file.isFile)
         } finally { folder.deleteRecursively() }
+    }
+
+    @Test
+    fun failedPolicySaveRollsBackMixedBookmarkFlagsAndSuccessfulRetryCommits() = runBlocking {
+        val name = "issue85-domain-rollback-${UUID.randomUUID()}.db"
+        val db = database(name)
+        val rows = listOf(
+            BookmarkEntity("safe", "Safe", "https://rollback.invalid/a", "", createdAt = 1, updatedAt = 1, isNsfw = false),
+            BookmarkEntity("adult", "Adult", "https://rollback.invalid/b", "", createdAt = 2, updatedAt = 2, isNsfw = true),
+            BookmarkEntity("other", "Other", "https://other.invalid/a", "", createdAt = 3, updatedAt = 3, isNsfw = false)
+        )
+        try {
+            db.bookmarkDao().insertAll(rows)
+            for (desired in listOf(true, false)) {
+                val failure = java.io.IOException("Policy write failed")
+                try {
+                    db.updateDomainNsfwWithPolicy("rollback.invalid", desired) {
+                        assertEquals(desired, db.bookmarkDao().getBookmarkById("safe")!!.isNsfw)
+                        assertEquals(desired, db.bookmarkDao().getBookmarkById("adult")!!.isNsfw)
+                        throw failure
+                    }
+                    fail("Policy save failure must be propagated")
+                } catch (e: java.io.IOException) { assertSame(failure, e) }
+                for (row in rows) assertEquals(row.withSearchFields(), db.bookmarkDao().getBookmarkById(row.id))
+            }
+            var persisted = false
+            db.updateDomainNsfwWithPolicy("rollback.invalid", true) { persisted = true }
+            assertTrue(persisted)
+            assertTrue(db.bookmarkDao().getBookmarkById("safe")!!.isNsfw)
+            assertTrue(db.bookmarkDao().getBookmarkById("adult")!!.isNsfw)
+            assertFalse(db.bookmarkDao().getBookmarkById("other")!!.isNsfw)
+        } finally { db.close(); context.deleteDatabase(name) }
     }
 
     @Test

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.room.withTransaction
 import me.bubblespark.tidilo.data.db.moveBookmarkToTrash
+import me.bubblespark.tidilo.data.db.updateDomainNsfwWithPolicy
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -142,8 +143,10 @@ class BookmarkRepository private constructor(context: Context) {
     /**
      * Updates the isNsfw flag for all bookmarks belonging to the specified domain.
      */
-    suspend fun updateBookmarksNsfwForDomain(domain: String, isNsfw: Boolean) = withContext(Dispatchers.IO) {
-        bookmarkDao.updateDomainNsfw(domain.trim().lowercase(), isNsfw)
+    suspend fun updateBookmarksNsfwForDomain(
+        domain: String, isNsfw: Boolean, persistPolicy: suspend () -> Unit
+    ) = withContext(Dispatchers.IO) {
+        database.updateDomainNsfwWithPolicy(domain.trim().lowercase(), isNsfw, persistPolicy)
     }
 
     /** Updates the durable row by ID; no loaded page is required. */

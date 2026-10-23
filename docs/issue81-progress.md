@@ -148,3 +148,12 @@ uniformly faster startup or physical-device performance is made.
 - Version policy: one issue, one application version. Reverted the unnecessary review bump to v0.5.5 (code 36).
 
 - Verification for these UI revisions: 163 unit tests and 9 Android tests passed; debug build passed. Synthetic-only UI checks confirmed search long-press peek/back dismissal and replacing a scrolled query (bookmark 34 onward) with a new query starting at bookmark 0. The initial input-replacement probe appended text because the simulated Ctrl+A was ineffective; the validated check used the actual Clear button. No AICore inference was used.
+
+
+## Policy-save failure rollback review
+
+- Staged domain policy changes until file success; failed changes preserve both domainMap and the published policy state, including absence of new entries.
+- Enclosed domain flag updates and policy persistence in a Room transaction. A failed policy save rolls back individual original row values without a full-bookmark snapshot. Unrelated domains remain unchanged; successful retries commit.
+- Serialized policy mutation/write sections and replaced policy files atomically through a sibling .pending file, cleaned up on failure. Application-owned operation lifetime is retained on settings caller cancellation.
+- Reproduced the original memory-state failure before the fix. Verification: 163 JVM tests and all 10 directly executed Android integration tests passed; debug and instrumentation APKs build. Tests cover mixed true/false flags for both target values, unchanged original rows after failure, exception propagation, successful retry, and failed creation of a new policy. No AICore inference performed.
+- Version remains v0.5.5 (code 36). This handles policy-write failure; it does not claim crash atomicity between Room and the policy file or compensate a later DB commit failure.

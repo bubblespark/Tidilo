@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.debug
 
+import me.bubblespark.tidilo.data.AiCoreUsageRepository
+import me.bubblespark.tidilo.data.AiUsageSource
 import android.content.Context
 import com.google.mlkit.genai.common.DownloadStatus
 import com.google.mlkit.genai.common.FeatureStatus
@@ -95,7 +97,9 @@ object DebugPromptTester {
                 }
             }
 
-            val response = model.generateContent(request)
+            val response = AiCoreUsageRepository.getInstance(TidiloApplication.instance).track(AiUsageSource.DEBUG) {
+                model.generateContent(request)
+            }
             val latency = System.currentTimeMillis() - startTime
             val output = response.candidates.firstOrNull()?.text ?: "(Empty response)"
             output to latency

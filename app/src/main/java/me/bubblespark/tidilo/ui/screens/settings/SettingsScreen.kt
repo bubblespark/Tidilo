@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.ui.components.SummarizeIcon
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AppLanguage
@@ -79,6 +80,7 @@ fun SettingsScreen(
     onNavigateToGenerateContentRequest: () -> Unit,
     onNavigateToNsfwContents: () -> Unit = {},
     onNavigateToDebug: () -> Unit = {},
+    onNavigateToSummary: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
@@ -446,6 +448,38 @@ fun SettingsScreen(
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 4.dp, bottom = 12.dp)
         )
+
+        Card(
+            onClick = onNavigateToSummary,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+        ) {
+            Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    BoxContent(
+                        icon = SummarizeIcon,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.summary_title), style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.summary_subtitle), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline)
+                }
+                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(16.dp))
+            }
+        }
+        Spacer(Modifier.height(12.dp))
 
         // Clear Image Cache Card
         Card(

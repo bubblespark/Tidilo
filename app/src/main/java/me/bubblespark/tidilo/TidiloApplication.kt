@@ -7,8 +7,15 @@ import android.app.NotificationManager
 import android.os.Build
 import android.os.Bundle
 import me.bubblespark.tidilo.data.ImportRepository
+import me.bubblespark.tidilo.data.AiCoreUsageRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class TidiloApplication : Application() {
+
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     var isAppInForeground: Boolean = false
         private set
@@ -26,6 +33,7 @@ class TidiloApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        applicationScope.launch { AiCoreUsageRepository.getInstance(this@TidiloApplication).initialize() }
         createNotificationChannels()
         registerLifecycleCallbacks()
     }

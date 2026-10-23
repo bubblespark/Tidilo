@@ -270,3 +270,8 @@ Users can configure the fallback behavior under **Settings ➔ AI ➔ AICoreエ�
 Developers and QA can test and inspect AICore behavior using:
 - **`DebugPromptTester.kt`**: Low-level status checker (`checkStatus()`), model downloader (`startDownload()`), and single-shot raw prompt tester with custom hyperparameter overrides.
 - **Settings ➔ Debug ➔ ML Kit GenAI Prompt API Test**: Live UI in `SettingsDebugScreen.kt` to test latency, status codes, and model responses on physical Pixel devices.
+
+
+## Local Inference Usage Accounting
+
+The production `GeminiTaggingService.runNanoInference` and debug `DebugPromptTester` SDK calls are wrapped by `AiCoreUsageRepository`. Counting occurs at the SDK attempt boundary, including retries; setup, parsing, and persistence are excluded. Results and cancellation retain their original behavior even if statistics cannot be saved. Settings Summary exposes daily outcomes and the first quota-27 detection benchmark per start date, without suggesting a fixed quota or midnight reset. See [Application Summary](application_summary.md) for the complete contract.

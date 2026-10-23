@@ -486,3 +486,8 @@ bookmark load/error feedback belongs only to timeline and domain bookmark result
 Search grid cards share the library summary peek overlay and dismiss it on tap,
 back, or query change. A changed query resets both layout positions with a
 non-suspending request; returning from details with the same query preserves them.
+
+
+## Application Summary
+
+Settings > Data Management includes a Summary entry showing AICore usage, collection counts, and physical cache storage in rounded tonal cards. Daily bars have date/count accessibility descriptions and distinguish unrecorded dates from zero. Sections expose independent loading/retry states. Storage refresh runs on entry/resume/manual request and includes its measurement timestamp. Quota information is historical, never a remaining-capacity gauge. See [Application Summary](application_summary.md) for exact counting and formatting rules.

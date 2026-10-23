@@ -45,6 +45,14 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.Search
     )
 
+    data object Summary : Screen(
+        route = "settings_summary",
+        title = "Summary",
+        titleRes = R.string.summary_title,
+        selectedIcon = Icons.Filled.CollectionsBookmark,
+        unselectedIcon = Icons.Outlined.CollectionsBookmark
+    )
+
     data object SettingsDebug : Screen(
         route = "settings_debug",
         title = "Debug",

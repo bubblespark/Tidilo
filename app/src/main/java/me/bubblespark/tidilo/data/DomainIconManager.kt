@@ -22,12 +22,18 @@ import kotlinx.coroutines.flow.onSubscription
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import java.io.IOException
 import org.jsoup.Jsoup
 import org.jsoup.HttpStatusException
 import org.jsoup.UnsupportedMimeTypeException
 import java.io.File
-import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
 import java.net.URI
 
 /**
@@ -37,15 +43,29 @@ import java.net.URI
  * - Prevents redundant fetches if an icon is already cached locally.
  * - Filters out icons smaller than MIN_ICON_SIZE (96x96).
  * - Downsamples icons larger than MAX_ICON_SIZE (384x384).
- * - Selects the largest resolution candidate among available candidates.
+ * - Stops at the first preferred icon or a usable image in the highest available priority tier.
  * - Uses bounded memory cache (LruCache) to prevent OOM.
  * - Supports clearing image cache without deleting bookmark data.
  */
 object DomainIconManager {
 
+    /** Restores a missing icon using the same shared pipeline as imports. */
+    suspend fun loadOrFetchIcon(context: Context, domain: String, pageUrl: String? = null): ImageBitmap? =
+        withContext(Dispatchers.IO) {
+            val normalized = domain.trim().lowercase()
+            if (extractDomain("https://$normalized") != normalized) return@withContext null
+            val generation = cacheGeneration
+            (getCachedIconBitmap(normalized) ?: loadIconFromDisk(context, normalized))?.let { return@withContext it }
+            val page = pageUrl?.takeIf { extractDomain(it) == normalized } ?: "https://$normalized"
+            fetchAndSaveDomainIcon(context, page)
+            synchronized(cacheLock) {
+                if (generation != cacheGeneration) null else getCachedIconBitmap(normalized)
+            }
+        }
+
     const val MIN_ICON_SIZE = 96
     const val MAX_ICON_SIZE = 384
-    const val DOMAIN_TIMEOUT_MS = 10_000L
+    const val PREFERRED_ICON_SIZE = 180
     const val NEGATIVE_CACHE_TTL_MS = 14L * 24 * 60 * 60 * 1000L // 14 days
     private const val USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -64,8 +84,10 @@ object DomainIconManager {
     val cacheClearedEvent: SharedFlow<Long> = _cacheClearedEvent.asSharedFlow()
 
     private val cacheLock = Any()
-    @Volatile
-    private var cacheGeneration = 0L
+    private val iconDownloads = OgImageFetchCoordinator<FetchResult>()
+    private val cacheGeneration: Long get() = iconDownloads.generation.get()
+    private val _cacheGenerationState = MutableStateFlow(0L)
+    val cacheGenerationState: StateFlow<Long> = _cacheGenerationState.asStateFlow()
 
     fun getCurrentGeneration(): Long = cacheGeneration
 
@@ -141,8 +163,7 @@ object DomainIconManager {
      * Checks if a domain icon file exists in local storage.
      */
     fun hasIcon(context: Context, domain: String): Boolean {
-        val file = getIconFile(context, domain)
-        return (file.exists() && file.length() > 0) || getLegacyIconFile(context, domain).run { exists() && length() > 0 }
+        return getCachedIconBitmap(domain) != null || loadIconFromDisk(context, domain) != null
     }
 
     private fun getNegativeMarkerFile(context: Context, domain: String): File {
@@ -198,21 +219,6 @@ object DomainIconManager {
     }
 
     /**
-     * Removes all negative cache markers from the domain icons storage.
-     */
-    fun clearAllNegativeMarkers(context: Context) {
-        synchronized(cacheLock) {
-            try {
-                val dir = getIconDir(context)
-                if (dir.exists()) {
-                    dir.listFiles { _, name -> name.endsWith(".none") }?.forEach { it.delete() }
-                }
-            } catch (_: Exception) {
-            }
-        }
-    }
-
-    /**
      * Returns the cached ImageBitmap from memory, or null if uncached (0ms, non-blocking).
      */
     fun getCachedIconBitmap(domain: String): ImageBitmap? {
@@ -253,6 +259,8 @@ object DomainIconManager {
                 val rawBitmap = BitmapFactory.decodeFile(targetFile.absolutePath) ?: return@load null
                 val imageBitmap = rawBitmap.asImageBitmap()
                 memoryCache.put(normalized, imageBitmap)
+                dominantColorCache.put(normalized, extractDominantColor(rawBitmap, normalized))
+                notifyIconUpdated(normalized)
                 imageBitmap
             } catch (_: Exception) {
                 null
@@ -480,32 +488,11 @@ object DomainIconManager {
     }
 
     /**
-     * Removes domain icon from local disk storage and in-memory cache.
-     */
-    fun removeIcon(context: Context, domain: String) {
-        val normalized = domain.trim().lowercase()
-        synchronized(cacheLock) {
-            memoryCache.remove(normalized)
-            dominantColorCache.remove(normalized)
-        }
-        val file = getIconFile(context, normalized)
-        if (file.exists()) {
-            file.delete()
-        }
-        val legacy = getLegacyIconFile(context, normalized)
-        if (legacy.exists()) {
-            legacy.delete()
-        }
-        removeNegativeMarker(context, normalized)
-        notifyIconUpdated(normalized)
-    }
-
-    /**
      * Clears all domain icon caches (in-memory bitmaps, dominant colors, and cacheDir/filesDir storage).
      */
     suspend fun clearCache(context: Context) = withContext(Dispatchers.IO) {
         synchronized(cacheLock) {
-            cacheGeneration++
+            iconDownloads.clear()
             memoryCache.evictAll()
             dominantColorCache.evictAll()
             val dir = File(context.cacheDir, "domain_icons")
@@ -517,6 +504,7 @@ object DomainIconManager {
                 legacy.deleteRecursively()
             }
             domainRevisions.clear()
+            _cacheGenerationState.value = cacheGeneration
             _cacheClearedEvent.tryEmit(cacheGeneration)
         }
     }
@@ -619,7 +607,8 @@ object DomainIconManager {
     internal data class HtmlDiscoveryResult(
         val iconUrls: List<String>,
         val hasServerContact: Boolean,
-        val hasTransientFailure: Boolean = !hasServerContact
+        val hasTransientFailure: Boolean = !hasServerContact,
+        val highPriorityUrls: Set<String> = emptySet()
     )
 
     /**
@@ -646,7 +635,7 @@ object DomainIconManager {
      */
     private fun findHtmlIconUrls(pageUrl: String): HtmlDiscoveryResult {
         htmlDiscoverer?.let { return it.invoke(pageUrl) }
-        val results = mutableListOf<String>()
+        var results = emptyList<DomainIconCandidate>()
         var hasServerContact = false
         var hasTransientFailure = false
         try {
@@ -667,22 +656,7 @@ object DomainIconManager {
                 }
             }
 
-            val linkElements = doc.select("link[rel*='icon']")
-            for (el in linkElements) {
-                val href = el.absUrl("href")
-                if (href.isNotBlank() && (href.startsWith("http://") || href.startsWith("https://"))) {
-                    results.add(href)
-                }
-            }
-
-            // msapplication-TileImage (Windows Tile icon, often 144x144)
-            val tileMeta = doc.select("meta[name='msapplication-TileImage'], meta[name='msapplication-tileimage']")
-            for (el in tileMeta) {
-                val content = el.absUrl("content").ifEmpty { el.attr("content") }
-                if (content.isNotBlank() && (content.startsWith("http://") || content.startsWith("https://"))) {
-                    results.add(content)
-                }
-            }
+            results = DomainIconResolver.parseHtml(doc.outerHtml(), doc.location())
         } catch (e: HttpStatusException) {
             hasServerContact = true
             if (isTransientHttpStatus(e.statusCode)) {
@@ -694,178 +668,105 @@ object DomainIconManager {
         } catch (_: Exception) {
             hasTransientFailure = true
         }
-        return HtmlDiscoveryResult(results, hasServerContact, hasTransientFailure)
+        return HtmlDiscoveryResult(results.map { it.url }, hasServerContact, hasTransientFailure,
+            results.filter { it.highPriority }.map { it.url }.toSet())
     }
 
-    /**
-     * Fetches domain icon and saves it to local disk storage.
-     * - Selects the highest resolution candidate.
-     * - Requires at least 96x96 resolution.
-     * - Downsamples icons exceeding 384x384.
-     * - Skips if already cached unless forceRefresh is true.
-     */
+    /** Shares bounded, generation-safe recovery across import and visible-card callers. */
     suspend fun fetchAndSaveDomainIcon(
         context: Context,
         url: String,
         appleTouchIconUrl: String? = null,
-        faviconUrl: String? = null,
-        forceRefresh: Boolean = false,
-        recordFailureMarker: Boolean = true
+        faviconUrl: String? = null
+    ): FetchResult = withContext(Dispatchers.IO) {
+        val domain = extractDomain(url) ?: return@withContext FetchResult(false)
+        val generation = cacheGeneration
+        if (getCachedIconBitmap(domain) != null || loadIconFromDisk(context, domain) != null) {
+            return@withContext FetchResult(true)
+        }
+        if (shouldSkipFetch(context, domain)) return@withContext FetchResult(false)
+        iconDownloads.fetch(domain, generation) {
+            if (getCachedIconBitmap(domain) != null || loadIconFromDisk(context, domain) != null) return@fetch FetchResult(true)
+            if (shouldSkipFetch(context, domain) || generation != cacheGeneration) return@fetch FetchResult(false)
+            val page = if (url.startsWith("http://") || url.startsWith("https://")) url else "https://$domain"
+            fetchIconInternal(context, domain, page, appleTouchIconUrl, faviconUrl, generation)
+        } ?: FetchResult(false, generation == cacheGeneration)
+    }
+
+    private suspend fun fetchIconInternal(
+        context: Context, domain: String, page: String, apple: String?, favicon: String?, generation: Long
     ): FetchResult {
-        val requestGeneration = synchronized(cacheLock) { cacheGeneration }
-        return withContext(Dispatchers.IO) {
-            val domain = extractDomain(url) ?: return@withContext FetchResult(success = false, hadTransientFailure = false)
-
-            if (!forceRefresh) {
-                if (hasIcon(context, domain)) {
-                    return@withContext FetchResult(success = true, hadTransientFailure = false)
-                }
-                if (shouldSkipFetch(context, domain)) {
-                    return@withContext FetchResult(success = false, hadTransientFailure = false)
-                }
-            } else {
-                removeNegativeMarker(context, domain)
-            }
-
-            val candidates = LinkedHashSet<String>()
-            if (!appleTouchIconUrl.isNullOrBlank()) candidates.add(appleTouchIconUrl.trim())
-            if (!faviconUrl.isNullOrBlank()) candidates.add(faviconUrl.trim())
-
-            var hasServerContact = false
-            var hasTransientDiscoveryFailure = false
-            var hasTransientDownloadFailure = false
-
-            // Discover icons from HTML markup
-            val targetPageUrl = if (url.startsWith("http://") || url.startsWith("https://")) url else "https://$domain"
-            val htmlDiscovery = findHtmlIconUrls(targetPageUrl)
-            if (htmlDiscovery.hasServerContact) hasServerContact = true
-            if (htmlDiscovery.hasTransientFailure) hasTransientDiscoveryFailure = true
-            candidates.addAll(htmlDiscovery.iconUrls)
-
-            // Fallback to domain root HTML if no icons discovered or target is a deep URL
-            val rootPageUrl = "https://$domain"
-            if (targetPageUrl != rootPageUrl && targetPageUrl != "$rootPageUrl/") {
-                val rootDiscovery = findHtmlIconUrls(rootPageUrl)
-                if (rootDiscovery.hasServerContact) hasServerContact = true
-                if (rootDiscovery.hasTransientFailure) hasTransientDiscoveryFailure = true
-                candidates.addAll(rootDiscovery.iconUrls)
-            }
-
-            // Direct root path candidates
-            candidates.add("https://$domain/apple-touch-icon.png")
-            candidates.add("https://$domain/apple-touch-icon-precomposed.png")
-
-            // Google Favicon service candidates
-            candidates.add("https://www.google.com/s2/favicons?domain=$domain&sz=256")
-            candidates.add("https://www.google.com/s2/favicons?domain=$domain&sz=128")
-
-            var bestBitmap: Bitmap? = null
-            var bestArea = 0
-
-            for (candidateUrl in candidates) {
-                try {
-                    val download = downloadBytes(candidateUrl)
-                    if (download.hasServerContact) hasServerContact = true
-                    if (download.hasTransientFailure) hasTransientDownloadFailure = true
-                    val bytes = download.bytes ?: continue
-
-                    // Resolution check: exclude candidates smaller than 96x96
-                    val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
-                    val width = boundsOptions.outWidth
-                    val height = boundsOptions.outHeight
-
-                    if (width < MIN_ICON_SIZE || height < MIN_ICON_SIZE) {
-                        continue
-                    }
-
-                    val area = width * height
-                    if (area > bestArea) {
-                        val rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                        if (rawBitmap != null) {
-                            bestBitmap = rawBitmap
-                            bestArea = area
-                        }
-                    }
-                } catch (_: Exception) {
-                }
-            }
-
-            if (bestBitmap != null) {
-                val saved = synchronized(cacheLock) {
-                    if (requestGeneration != cacheGeneration) {
-                        false
-                    } else {
-                        val scaledBitmap = downsampleIfNeeded(bestBitmap, MAX_ICON_SIZE)
-                        val processedBitmap = makeBackgroundTransparent(scaledBitmap)
-
-                        val file = getIconFile(context, domain)
-                        FileOutputStream(file).use { out ->
-                            processedBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                        }
-
-                        removeNegativeMarker(context, domain)
-                        memoryCache.put(domain, processedBitmap.asImageBitmap())
-                        dominantColorCache.put(domain, extractDominantColor(processedBitmap, domain))
-                        notifyIconUpdated(domain)
-                        true
+        var contacted = false
+        var transientFailure = false
+        val selected = DomainIconResolver.resolve(page, domain, apple, favicon,
+            discover = { source ->
+                val discovery = runInterruptible(Dispatchers.IO) { findHtmlIconUrls(source) }
+                contacted = contacted || discovery.hasServerContact
+                transientFailure = transientFailure || discovery.hasTransientFailure
+                discovery.iconUrls.map { DomainIconCandidate(it, it in discovery.highPriorityUrls) }
+            },
+            download = { candidate ->
+                val result = runInterruptible(Dispatchers.IO) { downloadBytes(candidate) }
+                contacted = contacted || result.hasServerContact
+                transientFailure = transientFailure || result.hasTransientFailure
+                val bytes = result.bytes
+                if (bytes == null || bytes.size > 5 * 1024 * 1024) null else {
+                    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                    val width = options.outWidth
+                    val height = options.outHeight
+                    if (width < MIN_ICON_SIZE || height < MIN_ICON_SIZE) null else {
+                        // Bound allocations before decoding untrusted full-resolution images.
+                        var sample = 1
+                        while (width / sample > MAX_ICON_SIZE * 2 || height / sample > MAX_ICON_SIZE * 2) sample *= 2
+                        options.inSampleSize = sample
+                        options.inJustDecodeBounds = false
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.let { ResolvedDomainIcon(it, width, height) }
                     }
                 }
-                return@withContext FetchResult(success = saved, hadTransientFailure = false)
-            }
-
-            val hadTransientFailure = !hasServerContact || hasTransientDownloadFailure || hasTransientDiscoveryFailure
-
+            }, discard = { it.recycle() })
+        currentCoroutineContext().ensureActive()
+        if (generation != cacheGeneration) { selected?.recycle(); return FetchResult(false) }
+        if (selected == null) {
+            val workContext = currentCoroutineContext()
             synchronized(cacheLock) {
-                if (requestGeneration == cacheGeneration &&
-                    !hadTransientFailure &&
-                    recordFailureMarker
-                ) {
-                    writeNegativeMarker(context, domain)
-                }
+                workContext.ensureActive()
+                if (generation == cacheGeneration && contacted && !transientFailure) writeNegativeMarker(context, domain)
             }
-            FetchResult(success = false, hadTransientFailure = hadTransientFailure)
+            if (transientFailure || !contacted) throw IOException("Transient domain icon failure")
+            return FetchResult(false)
         }
-    }
-
-    /**
-     * Forces re-fetching of a single domain icon (with 10-second timeout).
-     * Deletes existing icon and returns false upon timeout or failure.
-     */
-    suspend fun refreshDomainIcon(
-        context: Context,
-        domain: String
-    ): Boolean = withContext(Dispatchers.IO) {
-        val result = withTimeoutOrNull(DOMAIN_TIMEOUT_MS) {
-            fetchAndSaveDomainIcon(
-                context = context,
-                url = "https://$domain",
-                forceRefresh = true
-            )
-        }
-        if (result?.success == true) {
-            true
-        } else {
-            removeIcon(context, domain)
-            false
-        }
-    }
-
-    /**
-     * Sequentially refreshes icons for all provided domains.
-     */
-    suspend fun refreshAllDomainIcons(
-        context: Context,
-        domains: List<String>,
-        onProgress: ((current: Int, total: Int, currentDomain: String) -> Unit)? = null
-    ) = withContext(Dispatchers.IO) {
-        clearAllNegativeMarkers(context)
-        val uniqueDomains = domains.distinct()
-        val total = uniqueDomains.size
-        for ((index, domain) in uniqueDomains.withIndex()) {
-            onProgress?.invoke(index, total, domain)
-            refreshDomainIcon(context, domain)
-            onProgress?.invoke(index + 1, total, domain)
+        var scaled: Bitmap? = null
+        var processed: Bitmap? = null
+        var published = false
+        try {
+            scaled = downsampleIfNeeded(selected)
+            processed = makeBackgroundTransparent(scaled)
+            val output = ByteArrayOutputStream()
+            if (!processed.compress(Bitmap.CompressFormat.PNG, 100, output)) throw IOException("Icon encoding failed")
+            val color = extractDominantColor(processed, domain)
+            val workContext = currentCoroutineContext()
+            return synchronized(cacheLock) {
+                workContext.ensureActive()
+                if (generation != cacheGeneration) return@synchronized FetchResult(false)
+                val target = getIconFile(context, domain)
+                val temporary = File.createTempFile("icon-", ".tmp", target.parentFile)
+                try {
+                    temporary.writeBytes(output.toByteArray())
+                    java.nio.file.Files.move(temporary.toPath(), target.toPath(),
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                } finally { temporary.delete() }
+                removeNegativeMarker(context, domain)
+                memoryCache.put(domain, processed.asImageBitmap())
+                dominantColorCache.put(domain, color)
+                published = true
+                notifyIconUpdated(domain)
+                FetchResult(true)
+            }
+        } finally {
+            if (selected !== processed || !published) selected.recycle()
+            if (scaled !== selected && (scaled !== processed || !published)) scaled?.recycle()
+            if (!published && processed !== selected && processed !== scaled) processed?.recycle()
         }
     }
 

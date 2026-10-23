@@ -138,6 +138,7 @@ fun BookmarkItemCard(
             // Background watermark layer: domain icon (lightly displayed clipped in top-right)
             DomainWatermark(
                 domain = domain,
+                pageUrl = bookmark.url,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .offset(x = 36.dp, y = (-12).dp)

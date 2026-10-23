@@ -6,6 +6,8 @@ Grid cards in Library (timeline and domain drill-down) and Search use the follow
 2. Its cached domain icon.
 3. A bundled Material Rounded Link icon (24dp inside a 36dp rounded container).
 
+Missing domain icons now recover through a separate four-worker pipeline after an OG miss; cached icons can display while OG loading is pending. See [Domain Icon Recovery](domain_icon_cache.md).
+
 The placeholder uses the existing domain-accent gradient, with the theme primary color when no domain is available. Initial letters and broken-image indicators are not used. A bookmark without an OG image URL never displays another bookmark's domain-latest OG image.
 
 ## Recovery and shared work

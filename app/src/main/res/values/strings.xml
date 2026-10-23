@@ -206,16 +206,10 @@
     <string name="settings_nsfw_title">NSFW Contents</string>
     <string name="settings_nsfw_subtitle">Visibility &amp; Domain Policies</string>
     <string name="settings_section_data">Data Management</string>
-    <string name="settings_refetch_icons_title">Re-fetch Domain Icons</string>
-    <string name="settings_refetch_icons_subtitle">Re-download high-resolution watermark icons</string>
-    <string name="settings_refetch_icons_dialog_title">Re-fetch Domain Icons</string>
-    <string name="settings_refetch_icons_dialog_message">Re-fetch all domain icons? This may take some time depending on your network connection.</string>
-    <string name="settings_refetch_icons_progress_title">Fetching Domain Icons</string>
-    <string name="settings_refetch_icons_preparing">Preparing…</string>
     <string name="settings_clear_image_cache_title">Clear Image Cache</string>
     <string name="settings_clear_image_cache_subtitle">Free storage by removing cached preview images and domain icons</string>
     <string name="settings_clear_image_cache_dialog_title">Clear Image Cache</string>
-    <string name="settings_clear_image_cache_dialog_message">Are you sure you want to clear all cached preview images and domain icons? Your saved bookmarks and notes will not be affected. Preview images will be downloaded again when their bookmarks are displayed.</string>
+    <string name="settings_clear_image_cache_dialog_message">Are you sure you want to clear all cached preview images and domain icons? Your saved bookmarks and notes will not be affected. Preview images and domain icons will be downloaded again when their bookmarks are displayed.</string>
     <string name="settings_clear_image_cache_done">Image cache cleared</string>
     <string name="settings_section_debug">Debug</string>
     <string name="settings_debug_title">Debug</string>

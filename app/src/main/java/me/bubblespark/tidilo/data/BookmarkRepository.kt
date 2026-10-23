@@ -241,6 +241,8 @@ class BookmarkRepository private constructor(context: Context) {
 
     fun observeDomainCounts(showNsfw: Boolean): Flow<List<DomainCount>> = observeSafely { bookmarkDao.domainCounts(showNsfw) }
 
+    fun observeCollectionCounts(): Flow<CollectionCounts> = observeSafely { bookmarkDao.observeCollectionCounts() }
+
     fun observeCount(query: String, domain: String?, showNsfw: Boolean): Flow<Int> =
         observeSafely { bookmarkDao.observeCount(BookmarkQueries.count(query, showNsfw, domain)) }
 

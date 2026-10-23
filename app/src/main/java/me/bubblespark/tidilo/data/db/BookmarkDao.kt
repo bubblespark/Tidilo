@@ -16,6 +16,9 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface BookmarkDao {
 
+    @Query("SELECT (SELECT COUNT(*) FROM bookmarks) AS active, (SELECT COUNT(*) FROM trashed_bookmarks) AS trash")
+    fun observeCollectionCounts(): Flow<me.bubblespark.tidilo.data.CollectionCounts>
+
     @RawQuery(observedEntities = [BookmarkEntity::class, BookmarkEntityOccurrence::class])
     fun observeCount(query: SupportSQLiteQuery): Flow<Int>
 

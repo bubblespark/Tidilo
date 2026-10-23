@@ -16,6 +16,9 @@ app/src/main/java/com/ykgudev/tidilo/
 │   └── AppConfig.kt                     # Language (JA/EN), shared prefs
 │
 ├── data/                                # Data layer & local storage
+│   ├── AiCoreUsageRepository.kt         # Durable local inference usage aggregates and SDK attempt tracking
+│   ├── CacheStorageRepository.kt        # Physical cache measurement and binary-unit formatting
+│   ├── CollectionCounts.kt              # Atomic active/trash count projection
 │   ├── BookmarkRepository.kt            # Bookmark CRUD, Trash lifecycle (30-day, 100-cap), JSON serialization
 │   ├── DomainIconManager.kt             # Shared on-demand domain icon recovery, caching, color, and transparency
 │   ├── DomainIconResolver.kt            # Prioritized HTML discovery and short-circuit icon selection
@@ -68,6 +71,9 @@ app/src/main/java/com/ykgudev/tidilo/
     │       ├── GenerateContentRequestScreen.kt    # Fine-grained tuning for Gemini Nano inference
     │       ├── GenerateContentRequestViewModel.kt # State management for inference parameters
     │       ├── SettingsDebugScreen.kt             # Diagnostics: AICore prompt API tests & Web Parser workbench
+    │       ├── SummaryScreen.kt                   # Usage, collection, and cache statistics
+    │       ├── SummaryViewModel.kt                # Independent section states and resumed lifecycle refresh
+    │       ├── SummaryDate.kt                     # DST-aware local midnight scheduling
     │       └── SettingsScreen.kt                  # App language selection, image cache clearing, Debug navigation
     │
     └── theme/                           # Design tokens & Material 3 theme styling

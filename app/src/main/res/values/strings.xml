@@ -263,4 +263,37 @@
     <string name="subcategory_education">Education</string>
     <string name="common_save_failed">Could not save changes. Please try again.</string>
     <string name="library_load_failed">Could not load bookmarks.</string>
+    <string name="summary_title">Summary</string>
+    <string name="summary_subtitle">AICore usage, bookmark counts, and cache storage</string>
+    <string name="summary_aicore">AICore usage</string>
+    <string name="summary_today">Today’s inference calls</string>
+    <string name="summary_outcomes">Success: %1$d · Failed: %2$d</string>
+    <string name="summary_pending_outcomes">Cancelled: %1$d · Interrupted: %2$d · Pending: %3$d</string>
+    <string name="summary_debug">Debug calls included today</string>
+    <string name="summary_last_seven">Last 7 days</string>
+    <string name="summary_recorded_since">Recording started: %1$s</string>
+    <string name="summary_quota">Previous quota detection</string>
+    <string name="summary_quota_day">Inference start date: %1$s</string>
+    <string name="summary_calls">%1$d calls</string>
+    <string name="summary_quota_note">Calls started that day when quota error 27 was first detected. This is historical information, not remaining quota. Limits may vary and do not necessarily reset at midnight.</string>
+    <string name="summary_day_calls">%1$s: %2$d calls</string>
+    <string name="summary_day_unrecorded">%1$s: Not recorded</string>
+    <string name="summary_unrecorded">— Not recorded before tracking began</string>
+    <string name="summary_collection">Collection</string>
+    <string name="summary_bookmarks">Bookmarks (excluding trash)</string>
+    <string name="summary_trash">Trash</string>
+    <string name="summary_storage">Cache storage</string>
+    <string name="summary_icons">Domain icons (PNG)</string>
+    <string name="summary_images">Page images (WebP)</string>
+    <string name="summary_other">Other cache</string>
+    <string name="summary_total">Total cache size</string>
+    <string name="summary_files">%1$d image files</string>
+    <string name="summary_checked">Last checked: %1$s</string>
+    <string name="summary_physical_note">Sizes include temporary files. Image counts include saved copies. 1 KB = 1,024 bytes.</string>
+    <string name="summary_refresh">Refresh storage</string>
+    <string name="summary_loading">Loading…</string>
+    <string name="summary_error">Could not load these statistics.</string>
+    <string name="summary_retry">Retry</string>
+    <string name="summary_save_warning">Usage could not be saved. These counts may be lost when the app closes.</string>
+    <string name="summary_privacy">Usage statistics stay on this device. Prompts, URLs, and generated content are not included in usage records.</string>
 </resources>

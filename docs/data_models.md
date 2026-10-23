@@ -326,3 +326,8 @@ operation retains application-scope ownership when its UI caller is cancelled.
 Room and the JSON file still cannot provide a crash-atomic transaction across
 stores: process death or a DB commit failure after a successful file replacement
 is outside this handled policy-write failure boundary.
+
+
+## Application Summary Statistics
+
+`AiUsageSnapshot` contains local daily aggregates, recording start date, and the last quota benchmark. `DailyAiUsage` reconciles success, failed, cancelled, interrupted, and pending outcomes, with a debug subtotal. `AiCoreUsageRepository` commits a dedicated versioned SharedPreferences snapshot without content identifiers; abandoned pending records become interrupted after process restart. `CollectionCounts(active, trash)` is an observed atomic SQL projection, not a new table. `CacheStorageSnapshot` records physical category bytes, PNG/WebP counts, and measurement time. No Room migration is required. See [Application Summary](application_summary.md).

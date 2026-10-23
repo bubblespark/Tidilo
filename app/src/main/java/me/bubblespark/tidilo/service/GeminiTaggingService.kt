@@ -5,6 +5,8 @@ import com.google.mlkit.genai.prompt.Generation
 import com.google.mlkit.genai.prompt.GenerativeModel
 import com.google.mlkit.genai.prompt.TextPart
 import com.google.mlkit.genai.prompt.generateContentRequest
+import me.bubblespark.tidilo.data.AiCoreUsageRepository
+import me.bubblespark.tidilo.data.AiUsageSource
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.config.AppLanguage
 import me.bubblespark.tidilo.data.BookmarkRepository
@@ -352,7 +354,9 @@ object GeminiTaggingService {
             // Set max output tokens to 256, sufficient for concise summary and JSON
             maxOutputTokens = 256
         }
-        val response = model.generateContent(request)
+        val response = AiCoreUsageRepository.getInstance(TidiloApplication.instance).track(AiUsageSource.NORMAL) {
+            model.generateContent(request)
+        }
         return response.candidates.firstOrNull()?.text?.trim().orEmpty()
     }
 

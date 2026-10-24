@@ -349,6 +349,12 @@
     <string name="rss_xml_fetch_failed">Could not fetch feed XML. This feed was automatically disabled.</string>
     <string name="rss_enable_to_retry">Enable this feed to try again on the next fetch.</string>
     <string name="rss_back_to_feeds">Back to feeds</string>
-    <string name="rss_subtitle_feeds">%1$d feeds</string>
-    <string name="rss_subtitle_bookmarks">%1$d bookmarks</string>
+    <plurals name="rss_subtitle_feeds">
+        <item quantity="one">%1$d feed</item>
+        <item quantity="other">%1$d feeds</item>
+    </plurals>
+    <plurals name="rss_subtitle_bookmarks">
+        <item quantity="one">%1$d bookmark</item>
+        <item quantity="other">%1$d bookmarks</item>
+    </plurals>
 </resources>

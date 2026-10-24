@@ -84,6 +84,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -576,9 +577,9 @@ fun LibraryScreen(
                                 isLoading ->
                                     stringResource(R.string.library_subtitle_loading)
                                 filterMode == LibraryFilterMode.RSS && selectedFeed != null ->
-                                    stringResource(R.string.rss_subtitle_bookmarks, libraryCount)
+                                    pluralStringResource(R.plurals.rss_subtitle_bookmarks, libraryCount, libraryCount)
                                 filterMode == LibraryFilterMode.RSS ->
-                                    stringResource(R.string.rss_subtitle_feeds, rssFeedGroups.size)
+                                    pluralStringResource(R.plurals.rss_subtitle_feeds, rssFeedGroups.size, rssFeedGroups.size)
                                 filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
                                     stringResource(R.string.library_subtitle_domain_bookmarks, libraryCount)
                                 filterMode == LibraryFilterMode.DOMAIN ->

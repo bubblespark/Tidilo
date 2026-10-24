@@ -994,6 +994,11 @@ class ImportRepositoryTest {
         override suspend fun getTaskByUrl(url: String): ImportTaskEntity? =
             tasksFlow.value.find { it.url == url }
 
+        override suspend fun clearRssFeedId(id: String) {
+            val task = getTaskById(id) ?: return
+            insertOrUpdate(task.copy(rssFeedId = null))
+        }
+
         override suspend fun insertOrUpdate(task: ImportTaskEntity) {
             val current = tasksFlow.value.toMutableList()
             current.removeAll { it.id == task.id }

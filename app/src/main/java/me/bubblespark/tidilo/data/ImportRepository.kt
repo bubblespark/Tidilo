@@ -14,19 +14,33 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
+import kotlinx.coroutines.flow.flowOf
+import androidx.room.withTransaction
 import me.bubblespark.tidilo.data.db.AppDatabase
+import me.bubblespark.tidilo.data.db.BookmarkDao
+import me.bubblespark.tidilo.data.db.BookmarkEntity
+import me.bubblespark.tidilo.data.db.ImportNotificationDao
+import me.bubblespark.tidilo.data.db.ImportNotificationEntity
+import me.bubblespark.tidilo.data.db.NotificationType
 import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
 
 import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.parser.ArticleAcquirer
+import me.bubblespark.tidilo.parser.ParsedWebPage
 import me.bubblespark.tidilo.parser.ArticlePreparation
 import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.service.GeminiTaggingService
@@ -37,16 +51,28 @@ import java.net.URI
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+internal data class ResolvedTarget(
+    val importingId: String,
+    val realUrl: String,
+    val domain: String
+)
+
+private val ACTIVE_QUEUE_STATUSES = setOf("READY", "WAITING_AI", "PROCESSING_AI", "ERROR")
+
 class ImportRepository internal constructor(
     context: Context? = null,
     private val taskDao: ImportTaskDao = context?.let { AppDatabase.getInstance(it).importTaskDao() }
         ?: throw IllegalArgumentException("taskDao must be provided if context is null"),
+    private val bookmarkDao: BookmarkDao? = context?.let { AppDatabase.getInstance(it).bookmarkDao() },
+    private val notificationDao: ImportNotificationDao? = context?.let { AppDatabase.getInstance(it).importNotificationDao() },
+    private val database: AppDatabase? = context?.let { AppDatabase.getInstance(it) },
     private val repositoryScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     private val isAppInForeground: () -> Boolean = { TidiloApplication.instance.isAppInForeground },
     private val openModel: () -> GenerativeModel = { Generation.getClient() },
     private val analyzeTask: suspend (GenerativeModel, ImportTask) -> Unit = ::analyzeImportTask,
     private val fallbackMode: () -> AiCoreFallbackMode = { AppConfig.aiCoreFallbackMode.value },
     private val retryIntervalMs: Long = 3000L,
+    private val articleAcquirer: suspend (String) -> ParsedWebPage = { ArticleAcquirer.acquire(it) },
     private val persistFallback: suspend (BookmarkItem) -> Unit = {
         BookmarkRepository.getInstance().addBookmarkAndAwait(it)
     }
@@ -73,6 +99,45 @@ class ImportRepository internal constructor(
     private val _aiProcessingProgress = MutableStateFlow(AiProcessingProgress())
     val aiProcessingProgress: StateFlow<AiProcessingProgress> = _aiProcessingProgress.asStateFlow()
 
+    val notifications: kotlinx.coroutines.flow.Flow<List<ImportNotificationEntity>> =
+        notificationDao?.observeNotifications() ?: flowOf(emptyList())
+
+    val unreadNotificationCount: kotlinx.coroutines.flow.Flow<Int> =
+        notificationDao?.observeUnreadCount() ?: flowOf(0)
+
+    fun markAllNotificationsAsRead() {
+        repositoryScope.launch {
+            notificationDao?.markAllAsRead()
+        }
+    }
+
+    fun clearAllNotifications() {
+        repositoryScope.launch {
+            notificationDao?.deleteAll()
+        }
+    }
+
+    suspend fun findBookmarkIdByUrl(url: String): String? {
+        return bookmarkDao?.getBookmarkByUrl(url)?.id
+    }
+
+    private val importMutex = Mutex()
+    internal val inFlightResolvedUrls = java.util.concurrent.ConcurrentHashMap<String, ResolvedTarget>()
+    private val pendingDuplicateNotificationJobs = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<Job>>()
+    internal var onEnteringTransaction: (suspend (url: String) -> Unit)? = null
+    internal var onDuplicateIdentified: ((activeId: String) -> Unit)? = null
+    internal var onEnteringFinalization: ((importingId: String) -> Unit)? = null
+
+    private suspend fun <T> runInDbOrLock(url: String? = null, block: suspend () -> T): T {
+        if (url != null) {
+            onEnteringTransaction?.invoke(url)
+        }
+        return if (database != null) {
+            database.withTransaction { block() }
+        } else {
+            importMutex.withLock { block() }
+        }
+    }
     private var batchProgressState = BatchProgressState()
     @Volatile
     private var isAiCancelPending = false
@@ -136,31 +201,276 @@ class ImportRepository internal constructor(
      * Completes HTML parsing, body text extraction, metadata detection, and domain icon resolution
      * BEFORE storing the item in the database.
      */
+    private suspend fun checkDuplicate(url: String): DuplicateCheckResult {
+        val existingBookmark = bookmarkDao?.getBookmarkByUrl(url)
+        if (existingBookmark != null) {
+            return if (existingBookmark.rssFeedId != null) {
+                val isAiCompleted = !existingBookmark.isAiSkipped &&
+                    (existingBookmark.category != null || existingBookmark.subcategory != null || existingBookmark.entities.isNotEmpty())
+                if (isAiCompleted) {
+                    DuplicateCheckResult.PromotedFromRssToLibrary(existingBookmark)
+                } else {
+                    val pendingTask = taskDao.getTaskByUrl(url)
+                    if (pendingTask != null && pendingTask.status in ACTIVE_QUEUE_STATUSES) {
+                        DuplicateCheckResult.DuplicateInQueue(pendingTask)
+                    } else {
+                        DuplicateCheckResult.RequeuedFromRssToAi(existingBookmark)
+                    }
+                }
+            } else {
+                DuplicateCheckResult.DuplicateInLibrary(existingBookmark)
+            }
+        }
+
+        val existingTask = taskDao.getTaskByUrl(url)
+        if (existingTask != null && existingTask.status in ACTIVE_QUEUE_STATUSES) {
+            return if (existingTask.rssFeedId != null && existingTask.status == "READY") {
+                DuplicateCheckResult.MovedFromRssToReady(existingTask)
+            } else {
+                DuplicateCheckResult.DuplicateInQueue(existingTask)
+            }
+        }
+
+        return DuplicateCheckResult.NoDuplicate
+    }
+
+    private suspend fun handleDuplicateOrConflict(
+        url: String,
+        result: DuplicateCheckResult,
+        importingId: String?,
+        onImported: ((Result<ImportTask>) -> Unit)?
+    ): Boolean {
+        val domain = DomainIconManager.extractDomain(url) ?: url
+        when (result) {
+            is DuplicateCheckResult.NoDuplicate -> return false
+
+            is DuplicateCheckResult.PromotedFromRssToLibrary -> {
+                bookmarkDao?.clearRssFeedId(result.bookmark.id)
+                if (importingId != null) {
+                    _importingTasks.update { list -> list.filter { it.id != importingId } }
+                }
+                notificationDao?.insert(
+                    ImportNotificationEntity(
+                        type = NotificationType.INFO.name,
+                        domain = domain,
+                        url = url,
+                        message = "Promoted from RSS to Library",
+                        existingBookmarkId = result.bookmark.id
+                    )
+                )
+                onImported?.invoke(Result.failure(DuplicateUrlException("Promoted from RSS to Library")))
+                return true
+            }
+
+            is DuplicateCheckResult.RequeuedFromRssToAi -> {
+                val item = ImportTask(
+                    url = url,
+                    title = result.bookmark.title,
+                    status = TaskStatus.READY,
+                    statusText = "Ready for AI Analysis",
+                    isNsfw = result.bookmark.isNsfw,
+                    description = result.bookmark.description,
+                    ogImageUrl = result.bookmark.ogImageUrl,
+                    articlePrepared = false,
+                    rssFeedId = null
+                )
+                taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(item))
+                if (importingId != null) {
+                    _importingTasks.update { list -> list.filter { it.id != importingId } }
+                }
+                notificationDao?.insert(
+                    ImportNotificationEntity(
+                        type = NotificationType.INFO.name,
+                        domain = domain,
+                        url = url,
+                        message = "Promoted from RSS to Library",
+                        existingBookmarkId = result.bookmark.id
+                    )
+                )
+                onImported?.invoke(Result.success(item))
+                return true
+            }
+
+            is DuplicateCheckResult.MovedFromRssToReady -> {
+                taskDao.clearRssFeedId(result.task.id)
+                if (importingId != null) {
+                    _importingTasks.update { list -> list.filter { it.id != importingId } }
+                }
+                val movedTask = result.task.copy(rssFeedId = null).toImportTask()
+                notificationDao?.insert(
+                    ImportNotificationEntity(
+                        type = NotificationType.INFO.name,
+                        domain = domain,
+                        url = url,
+                        message = "Moved from RSS to Ready",
+                        existingBookmarkId = null
+                    )
+                )
+                onImported?.invoke(Result.success(movedTask))
+                return true
+            }
+
+            is DuplicateCheckResult.DuplicateInLibrary -> {
+                if (importingId != null) {
+                    _importingTasks.update { list -> list.filter { it.id != importingId } }
+                }
+                notificationDao?.insert(
+                    ImportNotificationEntity(
+                        type = NotificationType.WARNING.name,
+                        domain = domain,
+                        url = url,
+                        message = "Duplicate URL (Already in Library)",
+                        existingBookmarkId = result.bookmark.id
+                    )
+                )
+                onImported?.invoke(Result.failure(DuplicateUrlException("Duplicate URL (Already in Library)")))
+                return true
+            }
+
+            is DuplicateCheckResult.DuplicateInQueue -> {
+                if (importingId != null) {
+                    _importingTasks.update { list -> list.filter { it.id != importingId } }
+                }
+                notificationDao?.insert(
+                    ImportNotificationEntity(
+                        type = NotificationType.WARNING.name,
+                        domain = domain,
+                        url = url,
+                        message = "Duplicate URL (Already in Queue)",
+                        existingBookmarkId = null
+                    )
+                )
+                onImported?.invoke(Result.failure(DuplicateUrlException("Duplicate URL (Already in Queue)")))
+                return true
+            }
+        }
+    }
+
     fun importUrl(
         rawUrl: String,
         title: String? = null,
         onImported: ((Result<ImportTask>) -> Unit)? = null
     ): Result<Int> {
         val trimmed = rawUrl.trim()
-        if (!isValidHttpUrl(trimmed)) {
+        val normalized = WebPageParser.normalizeUrl(trimmed)
+        if (normalized == null || !isValidHttpUrl(normalized)) {
             val ex = IllegalArgumentException("Invalid HTTP/HTTPS URL")
             onImported?.invoke(Result.failure(ex))
             return Result.failure(ex)
         }
 
-        val importing = ImportingTask(url = trimmed, title = title)
-        _importingTasks.update { it + importing }
+        val importing = ImportingTask(url = normalized, title = title)
+        var notificationDeferred: CompletableDeferred<Unit>? = null
+        var initialUrl: String = normalized
+        var initialDomain: String = DomainIconManager.extractDomain(normalized).orEmpty()
+        var activeId: String? = null
+
+        val canProceed = synchronized(_importingTasks) {
+            val existing = _importingTasks.value.firstOrNull { it.url == normalized }
+            if (existing != null) {
+                activeId = existing.id
+                onDuplicateIdentified?.invoke(existing.id)
+
+                val initialResolved = inFlightResolvedUrls[normalized]?.takeIf { it.importingId == existing.id }
+                if (initialResolved != null) {
+                    initialUrl = initialResolved.realUrl
+                    initialDomain = initialResolved.domain
+                }
+
+                val deferred = CompletableDeferred<Unit>()
+                notificationDeferred = deferred
+                pendingDuplicateNotificationJobs.computeIfAbsent(existing.id) { java.util.concurrent.CopyOnWriteArrayList() }.add(deferred)
+                deferred.invokeOnCompletion {
+                    pendingDuplicateNotificationJobs[existing.id]?.remove(deferred)
+                }
+                false
+            } else {
+                _importingTasks.update { it + importing }
+                true
+            }
+        }
+
+        if (!canProceed) {
+            val ex = DuplicateUrlException("Duplicate URL (Already in Queue)")
+            val targetDeferred = notificationDeferred
+            val targetActiveId = activeId
+            val targetUrl: String = initialUrl
+            val targetDomain: String = initialDomain
+            try {
+                repositoryScope.launch {
+                    try {
+                        notificationDao?.insert(
+                            ImportNotificationEntity(
+                                type = NotificationType.WARNING.name,
+                                domain = targetDomain,
+                                url = targetUrl,
+                                message = "Duplicate URL (Already in Queue)",
+                                existingBookmarkId = null
+                            )
+                        )
+                        // Race safety: If resolution happened while insert was suspended/pending,
+                        // re-apply update to guarantee resolved URL is preserved
+                        val currentResolved = inFlightResolvedUrls[normalized]?.takeIf { it.importingId == targetActiveId }
+                        if (currentResolved != null && currentResolved.realUrl != targetUrl) {
+                            notificationDao?.updateResolvedUrl(
+                                submittedUrl = normalized,
+                                resolvedUrl = currentResolved.realUrl,
+                                domain = currentResolved.domain
+                            )
+                        }
+                    } finally {
+                        targetDeferred?.complete(Unit)
+                    }
+                }
+            } catch (t: Throwable) {
+                targetDeferred?.complete(Unit)
+                throw t
+            }
+            onImported?.invoke(Result.failure(ex))
+            return Result.failure(ex)
+        }
 
         val estimatedCount = _readyTasks.value.size + _importingTasks.value.size
 
         repositoryScope.launch {
             try {
+                // Pre-Fetch Check (Primary Gate) - atomic duplicate check & mutation in database transaction
+                val isEarlyHandled = runInDbOrLock(normalized) {
+                    val preCheck = checkDuplicate(normalized)
+                    handleDuplicateOrConflict(normalized, preCheck, importing.id, onImported)
+                }
+                if (isEarlyHandled) {
+                    return@launch
+                }
+
                 // 1. Fetch & parse HTML, extract metadata, OGP, and Readability body snippet
-                val parsed = ArticleAcquirer.acquire(trimmed)
+                val parsed = articleAcquirer(normalized)
                 val prepared = ArticlePreparation.prepare(parsed)
 
-                val realUrl = prepared.url
-                val hasCustomTitle = !title.isNullOrBlank() && !isRawUrlOrHost(title, trimmed)
+                val realUrl = WebPageParser.normalizeUrl(prepared.url) ?: prepared.url
+                // Post-Redirect Check (handles redirects) - atomic duplicate check & mutation in database transaction
+                if (realUrl != normalized) {
+                    val isRedirectHandled = runInDbOrLock(realUrl) {
+                        val redirectDomain = DomainIconManager.extractDomain(realUrl).orEmpty()
+                        inFlightResolvedUrls[normalized] = ResolvedTarget(
+                            importingId = importing.id,
+                            realUrl = realUrl,
+                            domain = redirectDomain
+                        )
+                        notificationDao?.updateResolvedUrl(
+                            submittedUrl = normalized,
+                            resolvedUrl = realUrl,
+                            domain = redirectDomain
+                        )
+                        val postCheck = checkDuplicate(realUrl)
+                        handleDuplicateOrConflict(realUrl, postCheck, importing.id, onImported)
+                    }
+                    if (isRedirectHandled) {
+                        return@launch
+                    }
+                }
+
+                val hasCustomTitle = !title.isNullOrBlank() && !isRawUrlOrHost(title, normalized)
                 val realTitle = if (hasCustomTitle) title.trim() else prepared.title
                 val domain = DomainIconManager.extractDomain(realUrl)
                 val siteName = prepared.siteName
@@ -196,26 +506,63 @@ class ImportRepository internal constructor(
                     articlePrepared = true
                 )
 
-                taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
+                val isInserted = runInDbOrLock(realUrl) {
+                    val finalRecheck = checkDuplicate(realUrl)
+                    if (finalRecheck !is DuplicateCheckResult.NoDuplicate) {
+                        handleDuplicateOrConflict(realUrl, finalRecheck, importing.id, onImported)
+                        false
+                    } else {
+                        taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
+                        true
+                    }
+                }
+                if (!isInserted) {
+                    return@launch
+                }
                 onImported?.invoke(Result.success(newItem))
+            } catch (e: DuplicateUrlException) {
+                // Handled in handleDuplicateOrConflict; ignore
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 // Fallback: If network/parsing throws, create fallback task with basic details
-                val domain = DomainIconManager.extractDomain(trimmed)
+                val domain = DomainIconManager.extractDomain(normalized)
                 val isDomainNsfw = DomainPolicyManager.isNsfwDomain(domain)
                 val fallbackItem = ImportTask(
-                    url = trimmed,
-                    title = title?.trim()?.takeIf { it.isNotBlank() } ?: extractHostOrTitle(trimmed),
+                    url = normalized,
+                    title = title?.trim()?.takeIf { it.isNotBlank() } ?: extractHostOrTitle(normalized),
                     status = TaskStatus.ERROR,
                     statusText = "Article acquisition failed",
                     errorMessage = e.message,
                     isNsfw = isDomainNsfw
                 )
-                taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(fallbackItem))
+                val isFallbackInserted = runInDbOrLock(normalized) {
+                    val fallbackCheck = checkDuplicate(normalized)
+                    if (fallbackCheck !is DuplicateCheckResult.NoDuplicate) {
+                        handleDuplicateOrConflict(normalized, fallbackCheck, importing.id, onImported)
+                        false
+                    } else {
+                        taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(fallbackItem))
+                        true
+                    }
+                }
+                if (!isFallbackInserted) {
+                    return@launch
+                }
                 onImported?.invoke(Result.failure(e))
             } finally {
-                _importingTasks.update { list -> list.filter { it.id != importing.id } }
+                onEnteringFinalization?.invoke(importing.id)
+                val pendingJobs = synchronized(_importingTasks) {
+                    _importingTasks.update { list -> list.filter { it.id != importing.id } }
+                    pendingDuplicateNotificationJobs.remove(importing.id).orEmpty().toList()
+                }
+                withContext(NonCancellable) {
+                    pendingJobs.joinAll()
+                    val current = inFlightResolvedUrls[normalized]
+                    if (current != null && current.importingId == importing.id) {
+                        inFlightResolvedUrls.remove(normalized, current)
+                    }
+                }
             }
         }
 
@@ -1036,4 +1383,16 @@ private suspend fun analyzeImportTask(model: GenerativeModel, target: ImportTask
         rssFirstSeenAt = if (target.rssFeedId != null) target.createdAt else null,
         articlePrepared = target.articlePrepared
     ).getOrThrow()
+}
+
+
+class DuplicateUrlException(message: String) : Exception(message)
+
+sealed class DuplicateCheckResult {
+    data object NoDuplicate : DuplicateCheckResult()
+    data class PromotedFromRssToLibrary(val bookmark: BookmarkEntity) : DuplicateCheckResult()
+    data class RequeuedFromRssToAi(val bookmark: BookmarkEntity) : DuplicateCheckResult()
+    data class MovedFromRssToReady(val task: ImportTaskEntity) : DuplicateCheckResult()
+    data class DuplicateInLibrary(val bookmark: BookmarkEntity) : DuplicateCheckResult()
+    data class DuplicateInQueue(val task: ImportTaskEntity) : DuplicateCheckResult()
 }

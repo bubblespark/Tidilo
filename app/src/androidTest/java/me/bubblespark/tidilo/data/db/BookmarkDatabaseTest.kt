@@ -26,6 +26,41 @@ import java.util.UUID
 import java.security.MessageDigest
 
 class BookmarkDatabaseTest {
+    @Test fun bothVersionElevenSchemasUpgradeWithoutLosingSavedData() = runBlocking {
+        for (feedMetadataVariant in listOf(false, true)) {
+            val name = "issue108-v11-${UUID.randomUUID()}.db"
+            val helper = legacy(name, 11, feedMetadataVariant)
+            val old = helper.writableDatabase
+            old.execSQL("INSERT INTO rss_feeds(id,url,title,mode,retentionLimit,deleted,revision,enabled) VALUES('feed','https://example.com/feed','Saved feed','DIRECT',100,1,4,0)")
+            old.execSQL("INSERT INTO bookmarks(id,title,url,description,entities,createdAt,updatedAt,note,isNsfw,isAiSkipped,rssFeedId) VALUES('kept','Article','https://example.com/article','Summary','[]',1,2,'Saved note',0,0,'feed')")
+            old.execSQL("INSERT INTO rss_seen_items(feedId,itemKey,url) VALUES('feed','receipt','https://example.com/article')")
+            old.execSQL("INSERT INTO import_tasks(id,url,title,status,statusText,assignedTags,createdAt,isNsfw,siteName,description,bodySnippet,rssFeedId) VALUES('task','https://example.com/task','Queued','ERROR','Kept','[]',1,0,'Feed','Description','Body','feed')")
+            if (feedMetadataVariant) {
+                old.execSQL("UPDATE rss_feeds SET iconUrl='https://example.com/icon.png',siteUrl='https://publisher.example/'")
+            } else {
+                old.execSQL("INSERT INTO import_notifications(id,type,domain,url,message,isRead,createdAt) VALUES(7,'WARNING','example.com','https://example.com/article','Saved notification',0,3)")
+            }
+            helper.close()
+            val db = database(name)
+            try {
+                assertEquals(12, db.openHelper.readableDatabase.version)
+                val feed = db.rssDao().feed("feed")!!
+                assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
+                assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)
+                assertTrue(feed.deleted); assertFalse(feed.enabled); assertEquals(100, feed.retentionLimit)
+                assertEquals("Saved note", db.bookmarkDao().getBookmarkById("kept")!!.note)
+                assertEquals("ERROR", db.importTaskDao().getTaskById("task")!!.status)
+                assertTrue(db.rssDao().hasSeen("feed", "receipt", "https://example.com/article"))
+                val notifications = db.importNotificationDao().observeNotifications().first()
+                assertEquals(if (feedMetadataVariant) 0 else 1, notifications.size)
+                if (!feedMetadataVariant) assertEquals("Saved notification", notifications.single().message)
+                db.importNotificationDao().insert(ImportNotificationEntity(type = "INFO", domain = "example.com",
+                    url = "https://example.com/new", message = "New notification"))
+                assertEquals(if (feedMetadataVariant) 1 else 2, db.importNotificationDao().observeUnreadCount().first())
+            } finally { db.close(); context.deleteDatabase(name) }
+        }
+    }
+
     @Test fun legacyFeedsGainNullableMetadataWithoutLosingSubscriptionOrArticles() = runBlocking {
         val name = "issue99-migration-${UUID.randomUUID()}.db"
         val helper = legacy(name, 10)
@@ -69,7 +104,7 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showNsfw: Boolean = true): List<BookmarkEntity> {
@@ -276,7 +311,7 @@ class BookmarkDatabaseTest {
         } finally { db.close(); context.deleteDatabase(name) }
     }
 
-    private fun legacy(name: String, version: Int): SupportSQLiteOpenHelper {
+    private fun legacy(name: String, version: Int, feedMetadataVariant: Boolean = false): SupportSQLiteOpenHelper {
         val schema = instrumentation.context.assets.open("schema-v6.sql").bufferedReader().use { it.readText() }
         return FrameworkSQLiteOpenHelperFactory().create(SupportSQLiteOpenHelper.Configuration.builder(context)
             .name(name).callback(object : SupportSQLiteOpenHelper.Callback(version) {
@@ -300,6 +335,12 @@ class BookmarkDatabaseTest {
                     if (version >= 8) AppDatabase.MIGRATION_7_8.migrate(db)
                     if (version >= 9) AppDatabase.MIGRATION_8_9.migrate(db)
                     if (version >= 10) AppDatabase.MIGRATION_9_10.migrate(db)
+                    if (version >= 11) {
+                        if (feedMetadataVariant) {
+                            db.execSQL("ALTER TABLE rss_feeds ADD COLUMN iconUrl TEXT")
+                            db.execSQL("ALTER TABLE rss_feeds ADD COLUMN siteUrl TEXT")
+                        } else AppDatabase.MIGRATION_10_11.migrate(db)
+                    }
                     if (version in 4..5) db.execSQL("CREATE TABLE og_images (id TEXT PRIMARY KEY)")
                 }
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = error("Unexpected legacy upgrade")

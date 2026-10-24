@@ -1,6 +1,11 @@
 package me.bubblespark.tidilo.ui.screens.importscreen
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import me.bubblespark.tidilo.data.db.ImportNotificationEntity
 import kotlinx.coroutines.flow.StateFlow
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.data.ImportRepository
@@ -28,6 +33,33 @@ class ImportViewModel(
 
     // Battery Quota Exceeded dialog state
     val quotaExceededDialogVisible: StateFlow<Boolean> = repository.quotaExceededDialogVisible
+
+    val notifications: StateFlow<List<ImportNotificationEntity>> = repository.notifications.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val unreadNotificationCount: StateFlow<Int> = repository.unreadNotificationCount.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = 0
+    )
+
+    fun markAllNotificationsAsRead() {
+        repository.markAllNotificationsAsRead()
+    }
+
+    fun clearAllNotifications() {
+        repository.clearAllNotifications()
+    }
+
+    fun findBookmarkIdByUrl(url: String, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            val id = repository.findBookmarkIdByUrl(url)
+            onResult(id)
+        }
+    }
 
     fun dismissQuotaExceededDialog() {
         repository.dismissQuotaExceededDialog()

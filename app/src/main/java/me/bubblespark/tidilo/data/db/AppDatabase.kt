@@ -19,9 +19,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RssFeedEntity::class,
         RssSeenItemEntity::class,
         RssImageCleanupEntity::class,
-        ImportTaskEntity::class
+        ImportTaskEntity::class,
+        ImportNotificationEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -32,6 +33,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bookmarkDao(): BookmarkDao
     abstract fun trashDao(): TrashDao
     abstract fun importTaskDao(): ImportTaskDao
+    abstract fun importNotificationDao(): ImportNotificationDao
 
     companion object {
         /** Repairs an already-installed prerelease v7 once, before Room publishes any queries. */
@@ -83,8 +85,29 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_7_8 = rssMigration7To8
         val MIGRATION_10_11 = object : Migration(10, 11) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE rss_feeds ADD COLUMN iconUrl TEXT")
-                db.execSQL("ALTER TABLE rss_feeds ADD COLUMN siteUrl TEXT")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `import_notifications` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`type` TEXT NOT NULL, " +
+                        "`domain` TEXT NOT NULL, " +
+                        "`url` TEXT NOT NULL, " +
+                        "`message` TEXT NOT NULL, " +
+                        "`existingBookmarkId` TEXT, " +
+                        "`isRead` INTEGER NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_notifications_createdAt` ON `import_notifications` (`createdAt`)")
+            }
+        }
+        /** Preserves both the notification v11 schema and the earlier RSS-only v11 build. */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_10_11.migrate(db)
+                val columns = db.query("PRAGMA table_info(rss_feeds)").use { cursor ->
+                    buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) }
+                }
+                if ("iconUrl" !in columns) db.execSQL("ALTER TABLE rss_feeds ADD COLUMN iconUrl TEXT")
+                if ("siteUrl" !in columns) db.execSQL("ALTER TABLE rss_feeds ADD COLUMN siteUrl TEXT")
             }
         }
         val MIGRATION_9_10 = object : Migration(9, 10) {
@@ -151,7 +174,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }

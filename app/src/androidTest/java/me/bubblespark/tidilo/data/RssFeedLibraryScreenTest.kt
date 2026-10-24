@@ -91,6 +91,7 @@ class RssFeedLibraryScreenTest {
             assertNull(find { it.text?.toString() == "Alpha article" })
             click { it.text?.toString()?.contains("0000 Alpha feed") == true }
             text("Alpha article")
+            text("1 bookmark")
             screenshot("issue99-feed-detail.png")
             assertNull(find { it.text?.toString() == "Beta article" })
             instrumentation.runOnMainSync { vm.setViewMode(LibraryViewMode.GRID) }

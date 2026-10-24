@@ -708,7 +708,7 @@ object DomainIconManager {
                     val candidates = if (response.status in 200..299) DomainIconResolver.parseHtml(
                         org.jsoup.Jsoup.parse(java.io.ByteArrayInputStream(response.bytes), null, response.url).outerHtml(), response.url
                     ) else emptyList()
-                    HtmlDiscoveryResult(candidates.map { it.url }, true, response.status >= 500,
+                    HtmlDiscoveryResult(candidates.map { it.url }, true, isTransientHttpStatus(response.status),
                         candidates.filter { it.highPriority }.map { it.url }.toSet())
                 }
                 contacted = contacted || discovery.hasServerContact
@@ -719,7 +719,7 @@ object DomainIconManager {
                 val result = if (network == null) runInterruptible(Dispatchers.IO) { downloadBytes(candidate) } else {
                     val response = network.fetch(candidate)
                     DownloadResult(response.bytes.takeIf { response.status in 200..299 }, true,
-                        response.status == 408 || response.status == 429 || response.status >= 500)
+                        isTransientHttpStatus(response.status))
                 }
                 contacted = contacted || result.hasServerContact
                 transientFailure = transientFailure || result.hasTransientFailure

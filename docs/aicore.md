@@ -140,7 +140,7 @@ Select EXACTLY 1 most relevant subcategory from the following 11 choices (use ex
   * Subjective or exaggerated words (e.g., "best", "greatest", "ultimate", "recommended", "useful").
   * Ambiguous modifiers, annotations, or generic formats (e.g., "guide (latest)", "summary", "for beginners", "how-to", "tutorial").
   * Generic abstract nouns (e.g., "settings", "features", "methods", "list").
-- Keep the original or canonical notation as used in the content (e.g., keep "Android" as "Android"; do NOT transliterate or force translation).
+- Keep the original or canonical notation as used in the content (e.g., keep "Android" as "Android", do NOT transliterate into Katakana "アンドロイド", and keep Japanese terms like "イラスト" in Japanese). Do NOT force translation.
 
 [Output Format]
 Respond with ONLY a valid JSON object. Do not include any explanations, markdown code blocks (such as ```json), or backticks.
@@ -161,9 +161,16 @@ Content: <bodySnippet (up to 800 chars)>
 
 ---
 
-## 5. Summary Rules Design
+## 5. Summary Rules Design (JA vs. EN)
 
-The summary instruction enforces the following rules:
+The summary instruction is conditioned on `AppConfig.currentLanguage`:
+
+### Japanese (`AppLanguage.JAPANESE`)
+- **Length**: Exactly 1 concise sentence (**approximately 50 characters**).
+- **Core Directive**: Focus on what this web page **introduces, explains, or provides**, NOT the dictionary definition of the subject.
+- **Tone**: Strictly objective facts; no promotional sales talk or subjective opinions.
+
+### English (`AppLanguage.ENGLISH`)
 - **Length**: Exactly 1 concise sentence (**under 100 characters**, approx. 15–20 words).
 - **Core Directive**: Focus on what this web page **introduces, explains, or provides**, NOT the dictionary definition of the subject.
 - **Tone**: Strictly objective facts; no marketing hype.
@@ -220,7 +227,7 @@ On-device SLMs (Small Language Models) can occasionally produce conversational p
 ### Prohibited Entity Guard
 `isCleanEntity()` verifies keywords against noise tokens:
 - **Forbidden Years**: `"2024"`, `"2025"`, `"2026"`, `"2027"`.
-- **Forbidden Noise Terms**: `"latest"`, `"guide"`, and localized noise equivalents.
+- **Forbidden Noise Terms**: `"latest"`, `"最新"`, `"最強"`, `"まとめ"`, `"入門"`, `"おすすめ"`, `"guide"`.
 
 ---
 
@@ -238,17 +245,17 @@ AICore inference is only permitted while the app is in the foreground (`TidiloAp
 | Error Code / Name | GenAiException ErrorCode | Trigger Condition | System Behavior & Recovery Strategy |
 | :--- | :--- | :--- | :--- |
 | **`BUSY`** | `9` | AICore system service or NPU is temporarily overloaded. | Retry up to 3 times at 3-second intervals while in foreground (`WAITING_AI: "AICore busy • Retrying (x/3)..."`). If all 3 retries fail, abort the entire Running batch and move all Running items to `Error`. |
-| **`PER_APP_BATTERY_USE_QUOTA_EXCEEDED`** | `27` | Daily on-device battery/power budget for AICore is exceeded. | **Without Fallback (`DISABLE`)**: Display an `AlertDialog` stating *"You have exceeded the AICore usage limit. We cannot import the URL. Please wait a while and try again, or enable the fallback feature."*. Move active task and other pending Running tasks back to `Queuing`.<br>**With Fallback (`QUOTA_EXCEEDED_ONLY` or `ALL`)**: Ingest item immediately as an **AI Skipped Bookmark** (`isAiSkipped = true`, `category = null`, `subcategory = null`, `entities = []`, `summary = description`). The error dialog is suppressed. |
+| **`PER_APP_BATTERY_USE_QUOTA_EXCEEDED`** | `27` | Daily on-device battery/power budget for AICore is exceeded. | **Without Fallback (`DISABLE`)**: Display an `AlertDialog` stating *"AICore使用制限を超過しました。URLを取り込めません。しばらく待ってから再度実行するか、フォールバック機能の仕様を検討してください。"* (EN: *"You have exceeded the AICore usage limit. We cannot import the URL. Please wait a while and try again, or enable the fallback feature."*). Move active task and other pending Running tasks back to `Queuing`.<br>**With Fallback (`QUOTA_EXCEEDED_ONLY` or `ALL`)**: Ingest item immediately as an **AI Skipped Bookmark** (`isAiSkipped = true`, `category = null`, `subcategory = null`, `entities = []`, `summary = description`). The error dialog is suppressed. |
 | **`BACKGROUND_USE_BLOCKED`** | `30` | Execution blocked because app was detected in background by system service. | If app is in foreground, retry up to 3 times at 3-second intervals (`WAITING_AI: "AICore background blocked • Retrying (x/3)..."`). If retry limit reached: if fallback mode is `ALL`, ingest as AI Skipped Bookmark; otherwise fail entire Running batch to `Error`. If app is backgrounded, pause in `WAITING_AI` until foreground. |
 | **Other Inference Errors / Retry Limit Exhausted** | `UNKNOWN`, `UNAVAILABLE`, etc. | Unrecoverable model faults, timeouts, or exhausted retries. | If fallback mode is `ALL`, convert item directly into an AI Skipped Bookmark (`isAiSkipped = true`). Otherwise, move the active task and pending Running tasks to the `Error` group (`"Batch stopped: <Error>"`). |
 | **HTTP Non-200 / Network** | Pre-parsing network failure | Status != 200 during fetch | Skipped during ingestion/fast-path pre-parsing, marked as `HTTP Error <Code>`. Non-AICore errors do not fallback. |
 | **JSON Parse Malformed** | SLM formatting anomaly | Unparseable JSON syntax | Gracefully caught in `GeminiTaggingService`; falls back to HTML OGP metadata without throwing an unrecoverable exception. |
 
 ### AICore Error Fallback Modes (`AppConfig.aiCoreFallbackMode`)
-Users can configure the fallback behavior under **Settings ➔ AI ➔ AICore Error Fallback**:
-- **`Disable`** *(Default)*: Standard behavior where quota exceeded triggers a warning dialog and other fatal errors push items to the `Error` list.
-- **`Only if the AICore quota is exceeded`**: Triggers fallback exclusively when error code `PER_APP_BATTERY_USE_QUOTA_EXCEEDED (27)` is returned. Items are saved into the Library as bookmarks with `isAiSkipped = true` without showing the error dialog.
-- **`All`**: Applies fallback to quota exceeded and all AICore error codes (after retry exhaustion where applicable).
+Users can configure the fallback behavior under **Settings ➔ AI ➔ AICoreエラー発生時のフォールバック**:
+- **`無効 (Disable)`** *(Default)*: Standard behavior where quota exceeded triggers a warning dialog and other fatal errors push items to the `Error` list.
+- **`AICore超過時のみ (Only if the AICore quota is exceeded)`**: Triggers fallback exclusively when error code `PER_APP_BATTERY_USE_QUOTA_EXCEEDED (27)` is returned. Items are saved into the Library as bookmarks with `isAiSkipped = true` without showing the error dialog.
+- **`全て (All)`**: Applies fallback to quota exceeded and all AICore error codes (after retry exhaustion where applicable).
 
 #### Fallback Bookmark Contract
 - **`isAiSkipped`**: `true` (renders an "AI Skipped" badge in bookmark list and detail cards).

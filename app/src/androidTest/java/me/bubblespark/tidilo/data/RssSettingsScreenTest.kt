@@ -59,7 +59,7 @@ class RssSettingsScreenTest {
             }
             node("Persistent XML failure") { it.text?.toString()?.contains("Could not fetch feed XML. This feed was automatically disabled.") == true }
             node("Recovery instruction") { it.text?.toString()?.contains("Enable this feed to try again") == true }
-            var enabled: AccessibilityNodeInfo? = node("Enabled label") { it.text?.toString() == "Enabled" }
+            var enabled: AccessibilityNodeInfo? = node("Enabled switch") { it.contentDescription?.toString() == "Enabled" }
             while (enabled != null && !enabled.isCheckable) enabled = enabled.parent
             assertNotNull(enabled)
             assertFalse(enabled!!.isChecked)
@@ -131,7 +131,7 @@ class RssSettingsScreenTest {
         }
     }
 
-    @Test fun feedCardLabelsEnabledAndErrorsReplaceTimestamps(): Unit = runBlocking {
+    @Test fun feedCardShowsCompactMetadataAndBottomRightSwitch(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         val feed = mutableStateOf(me.bubblespark.tidilo.data.db.RssFeedEntity("feed", "https://example.com/feed", "Example",
@@ -146,17 +146,41 @@ class RssSettingsScreenTest {
             } } }
             node("Simple queue guidance") { it.text?.toString() == "Maximum AI queue: 0 items" }
             repeat(8) {
-                if (find { it.text?.toString() == "Enabled" } == null) {
+                if (find { it.contentDescription?.toString() == "Enabled" } == null) {
                     find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                     delay(100)
                 }
             }
-            node("Mode label") { it.text?.toString() == "Import Mode: Direct" }
-            node("Retention label") { it.text?.toString() == "Max saved items: Unlimited" }
+            val mode = node("Compact mode") { it.text?.toString() == "Direct" }
+            val retention = node("Compact retention") { it.text?.toString() == "Unlimited" }
+            val modeBounds = android.graphics.Rect()
+            val retentionBounds = android.graphics.Rect()
+            mode.getBoundsInScreen(modeBounds)
+            retention.getBoundsInScreen(retentionBounds)
+            assertEquals(modeBounds.centerY(), retentionBounds.centerY())
+            assertTrue(retentionBounds.left > modeBounds.right)
             node("Fetch error") { it.text?.toString() == "HTTP 500" }
             assertNull(find { it.text?.toString()?.startsWith("Last attempt:") == true || it.text?.toString()?.startsWith("Last success:") == true })
-            click(node("Enabled checkbox label") { it.text?.toString() == "Enabled" })
+            var toggle: AccessibilityNodeInfo? = node("Enabled switch") { it.contentDescription?.toString() == "Enabled" }
+            while (toggle != null && !toggle.isCheckable) toggle = toggle.parent
+            assertNotNull(toggle)
+            val toggleBounds = android.graphics.Rect()
+            val deleteBounds = android.graphics.Rect()
+            toggle!!.getBoundsInScreen(toggleBounds)
+            node("Delete action") { it.text?.toString() == "Delete" }.getBoundsInScreen(deleteBounds)
+            assertTrue(toggleBounds.left > deleteBounds.right)
+            assertEquals(deleteBounds.centerY(), toggleBounds.centerY())
+            node("On state") { it.text?.toString() == "On" }
+            click(toggle)
             withTimeout(3000) { while (feed.value.enabled) delay(20) }
+            node("Off state") { it.text?.toString() == "Off" }
+            instrumentation.runOnMainSync { feed.value = feed.value.copy(error = null, retentionLimit = 30) }
+            node("Numeric maximum") { it.text?.toString() == "Max 30" }
+            delay(250)
+            val screenshot = instrumentation.uiAutomation.takeScreenshot()
+            try { File(context.getExternalFilesDir(null), "issue96-compact-feed.png").outputStream().use {
+                screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
+            } } finally { screenshot.recycle() }
         } finally { instrumentation.runOnMainSync { activity.finish() } }
     }
 

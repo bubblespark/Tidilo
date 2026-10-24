@@ -320,6 +320,10 @@
     <string name="rss_import_mode">Import Mode</string>
     <string name="rss_max_saved_items">Max saved items</string>
     <string name="rss_enabled">Enabled</string>
+    <string name="rss_on">On</string>
+    <string name="rss_off">Off</string>
+    <string name="rss_retention_compact">Max %1$d</string>
+    <string name="rss_edit_compact">Edit</string>
     <string name="rss_retention_input">Retained items (10–500)</string>
     <string name="rss_unlimited">Unlimited</string>
     <string name="rss_edit">Edit feed</string>

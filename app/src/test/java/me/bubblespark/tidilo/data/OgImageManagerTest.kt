@@ -8,6 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.Tag
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
@@ -382,25 +383,49 @@ class OgImageManagerTest {
     fun testReconcileAllKeyDeliveredWhenFallbackSaturated(): Unit = runBlocking {
         val targetKey = "card-specific-key"
         val received = mutableListOf<String>()
+        val gate = CompletableDeferred<Unit>()
 
-        val job = launch {
+        // A slow/held collector that blocks before consuming emissions,
+        // causing the 64-slot shared-flow buffer to fill and tryEmit to return false.
+        val slowCollectorJob = launch {
+            OgImageManager.observeExactImageUpdates("slow-collector-key").collect {
+                gate.await()
+            }
+        }
+
+        // The card observer under test (listening for targetKey or RECONCILE_ALL_KEY)
+        val targetJob = launch {
             OgImageManager.observeExactImageUpdates(targetKey).collect {
                 received.add(it)
             }
         }
         delay(50)
 
-        // Directly emit the global reconciliation signal to verify observers receive it
-        OgImageManager.notifyExactImageUpdatedForTesting("example.com", OgImageManager.RECONCILE_ALL_KEY)
+        // 1. Fill the 64-slot buffer for the slow subscriber
+        for (i in 1..64) {
+            OgImageManager.notifyExactImageUpdatedForTesting("example.com", "slow-collector-key")
+        }
 
-        withTimeout(3000) {
-            while (received.isEmpty()) {
+        // 2. Emit > MAX_PENDING_FALLBACK_KEYS (128) distinct keys while buffer is full
+        // This naturally triggers the overflow branch in notifyExactImageUpdated:
+        // pendingFallbackKeys.size >= MAX_PENDING_FALLBACK_KEYS -> coalesces into RECONCILE_ALL_KEY
+        for (i in 1..135) {
+            OgImageManager.notifyExactImageUpdatedForTesting("example.com", "overflow-key-$i")
+        }
+
+        // Release the slow collector gate so buffer frees up and drain worker can emit
+        gate.complete(Unit)
+
+        // Await the naturally generated RECONCILE_ALL_KEY from the fallback drainer
+        withTimeout(5000) {
+            while (!received.contains(OgImageManager.RECONCILE_ALL_KEY)) {
                 delay(20)
             }
         }
 
         assertTrue(received.contains(OgImageManager.RECONCILE_ALL_KEY))
 
-        job.cancel()
+        slowCollectorJob.cancel()
+        targetJob.cancel()
     }
 }

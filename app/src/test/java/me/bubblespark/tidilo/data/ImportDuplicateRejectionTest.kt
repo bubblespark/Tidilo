@@ -79,6 +79,7 @@ class ImportDuplicateRejectionTest {
     private class TestImportTaskDao : ImportTaskDao {
         val tasks = mutableMapOf<String, ImportTaskEntity>()
         private val tasksFlow = MutableStateFlow<List<ImportTaskEntity>>(emptyList())
+        var onBeforeInsert: (suspend (ImportTaskEntity) -> Unit)? = null
 
         private fun emit() {
             tasksFlow.value = tasks.values.toList()
@@ -96,6 +97,7 @@ class ImportDuplicateRejectionTest {
         }
 
         override suspend fun insertOrUpdate(task: ImportTaskEntity) {
+            onBeforeInsert?.invoke(task)
             tasks[task.id] = task
             emit()
         }
@@ -638,10 +640,22 @@ class ImportDuplicateRejectionTest {
         )
         bookmarkDao.insertRow(existing)
 
-        val redirectStartedGate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val allowRedirectGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val redirectInFlightGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val allowRedirectToFinish = kotlinx.coroutines.CompletableDeferred<Unit>()
         val directImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
         val redirectImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
+
+        // Gate the task DAO insertion of the direct RSS promotion:
+        // Before the direct promotion can commit its task into the DAO, release the competing redirect import.
+        // If the early duplicate check and promotion are atomic inside runInDbOrLock,
+        // the redirect import cannot interleave and will observe the promoted task in queue.
+        // If they are not atomic, the redirect import would pass checkDuplicate and enqueue a competing task first.
+        taskDao.onBeforeInsert = { task ->
+            if (task.url == rssCanonicalUrl) {
+                allowRedirectToFinish.complete(Unit)
+                kotlinx.coroutines.delay(50)
+            }
+        }
 
         // Acquirer simulates redirectUrl resolving to rssCanonicalUrl while suspended in-flight
         val repository = ImportRepository(
@@ -652,8 +666,8 @@ class ImportDuplicateRejectionTest {
             repositoryScope = CoroutineScope(Dispatchers.IO),
             articleAcquirer = { url ->
                 if (url == redirectUrl) {
-                    redirectStartedGate.complete(Unit)
-                    allowRedirectGate.await()
+                    redirectInFlightGate.complete(Unit)
+                    allowRedirectToFinish.await()
                     createFakeParsedPage(url = redirectUrl, finalUrl = rssCanonicalUrl)
                 } else {
                     createFakeParsedPage(url = url)
@@ -669,37 +683,35 @@ class ImportDuplicateRejectionTest {
 
         // Wait until redirect import is in-flight inside articleAcquirer
         kotlinx.coroutines.withTimeout(5000) {
-            redirectStartedGate.await()
+            redirectInFlightGate.await()
         }
 
-        // 2. Start import of direct canonical URL while redirect URL is in-flight:
-        //    Immediately evaluates unanalyzed RSS bookmark and atomically promotes it to READY queue
+        // 2. Start direct canonical URL import:
+        //    Evaluates unanalyzed RSS bookmark and enters atomic promotion block.
+        //    taskDao.onBeforeInsert releases redirect URL before committing the direct task.
         val directCallResult = repository.importUrl(rssCanonicalUrl) {
             directImportFinished.complete(it)
         }
         assertTrue(directCallResult.isSuccess)
 
+        // 3. Await completion of both competing imports
         val directResult = kotlinx.coroutines.withTimeout(5000) {
             directImportFinished.await()
         }
         assertTrue(directResult.isSuccess)
-        assertEquals(1, taskDao.getCount())
-        val task = taskDao.getTaskByUrl(rssCanonicalUrl)
-        assertNotNull(task)
-        assertEquals("READY", task?.status)
-
-        // 3. Release the converging redirect URL import to continue:
-        //    Resolves to rssCanonicalUrl and post-redirect check detects newly promoted task in queue
-        allowRedirectGate.complete(Unit)
 
         val redirectResult = kotlinx.coroutines.withTimeout(5000) {
             redirectImportFinished.await()
         }
         assertTrue(redirectResult.isFailure)
 
-        // Verify still exactly one task in queue and rejected as duplicate
+        // 4. Verify only one task enqueued in total
         assertEquals(1, taskDao.getCount())
+        val task = taskDao.getTaskByUrl(rssCanonicalUrl)
+        assertNotNull(task)
+        assertEquals("READY", task?.status)
 
+        // 5. Verify redirect import was rejected as duplicate in queue
         val notifications = kotlinx.coroutines.withTimeout(5000) {
             notificationDao.observeNotifications().filter { list ->
                 list.any { it.message == "Duplicate URL (Already in Queue)" }

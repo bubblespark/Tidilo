@@ -35,6 +35,7 @@ import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.parser.ArticleAcquirer
+import me.bubblespark.tidilo.parser.ParsedWebPage
 import me.bubblespark.tidilo.parser.ArticlePreparation
 import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.service.GeminiTaggingService
@@ -60,6 +61,7 @@ class ImportRepository internal constructor(
     private val analyzeTask: suspend (GenerativeModel, ImportTask) -> Unit = ::analyzeImportTask,
     private val fallbackMode: () -> AiCoreFallbackMode = { AppConfig.aiCoreFallbackMode.value },
     private val retryIntervalMs: Long = 3000L,
+    private val articleAcquirer: suspend (String) -> ParsedWebPage = { ArticleAcquirer.acquire(it) },
     private val persistFallback: suspend (BookmarkItem) -> Unit = {
         BookmarkRepository.getInstance().addBookmarkAndAwait(it)
     }
@@ -377,7 +379,7 @@ class ImportRepository internal constructor(
                 }
 
                 // 1. Fetch & parse HTML, extract metadata, OGP, and Readability body snippet
-                val parsed = ArticleAcquirer.acquire(normalized)
+                val parsed = articleAcquirer(normalized)
                 val prepared = ArticlePreparation.prepare(parsed)
 
                 val realUrl = WebPageParser.normalizeUrl(prepared.url) ?: prepared.url

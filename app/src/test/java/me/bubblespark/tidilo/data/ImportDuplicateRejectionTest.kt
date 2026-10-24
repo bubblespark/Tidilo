@@ -558,23 +558,30 @@ class ImportDuplicateRejectionTest {
         val taskDao = TestImportTaskDao()
         val notificationDao = TestImportNotificationDao()
 
-        // Slow or blocked scope to keep task in _importingTasks
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
         val blockedScope = CoroutineScope(Dispatchers.IO)
         val repository = ImportRepository(
             context = null,
             taskDao = taskDao,
             bookmarkDao = bookmarkDao,
             notificationDao = notificationDao,
-            repositoryScope = blockedScope
+            repositoryScope = blockedScope,
+            articleAcquirer = {
+                gate.await()
+                throw RuntimeException("Controlled test abortion")
+            }
         )
 
-        // First import
+        // First import starts and suspends deterministically in articleAcquirer
         val result1 = repository.importUrl("https://example.com/slow-item")
         assertTrue(result1.isSuccess)
 
         // Concurrent duplicate import of the exact same in-flight URL
         val result2 = repository.importUrl("https://example.com/slow-item")
         assertTrue(result2.isFailure)
+
+        // Release the first import
+        gate.complete(Unit)
 
         // Verify notification for in-flight queue duplicate
         val notifs = kotlinx.coroutines.withTimeout(3000) {

@@ -19,9 +19,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RssFeedEntity::class,
         RssSeenItemEntity::class,
         RssImageCleanupEntity::class,
-        ImportTaskEntity::class
+        ImportTaskEntity::class,
+        ImportNotificationEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -32,6 +33,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bookmarkDao(): BookmarkDao
     abstract fun trashDao(): TrashDao
     abstract fun importTaskDao(): ImportTaskDao
+    abstract fun importNotificationDao(): ImportNotificationDao
 
     companion object {
         /** Repairs an already-installed prerelease v7 once, before Room publishes any queries. */
@@ -81,6 +83,22 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         val MIGRATION_7_8 = rssMigration7To8
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `import_notifications` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`type` TEXT NOT NULL, " +
+                        "`domain` TEXT NOT NULL, " +
+                        "`url` TEXT NOT NULL, " +
+                        "`message` TEXT NOT NULL, " +
+                        "`existingBookmarkId` TEXT, " +
+                        "`isRead` INTEGER NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_notifications_createdAt` ON `import_notifications` (`createdAt`)")
+            }
+        }
         val MIGRATION_9_10 = object : Migration(9, 10) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE rss_feeds ADD COLUMN acquisitionId TEXT")
@@ -145,7 +163,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }

@@ -190,7 +190,7 @@ Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt
 
 ## 6. Persistence & Serialization Schemas
 
-All persistence is managed via **Room Database** (`AppDatabase` v10) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
+All persistence is managed via **Room Database** (`AppDatabase` v11) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
 
 1. **Room Database (`AppDatabase`)**:
    - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, and `ogImageUrl` (nullable TEXT) linking to specific cached OG image assets.
@@ -341,3 +341,12 @@ Room9 source fields, receipt transactions, indexed image references, queue claim
 ## Shared ingestion preparation (Room10)
 
 Import tasks persist `articlePrepared`, `intendedMode`, `rssItemKey`, `acquisitionAttempts`, and `acquisitionRetryAt`. Nonblank XML content never proves HTML preparation. Failed/unprepared acquisition is not eligible for an AI claim; Direct acquisition retries remain Direct. Feed entities persist `acquisitionId`, `acquisitionMobileOverride`, `acquisitionXmlDone`, and `acquisitionRequestedAt` for interruption-safe continuation. `enabled=false` plus `error=XML_FETCH_FAILED` represents automatic disabling after a feed XML failure; disabling does not delete content or consumed receipts. Migration9-to10 preserves existing rows and configured retention.
+
+
+## Import Notifications and Duplicate Resolution (Room11)
+
+Room version 11 introduces `import_notifications` for tracking duplicate import rejections, RSS article promotions, and import warnings:
+- Table: `import_notifications` with fields `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `type` (TEXT: `INFO`, `WARNING`, `ERROR`), `domain` (TEXT), `url` (TEXT), `message` (TEXT), `existingBookmarkId` (TEXT), `isRead` (INTEGER), and `createdAt` (INTEGER).
+- Indexed on `createdAt DESC` for fast notification popup retrieval.
+- DAO provides reactive flows `observeNotifications()` and `observeUnreadCount()`, plus `markAllAsRead()` and `deleteAll()`.
+- Migration 10 to 11 preserves all existing tables and creates the `import_notifications` table and index.

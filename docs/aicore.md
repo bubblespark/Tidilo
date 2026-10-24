@@ -283,3 +283,5 @@ RSS workers never invoke AICore. RSS tasks use the common extracted article HTML
 ## Shared manual/RSS prepared input
 
 `ArticlePreparation` maps shared HTML extraction into title/site/Description/body input for manual and RSS imports. Both sources use the same prompt builder for identical HTML/settings; explicit manual title overrides remain intentional input. Legacy RSS XML tasks require HTML preparation before inference, even when their XML excerpt is nonblank. Insufficient HTML content and fetch failure remain acquisition errors. Scheduled work never invokes AICore, and Direct acquisition/retry bypasses AI entirely.
+
+Missing extracted text is a per-article error, including for manual imports. It does not invoke AICore or stop other waiting AI tasks. Explicit retry of a manual content error invalidates its preparation marker so article HTML can be fetched again rather than permanently reusing empty input.

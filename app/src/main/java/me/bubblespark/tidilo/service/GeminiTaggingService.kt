@@ -64,7 +64,9 @@ object GeminiTaggingService {
         runCatching {
             require(rssFeedId == null || articlePrepared) { "RSS article requires HTML preparation" }
             val hasPreparsedData = articlePrepared || !bodySnippet.isNullOrBlank()
-            require(!hasPreparsedData || !bodySnippet.isNullOrBlank() || !description.isNullOrBlank()) { "Article contains no extracted content" }
+            if (hasPreparsedData && bodySnippet.isNullOrBlank() && description.isNullOrBlank()) {
+                throw me.bubblespark.tidilo.parser.ArticleContentUnavailable()
+            }
 
             val realUrl: String
             val finalTitle: String
@@ -112,7 +114,9 @@ object GeminiTaggingService {
                     ?: extractHost(realUrl)
 
                 val prepared = ArticlePreparation.prepare(parsed)
-                require(prepared.bodySnippet.isNotBlank() || prepared.description.isNotBlank()) { "Article contains no extracted content" }
+                if (prepared.bodySnippet.isBlank() && prepared.description.isBlank()) {
+                    throw me.bubblespark.tidilo.parser.ArticleContentUnavailable()
+                }
                 prompt = buildPrompt(url = realUrl, parsed = parsed, language = language)
                 parsedWebPage = parsed
 

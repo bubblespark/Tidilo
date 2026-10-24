@@ -2,6 +2,13 @@ package me.bubblespark.tidilo.parser
 
 import java.net.URI
 
+/** Content failure is local to one article and must not stop an unrelated AI batch. */
+class ArticleContentUnavailable : IllegalArgumentException(MESSAGE) {
+    companion object {
+        const val MESSAGE = "Article contains no extracted content"
+    }
+}
+
 /** Source-independent metadata used by both manual and feed article ingestion. */
 data class PreparedArticle(
     val url: String,

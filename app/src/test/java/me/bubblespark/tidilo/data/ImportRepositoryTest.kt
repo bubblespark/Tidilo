@@ -27,6 +27,36 @@ import org.junit.Test
 
 class ImportRepositoryTest {
 
+    @Test fun emptyPreparedManualArticleFailsOnlyItselfAndRetryRefreshesPreparation() = runBlocking {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(waitingEntity("empty").copy(articlePrepared = true), waitingEntity("good")))
+        val closed = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        val attempts = mutableListOf<String>()
+        var repaired = false
+        try {
+            val repository = ImportRepository(taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
+                openModel = { fakeModel { closed.trySend(Unit) } },
+                analyzeTask = { model, task ->
+                    attempts.add(task.id)
+                    if (task.id == "empty" && !repaired) {
+                        me.bubblespark.tidilo.service.GeminiTaggingService.processAndSaveBookmark(model, task.url,
+                            me.bubblespark.tidilo.config.AppLanguage.ENGLISH, articlePrepared = task.articlePrepared).getOrThrow()
+                    } else if (task.id == "empty") assertFalse(task.articlePrepared)
+                })
+            repository.retryWaitingProcessingTasks()
+            withTimeout(5000) { closed.receive() }
+            assertEquals(listOf("empty", "good"), attempts)
+            assertNull(dao.getTaskById("good"))
+            assertEquals(TaskStatus.ERROR.name, dao.getTaskById("empty")!!.status)
+            repaired = true
+            repository.retryErrorTask("empty")
+            withTimeout(5000) { closed.receive() }
+            assertEquals(0, dao.getCount())
+        } finally { job.cancelAndJoin(); closed.close() }
+    }
+
     @Test
     fun legacyRssBodyRequiresArticlePreparse() {
         val rss = ImportTask(id = "rss", url = "https://example.com/rss", title = "Feed title",

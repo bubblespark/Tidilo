@@ -306,6 +306,10 @@ class ImportRepository internal constructor(
                 appContext?.let { me.bubblespark.tidilo.data.rss.RssRepository.getInstance(it).retryAcquisition(taskId) }
                 return@launch
             }
+            if (target.rssFeedId == null && target.errorMessage == me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE) {
+                // Explicit retry may recover text that was unavailable when the page was first acquired.
+                taskDao.update(targetEntity.copy(articlePrepared = false))
+            }
             val retried = target.copy(
                 status = TaskStatus.WAITING_AI,
                 statusText = "Waiting for AICore slot...",
@@ -538,6 +542,12 @@ class ImportRepository internal constructor(
     private suspend fun handleExecutionFailure(target: ImportTask, throwable: Throwable) {
         if (throwable is me.bubblespark.tidilo.data.rss.RssImportSkipped) {
             taskDao.deleteById(target.id)
+            return
+        }
+        if (throwable is me.bubblespark.tidilo.parser.ArticleContentUnavailable) {
+            retryNotBefore.remove(target.id)
+            foregroundRetryCounts.remove(target.id)
+            taskDao.updateStatus(target.id, TaskStatus.ERROR.name, "Article content unavailable", throwable.message)
             return
         }
         val errorMessage = throwable.message.orEmpty()

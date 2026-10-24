@@ -56,10 +56,11 @@ interface BookmarkDao {
     @Transaction
     suspend fun insertAll(bookmarks: List<BookmarkEntity>) {
         bookmarks.chunked(500).forEach { chunk ->
-            val normalized = chunk.map { it.withSearchFields() }
+            val deduped = chunk.associateBy { it.id }.values.toList()
+            val normalized = deduped.map { it.withSearchFields() }
             insertRows(normalized)
-            deleteOccurrencesForBookmarks(chunk.map { it.id })
-            val occurrences = chunk.flatMap { bookmark ->
+            deleteOccurrencesForBookmarks(deduped.map { it.id })
+            val occurrences = deduped.flatMap { bookmark ->
                 bookmark.logicalTag().entities.mapIndexed { index, value ->
                     BookmarkEntityOccurrence(bookmark.id, index, value, bookmarkSearchKey(value))
                 }

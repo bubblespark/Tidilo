@@ -100,4 +100,41 @@ class BookmarkDaoBulkTest {
         assertTrue(dao.deletedOccurrencesCalls.isEmpty())
         assertTrue(dao.insertedOccurrencesCalls.isEmpty())
     }
+
+    @Test
+    fun insertAllDeduplicatesByIdKeepingFinalBookmarkInChunk() = runBlocking {
+        val dao = RecordingBookmarkDao()
+        val first = BookmarkEntity(
+            id = "bm-1",
+            title = "Initial Title",
+            url = "https://example.com/1",
+            description = "Initial Desc",
+            entities = listOf("TagA", "TagB"),
+            createdAt = 1000L,
+            updatedAt = 1000L
+        )
+        val second = BookmarkEntity(
+            id = "bm-1",
+            title = "Final Title",
+            url = "https://example.com/1",
+            description = "Final Desc",
+            entities = listOf("TagC"),
+            createdAt = 1000L,
+            updatedAt = 2000L
+        )
+
+        dao.insertAll(listOf(first, second))
+
+        // Only the final bookmark row is inserted
+        assertEquals(1, dao.insertedRowsCalls.size)
+        assertEquals(1, dao.insertedRowsCalls[0].size)
+        assertEquals("Final Title", dao.insertedRowsCalls[0][0].title)
+
+        // Only the final bookmark's occurrences are inserted (TagC at position 0)
+        assertEquals(1, dao.insertedOccurrencesCalls.size)
+        val persistedOccurrences = dao.insertedOccurrencesCalls[0]
+        assertEquals(1, persistedOccurrences.size)
+        assertEquals(0, persistedOccurrences[0].position)
+        assertEquals("TagC", persistedOccurrences[0].value)
+    }
 }

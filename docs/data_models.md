@@ -24,7 +24,12 @@ data class BookmarkItem(
     val isAiSkipped: Boolean = false,
     val ogImageUrl: String? = null,
     val rssFeedId: String? = null,
-    val rssPublishedAt: Long? = null
+    val rssPublishedAt: Long? = null,
+    val domain: String? = DomainIconManager.extractDomain(url),
+    val ogImageFilename: String? = ogImageUrl?.takeIf { it.isNotBlank() }?.let { ogUrl ->
+        val resolved = OgImageManager.resolveImageUrl(url, ogUrl)
+        OgImageManager.computeImageKey(resolved)
+    }
 )
 
 @Immutable
@@ -45,11 +50,11 @@ data class Tag(
 Managed in `data/OgImageManager.kt` and `data/DomainIconManager.kt`:
 
 - **URL-Distinct Image Identity (SHA-256)**:
-  `OgImageManager.computeImageKey(resolvedOgUrl)` normalizes the resolved image URL (preserving query parameters while stripping fragments) and generates a deterministic SHA-256 hash ending in `.webp`. This guarantees bookmarks from the same domain with identical basenames (e.g. `/article-a/og.png` and `/article-b/og.png`) remain completely distinct.
+  `OgImageManager.computeImageKey(resolvedOgUrl)` normalizes the resolved image URL (preserving query parameters while stripping fragments) and generates a deterministic SHA-256 hash ending in `.webp`. This guarantees bookmarks from the same domain with identical basenames (e.g. `/article-a/og.png` and `/article-b/og.png`) remain completely distinct. `BookmarkEntity` persists both `domain` and `ogImageKey` and maps them directly into `BookmarkItem` (`domain` and `ogImageFilename` constructor properties), avoiding repeated URL parsing and SHA-256 hashing on the UI thread.
 - **Disposable File Storage (`context.cacheDir`)**:
   Compressed WebP OG images and PNG domain icons are stored as individual files under `cacheDir/og_images` and `cacheDir/domain_icons`. This enables both the OS "Clear cache" and in-app "Clear image cache" actions without risking user bookmark data.
-- **In-App Cache Clearing & Generation Token**:
-  An atomic generation token (`cacheGeneration: AtomicLong` / `cacheGeneration: Long`) invalidates and discards in-flight downloads when cache is cleared. In-memory `LruCache` buffers and derived brand colors are evicted, while dedicated full cache-clearing events and monotonic per-domain revisions (`observeIconUpdates`, `observeOgImageUpdates: Flow<Long>`) notify visible Compose components with distinct values upon every save, clear, and lifecycle resume without global forced recomposition.
+- **In-App Cache Clearing, Generation Token, & Bounded Notification Streams**:
+  An atomic generation token (`cacheGeneration: AtomicLong` / `cacheGeneration: Long`) invalidates and discards in-flight downloads when cache is cleared. In-memory `LruCache` buffers and derived brand colors are evicted, while dedicated full cache-clearing events, monotonic per-domain revisions (`observeIconUpdates`, `observeOgImageUpdates: Flow<Long>`), and a shared exact-image update stream (`observeExactImageUpdates: Flow<String>` backed by `MAX_PENDING_FALLBACK_KEYS = 128` and `RECONCILE_ALL_KEY` overflow coalescing) notify visible Compose components upon every save, clear, and lifecycle resume without unbounded per-key `StateFlow` retention or global forced recomposition.
 - **Negative Caching for Failed Domain Icons (`.none` sentinel)**:
   When `fetchAndSaveDomainIcon` exhausts all candidates without discovering an icon meeting the 96×96 minimum threshold or encounters non-2xx HTTP responses, a zero-byte marker file (`cacheDir/domain_icons/<domain>.none`) is written. `DomainIconManager.shouldSkipFetch` checks this marker with a 14-day TTL (`NEGATIVE_CACHE_TTL_MS`), preventing unbounded network retries on every app startup (`BookmarkRepository.warmUpDomainIconsAsync`). Markers are invalidated upon manual icon refresh (`clearAllNegativeMarkers`) or cache reset (`clearCache`).
 
@@ -105,7 +110,7 @@ Located in `data/Taxonomy.kt`:
 | `Adult` | 大人の嗜好 |
 | `Education` | 教育 |
 
-Both `Category` and `Subcategory` provide bidirectional resolution via `fromId(query)` matching against English IDs, Japanese labels, and localized name getters.
+Both `Category` and `Subcategory` provide bidirectional constant-time $O(1)$ resolution via `fromId(query)` backed by pre-computed case-insensitive `LOOKUP_MAP` tables matching against English IDs, Japanese labels, and localized name getters.
 
 ---
 
@@ -193,7 +198,7 @@ Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt
 All persistence is managed via **Room Database** (`AppDatabase` v12) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
 
 1. **Room Database (`AppDatabase`)**:
-   - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, and `ogImageUrl` (nullable TEXT) linking to specific cached OG image assets.
+   - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, `domain`, and `ogImageUrl` / `ogImageKey` linking to specific cached OG image assets. Bulk writes (`insertAll`) execute in chunked batches of 500 with per-chunk ID deduplication.
    - **`trashed_bookmarks` table (`TrashedBookmarkEntity`)**: Managed by `TrashDao`, storing trashed items with retention tracking and `ogImageUrl`.
    - **`import_tasks` table (`ImportTaskEntity`)**: Managed by `ImportTaskDao`, storing processing, ready, and error tasks with reactive `Flow<List<ImportTaskEntity>>` observation and status index.
    - **Safe Migration & Database Decoupling (v6)**: In version 6, obsolete image BLOB storage (`og_images` table) was cleanly dropped via `MIGRATION_5_6`, liberating database file size while preserving 100% of bookmark, tag, and note data.

@@ -443,7 +443,11 @@ fun ImportScreen(
                                 ) {
                                     Icon(
                                         painter = painterResource(id = R.drawable.ic_notifications),
-                                        contentDescription = "Notifications",
+                                        contentDescription = if (unreadNotificationCount > 0) {
+                                            "Notifications, $unreadNotificationCount unread"
+                                        } else {
+                                            "Notifications"
+                                        },
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -492,12 +496,15 @@ fun ImportScreen(
                                         )
                                     }
                                 } else {
-                                    Column(
+                                    LazyColumn(
                                         modifier = Modifier
                                             .heightIn(max = 380.dp)
-                                            .verticalScroll(rememberScrollState())
+                                            .fillMaxWidth()
                                     ) {
-                                        notifications.forEach { notification ->
+                                        items(
+                                            items = notifications,
+                                            key = { it.id }
+                                        ) { notification ->
                                             val iconRes = when (notification.type) {
                                                 NotificationType.INFO.name -> R.drawable.ic_info
                                                 NotificationType.ERROR.name -> R.drawable.ic_error
@@ -510,7 +517,10 @@ fun ImportScreen(
                                             }
 
                                             ListItem(
-                                                modifier = Modifier.clickable {
+                                                modifier = Modifier.clickable(
+                                                    role = androidx.compose.ui.semantics.Role.Button,
+                                                    onClickLabel = "View bookmark"
+                                                ) {
                                                     showNotificationPopup = false
                                                     if (notification.existingBookmarkId != null) {
                                                         onNavigateToDetail(notification.existingBookmarkId)

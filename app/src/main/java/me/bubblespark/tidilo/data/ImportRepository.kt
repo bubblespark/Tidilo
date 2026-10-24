@@ -44,6 +44,8 @@ import java.net.URI
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+private val ACTIVE_QUEUE_STATUSES = setOf("READY", "WAITING_AI", "PROCESSING_AI", "ERROR")
+
 class ImportRepository internal constructor(
     context: Context? = null,
     private val taskDao: ImportTaskDao = context?.let { AppDatabase.getInstance(it).importTaskDao() }
@@ -178,7 +180,7 @@ class ImportRepository internal constructor(
                     DuplicateCheckResult.PromotedFromRssToLibrary(existingBookmark)
                 } else {
                     val pendingTask = taskDao.getTaskByUrl(url)
-                    if (pendingTask != null && pendingTask.status in listOf("READY", "WAITING_AI", "PROCESSING_AI", "ERROR")) {
+                    if (pendingTask != null && pendingTask.status in ACTIVE_QUEUE_STATUSES) {
                         DuplicateCheckResult.DuplicateInQueue(pendingTask)
                     } else {
                         DuplicateCheckResult.RequeuedFromRssToAi(existingBookmark)
@@ -190,7 +192,7 @@ class ImportRepository internal constructor(
         }
 
         val existingTask = taskDao.getTaskByUrl(url)
-        if (existingTask != null && existingTask.status in listOf("READY", "WAITING_AI", "PROCESSING_AI", "ERROR")) {
+        if (existingTask != null && existingTask.status in ACTIVE_QUEUE_STATUSES) {
             return if (existingTask.rssFeedId != null && existingTask.status == "READY") {
                 DuplicateCheckResult.MovedFromRssToReady(existingTask)
             } else {

@@ -346,7 +346,7 @@ Import tasks persist `articlePrepared`, `intendedMode`, `rssItemKey`, `acquisiti
 ## Import Notifications and Duplicate Resolution (Room11)
 
 Room version 11 introduces `import_notifications` for tracking duplicate import rejections, RSS article promotions, and import warnings:
-- Table: `import_notifications` with fields `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `type` (TEXT: `INFO`, `WARNING`, `ERROR`), `domain` (TEXT), `url` (TEXT), `message` (TEXT), `isRead` (INTEGER), and `createdAt` (INTEGER).
+- Table: `import_notifications` with fields `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `type` (TEXT: `INFO`, `WARNING`, `ERROR`), `domain` (TEXT), `url` (TEXT), `message` (TEXT), `existingBookmarkId` (TEXT), `isRead` (INTEGER), and `createdAt` (INTEGER).
 - Indexed on `createdAt DESC` for fast notification popup retrieval.
 - DAO provides reactive flows `observeNotifications()` and `observeUnreadCount()`, plus `markAllAsRead()` and `deleteAll()`.
 - Migration 10 to 11 preserves all existing tables and creates the `import_notifications` table and index.

@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ImportNotificationDao {
 
-    @Query("SELECT * FROM import_notifications ORDER BY createdAt DESC")
+    @Query("SELECT * FROM import_notifications ORDER BY createdAt DESC, id DESC LIMIT 50")
     fun observeNotifications(): Flow<List<ImportNotificationEntity>>
 
     @Query("SELECT COUNT(*) FROM import_notifications WHERE isRead = 0")

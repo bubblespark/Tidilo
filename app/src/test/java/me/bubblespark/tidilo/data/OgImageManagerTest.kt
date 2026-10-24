@@ -346,4 +346,30 @@ class OgImageManagerTest {
 
         job.cancel()
     }
+
+    @Test
+    fun testExactImageUpdatesDeliveredEvenWhenBufferSaturated(): Unit = runBlocking {
+        val targetKey = "burst-key"
+        val received = mutableListOf<String>()
+
+        val job = launch {
+            OgImageManager.observeExactImageUpdates(targetKey).collect {
+                received.add(it)
+            }
+        }
+        delay(50)
+
+        // Rapidly emit 80 updates (exceeding extraBufferCapacity = 64)
+        for (i in 1..80) {
+            OgImageManager.notifyExactImageUpdatedForTesting("example.com", if (i % 20 == 0) targetKey else "other-key-$i")
+        }
+
+        // Allow emissionScope coroutine to process any fallback emissions
+        delay(300)
+
+        // 4 of the 80 emissions were for targetKey (i = 20, 40, 60, 80)
+        assertEquals(4, received.size)
+
+        job.cancel()
+    }
 }

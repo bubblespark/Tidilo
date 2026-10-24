@@ -10,7 +10,9 @@ import androidx.collection.LruCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -74,6 +76,7 @@ object OgImageManager {
     private val _cacheGenerationState = MutableStateFlow(0L)
     val cacheGenerationState: StateFlow<Long> = _cacheGenerationState.asStateFlow()
     private val _exactImageUpdates = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    private val emissionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     @VisibleForTesting
     internal var imageDownloader: (suspend (String) -> ByteArray?)? = null
@@ -129,7 +132,11 @@ object OgImageManager {
         _exactImageUpdates.filter { it == imageKey }
 
     private fun notifyExactImageUpdated(domain: String, imageKey: String) {
-        _exactImageUpdates.tryEmit(imageKey)
+        if (!_exactImageUpdates.tryEmit(imageKey)) {
+            emissionScope.launch {
+                _exactImageUpdates.emit(imageKey)
+            }
+        }
         notifyOgImageUpdated(domain)
     }
 

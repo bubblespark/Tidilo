@@ -286,7 +286,7 @@ fun ImportScreen(
                     ) { item ->
                         SwipeableTaskCard(
                             item = item,
-                            bounceOffsetDp = bounceOffset.value,
+                            bounceOffsetDpProvider = { bounceOffset.value },
                             onSwipeRight = { viewModel.promoteToProcessing(item.id) },
                             onSwipeLeft = { triggerDeleteReady(item) },
                             modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
@@ -321,7 +321,7 @@ fun ImportScreen(
                 } else {
                     items(items = if (showAllRssReady) rssReadyTasks else rssReadyTasks.take(5),
                         key = { it.id }, contentType = { "import_task" }) { item ->
-                        SwipeableTaskCard(item = item, bounceOffsetDp = bounceOffset.value,
+                        SwipeableTaskCard(item = item, bounceOffsetDpProvider = { bounceOffset.value },
                             onSwipeRight = { viewModel.promoteToProcessing(item.id) },
                             onSwipeLeft = { triggerDeleteReady(item) },
                             modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null))
@@ -361,7 +361,7 @@ fun ImportScreen(
                     ) { item ->
                         SwipeableTaskCard(
                             item = item,
-                            bounceOffsetDp = bounceOffset.value,
+                            bounceOffsetDpProvider = { bounceOffset.value },
                             onSwipeRight = { viewModel.retryError(item.id) },
                             onSwipeLeft = { triggerDeleteError(item) },
                             modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
@@ -593,13 +593,12 @@ private enum class TaskSwipeDirection {
 @Composable
 private fun SwipeableTaskCard(
     item: ImportTask,
-    bounceOffsetDp: Float = 0f,
+    bounceOffsetDpProvider: () -> Float = { 0f },
     onSwipeRight: () -> Unit,
     onSwipeLeft: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val density = LocalDensity.current
     val offsetX = remember { Animatable(0f) }
     var itemWidthPx by remember { mutableFloatStateOf(1000f) }
 
@@ -649,12 +648,11 @@ private fun SwipeableTaskCard(
             )
         }
 
-        val bouncePx = with(density) { bounceOffsetDp.dp.toPx() }
-
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .offset {
+                    val bouncePx = bounceOffsetDpProvider().dp.toPx()
                     val displayOffset = if (offsetX.value == 0f) bouncePx else offsetX.value
                     IntOffset(x = displayOffset.roundToInt(), y = 0)
                 }

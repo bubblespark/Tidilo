@@ -85,7 +85,7 @@ If old or corrupted JSON data lacks valid category/subcategory tags, `BookmarkRe
 Located in `data/Taxonomy.kt`:
 
 ### 2.1 The 7 Top-Level Categories
-| English ID | Definition |
+| ID | Definition |
 | :--- | :--- | :--- |
 | `Article` | Articles, blog posts, editorials, news, technical explainers, opinions. |
 | `Media` | Illustrations, photos, video content, music, audiobooks (Pixiv, YouTube, Vimeo). |
@@ -110,7 +110,7 @@ Located in `data/Taxonomy.kt`:
 | `Adult` |
 | `Education` |
 
-Both `Category` and `Subcategory` provide bidirectional constant-time $O(1)$ resolution via `fromId(query)` backed by pre-computed case-insensitive `LOOKUP_MAP` tables matching against English IDs, Japanese labels, and localized name getters.
+Both `Category` and `Subcategory` provide bidirectional constant-time $O(1)$ resolution via `fromId(query)` backed by pre-computed case-insensitive `LOOKUP_MAP` tables matching against canonical IDs and localized labels.
 
 ---
 
@@ -244,7 +244,7 @@ Located in `data/DomainPolicyManager.kt`:
 ### 8.2 NSFW Detection Signals (`WebPageParser.kt`)
 Web page fetching uses Desktop Chrome User-Agent (`Windows NT 10.0; Win64; x64`, `sec-ch-ua-mobile: ?0`) to ensure platforms like Pixiv return complete desktop SSR HTML with standard metadata rather than stripped mobile touch SPAs. Programmatic detection extracts:
 1. **Domain NSFW Policy (`DomainPolicyManager.isNsfwDomain(domain)`)**: If designated as NSFW in domain management, NSFW is unconditionally granted (`isNsfwSignal = true`) regardless of tags or metadata.
-2. **Title / OGP Title Keywords**: `"R-18"`, `"R18"`, `"18禁"`, `"成人向け"`, `"成年コミック"`
+2. **Title / OGP Title Keywords**: `"R-18"`, `"R18"`, and localized adult rating terms.
 3. **Meta Rating Standards (`<meta name="rating">`)**: `"R-18"`, `"R18"`, `"18+"`, `"RTA-5042-1996-1400-1577-RTA"`, `"adult"`, `"mature"`
 4. **Schema.org / JSON-LD Properties**:
    - `isFamilyFriendly: false`

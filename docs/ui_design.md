@@ -172,7 +172,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
   5. Entity tags: FlowRow of `CompactTagBadge` chips with `#` icon.
 
 ### 6.3 `CompactTagBadge`
-- **Height**: Fixed `26.dp` container height (`Modifier.height(26.dp)`) with vertical center alignment, ensuring exact size uniformity between Japanese and English/Latin tags (e.g. NSFW badge, ASCII entity tags).
+- **Height**: Fixed `26.dp` container height (`Modifier.height(26.dp)`) with vertical center alignment, ensuring exact size uniformity across all tags (e.g. NSFW badge, ASCII entity tags).
 - **Shape**: `RoundedCornerShape(12.dp)`.
 - **Layout**: 14dp Vector icon + 6dp spacer + label text (single line) with 10dp horizontal padding.
 - **Hit Highlighting**: When matching active search queries, container and content transition to high-contrast tonal colors.
@@ -224,8 +224,8 @@ Whenever a button or floating menu (FAB / Speed Dial) is placed at the bottom-ri
 
 | State | Container Size | Icon Size | Shape | Elevation | Position / Margins |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Contracted (縮小時)**<br>*(When bottom navigation bar is visible)* | **`56dp`** | **`28dp`** | `CircleShape` | `6dp` | Placed adjacent to navigation pill with `14dp` clearance |
-| **Expanded / Standalone (拡大時 / 単独設置時)**<br>*(During scroll / on screens without bottom nav, e.g. Detail Screen)* | **`86dp`** | **`40dp`** | `CircleShape` | **`10dp`** | `.navigationBarsPadding().padding(bottom = 16.dp, end = 16.dp)` at `Alignment.BottomEnd` |
+| **Contracted**<br>*(When bottom navigation bar is visible)* | **`56dp`** | **`28dp`** | `CircleShape` | `6dp` | Placed adjacent to navigation pill with `14dp` clearance |
+| **Expanded / Standalone**<br>*(During scroll / on screens without bottom nav, e.g. Detail Screen)* | **`86dp`** | **`40dp`** | `CircleShape` | **`10dp`** | `.navigationBarsPadding().padding(bottom = 16.dp, end = 16.dp)` at `Alignment.BottomEnd` |
 
 ### Expansion Rules for Sub-Menus (FAB Menu Items)
 When a standalone 86dp bottom-right button expands into a menu (such as `BookmarkDetailScreen`), child menu pills must scale up in proportion:
@@ -313,7 +313,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Content layout: Vertical `Column` with `14.dp` padding inside front card:
     - Display Name header: `titleMedium`, Bold, max 2 lines with ellipsis. Falls back to domain URL if empty.
     - Domain URL: `bodySmall`, high-contrast `onSurfaceVariant` color, single line with ellipsis.
-    - Bookmark count badge: Pill surface badge (`dominantColor.copy(alpha = 0.20f)`) with bookmark icon (`Icons.Default.Bookmark`) and calibrated high-luminance count text (`"%d件"` / `"%d items"`).
+    - Bookmark count badge: Pill surface badge (`dominantColor.copy(alpha = 0.20f)`) with bookmark icon (`Icons.Default.Bookmark`) and calibrated high-luminance count text (`"%d items"`).
 - **Drill-down Interaction & Radiant Ambient Background**:
   - Tapping a domain card opens the domain-filtered bookmark list (rendered using standard `BookmarkItemCard` in latest-first order).
   - **Radiant Brand Background (2/3 Screen Spread)**:
@@ -339,7 +339,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Implements Ken Perlin's quintic smootherstep equation ($S(t) = 6t^5 - 15t^4 + 10t^3$, $\alpha(t) = 1 - S(t)$) sampled across 14 finely spaced gradient stops.
   - Because both first and second derivatives are zero at $t=0$ and $t=1$ ($d\alpha/dt = 0$, $d^2\alpha/dt^2 = 0$), the transition is optically seamless, entirely eliminating optical Mach banding.
 - **Text-Adjacent Decay Proximity (`decayOverlap = 6.dp`, `fadeHeight = 18.dp`)**:
-  - Rather than maintaining an opaque block below the text, decay starts right at the bottom edge / baseline of the header subtitle text ("かすれるか触れるくらい") and gently cascades downward over 24dp.
+  - Rather than maintaining an opaque block below the text, decay starts right at the bottom edge / baseline of the header subtitle text and gently cascades downward over 24dp.
   - Combined with tightened header Row padding (`top = 4.dp, bottom = 4.dp`) and calibrated list content padding (`headerHeight = statusBarTop + 80.dp`), cards at rest sit completely clear of the dissolved header with zero overlap, smoothly entering the fade zone only when scrolled.
   - Status bar and title text retain 100% legibility contrast, while the bottom shelf dissolves organically into the underlying content.
 - **Pure Neutral Translucency (No Color Overlays on Header)**:
@@ -456,10 +456,10 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - ❷ **Bookmark Title**: Positioned immediately below the domain name. High-readability 3-line reservation (`minLines = 3, maxLines = 3`, `style = MaterialTheme.typography.titleSmall`, `FontWeight.SemiBold`, `overflow = TextOverflow.Ellipsis`).
   - ❸ **Created Date (Relative Time)**: Bottom caption (`labelSmall`, `outline`, formatted via `TimeFormatter`). Snapped to the bottom-left of every card tile via `Spacer(Modifier.weight(1f))` ensuring a perfectly aligned baseline across all cards regardless of title line count.
 - **Relative Time Formatting Rules (`TimeFormatter.kt`)**:
-  - `< 1 minute`: "Just now" / "たった今"
-  - `1 to 59 minutes`: "1 minute ago" / "%d minutes ago" / "%d分前"
-  - `1 to 23 hours`: "1 hour ago" / "%d hours ago" / "%d時間前"
-  - `1 to 29 days`: "1 day ago" / "%d days ago" / "%d日前"
+  - `< 1 minute`: "Just now"
+  - `1 to 59 minutes`: "1 minute ago" / "%d minutes ago"
+  - `1 to 23 hours`: "1 hour ago" / "%d hours ago"
+  - `1 to 29 days`: "1 day ago" / "%d days ago"
   - `>= 30 days`: "yyyy/MM/dd" (e.g. `2026/09/20`)
 - **Prominent Borderless Summary Peek Overlay (`LibraryScreen.kt`)**:
   - Long-pressing any grid card automatically transitions the screen into full Edge-to-Edge display (hiding the header) and reveals a clean, borderless overlay.

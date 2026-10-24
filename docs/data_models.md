@@ -24,7 +24,12 @@ data class BookmarkItem(
     val isAiSkipped: Boolean = false,
     val ogImageUrl: String? = null,
     val rssFeedId: String? = null,
-    val rssPublishedAt: Long? = null
+    val rssPublishedAt: Long? = null,
+    val domain: String? = DomainIconManager.extractDomain(url),
+    val ogImageFilename: String? = ogImageUrl?.takeIf { it.isNotBlank() }?.let { ogUrl ->
+        val resolved = OgImageManager.resolveImageUrl(url, ogUrl)
+        OgImageManager.computeImageKey(resolved)
+    }
 )
 
 @Immutable
@@ -45,11 +50,11 @@ data class Tag(
 Managed in `data/OgImageManager.kt` and `data/DomainIconManager.kt`:
 
 - **URL-Distinct Image Identity (SHA-256)**:
-  `OgImageManager.computeImageKey(resolvedOgUrl)` normalizes the resolved image URL (preserving query parameters while stripping fragments) and generates a deterministic SHA-256 hash ending in `.webp`. This guarantees bookmarks from the same domain with identical basenames (e.g. `/article-a/og.png` and `/article-b/og.png`) remain completely distinct.
+  `OgImageManager.computeImageKey(resolvedOgUrl)` normalizes the resolved image URL (preserving query parameters while stripping fragments) and generates a deterministic SHA-256 hash ending in `.webp`. This guarantees bookmarks from the same domain with identical basenames (e.g. `/article-a/og.png` and `/article-b/og.png`) remain completely distinct. `BookmarkEntity` persists both `domain` and `ogImageKey` and maps them directly into `BookmarkItem` (`domain` and `ogImageFilename` constructor properties), avoiding repeated URL parsing and SHA-256 hashing on the UI thread.
 - **Disposable File Storage (`context.cacheDir`)**:
   Compressed WebP OG images and PNG domain icons are stored as individual files under `cacheDir/og_images` and `cacheDir/domain_icons`. This enables both the OS "Clear cache" and in-app "Clear image cache" actions without risking user bookmark data.
-- **In-App Cache Clearing & Generation Token**:
-  An atomic generation token (`cacheGeneration: AtomicLong` / `cacheGeneration: Long`) invalidates and discards in-flight downloads when cache is cleared. In-memory `LruCache` buffers and derived brand colors are evicted, while dedicated full cache-clearing events and monotonic per-domain revisions (`observeIconUpdates`, `observeOgImageUpdates: Flow<Long>`) notify visible Compose components with distinct values upon every save, clear, and lifecycle resume without global forced recomposition.
+- **In-App Cache Clearing, Generation Token, & Bounded Notification Streams**:
+  An atomic generation token (`cacheGeneration: AtomicLong` / `cacheGeneration: Long`) invalidates and discards in-flight downloads when cache is cleared. In-memory `LruCache` buffers and derived brand colors are evicted, while dedicated full cache-clearing events, monotonic per-domain revisions (`observeIconUpdates`, `observeOgImageUpdates: Flow<Long>`), and a shared exact-image update stream (`observeExactImageUpdates: Flow<String>` backed by `MAX_PENDING_FALLBACK_KEYS = 128` and `RECONCILE_ALL_KEY` overflow coalescing) notify visible Compose components upon every save, clear, and lifecycle resume without unbounded per-key `StateFlow` retention or global forced recomposition.
 - **Negative Caching for Failed Domain Icons (`.none` sentinel)**:
   When `fetchAndSaveDomainIcon` exhausts all candidates without discovering an icon meeting the 96×96 minimum threshold or encounters non-2xx HTTP responses, a zero-byte marker file (`cacheDir/domain_icons/<domain>.none`) is written. `DomainIconManager.shouldSkipFetch` checks this marker with a 14-day TTL (`NEGATIVE_CACHE_TTL_MS`), preventing unbounded network retries on every app startup (`BookmarkRepository.warmUpDomainIconsAsync`). Markers are invalidated upon manual icon refresh (`clearAllNegativeMarkers`) or cache reset (`clearCache`).
 
@@ -80,32 +85,32 @@ If old or corrupted JSON data lacks valid category/subcategory tags, `BookmarkRe
 Located in `data/Taxonomy.kt`:
 
 ### 2.1 The 7 Top-Level Categories
-| English ID | Japanese Label | Definition |
+| ID | Definition |
 | :--- | :--- | :--- |
-| `Article` | 記事 | Articles, blog posts, editorials, news, technical explainers, opinions. |
-| `Media` | メディア | Illustrations, photos, video content, music, audiobooks (Pixiv, YouTube, Vimeo). |
-| `Tool` | ツール | Web applications, utilities, SaaS, code repositories, productivity tools (GitHub, Figma). |
-| `Commerce` | コマース | E-commerce, online shops, product sales, pricing pages (Amazon, online stores). |
-| `Community` | コミュニティ | Social networks, forums, Q&A boards, online communities (X/Twitter, Reddit, Discord). |
-| `Official` | 公式 | Official portals, corporate homepages, brand landings. |
-| `Reference` | リファレンス | Technical documentation, API references, dictionaries, wikis, standards (MDN, Android Docs). |
+| `Article` | Articles, blog posts, editorials, news, technical explainers, opinions. |
+| `Media` | Illustrations, photos, video content, music, audiobooks (Pixiv, YouTube, Vimeo). |
+| `Tool` | Web applications, utilities, SaaS, code repositories, productivity tools (GitHub, Figma). |
+| `Commerce` | E-commerce, online shops, product sales, pricing pages (Amazon, online stores). |
+| `Community` | Social networks, forums, Q&A boards, online communities (X/Twitter, Reddit, Discord). |
+| `Official` | Official portals, corporate homepages, brand landings. |
+| `Reference` | Technical documentation, API references, dictionaries, wikis, standards (MDN, Android Docs). |
 
 ### 2.2 The 11 Subcategories
-| English ID | Japanese Label |
-| :--- | :--- |
-| `Tech` | テック |
-| `Business` | ビジネス |
-| `Society` | 社会 |
-| `Life` | ライフ |
-| `Food` | グルメ |
-| `Travel` | 旅行 |
-| `Game` | ゲーム |
-| `Entertainment` | エンタメ |
-| `Hobby` | 趣味 |
-| `Adult` | 大人の嗜好 |
-| `Education` | 教育 |
+| ID |
+| :--- |
+| `Tech` |
+| `Business` |
+| `Society` |
+| `Life` |
+| `Food` |
+| `Travel` |
+| `Game` |
+| `Entertainment` |
+| `Hobby` |
+| `Adult` |
+| `Education` |
 
-Both `Category` and `Subcategory` provide bidirectional resolution via `fromId(query)` matching against English IDs, Japanese labels, and localized name getters.
+Both `Category` and `Subcategory` provide bidirectional constant-time $O(1)$ resolution via `fromId(query)` backed by pre-computed case-insensitive `LOOKUP_MAP` tables matching against canonical IDs and localized labels.
 
 ---
 
@@ -193,7 +198,7 @@ Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt
 All persistence is managed via **Room Database** (`AppDatabase` v12) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
 
 1. **Room Database (`AppDatabase`)**:
-   - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, and `ogImageUrl` (nullable TEXT) linking to specific cached OG image assets.
+   - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, `domain`, and `ogImageUrl` / `ogImageKey` linking to specific cached OG image assets. Bulk writes (`insertAll`) execute in chunked batches of 500 with per-chunk ID deduplication.
    - **`trashed_bookmarks` table (`TrashedBookmarkEntity`)**: Managed by `TrashDao`, storing trashed items with retention tracking and `ogImageUrl`.
    - **`import_tasks` table (`ImportTaskEntity`)**: Managed by `ImportTaskDao`, storing processing, ready, and error tasks with reactive `Flow<List<ImportTaskEntity>>` observation and status index.
    - **Safe Migration & Database Decoupling (v6)**: In version 6, obsolete image BLOB storage (`og_images` table) was cleanly dropped via `MIGRATION_5_6`, liberating database file size while preserving 100% of bookmark, tag, and note data.
@@ -239,7 +244,7 @@ Located in `data/DomainPolicyManager.kt`:
 ### 8.2 NSFW Detection Signals (`WebPageParser.kt`)
 Web page fetching uses Desktop Chrome User-Agent (`Windows NT 10.0; Win64; x64`, `sec-ch-ua-mobile: ?0`) to ensure platforms like Pixiv return complete desktop SSR HTML with standard metadata rather than stripped mobile touch SPAs. Programmatic detection extracts:
 1. **Domain NSFW Policy (`DomainPolicyManager.isNsfwDomain(domain)`)**: If designated as NSFW in domain management, NSFW is unconditionally granted (`isNsfwSignal = true`) regardless of tags or metadata.
-2. **Title / OGP Title Keywords**: `"R-18"`, `"R18"`, `"18禁"`, `"成人向け"`, `"成年コミック"`
+2. **Title / OGP Title Keywords**: `"R-18"`, `"R18"`, and localized adult rating terms.
 3. **Meta Rating Standards (`<meta name="rating">`)**: `"R-18"`, `"R18"`, `"18+"`, `"RTA-5042-1996-1400-1577-RTA"`, `"adult"`, `"mature"`
 4. **Schema.org / JSON-LD Properties**:
    - `isFamilyFriendly: false`

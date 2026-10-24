@@ -10,12 +10,16 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import me.bubblespark.tidilo.data.db.AppDatabase
+import me.bubblespark.tidilo.data.db.BookmarkDao
 import me.bubblespark.tidilo.data.db.BookmarkEntity
+import me.bubblespark.tidilo.data.db.ImportNotificationDao
+import me.bubblespark.tidilo.data.db.ImportNotificationEntity
 import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.parser.ParsedWebPage
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -64,10 +68,30 @@ class ImportDuplicateRoomTest {
 
     private class HookableImportTaskDao(private val delegate: ImportTaskDao) : ImportTaskDao by delegate {
         var onBeforeInsert: (suspend (ImportTaskEntity) -> Unit)? = null
+        var onAfterInsert: (suspend (ImportTaskEntity) -> Unit)? = null
 
         override suspend fun insertOrUpdate(task: ImportTaskEntity) {
             onBeforeInsert?.invoke(task)
             delegate.insertOrUpdate(task)
+            onAfterInsert?.invoke(task)
+        }
+    }
+
+    private class HookableBookmarkDao(private val delegate: BookmarkDao) : BookmarkDao by delegate {
+        var onGetBookmarkByUrl: ((String) -> Unit)? = null
+
+        override suspend fun getBookmarkByUrl(url: String): BookmarkEntity? {
+            onGetBookmarkByUrl?.invoke(url)
+            return delegate.getBookmarkByUrl(url)
+        }
+    }
+
+    private class HookableNotificationDao(private val delegate: ImportNotificationDao) : ImportNotificationDao by delegate {
+        var onUpdateResolvedUrl: ((String, String, String) -> Unit)? = null
+
+        override suspend fun updateResolvedUrl(submittedUrl: String, resolvedUrl: String, domain: String) {
+            onUpdateResolvedUrl?.invoke(submittedUrl, resolvedUrl, domain)
+            delegate.updateResolvedUrl(submittedUrl, resolvedUrl, domain)
         }
     }
 
@@ -91,23 +115,52 @@ class ImportDuplicateRoomTest {
 
         val redirectInFlightGate = CompletableDeferred<Unit>()
         val allowRedirectGate = CompletableDeferred<Unit>()
-        val redirectAboutToEnterCheckGate = CompletableDeferred<Unit>()
+        val redirectReachedTransactionBoundary = CompletableDeferred<Unit>()
+        val redirectReachedDaoLookup = CompletableDeferred<Unit>()
+        var directTaskInserted = false
         val directImportFinished = CompletableDeferred<Result<ImportTask>>()
         val redirectImportFinished = CompletableDeferred<Result<ImportTask>>()
 
         val hookableTaskDao = HookableImportTaskDao(database.importTaskDao())
+        val hookableBookmarkDao = HookableBookmarkDao(database.bookmarkDao())
+        val hookableNotificationDao = HookableNotificationDao(database.importNotificationDao())
 
-        // Gate the task DAO insertion of the direct RSS promotion:
-        // Before committing the direct task into Room inside database.withTransaction, release the competing redirect import.
-        // Use a deterministic rendezvous: wait until the redirect import completes article acquisition
-        // and arrives immediately before the post-redirect check.
-        // If runInDbOrLock is properly atomic via Room withTransaction, the redirect import is serialized
-        // and observes the promoted task in queue.
+        // Hook notification update: called immediately before redirect enters runInDbOrLock
+        hookableNotificationDao.onUpdateResolvedUrl = { submittedUrl, _, _ ->
+            if (submittedUrl == redirectUrl) {
+                redirectReachedTransactionBoundary.complete(Unit)
+            }
+        }
+
+        // Hook bookmarkDao lookup: called when redirect enters checkDuplicate inside runInDbOrLock
+        hookableBookmarkDao.onGetBookmarkByUrl = { url ->
+            if (url == rssCanonicalUrl && redirectReachedTransactionBoundary.isCompleted) {
+                assertTrue("Redirect reached DAO lookup before direct promotion was committed!", directTaskInserted)
+                redirectReachedDaoLookup.complete(Unit)
+            }
+        }
+
+        // Gate direct RSS promotion task insertion:
+        // Direct import holds active Room database.withTransaction.
+        // It releases the redirect import, confirms redirect reaches transaction boundary,
+        // proves redirect is blocked from DAO lookup by the active transaction,
+        // and only then commits the direct task.
         hookableTaskDao.onBeforeInsert = { task ->
             if (task.url == rssCanonicalUrl) {
                 allowRedirectGate.complete(Unit)
-                redirectAboutToEnterCheckGate.await()
+                withTimeout(5000) {
+                    redirectReachedTransactionBoundary.await()
+                }
+                // Yield to allow redirect coroutine to attempt acquiring database.withTransaction
                 yield()
+                // Prove competing check is blocked by active Room transaction
+                assertFalse("Competing check bypassed active Room transaction!", redirectReachedDaoLookup.isCompleted)
+            }
+        }
+
+        hookableTaskDao.onAfterInsert = { task ->
+            if (task.url == rssCanonicalUrl) {
+                directTaskInserted = true
             }
         }
 
@@ -115,14 +168,13 @@ class ImportDuplicateRoomTest {
             context = context,
             database = database,
             taskDao = hookableTaskDao,
-            bookmarkDao = database.bookmarkDao(),
-            notificationDao = database.importNotificationDao(),
+            bookmarkDao = hookableBookmarkDao,
+            notificationDao = hookableNotificationDao,
             repositoryScope = CoroutineScope(Dispatchers.IO),
             articleAcquirer = { url ->
                 if (url == redirectUrl) {
                     redirectInFlightGate.complete(Unit)
                     allowRedirectGate.await()
-                    redirectAboutToEnterCheckGate.complete(Unit)
                     createFakeParsedPage(url = redirectUrl, finalUrl = rssCanonicalUrl)
                 } else {
                     createFakeParsedPage(url = url)
@@ -143,7 +195,7 @@ class ImportDuplicateRoomTest {
 
         // 2. Start direct canonical URL import:
         //    Evaluates unanalyzed RSS bookmark and enters atomic Room withTransaction promotion block.
-        //    hookableTaskDao.onBeforeInsert releases redirect URL while this promotion transaction is active.
+        //    hookableTaskDao.onBeforeInsert performs handshake confirming redirect is blocked.
         val directCallResult = repository.importUrl(rssCanonicalUrl) {
             directImportFinished.complete(it)
         }
@@ -154,6 +206,10 @@ class ImportDuplicateRoomTest {
             directImportFinished.await()
         }
         assertTrue(directResult.isSuccess)
+
+        withTimeout(5000) {
+            redirectReachedDaoLookup.await()
+        }
 
         val redirectResult = withTimeout(5000) {
             redirectImportFinished.await()

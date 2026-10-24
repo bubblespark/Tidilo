@@ -270,6 +270,7 @@ class ImportDuplicateRejectionTest {
         assertNotNull(queued)
         assertNull(queued?.rssFeedId)
         assertEquals("READY", queued?.status)
+        assertEquals(false, queued?.articlePrepared)
 
         // 2. Notification recorded
         val notifications = notificationDao.observeNotifications().first()

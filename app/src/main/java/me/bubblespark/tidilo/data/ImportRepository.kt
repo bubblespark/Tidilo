@@ -236,7 +236,7 @@ class ImportRepository internal constructor(
                     isNsfw = result.bookmark.isNsfw,
                     description = result.bookmark.description,
                     ogImageUrl = result.bookmark.ogImageUrl,
-                    articlePrepared = true,
+                    articlePrepared = false,
                     rssFeedId = null
                 )
                 taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(item))

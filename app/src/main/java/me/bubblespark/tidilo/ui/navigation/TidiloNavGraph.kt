@@ -260,7 +260,12 @@ fun TidiloNavGraph(
         composable(Screen.Import.route) {
             ImportScreen(
                 viewModel = importViewModel,
-                initialSharedUrl = sharedUrl
+                initialSharedUrl = sharedUrl,
+                onNavigateToDetail = { bookmarkId ->
+                    navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
+                        launchSingleTop = true
+                    }
+                }
             )
         }
     }

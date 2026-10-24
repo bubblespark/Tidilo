@@ -28,6 +28,9 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE url = :url LIMIT 1")
     suspend fun getBookmarkByUrl(url: String): BookmarkEntity?
 
+    @Query("UPDATE bookmarks SET rssFeedId = NULL WHERE id = :id")
+    suspend fun clearRssFeedId(id: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRow(bookmark: BookmarkEntity)
 

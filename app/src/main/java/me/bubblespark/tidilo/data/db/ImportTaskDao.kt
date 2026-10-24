@@ -31,6 +31,9 @@ interface ImportTaskDao {
     @Query("SELECT * FROM import_tasks WHERE url = :url LIMIT 1")
     suspend fun getTaskByUrl(url: String): ImportTaskEntity?
 
+    @Query("UPDATE import_tasks SET rssFeedId = NULL WHERE id = :id")
+    suspend fun clearRssFeedId(id: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(task: ImportTaskEntity)
 

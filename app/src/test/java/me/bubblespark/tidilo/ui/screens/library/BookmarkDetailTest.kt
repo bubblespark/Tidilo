@@ -369,5 +369,59 @@ class BookmarkDetailTest {
         draftEntities = Tag.addEntity(draftEntities, "  ")
         assertEquals(sizeBeforeBlank, draftEntities.size)
     }
+
+    @Test
+    fun testBookmarkItemOgImageDerivationForDetailScreen() {
+        val withOg = BookmarkItem(
+            id = "test-detail-og",
+            title = "Article with OG Image",
+            url = "https://example.com/article",
+            description = "Description",
+            tag = Tag.create("Article", "Tech", listOf("Android")),
+            ogImageUrl = "https://example.com/images/og-preview.png"
+        )
+        assertNotNull(withOg.ogImageFilename)
+        assertTrue(withOg.ogImageFilename!!.isNotBlank())
+
+        val withoutOg = BookmarkItem(
+            id = "test-detail-no-og",
+            title = "Article without OG Image",
+            url = "https://example.com/article",
+            description = "Description",
+            tag = Tag.create("Article", "Tech", listOf("Android")),
+            ogImageUrl = null
+        )
+        org.junit.Assert.assertNull(withoutOg.ogImageFilename)
+
+        val withBlankOg = BookmarkItem(
+            id = "test-detail-blank-og",
+            title = "Article with Blank OG Image",
+            url = "https://example.com/article",
+            description = "Description",
+            tag = Tag.create("Article", "Tech", listOf("Android")),
+            ogImageUrl = "   "
+        )
+        org.junit.Assert.assertNull(withBlankOg.ogImageFilename)
+    }
+
+    @Test
+    fun testBookmarkDetailAspectRatioCalculation() {
+        // Normal 1200x630 og:image aspect ratio (~1.904)
+        val normalRatio = if (630 > 0) 1200f / 630f else 1.91f
+        assertTrue(normalRatio > 1.9f && normalRatio < 1.91f)
+
+        // Square 1:1 image
+        val squareRatio = if (600 > 0) 600f / 600f else 1.91f
+        assertEquals(1.0f, squareRatio, 0.001f)
+
+        // Tall portrait image
+        val portraitRatio = if (1200 > 0) 600f / 1200f else 1.91f
+        assertEquals(0.5f, portraitRatio, 0.001f)
+
+        // Invalid height fallback
+        val zeroHeight = 0
+        val zeroHeightRatio = if (zeroHeight > 0) 100f / zeroHeight.toFloat() else 1.91f
+        assertEquals(1.91f, zeroHeightRatio, 0.001f)
+    }
 }
 

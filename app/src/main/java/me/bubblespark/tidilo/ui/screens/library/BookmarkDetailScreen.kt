@@ -6,7 +6,9 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,6 +66,12 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import me.bubblespark.tidilo.data.DomainIconManager
+import me.bubblespark.tidilo.data.OgImageManager
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.coroutineScope
 import me.bubblespark.tidilo.ui.components.DomainWatermark
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.material3.AlertDialog
@@ -122,6 +130,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val DETAIL_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
+private data class OgDetailState(val bitmap: ImageBitmap?, val resolved: Boolean)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -245,6 +254,28 @@ fun BookmarkDetailScreen(
 
     val domain = remember(bookmark.url) { DomainIconManager.extractDomain(bookmark.url) }
 
+    val ogFilename = bookmark.ogImageFilename
+    val cacheGeneration by OgImageManager.cacheGenerationState.collectAsStateWithLifecycle()
+
+    val ogState by key(context, bookmark.url, domain, ogFilename, cacheGeneration) {
+        val cached = if (domain != null && ogFilename != null) OgImageManager.getCachedOgImageBitmap(domain, ogFilename) else null
+        produceState(initialValue = OgDetailState(cached, cached != null || ogFilename == null)) {
+            if (domain != null && ogFilename != null) {
+                coroutineScope {
+                    launch {
+                        OgImageManager.observeExactImageUpdates(ogFilename).collect {
+                            OgImageManager.getCachedOgImageBitmap(domain, ogFilename)?.let { value = OgDetailState(it, true) }
+                        }
+                    }
+                    if (cached == null) {
+                        value = OgDetailState(OgImageManager.loadOrFetchOgImage(context, bookmark.url, domain, bookmark.ogImageUrl), true)
+                    }
+                }
+            }
+        }
+    }
+    val ogBitmap = ogState.bitmap
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -343,22 +374,41 @@ fun BookmarkDetailScreen(
             }
         }
 
-        // Content container directly beneath HEADER (places DomainWatermark clipped to upper right)
+        // Content container directly beneath HEADER (places DomainWatermark or og:image banner)
         Box(
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Upper right domain watermark (directly below HEADER, fitted inside screen right edge)
-            DomainWatermark(
-                domain = domain,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = 20.dp) // Cancels Column's 20dp horizontal padding to align with right screen edge
-            )
+            // Upper right domain watermark (rendered only when og:image is unavailable)
+            if (ogBitmap == null) {
+                DomainWatermark(
+                    domain = domain,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 20.dp) // Cancels Column's 20dp horizontal padding to align with right screen edge
+                )
+            }
 
             Column(
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Spacer(modifier = Modifier.height(20.dp))
+                if (ogBitmap != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Image(
+                        bitmap = ogBitmap,
+                        contentDescription = bookmark.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                            .aspectRatio(
+                                if (ogBitmap.height > 0) ogBitmap.width.toFloat() / ogBitmap.height.toFloat() else 1.91f
+                            )
+                            .clip(RoundedCornerShape(16.dp))
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                } else {
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
 
                 // 2. Item Title
                 Text(

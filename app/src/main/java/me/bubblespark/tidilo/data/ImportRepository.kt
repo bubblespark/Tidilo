@@ -111,6 +111,7 @@ class ImportRepository internal constructor(
     }
 
     private val importMutex = Mutex()
+    internal val inFlightResolvedUrls = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
 
     private suspend fun <T> runInDbOrLock(block: suspend () -> T): T {
         return if (database != null) {
@@ -352,17 +353,29 @@ class ImportRepository internal constructor(
 
         if (!canProceed) {
             val ex = DuplicateUrlException("Duplicate URL (Already in Queue)")
-            val domain = DomainIconManager.extractDomain(normalized).orEmpty()
+            val initialResolved = inFlightResolvedUrls[normalized]
+            val initialUrl = initialResolved?.first ?: normalized
+            val initialDomain = initialResolved?.second ?: DomainIconManager.extractDomain(normalized).orEmpty()
             repositoryScope.launch {
                 notificationDao?.insert(
                     ImportNotificationEntity(
                         type = NotificationType.WARNING.name,
-                        domain = domain,
-                        url = normalized,
+                        domain = initialDomain,
+                        url = initialUrl,
                         message = "Duplicate URL (Already in Queue)",
                         existingBookmarkId = null
                     )
                 )
+                // Race safety: If resolution happened while insert was suspended/pending,
+                // re-apply update to guarantee resolved URL is preserved
+                val currentResolved = inFlightResolvedUrls[normalized]
+                if (currentResolved != null && currentResolved.first != initialUrl) {
+                    notificationDao?.updateResolvedUrl(
+                        submittedUrl = normalized,
+                        resolvedUrl = currentResolved.first,
+                        domain = currentResolved.second
+                    )
+                }
             }
             onImported?.invoke(Result.failure(ex))
             return Result.failure(ex)
@@ -387,9 +400,13 @@ class ImportRepository internal constructor(
 
                 val realUrl = WebPageParser.normalizeUrl(prepared.url) ?: prepared.url
                 // If URL resolved to a different canonical URL through redirects,
-                // update any in-flight duplicate notifications recorded for the submitted URL
+                // record resolved target and update any in-flight duplicate notifications recorded for the submitted URL
                 if (realUrl != normalized) {
                     val redirectDomain = DomainIconManager.extractDomain(realUrl).orEmpty()
+                    if (inFlightResolvedUrls.size > 200) {
+                        inFlightResolvedUrls.keys.firstOrNull()?.let { inFlightResolvedUrls.remove(it) }
+                    }
+                    inFlightResolvedUrls[normalized] = Pair(realUrl, redirectDomain)
                     notificationDao?.updateResolvedUrl(
                         submittedUrl = normalized,
                         resolvedUrl = realUrl,

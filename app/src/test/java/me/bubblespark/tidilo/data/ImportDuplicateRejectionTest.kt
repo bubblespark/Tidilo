@@ -148,6 +148,7 @@ class ImportDuplicateRejectionTest {
         val notifications = CopyOnWriteArrayList<ImportNotificationEntity>()
         private val idGen = java.util.concurrent.atomic.AtomicLong(1)
         private val state = MutableStateFlow<List<ImportNotificationEntity>>(emptyList())
+        var onBeforeInsert: (suspend (ImportNotificationEntity) -> Unit)? = null
 
         private fun emit() {
             state.value = notifications.sortedWith(compareByDescending<ImportNotificationEntity> { it.createdAt }.thenByDescending { it.id })
@@ -157,6 +158,7 @@ class ImportDuplicateRejectionTest {
         override fun observeUnreadCount(): Flow<Int> = state.map { it.count { item -> !item.isRead } }
 
         override suspend fun insert(notification: ImportNotificationEntity): Long {
+            onBeforeInsert?.invoke(notification)
             val withId = if (notification.id == 0L) notification.copy(id = idGen.getAndIncrement()) else notification
             notifications.add(withId)
             emit()
@@ -789,5 +791,68 @@ class ImportDuplicateRejectionTest {
         assertEquals(1, updatedNotifs.size)
         assertEquals(resolvedUrl, updatedNotifs.first().url)
         assertEquals("example.com", updatedNotifs.first().domain)
+    }
+
+    @Test
+    fun testInFlightDuplicate_InsertAfterUpdateRace_StillResolvesNotificationUrl() = runBlocking {
+        val bookmarkDao = TestBookmarkDao()
+        val taskDao = TestImportTaskDao()
+        val notificationDao = TestImportNotificationDao()
+
+        val submittedUrl = "https://short.link/redirect-item-race"
+        val resolvedUrl = "https://example.com/canonical-item-race"
+
+        val acquirerGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val insertGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val insertStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val firstImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
+
+        // Intercept duplicate warning insert: pause it before it commits to simulated DAO
+        notificationDao.onBeforeInsert = {
+            insertStarted.complete(Unit)
+            insertGate.await()
+        }
+
+        val repository = ImportRepository(
+            context = null,
+            taskDao = taskDao,
+            bookmarkDao = bookmarkDao,
+            notificationDao = notificationDao,
+            repositoryScope = CoroutineScope(Dispatchers.IO),
+            articleAcquirer = { url ->
+                acquirerGate.await()
+                createFakeParsedPage(url = url, finalUrl = resolvedUrl)
+            }
+        )
+
+        // 1. First import begins and suspends in articleAcquirer
+        val result1 = repository.importUrl(submittedUrl) {
+            firstImportFinished.complete(it)
+        }
+        assertTrue(result1.isSuccess)
+
+        // 2. Second import of exact same in-flight URL is rejected immediately
+        val result2 = repository.importUrl(submittedUrl)
+        assertTrue(result2.isFailure)
+
+        // Wait until duplicate warning insert starts and is suspended before committing
+        kotlinx.coroutines.withTimeout(5000) { insertStarted.await() }
+
+        // 3. First import proceeds to resolve URL and call updateResolvedUrl BEFORE duplicate insert commits
+        acquirerGate.complete(Unit)
+
+        val firstResult = kotlinx.coroutines.withTimeout(5000) { firstImportFinished.await() }
+        assertTrue(firstResult.isSuccess)
+
+        // 4. Now release the duplicate insert
+        insertGate.complete(Unit)
+
+        // 5. Verify the notification's URL has been updated to the resolved canonical URL
+        val notifications = kotlinx.coroutines.withTimeout(5000) {
+            notificationDao.observeNotifications().filter { list -> list.any { it.url == resolvedUrl } }.first()
+        }
+        assertEquals(1, notifications.size)
+        assertEquals(resolvedUrl, notifications.first().url)
+        assertEquals("example.com", notifications.first().domain)
     }
 }

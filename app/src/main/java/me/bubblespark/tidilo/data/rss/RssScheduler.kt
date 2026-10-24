@@ -71,10 +71,13 @@ internal object RssScheduler {
         }
     }
 
+    fun initialWorkPolicy(mobileAllowed: Boolean): ExistingWorkPolicy =
+        if (mobileAllowed) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
+
     suspend fun fetchInitial(context: Context, feedId: String, operationId: String, mobileAllowed: Boolean) = withContext(Dispatchers.IO) {
         val preferences = RssPreferences.getInstance(context)
         preferences.initialize()
-        WorkManager.getInstance(context).enqueueUniqueWork("rss-initial-$feedId-$operationId", ExistingWorkPolicy.KEEP,
+        WorkManager.getInstance(context).enqueueUniqueWork("rss-initial-$feedId-$operationId", initialWorkPolicy(mobileAllowed),
             OneTimeWorkRequestBuilder<RssFetchWorker>()
                 .setInputData(workDataOf("requestedAt" to System.currentTimeMillis(), "feedId" to feedId, "operationId" to operationId))
                 .setConstraints(constraints(!mobileAllowed && preferences.state.value.wifiOnly)).build()).result.get()

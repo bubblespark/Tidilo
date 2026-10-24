@@ -11,6 +11,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssAcquisitionPolicyTest {
+    @Test fun initialWorkPolicyReplacesExistingWorkWhenMobileDataIsAuthorized() {
+        assertEquals(androidx.work.ExistingWorkPolicy.KEEP, me.bubblespark.tidilo.data.rss.RssScheduler.initialWorkPolicy(false))
+        assertEquals(androidx.work.ExistingWorkPolicy.REPLACE, me.bubblespark.tidilo.data.rss.RssScheduler.initialWorkPolicy(true))
+    }
     @Test fun timeSliceContinuationDoesNotExhaustDurableArticleRetries() = runBlocking {
         var aligned = false
         assertEquals(Result.retry(), runRssFetchAttempt(10, { false }, { aligned = true }))

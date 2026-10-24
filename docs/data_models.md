@@ -85,30 +85,30 @@ If old or corrupted JSON data lacks valid category/subcategory tags, `BookmarkRe
 Located in `data/Taxonomy.kt`:
 
 ### 2.1 The 7 Top-Level Categories
-| English ID | Japanese Label | Definition |
+| English ID | Definition |
 | :--- | :--- | :--- |
-| `Article` | 記事 | Articles, blog posts, editorials, news, technical explainers, opinions. |
-| `Media` | メディア | Illustrations, photos, video content, music, audiobooks (Pixiv, YouTube, Vimeo). |
-| `Tool` | ツール | Web applications, utilities, SaaS, code repositories, productivity tools (GitHub, Figma). |
-| `Commerce` | コマース | E-commerce, online shops, product sales, pricing pages (Amazon, online stores). |
-| `Community` | コミュニティ | Social networks, forums, Q&A boards, online communities (X/Twitter, Reddit, Discord). |
-| `Official` | 公式 | Official portals, corporate homepages, brand landings. |
-| `Reference` | リファレンス | Technical documentation, API references, dictionaries, wikis, standards (MDN, Android Docs). |
+| `Article` | Articles, blog posts, editorials, news, technical explainers, opinions. |
+| `Media` | Illustrations, photos, video content, music, audiobooks (Pixiv, YouTube, Vimeo). |
+| `Tool` | Web applications, utilities, SaaS, code repositories, productivity tools (GitHub, Figma). |
+| `Commerce` | E-commerce, online shops, product sales, pricing pages (Amazon, online stores). |
+| `Community` | Social networks, forums, Q&A boards, online communities (X/Twitter, Reddit, Discord). |
+| `Official` | Official portals, corporate homepages, brand landings. |
+| `Reference` | Technical documentation, API references, dictionaries, wikis, standards (MDN, Android Docs). |
 
 ### 2.2 The 11 Subcategories
-| English ID | Japanese Label |
-| :--- | :--- |
-| `Tech` | テック |
-| `Business` | ビジネス |
-| `Society` | 社会 |
-| `Life` | ライフ |
-| `Food` | グルメ |
-| `Travel` | 旅行 |
-| `Game` | ゲーム |
-| `Entertainment` | エンタメ |
-| `Hobby` | 趣味 |
-| `Adult` | 大人の嗜好 |
-| `Education` | 教育 |
+| ID |
+| :--- |
+| `Tech` |
+| `Business` |
+| `Society` |
+| `Life` |
+| `Food` |
+| `Travel` |
+| `Game` |
+| `Entertainment` |
+| `Hobby` |
+| `Adult` |
+| `Education` |
 
 Both `Category` and `Subcategory` provide bidirectional constant-time $O(1)$ resolution via `fromId(query)` backed by pre-computed case-insensitive `LOOKUP_MAP` tables matching against English IDs, Japanese labels, and localized name getters.
 

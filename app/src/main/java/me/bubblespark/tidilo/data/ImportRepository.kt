@@ -126,6 +126,7 @@ class ImportRepository internal constructor(
     private val pendingDuplicateNotificationJobs = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<Job>>()
     internal var onEnteringTransaction: (suspend (url: String) -> Unit)? = null
     internal var onDuplicateIdentified: ((activeId: String) -> Unit)? = null
+    internal var onEnteringFinalization: ((importingId: String) -> Unit)? = null
 
     private suspend fun <T> runInDbOrLock(url: String? = null, block: suspend () -> T): T {
         if (url != null) {
@@ -550,6 +551,7 @@ class ImportRepository internal constructor(
                 }
                 onImported?.invoke(Result.failure(e))
             } finally {
+                onEnteringFinalization?.invoke(importing.id)
                 val pendingJobs = synchronized(_importingTasks) {
                     _importingTasks.update { list -> list.filter { it.id != importing.id } }
                     pendingDuplicateNotificationJobs.remove(importing.id).orEmpty().toList()

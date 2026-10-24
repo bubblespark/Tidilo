@@ -24,6 +24,7 @@ import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.data.db.TagCount
 import me.bubblespark.tidilo.parser.ParsedWebPage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -996,16 +997,30 @@ class ImportDuplicateRejectionTest {
         // Wait until duplicate import identifies the active import and pauses before registering
         assertTrue(identifiedLatch.await(5, java.util.concurrent.TimeUnit.SECONDS))
 
+        val finalizationEntryLatch = java.util.concurrent.CountDownLatch(1)
+        repository.onEnteringFinalization = { _ ->
+            finalizationEntryLatch.countDown()
+        }
+
         // 4. Release first import so it resolves to canonicalUrl and reaches finally
         acquirerGate.complete(Unit)
 
-        // Give first import time to attempt finalization
-        // Since duplicate import holds _importingTasks lock across identification and registration,
-        // first import CANNOT finalize prematurely or clear inFlightResolvedUrls
-        delay(100)
+        // Explicit signal: Wait for first import to reach finalization entry before synchronized(_importingTasks)
+        assertTrue(
+            "First import must reach finalization entry",
+            finalizationEntryLatch.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        )
 
-        // Verify that while duplicate is paused holding the lock, first import has not finalized:
-        // The mapping for aliasUrl is still present and matches canonicalUrl!
+        // Yield to allow first import thread to attempt acquiring synchronized(_importingTasks)
+        repeat(5) { kotlinx.coroutines.yield() }
+
+        // Assert the finalizer is blocked until allowRegistrationLatch is released:
+        // - the task must still be in importingTasks (removed inside synchronized(_importingTasks))
+        assertTrue(
+            "Task must still be present in importingTasks while lock is held",
+            repository.importingTasks.value.any { it.url == aliasUrl }
+        )
+        // - inFlightResolvedUrls mapping must still exist and match canonicalUrl
         val inFlightTarget = repository.inFlightResolvedUrls[aliasUrl]
         assertNotNull("Mapping must not be cleared while duplicate registration is in progress", inFlightTarget)
         assertEquals(canonicalUrl, inFlightTarget?.realUrl)
@@ -1031,7 +1046,19 @@ class ImportDuplicateRejectionTest {
         assertEquals(canonicalUrl, finalNotifs.first().url)
         assertEquals("example.com", finalNotifs.first().domain)
 
-        // Reset test seam
+        // 7. Verify finalizer completes and cleans up importingTasks and inFlightResolvedUrls after lock release
+        kotlinx.coroutines.withTimeout(5000) {
+            while (repository.importingTasks.value.any { it.url == aliasUrl } ||
+                repository.inFlightResolvedUrls[aliasUrl] != null
+            ) {
+                kotlinx.coroutines.yield()
+            }
+        }
+        assertFalse(repository.importingTasks.value.any { it.url == aliasUrl })
+        assertNull(repository.inFlightResolvedUrls[aliasUrl])
+
+        // Reset test seams
         repository.onDuplicateIdentified = null
+        repository.onEnteringFinalization = null
     }
 }

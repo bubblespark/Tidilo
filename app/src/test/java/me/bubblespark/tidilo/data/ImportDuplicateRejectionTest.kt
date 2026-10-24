@@ -329,6 +329,55 @@ class ImportDuplicateRejectionTest {
         }
     }
 
+
+    @Test
+    fun testCaseB_NotificationRefersToOriginalBookmarkIdWithNotePreserved() = runBlocking {
+        val bookmarkDao = TestBookmarkDao()
+        val taskDao = TestImportTaskDao()
+        val notificationDao = TestImportNotificationDao()
+
+        val originalId = "b_user_note_123"
+        val userNote = "Critical user research note"
+        val originalCreatedAt = 123456789L
+
+        val existing = BookmarkEntity(
+            id = originalId,
+            title = "RSS Unanalyzed",
+            url = "https://example.com/note-test",
+            description = "Brief snippet",
+            note = userNote,
+            createdAt = originalCreatedAt,
+            updatedAt = originalCreatedAt,
+            isAiSkipped = true,
+            rssFeedId = "feed_1"
+        )
+        bookmarkDao.insertRow(existing)
+
+        val repository = ImportRepository(
+            context = null,
+            taskDao = taskDao,
+            bookmarkDao = bookmarkDao,
+            notificationDao = notificationDao,
+            repositoryScope = CoroutineScope(Dispatchers.Unconfined)
+        )
+
+        // When: User imports the URL for promotion
+        repository.importUrl("https://example.com/note-test")
+
+        // Verify notification stored the exact original ID
+        val notifications = notificationDao.observeNotifications().first()
+        assertEquals(1, notifications.size)
+        val notif = notifications.first()
+        assertEquals("INFO", notif.type)
+        assertEquals(originalId, notif.existingBookmarkId)
+
+        // Verify looking up bookmark by the notification's existingBookmarkId still returns original note & timestamps
+        val bookmark = bookmarkDao.getBookmarkById(notif.existingBookmarkId!!)
+        assertNotNull(bookmark)
+        assertEquals(userNote, bookmark?.note)
+        assertEquals(originalCreatedAt, bookmark?.createdAt)
+    }
+
     @Test
     fun testCaseC_MoveRssReadyTaskToNormalReady() = runBlocking {
         val bookmarkDao = TestBookmarkDao()

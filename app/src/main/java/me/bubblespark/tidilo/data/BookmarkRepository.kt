@@ -126,10 +126,19 @@ class BookmarkRepository private constructor(context: Context) {
     /** Persists a bookmark before returning, retaining any existing record if replacement fails. */
     suspend fun addBookmarkAndAwait(item: BookmarkItem) = withContext(Dispatchers.IO) {
         val domain = DomainIconManager.extractDomain(item.url)
-        val finalItem = if (DomainPolicyManager.isNsfwDomain(domain) && !item.isNsfw) {
+        val resolvedItem = if (DomainPolicyManager.isNsfwDomain(domain) && !item.isNsfw) {
             item.copy(isNsfw = true)
         } else item
-        database.withTransaction {
+        val savedItem = database.withTransaction {
+            val existing = bookmarkDao.getBookmarkByUrl(resolvedItem.url)
+            val finalItem = if (existing != null) {
+                resolvedItem.copy(
+                    id = existing.id,
+                    note = if (resolvedItem.note.isNotBlank()) resolvedItem.note else existing.note,
+                    createdAt = existing.createdAt
+                )
+            } else resolvedItem
+
             if (finalItem.rssFeedId != null) {
                 val feed = database.rssDao().feed(finalItem.rssFeedId)
                 val blocked = database.rssDao().rssWriteConflict(finalItem.url, finalItem.id)
@@ -140,12 +149,13 @@ class BookmarkRepository private constructor(context: Context) {
             }
             bookmarkDao.deleteByIdOrUrl(finalItem.id, finalItem.url)
             bookmarkDao.insertOrUpdate(BookmarkEntity.fromBookmarkItem(finalItem))
+            finalItem
         }
         // Room publishes the committed bookmark; auxiliary cache work cannot fail the save.
         repositoryScope.launch {
             DomainPolicyManager.registerDomain(domain)
-            warmUpDomainIconsAsync(listOf(finalItem))
-            if (finalItem.rssFeedId != null) me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).cleanup()
+            warmUpDomainIconsAsync(listOf(savedItem))
+            if (savedItem.rssFeedId != null) me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).cleanup()
         }
     }
 

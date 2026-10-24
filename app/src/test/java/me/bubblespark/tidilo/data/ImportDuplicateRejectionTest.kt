@@ -642,18 +642,22 @@ class ImportDuplicateRejectionTest {
 
         val redirectInFlightGate = kotlinx.coroutines.CompletableDeferred<Unit>()
         val allowRedirectToFinish = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val redirectAboutToEnterCheckGate = kotlinx.coroutines.CompletableDeferred<Unit>()
         val directImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
         val redirectImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
 
         // Gate the task DAO insertion of the direct RSS promotion:
         // Before the direct promotion can commit its task into the DAO, release the competing redirect import.
+        // Use a deterministic rendezvous: wait until the redirect import completes article acquisition
+        // and arrives immediately before the post-redirect check.
         // If the early duplicate check and promotion are atomic inside runInDbOrLock,
         // the redirect import cannot interleave and will observe the promoted task in queue.
         // If they are not atomic, the redirect import would pass checkDuplicate and enqueue a competing task first.
         taskDao.onBeforeInsert = { task ->
             if (task.url == rssCanonicalUrl) {
                 allowRedirectToFinish.complete(Unit)
-                kotlinx.coroutines.delay(50)
+                redirectAboutToEnterCheckGate.await()
+                kotlinx.coroutines.yield()
             }
         }
 
@@ -668,6 +672,7 @@ class ImportDuplicateRejectionTest {
                 if (url == redirectUrl) {
                     redirectInFlightGate.complete(Unit)
                     allowRedirectToFinish.await()
+                    redirectAboutToEnterCheckGate.complete(Unit)
                     createFakeParsedPage(url = redirectUrl, finalUrl = rssCanonicalUrl)
                 } else {
                     createFakeParsedPage(url = url)

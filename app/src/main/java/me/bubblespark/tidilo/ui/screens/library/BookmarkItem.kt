@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.OgImageManager
 
 import androidx.compose.runtime.Immutable
@@ -79,18 +80,13 @@ data class BookmarkItem(
     val isAiSkipped: Boolean = false,
     val ogImageUrl: String? = null,
     val rssFeedId: String? = null,
-    val rssPublishedAt: Long? = null
-) {
-    /**
-     * Resolves the extracted OG image filename for this bookmark using OgImageManager,
-     * or returns null if no ogImageUrl is associated.
-     */
-    val ogImageFilename: String?
-        get() = ogImageUrl?.takeIf { it.isNotBlank() }?.let { ogUrl ->
-            val resolved = OgImageManager.resolveImageUrl(url, ogUrl)
-            OgImageManager.computeImageKey(resolved)
-        }
-}
+    val rssPublishedAt: Long? = null,
+    val domain: String? = DomainIconManager.extractDomain(url),
+    val ogImageFilename: String? = ogImageUrl?.takeIf { it.isNotBlank() }?.let { ogUrl ->
+        val resolved = OgImageManager.resolveImageUrl(url, ogUrl)
+        OgImageManager.computeImageKey(resolved)
+    }
+)
 
 /**
  * Trashed bookmark item held in the trash container.

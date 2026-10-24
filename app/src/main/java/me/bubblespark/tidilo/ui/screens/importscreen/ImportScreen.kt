@@ -1,6 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.importscreen
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -119,8 +121,8 @@ fun ImportScreen(
     modifier: Modifier = Modifier
 ) {
     val allReadyTasks by viewModel.readyTasks.collectAsStateWithLifecycle()
-    val readyTasks = allReadyTasks.filter { it.rssFeedId == null }
-    val rssReadyTasks = allReadyTasks.filter { it.rssFeedId != null }
+    val readyTasks = remember(allReadyTasks) { allReadyTasks.filter { it.rssFeedId == null } }
+    val rssReadyTasks = remember(allReadyTasks) { allReadyTasks.filter { it.rssFeedId != null } }
     var isRssReadyExpanded by remember { mutableStateOf(true) }
     var showAllRssReady by remember { mutableStateOf(false) }
     val importingTasks by viewModel.importingTasks.collectAsStateWithLifecycle()
@@ -228,7 +230,6 @@ fun ImportScreen(
         }
     }
 
-    val isBarsVisible = LocalBarsVisible.current
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val headerHeight = statusBarTop + 80.dp
 
@@ -380,22 +381,7 @@ fun ImportScreen(
         }
 
         // Expressive Header (slides out/in from top screen boundary linked with scroll)
-        AnimatedVisibility(
-            visible = isBarsVisible,
-            enter = slideInVertically(
-                initialOffsetY = { -it },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            ) + fadeIn(animationSpec = tween(200)),
-            exit = slideOutVertically(
-                targetOffsetY = { -it },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            ) + fadeOut(animationSpec = tween(150)),
+        ImportHeaderAnimatedVisibility(
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
             FrostedHeaderContainer {
@@ -623,16 +609,22 @@ private fun SwipeableTaskCard(
         }
     }
 
-    val currentOffset = offsetX.value
-    val swipeDirection = when {
-        currentOffset > 0f -> TaskSwipeDirection.StartToEnd
-        currentOffset < 0f -> TaskSwipeDirection.EndToStart
-        else -> TaskSwipeDirection.Settled
+    val threshold = 0.40f
+    val swipeDirection by remember {
+        derivedStateOf {
+            when {
+                offsetX.value > 0f -> TaskSwipeDirection.StartToEnd
+                offsetX.value < 0f -> TaskSwipeDirection.EndToStart
+                else -> TaskSwipeDirection.Settled
+            }
+        }
     }
 
-    val swipeFraction = (abs(currentOffset) / itemWidthPx).coerceIn(0f, 1f)
-    val threshold = 0.40f
-    val isPastThreshold = swipeFraction >= threshold
+    val isPastThreshold by remember {
+        derivedStateOf {
+            (abs(offsetX.value) / itemWidthPx).coerceIn(0f, 1f) >= threshold
+        }
+    }
 
     val iconScale by animateFloatAsState(
         targetValue = if (isPastThreshold) 1.25f else 0.85f,
@@ -651,19 +643,21 @@ private fun SwipeableTaskCard(
         if (swipeDirection != TaskSwipeDirection.Settled) {
             SwipeBackground(
                 direction = swipeDirection,
-                swipeFraction = swipeFraction,
+                swipeFractionProvider = { (abs(offsetX.value) / itemWidthPx).coerceIn(0f, 1f) },
                 iconScale = iconScale,
                 modifier = Modifier.matchParentSize()
             )
         }
 
         val bouncePx = with(density) { bounceOffsetDp.dp.toPx() }
-        val displayOffset = if (offsetX.value == 0f) bouncePx else offsetX.value
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .offset { IntOffset(x = displayOffset.roundToInt(), y = 0) }
+                .offset {
+                    val displayOffset = if (offsetX.value == 0f) bouncePx else offsetX.value
+                    IntOffset(x = displayOffset.roundToInt(), y = 0)
+                }
                 .draggable(
                     state = rememberDraggableState { delta ->
                         coroutineScope.launch {
@@ -717,7 +711,7 @@ private fun SwipeableTaskCard(
 @Composable
 private fun SwipeBackground(
     direction: TaskSwipeDirection,
-    swipeFraction: Float,
+    swipeFractionProvider: () -> Float,
     iconScale: Float,
     modifier: Modifier = Modifier
 ) {
@@ -739,7 +733,10 @@ private fun SwipeBackground(
 
     Box(
         modifier = modifier
-            .background(backgroundColor.copy(alpha = (swipeFraction * 2.2f).coerceIn(0.2f, 1f))),
+            .drawBehind {
+                val alpha = (swipeFractionProvider() * 2.2f).coerceIn(0.2f, 1f)
+                drawRect(backgroundColor.copy(alpha = alpha))
+            },
         contentAlignment = alignment
     ) {
         if (icon != null) {
@@ -1185,5 +1182,34 @@ private fun resolveTaskStatusText(item: ImportTask): String {
         text == "Completed" -> stringResource(R.string.import_status_completed)
         text == "Queued" || text == "Ready" || text == "Ready for AI Analysis" || text == "Ready • Added without metadata" -> stringResource(R.string.import_status_ready)
         else -> text
+    }
+}
+
+
+@Composable
+private fun ImportHeaderAnimatedVisibility(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val isBarsVisible = LocalBarsVisible.current
+    AnimatedVisibility(
+        visible = isBarsVisible,
+        enter = slideInVertically(
+            initialOffsetY = { -it },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            )
+        ) + fadeIn(animationSpec = tween(200)),
+        exit = slideOutVertically(
+            targetOffsetY = { -it },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            )
+        ) + fadeOut(animationSpec = tween(150)),
+        modifier = modifier
+    ) {
+        content()
     }
 }

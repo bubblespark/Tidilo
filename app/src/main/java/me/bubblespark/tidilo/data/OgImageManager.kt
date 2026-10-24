@@ -73,7 +73,7 @@ object OgImageManager {
     private val cacheGeneration = downloads.generation
     private val _cacheGenerationState = MutableStateFlow(0L)
     val cacheGenerationState: StateFlow<Long> = _cacheGenerationState.asStateFlow()
-    private val imageRevisions = ConcurrentHashMap<String, MutableStateFlow<Long>>()
+    private val _exactImageUpdates = MutableSharedFlow<String>(extraBufferCapacity = 64)
 
     @VisibleForTesting
     internal var imageDownloader: (suspend (String) -> ByteArray?)? = null
@@ -125,13 +125,17 @@ object OgImageManager {
     }
 
     /** Exact-image notifications update observers without invalidating sibling card requests. */
-    fun observeExactImageUpdates(imageKey: String): StateFlow<Long> =
-        imageRevisions.computeIfAbsent(imageKey) { MutableStateFlow(0L) }.asStateFlow()
+    fun observeExactImageUpdates(imageKey: String): Flow<String> =
+        _exactImageUpdates.filter { it == imageKey }
 
     private fun notifyExactImageUpdated(domain: String, imageKey: String) {
-        val revision = imageRevisions.computeIfAbsent(imageKey) { MutableStateFlow(0L) }
-        revision.value += 1
+        _exactImageUpdates.tryEmit(imageKey)
         notifyOgImageUpdated(domain)
+    }
+
+    @VisibleForTesting
+    internal fun notifyExactImageUpdatedForTesting(domain: String, imageKey: String) {
+        notifyExactImageUpdated(domain, imageKey)
     }
 
     /**
@@ -306,7 +310,6 @@ object OgImageManager {
                 dir.deleteRecursively()
             }
             domainRevisions.clear()
-            imageRevisions.clear()
             _cacheGenerationState.value = cacheGeneration.get()
             _cacheClearedEvent.tryEmit(cacheGeneration.get())
         }

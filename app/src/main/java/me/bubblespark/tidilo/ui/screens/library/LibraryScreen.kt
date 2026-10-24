@@ -78,6 +78,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -124,7 +125,6 @@ fun LibraryScreen(
     val refreshState = bookmarkLoadState(bookmarks.loadState.refresh, isDomainGrid)
     val isLoading = !initialized || refreshState is LoadState.Loading ||
         (filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter == null && domainGroupsLoading)
-    val isBarsVisible = LocalBarsVisible.current
     val context = LocalContext.current
     val localConfig = LocalConfiguration.current
     val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
@@ -281,7 +281,7 @@ fun LibraryScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .drawBehind {
+                                .drawWithCache {
                                     // Radiant ambient beam from top-right corner spreading across ~2/3 of the screen towards bottom-left
                                     val ambientBeam = Brush.linearGradient(
                                         colorStops = arrayOf(
@@ -295,7 +295,6 @@ fun LibraryScreen(
                                         start = Offset(size.width * 1.05f, -size.height * 0.02f),
                                         end = Offset(-size.width * 0.15f, size.height * 0.90f)
                                     )
-                                    drawRect(brush = ambientBeam)
 
                                     // Deep spherical glow in top-right shoulder spreading across ~2/3 of screen
                                     val cornerGlow = Brush.radialGradient(
@@ -309,7 +308,10 @@ fun LibraryScreen(
                                         center = Offset(size.width, 0f),
                                         radius = size.height * 0.72f
                                     )
-                                    drawRect(brush = cornerGlow)
+                                    onDrawBehind {
+                                        drawRect(brush = ambientBeam)
+                                        drawRect(brush = cornerGlow)
+                                    }
                                 }
                         ) {
                             if (domainBookmarks.itemCount == 0) {
@@ -480,22 +482,8 @@ fun LibraryScreen(
         }
 
         // Expressive Header (slides out/in from top screen edge linked with scrolling, hidden during peek)
-        AnimatedVisibility(
-            visible = isBarsVisible && peekBookmark == null,
-            enter = slideInVertically(
-                initialOffsetY = { -it },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            ) + fadeIn(animationSpec = tween(200)),
-            exit = slideOutVertically(
-                targetOffsetY = { -it },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            ) + fadeOut(animationSpec = tween(150)),
+        LibraryHeaderAnimatedVisibility(
+            peekBookmark = peekBookmark,
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
             FrostedHeaderContainer {
@@ -789,5 +777,35 @@ internal fun BookmarkSummaryPeekOverlay(bookmark: BookmarkItem?, headerHeight: a
                 }
             }
         }
+    }
+}
+
+
+@Composable
+private fun LibraryHeaderAnimatedVisibility(
+    peekBookmark: BookmarkItem?,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val isBarsVisible = LocalBarsVisible.current
+    AnimatedVisibility(
+        visible = isBarsVisible && peekBookmark == null,
+        enter = slideInVertically(
+            initialOffsetY = { -it },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            )
+        ) + fadeIn(animationSpec = tween(200)),
+        exit = slideOutVertically(
+            targetOffsetY = { -it },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            )
+        ) + fadeOut(animationSpec = tween(150)),
+        modifier = modifier
+    ) {
+        content()
     }
 }

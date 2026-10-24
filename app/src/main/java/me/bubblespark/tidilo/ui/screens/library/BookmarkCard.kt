@@ -128,7 +128,7 @@ fun BookmarkItemCard(
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        val domain = remember(bookmark.url) { DomainIconManager.extractDomain(bookmark.url) }
+        val domain = bookmark.domain
 
         Box(
             modifier = Modifier

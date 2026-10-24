@@ -320,4 +320,30 @@ class OgImageManagerTest {
         assertTrue(received.isEmpty())
         job.cancel()
     }
+
+    @Test
+    fun testObserveExactImageUpdatesFiltersByKey(): Unit = runBlocking {
+        val targetKey = "target-key"
+        val otherKey = "other-key"
+        val received = mutableListOf<String>()
+
+        val job = launch {
+            OgImageManager.observeExactImageUpdates(targetKey).collect {
+                received.add(it)
+            }
+        }
+        delay(50)
+
+        // Emitting update for a different key should not trigger the observer
+        OgImageManager.notifyExactImageUpdatedForTesting("example.com", otherKey)
+        delay(50)
+        assertTrue(received.isEmpty())
+
+        // Emitting update for the target key should trigger the observer
+        OgImageManager.notifyExactImageUpdatedForTesting("example.com", targetKey)
+        delay(50)
+        assertEquals(listOf(targetKey), received)
+
+        job.cancel()
+    }
 }

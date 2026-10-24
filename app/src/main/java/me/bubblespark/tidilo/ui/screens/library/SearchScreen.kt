@@ -119,7 +119,6 @@ fun SearchScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
     var hadFocus by remember { mutableStateOf(false) }
-    val isBarsVisible = LocalBarsVisible.current
 
     // Request focus on search input and display soft keyboard when floating navigation search action button is pressed
     LaunchedEffect(Unit) {
@@ -349,22 +348,8 @@ fun SearchScreen(
         }
 
         // 2. Expressive Header (slides out/in linked with scrolling)
-        AnimatedVisibility(
-            visible = isBarsVisible && peekBookmark == null,
-            enter = slideInVertically(
-                initialOffsetY = { -it },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            ) + fadeIn(animationSpec = tween(200)),
-            exit = slideOutVertically(
-                targetOffsetY = { -it },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            ) + fadeOut(animationSpec = tween(150)),
+        SearchHeaderAnimatedVisibility(
+            peekBookmark = peekBookmark,
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
             FrostedHeaderContainer {
@@ -481,5 +466,35 @@ fun SearchScreen(
             }
         }
         BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null }
+    }
+}
+
+
+@Composable
+private fun SearchHeaderAnimatedVisibility(
+    peekBookmark: BookmarkItem?,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val isBarsVisible = LocalBarsVisible.current
+    AnimatedVisibility(
+        visible = isBarsVisible && peekBookmark == null,
+        enter = slideInVertically(
+            initialOffsetY = { -it },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            )
+        ) + fadeIn(animationSpec = tween(200)),
+        exit = slideOutVertically(
+            targetOffsetY = { -it },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            )
+        ) + fadeOut(animationSpec = tween(150)),
+        modifier = modifier
+    ) {
+        content()
     }
 }

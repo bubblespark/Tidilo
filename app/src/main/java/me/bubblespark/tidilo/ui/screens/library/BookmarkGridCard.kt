@@ -66,7 +66,7 @@ fun BookmarkGridCard(
 ) {
     val context = LocalContext.current
 
-    val domain = remember(bookmark.url) { DomainIconManager.extractDomain(bookmark.url) }
+    val domain = bookmark.domain
     val domainDisplayName = remember(domain) {
         domain?.let { DomainPolicyManager.getDisplayName(it) } ?: domain ?: ""
     }
@@ -75,9 +75,7 @@ fun BookmarkGridCard(
         TimeFormatter.formatRelativeTime(bookmark.createdAt, context)
     }
 
-    val ogFilename = remember(bookmark.url, bookmark.ogImageUrl) {
-        bookmark.ogImageFilename
-    }
+    val ogFilename = bookmark.ogImageFilename
 
     val cacheGeneration by OgImageManager.cacheGenerationState.collectAsStateWithLifecycle()
 
@@ -96,7 +94,9 @@ fun BookmarkGridCard(
                             OgImageManager.getCachedOgImageBitmap(domain, ogFilename)?.let { value = OgPreviewState(it, true) }
                         }
                     }
-                    value = OgPreviewState(OgImageManager.loadOrFetchOgImage(context, bookmark.url, domain, bookmark.ogImageUrl), true)
+                    if (cached == null) {
+                        value = OgPreviewState(OgImageManager.loadOrFetchOgImage(context, bookmark.url, domain, bookmark.ogImageUrl), true)
+                    }
                 }
             }
         }

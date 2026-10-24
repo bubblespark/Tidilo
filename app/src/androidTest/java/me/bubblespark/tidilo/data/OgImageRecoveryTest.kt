@@ -170,22 +170,16 @@ class OgImageRecoveryTest {
     }
 
     @Test
-    fun clearReleasesExactImageRevisionsAndNewSubscriptionReceivesCompletion() = runBlocking {
+    fun exactImageUpdatesEmittedOnCompletion() = runBlocking {
         val image = "https://example.com/revision.png"
         val key = OgImageManager.computeImageKey(image)
         val bytes = imageBytes()
         OgImageManager.imageDownloader = { bytes }
-        val old = OgImageManager.observeExactImageUpdates(key)
-        assertNotNull(OgImageManager.loadOrFetchOgImage(context, "https://example.com/a", "example.com", image))
-        assertEquals(1L, old.value)
-        OgImageManager.clearImageCache(context)
-        val fresh = OgImageManager.observeExactImageUpdates(key)
-        assertEquals(0L, fresh.value)
         val completed = async(start = CoroutineStart.UNDISPATCHED) {
-            fresh.first { it > 0L }
+            OgImageManager.observeExactImageUpdates(key).first()
         }
         assertNotNull(OgImageManager.loadOrFetchOgImage(context, "https://example.com/a", "example.com", image))
-        assertEquals(1L, withTimeout(5000) { completed.await() })
+        assertEquals(key, withTimeout(5000) { completed.await() })
     }
 
     @Test

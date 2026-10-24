@@ -20,6 +20,7 @@ import me.bubblespark.tidilo.data.db.ImportNotificationEntity
 import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.data.db.TagCount
+import me.bubblespark.tidilo.parser.ParsedWebPage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -588,5 +589,89 @@ class ImportDuplicateRejectionTest {
             notificationDao.observeNotifications().filter { list -> list.any { it.message == "Duplicate URL (Already in Queue)" } }.first()
         }
         assertTrue(notifs.isNotEmpty())
+    }
+    private fun createFakeParsedPage(url: String, finalUrl: String = url): ParsedWebPage {
+        return ParsedWebPage(
+            requestedUrl = url,
+            finalUrl = finalUrl,
+            statusCode = 200,
+            statusMessage = "OK",
+            contentType = "text/html",
+            htmlLang = "en",
+            title = "Test Page",
+            canonicalUrl = finalUrl,
+            metaTags = emptyList(),
+            ogpTags = emptyMap(),
+            twitterTags = emptyMap(),
+            standardMetaTags = emptyMap(),
+            jsonLdList = emptyList(),
+            h1List = emptyList(),
+            h2List = emptyList(),
+            readabilityArticle = null,
+            jsoupBodyText = "Body text",
+            jsoupBodyCharCount = 9,
+            fetchLatencyMs = 10L,
+            parseLatencyMs = 5L,
+            rawHtmlSizeBytes = 100
+        )
+    }
+
+    @Test
+    fun testConvergingUrls_ToUnanalyzedRssBookmark_OnlyOneTaskEnqueued() = runBlocking {
+        val bookmarkDao = TestBookmarkDao()
+        val taskDao = TestImportTaskDao()
+        val notificationDao = TestImportNotificationDao()
+
+        val rssCanonicalUrl = "https://example.com/rss-article"
+        val redirectUrl = "https://short.link/rss-redirect"
+
+        // Given: Unanalyzed RSS bookmark in library with canonical URL
+        val existing = BookmarkEntity(
+            id = "b_rss_conv",
+            title = "Unanalyzed RSS",
+            url = rssCanonicalUrl,
+            description = "Desc",
+            isAiSkipped = true,
+            rssFeedId = "feed_999",
+            createdAt = 1000L,
+            updatedAt = 1000L
+        )
+        bookmarkDao.insertRow(existing)
+
+        // Acquirer simulates redirectUrl resolving to rssCanonicalUrl
+        val repository = ImportRepository(
+            context = null,
+            taskDao = taskDao,
+            bookmarkDao = bookmarkDao,
+            notificationDao = notificationDao,
+            repositoryScope = CoroutineScope(Dispatchers.Unconfined),
+            articleAcquirer = { url ->
+                if (url == redirectUrl) {
+                    createFakeParsedPage(url = redirectUrl, finalUrl = rssCanonicalUrl)
+                } else {
+                    createFakeParsedPage(url = url)
+                }
+            }
+        )
+
+        // Import direct canonical URL first -> promotes RSS to Ready queue
+        repository.importUrl(rssCanonicalUrl)
+        assertEquals(1, taskDao.getCount())
+        val task = taskDao.getTaskByUrl(rssCanonicalUrl)
+        assertNotNull(task)
+        assertEquals("READY", task?.status)
+
+        // Import converging redirect URL second -> post-redirect check detects duplicate in queue
+        var redirectFailed = false
+        repository.importUrl(redirectUrl) {
+            if (it.isFailure) redirectFailed = true
+        }
+
+        // Verify still exactly one task in queue and rejected as duplicate
+        assertEquals(1, taskDao.getCount())
+        assertTrue(redirectFailed)
+
+        val notifications = notificationDao.observeNotifications().first()
+        assertTrue(notifications.any { it.message == "Duplicate URL (Already in Queue)" })
     }
 }

@@ -372,9 +372,12 @@ class ImportRepository internal constructor(
 
         repositoryScope.launch {
             try {
-                // Pre-Fetch Check (Primary Gate)
-                val preCheck = importMutex.withLock { checkDuplicate(normalized) }
-                if (handleDuplicateOrConflict(normalized, preCheck, importing.id, onImported)) {
+                // Pre-Fetch Check (Primary Gate) - atomic duplicate check & mutation in database transaction
+                val isEarlyHandled = runInDbOrLock {
+                    val preCheck = checkDuplicate(normalized)
+                    handleDuplicateOrConflict(normalized, preCheck, importing.id, onImported)
+                }
+                if (isEarlyHandled) {
                     return@launch
                 }
 
@@ -383,10 +386,15 @@ class ImportRepository internal constructor(
                 val prepared = ArticlePreparation.prepare(parsed)
 
                 val realUrl = WebPageParser.normalizeUrl(prepared.url) ?: prepared.url
-                // Final Check before insert (handles redirects and concurrent writes)
-                val finalCheck = importMutex.withLock { checkDuplicate(realUrl) }
-                if (handleDuplicateOrConflict(realUrl, finalCheck, importing.id, onImported)) {
-                    return@launch
+                // Post-Redirect Check (handles redirects) - atomic duplicate check & mutation in database transaction
+                if (realUrl != normalized) {
+                    val isRedirectHandled = runInDbOrLock {
+                        val postCheck = checkDuplicate(realUrl)
+                        handleDuplicateOrConflict(realUrl, postCheck, importing.id, onImported)
+                    }
+                    if (isRedirectHandled) {
+                        return@launch
+                    }
                 }
 
                 val hasCustomTitle = !title.isNullOrBlank() && !isRawUrlOrHost(title, normalized)

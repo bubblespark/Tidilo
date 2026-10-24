@@ -855,4 +855,96 @@ class ImportDuplicateRejectionTest {
         assertEquals(resolvedUrl, notifications.first().url)
         assertEquals("example.com", notifications.first().domain)
     }
+
+    @Test
+    fun testSecondImportOfSameAlias_ResolvingToDifferentCanonicalUrl_ScopesNotificationCorrectly() = runBlocking {
+        val bookmarkDao = TestBookmarkDao()
+        val taskDao = TestImportTaskDao()
+        val notificationDao = TestImportNotificationDao()
+
+        val aliasUrl = "https://short.link/reusable-alias"
+        val canonicalUrl1 = "https://example.com/target-one"
+        val canonicalUrl2 = "https://example.com/target-two"
+
+        var currentTarget = canonicalUrl1
+        val acquirerGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val firstImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
+        val secondImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
+
+        val repository = ImportRepository(
+            context = null,
+            taskDao = taskDao,
+            bookmarkDao = bookmarkDao,
+            notificationDao = notificationDao,
+            repositoryScope = CoroutineScope(Dispatchers.IO),
+            articleAcquirer = { url ->
+                if (url == aliasUrl && currentTarget == canonicalUrl2) {
+                    acquirerGate.await()
+                }
+                createFakeParsedPage(url = url, finalUrl = currentTarget)
+            }
+        )
+
+        // 1. First import: aliasUrl resolves to canonicalUrl1
+        val res1 = repository.importUrl(aliasUrl) {
+            firstImportFinished.complete(it)
+        }
+        assertTrue(res1.isSuccess)
+        val firstResult = kotlinx.coroutines.withTimeout(5000) { firstImportFinished.await() }
+        assertTrue(firstResult.isSuccess)
+        assertEquals(canonicalUrl1, firstResult.getOrNull()?.url)
+
+        // Await cleanup in finally block of first import
+        kotlinx.coroutines.withTimeout(5000) {
+            while (repository.inFlightResolvedUrls[aliasUrl] != null) {
+                kotlinx.coroutines.yield()
+            }
+        }
+        assertNull(repository.inFlightResolvedUrls[aliasUrl])
+
+        // 2. Second import of the same alias URL, now resolving to canonicalUrl2
+        currentTarget = canonicalUrl2
+        val res2 = repository.importUrl(aliasUrl) {
+            secondImportFinished.complete(it)
+        }
+        assertTrue(res2.isSuccess)
+
+        // 3. Competing duplicate of aliasUrl arrives while second import is in-flight
+        val dupResult = repository.importUrl(aliasUrl)
+        assertTrue(dupResult.isFailure)
+
+        // Verify duplicate notification was NOT recorded with stale canonicalUrl1
+        val notifsAfterDup = kotlinx.coroutines.withTimeout(5000) {
+            notificationDao.observeNotifications().filter { list ->
+                list.any { it.message == "Duplicate URL (Already in Queue)" }
+            }.first()
+        }
+        assertEquals(1, notifsAfterDup.size)
+        // Must be aliasUrl (not stale canonicalUrl1)
+        assertEquals(aliasUrl, notifsAfterDup.first().url)
+
+        // 4. Release second import to resolve to canonicalUrl2
+        acquirerGate.complete(Unit)
+        val secondResult = kotlinx.coroutines.withTimeout(5000) { secondImportFinished.await() }
+        assertTrue(secondResult.isSuccess)
+        assertEquals(canonicalUrl2, secondResult.getOrNull()?.url)
+
+        // 5. Verify the notification was updated to canonicalUrl2 (NOT canonicalUrl1)
+        val finalNotifs = kotlinx.coroutines.withTimeout(5000) {
+            notificationDao.observeNotifications().filter { list ->
+                list.any { it.url == canonicalUrl2 }
+            }.first()
+        }
+        assertEquals(1, finalNotifs.size)
+        assertEquals(canonicalUrl2, finalNotifs.first().url)
+        assertEquals("example.com", finalNotifs.first().domain)
+
+        // Verify inFlightResolvedUrls is cleaned up after second import completes
+        kotlinx.coroutines.withTimeout(5000) {
+            while (repository.inFlightResolvedUrls[aliasUrl] != null) {
+                kotlinx.coroutines.yield()
+            }
+        }
+        assertNull(repository.inFlightResolvedUrls[aliasUrl])
+    }
 }

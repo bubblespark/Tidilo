@@ -203,4 +203,27 @@ class WebPageParserTest {
         val parsedAfterDisable = WebPageParser.parseHtml("https://$testDomain/page1", cleanHtml)
         org.junit.Assert.assertFalse(parsedAfterDisable.isNsfwSignal)
     }
+
+    @Test
+    fun testIconCandidatesExtractedFromDocBeforeDestructiveCleaning() {
+        val html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <link rel="icon" href="/favicon.png">
+                <link rel="apple-touch-icon" href="/apple.png" sizes="180x180">
+            </head>
+            <body>
+                <header><nav>Nav content</nav></header>
+                <main><p>Main body content that will be cleaned.</p></main>
+            </body>
+            </html>
+        """.trimIndent()
+        val parsed = WebPageParser.parseHtml("https://example.com/article", html)
+        val icons = checkNotNull(parsed.iconCandidates)
+        assertEquals(2, icons.size)
+        assertTrue(icons.any { it.url == "https://example.com/apple.png" && it.highPriority })
+        assertTrue(icons.any { it.url == "https://example.com/favicon.png" && !it.highPriority })
+        assertEquals("Main body content that will be cleaned.", parsed.jsoupBodyText)
+    }
 }

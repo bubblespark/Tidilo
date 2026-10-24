@@ -12,6 +12,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -73,7 +75,9 @@ class SummaryViewModel(application: Application) : AndroidViewModel(application)
         cacheJob = viewModelScope.launch {
             _cache.value = SummaryLoad.Loading
             try {
-                val snapshot = CacheStorageRepository.scan(getApplication<Application>().cacheDir)
+                val snapshot = withContext(Dispatchers.IO) {
+                    CacheStorageRepository.scan(getApplication<Application>().cacheDir)
+                }
                 ensureActive()
                 _cache.value = SummaryLoad.Ready(snapshot)
             } catch (cancelled: CancellationException) {

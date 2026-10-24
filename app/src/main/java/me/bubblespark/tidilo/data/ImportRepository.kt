@@ -762,6 +762,7 @@ class ImportRepository internal constructor(
                         description = description,
                         bodySnippet = bodySnippet,
                         ogImageUrl = prepared.ogImageUrl,
+                        ogImageKey = me.bubblespark.tidilo.data.db.bookmarkOgImageKey(realUrl, prepared.ogImageUrl),
                         articlePrepared = true,
                         isNsfw = isNsfw || existing.isNsfw
                     )

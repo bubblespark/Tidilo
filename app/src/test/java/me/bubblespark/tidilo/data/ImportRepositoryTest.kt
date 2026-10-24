@@ -27,6 +27,40 @@ import org.junit.Test
 
 class ImportRepositoryTest {
 
+    @Test fun manualPreparseRefreshesImageReferenceKeyForChangedUrlAndImage() = runBlocking {
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+        val html = """<title>Prepared title</title><link rel="canonical" href="https://prepared.example/canonical">
+            <meta property="og:image" content="/new.png"><p>Prepared content</p>""".toByteArray()
+        server.createContext("/article") { exchange ->
+            exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+            exchange.sendResponseHeaders(200, html.size.toLong())
+            exchange.responseBody.use { it.write(html) }
+        }
+        server.start()
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        try {
+            for (oldImage in listOf<String?>(null, "/old.png")) {
+                val dao = FakeImportTaskDao()
+                val source = "http://127.0.0.1:${server.address.port}/article"
+                val task = waitingEntity("prepare").copy(url = source, title = source, status = "READY",
+                    ogImageUrl = oldImage, ogImageKey = me.bubblespark.tidilo.data.db.bookmarkOgImageKey(source, oldImage))
+                dao.insertOrUpdate(task)
+                val repository = ImportRepository(taskDao = dao, repositoryScope = scope)
+                val preparse = ImportRepository::class.java.getDeclaredMethod("fetchAndPreparseTaskAsync", String::class.java, String::class.java)
+                preparse.isAccessible = true
+                preparse.invoke(repository, task.id, source)
+                val prepared = withTimeout(5000) {
+                    while (dao.getTaskById(task.id)?.articlePrepared != true) delay(10)
+                    dao.getTaskById(task.id)!!
+                }
+                assertEquals("https://prepared.example/canonical", prepared.url)
+                assertEquals(me.bubblespark.tidilo.data.db.bookmarkOgImageKey(prepared.url, prepared.ogImageUrl), prepared.ogImageKey)
+                assertTrue(prepared.ogImageKey != task.ogImageKey)
+            }
+        } finally { job.cancelAndJoin(); server.stop(0) }
+    }
+
     @Test fun emptyPreparedManualArticleFailsOnlyItselfAndRetryRefreshesPreparation() = runBlocking {
         val job = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + job)

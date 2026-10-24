@@ -26,6 +26,52 @@ class RssSharedPipelineTest {
     } + "</channel></rss>"
     private fun database() = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
 
+    @Test fun explicitRetryKeepsConnectivityWaitLocalWithoutConsumingAttempt() = runBlocking {
+        val db = database()
+        try {
+            for (mode in listOf("AI", "DIRECT")) {
+                val feed = RssFeedEntity(mode, "https://fixture-feed.example/$mode", mode, mode = mode)
+                db.rssDao().putFeed(feed)
+                RssIngestionStore(db).stage(feed, listOf(RssEntry("key", "$url/$mode", "Title", "", "", null, null)), 1)
+                val task = db.importTaskDao().getAllTasks().single { it.rssFeedId == feed.id }
+                val repo = repository(db, { _, _, _ -> error("Retry must not fetch XML") }, network { throw RssWifiUnavailable() })
+                repo.retryAcquisition(task.id)
+                val waiting = db.importTaskDao().getTaskById(task.id)!!
+                assertEquals("ERROR", waiting.status)
+                assertEquals("Waiting for an allowed network", waiting.statusText)
+                assertEquals(0, waiting.acquisitionAttempts)
+                assertEquals(mode, waiting.intendedMode)
+                assertTrue(db.rssDao().feed(feed.id)!!.enabled)
+                assertFalse(db.rssDao().hasSeen(feed.id, "key", task.url))
+            }
+        } finally { db.close() }
+    }
+
+    @Test fun explicitRetryStopsRelatedRequestsAfterFeedRevocation() = runBlocking {
+        val db = database()
+        try {
+            val taskUrl = "https://retry-${java.util.UUID.randomUUID()}.example/post"
+            val feed = RssFeedEntity("feed", "https://fixture-feed.example/feed", "Feed")
+            db.rssDao().putFeed(feed)
+            RssIngestionStore(db).stage(feed, listOf(RssEntry("key", taskUrl, "Title", "", "", null, null)), 1)
+            val task = db.importTaskDao().getAllTasks().single()
+            var relatedRequests = 0
+            val repo = repository(db, { _, _, _ -> error("Retry must not fetch XML") }, network { request ->
+                if (request == taskUrl) ArticleResponse(request, 200, html.toByteArray(), "text/html")
+                else {
+                    relatedRequests++
+                    val current = db.rssDao().feed(feed.id)!!
+                    db.rssDao().putFeed(current.copy(enabled = false, revision = current.revision + 1))
+                    ArticleResponse(request, 404, byteArrayOf(), "text/html")
+                }
+            })
+            repo.retryAcquisition(task.id)
+            assertEquals(1, relatedRequests)
+            assertNotNull(db.bookmarkDao().getBookmarkByUrl(taskUrl))
+            assertFalse(db.rssDao().feed(feed.id)!!.enabled)
+        } finally { db.close() }
+    }
+
     @Test fun completionHonorsPromotionAndCancellationDuringAcquisition() = runBlocking {
         val db = database()
         try {

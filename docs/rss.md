@@ -25,6 +25,8 @@ Direct saves the HTML Description, including an empty Description when absent, w
 
 The already acquired HTML supplies OG image URLs and the complete icon candidate list, including a known-empty discovery result. Both manual and RSS imports avoid another article request merely to discover icons. Existing separate root-page discovery, candidate priorities, cache identities, eviction recovery, and generation-safe publication remain. RSS HTML, redirects, related images/icons, and root-page discovery use a request-scoped network transport; manual imports retain ordinary connectivity behavior. Compatible requests coalesce, while differently authorized network work cannot borrow another caller's mobile permission. Cached files remain shared. Optional image/icon failure does not invalidate successfully prepared article content.
 
+Explicit article retries use the same feed enablement/revision checks for related requests. A missing permitted network is recorded as a wait on the affected task without consuming an acquisition attempt, disabling its feed, or failing unrelated foreground AI work.
+
 ## Modes, queue, and inference
 
 New feeds default to **Direct**, with a retention count of **30**.

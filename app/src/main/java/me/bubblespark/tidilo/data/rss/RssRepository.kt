@@ -254,7 +254,19 @@ internal class RssRepository internal constructor(private val context: Context,
                 return@withLock
             }
             db.importTaskDao().insertOrUpdate(task.copy(acquisitionAttempts = 0, acquisitionRetryAt = 0))
-            acquireTask(feed, task.copy(acquisitionAttempts = 0, acquisitionRetryAt = 0), articleNetwork(), promote)
+            try {
+                acquireTask(feed, task.copy(acquisitionAttempts = 0, acquisitionRetryAt = 0), articleNetwork(feed = feed), promote)
+            } catch (_: RssWifiUnavailable) {
+                // Connectivity waits belong to this task, not the foreground AI batch or uncaught handler.
+                db.withTransaction {
+                    val current = dao.feed(feed.id)
+                    if (current != null && current.enabled && !current.deleted && current.revision == feed.revision) {
+                        db.importTaskDao().updateStatus(task.id, "ERROR", "Waiting for an allowed network",
+                            "Connect to a network allowed by RSS settings, then retry.")
+                    }
+                }
+                return@withLock
+            }
             acquired.tryEmit(Unit)
         }
     }

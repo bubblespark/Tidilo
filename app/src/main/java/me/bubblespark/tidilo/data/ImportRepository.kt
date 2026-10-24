@@ -175,7 +175,12 @@ class ImportRepository internal constructor(
                 if (isAiCompleted) {
                     DuplicateCheckResult.PromotedFromRssToLibrary(existingBookmark)
                 } else {
-                    DuplicateCheckResult.RequeuedFromRssToAi(existingBookmark)
+                    val pendingTask = taskDao.getTaskByUrl(url)
+                    if (pendingTask != null && pendingTask.status in listOf("READY", "WAITING_AI", "PROCESSING_AI", "ERROR")) {
+                        DuplicateCheckResult.DuplicateInQueue(pendingTask)
+                    } else {
+                        DuplicateCheckResult.RequeuedFromRssToAi(existingBookmark)
+                    }
                 }
             } else {
                 DuplicateCheckResult.DuplicateInLibrary(existingBookmark)

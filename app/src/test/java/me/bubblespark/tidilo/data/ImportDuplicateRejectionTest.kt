@@ -142,19 +142,21 @@ class ImportDuplicateRejectionTest {
 
     private class TestImportNotificationDao : ImportNotificationDao {
         val notifications = CopyOnWriteArrayList<ImportNotificationEntity>()
+        private val idGen = java.util.concurrent.atomic.AtomicLong(1)
         private val state = MutableStateFlow<List<ImportNotificationEntity>>(emptyList())
 
         private fun emit() {
-            state.value = notifications.sortedByDescending { it.createdAt }
+            state.value = notifications.sortedWith(compareByDescending<ImportNotificationEntity> { it.createdAt }.thenByDescending { it.id })
         }
 
         override fun observeNotifications(): Flow<List<ImportNotificationEntity>> = state
         override fun observeUnreadCount(): Flow<Int> = state.map { it.count { item -> !item.isRead } }
 
         override suspend fun insert(notification: ImportNotificationEntity): Long {
-            notifications.add(notification)
+            val withId = if (notification.id == 0L) notification.copy(id = idGen.getAndIncrement()) else notification
+            notifications.add(withId)
             emit()
-            return notification.id
+            return withId.id
         }
 
         override suspend fun markAllAsRead() {
@@ -275,6 +277,56 @@ class ImportDuplicateRejectionTest {
         assertEquals("INFO", notifications[0].type)
         assertEquals("Promoted from RSS to Library", notifications[0].message)
         assertEquals("b2", notifications[0].existingBookmarkId)
+    }
+
+    @Test
+    fun testCaseB_RepeatedImportWhilePendingInQueue_RejectsAsDuplicate() = runBlocking {
+        val bookmarkDao = TestBookmarkDao()
+        val taskDao = TestImportTaskDao()
+        val notificationDao = TestImportNotificationDao()
+
+        val existing = BookmarkEntity(
+            id = "b2",
+            title = "Raw RSS Item",
+            url = "https://example.com/raw-rss",
+            description = "Desc",
+            category = null,
+            subcategory = null,
+            entities = emptyList(),
+            createdAt = 1000L,
+            updatedAt = 1000L,
+            isAiSkipped = true,
+            rssFeedId = "feed_456"
+        )
+        bookmarkDao.insertRow(existing)
+
+        val repository = ImportRepository(
+            context = null,
+            taskDao = taskDao,
+            bookmarkDao = bookmarkDao,
+            notificationDao = notificationDao,
+            repositoryScope = CoroutineScope(Dispatchers.Unconfined)
+        )
+
+        // First import enqueues promotion task
+        repository.importUrl("https://example.com/raw-rss")
+        assertEquals(1, taskDao.getCount())
+
+        // Test each active queue status: importing again rejects as duplicate
+        val activeStatuses = listOf("READY", "WAITING_AI", "PROCESSING_AI", "ERROR")
+        for (status in activeStatuses) {
+            val task = taskDao.getTaskByUrl("https://example.com/raw-rss")!!
+            taskDao.updateStatus(task.id, status, "Test $status", null)
+
+            // Second import while pending in queue
+            repository.importUrl("https://example.com/raw-rss")
+
+            // Count of tasks in queue remains 1 (no duplicate task created)
+            assertEquals(1, taskDao.getCount())
+            val latestNotification = notificationDao.observeNotifications().first().first()
+            assertEquals("WARNING", latestNotification.type)
+            assertEquals("Duplicate URL (Already in Queue)", latestNotification.message)
+        }
     }
 
     @Test

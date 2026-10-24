@@ -22,16 +22,19 @@ internal fun rememberDomainIcon(
     val context = LocalContext.current
     val generation by DomainIconManager.cacheGenerationState.collectAsStateWithLifecycle()
     return key(context, domain, pageUrl, generation, allowNetwork) {
-        produceState<ImageBitmap?>(initialValue = domain?.let { DomainIconManager.getCachedIconBitmap(it) }) {
+        val cached = domain?.let { DomainIconManager.getCachedIconBitmap(it) }
+        produceState<ImageBitmap?>(initialValue = cached) {
             if (!domain.isNullOrBlank()) coroutineScope {
                 launch {
                     DomainIconManager.observeIconUpdates(domain).collect {
                         DomainIconManager.getCachedIconBitmap(domain)?.let { value = it }
                     }
                 }
-                value = withContext(Dispatchers.IO) {
-                    if (allowNetwork) DomainIconManager.loadOrFetchIcon(context, domain, pageUrl)
-                    else DomainIconManager.loadIconFromDisk(context, domain)
+                if (cached == null) {
+                    value = withContext(Dispatchers.IO) {
+                        if (allowNetwork) DomainIconManager.loadOrFetchIcon(context, domain, pageUrl)
+                        else DomainIconManager.loadIconFromDisk(context, domain)
+                    }
                 }
             }
         }

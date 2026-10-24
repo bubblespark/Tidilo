@@ -29,6 +29,7 @@ import java.io.File
 import java.net.URI
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import java.net.HttpURLConnection
@@ -62,6 +63,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * - Supports generation token-based in-app cache clearing without affecting bookmark data.
  */
 object OgImageManager {
+    const val MAX_PENDING_FALLBACK_KEYS = 128
+    const val RECONCILE_ALL_KEY = "__reconcile_all__"
 
     private const val MAX_CACHE_SIZE_BYTES = 16 * 1024 * 1024 // 16MB limit
 
@@ -73,7 +76,10 @@ object OgImageManager {
     private val cacheGeneration = downloads.generation
     private val _cacheGenerationState = MutableStateFlow(0L)
     val cacheGenerationState: StateFlow<Long> = _cacheGenerationState.asStateFlow()
-    private val imageRevisions = ConcurrentHashMap<String, MutableStateFlow<Long>>()
+    private val _exactImageUpdates = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    private val emissionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val pendingFallbackKeys = ConcurrentHashMap.newKeySet<String>()
+    private val isDrainingFallback = AtomicBoolean(false)
 
     @VisibleForTesting
     internal var imageDownloader: (suspend (String) -> ByteArray?)? = null
@@ -125,13 +131,48 @@ object OgImageManager {
     }
 
     /** Exact-image notifications update observers without invalidating sibling card requests. */
-    fun observeExactImageUpdates(imageKey: String): StateFlow<Long> =
-        imageRevisions.computeIfAbsent(imageKey) { MutableStateFlow(0L) }.asStateFlow()
+    fun observeExactImageUpdates(imageKey: String): Flow<String> =
+        _exactImageUpdates.filter { it == imageKey || it == RECONCILE_ALL_KEY }
 
     private fun notifyExactImageUpdated(domain: String, imageKey: String) {
-        val revision = imageRevisions.computeIfAbsent(imageKey) { MutableStateFlow(0L) }
-        revision.value += 1
+        if (!_exactImageUpdates.tryEmit(imageKey)) {
+            if (pendingFallbackKeys.size >= MAX_PENDING_FALLBACK_KEYS) {
+                // Bounded backlog overflow: coalesce all pending/future keys into a global reconciliation signal
+                pendingFallbackKeys.clear()
+                pendingFallbackKeys.add(RECONCILE_ALL_KEY)
+            } else if (!pendingFallbackKeys.contains(RECONCILE_ALL_KEY)) {
+                pendingFallbackKeys.add(imageKey)
+            }
+            drainPendingFallbackKeys()
+        }
         notifyOgImageUpdated(domain)
+    }
+
+    private fun drainPendingFallbackKeys() {
+        if (isDrainingFallback.compareAndSet(false, true)) {
+            emissionScope.launch {
+                try {
+                    while (pendingFallbackKeys.isNotEmpty()) {
+                        val iterator = pendingFallbackKeys.iterator()
+                        if (iterator.hasNext()) {
+                            val key = iterator.next()
+                            iterator.remove()
+                            _exactImageUpdates.emit(key)
+                        }
+                    }
+                } finally {
+                    isDrainingFallback.set(false)
+                    if (pendingFallbackKeys.isNotEmpty()) {
+                        drainPendingFallbackKeys()
+                    }
+                }
+            }
+        }
+    }
+
+    @VisibleForTesting
+    internal fun notifyExactImageUpdatedForTesting(domain: String, imageKey: String) {
+        notifyExactImageUpdated(domain, imageKey)
     }
 
     /**
@@ -306,7 +347,7 @@ object OgImageManager {
                 dir.deleteRecursively()
             }
             domainRevisions.clear()
-            imageRevisions.clear()
+            pendingFallbackKeys.clear()
             _cacheGenerationState.value = cacheGeneration.get()
             _cacheClearedEvent.tryEmit(cacheGeneration.get())
         }

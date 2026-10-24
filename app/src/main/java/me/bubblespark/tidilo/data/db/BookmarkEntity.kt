@@ -78,7 +78,9 @@ data class BookmarkEntity(
             isAiSkipped = isAiSkipped,
             rssFeedId = rssFeedId,
             rssPublishedAt = rssPublishedAt,
-            ogImageUrl = ogImageUrl
+            ogImageUrl = ogImageUrl,
+            domain = domain,
+            ogImageFilename = ogImageKey
         )
     }
 
@@ -99,7 +101,9 @@ data class BookmarkEntity(
                 isAiSkipped = item.isAiSkipped,
                 rssFeedId = item.rssFeedId,
                 rssPublishedAt = item.rssPublishedAt,
-                ogImageUrl = item.ogImageUrl
+                ogImageUrl = item.ogImageUrl,
+                domain = item.domain,
+                ogImageKey = item.ogImageFilename
             )
         }
     }

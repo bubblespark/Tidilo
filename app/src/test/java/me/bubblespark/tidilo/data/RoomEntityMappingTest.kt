@@ -81,6 +81,24 @@ class RoomEntityMappingTest {
         assertEquals(original.isNsfw, restored.isNsfw)
         assertEquals(original.ogImageUrl, restored.ogImageUrl)
         assertEquals(me.bubblespark.tidilo.data.OgImageManager.computeImageKey("https://example.com/images/article_og.png"), restored.ogImageFilename)
+        assertEquals("example.com", entity.domain)
+        assertEquals(entity.domain, restored.domain)
+        assertEquals(entity.ogImageKey, restored.ogImageFilename)
+    }
+
+    @Test
+    fun testBookmarkItemRetainsConstructorDomainAndOgImageFilename() {
+        val item = BookmarkItem(
+            id = "custom-1",
+            title = "Custom Title",
+            url = "https://example.com/test",
+            description = "Desc",
+            tag = Tag.createEmpty(),
+            domain = "custom.domain.com",
+            ogImageFilename = "custom-hash-key"
+        )
+        assertEquals("custom.domain.com", item.domain)
+        assertEquals("custom-hash-key", item.ogImageFilename)
     }
 
     @Test

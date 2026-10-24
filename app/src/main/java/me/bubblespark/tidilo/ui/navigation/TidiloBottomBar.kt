@@ -62,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -163,7 +164,7 @@ fun TidiloBottomBar(
         // Expanded (86dp container): standard 16dp FAB margin from screen right edge
         val expandedCenterOffsetX = (maxWidth / 2) - 16.dp - (86.dp / 2)
 
-        val actionButtonOffsetX by animateDpAsState(
+        val actionButtonOffsetX = animateDpAsState(
             targetValue = if (isBarsVisible) contractedCenterOffsetX else expandedCenterOffsetX,
             animationSpec = spring(
                 dampingRatio = Spring.DampingRatioLowBouncy,
@@ -344,7 +345,7 @@ fun TidiloBottomBar(
             exit = scaleOut(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.Center)
-                .offset(x = -actionButtonOffsetX)
+                .offset { IntOffset(x = -actionButtonOffsetX.value.roundToPx(), y = 0) }
         ) {
             Box(
                 modifier = Modifier.requiredSize(buttonSize),
@@ -394,7 +395,7 @@ fun TidiloBottomBar(
             exit = scaleOut(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.Center)
-                .offset(x = actionButtonOffsetX)
+                .offset { IntOffset(x = actionButtonOffsetX.value.roundToPx(), y = 0) }
         ) {
             Box(
                 modifier = Modifier.requiredSize(buttonSize),

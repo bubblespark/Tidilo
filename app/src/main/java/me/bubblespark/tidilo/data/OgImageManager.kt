@@ -10,9 +10,7 @@ import androidx.collection.LruCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -65,6 +63,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * - Supports generation token-based in-app cache clearing without affecting bookmark data.
  */
 object OgImageManager {
+    const val MAX_PENDING_FALLBACK_KEYS = 128
+    const val RECONCILE_ALL_KEY = "__reconcile_all__"
 
     private const val MAX_CACHE_SIZE_BYTES = 16 * 1024 * 1024 // 16MB limit
 
@@ -132,11 +132,17 @@ object OgImageManager {
 
     /** Exact-image notifications update observers without invalidating sibling card requests. */
     fun observeExactImageUpdates(imageKey: String): Flow<String> =
-        _exactImageUpdates.filter { it == imageKey }
+        _exactImageUpdates.filter { it == imageKey || it == RECONCILE_ALL_KEY }
 
     private fun notifyExactImageUpdated(domain: String, imageKey: String) {
         if (!_exactImageUpdates.tryEmit(imageKey)) {
-            pendingFallbackKeys.add(imageKey)
+            if (pendingFallbackKeys.size >= MAX_PENDING_FALLBACK_KEYS) {
+                // Bounded backlog overflow: coalesce all pending/future keys into a global reconciliation signal
+                pendingFallbackKeys.clear()
+                pendingFallbackKeys.add(RECONCILE_ALL_KEY)
+            } else if (!pendingFallbackKeys.contains(RECONCILE_ALL_KEY)) {
+                pendingFallbackKeys.add(imageKey)
+            }
             drainPendingFallbackKeys()
         }
         notifyOgImageUpdated(domain)

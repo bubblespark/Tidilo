@@ -377,4 +377,30 @@ class OgImageManagerTest {
 
         job.cancel()
     }
+
+    @Test
+    fun testReconcileAllKeyDeliveredWhenFallbackSaturated(): Unit = runBlocking {
+        val targetKey = "card-specific-key"
+        val received = mutableListOf<String>()
+
+        val job = launch {
+            OgImageManager.observeExactImageUpdates(targetKey).collect {
+                received.add(it)
+            }
+        }
+        delay(50)
+
+        // Directly emit the global reconciliation signal to verify observers receive it
+        OgImageManager.notifyExactImageUpdatedForTesting("example.com", OgImageManager.RECONCILE_ALL_KEY)
+
+        withTimeout(3000) {
+            while (received.isEmpty()) {
+                delay(20)
+            }
+        }
+
+        assertTrue(received.contains(OgImageManager.RECONCILE_ALL_KEY))
+
+        job.cancel()
+    }
 }

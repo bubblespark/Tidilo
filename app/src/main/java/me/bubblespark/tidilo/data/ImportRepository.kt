@@ -22,6 +22,7 @@ import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
 import kotlinx.coroutines.flow.flowOf
+import androidx.room.withTransaction
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkDao
 import me.bubblespark.tidilo.data.db.BookmarkEntity
@@ -52,6 +53,7 @@ class ImportRepository internal constructor(
         ?: throw IllegalArgumentException("taskDao must be provided if context is null"),
     private val bookmarkDao: BookmarkDao? = context?.let { AppDatabase.getInstance(it).bookmarkDao() },
     private val notificationDao: ImportNotificationDao? = context?.let { AppDatabase.getInstance(it).importNotificationDao() },
+    private val database: AppDatabase? = context?.let { AppDatabase.getInstance(it) },
     private val repositoryScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     private val isAppInForeground: () -> Boolean = { TidiloApplication.instance.isAppInForeground },
     private val openModel: () -> GenerativeModel = { Generation.getClient() },
@@ -107,6 +109,14 @@ class ImportRepository internal constructor(
     }
 
     private val importMutex = Mutex()
+
+    private suspend fun <T> runInDbOrLock(block: suspend () -> T): T {
+        return if (database != null) {
+            database.withTransaction { block() }
+        } else {
+            importMutex.withLock { block() }
+        }
+    }
     private var batchProgressState = BatchProgressState()
     @Volatile
     private var isAiCancelPending = false
@@ -413,13 +423,18 @@ class ImportRepository internal constructor(
                     articlePrepared = true
                 )
 
-                importMutex.withLock {
+                val isInserted = runInDbOrLock {
                     val finalRecheck = checkDuplicate(realUrl)
                     if (finalRecheck !is DuplicateCheckResult.NoDuplicate) {
                         handleDuplicateOrConflict(realUrl, finalRecheck, importing.id, onImported)
-                        return@launch
+                        false
+                    } else {
+                        taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
+                        true
                     }
-                    taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
+                }
+                if (!isInserted) {
+                    return@launch
                 }
                 onImported?.invoke(Result.success(newItem))
             } catch (e: DuplicateUrlException) {
@@ -428,10 +443,6 @@ class ImportRepository internal constructor(
                 throw e
             } catch (e: Exception) {
                 // Fallback: If network/parsing throws, create fallback task with basic details
-                val fallbackCheck = importMutex.withLock { checkDuplicate(normalized) }
-                if (handleDuplicateOrConflict(normalized, fallbackCheck, importing.id, onImported)) {
-                    return@launch
-                }
                 val domain = DomainIconManager.extractDomain(normalized)
                 val isDomainNsfw = DomainPolicyManager.isNsfwDomain(domain)
                 val fallbackItem = ImportTask(
@@ -442,8 +453,18 @@ class ImportRepository internal constructor(
                     errorMessage = e.message,
                     isNsfw = isDomainNsfw
                 )
-                importMutex.withLock {
-                    taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(fallbackItem))
+                val isFallbackInserted = runInDbOrLock {
+                    val fallbackCheck = checkDuplicate(normalized)
+                    if (fallbackCheck !is DuplicateCheckResult.NoDuplicate) {
+                        handleDuplicateOrConflict(normalized, fallbackCheck, importing.id, onImported)
+                        false
+                    } else {
+                        taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(fallbackItem))
+                        true
+                    }
+                }
+                if (!isFallbackInserted) {
+                    return@launch
                 }
                 onImported?.invoke(Result.failure(e))
             } finally {

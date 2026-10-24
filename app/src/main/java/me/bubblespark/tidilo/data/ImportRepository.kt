@@ -386,6 +386,16 @@ class ImportRepository internal constructor(
                 val prepared = ArticlePreparation.prepare(parsed)
 
                 val realUrl = WebPageParser.normalizeUrl(prepared.url) ?: prepared.url
+                // If URL resolved to a different canonical URL through redirects,
+                // update any in-flight duplicate notifications recorded for the submitted URL
+                if (realUrl != normalized) {
+                    val redirectDomain = DomainIconManager.extractDomain(realUrl).orEmpty()
+                    notificationDao?.updateResolvedUrl(
+                        submittedUrl = normalized,
+                        resolvedUrl = realUrl,
+                        domain = redirectDomain
+                    )
+                }
                 // Post-Redirect Check (handles redirects) - atomic duplicate check & mutation in database transaction
                 if (realUrl != normalized) {
                     val isRedirectHandled = runInDbOrLock {

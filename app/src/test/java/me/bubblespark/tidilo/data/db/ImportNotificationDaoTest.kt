@@ -49,6 +49,15 @@ class ImportNotificationDaoTest {
             list.removeAll { it.id == id }
             emit()
         }
+
+        override suspend fun updateResolvedUrl(submittedUrl: String, resolvedUrl: String, domain: String) {
+            val updated = list.map {
+                if (it.url == submittedUrl) it.copy(url = resolvedUrl, domain = domain) else it
+            }
+            list.clear()
+            list.addAll(updated)
+            emit()
+        }
     }
 
     @Test
@@ -125,5 +134,30 @@ class ImportNotificationDaoTest {
 
         dao.deleteAll()
         assertTrue(dao.observeNotifications().first().isEmpty())
+    }
+    @Test
+    fun testUpdateResolvedUrl() = runBlocking {
+        val dao = FakeImportNotificationDao()
+
+        dao.insert(
+            ImportNotificationEntity(
+                type = "WARNING",
+                domain = "short.link",
+                url = "https://short.link/xyz",
+                message = "Duplicate URL (Already in Queue)",
+                existingBookmarkId = null
+            )
+        )
+
+        dao.updateResolvedUrl(
+            submittedUrl = "https://short.link/xyz",
+            resolvedUrl = "https://example.com/canonical",
+            domain = "example.com"
+        )
+
+        val notifications = dao.observeNotifications().first()
+        assertEquals(1, notifications.size)
+        assertEquals("https://example.com/canonical", notifications.first().url)
+        assertEquals("example.com", notifications.first().domain)
     }
 }

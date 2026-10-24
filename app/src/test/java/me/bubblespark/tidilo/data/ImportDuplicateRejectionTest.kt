@@ -179,6 +179,15 @@ class ImportDuplicateRejectionTest {
             notifications.removeIf { it.id == id }
             emit()
         }
+
+        override suspend fun updateResolvedUrl(submittedUrl: String, resolvedUrl: String, domain: String) {
+            val updated = notifications.map {
+                if (it.url == submittedUrl) it.copy(url = resolvedUrl, domain = domain) else it
+            }
+            notifications.clear()
+            notifications.addAll(updated)
+            emit()
+        }
     }
 
     @Test
@@ -723,5 +732,62 @@ class ImportDuplicateRejectionTest {
             }.first()
         }
         assertTrue(notifications.isNotEmpty())
+    }
+    @Test
+    fun testInFlightDuplicate_ResolvesUrl_UpdatesNotificationUrl() = runBlocking {
+        val bookmarkDao = TestBookmarkDao()
+        val taskDao = TestImportTaskDao()
+        val notificationDao = TestImportNotificationDao()
+
+        val submittedUrl = "https://short.link/redirect-item"
+        val resolvedUrl = "https://example.com/canonical-item"
+
+        val acquirerGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val importFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
+
+        val repository = ImportRepository(
+            context = null,
+            taskDao = taskDao,
+            bookmarkDao = bookmarkDao,
+            notificationDao = notificationDao,
+            repositoryScope = CoroutineScope(Dispatchers.IO),
+            articleAcquirer = { url ->
+                acquirerGate.await()
+                createFakeParsedPage(url = url, finalUrl = resolvedUrl)
+            }
+        )
+
+        // 1. First import begins and suspends in articleAcquirer
+        val result1 = repository.importUrl(submittedUrl) {
+            importFinished.complete(it)
+        }
+        assertTrue(result1.isSuccess)
+
+        // 2. Second import of exact same in-flight URL is rejected immediately
+        val result2 = repository.importUrl(submittedUrl)
+        assertTrue(result2.isFailure)
+
+        // Verify initial duplicate notification was recorded with submittedUrl
+        val initialNotifs = kotlinx.coroutines.withTimeout(5000) {
+            notificationDao.observeNotifications().filter { list -> list.any { it.url == submittedUrl } }.first()
+        }
+        assertEquals(1, initialNotifs.size)
+        assertEquals(submittedUrl, initialNotifs.first().url)
+
+        // 3. Release first import so it resolves to resolvedUrl
+        acquirerGate.complete(Unit)
+
+        val firstImportResult = kotlinx.coroutines.withTimeout(5000) {
+            importFinished.await()
+        }
+        assertTrue(firstImportResult.isSuccess)
+
+        // 4. Verify the notification's URL has been updated to the resolved canonical URL
+        val updatedNotifs = kotlinx.coroutines.withTimeout(5000) {
+            notificationDao.observeNotifications().filter { list -> list.any { it.url == resolvedUrl } }.first()
+        }
+        assertEquals(1, updatedNotifs.size)
+        assertEquals(resolvedUrl, updatedNotifs.first().url)
+        assertEquals("example.com", updatedNotifs.first().domain)
     }
 }

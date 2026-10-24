@@ -29,4 +29,7 @@ interface ImportNotificationDao {
 
     @Query("DELETE FROM import_notifications WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("UPDATE import_notifications SET url = :resolvedUrl, domain = :domain WHERE url = :submittedUrl")
+    suspend fun updateResolvedUrl(submittedUrl: String, resolvedUrl: String, domain: String)
 }

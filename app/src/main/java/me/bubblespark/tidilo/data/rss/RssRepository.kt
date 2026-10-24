@@ -85,8 +85,8 @@ internal class RssRepository internal constructor(private val context: Context,
             val fetched = fetcher(registration = true).fetch(normalized, null, null)
             val document = requireNotNull(fetched.document) { "Feed returned no document" }
             val feed = RssFeedEntity(old?.id ?: UUID.randomUUID().toString(), normalized, document.title, mode, limit,
-                revision = (old?.revision ?: -1) + 1)
-            // XML validation discovers the title only; ingestion has its own operation and validators.
+                revision = (old?.revision ?: -1) + 1, iconUrl = document.iconUrl, siteUrl = document.siteUrl)
+            // XML validation discovers feed metadata only; ingestion has its own operation and validators.
             store.registerFeed(feed, confirmed)
             scheduleChanged()
             feed.id
@@ -199,6 +199,8 @@ internal class RssRepository internal constructor(private val context: Context,
                         if (!store.stage(feed, fetched.document?.entries.orEmpty(), now)) return@withTransaction false
                         val current = requireNotNull(dao.feed(feed.id))
                         dao.putFeed(current.copy(title = fetched.document?.title ?: current.title,
+                            iconUrl = if (fetched.document == null) current.iconUrl else fetched.document.iconUrl,
+                            siteUrl = if (fetched.document == null) current.siteUrl else fetched.document.siteUrl,
                             etag = if (fetched.page.status == 304) current.etag else fetched.page.etag,
                             lastModified = if (fetched.page.status == 304) current.lastModified else fetched.page.lastModified,
                             lastAttemptAt = now, error = null, acquisitionXmlDone = true))

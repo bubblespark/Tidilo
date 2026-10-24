@@ -23,6 +23,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DomainIconCardTest {
+    @Test fun feedCardRecoversDeclaredIconAndColorAgainWhileVisibleAfterClear() = runBlocking {
+        val calls = AtomicInteger()
+        val data = bytes()
+        val feed = me.bubblespark.tidilo.data.db.RssFeedEntity("ui-feed", "https://feed-ui.example/xml", "UI Feed",
+            iconUrl = "https://images-ui.example/logo.png", siteUrl = "https://publisher-ui.example/")
+        DomainIconManager.htmlDiscoverer = { error("Feed card must not fetch HTML") }
+        DomainIconManager.httpDownloader = { url ->
+            assertEquals("https://images-ui.example/logo.png", url)
+            calls.incrementAndGet(); DomainIconManager.DownloadResult(data, true, false)
+        }
+        screen({ RssFeedCard(me.bubblespark.tidilo.data.db.RssFeedGroup(feed, 3), {}) }) {
+            val key = DomainIconManager.feedIconKey(feed)
+            withTimeout(5000) { while (DomainIconManager.getCachedIconBitmap(key) == null) delay(10) }
+            frames()
+            assertEquals(1, calls.get())
+            DomainIconManager.clearCache(context)
+            withTimeout(5000) { while (calls.get() < 2 || DomainIconManager.getCachedIconBitmap(key) == null) delay(10) }
+            frames()
+            assertEquals(2, calls.get())
+            assertNotEquals(DomainIconManager.generateDomainAccentColor(key), DomainIconManager.getCachedDominantColor(key))
+        }
+    }
+
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val target = instrumentation.targetContext
     private val root = File(target.cacheDir, "icon-ui-${UUID.randomUUID()}")

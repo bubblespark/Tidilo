@@ -11,7 +11,8 @@ import org.jsoup.parser.Parser
 
 data class RssEntry(val key: String, val url: String, val title: String, val description: String,
     val bodySnippet: String, val imageUrl: String?, val publishedAt: Long?)
-data class RssFeedDocument(val title: String, val entries: List<RssEntry>)
+data class RssFeedDocument(val title: String, val entries: List<RssEntry>,
+    val iconUrl: String? = null, val siteUrl: String? = null)
 
 internal object RssFeedParser {
     /** Parses feed metadata only; article HTML and AI execution are outside this boundary. */
@@ -31,7 +32,21 @@ internal object RssFeedParser {
         val title = channel.child("title")?.let(::plain).orEmpty().ifBlank { URI(responseUrl).host }
         val items = if (kind == "feed") root.children().filter { it.localName() == "entry" }
             else (if (kind == "rdf") root else channel).children().filter { it.localName() == "item" }
-        return RssFeedDocument(title, items.mapNotNull { item -> entry(item, responseUrl, kind == "feed") })
+        fun url(element: Element?, attribute: String? = null): String? = element?.let {
+            httpUrl(base(it, responseUrl), if (attribute == null) it.text() else it.attr(attribute))
+        }
+        fun metadataChild(parent: Element?, name: String): Element? = parent?.children()?.firstOrNull {
+            it.localName() == name && it.namespaceUri() == channel.namespaceUri()
+        }
+        val icon = if (kind == "feed") url(metadataChild(channel, "icon")) ?: url(metadataChild(channel, "logo"))
+            else url(metadataChild(metadataChild(channel, "image"), "url"))
+                ?: if (kind == "rdf") url(metadataChild(metadataChild(root, "image"), "url")) else null
+        val site = if (kind == "feed") channel.children().filter {
+            it.localName() == "link" && it.namespaceUri() == channel.namespaceUri() &&
+                it.attr("rel").let { rel -> rel.isBlank() || rel == "alternate" } &&
+                it.attr("type").let { type -> type.isBlank() || type == "text/html" || type == "application/xhtml+xml" }
+        }.firstNotNullOfOrNull { url(it, "href") } else url(metadataChild(channel, "link"))
+        return RssFeedDocument(title, items.mapNotNull { item -> entry(item, responseUrl, kind == "feed") }, icon, site)
     }
 
     private fun entry(item: Element, responseUrl: String, atom: Boolean): RssEntry? {

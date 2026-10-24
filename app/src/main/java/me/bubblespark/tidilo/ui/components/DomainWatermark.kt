@@ -35,7 +35,19 @@ fun DomainWatermark(
 
     val iconBitmap by rememberDomainIcon(domain, pageUrl)
 
-    val bitmap = iconBitmap ?: return
+    IconWatermark(iconBitmap, modifier, size, saturation, alpha)
+}
+
+/** Same image treatment for domain and feed-specific watermarks. */
+@Composable
+internal fun IconWatermark(
+    bitmap: androidx.compose.ui.graphics.ImageBitmap?,
+    modifier: Modifier = Modifier,
+    size: Dp = 96.dp,
+    saturation: Float = 0.50f,
+    alpha: Float = 0.20f
+) {
+    if (bitmap == null) return
 
     val saturationFilter = remember(saturation) {
         ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(saturation) })

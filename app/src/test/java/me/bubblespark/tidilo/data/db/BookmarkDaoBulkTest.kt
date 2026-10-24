@@ -49,6 +49,7 @@ class BookmarkDaoBulkTest {
         override suspend fun distinctDomains(): List<String> = emptyList()
         override fun observeDistinctDomains(): Flow<List<String>> = emptyFlow()
         override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) {}
+        override suspend fun clearRssFeedId(id: String) {}
     }
 
     @Test

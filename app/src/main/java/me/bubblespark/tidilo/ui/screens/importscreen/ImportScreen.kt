@@ -60,6 +60,11 @@ import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -91,7 +96,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import me.bubblespark.tidilo.data.db.NotificationType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -118,6 +129,7 @@ import kotlin.math.roundToInt
 fun ImportScreen(
     viewModel: ImportViewModel,
     initialSharedUrl: String? = null,
+    onNavigateToDetail: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val allReadyTasks by viewModel.readyTasks.collectAsStateWithLifecycle()
@@ -127,6 +139,9 @@ fun ImportScreen(
     var showAllRssReady by remember { mutableStateOf(false) }
     val importingTasks by viewModel.importingTasks.collectAsStateWithLifecycle()
     val errorTasks by viewModel.errorTasks.collectAsStateWithLifecycle()
+    val notifications by viewModel.notifications.collectAsStateWithLifecycle()
+    val unreadNotificationCount by viewModel.unreadNotificationCount.collectAsStateWithLifecycle()
+    var showNotificationPopup by remember { mutableStateOf(false) }
 
     // Section expand/collapse states (Requirements: Ready and Error default to open)
     var isReadyExpanded by remember { mutableStateOf(true) }
@@ -407,8 +422,145 @@ fun ImportScreen(
                         )
                     }
 
-                    // Right action: Import (+) button
+                    // Right actions: Notification Bell and Import (+) button
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box {
+                            IconButton(
+                                onClick = {
+                                    showNotificationPopup = true
+                                    viewModel.markAllNotificationsAsRead()
+                                },
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                BadgedBox(
+                                    badge = {
+                                        if (unreadNotificationCount > 0) {
+                                            Badge {
+                                                Text(if (unreadNotificationCount > 99) "99+" else unreadNotificationCount.toString())
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_notifications),
+                                        contentDescription = "Notifications",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = showNotificationPopup,
+                                onDismissRequest = { showNotificationPopup = false },
+                                modifier = Modifier
+                                    .widthIn(min = 320.dp, max = 360.dp)
+                                    .background(MaterialTheme.colorScheme.surface)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Notifications",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (notifications.isNotEmpty()) {
+                                        TextButton(onClick = { viewModel.clearAllNotifications() }) {
+                                            Text("Clear all", style = MaterialTheme.typography.labelMedium)
+                                        }
+                                    }
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                                if (notifications.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(24.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "No notifications",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                } else {
+                                    Column(
+                                        modifier = Modifier
+                                            .heightIn(max = 380.dp)
+                                            .verticalScroll(rememberScrollState())
+                                    ) {
+                                        notifications.forEach { notification ->
+                                            val iconRes = when (notification.type) {
+                                                NotificationType.INFO.name -> R.drawable.ic_info
+                                                NotificationType.ERROR.name -> R.drawable.ic_error
+                                                else -> R.drawable.ic_warning
+                                            }
+                                            val iconTint = when (notification.type) {
+                                                NotificationType.INFO.name -> MaterialTheme.colorScheme.primary
+                                                NotificationType.ERROR.name -> MaterialTheme.colorScheme.error
+                                                else -> MaterialTheme.colorScheme.tertiary
+                                            }
+
+                                            ListItem(
+                                                modifier = Modifier.clickable {
+                                                    showNotificationPopup = false
+                                                    if (notification.existingBookmarkId != null) {
+                                                        onNavigateToDetail(notification.existingBookmarkId)
+                                                    } else {
+                                                        viewModel.findBookmarkIdByUrl(notification.url) { bookmarkId ->
+                                                            if (bookmarkId != null) {
+                                                                onNavigateToDetail(bookmarkId)
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                leadingContent = {
+                                                    Icon(
+                                                        painter = painterResource(id = iconRes),
+                                                        contentDescription = notification.type,
+                                                        tint = iconTint,
+                                                        modifier = Modifier.size(22.dp)
+                                                    )
+                                                },
+                                                overlineContent = {
+                                                    Text(
+                                                        text = notification.domain,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.secondary
+                                                    )
+                                                },
+                                                headlineContent = {
+                                                    Text(
+                                                        text = notification.message,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                },
+                                                supportingContent = {
+                                                    Text(
+                                                        text = notification.url,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.outline
+                                                    )
+                                                }
+                                            )
+                                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         IconButton(
                             onClick = { showImportDialog = true },
                             modifier = Modifier.size(44.dp)

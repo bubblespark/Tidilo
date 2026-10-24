@@ -25,7 +25,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -280,7 +283,6 @@ fun BookmarkDetailScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
                 .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
                 .pointerInput(Unit) {
                     detectTapGestures(onTap = {
@@ -294,6 +296,7 @@ fun BookmarkDetailScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .statusBarsPadding()
                 .padding(top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -837,6 +840,26 @@ fun BookmarkDetailScreen(
         // Bottom spacer to prevent overlap with FAB menu
         Spacer(modifier = Modifier.height(96.dp))
     } // End of main scrolling Column
+
+    // Status bar protection gradient scrim for Edge-to-Edge immersion
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val scrimBg = MaterialTheme.colorScheme.background
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(statusBarTop + 28.dp)
+            .align(Alignment.TopCenter)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        scrimBg.copy(alpha = 0.85f),
+                        scrimBg.copy(alpha = 0.50f),
+                        scrimBg.copy(alpha = 0.15f),
+                        Color.Transparent
+                    )
+                )
+            )
+    )
 
     // Scrim (prevents clicks behind expanded menu and collapses on tap)
     if (isFabMenuExpanded) {

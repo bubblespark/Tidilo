@@ -181,6 +181,10 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 - **Layout Hierarchy**:
   - Root `Box(Modifier.fillMaxSize())`: Hosts full-screen scrollable `Column`, scrim overlay, and bottom-anchored FAB menu.
   - **Scroll Separation**: The FAB menu and backdrop scrim are placed **outside** the scrollable `Column`. Expanding the menu triggers zero unintended scroll jumps, and the toggle button never clips off-screen.
+  - **Edge-to-Edge Status Bar Translucency & Scrim**:
+    - The scrollable `Column` extends edge-to-edge into the status bar area without root `statusBarsPadding()`.
+    - The top header `Row` applies `Modifier.statusBarsPadding()` directly, maintaining standard title bar alignment (`statusBarsPadding() + top = 4.dp, bottom = 4.dp`) at rest.
+    - A standardized 4-stop vertical gradient status bar protection scrim (`listOf(scrimBg.copy(0.85f), scrimBg.copy(0.50f), scrimBg.copy(0.15f), Color.Transparent)`) of height `statusBarTop + 28.dp` is anchored at `Alignment.TopCenter`, protecting status bar system icons when content scrolls underneath.
 - **Top Header & `og:image` Banner with Domain Watermark Fallback**:
   - **`og:image` Banner Placement**: Positioned directly beneath the Top Header Row and above the bookmark title. Constrained to full width with a maximum vertical height of `200.dp` (`heightIn(max = 200.dp)`), preserving original aspect ratio via `ContentScale.Crop` with `RoundedCornerShape(16.dp)` clipping.
   - **Reactive Cache & On-Demand Loading**: Integrated with `OgImageManager` (observing `cacheGenerationState` and `observeExactImageUpdates`, triggering background on-demand fetching when uncached), matching the fast-path memory cache hit pattern in `BookmarkGridCard`.

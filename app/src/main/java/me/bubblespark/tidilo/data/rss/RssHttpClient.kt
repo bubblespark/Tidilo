@@ -70,7 +70,7 @@ internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boole
                 } else {
                     if (status != 200) return@withContext RssHttpPage(status, currentUrl, "",
                         connection.getHeaderField("ETag"), connection.getHeaderField("Last-Modified"))
-                    if (connection.contentLengthLong > maxBytes) throw IOException("RSS response exceeds 2 MB")
+                    if (connection.contentLengthLong > maxBytes) throw IOException("Response exceeds limit of $maxBytes bytes")
                     val output = ByteArrayOutputStream()
                     connection.inputStream.use { input ->
                         val buffer = ByteArray(8192)
@@ -82,7 +82,7 @@ internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boole
                             val read = input.read(buffer)
                             remaining()
                             if (read < 0) break
-                            if (output.size() + read > maxBytes) throw IOException("RSS response exceeds 2 MB")
+                            if (output.size() + read > maxBytes) throw IOException("Response exceeds limit of $maxBytes bytes")
                             output.write(buffer, 0, read)
                         }
                     }

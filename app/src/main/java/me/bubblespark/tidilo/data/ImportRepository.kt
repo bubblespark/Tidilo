@@ -14,6 +14,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.update
@@ -124,6 +125,7 @@ class ImportRepository internal constructor(
     internal val inFlightResolvedUrls = java.util.concurrent.ConcurrentHashMap<String, ResolvedTarget>()
     private val pendingDuplicateNotificationJobs = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<Job>>()
     internal var onEnteringTransaction: (suspend (url: String) -> Unit)? = null
+    internal var onDuplicateIdentified: ((activeId: String) -> Unit)? = null
 
     private suspend fun <T> runInDbOrLock(url: String? = null, block: suspend () -> T): T {
         if (url != null) {
@@ -357,11 +359,29 @@ class ImportRepository internal constructor(
         }
 
         val importing = ImportingTask(url = normalized, title = title)
-        var activeImportingTask: ImportingTask? = null
+        var notificationDeferred: CompletableDeferred<Unit>? = null
+        var initialUrl: String = normalized
+        var initialDomain: String = DomainIconManager.extractDomain(normalized).orEmpty()
+        var activeId: String? = null
+
         val canProceed = synchronized(_importingTasks) {
             val existing = _importingTasks.value.firstOrNull { it.url == normalized }
             if (existing != null) {
-                activeImportingTask = existing
+                activeId = existing.id
+                onDuplicateIdentified?.invoke(existing.id)
+
+                val initialResolved = inFlightResolvedUrls[normalized]?.takeIf { it.importingId == existing.id }
+                if (initialResolved != null) {
+                    initialUrl = initialResolved.realUrl
+                    initialDomain = initialResolved.domain
+                }
+
+                val deferred = CompletableDeferred<Unit>()
+                notificationDeferred = deferred
+                pendingDuplicateNotificationJobs.computeIfAbsent(existing.id) { java.util.concurrent.CopyOnWriteArrayList() }.add(deferred)
+                deferred.invokeOnCompletion {
+                    pendingDuplicateNotificationJobs[existing.id]?.remove(deferred)
+                }
                 false
             } else {
                 _importingTasks.update { it + importing }
@@ -371,36 +391,39 @@ class ImportRepository internal constructor(
 
         if (!canProceed) {
             val ex = DuplicateUrlException("Duplicate URL (Already in Queue)")
-            val activeId = activeImportingTask?.id
-            val initialResolved = inFlightResolvedUrls[normalized]?.takeIf { it.importingId == activeId }
-            val initialUrl = initialResolved?.realUrl ?: normalized
-            val initialDomain = initialResolved?.domain ?: DomainIconManager.extractDomain(normalized).orEmpty()
-            val job = repositoryScope.launch {
-                notificationDao?.insert(
-                    ImportNotificationEntity(
-                        type = NotificationType.WARNING.name,
-                        domain = initialDomain,
-                        url = initialUrl,
-                        message = "Duplicate URL (Already in Queue)",
-                        existingBookmarkId = null
-                    )
-                )
-                // Race safety: If resolution happened while insert was suspended/pending,
-                // re-apply update to guarantee resolved URL is preserved
-                val currentResolved = inFlightResolvedUrls[normalized]?.takeIf { it.importingId == activeId }
-                if (currentResolved != null && currentResolved.realUrl != initialUrl) {
-                    notificationDao?.updateResolvedUrl(
-                        submittedUrl = normalized,
-                        resolvedUrl = currentResolved.realUrl,
-                        domain = currentResolved.domain
-                    )
+            val targetDeferred = notificationDeferred
+            val targetActiveId = activeId
+            val targetUrl: String = initialUrl
+            val targetDomain: String = initialDomain
+            try {
+                repositoryScope.launch {
+                    try {
+                        notificationDao?.insert(
+                            ImportNotificationEntity(
+                                type = NotificationType.WARNING.name,
+                                domain = targetDomain,
+                                url = targetUrl,
+                                message = "Duplicate URL (Already in Queue)",
+                                existingBookmarkId = null
+                            )
+                        )
+                        // Race safety: If resolution happened while insert was suspended/pending,
+                        // re-apply update to guarantee resolved URL is preserved
+                        val currentResolved = inFlightResolvedUrls[normalized]?.takeIf { it.importingId == targetActiveId }
+                        if (currentResolved != null && currentResolved.realUrl != targetUrl) {
+                            notificationDao?.updateResolvedUrl(
+                                submittedUrl = normalized,
+                                resolvedUrl = currentResolved.realUrl,
+                                domain = currentResolved.domain
+                            )
+                        }
+                    } finally {
+                        targetDeferred?.complete(Unit)
+                    }
                 }
-            }
-            if (activeId != null) {
-                pendingDuplicateNotificationJobs.computeIfAbsent(activeId) { java.util.concurrent.CopyOnWriteArrayList() }.add(job)
-                job.invokeOnCompletion {
-                    pendingDuplicateNotificationJobs[activeId]?.remove(job)
-                }
+            } catch (t: Throwable) {
+                targetDeferred?.complete(Unit)
+                throw t
             }
             onImported?.invoke(Result.failure(ex))
             return Result.failure(ex)
@@ -527,11 +550,11 @@ class ImportRepository internal constructor(
                 }
                 onImported?.invoke(Result.failure(e))
             } finally {
-                synchronized(_importingTasks) {
+                val pendingJobs = synchronized(_importingTasks) {
                     _importingTasks.update { list -> list.filter { it.id != importing.id } }
+                    pendingDuplicateNotificationJobs.remove(importing.id).orEmpty().toList()
                 }
                 withContext(NonCancellable) {
-                    val pendingJobs = pendingDuplicateNotificationJobs.remove(importing.id).orEmpty().toList()
                     pendingJobs.joinAll()
                     val current = inFlightResolvedUrls[normalized]
                     if (current != null && current.importingId == importing.id) {

@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.db.BookmarkDao
 import me.bubblespark.tidilo.data.db.BookmarkEntity
@@ -946,5 +948,90 @@ class ImportDuplicateRejectionTest {
             }
         }
         assertNull(repository.inFlightResolvedUrls[aliasUrl])
+    }
+
+    @Test
+    fun testDuplicateRegistration_PausedBetweenIdentificationAndRegistration_PreventsPrematureFinalization() = runBlocking {
+        val bookmarkDao = TestBookmarkDao()
+        val taskDao = TestImportTaskDao()
+        val notificationDao = TestImportNotificationDao()
+
+        val aliasUrl = "https://short.link/atomic-alias"
+        val canonicalUrl = "https://example.com/atomic-target"
+
+        val acquirerGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val identifiedLatch = java.util.concurrent.CountDownLatch(1)
+        val allowRegistrationLatch = java.util.concurrent.CountDownLatch(1)
+        val firstImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
+
+        val repository = ImportRepository(
+            context = null,
+            taskDao = taskDao,
+            bookmarkDao = bookmarkDao,
+            notificationDao = notificationDao,
+            repositoryScope = CoroutineScope(Dispatchers.IO),
+            articleAcquirer = { url ->
+                acquirerGate.await()
+                createFakeParsedPage(url = url, finalUrl = canonicalUrl)
+            }
+        )
+
+        // 1. Start first import: aliasUrl
+        val res1 = repository.importUrl(aliasUrl) {
+            firstImportFinished.complete(it)
+        }
+        assertTrue(res1.isSuccess)
+
+        // 2. Set test seam that pauses between identifying active import and registering its notification job
+        repository.onDuplicateIdentified = { _ ->
+            identifiedLatch.countDown()
+            allowRegistrationLatch.await()
+        }
+
+        // 3. Launch duplicate import on a background dispatcher so it hits the seam and pauses while holding the lock
+        val duplicateDeferred = async(Dispatchers.Default) {
+            repository.importUrl(aliasUrl)
+        }
+
+        // Wait until duplicate import identifies the active import and pauses before registering
+        assertTrue(identifiedLatch.await(5, java.util.concurrent.TimeUnit.SECONDS))
+
+        // 4. Release first import so it resolves to canonicalUrl and reaches finally
+        acquirerGate.complete(Unit)
+
+        // Give first import time to attempt finalization
+        // Since duplicate import holds _importingTasks lock across identification and registration,
+        // first import CANNOT finalize prematurely or clear inFlightResolvedUrls
+        delay(100)
+
+        // Verify that while duplicate is paused holding the lock, first import has not finalized:
+        // The mapping for aliasUrl is still present and matches canonicalUrl!
+        val inFlightTarget = repository.inFlightResolvedUrls[aliasUrl]
+        assertNotNull("Mapping must not be cleared while duplicate registration is in progress", inFlightTarget)
+        assertEquals(canonicalUrl, inFlightTarget?.realUrl)
+
+        // 5. Now release registration in the duplicate import
+        allowRegistrationLatch.countDown()
+
+        // Wait for duplicate import call to finish (returns Result.failure)
+        val duplicateResult = kotlinx.coroutines.withTimeout(5000) { duplicateDeferred.await() }
+        assertTrue(duplicateResult.isFailure)
+
+        // First import finishes completely
+        val firstResult = kotlinx.coroutines.withTimeout(5000) { firstImportFinished.await() }
+        assertTrue(firstResult.isSuccess)
+
+        // 6. Verify the duplicate notification was correctly registered and updated with canonicalUrl
+        val finalNotifs = kotlinx.coroutines.withTimeout(5000) {
+            notificationDao.observeNotifications().filter { list ->
+                list.any { it.url == canonicalUrl }
+            }.first()
+        }
+        assertEquals(1, finalNotifs.size)
+        assertEquals(canonicalUrl, finalNotifs.first().url)
+        assertEquals("example.com", finalNotifs.first().domain)
+
+        // Reset test seam
+        repository.onDuplicateIdentified = null
     }
 }

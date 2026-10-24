@@ -26,12 +26,35 @@ import java.util.UUID
 import java.security.MessageDigest
 
 class BookmarkDatabaseTest {
+    @Test fun schemaNinePreservesXmlTasksAndRequiresHtmlBeforeInference() = runBlocking {
+        val name = "issue96-migration-${UUID.randomUUID()}.db"
+        val helper = legacy(name, 9)
+        val old = helper.writableDatabase
+        old.execSQL("INSERT INTO rss_feeds(id,url,title,mode,retentionLimit,deleted,revision,enabled) VALUES('feed','https://example.com/feed','Feed','AI',100,0,4,0)")
+        for (status in listOf("READY", "ERROR", "PROCESSING_AI")) {
+            old.execSQL("INSERT INTO import_tasks(id,url,title,status,statusText,assignedTags,createdAt,isNsfw,siteName,description,bodySnippet,rssFeedId) VALUES(?,?,? ,?,'Legacy','[]',1,0,'Feed','XML description','XML body','feed')",
+                arrayOf(status, "https://example.com/$status", "XML title", status))
+        }
+        helper.close()
+        val db = database(name)
+        try {
+            val tasks = db.importTaskDao().getAllTasks()
+            assertEquals(3, tasks.size)
+            assertTrue(tasks.all { !it.articlePrepared && it.bodySnippet == "XML body" && it.intendedMode == "AI" })
+            assertEquals(Long.MAX_VALUE, tasks.single { it.status == "ERROR" }.acquisitionRetryAt)
+            assertEquals("PROCESSING_AI", db.importTaskDao().getTaskById("PROCESSING_AI")!!.status)
+            assertEquals(0, db.importTaskDao().claimForAi("PROCESSING_AI", "Not yet prepared"))
+            assertFalse(db.rssDao().feed("feed")!!.enabled)
+            assertEquals(100, db.rssDao().feed("feed")!!.retentionLimit)
+        } finally { db.close(); context.deleteDatabase(name) }
+    }
+
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showNsfw: Boolean = true): List<BookmarkEntity> {
@@ -259,7 +282,8 @@ class BookmarkDatabaseTest {
                         db.execSQL(sql)
                     }
                     if (version >= 7) AppDatabase.MIGRATION_6_7.migrate(db)
-                    if (version == 8) AppDatabase.MIGRATION_7_8.migrate(db)
+                    if (version >= 8) AppDatabase.MIGRATION_7_8.migrate(db)
+                    if (version >= 9) AppDatabase.MIGRATION_8_9.migrate(db)
                     if (version in 4..5) db.execSQL("CREATE TABLE og_images (id TEXT PRIMARY KEY)")
                 }
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = error("Unexpected legacy upgrade")
@@ -387,7 +411,7 @@ class BookmarkDatabaseTest {
 
     @Test
     fun supportedUpgradePathsPreserveDataAndBoundedBackfillCompletesBeforeReads() = runBlocking {
-        for ((version, count) in listOf(3 to 3, 4 to 3, 5 to 3, 6 to 1000, 6 to 10000, 7 to 1000, 8 to 1000)) {
+        for ((version, count) in listOf(3 to 3, 4 to 3, 5 to 3, 6 to 1000, 6 to 10000, 7 to 1000, 8 to 1000, 9 to 1000)) {
             val name = "issue81-migration-${UUID.randomUUID()}.db"
             val helper = legacy(name, version)
             val old = helper.writableDatabase

@@ -278,4 +278,12 @@ The production `GeminiTaggingService.runNanoInference` and debug `DebugPromptTes
 
 ## RSS Foreground Inference
 
-RSS workers never invoke AICore. RSS tasks always use publisher XML metadata, even with an empty body snippet; startup article preparse and Readability are excluded. The foreground worker atomically claims valid tasks, prioritizes manual waiters, and preserves RSS first-seen/publication/source fields through AI success and fallback. The five-task cap applies only to unstarted tasks per feed; it is unrelated to retention or an SDK quota. See [RSS and Atom Subscriptions](rss.md).
+RSS workers never invoke AICore. RSS tasks use the common extracted article HTML input; legacy XML snippets require preparation before inference. The foreground worker atomically claims prepared valid tasks, prioritizes manual waiters, and preserves RSS first-seen/publication/source fields through AI success and fallback. The five-task cap applies only to unstarted tasks per feed; it is unrelated to retention or an SDK quota. See [RSS and Atom Subscriptions](rss.md).
+
+## Shared manual/RSS prepared input
+
+`ArticlePreparation` maps shared HTML extraction into title/site/Description/body input for manual and RSS imports. Both sources use the same prompt builder for identical HTML/settings; explicit manual title overrides remain intentional input. Legacy RSS XML tasks require HTML preparation before inference, even when their XML excerpt is nonblank. Insufficient HTML content and fetch failure remain acquisition errors. Scheduled work never invokes AICore, and Direct acquisition/retry bypasses AI entirely.
+
+Missing extracted text is a per-article error, including for manual imports. It does not invoke AICore or stop other waiting AI tasks. Explicit retry of a manual content error invalidates its preparation marker so article HTML can be fetched again rather than permanently reusing empty input.
+
+HTTP, connectivity, and other article acquisition failures during that re-fetch also remain per-article errors. They are distinguished from AICore failures and do not move unrelated waiting tasks to Error. Cancellation continues to propagate normally.

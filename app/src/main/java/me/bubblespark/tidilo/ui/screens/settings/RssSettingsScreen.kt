@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -35,15 +37,35 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
     val error by model.error.collectAsStateWithLifecycle()
     val wifi by model.wifi.collectAsStateWithLifecycle()
     val registration by model.registration.collectAsStateWithLifecycle()
+    val initialFetch by model.initialFetch.collectAsStateWithLifecycle()
+    val online by model.online.collectAsStateWithLifecycle()
     LifecycleResumeEffect(model) {
         model.startListening()
         onPauseOrDispose { model.stopListening() }
     }
     RssSettingsContent(feeds, settings, busy, error, wifi, onNavigateBack, model::retry,
         model::saveSettings, model::saveFeed, model::deleteFeed, model::fetchNow, model::clearError, model::setEnabled)
+    if (initialFetch != null) {
+        val mobileNotice = settings.wifiOnly && wifi == false
+        RssInitialFetchDialog(mobileNotice, online == true && wifi != null, busy,
+            onFetch = { model.fetchInitial(mobileNotice) }, onLater = model::dismissInitialFetch)
+    }
     registration?.let {
         RssRegistrationDialog(it.snapshot.savedCount, it.limit, busy, model::confirmRegistration, model::dismissRegistration)
     }
+}
+
+@Composable
+internal fun RssInitialFetchDialog(mobileNotice: Boolean, connected: Boolean, busy: Boolean,
+    onFetch: () -> Unit, onLater: () -> Unit) {
+    AlertDialog(onDismissRequest = { if (!busy) onLater() }, title = { Text(stringResource(R.string.rss_initial_title)) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.rss_initial_message))
+            if (connected && mobileNotice) Text(stringResource(R.string.rss_initial_mobile), color = MaterialTheme.colorScheme.error)
+            if (!connected) Text(stringResource(R.string.rss_initial_offline), color = MaterialTheme.colorScheme.error)
+        } },
+        confirmButton = { TextButton(onClick = onFetch, enabled = connected && !busy) { Text(stringResource(R.string.rss_fetch_now)) } },
+        dismissButton = { TextButton(onClick = onLater, enabled = !busy) { Text(stringResource(R.string.rss_later)) } })
 }
 
 @Composable
@@ -123,22 +145,35 @@ internal fun RssSettingsContent(
                 if (ready.isEmpty()) Text(stringResource(R.string.rss_no_feeds))
                 ready.forEach { feed ->
                     key(feed.id) {
-                        RssCard {
+                        RssCard(compact = true) {
                             Text(feed.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(feed.url, style = MaterialTheme.typography.bodySmall)
-                            Text(stringResource(R.string.rss_mode_display,
-                                stringResource(if (feed.mode == "AI") R.string.rss_ai_mode else R.string.rss_direct_mode)))
-                            Text(stringResource(R.string.rss_retention_display,
-                                feed.retentionLimit?.toString() ?: stringResource(R.string.rss_unlimited)))
-                            Row(Modifier.fillMaxWidth().toggleable(feed.enabled, enabled = !busy, role = Role.Checkbox,
-                                onValueChange = { onEnabled(feed.id, it) }), verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(feed.enabled, null, enabled = !busy)
-                                Text(stringResource(R.string.rss_enabled))
+                            Text(feed.url, style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(if (feed.mode == "AI") R.string.rss_ai_mode else R.string.rss_direct_mode),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(feed.retentionLimit?.let { stringResource(R.string.rss_retention_compact, it) }
+                                    ?: stringResource(R.string.rss_unlimited),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            feed.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                            Row {
-                                TextButton(onClick = { editing = feed; showEditor = true }, enabled = !busy) { Text(stringResource(R.string.rss_edit)) }
-                                TextButton(onClick = { deleting = feed }, enabled = !busy) { Text(stringResource(R.string.rss_delete)) }
+                            feed.error?.let {
+                                Text(if (it == "XML_FETCH_FAILED") stringResource(R.string.rss_xml_fetch_failed) else it,
+                                    color = MaterialTheme.colorScheme.error)
+                                if (it == "XML_FETCH_FAILED" && !feed.enabled) Text(stringResource(R.string.rss_enable_to_retry),
+                                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                            }
+                            val enabledLabel = stringResource(R.string.rss_enabled)
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(onClick = { editing = feed; showEditor = true }, enabled = !busy) { Text(stringResource(R.string.rss_edit_compact)) }
+                                TextButton(onClick = { deleting = feed }, enabled = !busy) { Text(stringResource(R.string.common_delete)) }
+                                Spacer(Modifier.weight(1f))
+                                Row(Modifier.toggleable(feed.enabled, enabled = !busy, role = Role.Switch,
+                                    onValueChange = { onEnabled(feed.id, it) }).semantics { contentDescription = enabledLabel },
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(stringResource(if (feed.enabled) R.string.rss_on else R.string.rss_off),
+                                        style = MaterialTheme.typography.labelSmall)
+                                    Switch(checked = feed.enabled, onCheckedChange = null, enabled = !busy)
+                                }
                             }
                         }
                     }
@@ -225,9 +260,10 @@ private fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onSav
 }
 
 @Composable
-private fun RssCard(content: @Composable ColumnScope.() -> Unit) {
+private fun RssCard(compact: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+        Column(Modifier.padding(if (compact) 16.dp else 20.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 12.dp), content = content)
     }
 }

@@ -35,3 +35,7 @@ The database schema and persisted `ogImageUrl` are unchanged. No page metadata i
 ## Verification
 
 JVM tests cover the four-worker limit, deduplication, partial/all caller cancellation, queued cancellation, transient failure expiry, permanent suppression, and generation reset. Android integration tests exercise actual bitmap decoding, WebP encoding, disk recovery, import/UI sharing, strict-key isolation, invalid-data suppression, and stale-generation rejection. A Compose card integration test verifies sibling completion does not restart another card's request and captures the Link fallback for visual inspection.
+
+## RSS acquisition context
+
+RSS acquisition passes a request-scoped network transport through OG downloads and redirects. In-flight identity additionally includes the compatible transport scope; disk/memory keys remain shared. Normal RSS uses its Wi-Fi policy, while explicit initial-fetch permission belongs only to its durable operation. Manual imports retain their default transport. Optional image failure does not change the article import mode or trigger AICore.

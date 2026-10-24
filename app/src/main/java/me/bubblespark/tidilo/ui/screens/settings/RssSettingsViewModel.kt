@@ -28,7 +28,7 @@ internal data class RssRegistrationRequest(
     val snapshot: RssRegistrationSnapshot
 )
 
-class RssSettingsViewModel(application: Application) : AndroidViewModel(application) {
+class RssSettingsViewModel(application: Application, private val savedState: androidx.lifecycle.SavedStateHandle) : AndroidViewModel(application) {
     private val repository = RssRepository.getInstance(application)
     private val preferences = RssPreferences.getInstance(application)
     val settings = preferences.state
@@ -40,6 +40,10 @@ class RssSettingsViewModel(application: Application) : AndroidViewModel(applicat
     val error = _error.asStateFlow()
     private val _wifi = MutableStateFlow<Boolean?>(null)
     val wifi = _wifi.asStateFlow()
+    private val _online = MutableStateFlow<Boolean?>(null)
+    val online = _online.asStateFlow()
+    private val _initialFetch = MutableStateFlow<String?>(savedState["initialFeed"])
+    val initialFetch = _initialFetch.asStateFlow()
     private val _registration = MutableStateFlow<RssRegistrationRequest?>(null)
     internal val registration = _registration.asStateFlow()
     private val connectivity = application.getSystemService(ConnectivityManager::class.java)
@@ -67,7 +71,7 @@ class RssSettingsViewModel(application: Application) : AndroidViewModel(applicat
         if (listening) return
         listening = true
         connectivity.registerNetworkCallback(NetworkRequest.Builder()
-            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(), callback)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(), callback)
         updateNetwork()
     }
 
@@ -76,10 +80,16 @@ class RssSettingsViewModel(application: Application) : AndroidViewModel(applicat
         listening = false
         connectivity.unregisterNetworkCallback(callback)
         _wifi.value = null
+        _online.value = null
     }
 
     @Suppress("DEPRECATION")
     private fun updateNetwork() {
+        _online.value = connectivity.allNetworks.any { network ->
+            connectivity.getNetworkCapabilities(network)?.let {
+                it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            } == true
+        }
         _wifi.value = connectivity.allNetworks.any { network ->
             connectivity.getNetworkCapabilities(network)?.let {
                 it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
@@ -99,12 +109,13 @@ class RssSettingsViewModel(application: Application) : AndroidViewModel(applicat
     private fun saveFeed(original: RssFeedEntity?, url: String, mode: String, limit: Int?, convert: Boolean,
         confirmed: RssRegistrationSnapshot?) = action {
         try {
-            if (original == null) repository.register(url, mode, limit, confirmed)
+            if (original == null) offerInitialFetch(repository.register(url, mode, limit, confirmed))
             else if (original.url == url.trim()) repository.edit(original.id, mode, limit, convert)
             else {
                 // Validate/create the replacement first; an invalid new URL leaves the old feed intact.
-                repository.register(url, mode, limit, confirmed)
+                val id = repository.register(url, mode, limit, confirmed)
                 repository.delete(original.id)
+                offerInitialFetch(id)
             }
         } catch (required: RssRegistrationConfirmationRequired) {
             _registration.value = RssRegistrationRequest(original, url, mode, limit, convert, required.snapshot)
@@ -117,6 +128,25 @@ class RssSettingsViewModel(application: Application) : AndroidViewModel(applicat
         if (_busy.value) return
         _registration.value = null
         saveFeed(request.original, request.url, request.mode, request.limit, request.convert, request.snapshot)
+    }
+
+    private fun offerInitialFetch(id: String) {
+        savedState["initialFeed"] = id
+        _initialFetch.value = id
+    }
+    fun dismissInitialFetch() {
+        savedState["initialFeed"] = null
+        _initialFetch.value = null
+    }
+    fun fetchInitial(mobileConsent: Boolean) = action {
+        val id = _initialFetch.value ?: return@action
+        updateNetwork()
+        check(_online.value == true) { "No validated Internet connection is available" }
+        val requiresOverride = settings.value.wifiOnly && _wifi.value != true
+        // A connection change must first make the warning visible before cellular is authorized.
+        if (requiresOverride && !mobileConsent) return@action
+        repository.requestInitialFetch(id, requiresOverride && mobileConsent)
+        dismissInitialFetch()
     }
 
     fun deleteFeed(id: String) = action { repository.delete(id) }

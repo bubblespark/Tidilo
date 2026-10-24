@@ -677,7 +677,9 @@ object DomainIconManager {
         context: Context,
         url: String,
         appleTouchIconUrl: String? = null,
-        faviconUrl: String? = null
+        faviconUrl: String? = null,
+        knownCandidates: List<DomainIconCandidate>? = null,
+        network: me.bubblespark.tidilo.parser.ArticleNetwork? = null
     ): FetchResult = withContext(Dispatchers.IO) {
         val domain = extractDomain(url) ?: return@withContext FetchResult(false)
         val generation = cacheGeneration
@@ -685,28 +687,40 @@ object DomainIconManager {
             return@withContext FetchResult(true)
         }
         if (shouldSkipFetch(context, domain)) return@withContext FetchResult(false)
-        iconDownloads.fetch(domain, generation) {
+        iconDownloads.fetch("${network?.scopeKey ?: "manual"}|$domain", generation) {
             if (getCachedIconBitmap(domain) != null || loadIconFromDisk(context, domain) != null) return@fetch FetchResult(true)
             if (shouldSkipFetch(context, domain) || generation != cacheGeneration) return@fetch FetchResult(false)
             val page = if (url.startsWith("http://") || url.startsWith("https://")) url else "https://$domain"
-            fetchIconInternal(context, domain, page, appleTouchIconUrl, faviconUrl, generation)
+            fetchIconInternal(context, domain, page, appleTouchIconUrl, faviconUrl, generation, knownCandidates, network)
         } ?: FetchResult(false, generation == cacheGeneration)
     }
 
     private suspend fun fetchIconInternal(
-        context: Context, domain: String, page: String, apple: String?, favicon: String?, generation: Long
+        context: Context, domain: String, page: String, apple: String?, favicon: String?, generation: Long,
+        knownCandidates: List<DomainIconCandidate>?, network: me.bubblespark.tidilo.parser.ArticleNetwork?
     ): FetchResult {
         var contacted = false
         var transientFailure = false
         val selected = DomainIconResolver.resolve(page, domain, apple, favicon,
             discover = { source ->
-                val discovery = runInterruptible(Dispatchers.IO) { findHtmlIconUrls(source) }
+                val discovery = if (network == null) runInterruptible(Dispatchers.IO) { findHtmlIconUrls(source) } else {
+                    val response = network.fetch(source)
+                    val candidates = if (response.status in 200..299) DomainIconResolver.parseHtml(
+                        org.jsoup.Jsoup.parse(java.io.ByteArrayInputStream(response.bytes), null, response.url).outerHtml(), response.url
+                    ) else emptyList()
+                    HtmlDiscoveryResult(candidates.map { it.url }, true, isTransientHttpStatus(response.status),
+                        candidates.filter { it.highPriority }.map { it.url }.toSet())
+                }
                 contacted = contacted || discovery.hasServerContact
                 transientFailure = transientFailure || discovery.hasTransientFailure
                 discovery.iconUrls.map { DomainIconCandidate(it, it in discovery.highPriorityUrls) }
             },
             download = { candidate ->
-                val result = runInterruptible(Dispatchers.IO) { downloadBytes(candidate) }
+                val result = if (network == null) runInterruptible(Dispatchers.IO) { downloadBytes(candidate) } else {
+                    val response = network.fetch(candidate)
+                    DownloadResult(response.bytes.takeIf { response.status in 200..299 }, true,
+                        isTransientHttpStatus(response.status))
+                }
                 contacted = contacted || result.hasServerContact
                 transientFailure = transientFailure || result.hasTransientFailure
                 val bytes = result.bytes
@@ -724,7 +738,7 @@ object DomainIconManager {
                         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.let { ResolvedDomainIcon(it, width, height) }
                     }
                 }
-            }, discard = { it.recycle() })
+            }, discard = { it.recycle() }, knownCandidates = knownCandidates)
         currentCoroutineContext().ensureActive()
         if (generation != cacheGeneration) { selected?.recycle(); return FetchResult(false) }
         if (selected == null) {

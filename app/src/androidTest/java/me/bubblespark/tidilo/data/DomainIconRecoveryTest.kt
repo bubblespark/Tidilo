@@ -17,6 +17,28 @@ import org.junit.Test
 import org.junit.Assert.*
 
 class DomainIconRecoveryTest {
+    @Test fun rssDiscoveryTimeoutAndRateLimitNeverWritePermanentMarker() = runBlocking {
+        for (status in listOf(408, 429)) {
+            val domain = "status$status.example.com"
+            var requests = 0
+            val network = object : me.bubblespark.tidilo.parser.ArticleNetwork {
+                override val scopeKey = "fixture:$status"
+                override suspend fun fetch(url: String): me.bubblespark.tidilo.parser.ArticleResponse {
+                    requests++
+                    val responseStatus = if (url == "https://$domain") status else 404
+                    return me.bubblespark.tidilo.parser.ArticleResponse(url, responseStatus, byteArrayOf(), "text/html")
+                }
+            }
+            assertFalse(DomainIconManager.fetchAndSaveDomainIcon(context, "https://$domain/article",
+                knownCandidates = emptyList(), network = network).success)
+            assertFalse(File(context.cacheDir, "domain_icons/$domain.none").exists())
+            val completedRequests = requests
+            assertFalse(DomainIconManager.fetchAndSaveDomainIcon(context, "https://$domain/article",
+                knownCandidates = emptyList(), network = network).success)
+            assertEquals(completedRequests, requests)
+        }
+    }
+
     private val target = InstrumentationRegistry.getInstrumentation().targetContext
     private val root = File(target.cacheDir, "icon-test-${UUID.randomUUID()}")
     private val context = object : ContextWrapper(target) {

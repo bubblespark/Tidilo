@@ -14,6 +14,7 @@ import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.data.Subcategory
+import me.bubblespark.tidilo.parser.ArticlePreparation
 import me.bubblespark.tidilo.parser.ParsedWebPage
 import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
@@ -57,10 +58,15 @@ object GeminiTaggingService {
         ogImageUrl: String? = null,
         rssFeedId: String? = null,
         rssPublishedAt: Long? = null,
-        rssFirstSeenAt: Long? = null
+        rssFirstSeenAt: Long? = null,
+        articlePrepared: Boolean = false
     ): Result<BookmarkItem> = withContext(Dispatchers.IO) {
         runCatching {
-            val hasPreparsedData = rssFeedId != null || !bodySnippet.isNullOrBlank()
+            require(rssFeedId == null || articlePrepared) { "RSS article requires HTML preparation" }
+            val hasPreparsedData = articlePrepared || !bodySnippet.isNullOrBlank()
+            if (hasPreparsedData && bodySnippet.isNullOrBlank() && description.isNullOrBlank()) {
+                throw me.bubblespark.tidilo.parser.ArticleContentUnavailable()
+            }
 
             val realUrl: String
             val finalTitle: String
@@ -91,14 +97,12 @@ object GeminiTaggingService {
                 )
             } else {
                 // Fallback path: Full web fetch and DOM extraction (for legacy items or direct calls)
-                val parseResult = WebPageParser.parseUrl(url)
-                val parsed = parseResult.getOrElse { e ->
-                    throw Exception("Network / Fetch Failed: ${e.message ?: "Could not connect to URL"}", e)
-                }
-
-                // Treat non-200 HTTP response codes as failure
-                if (parsed.statusCode != 200) {
-                    throw Exception("HTTP Error ${parsed.statusCode}: ${parsed.statusMessage.ifBlank { "Invalid status" }}")
+                val parsed = try {
+                    me.bubblespark.tidilo.parser.ArticleAcquirer.acquire(url)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    throw me.bubblespark.tidilo.parser.ArticleAcquisitionFailure(error)
                 }
 
                 realUrl = parsed.resolvedUrl.takeIf { it.isNotBlank() } ?: url
@@ -107,6 +111,10 @@ object GeminiTaggingService {
                     ?: preferredTitle?.trim()?.takeIf { it.isNotBlank() && !isRawUrlOrHost(it, realUrl) }
                     ?: extractHost(realUrl)
 
+                val prepared = ArticlePreparation.prepare(parsed)
+                if (prepared.bodySnippet.isBlank() && prepared.description.isBlank()) {
+                    throw me.bubblespark.tidilo.parser.ArticleContentUnavailable()
+                }
                 prompt = buildPrompt(url = realUrl, parsed = parsed, language = language)
                 parsedWebPage = parsed
 
@@ -122,7 +130,8 @@ object GeminiTaggingService {
                         context = TidiloApplication.instance,
                         url = realUrl,
                         appleTouchIconUrl = parsed.appleTouchIconUrl,
-                        faviconUrl = parsed.faviconUrl
+                        faviconUrl = parsed.faviconUrl,
+                        knownCandidates = parsed.iconCandidates
                     )
                 }
                 effectiveOgImageUrl = ogImageUrl?.trim()?.takeIf { it.isNotBlank() }
@@ -224,7 +233,8 @@ object GeminiTaggingService {
                     context = TidiloApplication.instance,
                     url = realUrl,
                     appleTouchIconUrl = parsed.appleTouchIconUrl,
-                    faviconUrl = parsed.faviconUrl
+                    faviconUrl = parsed.faviconUrl,
+                        knownCandidates = parsed.iconCandidates
                 )
             }
 
@@ -247,21 +257,13 @@ object GeminiTaggingService {
         parsed: ParsedWebPage?,
         language: AppLanguage
     ): String {
-        val siteName = parsed?.ogpTags?.get("og:site_name") ?: extractHost(url)
-        val title = parsed?.ogpTags?.get("og:title") ?: parsed?.title ?: extractHost(url)
-        val description = parsed?.ogpTags?.get("og:description")
-            ?: parsed?.standardMetaTags?.get("description")
-            ?: ""
-        val bodySnippet = (parsed?.readabilityArticle?.textContent?.takeIf { it.isNotBlank() }
-            ?: parsed?.jsoupBodyText
-            ?: "").take(800).replace("\n", " ")
-
+        val prepared = parsed?.let { ArticlePreparation.prepare(it) }
         return buildPromptWithSnippets(
-            url = url,
-            siteName = siteName,
-            title = title,
-            description = description,
-            bodySnippet = bodySnippet,
+            url = prepared?.url ?: url,
+            siteName = prepared?.siteName ?: extractHost(url),
+            title = prepared?.title ?: extractHost(url),
+            description = prepared?.description.orEmpty(),
+            bodySnippet = prepared?.bodySnippet.orEmpty(),
             language = language
         )
     }

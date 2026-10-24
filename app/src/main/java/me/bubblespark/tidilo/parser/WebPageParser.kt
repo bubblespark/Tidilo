@@ -15,9 +15,22 @@ import java.net.URLDecoder
 
 object WebPageParser {
 
-    private const val USER_AGENT =
+    internal const val USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     private const val TIMEOUT_MS = 15000
+
+    internal val REQUEST_HEADERS = mapOf(
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language" to "ja,en-US;q=0.9,en;q=0.8",
+        "sec-ch-ua" to "\"Chromium\";v=\"131\", \"Google Chrome\";v=\"131\", \"Not_A Brand\";v=\"24\"",
+        "sec-ch-ua-mobile" to "?0",
+        "sec-ch-ua-platform" to "\"Windows\"",
+        "sec-fetch-dest" to "document",
+        "sec-fetch-mode" to "navigate",
+        "sec-fetch-site" to "none",
+        "sec-fetch-user" to "?1",
+        "upgrade-insecure-requests" to "1"
+    )
 
     /**
      * Fetches and parses HTML of the given URL, extracting all elements (meta, title, OGP, JSON-LD, body, etc.).
@@ -30,16 +43,7 @@ object WebPageParser {
             val startFetch = System.currentTimeMillis()
             val response = Jsoup.connect(normalizedUrl)
                 .userAgent(USER_AGENT)
-                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
-                .header("Accept-Language", "ja,en-US;q=0.9,en;q=0.8")
-                .header("sec-ch-ua", "\"Chromium\";v=\"131\", \"Google Chrome\";v=\"131\", \"Not_A Brand\";v=\"24\"")
-                .header("sec-ch-ua-mobile", "?0")
-                .header("sec-ch-ua-platform", "\"Windows\"")
-                .header("sec-fetch-dest", "document")
-                .header("sec-fetch-mode", "navigate")
-                .header("sec-fetch-site", "none")
-                .header("sec-fetch-user", "?1")
-                .header("upgrade-insecure-requests", "1")
+                .headers(REQUEST_HEADERS)
                 .timeout(TIMEOUT_MS)
                 .followRedirects(true)
                 .ignoreHttpErrors(true)
@@ -69,6 +73,8 @@ object WebPageParser {
             val parseLatency = System.currentTimeMillis() - startParse
 
             Result.success(parsed.copy(parseLatencyMs = parseLatency))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -269,7 +275,9 @@ object WebPageParser {
             resolvedUrl = resolvedUrl,
             appleTouchIconUrl = appleTouchIconUrl,
             faviconUrl = faviconUrl,
-            isNsfwSignal = isNsfwSignal
+            isNsfwSignal = isNsfwSignal,
+            iconCandidates = me.bubblespark.tidilo.data.DomainIconResolver.parseHtml(rawHtml, finalUrl),
+            imageBaseUrl = doc.baseUri()
         )
     }
 
@@ -458,7 +466,7 @@ object WebPageParser {
         }
     }
 
-    private fun normalizeUrl(raw: String): String? {
+    internal fun normalizeUrl(raw: String): String? {
         val trimmed = raw.trim()
         if (trimmed.isBlank()) return null
         val withScheme = if (!trimmed.startsWith("http://", ignoreCase = true) &&
@@ -470,7 +478,7 @@ object WebPageParser {
         }
         return try {
             val uri = URI(withScheme)
-            if (uri.host.isNullOrBlank()) null else uri.toASCIIString()
+            if (uri.host.isNullOrBlank()) null else uri.toASCIIString().substringBefore('#')
         } catch (_: Exception) {
             null
         }

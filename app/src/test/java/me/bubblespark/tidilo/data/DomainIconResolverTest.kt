@@ -7,6 +7,16 @@ import org.junit.Test
 class DomainIconResolverTest {
     private val page = "https://example.com/article"
 
+    @Test fun preparedEmptyDiscoverySkipsArticleAndStillRecoversFromRoot() = runBlocking {
+        val pages = mutableListOf<String>()
+        val result = DomainIconResolver.resolve(page, "example.com", discover = {
+            pages.add(it)
+            listOf(DomainIconCandidate("/root"))
+        }, download = { ResolvedDomainIcon("root", 180, 180) }, knownCandidates = emptyList())
+        assertEquals("root", result)
+        assertEquals(listOf("https://example.com"), pages)
+    }
+
     @Test
     fun explicitPreferredIconSkipsHtmlAndLowerCandidates() = runBlocking {
         val calls = mutableListOf<String>()

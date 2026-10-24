@@ -16,20 +16,22 @@ class RssFetchWorker(context: Context, parameters: WorkerParameters) : Coroutine
             val scheduled = now.toLocalDate().atTime(preferences.state.value.time).atZone(now.zone)
             val boundary = if (scheduled > now) scheduled.minusDays(1) else scheduled
             val since = inputData.getLong("requestedAt", boundary.toInstant().toEpochMilli())
-            RssRepository.getInstance(applicationContext).fetchAll(since)
+            RssRepository.getInstance(applicationContext).fetchAll(since, inputData.getString("feedId"), inputData.getString("operationId"))
         }, realign = { RssScheduler.reschedule(applicationContext, force = true) })
     }
 }
 
-/** Five attempts per request; network availability waits remain eligible to resume. */
+/** Article retries are bounded durably per item; infrastructure errors have five worker attempts. */
 internal suspend fun runRssFetchAttempt(
     attempt: Int, fetch: suspend () -> Boolean, realign: suspend () -> Unit
 ): androidx.work.ListenableWorker.Result {
+    var infrastructureFailure = false
     val success = try { fetch() }
+    catch (_: RssAcquisitionYield) { return androidx.work.ListenableWorker.Result.retry() }
     catch (cancelled: CancellationException) { throw cancelled }
     catch (_: RssWifiUnavailable) { return androidx.work.ListenableWorker.Result.retry() }
-    catch (_: java.io.IOException) { false }
-    if (!success && attempt < 4) return androidx.work.ListenableWorker.Result.retry()
+    catch (_: java.io.IOException) { infrastructureFailure = true; false }
+    if (!success && (!infrastructureFailure || attempt < 4)) return androidx.work.ListenableWorker.Result.retry()
     realign()
     return androidx.work.ListenableWorker.Result.success()
 }

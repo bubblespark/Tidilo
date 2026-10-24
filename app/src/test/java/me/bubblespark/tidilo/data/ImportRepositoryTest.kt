@@ -27,11 +27,118 @@ import org.junit.Test
 
 class ImportRepositoryTest {
 
+    @Test fun manualContentRetryFetchFailuresDoNotFailOtherAiTasks() = runBlocking {
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+        for (status in listOf(404, 503)) server.createContext("/$status") { exchange ->
+            exchange.sendResponseHeaders(status, -1)
+            exchange.close()
+        }
+        server.createContext("/disconnect") { exchange -> exchange.close() }
+        server.start()
+        try {
+            for (path in listOf("404", "503", "disconnect")) {
+                val job = SupervisorJob()
+                val scope = CoroutineScope(coroutineContext + job)
+                val dao = FakeImportTaskDao()
+                val source = "http://127.0.0.1:${server.address.port}/$path"
+                dao.insertAll(listOf(waitingEntity("retry").copy(url = source, articlePrepared = true,
+                    status = "ERROR", errorMessage = me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE)))
+                val closed = CompletableDeferred<Unit>()
+                val attempted = mutableListOf<String>()
+                try {
+                    val repository = ImportRepository(taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
+                        openModel = { fakeModel { closed.complete(Unit) } },
+                        analyzeTask = { model, task ->
+                            attempted.add(task.id)
+                            if (task.id == "retry") {
+                                dao.insertOrUpdate(waitingEntity("good"))
+                                me.bubblespark.tidilo.service.GeminiTaggingService.processAndSaveBookmark(
+                                    model, task.url, me.bubblespark.tidilo.config.AppLanguage.ENGLISH,
+                                    bodySnippet = task.bodySnippet, description = task.description, articlePrepared = task.articlePrepared).getOrThrow()
+                            }
+                        })
+                    repository.retryErrorTask("retry")
+                    withTimeout(5000) { closed.await() }
+                    assertEquals(path, listOf("retry", "good"), attempted)
+                    assertNull(dao.getTaskById("good"))
+                    val failed = dao.getTaskById("retry")!!
+                    assertEquals("ERROR", failed.status)
+                    assertFalse(failed.articlePrepared)
+                    assertTrue(failed.errorMessage!!.startsWith("Article acquisition failed"))
+                } finally { job.cancelAndJoin() }
+            }
+        } finally { server.stop(0) }
+    }
+
+    @Test fun manualPreparseRefreshesImageReferenceKeyForChangedUrlAndImage() = runBlocking {
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+        val html = """<title>Prepared title</title><link rel="canonical" href="https://prepared.example/canonical">
+            <meta property="og:image" content="/new.png"><p>Prepared content</p>""".toByteArray()
+        server.createContext("/article") { exchange ->
+            exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+            exchange.sendResponseHeaders(200, html.size.toLong())
+            exchange.responseBody.use { it.write(html) }
+        }
+        server.start()
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        try {
+            for (oldImage in listOf<String?>(null, "/old.png")) {
+                val dao = FakeImportTaskDao()
+                val source = "http://127.0.0.1:${server.address.port}/article"
+                val task = waitingEntity("prepare").copy(url = source, title = source, status = "READY",
+                    ogImageUrl = oldImage, ogImageKey = me.bubblespark.tidilo.data.db.bookmarkOgImageKey(source, oldImage))
+                dao.insertOrUpdate(task)
+                val repository = ImportRepository(taskDao = dao, repositoryScope = scope)
+                val preparse = ImportRepository::class.java.getDeclaredMethod("fetchAndPreparseTaskAsync", String::class.java, String::class.java)
+                preparse.isAccessible = true
+                preparse.invoke(repository, task.id, source)
+                val prepared = withTimeout(5000) {
+                    while (dao.getTaskById(task.id)?.articlePrepared != true) delay(10)
+                    dao.getTaskById(task.id)!!
+                }
+                assertEquals("https://prepared.example/canonical", prepared.url)
+                assertEquals(me.bubblespark.tidilo.data.db.bookmarkOgImageKey(prepared.url, prepared.ogImageUrl), prepared.ogImageKey)
+                assertTrue(prepared.ogImageKey != task.ogImageKey)
+            }
+        } finally { job.cancelAndJoin(); server.stop(0) }
+    }
+
+    @Test fun emptyPreparedManualArticleFailsOnlyItselfAndRetryRefreshesPreparation() = runBlocking {
+        val job = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(waitingEntity("empty").copy(articlePrepared = true), waitingEntity("good")))
+        val closed = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        val attempts = mutableListOf<String>()
+        var repaired = false
+        try {
+            val repository = ImportRepository(taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
+                openModel = { fakeModel { closed.trySend(Unit) } },
+                analyzeTask = { model, task ->
+                    attempts.add(task.id)
+                    if (task.id == "empty" && !repaired) {
+                        me.bubblespark.tidilo.service.GeminiTaggingService.processAndSaveBookmark(model, task.url,
+                            me.bubblespark.tidilo.config.AppLanguage.ENGLISH, articlePrepared = task.articlePrepared).getOrThrow()
+                    } else if (task.id == "empty") assertFalse(task.articlePrepared)
+                })
+            repository.retryWaitingProcessingTasks()
+            withTimeout(5000) { closed.receive() }
+            assertEquals(listOf("empty", "good"), attempts)
+            assertNull(dao.getTaskById("good"))
+            assertEquals(TaskStatus.ERROR.name, dao.getTaskById("empty")!!.status)
+            repaired = true
+            repository.retryErrorTask("empty")
+            withTimeout(5000) { closed.receive() }
+            assertEquals(0, dao.getCount())
+        } finally { job.cancelAndJoin(); closed.close() }
+    }
+
     @Test
-    fun emptyRssBodyDoesNotTriggerArticlePreparse() {
+    fun legacyRssBodyRequiresArticlePreparse() {
         val rss = ImportTask(id = "rss", url = "https://example.com/rss", title = "Feed title",
             status = TaskStatus.READY, statusText = "", rssFeedId = "feed")
-        assertFalse(ImportRepository.needsArticlePreparse(rss))
+        assertTrue(ImportRepository.needsArticlePreparse(rss))
         assertTrue(ImportRepository.needsArticlePreparse(rss.copy(rssFeedId = null)))
     }
 
@@ -780,7 +887,7 @@ class ImportRepositoryTest {
         val job = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + job)
         val dao = FakeImportTaskDao()
-        dao.insertOrUpdate(waitingEntity("fallback").copy(rssFeedId = if (rss) "feed" else null, createdAt = 7))
+        dao.insertOrUpdate(waitingEntity("fallback").copy(rssFeedId = if (rss) "feed" else null, createdAt = 7, articlePrepared = true))
         val saveStarted = CompletableDeferred<Unit>()
         val releaseSave = CompletableDeferred<Unit>()
         val firstClosed = CompletableDeferred<Unit>()
@@ -832,7 +939,7 @@ class ImportRepositoryTest {
     fun manualTasksRunBeforeNewerRssTasks() = runBlocking {
         val dao = FakeImportTaskDao()
         dao.insertAll(listOf(
-            ImportTaskEntity("rss", "https://example.com/rss", "RSS", "WAITING_AI", "", createdAt = 20, rssFeedId = "feed"),
+            ImportTaskEntity("rss", "https://example.com/rss", "RSS", "WAITING_AI", "", createdAt = 20, rssFeedId = "feed", articlePrepared = true),
             ImportTaskEntity("manual", "https://example.com/manual", "Manual", "WAITING_AI", "", createdAt = 10)))
         val root = SupervisorJob()
         val done = CompletableDeferred<Unit>()
@@ -850,7 +957,7 @@ class ImportRepositoryTest {
     @Test
     fun subscriptionRemovedDuringClaimStopsWithoutInferenceOrBusyLoop() = runBlocking {
         val dao = FakeImportTaskDao()
-        dao.insertOrUpdate(ImportTaskEntity("rss", "https://example.com/rss", "RSS", "WAITING_AI", "", createdAt = 1, rssFeedId = "feed"))
+        dao.insertOrUpdate(ImportTaskEntity("rss", "https://example.com/rss", "RSS", "WAITING_AI", "", createdAt = 1, rssFeedId = "feed", articlePrepared = true))
         dao.beforeClaim = { dao.unavailableIds = setOf("rss") }
         val root = SupervisorJob()
         val closed = CompletableDeferred<Unit>()

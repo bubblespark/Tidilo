@@ -46,8 +46,8 @@ interface ImportTaskDao {
     // A single statement claims only existing work; ingestion/edit transactions can remove only unstarted work.
     @Query("""UPDATE import_tasks SET status = 'PROCESSING_AI', statusText = :statusText, errorMessage = NULL
         WHERE id = :id AND status IN ('WAITING_AI', 'PROCESSING_AI') AND
-        (rssFeedId IS NULL OR EXISTS (SELECT 1 FROM rss_feeds f WHERE f.id = rssFeedId AND f.deleted = 0
-            AND (f.mode = 'AI' OR import_tasks.status = 'PROCESSING_AI')))""")
+        (rssFeedId IS NULL OR (articlePrepared = 1 AND intendedMode = 'AI' AND EXISTS (SELECT 1 FROM rss_feeds f WHERE f.id = rssFeedId AND f.deleted = 0
+            AND (f.mode = 'AI' OR import_tasks.status = 'PROCESSING_AI'))))""")
     suspend fun claimForAi(id: String, statusText: String): Int
 
     @Query("""UPDATE import_tasks SET status = 'ERROR', statusText = 'Subscription unavailable',

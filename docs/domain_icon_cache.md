@@ -29,3 +29,7 @@ Clearing icon caches cancels shared work, advances the generation, and clears bi
 Grid cards distinguish pending OG resolution from a completed miss. During OG loading they may display a cached domain icon, but perform disk-only icon lookup. They start icon network recovery only when the OG URL is absent or OG resolution completes without an image. An OG success starts no icon network request from that grid card. The final Link placeholder is unchanged.
 
 The clear-cache explanation states that both preview images and domain icons are downloaded again when needed. The Re-fetch Domain Icons setting and its dialogs/resources no longer exist. No bookmark schema or AI inference behavior changes.
+
+## Shared article discovery and RSS transport
+
+Imports pass the complete candidate list extracted from the already obtained HTML. A known-empty list suppresses a repeated article HTML request while preserving separate root-page fallback and future recovery after eviction. Network requests coalesce only within a compatible transport scope; RSS-bound requests cannot join unrestricted manual requests. The on-disk normalized-domain identity remains unchanged. Policy-denied requests do not create permanent negative markers.

@@ -5,7 +5,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.jsoup.Jsoup
 
-internal data class DomainIconCandidate(val url: String, val highPriority: Boolean = false)
+data class DomainIconCandidate(val url: String, val highPriority: Boolean = false)
 internal data class ResolvedDomainIcon<T>(val value: T, val width: Int, val height: Int)
 
 internal object DomainIconResolver {
@@ -45,7 +45,8 @@ internal object DomainIconResolver {
         pageUrl: String, domain: String, appleUrl: String? = null, faviconUrl: String? = null,
         discover: suspend (String) -> List<DomainIconCandidate>,
         download: suspend (String) -> ResolvedDomainIcon<T>?,
-        discard: (T) -> Unit = {}
+        discard: (T) -> Unit = {},
+        knownCandidates: List<DomainIconCandidate>? = null
     ): T? {
         val attempted = mutableSetOf<String>()
         suspend fun attempt(candidate: DomainIconCandidate): ResolvedDomainIcon<T>? {
@@ -86,7 +87,7 @@ internal object DomainIconResolver {
         try {
             // A preferred explicit apple icon can avoid HTML discovery entirely.
             if (!appleUrl.isNullOrBlank()) highTier(listOf(DomainIconCandidate(appleUrl, true)))?.let { return it }
-            val article = discover(pageUrl) + listOfNotNull(faviconUrl?.takeIf { it.isNotBlank() }?.let { DomainIconCandidate(it) })
+            val article = (knownCandidates ?: discover(pageUrl)) + listOfNotNull(faviconUrl?.takeIf { it.isNotBlank() }?.let { DomainIconCandidate(it) })
             pageTier(article)?.let { return it }
             val path = runCatching { URI(pageUrl).path }.getOrNull()
             if (!path.isNullOrEmpty() && path != "/") pageTier(discover("https://$domain"))?.let { return it }

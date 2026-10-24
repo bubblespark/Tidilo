@@ -21,7 +21,52 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSettingsScreenTest {
-    @Test fun resubscriptionDialogExplainsImmediateDeletionAndRequiresExplicitChoice(): Unit = runBlocking {
+    @Test fun initialFetchDialogSeparatesTimingAndShowsMobileNotice(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        var fetched = false
+        var later = false
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                me.bubblespark.tidilo.ui.screens.settings.RssInitialFetchDialog(true, true, false,
+                    onFetch = { fetched = true }, onLater = { later = true })
+            } } }
+            node("Mobile data notice") { it.text?.toString()?.contains("This fetch will use mobile data") == true }
+            assertNull(find { it.text?.toString()?.contains("permanently deleted") == true })
+            click(node("Fetch later") { it.text?.toString() == "Later" })
+            assertTrue(later)
+            assertFalse(fetched)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Suppress("DEPRECATION")
+    @Test fun automaticallyDisabledFeedCardExplainsXmlFailure(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val feed = me.bubblespark.tidilo.data.db.RssFeedEntity("failed", "https://fixture.example/feed", "Failed feed",
+            enabled = false, error = "XML_FETCH_FAILED")
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(listOf(feed)), RssSettings(), false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> }, onDelete = {},
+                    onFetch = {}, onDismissError = {})
+            } } }
+            repeat(8) {
+                if (find { it.text?.toString()?.contains("Could not fetch feed XML") == true } == null) {
+                    find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                    delay(100)
+                }
+            }
+            node("Persistent XML failure") { it.text?.toString()?.contains("Could not fetch feed XML. This feed was automatically disabled.") == true }
+            node("Recovery instruction") { it.text?.toString()?.contains("Enable this feed to try again") == true }
+            var enabled: AccessibilityNodeInfo? = node("Enabled switch") { it.contentDescription?.toString() == "Enabled" }
+            while (enabled != null && !enabled.isCheckable) enabled = enabled.parent
+            assertNotNull(enabled)
+            assertFalse(enabled!!.isChecked)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Test fun resubscriptionDialogExplainsCycleDeletionAndRequiresExplicitChoice(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         var accepted = false
@@ -33,7 +78,7 @@ class RssSettingsScreenTest {
                     onConfirm = { accepted = true }, onDismiss = { dismissed = true })
             } } }
             node("Existing count") { it.text?.toString()?.contains("100 saved articles") == true }
-            node("Immediate permanent deletion warning") { it.text?.toString()?.contains("initial fetch after registration") == true }
+            node("Cycle permanent deletion warning") { it.text?.toString()?.contains("scheduled or explicit fetch") == true }
             assertFalse(accepted)
             click(node("Cancel registration") { it.text?.toString() == "Cancel" })
             assertTrue(dismissed)
@@ -76,7 +121,17 @@ class RssSettingsScreenTest {
         assertTrue(target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true)
     }
 
-    @Test fun feedCardLabelsEnabledAndErrorsReplaceTimestamps(): Unit = runBlocking {
+    /** Recomposition can detach an accessibility node between discovery and its action. */
+    private suspend fun clickCurrent(predicate: (AccessibilityNodeInfo) -> Boolean) = withTimeout(3000) {
+        while (true) {
+            var target = find(predicate)
+            while (target != null && !target.isClickable) target = target.parent
+            if (target?.isEnabled == true && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return@withTimeout
+            delay(50)
+        }
+    }
+
+    @Test fun feedCardShowsCompactMetadataAndBottomRightSwitch(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         val feed = mutableStateOf(me.bubblespark.tidilo.data.db.RssFeedEntity("feed", "https://example.com/feed", "Example",
@@ -91,17 +146,41 @@ class RssSettingsScreenTest {
             } } }
             node("Simple queue guidance") { it.text?.toString() == "Maximum AI queue: 0 items" }
             repeat(8) {
-                if (find { it.text?.toString() == "Enabled" } == null) {
+                if (find { it.contentDescription?.toString() == "Enabled" } == null) {
                     find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                     delay(100)
                 }
             }
-            node("Mode label") { it.text?.toString() == "Import Mode: Direct" }
-            node("Retention label") { it.text?.toString() == "Max saved items: Unlimited" }
+            val mode = node("Compact mode") { it.text?.toString() == "Direct" }
+            val retention = node("Compact retention") { it.text?.toString() == "Unlimited" }
+            val modeBounds = android.graphics.Rect()
+            val retentionBounds = android.graphics.Rect()
+            mode.getBoundsInScreen(modeBounds)
+            retention.getBoundsInScreen(retentionBounds)
+            assertEquals(modeBounds.centerY(), retentionBounds.centerY())
+            assertTrue(retentionBounds.left > modeBounds.right)
             node("Fetch error") { it.text?.toString() == "HTTP 500" }
             assertNull(find { it.text?.toString()?.startsWith("Last attempt:") == true || it.text?.toString()?.startsWith("Last success:") == true })
-            click(node("Enabled checkbox label") { it.text?.toString() == "Enabled" })
+            var toggle: AccessibilityNodeInfo? = node("Enabled switch") { it.contentDescription?.toString() == "Enabled" }
+            while (toggle != null && !toggle.isCheckable) toggle = toggle.parent
+            assertNotNull(toggle)
+            val toggleBounds = android.graphics.Rect()
+            val deleteBounds = android.graphics.Rect()
+            toggle!!.getBoundsInScreen(toggleBounds)
+            node("Delete action") { it.text?.toString() == "Delete" }.getBoundsInScreen(deleteBounds)
+            assertTrue(toggleBounds.left > deleteBounds.right)
+            assertEquals(deleteBounds.centerY(), toggleBounds.centerY())
+            node("On state") { it.text?.toString() == "On" }
+            click(toggle)
             withTimeout(3000) { while (feed.value.enabled) delay(20) }
+            node("Off state") { it.text?.toString() == "Off" }
+            instrumentation.runOnMainSync { feed.value = feed.value.copy(error = null, retentionLimit = 30) }
+            node("Numeric maximum") { it.text?.toString() == "Max 30" }
+            delay(250)
+            val screenshot = instrumentation.uiAutomation.takeScreenshot()
+            try { File(context.getExternalFilesDir(null), "issue96-compact-feed.png").outputStream().use {
+                screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
+            } } finally { screenshot.recycle() }
         } finally { instrumentation.runOnMainSync { activity.finish() } }
     }
 
@@ -186,7 +265,7 @@ class RssSettingsScreenTest {
             assertTrue(unlimitedLabel.parent.isCheckable)
             click(unlimitedLabel)
             instrumentation.waitForIdleSync()
-            click(node("Save feed") { it.text?.toString() == "Save" })
+            clickCurrent { it.text?.toString() == "Save" }
             withTimeout(3000) { while (savedUrl == null) delay(20) }
             assertEquals("https://example.com/feed.xml", savedUrl)
             assertEquals("DIRECT", savedMode)

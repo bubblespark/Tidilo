@@ -27,6 +27,49 @@ import org.junit.Test
 
 class ImportRepositoryTest {
 
+    @Test fun manualContentRetryFetchFailuresDoNotFailOtherAiTasks() = runBlocking {
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+        for (status in listOf(404, 503)) server.createContext("/$status") { exchange ->
+            exchange.sendResponseHeaders(status, -1)
+            exchange.close()
+        }
+        server.createContext("/disconnect") { exchange -> exchange.close() }
+        server.start()
+        try {
+            for (path in listOf("404", "503", "disconnect")) {
+                val job = SupervisorJob()
+                val scope = CoroutineScope(coroutineContext + job)
+                val dao = FakeImportTaskDao()
+                val source = "http://127.0.0.1:${server.address.port}/$path"
+                dao.insertAll(listOf(waitingEntity("retry").copy(url = source, articlePrepared = true,
+                    status = "ERROR", errorMessage = me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE)))
+                val closed = CompletableDeferred<Unit>()
+                val attempted = mutableListOf<String>()
+                try {
+                    val repository = ImportRepository(taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
+                        openModel = { fakeModel { closed.complete(Unit) } },
+                        analyzeTask = { model, task ->
+                            attempted.add(task.id)
+                            if (task.id == "retry") {
+                                dao.insertOrUpdate(waitingEntity("good"))
+                                me.bubblespark.tidilo.service.GeminiTaggingService.processAndSaveBookmark(
+                                    model, task.url, me.bubblespark.tidilo.config.AppLanguage.ENGLISH,
+                                    bodySnippet = task.bodySnippet, description = task.description, articlePrepared = task.articlePrepared).getOrThrow()
+                            }
+                        })
+                    repository.retryErrorTask("retry")
+                    withTimeout(5000) { closed.await() }
+                    assertEquals(path, listOf("retry", "good"), attempted)
+                    assertNull(dao.getTaskById("good"))
+                    val failed = dao.getTaskById("retry")!!
+                    assertEquals("ERROR", failed.status)
+                    assertFalse(failed.articlePrepared)
+                    assertTrue(failed.errorMessage!!.startsWith("Article acquisition failed"))
+                } finally { job.cancelAndJoin() }
+            }
+        } finally { server.stop(0) }
+    }
+
     @Test fun manualPreparseRefreshesImageReferenceKeyForChangedUrlAndImage() = runBlocking {
         val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
         val html = """<title>Prepared title</title><link rel="canonical" href="https://prepared.example/canonical">

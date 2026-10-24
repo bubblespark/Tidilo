@@ -15,6 +15,11 @@ class ArticleHttpFailure(val code: Int) : java.io.IOException("Article HTTP $cod
     val retryable: Boolean get() = code == 408 || code == 429 || code >= 500
 }
 
+/** Distinguishes article acquisition failures from AICore execution failures. */
+class ArticleAcquisitionFailure(cause: Exception) : java.io.IOException(
+    "Article acquisition failed: ${cause.message ?: "Could not fetch article"}", cause
+)
+
 object ArticleAcquirer {
     suspend fun acquire(url: String, network: ArticleNetwork? = null): ParsedWebPage {
         val normalized = WebPageParser.normalizeUrl(url) ?: throw IllegalArgumentException("Invalid article URL")

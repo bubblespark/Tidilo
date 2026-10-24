@@ -97,14 +97,12 @@ object GeminiTaggingService {
                 )
             } else {
                 // Fallback path: Full web fetch and DOM extraction (for legacy items or direct calls)
-                val parseResult = WebPageParser.parseUrl(url)
-                val parsed = parseResult.getOrElse { e ->
-                    throw Exception("Network / Fetch Failed: ${e.message ?: "Could not connect to URL"}", e)
-                }
-
-                // Treat non-200 HTTP response codes as failure
-                if (parsed.statusCode != 200) {
-                    throw Exception("HTTP Error ${parsed.statusCode}: ${parsed.statusMessage.ifBlank { "Invalid status" }}")
+                val parsed = try {
+                    me.bubblespark.tidilo.parser.ArticleAcquirer.acquire(url)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    throw me.bubblespark.tidilo.parser.ArticleAcquisitionFailure(error)
                 }
 
                 realUrl = parsed.resolvedUrl.takeIf { it.isNotBlank() } ?: url

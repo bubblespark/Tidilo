@@ -544,10 +544,12 @@ class ImportRepository internal constructor(
             taskDao.deleteById(target.id)
             return
         }
-        if (throwable is me.bubblespark.tidilo.parser.ArticleContentUnavailable) {
+        val acquisitionFailure = throwable is me.bubblespark.tidilo.parser.ArticleAcquisitionFailure
+        if (throwable is me.bubblespark.tidilo.parser.ArticleContentUnavailable || acquisitionFailure) {
             retryNotBefore.remove(target.id)
             foregroundRetryCounts.remove(target.id)
-            taskDao.updateStatus(target.id, TaskStatus.ERROR.name, "Article content unavailable", throwable.message)
+            taskDao.updateStatus(target.id, TaskStatus.ERROR.name,
+                if (acquisitionFailure) "Article acquisition failed" else "Article content unavailable", throwable.message)
             return
         }
         val errorMessage = throwable.message.orEmpty()

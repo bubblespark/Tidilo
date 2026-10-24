@@ -17,7 +17,7 @@ import java.time.format.DateTimeFormatter
  * - 30 days or more: "yyyy/MM/dd" (e.g. 2026/09/20)
  */
 object TimeFormatter {
-    private val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd").withZone(ZoneId.systemDefault())
+    private val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd")
 
     const val ONE_MINUTE_MS = 60 * 1000L
     const val ONE_HOUR_MS = 60 * ONE_MINUTE_MS
@@ -58,7 +58,9 @@ object TimeFormatter {
                 RelativeTimeResult.DaysAgo(days)
             }
             else -> {
-                RelativeTimeResult.FormattedDate(DATE_FORMATTER.format(Instant.ofEpochMilli(createdAt)))
+                RelativeTimeResult.FormattedDate(
+                    DATE_FORMATTER.format(Instant.ofEpochMilli(createdAt).atZone(ZoneId.systemDefault()))
+                )
             }
         }
     }

@@ -214,7 +214,7 @@ private fun UsageBars(days: List<AiUsageDay>) {
                         if (day.recorded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
                         RoundedCornerShape(6.dp)))
                 }
-                Text(day.date.format(USAGE_BAR_DATE_FORMATTER), style = MaterialTheme.typography.labelSmall)
+                Text(day.date.format(USAGE_BAR_DATE_FORMATTER.withLocale(java.util.Locale.getDefault())), style = MaterialTheme.typography.labelSmall)
             }
         }
     }

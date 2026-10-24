@@ -1,7 +1,6 @@
 package me.bubblespark.tidilo.data
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -29,6 +28,10 @@ class TaxonomyLookupTest {
         assertEquals(Category.COMMUNITY, Category.fromId("コミュニティ"))
         assertEquals(Category.OFFICIAL, Category.fromId("公式・紹介"))
         assertEquals(Category.REFERENCE, Category.fromId("資料・情報"))
+
+        // Trimming whitespace
+        assertEquals(Category.ARTICLE, Category.fromId("  Article  "))
+        assertEquals(Category.ARTICLE, Category.fromId("\tarticle\n"))
 
         // Unknown
         assertNull(Category.fromId("unknown_category"))
@@ -65,6 +68,10 @@ class TaxonomyLookupTest {
         assertEquals(Subcategory.HOBBY, Subcategory.fromId("趣味・スポーツ"))
         assertEquals(Subcategory.ADULT, Subcategory.fromId("大人の嗜好"))
         assertEquals(Subcategory.EDUCATION, Subcategory.fromId("教育"))
+
+        // Trimming whitespace
+        assertEquals(Subcategory.TECH, Subcategory.fromId("  Tech  "))
+        assertEquals(Subcategory.TECH, Subcategory.fromId("\ttech\n"))
 
         // Unknown
         assertNull(Subcategory.fromId("unknown_subcategory"))

@@ -35,7 +35,7 @@ enum class Category(
             }
         }
 
-        fun fromId(id: String): Category? = LOOKUP_MAP[id.lowercase()]
+        fun fromId(id: String): Category? = LOOKUP_MAP[id.trim().lowercase()]
 
         fun toLocalized(id: String, isJapanese: Boolean): String =
             fromId(id)?.getLabel(isJapanese) ?: id
@@ -80,7 +80,7 @@ enum class Subcategory(
             }
         }
 
-        fun fromId(id: String): Subcategory? = LOOKUP_MAP[id.lowercase()]
+        fun fromId(id: String): Subcategory? = LOOKUP_MAP[id.trim().lowercase()]
 
         fun toLocalized(id: String, isJapanese: Boolean): String =
             fromId(id)?.getLabel(isJapanese) ?: id

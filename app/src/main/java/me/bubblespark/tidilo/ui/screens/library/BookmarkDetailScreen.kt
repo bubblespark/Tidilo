@@ -121,7 +121,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private val DETAIL_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm").withZone(ZoneId.systemDefault())
+private val DETAIL_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -219,10 +219,10 @@ fun BookmarkDetailScreen(
     }
 
     val formattedCreatedAt = remember(bookmark.createdAt) {
-        DETAIL_DATE_TIME_FORMATTER.format(Instant.ofEpochMilli(bookmark.createdAt))
+        DETAIL_DATE_TIME_FORMATTER.format(Instant.ofEpochMilli(bookmark.createdAt).atZone(ZoneId.systemDefault()))
     }
     val formattedUpdatedAt = remember(bookmark.updatedAt) {
-        DETAIL_DATE_TIME_FORMATTER.format(Instant.ofEpochMilli(bookmark.updatedAt))
+        DETAIL_DATE_TIME_FORMATTER.format(Instant.ofEpochMilli(bookmark.updatedAt).atZone(ZoneId.systemDefault()))
     }
 
     val scrollState = rememberScrollState()

@@ -841,7 +841,10 @@ private fun BodyTextTab(
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Total extracted: $activeCharCount characters (${activeText.split(WHITESPACE_REGEX).size} words)",
+                    text = run {
+                        val wordCount = if (activeText.isBlank()) 0 else activeText.trim().split(WHITESPACE_REGEX).size
+                        "Total extracted: $activeCharCount characters ($wordCount words)"
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )

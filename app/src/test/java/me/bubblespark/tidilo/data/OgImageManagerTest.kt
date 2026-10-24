@@ -11,6 +11,7 @@ import me.bubblespark.tidilo.ui.screens.library.Tag
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.Test
 
@@ -364,8 +365,12 @@ class OgImageManagerTest {
             OgImageManager.notifyExactImageUpdatedForTesting("example.com", if (i % 20 == 0) targetKey else "other-key-$i")
         }
 
-        // Allow emissionScope coroutine to process any fallback emissions
-        delay(300)
+        // Wait for expected emissions with a bounded timeout rather than relying on a fixed delay
+        withTimeout(3000) {
+            while (received.size < 4) {
+                delay(20)
+            }
+        }
 
         // 4 of the 80 emissions were for targetKey (i = 20, 40, 60, 80)
         assertEquals(4, received.size)

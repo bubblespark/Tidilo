@@ -31,6 +31,7 @@ import java.io.File
 import java.net.URI
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import java.net.HttpURLConnection
@@ -77,6 +78,8 @@ object OgImageManager {
     val cacheGenerationState: StateFlow<Long> = _cacheGenerationState.asStateFlow()
     private val _exactImageUpdates = MutableSharedFlow<String>(extraBufferCapacity = 64)
     private val emissionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val pendingFallbackKeys = ConcurrentHashMap.newKeySet<String>()
+    private val isDrainingFallback = AtomicBoolean(false)
 
     @VisibleForTesting
     internal var imageDownloader: (suspend (String) -> ByteArray?)? = null
@@ -133,11 +136,32 @@ object OgImageManager {
 
     private fun notifyExactImageUpdated(domain: String, imageKey: String) {
         if (!_exactImageUpdates.tryEmit(imageKey)) {
-            emissionScope.launch {
-                _exactImageUpdates.emit(imageKey)
-            }
+            pendingFallbackKeys.add(imageKey)
+            drainPendingFallbackKeys()
         }
         notifyOgImageUpdated(domain)
+    }
+
+    private fun drainPendingFallbackKeys() {
+        if (isDrainingFallback.compareAndSet(false, true)) {
+            emissionScope.launch {
+                try {
+                    while (pendingFallbackKeys.isNotEmpty()) {
+                        val iterator = pendingFallbackKeys.iterator()
+                        if (iterator.hasNext()) {
+                            val key = iterator.next()
+                            iterator.remove()
+                            _exactImageUpdates.emit(key)
+                        }
+                    }
+                } finally {
+                    isDrainingFallback.set(false)
+                    if (pendingFallbackKeys.isNotEmpty()) {
+                        drainPendingFallbackKeys()
+                    }
+                }
+            }
+        }
     }
 
     @VisibleForTesting
@@ -317,6 +341,7 @@ object OgImageManager {
                 dir.deleteRecursively()
             }
             domainRevisions.clear()
+            pendingFallbackKeys.clear()
             _cacheGenerationState.value = cacheGeneration.get()
             _cacheClearedEvent.tryEmit(cacheGeneration.get())
         }

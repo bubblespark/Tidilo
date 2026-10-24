@@ -9,6 +9,8 @@ import org.jsoup.nodes.Document
 data class DomainIconCandidate(val url: String, val highPriority: Boolean = false)
 internal data class ResolvedDomainIcon<T>(val value: T, val width: Int, val height: Int)
 
+private val WHITESPACE_REGEX = Regex("\\s+")
+
 internal object DomainIconResolver {
     const val PREFERRED_SIZE = 180
     private const val MIN_SIZE = 96
@@ -23,7 +25,7 @@ internal object DomainIconResolver {
             val rel = element.attr("rel").lowercase()
             if (!rel.contains("icon")) continue
             val url = resolveUrl(pageUrl, element.absUrl("href")) ?: continue
-            val large = element.attr("sizes").lowercase().split(Regex("\\s+")).any { size ->
+            val large = element.attr("sizes").lowercase().split(WHITESPACE_REGEX).any { size ->
                 val dimensions = size.split('x')
                 dimensions.size == 2 && (dimensions[0].toIntOrNull() ?: 0) >= PREFERRED_SIZE &&
                     (dimensions[1].toIntOrNull() ?: 0) >= PREFERRED_SIZE

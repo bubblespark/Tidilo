@@ -214,13 +214,15 @@ private fun UsageBars(days: List<AiUsageDay>) {
                         if (day.recorded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
                         RoundedCornerShape(6.dp)))
                 }
-                Text(day.date.format(DateTimeFormatter.ofPattern("M/d")), style = MaterialTheme.typography.labelSmall)
+                Text(day.date.format(USAGE_BAR_DATE_FORMATTER.withLocale(java.util.Locale.getDefault())), style = MaterialTheme.typography.labelSmall)
             }
         }
     }
     if (days.any { !it.recorded }) Text(stringResource(R.string.summary_unrecorded),
         style = MaterialTheme.typography.bodySmall)
 }
+
+private val USAGE_BAR_DATE_FORMATTER = DateTimeFormatter.ofPattern("M/d")
 
 private fun formatSummaryTime(instant: Instant, zone: ZoneId): String = DateTimeFormatter
     .ofLocalizedDateTime(FormatStyle.SHORT).format(instant.atZone(zone))

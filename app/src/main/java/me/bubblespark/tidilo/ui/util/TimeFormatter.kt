@@ -2,9 +2,9 @@ package me.bubblespark.tidilo.ui.util
 
 import android.content.Context
 import me.bubblespark.tidilo.R
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * Utility for formatting bookmark creation/update timestamps into relative time or absolute date.
@@ -17,6 +17,7 @@ import java.util.Locale
  * - 30 days or more: "yyyy/MM/dd" (e.g. 2026/09/20)
  */
 object TimeFormatter {
+    private val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd")
 
     const val ONE_MINUTE_MS = 60 * 1000L
     const val ONE_HOUR_MS = 60 * ONE_MINUTE_MS
@@ -57,8 +58,9 @@ object TimeFormatter {
                 RelativeTimeResult.DaysAgo(days)
             }
             else -> {
-                val sdf = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault())
-                RelativeTimeResult.FormattedDate(sdf.format(Date(createdAt)))
+                RelativeTimeResult.FormattedDate(
+                    DATE_FORMATTER.format(Instant.ofEpochMilli(createdAt).atZone(ZoneId.systemDefault()))
+                )
             }
         }
     }

@@ -22,7 +22,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ImportTaskEntity::class,
         ImportNotificationEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -99,6 +99,17 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_notifications_createdAt` ON `import_notifications` (`createdAt`)")
             }
         }
+        /** Preserves both the notification v11 schema and the earlier RSS-only v11 build. */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_10_11.migrate(db)
+                val columns = db.query("PRAGMA table_info(rss_feeds)").use { cursor ->
+                    buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) }
+                }
+                if ("iconUrl" !in columns) db.execSQL("ALTER TABLE rss_feeds ADD COLUMN iconUrl TEXT")
+                if ("siteUrl" !in columns) db.execSQL("ALTER TABLE rss_feeds ADD COLUMN siteUrl TEXT")
+            }
+        }
         val MIGRATION_9_10 = object : Migration(9, 10) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE rss_feeds ADD COLUMN acquisitionId TEXT")
@@ -163,7 +174,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }

@@ -5,6 +5,53 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssFeedParserTest {
+    private fun metadata(xml: String): Pair<String?, String?> {
+        val document = RssFeedParser.parse(xml, "https://feed.example/xml/feed")
+        return document.iconUrl to document.siteUrl
+    }
+
+    @Test fun feedMetadataUsesDirectChildrenAndResolvesRelativeUrls() {
+        assertEquals("https://feed.example/logo.png?size=200" to "https://publisher.example/", metadata("""
+            <rss><channel><title>Feed</title><link>https://publisher.example/</link>
+            <image xml:base="../"><url>logo.png?size=200#fragment</url></image>
+            <item><link>https://other.example/article</link><image><url>wrong.png</url></image></item>
+            </channel></rss>
+        """))
+    }
+
+    @Test fun rdfRootImageAndAtomIconLogoAndPublisherAreParsed() {
+        assertEquals("https://feed.example/icon.png" to "https://publisher.example/", metadata("""
+            <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><channel>
+            <link>https://publisher.example/</link></channel><image><url>/icon.png</url></image></rdf:RDF>
+        """))
+        val atom = """<feed xmlns="http://www.w3.org/2005/Atom" xml:base="https://publisher.example/base/">
+            <link rel="self" href="feed.xml"/><link rel="alternate" href="../"/>
+            <icon>icon.png</icon><logo>logo.png</logo></feed>"""
+        assertEquals("https://publisher.example/base/icon.png" to "https://publisher.example/", metadata(atom))
+        assertEquals("https://publisher.example/base/logo.png" to "https://publisher.example/",
+            metadata(atom.replace("<icon>icon.png</icon>", "<icon>javascript:bad</icon>")))
+    }
+
+    @Test fun missingAndUnsafeMetadataRemainNull() {
+        assertEquals(null to null, metadata("""<rss><channel><link>https://user:password@publisher.example/</link>
+            <image><url>file:///icon.png</url></image><item><link>https://article.example/</link></item></channel></rss>"""))
+        assertEquals(null to null, metadata("""<feed><link rel="self" href="feed.xml"/></feed>"""))
+    }
+
+    @Test fun feedMetadataIgnoresExtensionNamespaceCollisions() {
+        assertEquals("https://feed.example/rss.png" to "https://publisher.example/", metadata("""
+            <rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+            <channel><atom:link rel="self" href="https://feed.example/xml"/>
+            <link>https://publisher.example/</link><media:image><media:url>https://wrong.example/icon</media:url></media:image>
+            <image><url>/rss.png</url></image></channel></rss>
+        """))
+        assertEquals("https://feed.example/atom.png" to "https://publisher.example/", metadata("""
+            <feed xmlns="http://www.w3.org/2005/Atom" xmlns:m="http://search.yahoo.com/mrss/">
+            <m:icon>https://wrong.example/icon</m:icon><icon>/atom.png</icon>
+            <m:link rel="alternate" href="https://wrong.example/"/><link rel="alternate" href="https://publisher.example/"/></feed>
+        """))
+    }
+
     @Test fun atomBodyDoesNotSelectMediaContentEvenWithAnArbitraryPrefix() {
         val xml = """<a:feed xmlns:a="http://www.w3.org/2005/Atom" xmlns:m="http://search.yahoo.com/mrss/"><a:entry><a:link href="https://example.com/post"/><m:content url="https://example.com/image.png"/><a:content type="html">&lt;p&gt;Actual body&lt;/p&gt;</a:content></a:entry></a:feed>"""
         val entry = RssFeedParser.parse(xml, "https://example.com/feed").entries.single()

@@ -246,11 +246,11 @@ class BookmarkRepository private constructor(context: Context) {
     }
 
     /** Each input generation owns a Pager; callers switch generations before caching in the ViewModel. */
-    fun pagedBookmarks(query: String, domain: String?, showNsfw: Boolean, source: BookmarkSource = BookmarkSource.ALL): Flow<PagingData<BookmarkItem>> =
+    fun pagedBookmarks(query: String, domain: String?, showNsfw: Boolean, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): Flow<PagingData<BookmarkItem>> =
         Pager(PagingConfig(pageSize = 30, prefetchDistance = 10, initialLoadSize = 60,
             maxSize = 150, enablePlaceholders = false)) {
             when {
-                query.isNotBlank() || source != BookmarkSource.ALL -> bookmarkDao.search(BookmarkQueries.results(query, showNsfw, domain, source))
+                query.isNotBlank() || source != BookmarkSource.ALL || rssFeedId != null -> bookmarkDao.search(BookmarkQueries.results(query, showNsfw, domain, source, rssFeedId))
                 domain != null -> bookmarkDao.byDomain(domain, showNsfw)
                 else -> bookmarkDao.timeline(showNsfw)
             }
@@ -260,10 +260,13 @@ class BookmarkRepository private constructor(context: Context) {
 
     fun observeDomainCounts(showNsfw: Boolean, source: BookmarkSource = BookmarkSource.ALL): Flow<List<DomainCount>> = observeSafely { bookmarkDao.domainCounts(showNsfw, source.sqlValue) }
 
+    fun observeRssFeedGroups(showNsfw: Boolean): Flow<List<me.bubblespark.tidilo.data.db.RssFeedGroup>> =
+        observeSafely { database.rssDao().observeLibraryGroups(showNsfw) }
+
     fun observeCollectionCounts(): Flow<CollectionCounts> = observeSafely { bookmarkDao.observeCollectionCounts() }
 
-    fun observeCount(query: String, domain: String?, showNsfw: Boolean, source: BookmarkSource = BookmarkSource.ALL): Flow<Int> =
-        observeSafely { bookmarkDao.observeCount(BookmarkQueries.count(query, showNsfw, domain, source)) }
+    fun observeCount(query: String, domain: String?, showNsfw: Boolean, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): Flow<Int> =
+        observeSafely { bookmarkDao.observeCount(BookmarkQueries.count(query, showNsfw, domain, source, rssFeedId)) }
 
     suspend fun distinctDomains(): List<String> = withContext(Dispatchers.IO) { bookmarkDao.distinctDomains() }
 

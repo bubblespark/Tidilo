@@ -115,11 +115,19 @@ class LibraryViewModel : ViewModel() {
     private val _selectedDomainFilter = MutableStateFlow<String?>(null)
     val selectedDomainFilter: StateFlow<String?> = _selectedDomainFilter.asStateFlow()
 
+    private val _selectedRssFeedFilter = MutableStateFlow<me.bubblespark.tidilo.data.db.RssFeedEntity?>(null)
+    val selectedRssFeedFilter = _selectedRssFeedFilter.asStateFlow()
+
+    fun selectRssFeedFilter(feed: me.bubblespark.tidilo.data.db.RssFeedEntity?) {
+        _selectedRssFeedFilter.value = feed
+    }
+
     fun setFilterMode(mode: LibraryFilterMode) {
         if (_filterMode.value != mode) {
             _filterMode.value = mode
             saveFilterMode(mode)
             _selectedDomainFilter.value = null
+            _selectedRssFeedFilter.value = null
         }
     }
 
@@ -137,6 +145,25 @@ class LibraryViewModel : ViewModel() {
      */
     private val _domainGroupsLoading = MutableStateFlow(true)
     val domainGroupsLoading = _domainGroupsLoading.asStateFlow()
+
+    private val _rssFeedGroupsLoading = MutableStateFlow(true)
+    val rssFeedGroupsLoading = _rssFeedGroupsLoading.asStateFlow()
+    val rssFeedGroups = AppConfig.isNsfwContentVisible.flatMapLatest { visible ->
+        bookmarkRepository.observeRssFeedGroups(visible).onStart { _rssFeedGroupsLoading.value = true }
+    }.map { groups ->
+        val collator = Collator.getInstance(Locale.JAPANESE)
+        val sorted = groups.sortedWith { a, b ->
+            val asciiA = a.feed.title.firstOrNull()?.code?.let { it < 128 } == true
+            val asciiB = b.feed.title.firstOrNull()?.code?.let { it < 128 } == true
+            when {
+                asciiA != asciiB -> if (asciiA) -1 else 1
+                else -> collator.compare(a.feed.title, b.feed.title).takeIf { it != 0 }
+                    ?: a.feed.id.compareTo(b.feed.id)
+            }
+        }
+        _rssFeedGroupsLoading.value = false
+        sorted
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val domainGroups: StateFlow<List<DomainGroupItem>> =
         combine(AppConfig.isNsfwContentVisible.flatMapLatest { bookmarkRepository.observeDomainCounts(it, BookmarkSource.MANUAL).onStart { _domainGroupsLoading.value = true } }, DomainPolicyManager.policies) { counts, _ ->
@@ -172,10 +199,13 @@ class LibraryViewModel : ViewModel() {
     /**
      * Bookmarks filtered by selected domain (Newest first).
      */
-    val libraryPages = combine(_selectedDomainFilter, AppConfig.isNsfwContentVisible, bookmarkRepository.isInitialized, _filterMode) { domain, visible, ready, mode -> Triple(domain, visible, ready) to mode }
-        .flatMapLatest { (state, mode) ->
+    val libraryPages = combine(_selectedDomainFilter, AppConfig.isNsfwContentVisible, bookmarkRepository.isInitialized, _filterMode, _selectedRssFeedFilter) { domain, visible, ready, mode, feed -> Triple(domain, visible, ready) to (mode to feed?.id) }
+        .flatMapLatest { (state, selection) ->
+            val (mode, feedId) = selection
             val (domain, visible, ready) = state
-            if (ready) bookmarkRepository.pagedBookmarks("", domain, visible, if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL).onStart { emit(loadingPage()) }
+            if (mode == LibraryFilterMode.RSS && feedId == null) flowOf(PagingData.empty())
+            else if (ready) bookmarkRepository.pagedBookmarks("", domain, visible, if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL,
+                rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS }).onStart { emit(loadingPage()) }
             else flowOf(loadingPage())
         }
         .cachedIn(viewModelScope)
@@ -187,8 +217,12 @@ class LibraryViewModel : ViewModel() {
         }
         .cachedIn(viewModelScope)
 
-    val libraryCount = combine(_selectedDomainFilter, AppConfig.isNsfwContentVisible, _filterMode) { domain, visible, mode -> Triple(domain, visible, mode) }
-        .flatMapLatest { (domain, visible, mode) -> bookmarkRepository.observeCount("", domain, visible, if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL) }
+    val libraryCount = combine(_selectedDomainFilter, AppConfig.isNsfwContentVisible, _filterMode, _selectedRssFeedFilter) { domain, visible, mode, feed -> Triple(domain, visible, mode) to feed?.id }
+        .flatMapLatest { (state, feedId) ->
+            val (domain, visible, mode) = state
+            bookmarkRepository.observeCount("", domain, visible, if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL,
+                rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS })
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val searchCount = combine(debouncedSearchQuery, AppConfig.isNsfwContentVisible) { query, visible -> query to visible }

@@ -16,6 +16,33 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSharedPipelineTest {
+    @Test fun registrationAndFetchPersistMetadataAndNotModifiedPreservesIt() = runBlocking {
+        val db = database()
+        var status = 200
+        var metadata = "<image><url>https://images.example/icon.png</url></image><link>https://publisher.example/</link>"
+        val repo = repository(db, { requested, _, _ ->
+            RssHttpPage(status = status, url = requested,
+                body = "<rss><channel><title>Feed</title>$metadata</channel></rss>")
+        })
+        fun saved(): Pair<String?, String?> = db.openHelper.readableDatabase.query("SELECT iconUrl,siteUrl FROM rss_feeds").use {
+            assertTrue(it.moveToFirst()); it.getString(0) to it.getString(1)
+        }
+        try {
+            repo.register("https://feed.example/feed", "DIRECT", 30)
+            assertEquals("https://images.example/icon.png" to "https://publisher.example/", saved())
+            metadata = "<image><url>https://images.example/new.png</url></image><link>https://new.example/</link>"
+            repo.fetchAll(1)
+            assertEquals("https://images.example/new.png" to "https://new.example/", saved())
+            status = 304
+            repo.fetchAll(Long.MAX_VALUE)
+            assertEquals("https://images.example/new.png" to "https://new.example/", saved())
+            status = 200
+            metadata = ""
+            repo.fetchAll(Long.MAX_VALUE)
+            assertEquals(null to null, saved())
+        } finally { db.close() }
+    }
+
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val url = "https://fixture-feed.example/post"
     private val html = """<html><head><title>HTML title</title><meta property="og:description" content="HTML description">

@@ -49,6 +49,37 @@ import java.net.URI
  */
 object DomainIconManager {
 
+    /** Declared images belong to a feed, never to its articles' domains. */
+    fun feedIconKey(feed: me.bubblespark.tidilo.data.db.RssFeedEntity): String {
+        val identity = listOf(feed.id, feed.iconUrl.orEmpty(), feed.siteUrl.orEmpty(), feed.url).joinToString("\n")
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(identity.toByteArray(Charsets.UTF_8))
+        return "rss_" + hash.joinToString("") { "%02x".format(it) }
+    }
+
+    fun feedPublisherDomain(feed: me.bubblespark.tidilo.data.db.RssFeedEntity): String? =
+        feed.siteUrl?.let(::extractDomain) ?: extractDomain(feed.url)
+
+    /** Direct image recovery never re-reads XML or HTML. Domain discovery is a separate fallback. */
+    suspend fun loadOrFetchFeedIcon(context: Context, feed: me.bubblespark.tidilo.data.db.RssFeedEntity): ImageBitmap? =
+        withContext(Dispatchers.IO) {
+            val generation = cacheGeneration
+            val key = feedIconKey(feed)
+            val direct = feed.iconUrl?.let { me.bubblespark.tidilo.parser.RssFeedParser.httpUrl(feed.url, it) }
+            if (direct != null) {
+                (getCachedIconBitmap(key) ?: loadIconFromDisk(context, key))?.let { return@withContext it }
+                if (!shouldSkipFetch(context, key)) iconDownloads.fetch("feed|$key", generation) {
+                    if (generation != cacheGeneration || shouldSkipFetch(context, key)) return@fetch FetchResult(false)
+                    if (getCachedIconBitmap(key) != null || loadIconFromDisk(context, key) != null) return@fetch FetchResult(true)
+                    fetchIconInternal(context, key, direct, null, null, generation, null, null, directOnly = true)
+                }
+                if (generation != cacheGeneration) return@withContext null
+                getCachedIconBitmap(key)?.let { return@withContext it }
+            }
+            if (generation != cacheGeneration) return@withContext null
+            val bitmap = feedPublisherDomain(feed)?.let { loadOrFetchIcon(context, it) }
+            if (generation == cacheGeneration) bitmap else null
+        }
+
     /** Restores a missing icon using the same shared pipeline as imports. */
     suspend fun loadOrFetchIcon(context: Context, domain: String, pageUrl: String? = null): ImageBitmap? =
         withContext(Dispatchers.IO) {
@@ -697,25 +728,12 @@ object DomainIconManager {
 
     private suspend fun fetchIconInternal(
         context: Context, domain: String, page: String, apple: String?, favicon: String?, generation: Long,
-        knownCandidates: List<DomainIconCandidate>?, network: me.bubblespark.tidilo.parser.ArticleNetwork?
+        knownCandidates: List<DomainIconCandidate>?, network: me.bubblespark.tidilo.parser.ArticleNetwork?,
+        directOnly: Boolean = false
     ): FetchResult {
         var contacted = false
         var transientFailure = false
-        val selected = DomainIconResolver.resolve(page, domain, apple, favicon,
-            discover = { source ->
-                val discovery = if (network == null) runInterruptible(Dispatchers.IO) { findHtmlIconUrls(source) } else {
-                    val response = network.fetch(source)
-                    val candidates = if (response.status in 200..299) DomainIconResolver.parseHtml(
-                        org.jsoup.Jsoup.parse(java.io.ByteArrayInputStream(response.bytes), null, response.url).outerHtml(), response.url
-                    ) else emptyList()
-                    HtmlDiscoveryResult(candidates.map { it.url }, true, isTransientHttpStatus(response.status),
-                        candidates.filter { it.highPriority }.map { it.url }.toSet())
-                }
-                contacted = contacted || discovery.hasServerContact
-                transientFailure = transientFailure || discovery.hasTransientFailure
-                discovery.iconUrls.map { DomainIconCandidate(it, it in discovery.highPriorityUrls) }
-            },
-            download = { candidate ->
+        val download: suspend (String) -> ResolvedDomainIcon<Bitmap>? = { candidate ->
                 val result = if (network == null) runInterruptible(Dispatchers.IO) { downloadBytes(candidate) } else {
                     val response = network.fetch(candidate)
                     DownloadResult(response.bytes.takeIf { response.status in 200..299 }, true,
@@ -729,7 +747,8 @@ object DomainIconManager {
                     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
                     val width = options.outWidth
                     val height = options.outHeight
-                    if (width < MIN_ICON_SIZE || height < MIN_ICON_SIZE) null else {
+                    val minimum = if (directOnly) 1 else MIN_ICON_SIZE
+                    if (width < minimum || height < minimum) null else {
                         // Bound allocations before decoding untrusted full-resolution images.
                         var sample = 1
                         while (width / sample > MAX_ICON_SIZE * 2 || height / sample > MAX_ICON_SIZE * 2) sample *= 2
@@ -738,7 +757,21 @@ object DomainIconManager {
                         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.let { ResolvedDomainIcon(it, width, height) }
                     }
                 }
-            }, discard = { it.recycle() }, knownCandidates = knownCandidates)
+        }
+        val selected = if (directOnly) download(page)?.value else DomainIconResolver.resolve(page, domain, apple, favicon,
+            discover = { source ->
+                val discovery = if (network == null) runInterruptible(Dispatchers.IO) { findHtmlIconUrls(source) } else {
+                    val response = network.fetch(source)
+                    val candidates = if (response.status in 200..299) DomainIconResolver.parseHtml(
+                        org.jsoup.Jsoup.parse(java.io.ByteArrayInputStream(response.bytes), null, response.url).outerHtml(), response.url
+                    ) else emptyList()
+                    HtmlDiscoveryResult(candidates.map { it.url }, true, isTransientHttpStatus(response.status),
+                        candidates.filter { it.highPriority }.map { it.url }.toSet())
+                }
+                contacted = contacted || discovery.hasServerContact
+                transientFailure = transientFailure || discovery.hasTransientFailure
+                discovery.iconUrls.map { DomainIconCandidate(it, it in discovery.highPriorityUrls) }
+            }, download = download, discard = { it.recycle() }, knownCandidates = knownCandidates)
         currentCoroutineContext().ensureActive()
         if (generation != cacheGeneration) { selected?.recycle(); return FetchResult(false) }
         if (selected == null) {

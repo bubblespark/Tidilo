@@ -164,6 +164,7 @@ fun TidiloApp(
 
     val filterMode by libraryViewModel.filterMode.collectAsStateWithLifecycle()
     val selectedDomainFilter by libraryViewModel.selectedDomainFilter.collectAsStateWithLifecycle()
+    val selectedRssFeedFilter by libraryViewModel.selectedRssFeedFilter.collectAsStateWithLifecycle()
 
     // Header and navigation bar visibility state
     var isBarsVisible by remember { mutableStateOf(true) }
@@ -173,7 +174,7 @@ fun TidiloApp(
     var isAiSpeechBubbleVisible by remember { mutableStateOf(false) }
 
     // Reset bars to visible and collapse menus when switching tabs, filter modes, or domain drilldown
-    LaunchedEffect(currentRoute, filterMode, selectedDomainFilter) {
+    LaunchedEffect(currentRoute, filterMode, selectedDomainFilter, selectedRssFeedFilter?.id) {
         isBarsVisible = true
         isFilterMenuExpanded = false
         isAiSpeechBubbleVisible = false
@@ -187,7 +188,7 @@ fun TidiloApp(
     }
 
     // Scroll linking: Trigger only when content is actually scrolled (prevents false triggers on short screens)
-    val nestedScrollConnection = remember(isBottomBarVisible, currentRoute, filterMode, selectedDomainFilter) {
+    val nestedScrollConnection = remember(isBottomBarVisible, currentRoute, filterMode, selectedDomainFilter, selectedRssFeedFilter?.id) {
         object : NestedScrollConnection {
             private var accumulatedScroll = 0f
             private val hideThreshold = 30f // Threshold for downward scroll to hide

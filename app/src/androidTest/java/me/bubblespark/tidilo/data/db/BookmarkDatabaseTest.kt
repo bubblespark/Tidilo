@@ -26,6 +26,21 @@ import java.util.UUID
 import java.security.MessageDigest
 
 class BookmarkDatabaseTest {
+    @Test fun legacyFeedsGainNullableMetadataWithoutLosingSubscriptionOrArticles() = runBlocking {
+        val name = "issue99-migration-${UUID.randomUUID()}.db"
+        val helper = legacy(name, 10)
+        helper.writableDatabase.execSQL("INSERT INTO rss_feeds(id,url,title,mode,retentionLimit,deleted,revision,enabled) VALUES('feed','https://example.com/feed','Kept feed','DIRECT',100,1,4,0)")
+        helper.close()
+        val db = database(name)
+        try {
+            db.openHelper.readableDatabase.query("SELECT iconUrl,siteUrl,title,deleted,enabled FROM rss_feeds WHERE id='feed'").use {
+                assertTrue(it.moveToFirst())
+                assertTrue(it.isNull(0)); assertTrue(it.isNull(1))
+                assertEquals("Kept feed", it.getString(2)); assertEquals(1, it.getInt(3)); assertEquals(0, it.getInt(4))
+            }
+        } finally { db.close(); context.deleteDatabase(name) }
+    }
+
     @Test fun schemaNinePreservesXmlTasksAndRequiresHtmlBeforeInference() = runBlocking {
         val name = "issue96-migration-${UUID.randomUUID()}.db"
         val helper = legacy(name, 9)
@@ -54,7 +69,7 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showNsfw: Boolean = true): List<BookmarkEntity> {
@@ -284,6 +299,7 @@ class BookmarkDatabaseTest {
                     if (version >= 7) AppDatabase.MIGRATION_6_7.migrate(db)
                     if (version >= 8) AppDatabase.MIGRATION_7_8.migrate(db)
                     if (version >= 9) AppDatabase.MIGRATION_8_9.migrate(db)
+                    if (version >= 10) AppDatabase.MIGRATION_9_10.migrate(db)
                     if (version in 4..5) db.execSQL("CREATE TABLE og_images (id TEXT PRIMARY KEY)")
                 }
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = error("Unexpected legacy upgrade")

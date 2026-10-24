@@ -17,6 +17,68 @@ import org.junit.Test
 import org.junit.Assert.*
 
 class DomainIconRecoveryTest {
+    private fun feed(id: String = "feed", icon: String? = "https://images.example/logo.png") =
+        me.bubblespark.tidilo.data.db.RssFeedEntity(id, "https://feed.example/xml", "Feed",
+            iconUrl = icon, siteUrl = "https://publisher.example/")
+
+    @Test fun feedIconRecoversDirectlyAfterClearWithoutXmlOrHtmlAndKeepsSeparateIdentity() = runBlocking {
+        val requests = mutableListOf<String>()
+        val data = bytes(512)
+        DomainIconManager.htmlDiscoverer = { error("Declared feed image must not discover HTML") }
+        DomainIconManager.httpDownloader = { requests.add(it); DomainIconManager.DownloadResult(data, true, false) }
+        val first = feed()
+        val key = DomainIconManager.feedIconKey(first)
+        assertNotNull(DomainIconManager.loadOrFetchFeedIcon(context, first))
+        assertEquals(384, DomainIconManager.getCachedIconBitmap(key)!!.width)
+        assertNotNull(DomainIconManager.getCachedDominantColor(key))
+        assertTrue(File(context.cacheDir, "domain_icons/$key.png").exists())
+        assertNotNull(DomainIconManager.loadOrFetchFeedIcon(context, first))
+        assertEquals(1, requests.size)
+        assertNotNull(DomainIconManager.loadOrFetchFeedIcon(context, feed("other", "https://images.example/other.png")))
+        assertNotEquals(key, DomainIconManager.feedIconKey(feed("other")))
+        DomainIconManager.clearCache(context)
+        assertNull(DomainIconManager.getCachedIconBitmap(key))
+        assertNull(DomainIconManager.getCachedDominantColor(key))
+        assertNotNull(DomainIconManager.loadOrFetchFeedIcon(context, first))
+        assertEquals(listOf("https://images.example/logo.png", "https://images.example/other.png", "https://images.example/logo.png"), requests)
+    }
+
+    @Test fun failedFeedImageFallsBackToPublisherAndDoesNotPoisonOtherFeeds() = runBlocking {
+        val requests = mutableListOf<String>()
+        val data = bytes()
+        DomainIconManager.htmlDiscoverer = { page ->
+            assertEquals("https://publisher.example", page)
+            DomainIconManager.HtmlDiscoveryResult(listOf("https://publisher.example/icon.png"), true, false)
+        }
+        DomainIconManager.httpDownloader = {
+            requests.add(it)
+            DomainIconManager.DownloadResult(if (it == "https://images.example/logo.png") null else data, true, false)
+        }
+        assertNotNull(DomainIconManager.loadOrFetchFeedIcon(context, feed()))
+        assertNotNull(DomainIconManager.getCachedIconBitmap("publisher.example"))
+        assertNotNull(DomainIconManager.loadOrFetchFeedIcon(context, feed("other", "https://images.example/other.png")))
+        assertEquals(1, requests.count { it == "https://images.example/logo.png" })
+        assertEquals(1, requests.count { it == "https://images.example/other.png" })
+    }
+
+    @Test fun clearRejectsInflightFeedImageAndItsFailureMarkers() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CountDownLatch(1)
+        val data = bytes()
+        val source = feed()
+        DomainIconManager.httpDownloader = {
+            started.complete(Unit); check(release.await(5, TimeUnit.SECONDS))
+            DomainIconManager.DownloadResult(data, true, false)
+        }
+        val request = async { DomainIconManager.loadOrFetchFeedIcon(context, source) }
+        withTimeout(5000) { started.await() }
+        DomainIconManager.clearCache(context)
+        release.countDown()
+        assertNull(withTimeout(5000) { request.await() })
+        assertNull(DomainIconManager.getCachedIconBitmap(DomainIconManager.feedIconKey(source)))
+        assertTrue(File(context.cacheDir, "domain_icons").listFiles().orEmpty().isEmpty())
+    }
+
     @Test fun rssDiscoveryTimeoutAndRateLimitNeverWritePermanentMarker() = runBlocking {
         for (status in listOf(408, 429)) {
             val domain = "status$status.example.com"

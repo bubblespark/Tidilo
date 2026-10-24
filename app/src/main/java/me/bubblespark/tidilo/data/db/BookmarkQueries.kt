@@ -7,12 +7,12 @@ import me.bubblespark.tidilo.data.Subcategory
 
 /** Compiles bound, literal substring predicates shared by results and tag aggregates. */
 internal object BookmarkQueries {
-    fun count(query: String, showNsfw: Boolean, domain: String? = null, source: BookmarkSource = BookmarkSource.ALL): SimpleSQLiteQuery {
-        val (where, args) = predicate(query, showNsfw, domain, emptySet(), source)
+    fun count(query: String, showNsfw: Boolean, domain: String? = null, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): SimpleSQLiteQuery {
+        val (where, args) = predicate(query, showNsfw, domain, emptySet(), source, rssFeedId)
         return SimpleSQLiteQuery("SELECT COUNT(*) FROM bookmarks b WHERE $where", args.toTypedArray())
     }
-    fun results(query: String, showNsfw: Boolean, domain: String? = null, source: BookmarkSource = BookmarkSource.ALL): SimpleSQLiteQuery {
-        val (where, args) = predicate(query, showNsfw, domain, emptySet(), source)
+    fun results(query: String, showNsfw: Boolean, domain: String? = null, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): SimpleSQLiteQuery {
+        val (where, args) = predicate(query, showNsfw, domain, emptySet(), source, rssFeedId)
         return SimpleSQLiteQuery("SELECT b.* FROM bookmarks b WHERE $where ORDER BY b.createdAt DESC, b.id DESC", args.toTypedArray())
     }
 
@@ -27,7 +27,7 @@ internal object BookmarkQueries {
         return SimpleSQLiteQuery(sql, args.toTypedArray())
     }
 
-    private fun predicate(query: String, showNsfw: Boolean, domain: String?, selected: Set<String>, source: BookmarkSource = BookmarkSource.ALL): Pair<String, MutableList<Any>> {
+    private fun predicate(query: String, showNsfw: Boolean, domain: String?, selected: Set<String>, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): Pair<String, MutableList<Any>> {
         val clauses = mutableListOf<String>()
         val args = mutableListOf<Any>()
         when (source) {
@@ -37,6 +37,7 @@ internal object BookmarkQueries {
         }
         if (!showNsfw) clauses.add("b.isNsfw=0")
         if (domain != null) { clauses.add("b.domain=?"); args.add(domain) }
+        if (rssFeedId != null) { clauses.add("b.rssFeedId=?"); args.add(rssFeedId) }
         for (tag in selected) {
             clauses.add("(b.searchCategory=? OR b.searchSubcategory=? OR EXISTS (SELECT 1 FROM bookmark_entities t WHERE t.bookmarkId=b.id AND t.searchValue=?))")
             repeat(3) { args.add(bookmarkSearchKey(tag)) }

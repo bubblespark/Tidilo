@@ -137,3 +137,7 @@ app/src/main/java/com/ykgudev/tidilo/
 ## Shared article acquisition
 
 `parser/ArticleAcquirer.kt` owns HTML acquisition through default or request-scoped transport; `parser/ArticlePreparation.kt` defines source-independent metadata preparation. RSS XML parsing remains in `RssFeedParser`; `RssIngestionStore` owns transactional staging/completion/receipts and feed-failure disabling. `RssRepository` coordinates bounded acquisition, durable retry, and optional image enrichment. Foreground AI remains owned by `ImportRepository`.
+
+## RSS Library presentation
+
+`data/db/RssFeedGroup.kt` defines the feed/count SQL projection, and `RssDao` observes visible saved groups. `LibraryViewModel` owns feed selection, ordering, and feed-scoped Paging/count queries. `ui/screens/library/RssFeedCard.kt` supplies feed content to the shared `LibraryDeckCard` in DomainCard.kt. `ui/components/FeedIconState.kt` observes on-demand feed/publisher artwork and dominant colors; DomainIconManager owns storage, processing, fallback, and cache generation. RSS and Domain drill-downs share LibraryScreen's bookmark layouts and ambient background.

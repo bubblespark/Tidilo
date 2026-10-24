@@ -86,6 +86,20 @@ fun DomainCard(
         }
     }
 
+    LibraryDeckCard(item, dominantColor, onClick, modifier) { watermarkModifier ->
+        DomainWatermark(domain = item.domain, size = 96.dp, alpha = 0.20f, modifier = watermarkModifier)
+    }
+}
+
+/** Shared physical deck geometry for domain and RSS feed collections. */
+@Composable
+internal fun LibraryDeckCard(
+    item: DomainGroupItem,
+    dominantColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    watermark: @Composable (Modifier) -> Unit
+) {
     val cardShape = remember { RoundedCornerShape(20.dp) }
     val stackOffset = 7.dp
     val cardHeight = 154.dp
@@ -171,11 +185,8 @@ fun DomainCard(
                     )
             ) {
                 // Background watermark layer: domain icon nestled in the glowing top-right shoulder
-                DomainWatermark(
-                    domain = item.domain,
-                    size = 96.dp,
-                    alpha = 0.20f,
-                    modifier = Modifier
+                watermark(
+                    Modifier
                         .align(Alignment.TopEnd)
                         .offset(x = 16.dp, y = (-6).dp)
                 )

@@ -8,6 +8,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface RssDao {
+    @Query("""SELECT f.*, COUNT(*) AS count FROM rss_feeds f JOIN bookmarks b ON b.rssFeedId=f.id
+        WHERE (:showNsfw OR NOT b.isNsfw) GROUP BY f.id""")
+    fun observeLibraryGroups(showNsfw: Boolean): Flow<List<RssFeedGroup>>
+
     @Query("SELECT * FROM rss_feeds ORDER BY title COLLATE NOCASE, id")
     fun observeFeeds(): Flow<List<RssFeedEntity>>
 

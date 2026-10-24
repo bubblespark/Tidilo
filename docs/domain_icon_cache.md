@@ -33,3 +33,9 @@ The clear-cache explanation states that both preview images and domain icons are
 ## Shared article discovery and RSS transport
 
 Imports pass the complete candidate list extracted from the already obtained HTML. A known-empty list suppresses a repeated article HTML request while preserving separate root-page fallback and future recovery after eviction. Network requests coalesce only within a compatible transport scope; RSS-bound requests cannot join unrestricted manual requests. The on-disk normalized-domain identity remains unchanged. Policy-denied requests do not create permanent negative markers.
+
+## Feed artwork
+
+`loadOrFetchFeedIcon` first tries the persisted feed image under a separate `rss_` SHA-256 identity derived from feed ID and metadata URLs. It shares domain_icons storage, bitmap/color LRU caches, the four-worker coordinator, atomic PNG processing, failure backoff, and generation clearing. A declared image is downloaded directly, including small valid icons, without XML/HTML discovery. Only a miss falls back to `siteUrl` domain or feed URL domain using normal domain recovery. A feed cache key never overwrites a publisher-domain icon. Changed metadata selects a new identity; old files remain disposable cache entries until eviction/clear.
+
+`rememberFeedIcon` observes both feed and publisher completion events without restarting in-flight work on each notification. Global generation changes reset its bitmap and color before recovery. Feed deck cards and drill-down backgrounds share the same image/color state and Domain presentation. Registration only stores metadata; UI-triggered recovery uses ordinary visible-icon networking and does not borrow scheduled RSS mobile permissions.

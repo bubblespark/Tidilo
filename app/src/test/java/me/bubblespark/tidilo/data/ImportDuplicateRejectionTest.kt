@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
@@ -512,5 +513,73 @@ class ImportDuplicateRejectionTest {
         assertEquals("WARNING", notif.type)
         assertEquals("Duplicate URL (Already in Queue)", notif.message)
         assertNull(notif.existingBookmarkId)
+    }
+    @Test
+    fun testUrlNormalization_FragmentStripping_DetectsDuplicateInLibrary() = runBlocking {
+        val bookmarkDao = TestBookmarkDao()
+        val taskDao = TestImportTaskDao()
+        val notificationDao = TestImportNotificationDao()
+
+        val existing = BookmarkEntity(
+            id = "b_norm",
+            title = "Article without fragment",
+            url = "https://example.com/article",
+            description = "Desc",
+            createdAt = 1000L,
+            updatedAt = 1000L
+        )
+        bookmarkDao.insertRow(existing)
+
+        val repository = ImportRepository(
+            context = null,
+            taskDao = taskDao,
+            bookmarkDao = bookmarkDao,
+            notificationDao = notificationDao,
+            repositoryScope = CoroutineScope(Dispatchers.Unconfined)
+        )
+
+        // When: User imports the URL with a fragment '#section'
+        var failed = false
+        repository.importUrl("https://example.com/article#section") {
+            if (it.isFailure) failed = true
+        }
+
+        // Then: Pre-fetch normalization detects it as duplicate in library
+        assertTrue(failed)
+        assertEquals(0, taskDao.getCount())
+        val notif = notificationDao.observeNotifications().first().first()
+        assertEquals("WARNING", notif.type)
+        assertEquals("Duplicate URL (Already in Library)", notif.message)
+    }
+
+    @Test
+    fun testInFlightDuplicate_RejectedImmediately() = runBlocking {
+        val bookmarkDao = TestBookmarkDao()
+        val taskDao = TestImportTaskDao()
+        val notificationDao = TestImportNotificationDao()
+
+        // Slow or blocked scope to keep task in _importingTasks
+        val blockedScope = CoroutineScope(Dispatchers.IO)
+        val repository = ImportRepository(
+            context = null,
+            taskDao = taskDao,
+            bookmarkDao = bookmarkDao,
+            notificationDao = notificationDao,
+            repositoryScope = blockedScope
+        )
+
+        // First import
+        val result1 = repository.importUrl("https://example.com/slow-item")
+        assertTrue(result1.isSuccess)
+
+        // Concurrent duplicate import of the exact same in-flight URL
+        val result2 = repository.importUrl("https://example.com/slow-item")
+        assertTrue(result2.isFailure)
+
+        // Verify notification for in-flight queue duplicate
+        val notifs = kotlinx.coroutines.withTimeout(3000) {
+            notificationDao.observeNotifications().filter { list -> list.any { it.message == "Duplicate URL (Already in Queue)" } }.first()
+        }
+        assertTrue(notifs.isNotEmpty())
     }
 }

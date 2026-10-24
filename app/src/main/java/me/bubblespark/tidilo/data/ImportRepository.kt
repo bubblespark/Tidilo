@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
@@ -103,6 +104,7 @@ class ImportRepository internal constructor(
         return bookmarkDao?.getBookmarkByUrl(url)?.id
     }
 
+    private val importMutex = Mutex()
     private var batchProgressState = BatchProgressState()
     @Volatile
     private var isAiCancelPending = false
@@ -317,38 +319,63 @@ class ImportRepository internal constructor(
         onImported: ((Result<ImportTask>) -> Unit)? = null
     ): Result<Int> {
         val trimmed = rawUrl.trim()
-        if (!isValidHttpUrl(trimmed)) {
+        val normalized = WebPageParser.normalizeUrl(trimmed)
+        if (normalized == null || !isValidHttpUrl(normalized)) {
             val ex = IllegalArgumentException("Invalid HTTP/HTTPS URL")
             onImported?.invoke(Result.failure(ex))
             return Result.failure(ex)
         }
 
-        val importing = ImportingTask(url = trimmed, title = title)
-        _importingTasks.update { it + importing }
+        val importing = ImportingTask(url = normalized, title = title)
+        val canProceed = synchronized(_importingTasks) {
+            if (_importingTasks.value.any { it.url == normalized }) {
+                false
+            } else {
+                _importingTasks.update { it + importing }
+                true
+            }
+        }
+
+        if (!canProceed) {
+            val ex = DuplicateUrlException("Duplicate URL (Already in Queue)")
+            val domain = DomainIconManager.extractDomain(normalized).orEmpty()
+            repositoryScope.launch {
+                notificationDao?.insert(
+                    ImportNotificationEntity(
+                        type = NotificationType.WARNING.name,
+                        domain = domain,
+                        url = normalized,
+                        message = "Duplicate URL (Already in Queue)",
+                        existingBookmarkId = null
+                    )
+                )
+            }
+            onImported?.invoke(Result.failure(ex))
+            return Result.failure(ex)
+        }
 
         val estimatedCount = _readyTasks.value.size + _importingTasks.value.size
 
         repositoryScope.launch {
             try {
                 // Pre-Fetch Check (Primary Gate)
-                val preCheck = checkDuplicate(trimmed)
-                if (handleDuplicateOrConflict(trimmed, preCheck, importing.id, onImported)) {
+                val preCheck = importMutex.withLock { checkDuplicate(normalized) }
+                if (handleDuplicateOrConflict(normalized, preCheck, importing.id, onImported)) {
                     return@launch
                 }
 
                 // 1. Fetch & parse HTML, extract metadata, OGP, and Readability body snippet
-                val parsed = ArticleAcquirer.acquire(trimmed)
+                val parsed = ArticleAcquirer.acquire(normalized)
                 val prepared = ArticlePreparation.prepare(parsed)
 
-                val realUrl = prepared.url
-                // Post-Redirect Check
-                if (realUrl != trimmed) {
-                    val postCheck = checkDuplicate(realUrl)
-                    if (handleDuplicateOrConflict(realUrl, postCheck, importing.id, onImported)) {
-                        return@launch
-                    }
+                val realUrl = WebPageParser.normalizeUrl(prepared.url) ?: prepared.url
+                // Final Check before insert (handles redirects and concurrent writes)
+                val finalCheck = importMutex.withLock { checkDuplicate(realUrl) }
+                if (handleDuplicateOrConflict(realUrl, finalCheck, importing.id, onImported)) {
+                    return@launch
                 }
-                val hasCustomTitle = !title.isNullOrBlank() && !isRawUrlOrHost(title, trimmed)
+
+                val hasCustomTitle = !title.isNullOrBlank() && !isRawUrlOrHost(title, normalized)
                 val realTitle = if (hasCustomTitle) title.trim() else prepared.title
                 val domain = DomainIconManager.extractDomain(realUrl)
                 val siteName = prepared.siteName
@@ -384,7 +411,14 @@ class ImportRepository internal constructor(
                     articlePrepared = true
                 )
 
-                taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
+                importMutex.withLock {
+                    val finalRecheck = checkDuplicate(realUrl)
+                    if (finalRecheck !is DuplicateCheckResult.NoDuplicate) {
+                        handleDuplicateOrConflict(realUrl, finalRecheck, importing.id, onImported)
+                        return@launch
+                    }
+                    taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
+                }
                 onImported?.invoke(Result.success(newItem))
             } catch (e: DuplicateUrlException) {
                 // Handled in handleDuplicateOrConflict; ignore
@@ -392,17 +426,23 @@ class ImportRepository internal constructor(
                 throw e
             } catch (e: Exception) {
                 // Fallback: If network/parsing throws, create fallback task with basic details
-                val domain = DomainIconManager.extractDomain(trimmed)
+                val fallbackCheck = importMutex.withLock { checkDuplicate(normalized) }
+                if (handleDuplicateOrConflict(normalized, fallbackCheck, importing.id, onImported)) {
+                    return@launch
+                }
+                val domain = DomainIconManager.extractDomain(normalized)
                 val isDomainNsfw = DomainPolicyManager.isNsfwDomain(domain)
                 val fallbackItem = ImportTask(
-                    url = trimmed,
-                    title = title?.trim()?.takeIf { it.isNotBlank() } ?: extractHostOrTitle(trimmed),
+                    url = normalized,
+                    title = title?.trim()?.takeIf { it.isNotBlank() } ?: extractHostOrTitle(normalized),
                     status = TaskStatus.ERROR,
                     statusText = "Article acquisition failed",
                     errorMessage = e.message,
                     isNsfw = isDomainNsfw
                 )
-                taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(fallbackItem))
+                importMutex.withLock {
+                    taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(fallbackItem))
+                }
                 onImported?.invoke(Result.failure(e))
             } finally {
                 _importingTasks.update { list -> list.filter { it.id != importing.id } }

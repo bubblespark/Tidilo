@@ -117,9 +117,11 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.Subcategory
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+private val DETAIL_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm").withZone(ZoneId.systemDefault())
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -217,12 +219,10 @@ fun BookmarkDetailScreen(
     }
 
     val formattedCreatedAt = remember(bookmark.createdAt) {
-        val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
-        sdf.format(Date(bookmark.createdAt))
+        DETAIL_DATE_TIME_FORMATTER.format(Instant.ofEpochMilli(bookmark.createdAt))
     }
     val formattedUpdatedAt = remember(bookmark.updatedAt) {
-        val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
-        sdf.format(Date(bookmark.updatedAt))
+        DETAIL_DATE_TIME_FORMATTER.format(Instant.ofEpochMilli(bookmark.updatedAt))
     }
 
     val scrollState = rememberScrollState()

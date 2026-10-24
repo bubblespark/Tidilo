@@ -27,12 +27,15 @@ enum class Category(
     fun getLabel(context: Context): String = context.getString(labelRes)
 
     companion object {
-        fun fromId(id: String): Category? =
-            entries.firstOrNull {
-                it.id.equals(id, ignoreCase = true) ||
-                        it.jaLabel.equals(id, ignoreCase = true) ||
-                        it.enLabel.equals(id, ignoreCase = true)
+        private val LOOKUP_MAP: Map<String, Category> = buildMap {
+            for (entry in Category.entries) {
+                put(entry.id.lowercase(), entry)
+                put(entry.jaLabel.lowercase(), entry)
+                put(entry.enLabel.lowercase(), entry)
             }
+        }
+
+        fun fromId(id: String): Category? = LOOKUP_MAP[id.lowercase()]
 
         fun toLocalized(id: String, isJapanese: Boolean): String =
             fromId(id)?.getLabel(isJapanese) ?: id
@@ -69,12 +72,15 @@ enum class Subcategory(
     fun getLabel(context: Context): String = context.getString(labelRes)
 
     companion object {
-        fun fromId(id: String): Subcategory? =
-            entries.firstOrNull {
-                it.id.equals(id, ignoreCase = true) ||
-                        it.jaLabel.equals(id, ignoreCase = true) ||
-                        it.enLabel.equals(id, ignoreCase = true)
+        private val LOOKUP_MAP: Map<String, Subcategory> = buildMap {
+            for (entry in Subcategory.entries) {
+                put(entry.id.lowercase(), entry)
+                put(entry.jaLabel.lowercase(), entry)
+                put(entry.enLabel.lowercase(), entry)
             }
+        }
+
+        fun fromId(id: String): Subcategory? = LOOKUP_MAP[id.lowercase()]
 
         fun toLocalized(id: String, isJapanese: Boolean): String =
             fromId(id)?.getLabel(isJapanese) ?: id

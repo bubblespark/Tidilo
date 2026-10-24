@@ -1155,17 +1155,20 @@ private fun ImportUrlDialog(
 /**
  * Resolves localized status text for an import task while preserving backwards compatibility.
  */
+private val AICORE_RETRY_REGEX = Regex("""AICore busy • Retrying \((\d+)/(\d+)\)\.\.\.""")
+private val AICORE_BLOCKED_REGEX = Regex("""AICore background blocked • Retrying \((\d+)/(\d+)\)\.\.\.""")
+
 @Composable
 private fun resolveTaskStatusText(item: ImportTask): String {
     val text = item.statusText
 
-    val retryMatch = Regex("""AICore busy • Retrying \((\d+)/(\d+)\)\.\.\.""").find(text)
+    val retryMatch = AICORE_RETRY_REGEX.find(text)
     if (retryMatch != null) {
         val (current, max) = retryMatch.destructured
         return stringResource(R.string.import_status_aicore_busy, current.toInt(), max.toInt())
     }
 
-    val blockedMatch = Regex("""AICore background blocked • Retrying \((\d+)/(\d+)\)\.\.\.""").find(text)
+    val blockedMatch = AICORE_BLOCKED_REGEX.find(text)
     if (blockedMatch != null) {
         val (current, max) = blockedMatch.destructured
         return stringResource(R.string.import_status_aicore_blocked, current.toInt(), max.toInt())

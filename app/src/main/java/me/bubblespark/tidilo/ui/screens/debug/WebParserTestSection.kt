@@ -81,6 +81,8 @@ import me.bubblespark.tidilo.parser.WebMetaTag
 import me.bubblespark.tidilo.parser.WebPageParser
 import kotlinx.coroutines.launch
 
+private val WHITESPACE_REGEX = Regex("\\s+")
+
 sealed class WebParserUiState {
     data object Idle : WebParserUiState()
     data class Loading(val url: String) : WebParserUiState()
@@ -839,7 +841,7 @@ private fun BodyTextTab(
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Total extracted: $activeCharCount characters (${activeText.split("\\s+".toRegex()).size} words)",
+                    text = "Total extracted: $activeCharCount characters (${activeText.split(WHITESPACE_REGEX).size} words)",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )

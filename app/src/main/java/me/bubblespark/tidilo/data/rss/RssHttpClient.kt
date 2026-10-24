@@ -20,6 +20,9 @@ import me.bubblespark.tidilo.parser.RssFeedParser
 internal class RssWifiUnavailable : IOException("Waiting for Wi-Fi")
 
 /** RSS connections are bound to a concrete network so Wi-Fi loss cannot fall back to cellular. */
+private val CHARSET_REGEX = Regex("charset=[\"']?([^;\\s\"']+)", RegexOption.IGNORE_CASE)
+private val ENCODING_REGEX = Regex("encoding=[\"']([^\"']+)")
+
 internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boolean) {
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
 
@@ -87,9 +90,9 @@ internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boole
                         }
                     }
                     val bytes = output.toByteArray()
-                    val declared = Regex("charset=[\"']?([^;\\s\"']+)", RegexOption.IGNORE_CASE)
+                    val declared = CHARSET_REGEX
                         .find(connection.contentType.orEmpty())?.groupValues?.get(1)
-                        ?: Regex("encoding=[\"']([^\"']+)").find(String(bytes.take(200).toByteArray(), Charsets.US_ASCII))?.groupValues?.get(1)
+                        ?: ENCODING_REGEX.find(String(bytes.take(200).toByteArray(), Charsets.US_ASCII))?.groupValues?.get(1)
                     val charset = declared?.let { runCatching { Charset.forName(it) }.getOrNull() } ?: Charsets.UTF_8
                     return@withContext RssHttpPage(status, currentUrl, String(bytes, charset),
                         connection.getHeaderField("ETag"), connection.getHeaderField("Last-Modified"), bytes, connection.contentType)

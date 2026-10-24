@@ -4,6 +4,7 @@ import java.net.URI
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 
 data class DomainIconCandidate(val url: String, val highPriority: Boolean = false)
 internal data class ResolvedDomainIcon<T>(val value: T, val width: Int, val height: Int)
@@ -13,10 +14,12 @@ internal object DomainIconResolver {
     private const val MIN_SIZE = 96
 
     /** Classifies declarations for ordering; actual decoded dimensions determine acceptance. */
-    fun parseHtml(html: String, pageUrl: String): List<DomainIconCandidate> {
-        val document = Jsoup.parse(html, pageUrl)
+    fun parseHtml(html: String, pageUrl: String): List<DomainIconCandidate> =
+        parseHtml(Jsoup.parse(html, pageUrl), pageUrl)
+
+    fun parseHtml(doc: Document, pageUrl: String): List<DomainIconCandidate> {
         val result = mutableListOf<DomainIconCandidate>()
-        for (element in document.select("link[rel]")) {
+        for (element in doc.select("link[rel]")) {
             val rel = element.attr("rel").lowercase()
             if (!rel.contains("icon")) continue
             val url = resolveUrl(pageUrl, element.absUrl("href")) ?: continue
@@ -27,7 +30,7 @@ internal object DomainIconResolver {
             }
             result.add(DomainIconCandidate(url, rel.contains("apple-touch-icon") || large))
         }
-        for (element in document.select("meta[name]")) {
+        for (element in doc.select("meta[name]")) {
             if (!element.attr("name").equals("msapplication-TileImage", true)) continue
             resolveUrl(pageUrl, element.absUrl("content"))?.let { result.add(DomainIconCandidate(it, true)) }
         }

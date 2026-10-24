@@ -32,10 +32,16 @@ interface BookmarkDao {
     suspend fun insertRow(bookmark: BookmarkEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRows(bookmarks: List<BookmarkEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOccurrences(rows: List<BookmarkEntityOccurrence>)
 
     @Query("DELETE FROM bookmark_entities WHERE bookmarkId = :id")
     suspend fun deleteOccurrences(id: String)
+
+    @Query("DELETE FROM bookmark_entities WHERE bookmarkId IN (:bookmarkIds)")
+    suspend fun deleteOccurrencesForBookmarks(bookmarkIds: List<String>)
 
     @Transaction
     suspend fun insertOrUpdate(bookmark: BookmarkEntity) {
@@ -49,7 +55,19 @@ interface BookmarkDao {
 
     @Transaction
     suspend fun insertAll(bookmarks: List<BookmarkEntity>) {
-        bookmarks.forEach { insertOrUpdate(it) }
+        bookmarks.chunked(500).forEach { chunk ->
+            val normalized = chunk.map { it.withSearchFields() }
+            insertRows(normalized)
+            deleteOccurrencesForBookmarks(chunk.map { it.id })
+            val occurrences = chunk.flatMap { bookmark ->
+                bookmark.logicalTag().entities.mapIndexed { index, value ->
+                    BookmarkEntityOccurrence(bookmark.id, index, value, bookmarkSearchKey(value))
+                }
+            }
+            if (occurrences.isNotEmpty()) {
+                insertOccurrences(occurrences)
+            }
+        }
     }
 
     @Transaction

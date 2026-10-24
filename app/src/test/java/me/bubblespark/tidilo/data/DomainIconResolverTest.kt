@@ -108,4 +108,12 @@ class DomainIconResolverTest {
             DomainIconCandidate("https://example.com/tile.png", true)
         ), candidates)
     }
+
+    @Test
+    fun parserAcceptsPreParsedJsoupDocument() {
+        val html = "<link rel='icon' href='favicon.ico'>"
+        val doc = org.jsoup.Jsoup.parse(html, page)
+        val candidates = DomainIconResolver.parseHtml(doc, page)
+        assertEquals(listOf(DomainIconCandidate("https://example.com/favicon.ico", false)), candidates)
+    }
 }

@@ -20,7 +20,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -47,7 +50,7 @@ enum class LibraryFilterMode {
     RSS
 }
 
-@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, FlowPreview::class)
 class LibraryViewModel : ViewModel() {
 
     private val prefs by lazy {
@@ -57,6 +60,10 @@ class LibraryViewModel : ViewModel() {
     private val bookmarkRepository = BookmarkRepository.getInstance()
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val debouncedSearchQuery = _searchQuery
+        .debounce { if (it.isBlank()) 0L else 250L }
+        .distinctUntilChanged()
 
     private val _searchFocusTrigger = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val searchFocusTrigger: SharedFlow<Unit> = _searchFocusTrigger.asSharedFlow()
@@ -158,7 +165,7 @@ class LibraryViewModel : ViewModel() {
         .flowOn(Dispatchers.Default)
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.Eagerly,
+            started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
 
@@ -173,7 +180,7 @@ class LibraryViewModel : ViewModel() {
         }
         .cachedIn(viewModelScope)
 
-    val searchPages = combine(_searchQuery, AppConfig.isNsfwContentVisible, bookmarkRepository.isInitialized) { query, visible, ready -> Triple(query, visible, ready) }
+    val searchPages = combine(debouncedSearchQuery, AppConfig.isNsfwContentVisible, bookmarkRepository.isInitialized) { query, visible, ready -> Triple(query, visible, ready) }
         .flatMapLatest { (query, visible, ready) ->
             if (ready) bookmarkRepository.pagedBookmarks(query, null, visible).onStart { emit(loadingPage()) }
             else flowOf(loadingPage())
@@ -184,7 +191,7 @@ class LibraryViewModel : ViewModel() {
         .flatMapLatest { (domain, visible, mode) -> bookmarkRepository.observeCount("", domain, visible, if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val searchCount = combine(_searchQuery, AppConfig.isNsfwContentVisible) { query, visible -> query to visible }
+    val searchCount = combine(debouncedSearchQuery, AppConfig.isNsfwContentVisible) { query, visible -> query to visible }
         .flatMapLatest { (query, visible) -> bookmarkRepository.observeCount(query, null, visible) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 

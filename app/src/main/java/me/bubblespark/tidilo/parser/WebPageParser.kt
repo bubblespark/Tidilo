@@ -56,7 +56,7 @@ object WebPageParser {
             val statusMessage = response.statusMessage()
             val contentType = response.contentType()
             val rawHtml = response.body()
-            val rawHtmlBytes = rawHtml.toByteArray(Charsets.UTF_8).size
+            val rawHtmlBytes = response.bodyAsBytes().size
 
             val doc = response.parse()
             val parsed = extractElements(
@@ -209,9 +209,12 @@ object WebPageParser {
         val h1List = doc.select("h1").mapNotNull { it.text().trim().takeIf { t -> t.isNotBlank() } }
         val h2List = doc.select("h2").mapNotNull { it.text().trim().takeIf { t -> t.isNotBlank() } }
 
+        val iconCandidates = me.bubblespark.tidilo.data.DomainIconResolver.parseHtml(doc, finalUrl)
+        val imageBaseUrl = doc.baseUri()
+
         // 7. Body text extraction: Readability4J (Mozilla Readability algorithm)
         val readabilityArticle = try {
-            val readability = Readability4J(finalUrl, rawHtml)
+            val readability = Readability4J(finalUrl, doc.clone())
             val article = readability.parse()
             val text = article.textContent?.trim().orEmpty()
             ExtractedArticle(
@@ -276,8 +279,8 @@ object WebPageParser {
             appleTouchIconUrl = appleTouchIconUrl,
             faviconUrl = faviconUrl,
             isNsfwSignal = isNsfwSignal,
-            iconCandidates = me.bubblespark.tidilo.data.DomainIconResolver.parseHtml(rawHtml, finalUrl),
-            imageBaseUrl = doc.baseUri()
+            iconCandidates = iconCandidates,
+            imageBaseUrl = imageBaseUrl
         )
     }
 
@@ -437,9 +440,8 @@ object WebPageParser {
     /**
      * Extracts main body text from Jsoup DOM after stripping boilerplate tags (navigation, ads, footer, etc.).
      */
-    private fun extractJsoupCleanText(originalDoc: Document): String {
+    private fun extractJsoupCleanText(doc: Document): String {
         return try {
-            val doc = originalDoc.clone()
             // Strip non-content elements like scripts, styles, navigation, headers, footers
             doc.select(
                 "script, style, noscript, nav, header, footer, aside, form, svg, iframe, " +

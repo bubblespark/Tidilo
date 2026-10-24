@@ -112,8 +112,12 @@ class ImportRepository internal constructor(
 
     private val importMutex = Mutex()
     internal val inFlightResolvedUrls = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+    internal var onEnteringTransaction: (suspend (url: String) -> Unit)? = null
 
-    private suspend fun <T> runInDbOrLock(block: suspend () -> T): T {
+    private suspend fun <T> runInDbOrLock(url: String? = null, block: suspend () -> T): T {
+        if (url != null) {
+            onEnteringTransaction?.invoke(url)
+        }
         return if (database != null) {
             database.withTransaction { block() }
         } else {
@@ -386,7 +390,7 @@ class ImportRepository internal constructor(
         repositoryScope.launch {
             try {
                 // Pre-Fetch Check (Primary Gate) - atomic duplicate check & mutation in database transaction
-                val isEarlyHandled = runInDbOrLock {
+                val isEarlyHandled = runInDbOrLock(normalized) {
                     val preCheck = checkDuplicate(normalized)
                     handleDuplicateOrConflict(normalized, preCheck, importing.id, onImported)
                 }
@@ -399,23 +403,19 @@ class ImportRepository internal constructor(
                 val prepared = ArticlePreparation.prepare(parsed)
 
                 val realUrl = WebPageParser.normalizeUrl(prepared.url) ?: prepared.url
-                // If URL resolved to a different canonical URL through redirects,
-                // record resolved target and update any in-flight duplicate notifications recorded for the submitted URL
-                if (realUrl != normalized) {
-                    val redirectDomain = DomainIconManager.extractDomain(realUrl).orEmpty()
-                    if (inFlightResolvedUrls.size > 200) {
-                        inFlightResolvedUrls.keys.firstOrNull()?.let { inFlightResolvedUrls.remove(it) }
-                    }
-                    inFlightResolvedUrls[normalized] = Pair(realUrl, redirectDomain)
-                    notificationDao?.updateResolvedUrl(
-                        submittedUrl = normalized,
-                        resolvedUrl = realUrl,
-                        domain = redirectDomain
-                    )
-                }
                 // Post-Redirect Check (handles redirects) - atomic duplicate check & mutation in database transaction
                 if (realUrl != normalized) {
-                    val isRedirectHandled = runInDbOrLock {
+                    val isRedirectHandled = runInDbOrLock(realUrl) {
+                        val redirectDomain = DomainIconManager.extractDomain(realUrl).orEmpty()
+                        if (inFlightResolvedUrls.size > 200) {
+                            inFlightResolvedUrls.keys.firstOrNull()?.let { inFlightResolvedUrls.remove(it) }
+                        }
+                        inFlightResolvedUrls[normalized] = Pair(realUrl, redirectDomain)
+                        notificationDao?.updateResolvedUrl(
+                            submittedUrl = normalized,
+                            resolvedUrl = realUrl,
+                            domain = redirectDomain
+                        )
                         val postCheck = checkDuplicate(realUrl)
                         handleDuplicateOrConflict(realUrl, postCheck, importing.id, onImported)
                     }
@@ -460,7 +460,7 @@ class ImportRepository internal constructor(
                     articlePrepared = true
                 )
 
-                val isInserted = runInDbOrLock {
+                val isInserted = runInDbOrLock(realUrl) {
                     val finalRecheck = checkDuplicate(realUrl)
                     if (finalRecheck !is DuplicateCheckResult.NoDuplicate) {
                         handleDuplicateOrConflict(realUrl, finalRecheck, importing.id, onImported)
@@ -490,7 +490,7 @@ class ImportRepository internal constructor(
                     errorMessage = e.message,
                     isNsfw = isDomainNsfw
                 )
-                val isFallbackInserted = runInDbOrLock {
+                val isFallbackInserted = runInDbOrLock(normalized) {
                     val fallbackCheck = checkDuplicate(normalized)
                     if (fallbackCheck !is DuplicateCheckResult.NoDuplicate) {
                         handleDuplicateOrConflict(normalized, fallbackCheck, importing.id, onImported)

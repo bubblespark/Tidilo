@@ -86,15 +86,6 @@ class ImportDuplicateRoomTest {
         }
     }
 
-    private class HookableNotificationDao(private val delegate: ImportNotificationDao) : ImportNotificationDao by delegate {
-        var onUpdateResolvedUrl: ((String, String, String) -> Unit)? = null
-
-        override suspend fun updateResolvedUrl(submittedUrl: String, resolvedUrl: String, domain: String) {
-            onUpdateResolvedUrl?.invoke(submittedUrl, resolvedUrl, domain)
-            delegate.updateResolvedUrl(submittedUrl, resolvedUrl, domain)
-        }
-    }
-
     @Test
     fun testConvergingUrls_RoomBackedTransaction_OnlyOneTaskEnqueued() = runBlocking {
         val rssCanonicalUrl = "https://example.com/rss-article"
@@ -123,14 +114,6 @@ class ImportDuplicateRoomTest {
 
         val hookableTaskDao = HookableImportTaskDao(database.importTaskDao())
         val hookableBookmarkDao = HookableBookmarkDao(database.bookmarkDao())
-        val hookableNotificationDao = HookableNotificationDao(database.importNotificationDao())
-
-        // Hook notification update: called immediately before redirect enters runInDbOrLock
-        hookableNotificationDao.onUpdateResolvedUrl = { submittedUrl, _, _ ->
-            if (submittedUrl == redirectUrl) {
-                redirectReachedTransactionBoundary.complete(Unit)
-            }
-        }
 
         // Hook bookmarkDao lookup: called when redirect enters checkDuplicate inside runInDbOrLock
         hookableBookmarkDao.onGetBookmarkByUrl = { url ->
@@ -169,7 +152,7 @@ class ImportDuplicateRoomTest {
             database = database,
             taskDao = hookableTaskDao,
             bookmarkDao = hookableBookmarkDao,
-            notificationDao = hookableNotificationDao,
+            notificationDao = database.importNotificationDao(),
             repositoryScope = CoroutineScope(Dispatchers.IO),
             articleAcquirer = { url ->
                 if (url == redirectUrl) {
@@ -181,6 +164,13 @@ class ImportDuplicateRoomTest {
                 }
             }
         )
+
+        // Deterministic test seam: fires immediately before redirect enters runInDbOrLock database transaction
+        repository.onEnteringTransaction = { url ->
+            if (url == rssCanonicalUrl && allowRedirectGate.isCompleted) {
+                redirectReachedTransactionBoundary.complete(Unit)
+            }
+        }
 
         // 1. Start import of converging redirect URL: suspends in articleAcquirer
         val redirectCallResult = repository.importUrl(redirectUrl) {

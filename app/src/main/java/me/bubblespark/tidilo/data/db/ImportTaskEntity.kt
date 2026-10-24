@@ -36,7 +36,12 @@ data class ImportTaskEntity(
     val ogImageUrl: String? = null,
     val rssFeedId: String? = null,
     val rssPublishedAt: Long? = null,
-    val ogImageKey: String? = bookmarkOgImageKey(url, ogImageUrl)
+    val ogImageKey: String? = bookmarkOgImageKey(url, ogImageUrl),
+    @androidx.room.ColumnInfo(defaultValue = "0") val articlePrepared: Boolean = false,
+    @androidx.room.ColumnInfo(defaultValue = "'AI'") val intendedMode: String = "AI",
+    val rssItemKey: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "0") val acquisitionAttempts: Int = 0,
+    @androidx.room.ColumnInfo(defaultValue = "0") val acquisitionRetryAt: Long = 0
 ) {
     fun toImportTask(): ImportTask {
         val taskStatus = runCatching {
@@ -61,7 +66,9 @@ data class ImportTaskEntity(
             bodySnippet = bodySnippet,
             rssFeedId = rssFeedId,
             rssPublishedAt = rssPublishedAt,
-            ogImageUrl = ogImageUrl
+            ogImageUrl = ogImageUrl,
+            articlePrepared = articlePrepared, intendedMode = intendedMode, rssItemKey = rssItemKey,
+            acquisitionAttempts = acquisitionAttempts, acquisitionRetryAt = acquisitionRetryAt
         )
     }
 
@@ -82,7 +89,9 @@ data class ImportTaskEntity(
                 bodySnippet = task.bodySnippet,
                 rssFeedId = task.rssFeedId,
                 rssPublishedAt = task.rssPublishedAt,
-                ogImageUrl = task.ogImageUrl
+                ogImageUrl = task.ogImageUrl,
+                articlePrepared = task.articlePrepared, intendedMode = task.intendedMode, rssItemKey = task.rssItemKey,
+                acquisitionAttempts = task.acquisitionAttempts, acquisitionRetryAt = task.acquisitionRetryAt
             )
         }
     }

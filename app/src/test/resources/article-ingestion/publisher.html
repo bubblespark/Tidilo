@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <base href="https://cdn.example.com/assets/">
+  <title>Publisher article</title>
+  <link rel="canonical" href="https://example.com/articles/canonical">
+  <meta property="og:site_name" content="Publisher">
+  <meta property="og:description" content=" ">
+  <meta name="description" content="A description from the article HTML.">
+  <meta property="og:image" content="cover.png">
+  <link rel="apple-touch-icon" href="icon.png">
+</head>
+<body>
+  <nav>Navigation that must not become article content.</nav>
+  <article>
+    <h1>Publisher article</h1>
+    <p>This is the full article content, which is absent from a URL-only feed entry.</p>
+    <p>The same HTML should produce equal prepared input regardless of subscription provenance.</p>
+  </article>
+</body>
+</html>

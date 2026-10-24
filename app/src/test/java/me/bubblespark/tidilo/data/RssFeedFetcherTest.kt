@@ -20,15 +20,8 @@ class RssFeedFetcherTest {
         assertEquals("https://example.com/image.png", result.document!!.entries.single().imageUrl)
         assertEquals(listOf("https://example.com/feed"), urls)
     }
-    @Test fun notModifiedDoesNotParseAndMetadataFailureKeepsItem() = runBlocking {
+    @Test fun notModifiedDoesNotParseOrAcquireArticles() = runBlocking {
         val unchanged = RssFeedFetcher { url, _ -> RssHttpPage(304, url, "") }
         assertNull(unchanged.fetch("https://example.com/feed", null, null).document)
-        val fetcher = RssFeedFetcher { url, _ ->
-            if (url.endsWith("/post")) throw java.io.IOException("Offline image metadata")
-            RssHttpPage(200, url, "<rss><channel><item><title>Post</title><link>https://example.com/post</link><description>Feed text</description></item></channel></rss>")
-        }
-        val item = fetcher.enrich(fetcher.fetch("https://example.com/feed", null, null).document!!.entries.single())
-        assertEquals("Feed text", item.description)
-        assertNull(item.imageUrl)
     }
 }

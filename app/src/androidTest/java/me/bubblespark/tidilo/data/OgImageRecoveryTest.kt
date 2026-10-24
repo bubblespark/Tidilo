@@ -15,6 +15,32 @@ import org.junit.Before
 import org.junit.Test
 
 class OgImageRecoveryTest {
+    @Test fun restrictedRssRequestDoesNotBorrowConcurrentManualDownload() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val bytes = imageBytes()
+        OgImageManager.imageDownloader = { entered.complete(Unit); release.await(); bytes }
+        val page = "https://example.com/article"
+        val image = "https://cdn.example.com/permission.png"
+        val manual = async { OgImageManager.loadOrFetchOgImage(context, page, "example.com", image) }
+        entered.await()
+        var restrictedCalls = 0
+        val restricted = object : me.bubblespark.tidilo.parser.ArticleNetwork {
+            override val scopeKey = "rss:wifi-only"
+            override suspend fun fetch(url: String): me.bubblespark.tidilo.parser.ArticleResponse {
+                restrictedCalls++
+                throw me.bubblespark.tidilo.data.rss.RssWifiUnavailable()
+            }
+        }
+        assertNull(withTimeout(5000) { OgImageManager.loadOrFetchOgImage(context, page, "example.com", image, restricted) })
+        assertEquals(1, restrictedCalls)
+        release.complete(Unit)
+        assertNotNull(withTimeout(5000) { manual.await() })
+        // Once permission-independent cache data exists, the RSS caller may use it without networking.
+        assertNotNull(OgImageManager.loadOrFetchOgImage(context, page, "example.com", image, restricted))
+        assertEquals(1, restrictedCalls)
+    }
+
     private val target = InstrumentationRegistry.getInstrumentation().targetContext
     private val root = File(target.cacheDir, "og-test-${UUID.randomUUID()}")
     private val context = object : ContextWrapper(target) {

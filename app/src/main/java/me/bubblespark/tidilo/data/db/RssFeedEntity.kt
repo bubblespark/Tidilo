@@ -19,7 +19,11 @@ data class RssFeedEntity(
     val lastAttemptAt: Long? = null,
     val lastSuccessAt: Long? = null,
     val error: String? = null,
-    @androidx.room.ColumnInfo(defaultValue = "1") val enabled: Boolean = true
+    @androidx.room.ColumnInfo(defaultValue = "1") val enabled: Boolean = true,
+    val acquisitionId: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "0") val acquisitionMobileOverride: Boolean = false,
+    @androidx.room.ColumnInfo(defaultValue = "0") val acquisitionXmlDone: Boolean = false,
+    @androidx.room.ColumnInfo(defaultValue = "0") val acquisitionRequestedAt: Long = 0
 )
 
 /** Durable receipts prevent retained-out and rolled-out entries from reappearing. */

@@ -35,15 +35,35 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
     val error by model.error.collectAsStateWithLifecycle()
     val wifi by model.wifi.collectAsStateWithLifecycle()
     val registration by model.registration.collectAsStateWithLifecycle()
+    val initialFetch by model.initialFetch.collectAsStateWithLifecycle()
+    val online by model.online.collectAsStateWithLifecycle()
     LifecycleResumeEffect(model) {
         model.startListening()
         onPauseOrDispose { model.stopListening() }
     }
     RssSettingsContent(feeds, settings, busy, error, wifi, onNavigateBack, model::retry,
         model::saveSettings, model::saveFeed, model::deleteFeed, model::fetchNow, model::clearError, model::setEnabled)
+    if (initialFetch != null) {
+        val mobileNotice = settings.wifiOnly && wifi == false
+        RssInitialFetchDialog(mobileNotice, online == true && wifi != null, busy,
+            onFetch = { model.fetchInitial(mobileNotice) }, onLater = model::dismissInitialFetch)
+    }
     registration?.let {
         RssRegistrationDialog(it.snapshot.savedCount, it.limit, busy, model::confirmRegistration, model::dismissRegistration)
     }
+}
+
+@Composable
+internal fun RssInitialFetchDialog(mobileNotice: Boolean, connected: Boolean, busy: Boolean,
+    onFetch: () -> Unit, onLater: () -> Unit) {
+    AlertDialog(onDismissRequest = { if (!busy) onLater() }, title = { Text(stringResource(R.string.rss_initial_title)) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.rss_initial_message))
+            if (connected && mobileNotice) Text(stringResource(R.string.rss_initial_mobile), color = MaterialTheme.colorScheme.error)
+            if (!connected) Text(stringResource(R.string.rss_initial_offline), color = MaterialTheme.colorScheme.error)
+        } },
+        confirmButton = { TextButton(onClick = onFetch, enabled = connected && !busy) { Text(stringResource(R.string.rss_fetch_now)) } },
+        dismissButton = { TextButton(onClick = onLater, enabled = !busy) { Text(stringResource(R.string.rss_later)) } })
 }
 
 @Composable
@@ -135,7 +155,12 @@ internal fun RssSettingsContent(
                                 Checkbox(feed.enabled, null, enabled = !busy)
                                 Text(stringResource(R.string.rss_enabled))
                             }
-                            feed.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            feed.error?.let {
+                                Text(if (it == "XML_FETCH_FAILED") stringResource(R.string.rss_xml_fetch_failed) else it,
+                                    color = MaterialTheme.colorScheme.error)
+                                if (it == "XML_FETCH_FAILED" && !feed.enabled) Text(stringResource(R.string.rss_enable_to_retry),
+                                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                            }
                             Row {
                                 TextButton(onClick = { editing = feed; showEditor = true }, enabled = !busy) { Text(stringResource(R.string.rss_edit)) }
                                 TextButton(onClick = { deleting = feed }, enabled = !busy) { Text(stringResource(R.string.rss_delete)) }

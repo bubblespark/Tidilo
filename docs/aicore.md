@@ -278,4 +278,8 @@ The production `GeminiTaggingService.runNanoInference` and debug `DebugPromptTes
 
 ## RSS Foreground Inference
 
-RSS workers never invoke AICore. RSS tasks always use publisher XML metadata, even with an empty body snippet; startup article preparse and Readability are excluded. The foreground worker atomically claims valid tasks, prioritizes manual waiters, and preserves RSS first-seen/publication/source fields through AI success and fallback. The five-task cap applies only to unstarted tasks per feed; it is unrelated to retention or an SDK quota. See [RSS and Atom Subscriptions](rss.md).
+RSS workers never invoke AICore. RSS tasks use the common extracted article HTML input; legacy XML snippets require preparation before inference. The foreground worker atomically claims prepared valid tasks, prioritizes manual waiters, and preserves RSS first-seen/publication/source fields through AI success and fallback. The five-task cap applies only to unstarted tasks per feed; it is unrelated to retention or an SDK quota. See [RSS and Atom Subscriptions](rss.md).
+
+## Shared manual/RSS prepared input
+
+`ArticlePreparation` maps shared HTML extraction into title/site/Description/body input for manual and RSS imports. Both sources use the same prompt builder for identical HTML/settings; explicit manual title overrides remain intentional input. Legacy RSS XML tasks require HTML preparation before inference, even when their XML excerpt is nonblank. Insufficient HTML content and fetch failure remain acquisition errors. Scheduled work never invokes AICore, and Direct acquisition/retry bypasses AI entirely.

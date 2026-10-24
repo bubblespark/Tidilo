@@ -14,7 +14,7 @@ Instead of manual folder sorting or manual tagging, Tidilo leverages Google's **
 
 ## 2. Core Architectural Patterns
 
-RSS/Atom acquisition is a separate WorkManager-backed path. It parses publisher XML, saves Direct articles or capped RSS Ready tasks locally, and leaves inference to the existing foreground worker. Library source filters separate manual and RSS articles while Search and Summary include both. See [RSS and Atom Subscriptions](rss.md) for scheduling, Wi-Fi policy, receipts, retention, and lifecycle behavior.
+RSS/Atom scheduling and XML bookkeeping use WorkManager, while manual and RSS imports share article HTML acquisition and preparation. XML-only registration precedes an initial-fetch choice. Direct saves prepared HTML metadata; capped RSS Ready tasks leave inference to the existing foreground worker. Feed XML failures disable the affected subscription with a persistent card explanation. Library source filters separate manual and RSS articles while Search and Summary include both. See [RSS and Atom Subscriptions](rss.md) for scheduling, Wi-Fi policy, receipts, retention, and lifecycle behavior.
 
 Tidilo is built with modern **Android Clean Architecture** and **Unidirectional Data Flow (UDF)** principles using 100% Jetpack Compose and Kotlin Coroutines/Flow.
 

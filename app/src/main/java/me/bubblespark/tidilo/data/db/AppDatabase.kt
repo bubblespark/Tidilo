@@ -21,7 +21,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RssImageCleanupEntity::class,
         ImportTaskEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -81,6 +81,22 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         val MIGRATION_7_8 = rssMigration7To8
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE rss_feeds ADD COLUMN acquisitionId TEXT")
+                db.execSQL("ALTER TABLE rss_feeds ADD COLUMN acquisitionMobileOverride INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE rss_feeds ADD COLUMN acquisitionXmlDone INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE rss_feeds ADD COLUMN acquisitionRequestedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE import_tasks ADD COLUMN articlePrepared INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE import_tasks ADD COLUMN intendedMode TEXT NOT NULL DEFAULT 'AI'")
+                db.execSQL("ALTER TABLE import_tasks ADD COLUMN rssItemKey TEXT")
+                db.execSQL("ALTER TABLE import_tasks ADD COLUMN acquisitionAttempts INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE import_tasks ADD COLUMN acquisitionRetryAt INTEGER NOT NULL DEFAULT 0")
+                // Every legacy RSS snippet came from XML, even when nonblank.
+                db.execSQL("UPDATE import_tasks SET articlePrepared = 1 WHERE rssFeedId IS NULL AND bodySnippet <> ''")
+                db.execSQL("UPDATE import_tasks SET acquisitionRetryAt = 9223372036854775807 WHERE rssFeedId IS NOT NULL AND status = 'ERROR'")
+            }
+        }
         val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE rss_feeds ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
@@ -129,7 +145,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }

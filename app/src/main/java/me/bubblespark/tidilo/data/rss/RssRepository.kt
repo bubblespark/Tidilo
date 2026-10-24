@@ -8,8 +8,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -25,12 +23,50 @@ import me.bubblespark.tidilo.data.db.RssFeedEntity
 import me.bubblespark.tidilo.parser.RssFeedParser
 
 /** Owns RSS acquisition and writes; inference remains owned by the foreground import repository. */
-internal class RssRepository private constructor(private val context: Context) {
-    private val db = AppDatabase.getInstance(context)
+internal class RssRepository internal constructor(private val context: Context,
+    private val db: AppDatabase = AppDatabase.getInstance(context),
+    private val requestOverride: (suspend (String, Map<String, String>, Boolean) -> RssHttpPage)? = null,
+    private val networkOverride: me.bubblespark.tidilo.parser.ArticleNetwork? = null,
+    private val scheduleChanged: suspend () -> Unit = { RssScheduler.reschedule(context, force = true) },
+    private val enqueueInitial: suspend (String, String, Boolean) -> Unit = { feedId, operationId, mobile ->
+        RssScheduler.fetchInitial(context, feedId, operationId, mobile)
+    },
+    private val elapsedMillis: () -> Long = { android.os.SystemClock.elapsedRealtime() }
+) {
     private val dao = db.rssDao()
     private val preferences = RssPreferences.getInstance(context)
-    private val client = RssHttpClient(context) { preferences.state.value.wifiOnly }
-    private val fetcher = RssFeedFetcher(client::request)
+    private fun fetcher(registration: Boolean = false, override: Boolean = false) = RssFeedFetcher { url, headers ->
+        val wifiOnly = !registration && !override && preferences.state.value.wifiOnly
+        requestOverride?.invoke(url, headers, wifiOnly)
+            ?: RssHttpClient(context) { !registration && !override && preferences.state.value.wifiOnly }.request(url, headers)
+    }
+
+    fun articleNetwork(overrideOperation: String? = null, deadline: Long = Long.MAX_VALUE,
+        feed: RssFeedEntity? = null): me.bubblespark.tidilo.parser.ArticleNetwork {
+        val delegate = networkOverride ?: object : me.bubblespark.tidilo.parser.ArticleNetwork {
+            override val scopeKey = overrideOperation?.let { "rss:initial:$it" } ?: "rss:wifi:${preferences.state.value.wifiOnly}"
+            override suspend fun fetch(url: String): me.bubblespark.tidilo.parser.ArticleResponse {
+                val response = RssHttpClient(context) { overrideOperation == null && preferences.state.value.wifiOnly }
+                    .request(url, emptyMap(), 10 * 1024 * 1024)
+                return me.bubblespark.tidilo.parser.ArticleResponse(response.url, response.status, response.bytes, response.contentType)
+            }
+        }
+        return object : me.bubblespark.tidilo.parser.ArticleNetwork {
+            override val scopeKey = delegate.scopeKey
+            override suspend fun fetch(url: String): me.bubblespark.tidilo.parser.ArticleResponse {
+                // Includes every optional icon/image/root-page request, not only the article window.
+                if (elapsedMillis() + 35_000L >= deadline) throw RssAcquisitionYield()
+                if (feed != null) {
+                    val current = dao.feed(feed.id)
+                    check(current != null && current.enabled && !current.deleted && current.revision == feed.revision &&
+                        (overrideOperation == null || (current.acquisitionId == overrideOperation && current.acquisitionMobileOverride))) {
+                        "Subscription changed; acquisition permission ended"
+                    }
+                }
+                return delegate.fetch(url)
+            }
+        }
+    }
     private val operation = Mutex()
     private val store = RssIngestionStore(db)
     val feeds = dao.observeFeeds()
@@ -46,17 +82,13 @@ internal class RssRepository private constructor(private val context: Context) {
             require(old == null || old.deleted) { "This feed is already registered" }
             val snapshot = store.registrationSnapshot(normalized)
             if (snapshot != null && snapshot != confirmed) throw RssRegistrationConfirmationRequired(snapshot)
-            val fetched = fetcher.fetch(normalized, null, null)
+            val fetched = fetcher(registration = true).fetch(normalized, null, null)
             val document = requireNotNull(fetched.document) { "Feed returned no document" }
             val feed = RssFeedEntity(old?.id ?: UUID.randomUUID().toString(), normalized, document.title, mode, limit,
                 revision = (old?.revision ?: -1) + 1)
-            // A validated subscription is retained even if its first article-metadata request fails.
+            // XML validation discovers the title only; ingestion has its own operation and validators.
             store.registerFeed(feed, confirmed)
-            try {
-                ingestFetched(feed, fetched)
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { recordError(feed, error) }
-            RssScheduler.reschedule(context)
+            scheduleChanged()
             feed.id
         }
     }
@@ -68,25 +100,23 @@ internal class RssRepository private constructor(private val context: Context) {
             db.withTransaction {
                 val previous = requireNotNull(dao.feed(id))
                 require(!previous.deleted)
-                val updated = previous.copy(mode = mode, retentionLimit = limit, revision = previous.revision + 1)
+                val updated = previous.copy(mode = mode, retentionLimit = limit, revision = previous.revision + 1, acquisitionId = null, acquisitionMobileOverride = false, acquisitionXmlDone = false)
                 dao.putFeed(updated)
                 if (previous.mode == "AI" && mode == "DIRECT") {
-                    val pending = dao.pending(id)
+                    val pending = dao.pending(id) + dao.unstartedAcquisitions(id)
                     if (convertPending) for (task in pending) {
-                        val nsfw = task.isNsfw || DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(task.url))
-                        if ((!nsfw || AppConfig.isNsfwContentBookmarkable.value) && !dao.rssWriteConflict(task.url, task.id)) {
-                            db.bookmarkDao().insertOrUpdate(me.bubblespark.tidilo.data.db.BookmarkEntity(
-                                task.id, task.title, task.url, task.description, createdAt = task.createdAt, updatedAt = System.currentTimeMillis(),
-                                isNsfw = nsfw, isAiSkipped = true, ogImageUrl = task.ogImageUrl,
-                                rssFeedId = id, rssPublishedAt = task.rssPublishedAt))
-                        }
-                    }
-                    db.importTaskDao().deleteByIds(pending.map { it.id })
+                        val converted = task.copy(intendedMode = "DIRECT", articlePrepared = false,
+                            status = "ERROR", statusText = "Waiting for Direct article acquisition",
+                            acquisitionAttempts = 0, acquisitionRetryAt = 0)
+                        db.importTaskDao().insertOrUpdate(converted)
+                        if (task.articlePrepared) store.complete(updated, converted,
+                            me.bubblespark.tidilo.parser.PreparedArticle(task.url, task.title, task.siteName,
+                                task.description, task.bodySnippet, task.ogImageUrl, task.isNsfw))
+                    } else db.importTaskDao().deleteByIds(pending.map { it.id })
                 }
-                store.enforceRetention(id)
             }
             cleanup()
-            RssScheduler.reschedule(context)
+            scheduleChanged()
         }
     }
 
@@ -94,10 +124,10 @@ internal class RssRepository private constructor(private val context: Context) {
         run {
             db.withTransaction {
                 val feed = requireNotNull(dao.feed(id))
-                dao.putFeed(feed.copy(deleted = true, revision = feed.revision + 1))
-                db.importTaskDao().deleteByIds(dao.pending(id).map { it.id })
+                dao.putFeed(feed.copy(deleted = true, revision = feed.revision + 1, acquisitionId = null, acquisitionMobileOverride = false, acquisitionXmlDone = false))
+                db.importTaskDao().deleteByIds((dao.pending(id) + dao.unstartedAcquisitions(id)).map { it.id })
             }
-            RssScheduler.reschedule(context)
+            scheduleChanged()
         }
     }
 
@@ -105,77 +135,152 @@ internal class RssRepository private constructor(private val context: Context) {
         db.withTransaction {
             val feed = requireNotNull(dao.feed(id))
             require(!feed.deleted)
-            dao.putFeed(feed.copy(enabled = enabled, revision = feed.revision + 1))
+            dao.putFeed(feed.copy(enabled = enabled, revision = feed.revision + 1, acquisitionId = null, acquisitionMobileOverride = false, acquisitionXmlDone = false))
         }
-        RssScheduler.reschedule(context)
+        scheduleChanged()
     }
 
-    /** Successful feeds are skipped on retries of the same scheduled/manual request. */
-    suspend fun fetchAll(since: Long): Boolean = withContext(Dispatchers.IO) {
+    suspend fun requestInitialFetch(feedId: String, mobileAllowed: Boolean) = withContext(Dispatchers.IO) {
+        preferences.initialize()
+        val operationId = operation.withLock {
+            db.withTransaction {
+                val feed = requireNotNull(dao.feed(feedId))
+                require(feed.enabled && !feed.deleted)
+                val id = feed.acquisitionId ?: UUID.randomUUID().toString()
+                dao.putFeed(feed.copy(acquisitionId = id, acquisitionMobileOverride = mobileAllowed,
+                    acquisitionRequestedAt = System.currentTimeMillis()))
+                id
+            }
+        }
+        enqueueInitial(feedId, operationId, mobileAllowed)
+    }
+
+    /** A stopped initial operation keeps only its own permission; ordinary requests cannot borrow it. */
+    suspend fun resumeAcquisitions() = withContext(Dispatchers.IO) {
+        preferences.initialize()
+        for (feed in dao.enabledFeeds()) {
+            if (feed.acquisitionId != null) enqueueInitial(feed.id, feed.acquisitionId, feed.acquisitionMobileOverride)
+        }
+    }
+
+    /** XML success and article completion are separate durable checkpoints. */
+    suspend fun fetchAll(since: Long, onlyFeedId: String? = null, authorizedOperation: String? = null): Boolean = withContext(Dispatchers.IO) {
         preferences.initialize()
         operation.withLock {
-            var transientFailure = false
-            for (feed in dao.enabledFeeds()) {
-                if (dao.feed(feed.id)?.let { it.enabled && !it.deleted && it.revision == feed.revision } != true) continue
-                if ((feed.lastSuccessAt ?: Long.MIN_VALUE) >= since) continue
-                try {
-                    val fetched = fetcher.fetch(feed.url, feed.etag, feed.lastModified)
-                    ingestFetched(feed, fetched)
-                } catch (cancelled: CancellationException) { throw cancelled }
-                catch (wifi: RssWifiUnavailable) { throw wifi }
-                catch (error: Exception) {
-                    recordError(feed, error)
-                    if (error is IOException && (error !is RssHttpFailure || error.retryable)) transientFailure = true
+            val deadline = elapsedMillis() + 6 * 60_000L
+            var incomplete = false
+            for (snapshot in dao.enabledFeeds().filter { onlyFeedId == null || it.id == onlyFeedId }) {
+                if (onlyFeedId != null && snapshot.acquisitionId != authorizedOperation) continue
+                val retryTasks = db.importTaskDao().getAllTasks().any {
+                    it.rssFeedId == snapshot.id && !it.articlePrepared && it.status != "PROCESSING_AI" &&
+                        (it.intendedMode == "DIRECT" || snapshot.mode == "AI") && it.acquisitionAttempts < 5 && it.acquisitionRetryAt != Long.MAX_VALUE
                 }
+                if (snapshot.acquisitionId == null && !retryTasks && (snapshot.lastSuccessAt ?: Long.MIN_VALUE) >= since) continue
+                var feed = db.withTransaction {
+                    val current = dao.feed(snapshot.id)?.takeIf { !it.deleted && it.enabled && it.revision == snapshot.revision }
+                        ?: return@withTransaction null
+                    if (current.acquisitionId != null) current else current.copy(acquisitionId = UUID.randomUUID().toString(),
+                        acquisitionRequestedAt = since, acquisitionXmlDone = false).also { dao.putFeed(it) }
+                } ?: continue
+                val mobileOperation = feed.acquisitionId?.takeIf { it == authorizedOperation && feed.acquisitionMobileOverride }
+                val network = articleNetwork(mobileOperation, deadline, feed)
+                if (!feed.acquisitionXmlDone) {
+                    if (elapsedMillis() + 35_000L >= deadline) throw RssAcquisitionYield()
+                    val fetched = try { fetcher(override = mobileOperation != null).fetch(feed.url, feed.etag, feed.lastModified) }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (waiting: RssWifiUnavailable) { throw waiting }
+                    catch (_: Exception) {
+                        store.disableAfterXmlFailure(feed)
+                        scheduleChanged()
+                        continue
+                    }
+                    val now = System.currentTimeMillis()
+                    val committed = db.withTransaction {
+                        if (!store.stage(feed, fetched.document?.entries.orEmpty(), now)) return@withTransaction false
+                        val current = requireNotNull(dao.feed(feed.id))
+                        dao.putFeed(current.copy(title = fetched.document?.title ?: current.title,
+                            etag = if (fetched.page.status == 304) current.etag else fetched.page.etag,
+                            lastModified = if (fetched.page.status == 304) current.lastModified else fetched.page.lastModified,
+                            lastAttemptAt = now, error = null, acquisitionXmlDone = true))
+                        true
+                    }
+                    if (!committed) continue
+                    feed = dao.feed(feed.id) ?: continue
+                }
+                val tasks = db.importTaskDao().getAllTasks().filter {
+                    it.rssFeedId == feed.id && !it.articlePrepared && it.status != "PROCESSING_AI" &&
+                        (it.intendedMode == "DIRECT" || feed.mode == "AI") && it.acquisitionAttempts < 5 &&
+                        it.acquisitionRetryAt <= System.currentTimeMillis()
+                }
+                for (window in tasks.chunked(4)) {
+                    if (elapsedMillis() + 35_000L >= deadline) throw RssAcquisitionYield()
+                    val current = dao.feed(feed.id)
+                    if (current == null || current.deleted || !current.enabled || current.revision != feed.revision) break
+                    coroutineScope { window.map { task -> async { acquireTask(feed, task, network) } }.awaitAll() }
+                    store.enforceRetention(feed.id, feed.revision)
+                }
+                val pending = db.importTaskDao().getAllTasks().any {
+                    it.rssFeedId == feed.id && !it.articlePrepared && it.status != "PROCESSING_AI" &&
+                        (it.intendedMode == "DIRECT" || feed.mode == "AI") && it.acquisitionAttempts < 5 && it.acquisitionRetryAt != Long.MAX_VALUE
+                }
+                incomplete = incomplete || pending
+                db.withTransaction {
+                    dao.feed(feed.id)?.takeIf { !it.deleted && it.enabled && it.revision == feed.revision }?.let {
+                        if (!pending) dao.putFeed(it.copy(lastSuccessAt = System.currentTimeMillis(), acquisitionId = null,
+                            acquisitionMobileOverride = false, acquisitionXmlDone = false))
+                    }
+                }
+                store.enforceRetention(feed.id, feed.revision)
+                acquired.tryEmit(Unit)
             }
             cleanup()
-            !transientFailure
+            !incomplete
         }
     }
 
-    private suspend fun ingestFetched(feed: RssFeedEntity, fetched: RssFetchedFeed) {
-        val entries = fetched.document?.entries.orEmpty()
-        val now = System.currentTimeMillis()
-        var accepted = true
-        if (feed.mode == "DIRECT") {
-            // Bounded windows limit resource use, not ingestion: every supplied entry is processed.
-            for (window in entries.chunked(20)) {
-                val current = dao.feed(feed.id)
-                if (current == null || current.deleted || !current.enabled || current.revision != feed.revision) return
-                val semaphore = Semaphore(4)
-                val enriched = coroutineScope {
-                    window.map { entry -> async {
-                        semaphore.withPermit {
-                            if (dao.hasSeen(feed.id, entry.key, entry.url) || dao.urlExists(entry.url)) entry
-                            else fetcher.enrich(entry)
-                        }
-                    } }.awaitAll()
-                }
-                if (!store.ingest(feed, enriched, now)) return
+    /** Explicit retry preserves the task's intended mode and never starts inference itself. */
+    suspend fun retryAcquisition(taskId: String, promote: Boolean = false) = withContext(Dispatchers.IO) {
+        preferences.initialize()
+        operation.withLock {
+            val task = db.importTaskDao().getTaskById(taskId) ?: return@withLock
+            val feed = task.rssFeedId?.let { dao.feed(it) } ?: return@withLock
+            if (feed.deleted || !feed.enabled) {
+                if (!task.articlePrepared) db.importTaskDao().updateStatus(task.id, "ERROR", "Subscription unavailable for acquisition")
+                return@withLock
             }
-            if (entries.isEmpty()) accepted = store.ingest(feed, emptyList(), now)
-        } else {
-            val unseen = entries.filter { !dao.hasSeen(feed.id, it.key, it.url) && !dao.urlExists(it.url) }
-            val selected = unseen.sortedWith(compareByDescending<me.bubblespark.tidilo.parser.RssEntry> { it.publishedAt ?: now }.thenBy { it.url }).take(5)
-            val enriched = selected.associate { it.url to fetcher.enrich(it) }
-            accepted = store.ingest(feed, entries.map { enriched[it.url] ?: it }, now)
-        }
-        if (accepted) {
-            db.withTransaction {
-                val current = dao.feed(feed.id)
-                if (current != null && !current.deleted && current.enabled && current.revision == feed.revision) {
-                    dao.putFeed(current.copy(title = fetched.document?.title ?: current.title,
-                        etag = fetched.page.etag ?: current.etag, lastModified = fetched.page.lastModified ?: current.lastModified,
-                        lastAttemptAt = now, lastSuccessAt = now, error = null))
-                }
+            if (task.articlePrepared) return@withLock
+            if (task.intendedMode == "AI" && feed.mode != "AI") {
+                db.importTaskDao().updateStatus(task.id, "ERROR", "Subscription no longer uses AI Analyze")
+                return@withLock
             }
+            db.importTaskDao().insertOrUpdate(task.copy(acquisitionAttempts = 0, acquisitionRetryAt = 0))
+            acquireTask(feed, task.copy(acquisitionAttempts = 0, acquisitionRetryAt = 0), articleNetwork(), promote)
             acquired.tryEmit(Unit)
         }
     }
 
-    private suspend fun recordError(feed: RssFeedEntity, error: Exception) = db.withTransaction {
-        dao.feed(feed.id)?.takeIf { !it.deleted && it.revision == feed.revision }?.let {
-            dao.putFeed(it.copy(lastAttemptAt = System.currentTimeMillis(), error = error.message ?: "Could not fetch feed"))
+    private suspend fun acquireTask(feed: RssFeedEntity, task: me.bubblespark.tidilo.data.db.ImportTaskEntity,
+        network: me.bubblespark.tidilo.parser.ArticleNetwork, promote: Boolean = false) {
+        try {
+            val parsed = me.bubblespark.tidilo.parser.ArticleAcquirer.acquire(task.url, network)
+            val article = me.bubblespark.tidilo.parser.ArticlePreparation.prepare(parsed)
+            if (!store.complete(feed, task, article, promote)) return
+            val domain = DomainIconManager.extractDomain(article.url)
+            DomainPolicyManager.registerDomain(domain, false, article.siteName)
+            if (article.isNsfw && !AppConfig.isNsfwContentBookmarkable.value) return
+            // Optional enrichment cannot turn a committed article into an acquisition error.
+            try {
+                DomainIconManager.fetchAndSaveDomainIcon(context, article.url, parsed.appleTouchIconUrl, parsed.faviconUrl,
+                    parsed.iconCandidates, network)
+                OgImageManager.processAndSaveOgImage(context, article.url, article.ogImageUrl, network)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Existing cache recovery can retry optional images later. */ }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (waiting: RssWifiUnavailable) { throw waiting }
+        catch (error: Exception) {
+            val retryable = error is IOException && (error !is RssHttpFailure || error.retryable) &&
+                (error !is me.bubblespark.tidilo.parser.ArticleHttpFailure || error.retryable)
+            store.failArticle(feed, task, error, retryable)
         }
     }
 
@@ -206,3 +311,6 @@ internal class RssRepository private constructor(private val context: Context) {
         }
     }
 }
+
+/** A time-slice yield preserves progress without spending the publisher-error retry budget. */
+internal class RssAcquisitionYield : CancellationException("Acquisition time slice complete")

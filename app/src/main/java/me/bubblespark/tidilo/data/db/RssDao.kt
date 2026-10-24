@@ -53,6 +53,10 @@ interface RssDao {
     @Query("SELECT * FROM import_tasks WHERE rssFeedId = :feedId AND status IN ('READY', 'WAITING_AI')")
     suspend fun pending(feedId: String): List<ImportTaskEntity>
 
+    @Query("""SELECT * FROM import_tasks WHERE rssFeedId = :feedId AND status = 'ERROR'
+        AND articlePrepared = 0 AND acquisitionAttempts = 0 AND rssItemKey IS NOT NULL AND errorMessage IS NULL""")
+    suspend fun unstartedAcquisitions(feedId: String): List<ImportTaskEntity>
+
     @Query("SELECT * FROM bookmarks WHERE rssFeedId = :feedId ORDER BY COALESCE(rssPublishedAt, createdAt) DESC, createdAt DESC, id DESC LIMIT -1 OFFSET :limit")
     suspend fun excess(feedId: String, limit: Int): List<BookmarkEntity>
 

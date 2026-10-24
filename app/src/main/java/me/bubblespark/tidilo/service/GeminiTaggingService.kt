@@ -14,6 +14,7 @@ import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.data.Subcategory
+import me.bubblespark.tidilo.parser.ArticlePreparation
 import me.bubblespark.tidilo.parser.ParsedWebPage
 import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
@@ -57,10 +58,13 @@ object GeminiTaggingService {
         ogImageUrl: String? = null,
         rssFeedId: String? = null,
         rssPublishedAt: Long? = null,
-        rssFirstSeenAt: Long? = null
+        rssFirstSeenAt: Long? = null,
+        articlePrepared: Boolean = false
     ): Result<BookmarkItem> = withContext(Dispatchers.IO) {
         runCatching {
-            val hasPreparsedData = rssFeedId != null || !bodySnippet.isNullOrBlank()
+            require(rssFeedId == null || articlePrepared) { "RSS article requires HTML preparation" }
+            val hasPreparsedData = articlePrepared || !bodySnippet.isNullOrBlank()
+            require(!hasPreparsedData || !bodySnippet.isNullOrBlank() || !description.isNullOrBlank()) { "Article contains no extracted content" }
 
             val realUrl: String
             val finalTitle: String
@@ -107,6 +111,8 @@ object GeminiTaggingService {
                     ?: preferredTitle?.trim()?.takeIf { it.isNotBlank() && !isRawUrlOrHost(it, realUrl) }
                     ?: extractHost(realUrl)
 
+                val prepared = ArticlePreparation.prepare(parsed)
+                require(prepared.bodySnippet.isNotBlank() || prepared.description.isNotBlank()) { "Article contains no extracted content" }
                 prompt = buildPrompt(url = realUrl, parsed = parsed, language = language)
                 parsedWebPage = parsed
 
@@ -122,7 +128,8 @@ object GeminiTaggingService {
                         context = TidiloApplication.instance,
                         url = realUrl,
                         appleTouchIconUrl = parsed.appleTouchIconUrl,
-                        faviconUrl = parsed.faviconUrl
+                        faviconUrl = parsed.faviconUrl,
+                        knownCandidates = parsed.iconCandidates
                     )
                 }
                 effectiveOgImageUrl = ogImageUrl?.trim()?.takeIf { it.isNotBlank() }
@@ -224,7 +231,8 @@ object GeminiTaggingService {
                     context = TidiloApplication.instance,
                     url = realUrl,
                     appleTouchIconUrl = parsed.appleTouchIconUrl,
-                    faviconUrl = parsed.faviconUrl
+                    faviconUrl = parsed.faviconUrl,
+                        knownCandidates = parsed.iconCandidates
                 )
             }
 
@@ -247,21 +255,13 @@ object GeminiTaggingService {
         parsed: ParsedWebPage?,
         language: AppLanguage
     ): String {
-        val siteName = parsed?.ogpTags?.get("og:site_name") ?: extractHost(url)
-        val title = parsed?.ogpTags?.get("og:title") ?: parsed?.title ?: extractHost(url)
-        val description = parsed?.ogpTags?.get("og:description")
-            ?: parsed?.standardMetaTags?.get("description")
-            ?: ""
-        val bodySnippet = (parsed?.readabilityArticle?.textContent?.takeIf { it.isNotBlank() }
-            ?: parsed?.jsoupBodyText
-            ?: "").take(800).replace("\n", " ")
-
+        val prepared = parsed?.let { ArticlePreparation.prepare(it) }
         return buildPromptWithSnippets(
-            url = url,
-            siteName = siteName,
-            title = title,
-            description = description,
-            bodySnippet = bodySnippet,
+            url = prepared?.url ?: url,
+            siteName = prepared?.siteName ?: extractHost(url),
+            title = prepared?.title ?: extractHost(url),
+            description = prepared?.description.orEmpty(),
+            bodySnippet = prepared?.bodySnippet.orEmpty(),
             language = language
         )
     }

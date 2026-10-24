@@ -32,8 +32,14 @@ internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boole
             network to caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) else null
     }, wifiOnly())
 
-    suspend fun request(url: String, headers: Map<String, String>): RssHttpPage = withContext(Dispatchers.IO) {
+    suspend fun request(url: String, headers: Map<String, String>, maxBytes: Int = MAX_BYTES): RssHttpPage = withContext(Dispatchers.IO) {
         val network = availableNetwork() ?: throw RssWifiUnavailable()
+        fun ensurePermittedNetwork() {
+            val caps = connectivity.getNetworkCapabilities(network)
+            if (caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) ||
+                (wifiOnly() && !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI))) throw RssWifiUnavailable()
+        }
         val deadline = SystemClock.elapsedRealtime() + 30_000L
         fun remaining(): Int = (deadline - SystemClock.elapsedRealtime()).let {
             if (it <= 0) throw SocketTimeoutException("RSS request exceeded 30 seconds")
@@ -42,16 +48,21 @@ internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boole
         var currentUrl = url
         repeat(6) {
             currentCoroutineContext().ensureActive()
-            val connection = network.openConnection(URL(currentUrl)) as HttpURLConnection
+            ensurePermittedNetwork()
+            val connection = try { network.openConnection(URL(currentUrl)) as HttpURLConnection }
+                catch (error: IOException) { ensurePermittedNetwork(); throw error }
             try {
                 connection.connectTimeout = remaining()
                 connection.readTimeout = remaining()
                 connection.instanceFollowRedirects = false
-                connection.setRequestProperty("User-Agent", "Tidilo RSS/1.0")
+                connection.setRequestProperty("User-Agent", me.bubblespark.tidilo.parser.WebPageParser.USER_AGENT)
+                me.bubblespark.tidilo.parser.WebPageParser.REQUEST_HEADERS.forEach { (key, value) -> connection.setRequestProperty(key, value) }
                 headers.forEach { (key, value) -> connection.setRequestProperty(key, value) }
                 connection.connect()
+                ensurePermittedNetwork()
                 connection.readTimeout = remaining()
                 val status = connection.responseCode
+                ensurePermittedNetwork()
                 remaining()
                 if (status in listOf(301, 302, 303, 307, 308)) {
                     currentUrl = RssFeedParser.httpUrl(currentUrl, connection.getHeaderField("Location").orEmpty())
@@ -59,7 +70,7 @@ internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boole
                 } else {
                     if (status != 200) return@withContext RssHttpPage(status, currentUrl, "",
                         connection.getHeaderField("ETag"), connection.getHeaderField("Last-Modified"))
-                    if (connection.contentLengthLong > MAX_BYTES) throw IOException("RSS response exceeds 2 MB")
+                    if (connection.contentLengthLong > maxBytes) throw IOException("RSS response exceeds 2 MB")
                     val output = ByteArrayOutputStream()
                     connection.inputStream.use { input ->
                         val buffer = ByteArray(8192)
@@ -71,7 +82,7 @@ internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boole
                             val read = input.read(buffer)
                             remaining()
                             if (read < 0) break
-                            if (output.size() + read > MAX_BYTES) throw IOException("RSS response exceeds 2 MB")
+                            if (output.size() + read > maxBytes) throw IOException("RSS response exceeds 2 MB")
                             output.write(buffer, 0, read)
                         }
                     }
@@ -81,9 +92,10 @@ internal class RssHttpClient(context: Context, private val wifiOnly: () -> Boole
                         ?: Regex("encoding=[\"']([^\"']+)").find(String(bytes.take(200).toByteArray(), Charsets.US_ASCII))?.groupValues?.get(1)
                     val charset = declared?.let { runCatching { Charset.forName(it) }.getOrNull() } ?: Charsets.UTF_8
                     return@withContext RssHttpPage(status, currentUrl, String(bytes, charset),
-                        connection.getHeaderField("ETag"), connection.getHeaderField("Last-Modified"))
+                        connection.getHeaderField("ETag"), connection.getHeaderField("Last-Modified"), bytes, connection.contentType)
                 }
-            } finally { connection.disconnect() }
+            } catch (error: IOException) { ensurePermittedNetwork(); throw error }
+            finally { connection.disconnect() }
         }
         throw IOException("Too many feed redirects")
     }

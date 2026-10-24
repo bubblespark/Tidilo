@@ -44,5 +44,10 @@ data class ImportTask(
     val bodySnippet: String = "",
     val ogImageUrl: String? = null,
     val rssFeedId: String? = null,
-    val rssPublishedAt: Long? = null
+    val rssPublishedAt: Long? = null,
+    val articlePrepared: Boolean = false,
+    val intendedMode: String = "AI",
+    val rssItemKey: String? = null,
+    val acquisitionAttempts: Int = 0,
+    val acquisitionRetryAt: Long = 0
 )

@@ -505,7 +505,8 @@ object OgImageManager {
         context: Context,
         pageUrl: String,
         domain: String,
-        ogImageUrl: String?
+        ogImageUrl: String?,
+        network: me.bubblespark.tidilo.parser.ArticleNetwork? = null
     ): ImageBitmap? = withContext(Dispatchers.IO) {
         if (ogImageUrl.isNullOrBlank()) return@withContext null
         val startGen = cacheGeneration.get()
@@ -516,13 +517,17 @@ object OgImageManager {
         loadOgImage(context, domain, imageKey)?.let {
             return@withContext if (cacheGeneration.get() == startGen) it else null
         }
-        val result = downloads.fetch(imageKey, startGen) {
+        val result = downloads.fetch("${network?.scopeKey ?: "manual"}|$imageKey", startGen) {
             // Another request may have populated the cache while this one waited for a permit.
             loadOgImage(context, domain, imageKey)?.let { return@fetch it }
             currentCoroutineContext().ensureActive()
             if (cacheGeneration.get() != startGen) return@fetch null
             val downloader = imageDownloader
-            val raw = if (downloader != null) downloader(resolvedUrl) else downloadImage(resolvedUrl)
+            val raw = if (network != null) {
+                val response = network.fetch(resolvedUrl)
+                if (response.status !in 200..299) throw java.io.IOException("Image HTTP ${response.status}")
+                response.bytes
+            } else if (downloader != null) downloader(resolvedUrl) else downloadImage(resolvedUrl)
             if (raw == null || raw.size > MAX_DOWNLOAD_BYTES) throw PermanentOgImageFailure()
             currentCoroutineContext().ensureActive()
             if (cacheGeneration.get() != startGen) return@fetch null
@@ -641,9 +646,10 @@ object OgImageManager {
     suspend fun processAndSaveOgImage(
         context: Context,
         pageUrl: String,
-        ogImageUrl: String?
+        ogImageUrl: String?,
+        network: me.bubblespark.tidilo.parser.ArticleNetwork? = null
     ): Boolean {
         val domain = extractDomain(pageUrl) ?: return false
-        return loadOrFetchOgImage(context, pageUrl, domain, ogImageUrl) != null
+        return loadOrFetchOgImage(context, pageUrl, domain, ogImageUrl, network) != null
     }
 }

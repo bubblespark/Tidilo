@@ -140,7 +140,6 @@ class BookmarkRepository private constructor(context: Context) {
             }
             bookmarkDao.deleteByIdOrUrl(finalItem.id, finalItem.url)
             bookmarkDao.insertOrUpdate(BookmarkEntity.fromBookmarkItem(finalItem))
-            finalItem.rssFeedId?.let { me.bubblespark.tidilo.data.rss.RssIngestionStore(database).enforceRetention(it) }
         }
         // Room publishes the committed bookmark; auxiliary cache work cannot fail the save.
         repositoryScope.launch {

@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.data
 
 import androidx.room.Room
+import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.async
@@ -23,7 +24,7 @@ class RssIngestionTest {
             val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", retentionLimit = 100)
             val store = RssIngestionStore(db)
             db.rssDao().putFeed(feed)
-            store.ingest(feed, (1..20).map(::entry), 100)
+            ingestPreparedFixture(db, feed, (1..20).map(::entry), 100)
             db.rssDao().putFeed(feed.copy(deleted = true, revision = 1))
             val consent = store.registrationSnapshot(feed.url)!!
             assertEquals(20, consent.savedCount)
@@ -41,7 +42,7 @@ class RssIngestionTest {
             }
             assertTrue(db.rssDao().feed(feed.id)!!.deleted)
             store.registerFeed(resumed, store.registrationSnapshot(feed.url))
-            store.ingest(resumed, emptyList(), 300)
+            ingestPreparedFixture(db, resumed, emptyList(), 300)
             assertEquals(10, db.rssDao().savedCount(feed.id))
             assertEquals(feed.id, db.rssDao().feedByUrl(feed.url)!!.id)
             assertEquals(1, db.rssDao().activeFeeds().size)
@@ -50,7 +51,7 @@ class RssIngestionTest {
             db.rssDao().putFeed(resumed.copy(deleted = true, revision = 3))
             val unlimited = resumed.copy(retentionLimit = null, revision = 4)
             store.registerFeed(unlimited, store.registrationSnapshot(feed.url))
-            store.ingest(unlimited, emptyList(), 400)
+            ingestPreparedFixture(db, unlimited, emptyList(), 400)
             assertEquals(10, db.rssDao().savedCount(feed.id))
         } finally { db.close() }
     }
@@ -60,18 +61,18 @@ class RssIngestionTest {
             val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", mode = "AI")
             db.rssDao().putFeed(feed)
             val store = RssIngestionStore(db)
-            store.ingest(feed, listOf(entry(1)), 100)
+            ingestPreparedFixture(db, feed, listOf(entry(1)), 100)
             db.rssDao().putFeed(feed.copy(enabled = false, revision = 1))
             assertTrue(db.rssDao().enabledFeeds().isEmpty())
             assertEquals(1, db.rssDao().activeFeeds().size)
-            assertFalse(store.ingest(feed, listOf(entry(2)), 200))
-            assertFalse(store.ingest(feed.copy(enabled = false, revision = 1), listOf(entry(2)), 200))
+            assertFalse(ingestPreparedFixture(db, feed, listOf(entry(2)), 200))
+            assertFalse(ingestPreparedFixture(db, feed.copy(enabled = false, revision = 1), listOf(entry(2)), 200))
             assertEquals(1, db.rssDao().pending(feed.id).size)
             assertFalse(db.rssDao().hasSeen(feed.id, entry(2).key, entry(2).url))
             val resumed = feed.copy(revision = 2)
             db.rssDao().putFeed(resumed)
             assertEquals(1, db.rssDao().enabledFeeds().size)
-            assertTrue(store.ingest(resumed, listOf(entry(2)), 300))
+            assertTrue(ingestPreparedFixture(db, resumed, listOf(entry(2)), 300))
             assertEquals(2, db.rssDao().pending(feed.id).size)
         } finally { db.close() }
     }
@@ -86,10 +87,10 @@ class RssIngestionTest {
             val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", mode = "AI")
             db.rssDao().putFeed(feed)
             val store = RssIngestionStore(db)
-            store.ingest(feed, (1..5).map(::entry), 100)
+            ingestPreparedFixture(db, feed, (1..5).map(::entry), 100)
             val old = db.rssDao().pending(feed.id).minBy { it.rssPublishedAt!! }
             db.importTaskDao().deleteById(old.id)
-            store.ingest(feed, listOf(entry(6)), 200)
+            ingestPreparedFixture(db, feed, listOf(entry(6)), 200)
             store.restoreTask(old)
             assertEquals(5, db.rssDao().pending(feed.id).size)
             assertNull(db.importTaskDao().getTaskById(old.id))
@@ -103,7 +104,7 @@ class RssIngestionTest {
         try {
             val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", mode = "AI")
             db.rssDao().putFeed(feed)
-            val task = me.bubblespark.tidilo.data.db.ImportTaskEntity("task", entry(1).url, "Title", "WAITING_AI", "", createdAt = 1, rssFeedId = feed.id)
+            val task = me.bubblespark.tidilo.data.db.ImportTaskEntity("task", entry(1).url, "Title", "WAITING_AI", "", createdAt = 1, rssFeedId = feed.id, articlePrepared = true)
             val tasks = db.importTaskDao()
             tasks.insertOrUpdate(task)
             assertEquals(1, tasks.claimForAi(task.id, "Running"))
@@ -134,14 +135,14 @@ class RssIngestionTest {
             val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", retentionLimit = 1)
             db.rssDao().putFeed(feed)
             try {
-                RssIngestionStore(db).ingest(feed, listOf(entry(1)), 100)
+                ingestPreparedFixture(db, feed, listOf(entry(1)), 100)
                 fail("Invalid retention must roll back")
             } catch (_: IllegalArgumentException) { }
             assertEquals(0, db.bookmarkDao().getCount())
             assertFalse(db.rssDao().hasSeen(feed.id, entry(1).key, entry(1).url))
             val repaired = feed.copy(retentionLimit = 10)
             db.rssDao().putFeed(repaired)
-            assertTrue(RssIngestionStore(db).ingest(repaired, listOf(entry(1)), 200))
+            assertTrue(ingestPreparedFixture(db, repaired, listOf(entry(1)), 200))
             assertEquals(1, db.bookmarkDao().getCount())
         } finally { db.close() }
     }
@@ -172,13 +173,13 @@ class RssIngestionTest {
             val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", retentionLimit = 10)
             db.rssDao().putFeed(feed)
             val store = RssIngestionStore(db)
-            assertTrue(store.ingest(feed, (1..20).map(::entry), 100))
+            assertTrue(ingestPreparedFixture(db, feed, (1..20).map(::entry), 100))
             assertEquals(10, db.bookmarkDao().getCount())
             assertEquals(0, db.importTaskDao().getCount())
             assertNull(db.bookmarkDao().getBookmarkByUrl(entry(1).url))
             assertTrue(db.bookmarkDao().getBookmarkByUrl(entry(20).url)!!.isAiSkipped)
             db.bookmarkDao().deleteById(db.bookmarkDao().getBookmarkByUrl(entry(20).url)!!.id)
-            store.ingest(feed, (1..20).map(::entry), 200)
+            ingestPreparedFixture(db, feed, (1..20).map(::entry), 200)
             assertEquals(9, db.bookmarkDao().getCount())
         } finally { db.close() }
     }
@@ -189,16 +190,16 @@ class RssIngestionTest {
             db.rssDao().putFeed(feed)
             db.bookmarkDao().insertOrUpdate(BookmarkEntity("manual", "User title", entry(20).url, "Note", createdAt = 1, updatedAt = 1))
             val store = RssIngestionStore(db)
-            coroutineScope { List(3) { async { store.ingest(feed, (1..20).map(::entry), 100) } }.awaitAll() }
+            coroutineScope { List(3) { async { ingestPreparedFixture(db, feed, (1..20).map(::entry), 100) } }.awaitAll() }
             assertEquals(5, db.rssDao().pending(feed.id).size)
             assertEquals(setOf(15L, 16L, 17L, 18L, 19L), db.rssDao().pending(feed.id).map { it.rssPublishedAt }.toSet())
             assertEquals("User title", db.bookmarkDao().getBookmarkByUrl(entry(20).url)!!.title)
             val pending = db.rssDao().pending(feed.id).first()
             db.importTaskDao().updateStatus(pending.id, "WAITING_AI", "Waiting")
-            store.ingest(feed, (21..23).map(::entry), 200)
+            ingestPreparedFixture(db, feed, (21..23).map(::entry), 200)
             assertEquals(5, db.rssDao().pending(feed.id).size)
             db.rssDao().putFeed(feed.copy(deleted = true, revision = 1))
-            assertFalse(store.ingest(feed, listOf(entry(24)), 300))
+            assertFalse(ingestPreparedFixture(db, feed, listOf(entry(24)), 300))
             assertEquals(5, db.rssDao().pending(feed.id).size)
         } finally { db.close() }
     }
@@ -214,6 +215,20 @@ class RssIngestionTest {
             assertEquals(1, dao.domainCounts(true, BookmarkSource.MANUAL.sqlValue).first().single().count)
             assertEquals(2, dao.tagCounts(me.bubblespark.tidilo.data.db.BookmarkQueries.tags(emptySet(), true, me.bubblespark.tidilo.data.db.TagKind.CATEGORY)).first().single().count)
         } finally { db.close() }
+    }
+
+    /** Exercises the store with explicitly prepared fixture content, rather than treating XML as HTML. */
+    private suspend fun ingestPreparedFixture(db: AppDatabase, feed: RssFeedEntity,
+        entries: List<RssEntry>, now: Long): Boolean = db.withTransaction {
+        val store = RssIngestionStore(db)
+        if (!store.stage(feed, entries, now)) return@withTransaction false
+        for (task in db.importTaskDao().getAllTasks().filter { it.rssFeedId == feed.id && !it.articlePrepared }) {
+            val entry = entries.firstOrNull { it.url == task.url } ?: continue
+            store.complete(feed, task, me.bubblespark.tidilo.parser.PreparedArticle(entry.url, entry.title,
+                "rss.example", entry.description, entry.bodySnippet, entry.imageUrl, false))
+        }
+        store.enforceRetention(feed.id)
+        true
     }
 
 }

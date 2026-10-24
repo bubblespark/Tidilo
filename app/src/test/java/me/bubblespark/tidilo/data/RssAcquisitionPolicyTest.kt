@@ -11,6 +11,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssAcquisitionPolicyTest {
+    @Test fun timeSliceContinuationDoesNotExhaustDurableArticleRetries() = runBlocking {
+        var aligned = false
+        assertEquals(Result.retry(), runRssFetchAttempt(10, { false }, { aligned = true }))
+        assertFalse(aligned)
+        assertEquals(Result.retry(), runRssFetchAttempt(10, { throw me.bubblespark.tidilo.data.rss.RssAcquisitionYield() }, { aligned = true }))
+        assertFalse(aligned)
+    }
     @Test fun wifiWinsOverCellularRegardlessOfOrderAndPolicyStillRestrictsFallback() {
         for (candidates in listOf(listOf("cell" to false, "wifi" to true), listOf("wifi" to true, "cell" to false))) {
             assertEquals("wifi", selectRssNetwork(candidates, false))
@@ -27,15 +34,15 @@ class RssAcquisitionPolicyTest {
         assertEquals(Result.retry(), runRssFetchAttempt(3, { false }, align))
         assertEquals(Result.retry(), runRssFetchAttempt(3, { throw IOException() }, align))
         assertEquals(0, aligned)
-        assertEquals(Result.success(), runRssFetchAttempt(4, { false }, align))
+        assertEquals(Result.retry(), runRssFetchAttempt(4, { false }, align))
         assertEquals(Result.success(), runRssFetchAttempt(4, { throw IOException() }, align))
         assertEquals(Result.success(), runRssFetchAttempt(0, { true }, align))
-        assertEquals(3, aligned)
+        assertEquals(2, aligned)
         assertEquals(Result.retry(), runRssFetchAttempt(10, { throw RssWifiUnavailable() }, align))
         try {
             runRssFetchAttempt(10, { throw CancellationException("cancel") }, align)
             fail("Cancellation must propagate")
         } catch (_: CancellationException) { }
-        assertEquals(3, aligned)
+        assertEquals(2, aligned)
     }
 }

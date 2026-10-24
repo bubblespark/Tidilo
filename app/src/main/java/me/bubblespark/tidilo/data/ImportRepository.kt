@@ -26,6 +26,8 @@ import me.bubblespark.tidilo.data.db.ImportTaskEntity
 
 import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.parser.WebPageParser
+import me.bubblespark.tidilo.parser.ArticleAcquirer
+import me.bubblespark.tidilo.parser.ArticlePreparation
 import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.service.GeminiTaggingService
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
@@ -91,6 +93,7 @@ class ImportRepository internal constructor(
                 if (taskDao.getCount() == 0) {
                     migrateFromLegacyPrefs()
                 }
+                me.bubblespark.tidilo.data.rss.RssRepository.getInstance(it).resumeAcquisitions()
                 fetchTitlesForReadyTasks()
             }
         }
@@ -153,43 +156,31 @@ class ImportRepository internal constructor(
         repositoryScope.launch {
             try {
                 // 1. Fetch & parse HTML, extract metadata, OGP, and Readability body snippet
-                val parseResult = WebPageParser.parseUrl(trimmed)
-                val parsed = parseResult.getOrNull()
+                val parsed = ArticleAcquirer.acquire(trimmed)
+                val prepared = ArticlePreparation.prepare(parsed)
 
-                val realUrl = parsed?.resolvedUrl?.takeIf { it.isNotBlank() } ?: trimmed
+                val realUrl = prepared.url
                 val hasCustomTitle = !title.isNullOrBlank() && !isRawUrlOrHost(title, trimmed)
-                val realTitle = if (hasCustomTitle) {
-                    title.trim()
-                } else {
-                    parsed?.ogpTags?.get("og:title")?.trim()?.takeIf { it.isNotBlank() }
-                        ?: parsed?.title?.trim()?.takeIf { it.isNotBlank() }
-                        ?: extractHostOrTitle(realUrl)
-                }
-
+                val realTitle = if (hasCustomTitle) title.trim() else prepared.title
                 val domain = DomainIconManager.extractDomain(realUrl)
-                val siteName = parsed?.ogpTags?.get("og:site_name")?.trim()?.takeIf { it.isNotBlank() }
-                    ?: extractHostOrTitle(realUrl)
+                val siteName = prepared.siteName
                 DomainPolicyManager.registerDomain(domain, false, siteName)
-                val isNsfw = parsed?.isNsfwSignal == true || DomainPolicyManager.isNsfwDomain(domain)
+                val isNsfw = parsed.isNsfwSignal || DomainPolicyManager.isNsfwDomain(domain)
 
                 // 2. Fetch and save domain icon (resolving watermark icon)
                 if (appContext != null && domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
                     DomainIconManager.fetchAndSaveDomainIcon(
                         context = appContext,
                         url = realUrl,
-                        appleTouchIconUrl = parsed?.appleTouchIconUrl,
-                        faviconUrl = parsed?.faviconUrl
+                        appleTouchIconUrl = parsed.appleTouchIconUrl,
+                        faviconUrl = parsed.faviconUrl,
+                        knownCandidates = parsed.iconCandidates
                     )
                 }
 
-                val description = parsed?.ogpTags?.get("og:description")
-                    ?: parsed?.standardMetaTags?.get("description")
-                    ?: ""
-                val bodySnippet = (parsed?.readabilityArticle?.textContent?.takeIf { it.isNotBlank() }
-                    ?: parsed?.jsoupBodyText
-                    ?: "").take(800).replace("\n", " ")
-                val ogImageUrl = parsed?.ogpTags?.get("og:image")?.trim()?.takeIf { it.isNotBlank() }
-                    ?: parsed?.twitterTags?.get("twitter:image")?.trim()?.takeIf { it.isNotBlank() }
+                val description = prepared.description
+                val bodySnippet = prepared.bodySnippet
+                val ogImageUrl = prepared.ogImageUrl
 
                 // 3. Create fully pre-parsed ImportTask and save into database
                 val newItem = ImportTask(
@@ -201,11 +192,14 @@ class ImportRepository internal constructor(
                     siteName = siteName,
                     description = description,
                     bodySnippet = bodySnippet,
-                    ogImageUrl = ogImageUrl
+                    ogImageUrl = ogImageUrl,
+                    articlePrepared = true
                 )
 
                 taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
                 onImported?.invoke(Result.success(newItem))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Fallback: If network/parsing throws, create fallback task with basic details
                 val domain = DomainIconManager.extractDomain(trimmed)
@@ -213,8 +207,9 @@ class ImportRepository internal constructor(
                 val fallbackItem = ImportTask(
                     url = trimmed,
                     title = title?.trim()?.takeIf { it.isNotBlank() } ?: extractHostOrTitle(trimmed),
-                    status = TaskStatus.READY,
-                    statusText = "Ready • Added without metadata",
+                    status = TaskStatus.ERROR,
+                    statusText = "Article acquisition failed",
+                    errorMessage = e.message,
                     isNsfw = isDomainNsfw
                 )
                 taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(fallbackItem))
@@ -307,6 +302,10 @@ class ImportRepository internal constructor(
         repositoryScope.launch {
             val targetEntity = taskDao.getTaskById(taskId) ?: return@launch
             val target = targetEntity.toImportTask()
+            if (target.rssFeedId != null && (!target.articlePrepared || target.intendedMode == "DIRECT")) {
+                appContext?.let { me.bubblespark.tidilo.data.rss.RssRepository.getInstance(it).retryAcquisition(taskId) }
+                return@launch
+            }
             val retried = target.copy(
                 status = TaskStatus.WAITING_AI,
                 statusText = "Waiting for AICore slot...",
@@ -482,6 +481,11 @@ class ImportRepository internal constructor(
             return
         }
 
+        if (target.rssFeedId != null && !target.articlePrepared) {
+            if (appContext == null) taskDao.updateStatus(taskId, "ERROR", "Article preparation unavailable")
+            else me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).retryAcquisition(taskId, true)
+            return
+        }
         // 1. Update status to PROCESSING_AI
         if (taskDao.claimForAi(taskId, "Gemini Nano analyzing content...") != 1) {
             taskDao.rejectUnavailableRss()
@@ -497,7 +501,8 @@ class ImportRepository internal constructor(
                     OgImageManager.processAndSaveOgImage(
                         context = targetContext,
                         pageUrl = target.url,
-                        ogImageUrl = candidateOgImageUrl
+                        ogImageUrl = candidateOgImageUrl,
+                        network = if (target.rssFeedId != null) me.bubblespark.tidilo.data.rss.RssRepository.getInstance(targetContext).articleNetwork() else null
 
                     )
                 } catch (e: CancellationException) {
@@ -651,7 +656,7 @@ class ImportRepository internal constructor(
                 val domain = DomainIconManager.extractDomain(target.url)
                 DomainPolicyManager.registerDomain(domain, false, target.siteName)
                 if (domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
-                    DomainIconManager.fetchAndSaveDomainIcon(appContext, target.url)
+                    DomainIconManager.fetchAndSaveDomainIcon(appContext, target.url, network = if (target.rssFeedId != null) me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).articleNetwork() else null)
                 }
             }
         }
@@ -709,14 +714,16 @@ class ImportRepository internal constructor(
         repositoryScope.launch {
             try {
                 val task = taskDao.getTaskById(taskId) ?: return@launch
-                if (task.rssFeedId != null) return@launch
-                val parsed = WebPageParser.parseUrl(url).getOrNull() ?: return@launch
-                val realTitle = parsed.ogpTags["og:title"]?.trim()?.takeIf { it.isNotBlank() }
-                    ?: parsed.title?.trim()?.takeIf { it.isNotBlank() }
-                val realUrl = parsed.resolvedUrl.takeIf { it.isNotBlank() } ?: url
+                if (task.rssFeedId != null) {
+                    appContext?.let { me.bubblespark.tidilo.data.rss.RssRepository.getInstance(it).retryAcquisition(task.id) }
+                    return@launch
+                }
+                val parsed = ArticleAcquirer.acquire(url)
+                val prepared = ArticlePreparation.prepare(parsed)
+                val realTitle = prepared.title
+                val realUrl = prepared.url
                 val domain = DomainIconManager.extractDomain(realUrl)
-                val siteName = parsed.ogpTags["og:site_name"]?.trim()?.takeIf { it.isNotBlank() }
-                    ?: extractHostOrTitle(realUrl)
+                val siteName = prepared.siteName
 
                 if (domain != null) {
                     DomainPolicyManager.registerDomain(domain, false, siteName)
@@ -725,16 +732,14 @@ class ImportRepository internal constructor(
                             context = appContext,
                             url = realUrl,
                             appleTouchIconUrl = parsed.appleTouchIconUrl,
-                            faviconUrl = parsed.faviconUrl
+                            faviconUrl = parsed.faviconUrl,
+                            knownCandidates = parsed.iconCandidates
                         )
                     }
                 }
 
-                val description = parsed.ogpTags["og:description"]
-                    ?: parsed.standardMetaTags["description"]
-                    ?: ""
-                val bodySnippet = (parsed.readabilityArticle?.textContent?.takeIf { it.isNotBlank() }
-                    ?: parsed.jsoupBodyText).take(800).replace("\n", " ")
+                val description = prepared.description
+                val bodySnippet = prepared.bodySnippet
 
                 val isNsfw = parsed.isNsfwSignal || (domain != null && DomainPolicyManager.isNsfwDomain(domain))
 
@@ -742,15 +747,18 @@ class ImportRepository internal constructor(
                 if (existing != null) {
                     val updated = existing.copy(
                         url = realUrl,
-                        title = if (realTitle != null && isRawUrlOrHost(existing.title, existing.url)) realTitle else existing.title,
+                        title = if (isRawUrlOrHost(existing.title, existing.url)) realTitle else existing.title,
                         siteName = siteName,
-                        description = description.ifBlank { existing.description },
-                        bodySnippet = bodySnippet.ifBlank { existing.bodySnippet },
+                        description = description,
+                        bodySnippet = bodySnippet,
+                        ogImageUrl = prepared.ogImageUrl,
+                        articlePrepared = true,
                         isNsfw = isNsfw || existing.isNsfw
                     )
                     taskDao.update(updated)
                 }
-            } catch (_: Exception) {
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
             }
         }
     }
@@ -847,7 +855,7 @@ class ImportRepository internal constructor(
 
     companion object {
         internal fun needsArticlePreparse(task: ImportTask): Boolean =
-            task.rssFeedId == null && (isRawUrlOrHost(task.title, task.url) || task.bodySnippet.isBlank())
+            if (task.rssFeedId != null) !task.articlePrepared else !task.articlePrepared && (isRawUrlOrHost(task.title, task.url) || task.bodySnippet.isBlank())
         @Volatile
         private var INSTANCE: ImportRepository? = null
 
@@ -1012,6 +1020,7 @@ private suspend fun analyzeImportTask(model: GenerativeModel, target: ImportTask
         ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() },
         rssFeedId = target.rssFeedId,
         rssPublishedAt = target.rssPublishedAt,
-        rssFirstSeenAt = if (target.rssFeedId != null) target.createdAt else null
+        rssFirstSeenAt = if (target.rssFeedId != null) target.createdAt else null,
+        articlePrepared = target.articlePrepared
     ).getOrThrow()
 }

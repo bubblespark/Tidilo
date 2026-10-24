@@ -28,10 +28,10 @@ import org.junit.Test
 class ImportRepositoryTest {
 
     @Test
-    fun emptyRssBodyDoesNotTriggerArticlePreparse() {
+    fun legacyRssBodyRequiresArticlePreparse() {
         val rss = ImportTask(id = "rss", url = "https://example.com/rss", title = "Feed title",
             status = TaskStatus.READY, statusText = "", rssFeedId = "feed")
-        assertFalse(ImportRepository.needsArticlePreparse(rss))
+        assertTrue(ImportRepository.needsArticlePreparse(rss))
         assertTrue(ImportRepository.needsArticlePreparse(rss.copy(rssFeedId = null)))
     }
 
@@ -780,7 +780,7 @@ class ImportRepositoryTest {
         val job = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + job)
         val dao = FakeImportTaskDao()
-        dao.insertOrUpdate(waitingEntity("fallback").copy(rssFeedId = if (rss) "feed" else null, createdAt = 7))
+        dao.insertOrUpdate(waitingEntity("fallback").copy(rssFeedId = if (rss) "feed" else null, createdAt = 7, articlePrepared = true))
         val saveStarted = CompletableDeferred<Unit>()
         val releaseSave = CompletableDeferred<Unit>()
         val firstClosed = CompletableDeferred<Unit>()
@@ -832,7 +832,7 @@ class ImportRepositoryTest {
     fun manualTasksRunBeforeNewerRssTasks() = runBlocking {
         val dao = FakeImportTaskDao()
         dao.insertAll(listOf(
-            ImportTaskEntity("rss", "https://example.com/rss", "RSS", "WAITING_AI", "", createdAt = 20, rssFeedId = "feed"),
+            ImportTaskEntity("rss", "https://example.com/rss", "RSS", "WAITING_AI", "", createdAt = 20, rssFeedId = "feed", articlePrepared = true),
             ImportTaskEntity("manual", "https://example.com/manual", "Manual", "WAITING_AI", "", createdAt = 10)))
         val root = SupervisorJob()
         val done = CompletableDeferred<Unit>()
@@ -850,7 +850,7 @@ class ImportRepositoryTest {
     @Test
     fun subscriptionRemovedDuringClaimStopsWithoutInferenceOrBusyLoop() = runBlocking {
         val dao = FakeImportTaskDao()
-        dao.insertOrUpdate(ImportTaskEntity("rss", "https://example.com/rss", "RSS", "WAITING_AI", "", createdAt = 1, rssFeedId = "feed"))
+        dao.insertOrUpdate(ImportTaskEntity("rss", "https://example.com/rss", "RSS", "WAITING_AI", "", createdAt = 1, rssFeedId = "feed", articlePrepared = true))
         dao.beforeClaim = { dao.unavailableIds = setOf("rss") }
         val root = SupervisorJob()
         val closed = CompletableDeferred<Unit>()

@@ -34,39 +34,94 @@ internal class RssIngestionStore(private val database: AppDatabase) {
         rss.putFeed(feed)
     }
 
-    /** Receipt and content changes commit together; stale fetches cannot resurrect deleted feeds. */
-    suspend fun ingest(feed: RssFeedEntity, entries: List<RssEntry>, now: Long): Boolean = database.withTransaction {
+    /** Stage source identities before committing XML validators; failures remain independent of future XML. */
+    suspend fun stage(feed: RssFeedEntity, entries: List<RssEntry>, now: Long): Boolean = database.withTransaction {
         val current = rss.feed(feed.id) ?: return@withTransaction false
         if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
-        require(current.mode in setOf("AI", "DIRECT"))
-        val fresh = mutableListOf<ImportTaskEntity>()
-        for (entry in entries.distinctBy { it.url }) {
-            if (rss.hasSeen(feed.id, entry.key, entry.url)) continue
-            val nsfw = DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(entry.url))
-            if (nsfw && !AppConfig.isNsfwContentBookmarkable.value) continue
-            rss.recordSeen(RssSeenItemEntity(feed.id, entry.key, entry.url))
-            if (rss.urlExists(entry.url)) continue
-            val task = ImportTaskEntity(UUID.randomUUID().toString(), entry.url, entry.title, "READY", "Ready for AI Analysis",
-                createdAt = now, isNsfw = nsfw, siteName = current.title, description = entry.description,
-                bodySnippet = entry.bodySnippet, ogImageUrl = entry.imageUrl, rssFeedId = current.id, rssPublishedAt = entry.publishedAt)
-            if (current.mode == "DIRECT") {
-                database.bookmarkDao().insertOrUpdate(BookmarkEntity(task.id, task.title, task.url, task.description,
-                    createdAt = now, updatedAt = now, isNsfw = nsfw, isAiSkipped = true,
-                    ogImageUrl = task.ogImageUrl, rssFeedId = feed.id, rssPublishedAt = entry.publishedAt))
-            } else fresh.add(task)
+        require(current.retentionLimit == null || current.retentionLimit in 10..500)
+        val fresh = entries.distinctBy { it.url }.filter { entry ->
+            if (rss.hasSeen(feed.id, entry.key, entry.url)) false
+            else if (rss.urlExists(entry.url)) {
+                val queued = database.importTaskDao().getTaskByUrl(entry.url)
+                if (queued == null || queued.rssFeedId != feed.id || queued.articlePrepared) {
+                    rss.recordSeen(RssSeenItemEntity(feed.id, entry.key, entry.url))
+                }
+                false
+            } else true
+        }.map { entry ->
+            ImportTaskEntity(UUID.randomUUID().toString(), entry.url, entry.title, "ERROR", "Waiting for article acquisition",
+                createdAt = now, rssFeedId = feed.id, rssPublishedAt = entry.publishedAt,
+                intendedMode = current.mode, rssItemKey = entry.key)
         }
         if (current.mode == "AI") {
             val previous = rss.pending(feed.id)
-            val kept = selectRssPending(previous, fresh)
-            database.importTaskDao().deleteByIds(previous.filter { old -> kept.none { it.id == old.id } }.map { it.id })
-            database.importTaskDao().insertAll(kept)
-        }
-        enforceRetentionLocked(current)
+            val staged = rss.unstartedAcquisitions(feed.id).filter { it.intendedMode == "AI" }
+            val selected = selectRssPending(previous + staged, fresh)
+            for (dropped in previous + staged + fresh) if (selected.none { it.id == dropped.id }) {
+                rss.recordSeen(RssSeenItemEntity(feed.id, dropped.rssItemKey ?: dropped.url, dropped.url))
+                database.importTaskDao().deleteById(dropped.id)
+            }
+            database.importTaskDao().insertAll(selected)
+        } else database.importTaskDao().insertAll(fresh)
         true
     }
 
-    suspend fun enforceRetention(feedId: String) = database.withTransaction {
-        rss.feed(feedId)?.let { enforceRetentionLocked(it) }
+    /** The bookmark/ready task and consumed identity become durable in the same transaction. */
+    suspend fun complete(feed: RssFeedEntity, task: ImportTaskEntity,
+        article: me.bubblespark.tidilo.parser.PreparedArticle, promote: Boolean = false): Boolean = database.withTransaction {
+        val current = rss.feed(feed.id) ?: return@withTransaction false
+        if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
+        val actual = database.importTaskDao().getTaskById(task.id) ?: return@withTransaction false
+        if (actual.articlePrepared || actual.intendedMode != task.intendedMode) return@withTransaction false
+        val nsfw = article.isNsfw || DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(article.url))
+        if (task.intendedMode == "AI" && article.bodySnippet.isBlank() && article.description.isBlank()) {
+            throw IllegalArgumentException("Article contains no extracted content")
+        }
+        if ((!nsfw || AppConfig.isNsfwContentBookmarkable.value) && !rss.rssWriteConflict(article.url, task.id)) {
+            if (task.intendedMode == "DIRECT") {
+                database.bookmarkDao().insertOrUpdate(BookmarkEntity(task.id, article.title, article.url, article.description,
+                    createdAt = task.createdAt, updatedAt = System.currentTimeMillis(), isNsfw = nsfw, isAiSkipped = true,
+                    ogImageUrl = article.ogImageUrl, rssFeedId = feed.id, rssPublishedAt = task.rssPublishedAt))
+                database.importTaskDao().deleteById(task.id)
+            } else {
+                val updated = task.copy(url = article.url, title = article.title, siteName = article.siteName,
+                    description = article.description, bodySnippet = article.bodySnippet, ogImageUrl = article.ogImageUrl,
+                    ogImageKey = me.bubblespark.tidilo.data.db.bookmarkOgImageKey(article.url, article.ogImageUrl),
+                    isNsfw = nsfw, articlePrepared = true, errorMessage = null,
+                    status = if (actual.status == "WAITING_AI" || (promote && actual.status == "PROCESSING_AI")) "WAITING_AI" else "READY",
+                    statusText = "Ready for AI Analysis")
+                database.importTaskDao().insertOrUpdate(updated)
+                reconcilePending()
+            }
+        } else database.importTaskDao().deleteById(task.id)
+        rss.recordSeen(RssSeenItemEntity(feed.id, task.rssItemKey ?: task.url, task.url))
+        if (article.url != task.url) rss.recordSeen(RssSeenItemEntity(feed.id, "url:${article.url}", article.url))
+        true
+    }
+
+    suspend fun failArticle(feed: RssFeedEntity, task: ImportTaskEntity, error: Exception, retryable: Boolean) = database.withTransaction {
+        val current = rss.feed(feed.id) ?: return@withTransaction
+        if (current.deleted || current.revision != feed.revision) return@withTransaction
+        val actual = database.importTaskDao().getTaskById(task.id) ?: return@withTransaction
+        if (actual.articlePrepared) return@withTransaction
+        val attempts = actual.acquisitionAttempts + 1
+        database.importTaskDao().insertOrUpdate(actual.copy(status = "ERROR", statusText = "Article acquisition failed",
+            errorMessage = error.message ?: "Could not fetch article", acquisitionAttempts = attempts,
+            acquisitionRetryAt = if (retryable && attempts < 5) System.currentTimeMillis() + 60_000L * attempts else Long.MAX_VALUE))
+    }
+
+    /** XML failure disables only the still-current subscription; article failures do not use this path. */
+    suspend fun disableAfterXmlFailure(feed: RssFeedEntity): Boolean = database.withTransaction {
+        val current = rss.feed(feed.id) ?: return@withTransaction false
+        if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
+        rss.putFeed(current.copy(enabled = false, revision = current.revision + 1,
+            lastAttemptAt = System.currentTimeMillis(), error = "XML_FETCH_FAILED",
+            acquisitionId = null, acquisitionMobileOverride = false, acquisitionXmlDone = false))
+        true
+    }
+
+    suspend fun enforceRetention(feedId: String, expectedRevision: Long? = null) = database.withTransaction {
+        rss.feed(feedId)?.takeIf { !it.deleted && it.enabled && (expectedRevision == null || it.revision == expectedRevision) }?.let { enforceRetentionLocked(it) }
     }
 
     suspend fun restoreTask(task: ImportTaskEntity) = database.withTransaction {

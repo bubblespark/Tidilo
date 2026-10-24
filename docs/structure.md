@@ -133,3 +133,7 @@ app/src/main/java/com/ykgudev/tidilo/
    - If screen-specific, place in the corresponding `ui/screens/<feature>/` file.
    - If reusable across multiple screens (e.g., cards, chips, dialogs), place in a shared file or `ui/screens/library/BookmarkCard.kt`.
    - Annotate composables with `@Composable` and accept a standard `modifier: Modifier = Modifier` parameter.
+
+## Shared article acquisition
+
+`parser/ArticleAcquirer.kt` owns HTML acquisition through default or request-scoped transport; `parser/ArticlePreparation.kt` defines source-independent metadata preparation. RSS XML parsing remains in `RssFeedParser`; `RssIngestionStore` owns transactional staging/completion/receipts and feed-failure disabling. `RssRepository` coordinates bounded acquisition, durable retry, and optional image enrichment. Foreground AI remains owned by `ImportRepository`.

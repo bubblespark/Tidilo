@@ -21,7 +21,52 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSettingsScreenTest {
-    @Test fun resubscriptionDialogExplainsImmediateDeletionAndRequiresExplicitChoice(): Unit = runBlocking {
+    @Test fun initialFetchDialogSeparatesTimingAndShowsMobileNotice(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        var fetched = false
+        var later = false
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                me.bubblespark.tidilo.ui.screens.settings.RssInitialFetchDialog(true, true, false,
+                    onFetch = { fetched = true }, onLater = { later = true })
+            } } }
+            node("Mobile data notice") { it.text?.toString()?.contains("This fetch will use mobile data") == true }
+            assertNull(find { it.text?.toString()?.contains("permanently deleted") == true })
+            click(node("Fetch later") { it.text?.toString() == "Later" })
+            assertTrue(later)
+            assertFalse(fetched)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Suppress("DEPRECATION")
+    @Test fun automaticallyDisabledFeedCardExplainsXmlFailure(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val feed = me.bubblespark.tidilo.data.db.RssFeedEntity("failed", "https://fixture.example/feed", "Failed feed",
+            enabled = false, error = "XML_FETCH_FAILED")
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(listOf(feed)), RssSettings(), false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> }, onDelete = {},
+                    onFetch = {}, onDismissError = {})
+            } } }
+            repeat(8) {
+                if (find { it.text?.toString()?.contains("Could not fetch feed XML") == true } == null) {
+                    find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                    delay(100)
+                }
+            }
+            node("Persistent XML failure") { it.text?.toString()?.contains("Could not fetch feed XML. This feed was automatically disabled.") == true }
+            node("Recovery instruction") { it.text?.toString()?.contains("Enable this feed to try again") == true }
+            var enabled: AccessibilityNodeInfo? = node("Enabled label") { it.text?.toString() == "Enabled" }
+            while (enabled != null && !enabled.isCheckable) enabled = enabled.parent
+            assertNotNull(enabled)
+            assertFalse(enabled!!.isChecked)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Test fun resubscriptionDialogExplainsCycleDeletionAndRequiresExplicitChoice(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         var accepted = false
@@ -33,7 +78,7 @@ class RssSettingsScreenTest {
                     onConfirm = { accepted = true }, onDismiss = { dismissed = true })
             } } }
             node("Existing count") { it.text?.toString()?.contains("100 saved articles") == true }
-            node("Immediate permanent deletion warning") { it.text?.toString()?.contains("initial fetch after registration") == true }
+            node("Cycle permanent deletion warning") { it.text?.toString()?.contains("scheduled or explicit fetch") == true }
             assertFalse(accepted)
             click(node("Cancel registration") { it.text?.toString() == "Cancel" })
             assertTrue(dismissed)
@@ -74,6 +119,16 @@ class RssSettingsScreenTest {
         var target: AccessibilityNodeInfo? = node
         while (target != null && !target.isClickable) target = target.parent
         assertTrue(target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true)
+    }
+
+    /** Recomposition can detach an accessibility node between discovery and its action. */
+    private suspend fun clickCurrent(predicate: (AccessibilityNodeInfo) -> Boolean) = withTimeout(3000) {
+        while (true) {
+            var target = find(predicate)
+            while (target != null && !target.isClickable) target = target.parent
+            if (target?.isEnabled == true && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return@withTimeout
+            delay(50)
+        }
     }
 
     @Test fun feedCardLabelsEnabledAndErrorsReplaceTimestamps(): Unit = runBlocking {
@@ -186,7 +241,7 @@ class RssSettingsScreenTest {
             assertTrue(unlimitedLabel.parent.isCheckable)
             click(unlimitedLabel)
             instrumentation.waitForIdleSync()
-            click(node("Save feed") { it.text?.toString() == "Save" })
+            clickCurrent { it.text?.toString() == "Save" }
             withTimeout(3000) { while (savedUrl == null) delay(20) }
             assertEquals("https://example.com/feed.xml", savedUrl)
             assertEquals("DIRECT", savedMode)

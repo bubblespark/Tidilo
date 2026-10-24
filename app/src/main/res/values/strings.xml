@@ -329,7 +329,7 @@
     <string name="rss_register">Register</string>
     <string name="rss_register_existing_title">Resume this feed?</string>
     <string name="rss_register_existing_count">This feed has %1$d saved articles. Re-registering resumes the same feed.</string>
-    <string name="rss_register_existing_limit">Up to %1$d articles will be kept, including newly fetched articles. Older articles above this limit will be permanently deleted without going to Trash, starting with the initial fetch after registration.</string>
+    <string name="rss_register_existing_limit">Up to %1$d articles will be kept, including newly fetched articles. Older articles above this limit will be permanently deleted without going to Trash, when a scheduled or explicit fetch performs cleanup. Registration and changing this setting do not delete articles.</string>
     <string name="rss_register_existing_unlimited">Existing articles will be kept with no automatic count deletion.</string>
     <string name="rss_feed_url">Feed URL</string>
     <string name="rss_retention_note">Oldest RSS bookmarks above this count are permanently deleted, without going to Trash. This does not limit Direct ingestion. Restored RSS bookmarks are subject to this limit again.</string>
@@ -337,4 +337,11 @@
     <string name="rss_mode_change_note">Switching to Direct removes existing unstarted AI tasks. Select below to save them directly first. Running tasks finish separately.</string>
     <string name="rss_convert_pending">Save pending items directly</string>
     <string name="rss_url_change_note">Changing the URL creates a replacement subscription. Saved articles from the old feed remain.</string>
+    <string name="rss_initial_title">Subscription registered</string>
+    <string name="rss_initial_message">Fetch articles now, or wait until the next scheduled fetch?</string>
+    <string name="rss_initial_mobile">This fetch will use mobile data. Your Wi-Fi-only setting will stay on.</string>
+    <string name="rss_initial_offline">A validated Internet connection is required to fetch now.</string>
+    <string name="rss_later">Later</string>
+    <string name="rss_xml_fetch_failed">Could not fetch feed XML. This feed was automatically disabled.</string>
+    <string name="rss_enable_to_retry">Enable this feed to try again on the next fetch.</string>
 </resources>

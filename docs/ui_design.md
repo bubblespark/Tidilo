@@ -331,12 +331,11 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Screen header shows domain display name with a back navigation arrow button (`Icons.AutoMirrored.Filled.ArrowBack`).
   - Header subtitle text color dynamically coordinates with `selectedDomainColor`.
   - System back gesture is captured via `BackHandler` to return to the domain grid rather than exiting or switching tabs.
-  - **Drill-down Content State Retention during Exit Transition**: The drill-down bookmark list is strictly derived from the composable's `state.domain` via `LibraryViewModel.filterBookmarksByDomain(bookmarks, state.domain)` rather than the globally mutable `selectedDomainFilter`. This guarantees that exiting drill-down views retain their items and never flash a transient "No bookmarks yet" empty state while fading out during back gestures.
+  - **Drill-down Content State Retention during Exit Transition**: Each animated destination collects a bounded Pager for its own domain or feed identity. The ViewModel retains the selected session across detail navigation to preserve its loaded window and scroll position. Animated compositions lease their sessions; nonselected sessions cancel when the last exit finishes. Rapid A-to-B-to-A navigation reactivates A even if its composition is reused. Clearing the global selection cannot replace outgoing items with another query or an empty feed-grid generation. NSFW visibility changes discard visible destinations immediately and use a new visibility-specific session.
 - **Page Transition Animations (`AnimatedContent` & `AnimatedVisibility`)**:
-  - **Forward Transition (Domain Grid -> Domain Drill-down)**: Content enters with slide towards `Start` (`slideIntoContainer` with low-bouncy spring + 280ms cubic ease fade-in) and exits towards `Start` (no-bouncy spring + 200ms fade-out).
-  - **Backward Transition (Domain Drill-down -> Domain Grid)**: Content enters with reverse slide towards `End` (low-bouncy spring + 280ms cubic ease fade-in) and exits towards `End` (no-bouncy spring + 200ms fade-out).
-  - **Filter Mode Transition**: Smooth 240ms crossfade between `NewestFirst` and `DomainGrid`.
-  - **Header Elements**: Back button expands/shrinks horizontally with alpha fade in `AnimatedVisibility`; header title and subtitle crossfade gracefully via `AnimatedContent`.
+  - **Forward and Backward Transitions**: Domain and RSS grid/drill-down navigation uses a symmetric crossfade (220ms in, 180ms out, EaseInOutCubic). Loading, error, and empty content render inside the persistent transition host.
+  - **Filter Mode Transition**: Uses the same crossfade between Newest First, Domain, and RSS destinations.
+  - **Header Elements**: Back button expands/shrinks horizontally with alpha fade in `AnimatedVisibility`; header title and subtitle crossfade via `AnimatedContent`. Subtitle text and accent are one immutable presentation, so outgoing bookmark counts retain their color throughout fade-out. Counts are observed for the destination identity; known collection counts seed drill-down headers without an intermediate Loading label.
   - **Scroll Position Memory**: Grid scroll state (`domainGridState`) is preserved when popping back from a drill-down list, while the drill-down list resets to top (`scrollToItem(0)`) upon selection.
 
 ### 6.9 `FrostedHeaderContainer`
@@ -483,7 +482,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - Timeline, domain drill-down, and search render LazyPagingItems with stable bookmark-ID keys in list and two-column grid layouts.
 - Initial load, refresh error, and true empty results are distinct states. Initial loading never displays an empty-library message. Domain grids also wait for their first aggregate result.
 - Prepend and append loading/error feedback supports retry after earlier or later pages have been evicted. An error takes precedence over another direction's spinner.
-- Query/domain/NSFW changes switch Pager generations and clear old-filter content through a loading generation. Separate remembered list/grid scroll states are retained. Domain positions reset only when the selected filter changes, including across detail return.
+- Library domain/feed/mode changes create destination-owned Pager flows; outgoing flows remain only until their animations are disposed. Search retains its ViewModel-owned query generation. NSFW changes discard existing library destinations immediately. Separate remembered list/grid scroll states are retained. Domain positions reset only when the selected filter changes, including across detail return.
 - Detail and AI-review screens remember a single-ID observation per ID/retry and distinguish loading, missing/deleted, and failed reads. Saving or trashing only navigates after the database operation succeeds; failures retain the screen and show a retryable action/message.
 - Tag selection counts come from all matching database rows, independently of loaded pages. Settings domain lists use distinct-domain queries.
 

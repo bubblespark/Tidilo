@@ -53,6 +53,14 @@ enum class LibraryFilterMode {
     RSS
 }
 
+internal class LibraryPagingSession(
+    val key: String,
+    val flow: Flow<PagingData<BookmarkItem>>,
+    val cacheScope: CoroutineScope
+) {
+    var users: Int = 0
+}
+
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, FlowPreview::class)
 class LibraryViewModel : ViewModel() {
 
@@ -199,14 +207,6 @@ class LibraryViewModel : ViewModel() {
             initialValue = emptyList()
         )
 
-    private var currentLibraryScope: CoroutineScope? = null
-    private fun newLibraryGenerationScope(): CoroutineScope {
-        currentLibraryScope?.cancel()
-        val scope = CoroutineScope(viewModelScope.coroutineContext + Job(viewModelScope.coroutineContext[Job]))
-        currentLibraryScope = scope
-        return scope
-    }
-
     private var currentSearchScope: CoroutineScope? = null
     private fun newSearchGenerationScope(): CoroutineScope {
         currentSearchScope?.cancel()
@@ -215,73 +215,48 @@ class LibraryViewModel : ViewModel() {
         return scope
     }
 
-    private fun buildLibraryGeneration(
+    private var currentLibrarySession: LibraryPagingSession? = null
+
+    /** Retain the selected window across detail navigation; outgoing destinations release on exit. */
+    internal fun libraryPages(
         mode: LibraryFilterMode,
         domain: String?,
         feedId: String?,
-        visible: Boolean,
-        ready: Boolean
-    ): PagingGeneration {
+        visible: Boolean
+    ): LibraryPagingSession {
         val key = buildLibraryFilterKey(mode, domain, feedId, visible)
-        val flow = if (mode == LibraryFilterMode.RSS && feedId == null) {
-            flowOf(PagingData.empty())
-        } else if (ready) {
-            bookmarkRepository.pagedBookmarks(
-                "",
-                domain,
-                visible,
+        currentLibrarySession?.takeIf { it.key == key }?.let { return it }
+        currentLibrarySession?.takeIf { it.users == 0 }?.cacheScope?.cancel()
+        val scope = CoroutineScope(viewModelScope.coroutineContext + Job(viewModelScope.coroutineContext[Job]))
+        val pages = bookmarkRepository.isInitialized.flatMapLatest { ready ->
+            if (ready) bookmarkRepository.pagedBookmarks(
+                "", domain, visible,
                 if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL,
                 rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS }
-            )
-        } else {
-            flowOf(loadingPage())
-        }
-        val scope = newLibraryGenerationScope()
-        return PagingGeneration(key, flow.cachedIn(scope))
+            ) else flowOf(loadingPage())
+        }.cachedIn(scope)
+        return LibraryPagingSession(key, pages, scope).also { currentLibrarySession = it }
     }
 
-    private var activeLibraryGeneration: PagingGeneration? = null
-    private var activeLibraryReady: Boolean = false
+    internal fun releaseLibraryPages(session: LibraryPagingSession) {
+        session.users--
+        val mode = _filterMode.value
+        val selectedKey = buildLibraryFilterKey(mode,
+            _selectedDomainFilter.value.takeIf { mode == LibraryFilterMode.DOMAIN },
+            _selectedRssFeedFilter.value?.id.takeIf { mode == LibraryFilterMode.RSS },
+            AppConfig.isNsfwContentVisible.value)
+        if (session.users == 0 && session.key != selectedKey) {
+            session.cacheScope.cancel()
+            if (currentLibrarySession === session) currentLibrarySession = null
+        }
+    }
 
-    /**
-     * Active generation of library bookmarks, associating the flow with its filter key.
-     */
-    val libraryGeneration: StateFlow<PagingGeneration> = combine(
-        _selectedDomainFilter,
-        AppConfig.isNsfwContentVisible,
-        bookmarkRepository.isInitialized,
-        _filterMode,
-        _selectedRssFeedFilter
-    ) { domain, visible, ready, mode, feed ->
-        Triple(domain, visible, ready) to (mode to feed?.id)
-    }.map { (state, selection) ->
-        val (mode, feedId) = selection
-        val (domain, visible, ready) = state
-        val key = buildLibraryFilterKey(mode, domain, feedId, visible)
-        val current = activeLibraryGeneration
-        if (current != null && current.key == key && activeLibraryReady == ready) {
-            current
-        } else {
-            activeLibraryReady = ready
-            buildLibraryGeneration(mode, domain, feedId, visible, ready).also {
-                activeLibraryGeneration = it
-            }
-        }
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = run {
-            val mode = _filterMode.value
-            val domain = _selectedDomainFilter.value
-            val feedId = _selectedRssFeedFilter.value?.id
-            val visible = AppConfig.isNsfwContentVisible.value
-            val ready = bookmarkRepository.isInitialized.value
-            activeLibraryReady = ready
-            buildLibraryGeneration(mode, domain, feedId, visible, ready).also {
-                activeLibraryGeneration = it
-            }
-        }
-    )
+    /** A rapid A-to-B-to-A transition may reuse A's existing animated composition. */
+    internal fun activateLibraryPages(session: LibraryPagingSession) {
+        if (currentLibrarySession === session) return
+        currentLibrarySession?.takeIf { it.users == 0 }?.cacheScope?.cancel()
+        currentLibrarySession = session
+    }
 
     private fun buildSearchGeneration(
         query: String,
@@ -335,13 +310,10 @@ class LibraryViewModel : ViewModel() {
         }
     )
 
-    val libraryCount = combine(_selectedDomainFilter, AppConfig.isNsfwContentVisible, _filterMode, _selectedRssFeedFilter) { domain, visible, mode, feed -> Triple(domain, visible, mode) to feed?.id }
-        .flatMapLatest { (state, feedId) ->
-            val (domain, visible, mode) = state
-            bookmarkRepository.observeCount("", domain, visible, if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL,
-                rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS })
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    internal fun libraryCount(mode: LibraryFilterMode, domain: String?, feedId: String?, visible: Boolean): Flow<Int?> =
+        bookmarkRepository.observeCount("", domain, visible,
+            if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL,
+            rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS })
 
     val searchCount = combine(debouncedSearchQuery, AppConfig.isNsfwContentVisible) { query, visible -> query to visible }
         .flatMapLatest { (query, visible) -> bookmarkRepository.observeCount(query, null, visible) }
@@ -478,7 +450,7 @@ class LibraryViewModel : ViewModel() {
 
     override fun onCleared() {
         super.onCleared()
-        currentLibraryScope?.cancel()
+        currentLibrarySession?.cacheScope?.cancel()
         currentSearchScope?.cancel()
     }
 

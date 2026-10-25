@@ -215,12 +215,13 @@ class LibraryViewModel : ViewModel() {
         return scope
     }
 
-    private fun createInitialLibraryGeneration(): PagingGeneration {
-        val mode = _filterMode.value
-        val domain = _selectedDomainFilter.value
-        val feedId = _selectedRssFeedFilter.value?.id
-        val visible = AppConfig.isNsfwContentVisible.value
-        val ready = bookmarkRepository.isInitialized.value
+    private fun buildLibraryGeneration(
+        mode: LibraryFilterMode,
+        domain: String?,
+        feedId: String?,
+        visible: Boolean,
+        ready: Boolean
+    ): PagingGeneration {
         val key = buildLibraryFilterKey(mode, domain, feedId, visible)
         val flow = if (mode == LibraryFilterMode.RSS && feedId == null) {
             flowOf(PagingData.empty())
@@ -238,6 +239,9 @@ class LibraryViewModel : ViewModel() {
         val scope = newLibraryGenerationScope()
         return PagingGeneration(key, flow.cachedIn(scope))
     }
+
+    private var activeLibraryGeneration: PagingGeneration? = null
+    private var activeLibraryReady: Boolean = false
 
     /**
      * Active generation of library bookmarks, associating the flow with its filter key.
@@ -254,31 +258,36 @@ class LibraryViewModel : ViewModel() {
         val (mode, feedId) = selection
         val (domain, visible, ready) = state
         val key = buildLibraryFilterKey(mode, domain, feedId, visible)
-        val flow = if (mode == LibraryFilterMode.RSS && feedId == null) {
-            flowOf(PagingData.empty())
-        } else if (ready) {
-            bookmarkRepository.pagedBookmarks(
-                "",
-                domain,
-                visible,
-                if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL,
-                rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS }
-            )
+        val current = activeLibraryGeneration
+        if (current != null && current.key == key && activeLibraryReady == ready) {
+            current
         } else {
-            flowOf(loadingPage())
+            activeLibraryReady = ready
+            buildLibraryGeneration(mode, domain, feedId, visible, ready).also {
+                activeLibraryGeneration = it
+            }
         }
-        val scope = newLibraryGenerationScope()
-        PagingGeneration(key, flow.cachedIn(scope))
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = createInitialLibraryGeneration()
+        initialValue = run {
+            val mode = _filterMode.value
+            val domain = _selectedDomainFilter.value
+            val feedId = _selectedRssFeedFilter.value?.id
+            val visible = AppConfig.isNsfwContentVisible.value
+            val ready = bookmarkRepository.isInitialized.value
+            activeLibraryReady = ready
+            buildLibraryGeneration(mode, domain, feedId, visible, ready).also {
+                activeLibraryGeneration = it
+            }
+        }
     )
 
-    private fun createInitialSearchGeneration(): PagingGeneration {
-        val query = _searchQuery.value
-        val visible = AppConfig.isNsfwContentVisible.value
-        val ready = bookmarkRepository.isInitialized.value
+    private fun buildSearchGeneration(
+        query: String,
+        visible: Boolean,
+        ready: Boolean
+    ): PagingGeneration {
         val key = buildSearchQueryKey(query, visible)
         val flow = if (ready) {
             bookmarkRepository.pagedBookmarks(query, null, visible)
@@ -288,6 +297,9 @@ class LibraryViewModel : ViewModel() {
         val scope = newSearchGenerationScope()
         return PagingGeneration(key, flow.cachedIn(scope))
     }
+
+    private var activeSearchGeneration: PagingGeneration? = null
+    private var activeSearchReady: Boolean = false
 
     /**
      * Active generation of search bookmarks, associating the flow with its debounced query key.
@@ -300,17 +312,27 @@ class LibraryViewModel : ViewModel() {
         Triple(query, visible, ready)
     }.map { (query, visible, ready) ->
         val key = buildSearchQueryKey(query, visible)
-        val flow = if (ready) {
-            bookmarkRepository.pagedBookmarks(query, null, visible)
+        val current = activeSearchGeneration
+        if (current != null && current.key == key && activeSearchReady == ready) {
+            current
         } else {
-            flowOf(loadingPage())
+            activeSearchReady = ready
+            buildSearchGeneration(query, visible, ready).also {
+                activeSearchGeneration = it
+            }
         }
-        val scope = newSearchGenerationScope()
-        PagingGeneration(key, flow.cachedIn(scope))
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = createInitialSearchGeneration()
+        initialValue = run {
+            val query = _searchQuery.value
+            val visible = AppConfig.isNsfwContentVisible.value
+            val ready = bookmarkRepository.isInitialized.value
+            activeSearchReady = ready
+            buildSearchGeneration(query, visible, ready).also {
+                activeSearchGeneration = it
+            }
+        }
     )
 
     val libraryCount = combine(_selectedDomainFilter, AppConfig.isNsfwContentVisible, _filterMode, _selectedRssFeedFilter) { domain, visible, mode, feed -> Triple(domain, visible, mode) to feed?.id }

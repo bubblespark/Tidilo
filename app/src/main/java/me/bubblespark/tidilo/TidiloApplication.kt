@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.config.detectFreshInstallation
 
 class TidiloApplication : Application() {
 
@@ -42,8 +43,11 @@ class TidiloApplication : Application() {
         super.onCreate()
         instance = this
         aiAnalysisInitialization = applicationScope.async {
-            val info = packageManager.getPackageInfo(packageName, 0)
-            AppConfig.initializeAiAnalysisMode(info.firstInstallTime == info.lastUpdateTime)
+            val isFreshInstallation = detectFreshInstallation {
+                val info = packageManager.getPackageInfo(packageName, 0)
+                info.firstInstallTime to info.lastUpdateTime
+            }
+            AppConfig.initializeAiAnalysisMode(isFreshInstallation)
         }
         applicationScope.launch { AiCoreUsageRepository.getInstance(this@TidiloApplication).initialize() }
         applicationScope.launch {

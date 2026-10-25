@@ -7,6 +7,30 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AiAnalysisPreferenceTest {
+    @Test fun failedPackageInspectionStillCompletesInitializationWithExistingDefault() = runBlocking {
+        val saved = mutableListOf<AiAnalysisMode>()
+        val preference = AiAnalysisPreference(null) { saved.add(it) }
+        val initialized = async {
+            preference.initialize(detectFreshInstallation { error("Package inspection failed") }) {
+                error("Unknown install history must not probe AICore")
+            }
+        }
+        kotlinx.coroutines.withTimeout(1000) { initialized.await() }
+        assertEquals(listOf(AiAnalysisMode.AICORE), saved)
+        assertEquals(AiAnalysisMode.AICORE, preference.mode.value)
+    }
+
+    @Test fun installationDetectionPreservesCancellationAndRecognizesUpdates() {
+        assertTrue(detectFreshInstallation { 100L to 100L })
+        assertFalse(detectFreshInstallation { 100L to 200L })
+        val cancellation = kotlinx.coroutines.CancellationException("Cancelled")
+        try {
+            detectFreshInstallation { throw cancellation }
+            fail("Cancellation must propagate")
+        } catch (caught: kotlinx.coroutines.CancellationException) {
+            assertSame(cancellation, caught)
+        }
+    }
     @Test fun freshInstallationUsesAvailableStatusOnlyOnce() = runBlocking {
         for (available in listOf(true, false)) {
             val saved = mutableListOf<AiAnalysisMode>()

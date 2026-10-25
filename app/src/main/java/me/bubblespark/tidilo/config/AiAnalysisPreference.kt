@@ -4,6 +4,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
+
+/** Unknown install history preserves the existing default instead of failing startup. */
+internal fun detectFreshInstallation(readTimes: () -> Pair<Long, Long>): Boolean = try {
+    val (installed, updated) = readTimes()
+    installed == updated
+} catch (e: CancellationException) {
+    throw e
+} catch (_: Exception) {
+    false
+}
 
 /** Owns one-time installation selection; an explicit user choice always takes precedence. */
 internal class AiAnalysisPreference(initialMode: AiAnalysisMode?, private val persist: (AiAnalysisMode) -> Unit) {

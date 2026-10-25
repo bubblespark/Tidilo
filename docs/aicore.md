@@ -271,6 +271,23 @@ Developers and QA can test and inspect AICore behavior using:
 - **`DebugPromptTester.kt`**: Low-level status checker (`checkStatus()`), model downloader (`startDownload()`), and single-shot raw prompt tester with custom hyperparameter overrides.
 - **Settings ➔ Debug ➔ ML Kit GenAI Prompt API Test**: Live UI in `SettingsDebugScreen.kt` to test latency, status codes, and model responses on physical Pixel devices.
 
+### Release SDK initialization and shrinking
+
+ML Kit discovers `CommonComponentRegistrar` from manifest metadata and instantiates it through its public no-argument constructor. Keep that constructor in `app/proguard-rules.pro`; keeping the class name alone is insufficient with the current release toolchain. Keep R8 minification and resource shrinking enabled.
+
+Issue #113 was reproduced before inference: the minified APK removed this constructor, component discovery logged `NoSuchMethodException`, and `SharedPrefManager` was never registered. `Generation.getClient()` then threw a message-less `NullPointerException` inside SDK logger initialization. This affected both imports and the diagnostic status/test paths. The generic UI error text alone does not identify the failing stage.
+
+After building the release APK, check its actual manifest and DEX rather than only checking source rules:
+
+```sh
+./gradlew assembleRelease
+python tools/verify_mlkit_release.py
+```
+
+The verifier requires Android SDK Command-Line Tools (`apkanalyzer`) and uses `ANDROID_HOME` or `ANDROID_SDK_ROOT`. Override paths with `--apkanalyzer` and `--apk` if necessary. It checks that every registrar declared by the ML Kit discovery service retains its public no-argument constructor. It does not run inference or establish device/model readiness.
+
+For #113, the verifier failed on the original minified APK and passed after the targeted keep rule. A separate local instrumentation probe also changed from a client-construction `NullPointerException` to successful construction and closure without invoking AICore. Confirm `Check Status`, `Run Test`, and a normal import on a supported physical device using the signed release build; emulator initialization checks do not validate inference.
+
 
 ## Local Inference Usage Accounting
 

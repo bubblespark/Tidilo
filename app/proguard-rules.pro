@@ -14,3 +14,9 @@
 
 # ML Kit GenAI (AICore)
 -dontwarn com.google.mlkit.genai.**
+
+# ML Kit discovers this registrar through manifest metadata and reflection.
+# Retain its constructor so SharedPrefManager is registered before client creation.
+-keep class com.google.mlkit.common.internal.CommonComponentRegistrar {
+    public <init>();
+}

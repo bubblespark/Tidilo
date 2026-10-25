@@ -135,7 +135,7 @@ fun LibraryScreen(
     val isRssGrid = filterMode == LibraryFilterMode.RSS && selectedFeed == null
     val isCollectionGrid = isDomainGrid || isRssGrid
     val refreshState = bookmarkLoadState(bookmarks.loadState.refresh, isCollectionGrid)
-    val isLoading = !initialized || refreshState is LoadState.Loading ||
+    val isLoading = !initialized || isBookmarkLoading(refreshState, bookmarks.itemCount) ||
         (isDomainGrid && domainGroupsLoading) || (isRssGrid && rssFeedGroupsLoading)
     val context = LocalContext.current
     val localConfig = LocalConfiguration.current

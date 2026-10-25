@@ -40,3 +40,10 @@ internal fun boundaryFeedback(prepend: LoadState, append: LoadState): LoadState?
 /** Domain cards use aggregate state, independently of any retained bookmark pages. */
 internal fun bookmarkLoadState(state: LoadState, isDomainGrid: Boolean): LoadState =
     if (isDomainGrid) LoadState.NotLoading(false) else state
+
+/**
+ * Only treat refresh loading as initial/placeholder loading when there are no items rendered yet.
+ * When items exist, Paging retains the previous snapshot and diffs updates seamlessly in place.
+ */
+internal fun isBookmarkLoading(refreshState: LoadState, itemCount: Int): Boolean =
+    refreshState is LoadState.Loading && itemCount == 0

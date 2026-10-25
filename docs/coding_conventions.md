@@ -49,6 +49,9 @@ This document defines the strict engineering standards, naming conventions, Comp
   - Always use `Modifier.drawWithCache { val brush = ...; onDrawBehind { drawRect(brush) } }` so gradient objects are allocated only when layout dimensions or color dependencies change, and hoist static curve tables (such as `SMOOTHERSTEP_CURVE`) to top-level constants.
 - **Keyword Precomputation**: In `SearchScreen`, word tokens and tag tokens are parsed once at the screen level using `remember(searchQuery)` and passed down as immutable lists, completely eliminating per-item tokenization during scroll.
 
+### 2.4 Paging 3 Load State & Skeleton Placeholders
+- **Avoid Unconditional Skeleton Swap on Refresh**: When observing `LazyPagingItems`, never replace the rendered list or grid with a full-screen skeleton placeholder solely on `loadState.refresh is LoadState.Loading`. When database updates (e.g. background RSS direct ingestion or batch writes) invalidate Room's `PagingSource`, `loadState.refresh` transitions to `Loading` while the existing items remain in memory (`itemCount > 0`). Only show initial loading placeholders/skeletons when `loadState.refresh is LoadState.Loading && itemCount == 0` so Paging 3 diffs and updates items seamlessly in place without flickering.
+
 ---
 
 ## 3. Coroutines, Threading, Flow Sharing, & Database Practices

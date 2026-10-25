@@ -22,4 +22,14 @@ class PagingFeedbackTest {
         assertSame(failure, boundaryFeedback(LoadState.Loading, failure))
         assertNull(boundaryFeedback(LoadState.NotLoading(false), LoadState.NotLoading(true)))
     }
+
+    @Test
+    fun bookmarkLoadingTriggersOnlyWhenPagingRefreshesWithEmptyItems() {
+        assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 0))
+        assertFalse(isBookmarkLoading(LoadState.Loading, itemCount = 1))
+        assertFalse(isBookmarkLoading(LoadState.Loading, itemCount = 25))
+        assertFalse(isBookmarkLoading(LoadState.NotLoading(false), itemCount = 0))
+        assertFalse(isBookmarkLoading(LoadState.NotLoading(true), itemCount = 0))
+        assertFalse(isBookmarkLoading(LoadState.Error(IllegalStateException("Failed")), itemCount = 0))
+    }
 }

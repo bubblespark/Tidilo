@@ -121,9 +121,10 @@ class LibraryTransitionTest {
                         }
                         found
                     }
-                    var button = back
+                    var button: AccessibilityNodeInfo? = back
                     while (button != null && !button.isClickable) button = button.parent
-                    assertTrue("Header back must be clickable", button?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true)
+                    val clickableButton = requireNotNull(button) { "Clickable header back button missing after parent traversal" }
+                    assertTrue("Header back must be clickable", clickableButton.performAction(AccessibilityNodeInfo.ACTION_CLICK))
                 }
                 val update = launch {
                     delay(32)
@@ -287,8 +288,12 @@ class LibraryTransitionTest {
             instrumentation.runOnMainSync { vm.selectRssFeedFilter(feed) }
             awaitText(rss.title)
             delay(2400)
-            val rssBounds = android.graphics.Rect().also { find(rss.title)!!.getBoundsInScreen(it) }
-            val subtitleBounds = android.graphics.Rect().also { find("1 bookmark")!!.getBoundsInScreen(it) }
+            val rssBounds = android.graphics.Rect().also {
+                requireNotNull(find(rss.title)) { "RSS title missing when capturing exit frame" }.getBoundsInScreen(it)
+            }
+            val subtitleBounds = android.graphics.Rect().also {
+                requireNotNull(find("1 bookmark")) { "RSS bookmark count missing when capturing exit frame" }.getBoundsInScreen(it)
+            }
             val rssBefore = capture("issue120-before.png")
             instrumentation.runOnMainSync { vm.selectRssFeedFilter(null) }
             delay(450)
@@ -303,7 +308,9 @@ class LibraryTransitionTest {
             instrumentation.runOnMainSync { vm.setFilterMode(LibraryFilterMode.DOMAIN) }
             awaitText(domain)
             delay(2400)
-            val gridBounds = android.graphics.Rect().also { find(domain)!!.getBoundsInScreen(it) }
+            val gridBounds = android.graphics.Rect().also {
+                requireNotNull(find(domain)) { "Domain card title missing when capturing forward frame" }.getBoundsInScreen(it)
+            }
             val gridBefore = capture("issue120-domain-grid.png")
             instrumentation.runOnMainSync { vm.selectDomainFilter(domain) }
             delay(450)
@@ -312,7 +319,9 @@ class LibraryTransitionTest {
             gridBefore.recycle(); forward.recycle()
             awaitText(manual.title)
             delay(2400)
-            val manualBounds = android.graphics.Rect().also { find(manual.title)!!.getBoundsInScreen(it) }
+            val manualBounds = android.graphics.Rect().also {
+                requireNotNull(find(manual.title)) { "Domain bookmark title missing when capturing exit frame" }.getBoundsInScreen(it)
+            }
             val manualBefore = capture("issue120-domain-before.png")
             instrumentation.runOnMainSync { activity.onBackPressedDispatcher.onBackPressed() }
             delay(450)
@@ -325,7 +334,9 @@ class LibraryTransitionTest {
             instrumentation.runOnMainSync { vm.setFilterMode(LibraryFilterMode.NEWEST_FIRST); vm.setViewMode(LibraryViewMode.GRID) }
             awaitText(manual.title)
             delay(2400)
-            val timelineBounds = android.graphics.Rect().also { find(manual.title)!!.getBoundsInScreen(it) }
+            val timelineBounds = android.graphics.Rect().also {
+                requireNotNull(find(manual.title)) { "Timeline bookmark title missing when capturing mode-switch frame" }.getBoundsInScreen(it)
+            }
             val timelineBefore = capture("issue120-timeline.png")
             instrumentation.runOnMainSync { vm.setFilterMode(LibraryFilterMode.RSS) }
             delay(450)

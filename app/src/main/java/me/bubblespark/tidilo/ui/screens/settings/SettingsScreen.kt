@@ -64,8 +64,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.Role
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.config.AppLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -84,16 +86,19 @@ fun SettingsScreen(
     onNavigateToDebug: () -> Unit = {},
     onNavigateToSummary: () -> Unit = {},
     onNavigateToRss: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    checkAiCoreAvailable: suspend () -> Boolean = { me.bubblespark.tidilo.data.AiCoreAvailability.check() }
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val isAutoRunAiOnActive by AppConfig.isAutoRunAiOnActive.collectAsStateWithLifecycle()
     val aiCoreFallbackMode by AppConfig.aiCoreFallbackMode.collectAsStateWithLifecycle()
+    val aiAnalysisMode by AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val localConfig = LocalConfiguration.current
     val scope = rememberCoroutineScope()
 
     var showFallbackDialog by remember { mutableStateOf(false) }
+    var showAiAnalysisDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showClearCacheConfirmDialog by remember { mutableStateOf(false) }
 
@@ -210,6 +215,30 @@ fun SettingsScreen(
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 4.dp, bottom = 12.dp)
         )
+
+        Card(
+            modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { showAiAnalysisDialog = true },
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(40.dp)) {
+                    BoxContent(icon = Icons.Default.AutoAwesome, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_ai_analysis_title), style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(if (aiAnalysisMode == AiAnalysisMode.AICORE) R.string.settings_ai_analysis_aicore
+                        else R.string.settings_ai_analysis_disable), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline)
+                }
+                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null,
+                    modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
+            }
+        }
+        Spacer(Modifier.height(16.dp))
 
         // Auto-run AI Tagging on Active Card
         Card(
@@ -690,6 +719,12 @@ fun SettingsScreen(
                 }
             }
         )
+    }
+
+    if (showAiAnalysisDialog) {
+        AiAnalysisDialog(mode = aiAnalysisMode,
+            onSelect = { AppConfig.setAiAnalysisMode(it); showAiAnalysisDialog = false },
+            onDismiss = { showAiAnalysisDialog = false }, checkAvailable = checkAiCoreAvailable)
     }
 
     if (showFallbackDialog) {

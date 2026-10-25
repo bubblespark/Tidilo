@@ -6,6 +6,22 @@ This document details the on-device AI integration, prompt engineering architect
 
 ## 1. Overview & On-Device AI Architecture
 
+### AI Analysis selection
+
+Settings > AI > AI Analysis offers **AICore** and **Disable**, persisted in AppConfig SharedPreferences and exposed as a StateFlow. This setting is independent of AICore error fallback.
+
+On the first launch of a fresh installation, a status-only check selects AICore only for `FeatureStatus.AVAILABLE`; DOWNLOADABLE, DOWNLOADING, UNAVAILABLE, unknown status, initialization/status failure, and a ten-second timeout select Disable. The persisted selection also serves as the initialization marker, so later launches do not repeat automatic selection. Existing saved settings and manual changes during the check take precedence. Updates without a saved setting preserve the previous AICore default. A fresh installation is identified by matching Android `firstInstallTime` and `lastUpdateTime`; an update before the first-ever launch conservatively preserves the previous default. If package inspection fails, treat installation history as unknown and preserve that default rather than failing the shared initialization gate; coroutine cancellation still propagates. Startup checking runs on IO, and normal imports, queued execution, and RSS acquisition wait for it before choosing a processing mode.
+
+Every opening of the AI Analysis dialog performs a fresh availability check. AICore is gray and unselectable while checking or whenever the result is not AVAILABLE; Disable remains enabled. An unavailable result does not itself modify the current selection. Closing and reopening checks again. Checks never download a model, generate content, or record inference usage, and the client closes on completion, failure, timeout, or cancellation.
+
+With Disable, normal manual/shared imports retain URL normalization, duplicate checks, HTML acquisition, parsed Description, OG image references/cache recovery, and domain icons. Successful acquisition saves immediately through BookmarkRepository.addBookmarkAndAwait with isAiSkipped = true and Tag.createEmpty(), without inserting a Ready task. Parsed OG Description takes precedence over standard Description; a missing Description remains empty. Body snippets are not persisted on bookmarks. Acquisition failures remain retryable Error tasks; persistence failures retain prepared data as Save failed.
+
+Changing the setting alone leaves existing Ready tasks untouched. Executing a single task or AI Analysis All while disabled saves the selected normal/RSS tasks without opening a Gemini client. Prepared tasks reuse metadata; unprepared tasks acquire articles first. Active work finishes under the existing cancellation policy while waiting work can return to Ready. Interrupted processing can resume without AICore. RSS execution retains source identity and subscription/network checks.
+
+RSS feeds configured for AI Analyze fall back to effective Direct acquisition while global AI Analysis is disabled; their configured mode is preserved. See [RSS modes](rss.md#modes-queue-and-inference).
+
+Import completion distinguishes a committed bookmark from an AI-queued task. Shared direct saves notify **Bookmark added** only after the save/promotion transaction commits. If a nested persistence transaction fails, Error recovery occurs after the failed outer transaction rolls back.
+
 Tidilo processes and categorizes web bookmarks locally on-device without transmitting user browsing data, URLs, or page contents to external cloud servers.
 
 ```

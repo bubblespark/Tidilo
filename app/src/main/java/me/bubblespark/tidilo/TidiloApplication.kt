@@ -12,10 +12,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.config.detectFreshInstallation
 
 class TidiloApplication : Application() {
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private lateinit var aiAnalysisInitialization: Deferred<Unit>
+
+    suspend fun awaitAiAnalysisInitialization() {
+        aiAnalysisInitialization.await()
+    }
 
     var isAppInForeground: Boolean = false
         private set
@@ -33,6 +42,13 @@ class TidiloApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        aiAnalysisInitialization = applicationScope.async {
+            val isFreshInstallation = detectFreshInstallation {
+                val info = packageManager.getPackageInfo(packageName, 0)
+                info.firstInstallTime to info.lastUpdateTime
+            }
+            AppConfig.initializeAiAnalysisMode(isFreshInstallation)
+        }
         applicationScope.launch { AiCoreUsageRepository.getInstance(this@TidiloApplication).initialize() }
         applicationScope.launch {
             runCatching { me.bubblespark.tidilo.data.rss.RssScheduler.reschedule(this@TidiloApplication, force = false) }
@@ -71,8 +87,9 @@ class TidiloApplication : Application() {
     }
 
     private fun onAppBecameActive() {
-        runCatching {
-            ImportRepository.getInstance(this).onAppBecameActive()
+        applicationScope.launch {
+            awaitAiAnalysisInitialization()
+            if (isAppInForeground) runCatching { ImportRepository.getInstance(this@TidiloApplication).onAppBecameActive() }
         }
     }
 

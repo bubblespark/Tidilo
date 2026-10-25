@@ -32,6 +32,90 @@ import org.junit.Test
 import java.util.concurrent.CopyOnWriteArrayList
 
 class ImportDuplicateRejectionTest {
+    @Test fun disabledAcquisitionRetryRedirectKeepsExistingBookmarkContent() = runBlocking {
+        val bookmarks = TestBookmarkDao()
+        val tasks = TestImportTaskDao()
+        val job = kotlinx.coroutines.SupervisorJob()
+        val canonical = "https://example.com/existing"
+        val original = BookmarkEntity("existing", "Keep title", canonical, "Keep Description", createdAt = 1,
+            updatedAt = 1, note = "Keep note")
+        bookmarks.insertRow(original)
+        tasks.insertOrUpdate(ImportTaskEntity.fromImportTask(ImportTask(id = "retry", url = "https://short.example/retry",
+            title = "short.example", status = TaskStatus.ERROR, statusText = "Article acquisition failed")))
+        try {
+            val repository = ImportRepository(taskDao = tasks, bookmarkDao = bookmarks,
+                repositoryScope = CoroutineScope(coroutineContext + job), isAppInForeground = { true },
+                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                openModel = { error("Disabled retry must not initialize AICore") },
+                articleAcquirer = { createFakeParsedPage(it, canonical) }, persistFallback = { error("Must retain existing bookmark") })
+            repository.retryErrorTask("retry")
+            kotlinx.coroutines.withTimeout(5000) { while (tasks.getCount() != 0) delay(5) }
+            assertEquals(original, bookmarks.getBookmarkByUrl(canonical))
+        } finally { job.cancel(); job.join() }
+    }
+    @Test fun disabledConvergingImportsSaveOnceAndRejectSubsequentDuplicateBeforeFetch() = runBlocking {
+        val bookmarks = TestBookmarkDao()
+        val tasks = TestImportTaskDao()
+        val job = kotlinx.coroutines.SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + job)
+        val started = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var fetches = 0
+        var saves = 0
+        val canonical = "https://example.com/canonical"
+        try {
+            val repository = ImportRepository(taskDao = tasks, bookmarkDao = bookmarks, repositoryScope = scope,
+                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                articleAcquirer = { url ->
+                    if (++fetches == 2) started.complete(Unit)
+                    release.await()
+                    createFakeParsedPage(url, canonical)
+                }, persistFallback = { bookmark ->
+                    saves++
+                    bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(bookmark))
+                })
+            val first = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
+            val second = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
+            repository.importUrl("https://short.example/one") { first.complete(it) }
+            repository.importUrl("https://short.example/two") { second.complete(it) }
+            kotlinx.coroutines.withTimeout(5000) { started.await() }
+            release.complete(Unit)
+            val results = kotlinx.coroutines.withTimeout(5000) { listOf(first.await(), second.await()) }
+            assertEquals(1, results.count { it.isSuccess })
+            assertEquals(1, saves)
+            assertEquals(0, tasks.getCount())
+            val duplicate = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
+            repository.importUrl(canonical) { duplicate.complete(it) }
+            assertTrue(kotlinx.coroutines.withTimeout(5000) { duplicate.await() }.isFailure)
+            assertEquals(2, fetches)
+            assertEquals(1, saves)
+        } finally { job.cancel(); job.join() }
+    }
+
+    @Test fun disabledImportPromotesUnpreparedRssReadyAfterAcquiringDescription() = runBlocking {
+        val bookmarks = TestBookmarkDao()
+        val tasks = TestImportTaskDao()
+        val job = kotlinx.coroutines.SupervisorJob()
+        val url = "https://example.com/rss-legacy"
+        tasks.insertOrUpdate(ImportTaskEntity.fromImportTask(ImportTask(id = "rss-task", url = url, title = "XML Title",
+            status = TaskStatus.READY, statusText = "Ready", rssFeedId = "feed", articlePrepared = false)))
+        try {
+            val repository = ImportRepository(taskDao = tasks, bookmarkDao = bookmarks,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                articleAcquirer = { createFakeParsedPage(it).copy(standardMetaTags = mapOf("description" to "HTML Description")) },
+                persistFallback = { bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it)) })
+            val done = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
+            repository.importUrl(url) { done.complete(it) }
+            assertTrue(kotlinx.coroutines.withTimeout(5000) { done.await() }.getOrThrow() is ImportOutcome.BookmarkSaved)
+            assertEquals(0, tasks.getCount())
+            val bookmark = bookmarks.getBookmarkByUrl(url)!!
+            assertEquals("rss-task", bookmark.id)
+            assertEquals("HTML Description", bookmark.description)
+            assertNull(bookmark.rssFeedId)
+            assertTrue(bookmark.isAiSkipped)
+        } finally { job.cancel(); job.join() }
+    }
 
     private class TestBookmarkDao : BookmarkDao {
         val bookmarks = mutableMapOf<String, BookmarkEntity>()
@@ -127,7 +211,12 @@ class ImportDuplicateRejectionTest {
             tasksFlow.map { it.filter { task -> task.status in statuses } }
         override suspend fun getTasksByStatuses(statuses: List<String>): List<ImportTaskEntity> =
             tasks.values.filter { it.status in statuses }
-        override suspend fun claimForAi(id: String, statusText: String): Int = 0
+        override suspend fun claimForAi(id: String, statusText: String): Int {
+            val task = tasks[id] ?: return 0
+            if (task.status !in listOf("WAITING_AI", "PROCESSING_AI")) return 0
+            updateStatus(id, "PROCESSING_AI", statusText, null)
+            return 1
+        }
         override suspend fun rejectUnavailableRss() {}
         override suspend fun deleteById(id: String) {
             tasks.remove(id)
@@ -226,7 +315,7 @@ class ImportDuplicateRejectionTest {
         )
 
         // When: User manually imports the same URL
-        var callbackResult: Result<ImportTask>? = null
+        var callbackResult: Result<ImportOutcome>? = null
         repository.importUrl("https://example.com/rss-article") { callbackResult = it }
 
         // Then:
@@ -247,6 +336,9 @@ class ImportDuplicateRejectionTest {
         assertEquals("b1", notif.existingBookmarkId)
         assertEquals("example.com", notif.domain)
         assertEquals("https://example.com/rss-article", notif.url)
+        val outcome = requireNotNull(callbackResult).getOrThrow()
+        assertEquals(ImportOutcome.BookmarkSaved("b1", existing.url), outcome)
+        assertEquals(existing.copy(rssFeedId = null), updated)
     }
 
     @Test
@@ -657,8 +749,8 @@ class ImportDuplicateRejectionTest {
         val redirectInFlightGate = kotlinx.coroutines.CompletableDeferred<Unit>()
         val allowRedirectToFinish = kotlinx.coroutines.CompletableDeferred<Unit>()
         val redirectAboutToEnterCheckGate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val directImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
-        val redirectImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
+        val directImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
+        val redirectImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
 
         // Gate the task DAO insertion of the direct RSS promotion:
         // Before the direct promotion can commit its task into the DAO, release the competing redirect import.
@@ -748,7 +840,7 @@ class ImportDuplicateRejectionTest {
         val resolvedUrl = "https://example.com/canonical-item"
 
         val acquirerGate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val importFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
+        val importFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
 
         val repository = ImportRepository(
             context = null,
@@ -808,7 +900,7 @@ class ImportDuplicateRejectionTest {
         val acquirerGate = kotlinx.coroutines.CompletableDeferred<Unit>()
         val insertGate = kotlinx.coroutines.CompletableDeferred<Unit>()
         val insertStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val firstImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
+        val firstImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
 
         // Intercept duplicate warning insert: pause it before it commits to simulated DAO
         notificationDao.onBeforeInsert = {
@@ -871,8 +963,8 @@ class ImportDuplicateRejectionTest {
 
         var currentTarget = canonicalUrl1
         val acquirerGate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val firstImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
-        val secondImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
+        val firstImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
+        val secondImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
 
         val repository = ImportRepository(
             context = null,
@@ -963,7 +1055,7 @@ class ImportDuplicateRejectionTest {
         val acquirerGate = kotlinx.coroutines.CompletableDeferred<Unit>()
         val identifiedLatch = java.util.concurrent.CountDownLatch(1)
         val allowRegistrationLatch = java.util.concurrent.CountDownLatch(1)
-        val firstImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportTask>>()
+        val firstImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
 
         val repository = ImportRepository(
             context = null,

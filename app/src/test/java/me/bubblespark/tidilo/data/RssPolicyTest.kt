@@ -10,6 +10,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssPolicyTest {
+    @Test fun globalDisableOverridesAiFeedsWithoutChangingDirectFeeds() {
+        for (mode in me.bubblespark.tidilo.config.AiAnalysisMode.entries) {
+            assertEquals("DIRECT", me.bubblespark.tidilo.data.rss.effectiveRssImportMode("DIRECT", mode))
+        }
+        assertEquals("DIRECT", me.bubblespark.tidilo.data.rss.effectiveRssImportMode("AI",
+            me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE))
+        assertEquals("AI", me.bubblespark.tidilo.data.rss.effectiveRssImportMode("AI",
+            me.bubblespark.tidilo.config.AiAnalysisMode.AICORE))
+    }
     @Test fun newSubscriptionsDefaultToThirtySavedItems() {
         assertEquals(30, me.bubblespark.tidilo.data.db.RssFeedEntity("feed", "https://example.com/feed", "Feed").retentionLimit)
     }

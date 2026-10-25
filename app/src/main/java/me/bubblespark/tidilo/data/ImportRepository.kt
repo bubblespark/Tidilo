@@ -26,6 +26,7 @@ import kotlinx.coroutines.sync.withLock
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.config.AiAnalysisMode
 import kotlinx.coroutines.flow.flowOf
 import androidx.room.withTransaction
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -59,6 +60,8 @@ internal data class ResolvedTarget(
 
 private val ACTIVE_QUEUE_STATUSES = setOf("READY", "WAITING_AI", "PROCESSING_AI", "ERROR")
 
+private class DirectBookmarkSaveFailure(val target: ImportTask, cause: Exception) : Exception(cause)
+
 class ImportRepository internal constructor(
     context: Context? = null,
     private val taskDao: ImportTaskDao = context?.let { AppDatabase.getInstance(it).importTaskDao() }
@@ -75,7 +78,8 @@ class ImportRepository internal constructor(
     private val articleAcquirer: suspend (String) -> ParsedWebPage = { ArticleAcquirer.acquire(it) },
     private val persistFallback: suspend (BookmarkItem) -> Unit = {
         BookmarkRepository.getInstance().addBookmarkAndAwait(it)
-    }
+    },
+    private val aiAnalysisMode: () -> AiAnalysisMode = { AppConfig.aiAnalysisMode.value }
 ) {
 
     private val appContext: Context? = context?.applicationContext
@@ -238,7 +242,8 @@ class ImportRepository internal constructor(
         url: String,
         result: DuplicateCheckResult,
         importingId: String?,
-        onImported: ((Result<ImportTask>) -> Unit)?
+        onImported: ((Result<ImportOutcome>) -> Unit)?,
+        preparedImport: ImportTask? = null
     ): Boolean {
         val domain = DomainIconManager.extractDomain(url) ?: url
         when (result) {
@@ -258,11 +263,19 @@ class ImportRepository internal constructor(
                         existingBookmarkId = result.bookmark.id
                     )
                 )
-                onImported?.invoke(Result.failure(DuplicateUrlException("Promoted from RSS to Library")))
+                onImported?.invoke(Result.success(ImportOutcome.BookmarkSaved(result.bookmark.id, url)))
                 return true
             }
 
             is DuplicateCheckResult.RequeuedFromRssToAi -> {
+                if (aiAnalysisMode() == AiAnalysisMode.DISABLE) {
+                    bookmarkDao?.clearRssFeedId(result.bookmark.id)
+                    importingId?.let { id -> _importingTasks.update { list -> list.filter { it.id != id } } }
+                    notificationDao?.insert(ImportNotificationEntity(type = NotificationType.INFO.name,
+                        domain = domain, url = url, message = "Promoted from RSS to Library", existingBookmarkId = result.bookmark.id))
+                    onImported?.invoke(Result.success(ImportOutcome.BookmarkSaved(result.bookmark.id, url)))
+                    return true
+                }
                 val item = ImportTask(
                     url = url,
                     title = result.bookmark.title,
@@ -287,11 +300,25 @@ class ImportRepository internal constructor(
                         existingBookmarkId = result.bookmark.id
                     )
                 )
-                onImported?.invoke(Result.success(item))
+                onImported?.invoke(Result.success(ImportOutcome.QueuedForAi(item)))
                 return true
             }
 
             is DuplicateCheckResult.MovedFromRssToReady -> {
+                if (aiAnalysisMode() == AiAnalysisMode.DISABLE) {
+                    if (!result.task.articlePrepared && preparedImport == null) return false
+                    val target = preparedImport?.copy(id = result.task.id, createdAt = result.task.createdAt)
+                        ?: result.task.copy(rssFeedId = null).toImportTask()
+                    val bookmark = skippedBookmark(target)
+                    persistDirectBookmark(target)
+                    taskDao.deleteById(target.id)
+                    notificationDao?.insert(ImportNotificationEntity(type = NotificationType.INFO.name, domain = domain,
+                        url = url, message = "Promoted from RSS to Library", existingBookmarkId = bookmark.id))
+                    cacheDirectOgImage(target)
+                    importingId?.let { id -> _importingTasks.update { list -> list.filter { it.id != id } } }
+                    onImported?.invoke(Result.success(ImportOutcome.BookmarkSaved(bookmark.id, url)))
+                    return true
+                }
                 taskDao.clearRssFeedId(result.task.id)
                 if (importingId != null) {
                     _importingTasks.update { list -> list.filter { it.id != importingId } }
@@ -306,7 +333,7 @@ class ImportRepository internal constructor(
                         existingBookmarkId = null
                     )
                 )
-                onImported?.invoke(Result.success(movedTask))
+                onImported?.invoke(Result.success(ImportOutcome.QueuedForAi(movedTask)))
                 return true
             }
 
@@ -349,7 +376,7 @@ class ImportRepository internal constructor(
     fun importUrl(
         rawUrl: String,
         title: String? = null,
-        onImported: ((Result<ImportTask>) -> Unit)? = null
+        onImported: ((Result<ImportOutcome>) -> Unit)? = null
     ): Result<Int> {
         val trimmed = rawUrl.trim()
         val normalized = WebPageParser.normalizeUrl(trimmed)
@@ -433,12 +460,20 @@ class ImportRepository internal constructor(
         val estimatedCount = _readyTasks.value.size + _importingTasks.value.size
 
         repositoryScope.launch {
+            var duplicateOutcome: Result<ImportOutcome>? = null
+            val recordDuplicateOutcome: (Result<ImportOutcome>) -> Unit = { duplicateOutcome = it }
+            fun reportCommittedDuplicate() {
+                duplicateOutcome?.let { onImported?.invoke(it) }
+                duplicateOutcome = null
+            }
             try {
                 // Pre-Fetch Check (Primary Gate) - atomic duplicate check & mutation in database transaction
+                if (appContext != null) TidiloApplication.instance.awaitAiAnalysisInitialization()
                 val isEarlyHandled = runInDbOrLock(normalized) {
                     val preCheck = checkDuplicate(normalized)
-                    handleDuplicateOrConflict(normalized, preCheck, importing.id, onImported)
+                    handleDuplicateOrConflict(normalized, preCheck, importing.id, recordDuplicateOutcome)
                 }
+                reportCommittedDuplicate()
                 if (isEarlyHandled) {
                     return@launch
                 }
@@ -463,8 +498,9 @@ class ImportRepository internal constructor(
                             domain = redirectDomain
                         )
                         val postCheck = checkDuplicate(realUrl)
-                        handleDuplicateOrConflict(realUrl, postCheck, importing.id, onImported)
+                        handleDuplicateOrConflict(realUrl, postCheck, importing.id, recordDuplicateOutcome)
                     }
+                    reportCommittedDuplicate()
                     if (isRedirectHandled) {
                         return@launch
                     }
@@ -506,25 +542,39 @@ class ImportRepository internal constructor(
                     articlePrepared = true
                 )
 
+                var outcome: ImportOutcome = ImportOutcome.QueuedForAi(newItem)
                 val isInserted = runInDbOrLock(realUrl) {
                     val finalRecheck = checkDuplicate(realUrl)
                     if (finalRecheck !is DuplicateCheckResult.NoDuplicate) {
-                        handleDuplicateOrConflict(realUrl, finalRecheck, importing.id, onImported)
+                        handleDuplicateOrConflict(realUrl, finalRecheck, importing.id, recordDuplicateOutcome, newItem)
                         false
                     } else {
-                        taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
+                        if (aiAnalysisMode() == AiAnalysisMode.DISABLE) {
+                            val bookmark = skippedBookmark(newItem)
+                            persistDirectBookmark(newItem)
+                            outcome = ImportOutcome.BookmarkSaved(bookmark.id, bookmark.url)
+                        } else {
+                            taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
+                        }
                         true
                     }
                 }
+                reportCommittedDuplicate()
                 if (!isInserted) {
                     return@launch
                 }
-                onImported?.invoke(Result.success(newItem))
+                if (outcome is ImportOutcome.BookmarkSaved) cacheDirectOgImage(newItem)
+                onImported?.invoke(Result.success(outcome))
             } catch (e: DuplicateUrlException) {
                 // Handled in handleDuplicateOrConflict; ignore
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: DirectBookmarkSaveFailure) {
+                // A failed nested Room transaction invalidates its outer transaction. Recover only after rollback.
+                runInDbOrLock(e.target.url) { retainDirectSaveError(e.target, e.cause ?: e) }
+                onImported?.invoke(Result.failure(e.cause ?: e))
             } catch (e: Exception) {
+                duplicateOutcome = null
                 // Fallback: If network/parsing throws, create fallback task with basic details
                 val domain = DomainIconManager.extractDomain(normalized)
                 val isDomainNsfw = DomainPolicyManager.isNsfwDomain(domain)
@@ -538,14 +588,18 @@ class ImportRepository internal constructor(
                 )
                 val isFallbackInserted = runInDbOrLock(normalized) {
                     val fallbackCheck = checkDuplicate(normalized)
-                    if (fallbackCheck !is DuplicateCheckResult.NoDuplicate) {
-                        handleDuplicateOrConflict(normalized, fallbackCheck, importing.id, onImported)
+                    if (fallbackCheck is DuplicateCheckResult.MovedFromRssToReady && aiAnalysisMode() == AiAnalysisMode.DISABLE) {
+                        taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(fallbackItem.copy(id = fallbackCheck.task.id)))
+                        true
+                    } else if (fallbackCheck !is DuplicateCheckResult.NoDuplicate) {
+                        handleDuplicateOrConflict(normalized, fallbackCheck, importing.id, recordDuplicateOutcome)
                         false
                     } else {
                         taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(fallbackItem))
                         true
                     }
                 }
+                reportCommittedDuplicate()
                 if (!isFallbackInserted) {
                     return@launch
                 }
@@ -755,7 +809,13 @@ class ImportRepository internal constructor(
         closeSession = { model: GenerativeModel -> model.close() },
         processTask = { model, task -> processAiTask(model, task) },
         handleFailure = { task, exception -> handleExecutionFailure(task, exception) },
-        reportSessionFailure = { exception -> Log.e("ImportRepository", "AI processing session failed", exception) }
+        reportSessionFailure = { exception -> Log.e("ImportRepository", "AI processing session failed", exception) },
+        processWithoutSession = { task ->
+            if (aiAnalysisMode() == AiAnalysisMode.DISABLE) {
+                processDirectTask(task)
+                true
+            } else false
+        }
     )
 
     private fun startProcessingLoop() {
@@ -775,6 +835,7 @@ class ImportRepository internal constructor(
     }
 
     private suspend fun nextProcessingTask(): ImportTask? {
+        if (appContext != null) TidiloApplication.instance.awaitAiAnalysisInitialization()
         taskDao.rejectUnavailableRss()
         reconcileRssPending()
         while (true) {
@@ -979,11 +1040,8 @@ class ImportRepository internal constructor(
         return Companion.isFallbackApplicable(fallbackMode(), errorCode, throwable)
     }
 
-    private suspend fun saveBookmarkFallback(target: ImportTask) {
-        foregroundRetryCounts.remove(target.id)
-        retryNotBefore.remove(target.id)
-        val fallbackBookmark = BookmarkItem(
-            id = UUID.randomUUID().toString(),
+    private fun skippedBookmark(target: ImportTask): BookmarkItem = BookmarkItem(
+            id = target.id,
             title = target.title,
             url = target.url,
             description = target.description,
@@ -994,6 +1052,103 @@ class ImportRepository internal constructor(
             createdAt = if (target.rssFeedId != null) target.createdAt else System.currentTimeMillis(),
             rssFeedId = target.rssFeedId, rssPublishedAt = target.rssPublishedAt
         )
+
+    private fun cacheDirectOgImage(target: ImportTask) {
+        val context = appContext ?: return
+        val ogImage = target.ogImageUrl?.takeIf { it.isNotBlank() } ?: return
+        repositoryScope.launch {
+            try {
+                OgImageManager.processAndSaveOgImage(context, target.url, ogImage,
+                    network = if (target.rssFeedId != null) me.bubblespark.tidilo.data.rss.RssRepository.getInstance(context).articleNetwork() else null)
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { /* Optional cache recovery remains independent of the durable save. */ }
+        }
+    }
+
+    private suspend fun persistDirectBookmark(target: ImportTask) {
+        try {
+            persistFallback(skippedBookmark(target))
+        } catch (e: CancellationException) { throw e }
+        catch (e: me.bubblespark.tidilo.data.rss.RssImportSkipped) { throw e }
+        catch (e: Exception) { throw DirectBookmarkSaveFailure(target, e) }
+    }
+
+    private suspend fun retainDirectSaveError(target: ImportTask, error: Throwable) {
+        taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(target.copy(status = TaskStatus.ERROR,
+            statusText = "Save failed", errorMessage = "Bookmark persistence failed: ${error.message.orEmpty()}")))
+    }
+
+    private suspend fun processDirectTask(selected: ImportTask) {
+        var target = taskDao.getTaskById(selected.id)?.toImportTask() ?: return
+        if (target.status !in listOf(TaskStatus.WAITING_AI, TaskStatus.PROCESSING_AI)) return
+        if (isAiCancelPending && target.status == TaskStatus.WAITING_AI &&
+            (cancelledTaskIds.contains(target.id) || cancelledTaskIds.isEmpty())) {
+            taskDao.updateStatus(target.id, "READY", "")
+            return
+        }
+        if (target.rssFeedId != null && !target.articlePrepared) {
+            appContext?.let { me.bubblespark.tidilo.data.rss.RssRepository.getInstance(it).retryAcquisition(target.id) }
+            return
+        }
+        if (taskDao.claimForAi(target.id, "Saving bookmark...") != 1) {
+            taskDao.rejectUnavailableRss()
+            return
+        }
+        try {
+            if (!target.articlePrepared) {
+                val parsed = articleAcquirer(target.url)
+                val article = ArticlePreparation.prepare(parsed)
+                target = target.copy(url = WebPageParser.normalizeUrl(article.url) ?: article.url,
+                    title = if (isRawUrlOrHost(target.title, target.url)) article.title else target.title,
+                    siteName = article.siteName, description = article.description, bodySnippet = article.bodySnippet,
+                    ogImageUrl = article.ogImageUrl, isNsfw = article.isNsfw || DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(article.url)),
+                    articlePrepared = true, status = TaskStatus.PROCESSING_AI, errorMessage = null)
+                val current = taskDao.getTaskById(target.id) ?: return
+                if (current.status != "PROCESSING_AI") return
+                taskDao.update(ImportTaskEntity.fromImportTask(target))
+                val context = appContext
+                val domain = DomainIconManager.extractDomain(target.url)
+                if (context != null && domain != null) repositoryScope.launch {
+                    try {
+                        DomainIconManager.fetchAndSaveDomainIcon(context, target.url, parsed.appleTouchIconUrl,
+                            parsed.faviconUrl, parsed.iconCandidates)
+                    } catch (e: CancellationException) { throw e }
+                    catch (_: Exception) { /* Optional enrichment. */ }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            taskDao.updateStatus(target.id, "ERROR", "Article acquisition failed", e.message)
+            return
+        }
+        try {
+            runInDbOrLock(target.url) {
+                if (taskDao.getTaskById(target.id)?.status != "PROCESSING_AI") return@runInDbOrLock
+                val existing = bookmarkDao?.getBookmarkByUrl(target.url)
+                if (existing != null) {
+                    if (target.rssFeedId == null && existing.rssFeedId != null) bookmarkDao.clearRssFeedId(existing.id)
+                } else {
+                    persistDirectBookmark(target)
+                }
+                taskDao.deleteById(target.id)
+            }
+        } catch (e: CancellationException) { throw e }
+        catch (e: me.bubblespark.tidilo.data.rss.RssImportSkipped) {
+            taskDao.deleteById(target.id)
+            return
+        }
+        catch (e: Exception) {
+            retainDirectSaveError(target, e.cause ?: e)
+            return
+        }
+        if (taskDao.getTaskById(target.id) == null) cacheDirectOgImage(target)
+    }
+
+    private suspend fun saveBookmarkFallback(target: ImportTask) {
+        foregroundRetryCounts.remove(target.id)
+        retryNotBefore.remove(target.id)
+        val fallbackBookmark = skippedBookmark(target)
         try {
             persistFallback(fallbackBookmark)
         } catch (e: Exception) {

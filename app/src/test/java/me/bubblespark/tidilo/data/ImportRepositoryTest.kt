@@ -22,10 +22,246 @@ import me.bubblespark.tidilo.ui.screens.library.Tag
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImportRepositoryTest {
+    @Test fun disabledRssSkipDeletesTaskWithoutErrorAndContinuesBatch() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(waitingEntity("skipped").copy(status = "READY", articlePrepared = true, rssFeedId = "feed"),
+            waitingEntity("following").copy(status = "READY", articlePrepared = true, rssFeedId = "feed")))
+        val saved = mutableListOf<BookmarkItem>()
+        try {
+            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
+                isAppInForeground = { true }, aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                openModel = { error("Disabled RSS must not initialize AICore") }, persistFallback = {
+                    if (it.id == "skipped") throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
+                    saved.add(it)
+                })
+            repository.aiAnalysisAll()
+            withTimeout(5000) {
+                while (dao.getTasksByStatuses(listOf("WAITING_AI", "PROCESSING_AI")).isNotEmpty() || saved.isEmpty()) delay(5)
+            }
+            assertNull(dao.getTaskById("skipped"))
+            assertEquals(0, dao.getCount())
+            assertEquals(listOf("following"), saved.map { it.id })
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test fun disabledNewImportSavesDescriptionWithoutInsertingTask() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        val saved = mutableListOf<BookmarkItem>()
+        val completed = CompletableDeferred<Unit>()
+        val old = me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value
+        me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE)
+        try {
+            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = { directFixture(it) }, persistFallback = { saved.add(it) },
+                openModel = { error("Disabled import must not open a model") })
+            repository.importUrl("https://direct.example/article") { completed.complete(Unit) }
+            withTimeout(5000) { completed.await() }
+            assertEquals(0, dao.getCount())
+            assertEquals(0, dao.insertCount)
+            val bookmark = saved.single()
+            assertEquals("Parsed Description", bookmark.description)
+            assertEquals("Parsed Title", bookmark.title)
+            assertTrue(bookmark.isAiSkipped)
+            assertEquals(Tag.createEmpty(), bookmark.tag)
+            assertEquals("https://direct.example/og.png", bookmark.ogImageUrl)
+        } finally {
+            me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(old)
+            job.cancelAndJoin()
+        }
+    }
+
+    @Test fun disabledReadyBatchNeverOpensModelAndPreservesRssMetadata() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(waitingEntity("normal").copy(status = "READY", articlePrepared = true, description = "Normal"),
+            waitingEntity("rss").copy(status = "READY", articlePrepared = true, description = "RSS", rssFeedId = "feed", createdAt = 7)))
+        val saved = mutableListOf<BookmarkItem>()
+        val old = me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value
+        me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE)
+        try {
+            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
+                isAppInForeground = { true }, openModel = { error("Disabled execution opened a model") },
+                persistFallback = { saved.add(it) })
+            delay(10)
+            assertEquals(2, dao.getCount())
+            repository.aiAnalysisAll()
+            withTimeout(5000) { while (dao.getCount() > 0) delay(5) }
+            assertEquals(2, saved.size)
+            assertTrue(saved.all { it.isAiSkipped && it.tag == Tag.createEmpty() })
+            assertEquals(7L, saved.single { it.rssFeedId != null }.createdAt)
+        } finally {
+            me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(old)
+            job.cancelAndJoin()
+        }
+    }
+
+    private fun directFixture(url: String) = me.bubblespark.tidilo.parser.ParsedWebPage(
+        requestedUrl = url, finalUrl = url, statusCode = 200, statusMessage = "OK", contentType = "text/html",
+        htmlLang = "en", title = "Parsed Title", canonicalUrl = url, metaTags = emptyList(),
+        ogpTags = mapOf("og:description" to "Parsed Description", "og:image" to "/og.png"),
+        twitterTags = emptyMap(), standardMetaTags = emptyMap(), jsonLdList = emptyList(), h1List = emptyList(),
+        h2List = emptyList(), readabilityArticle = null, jsoupBodyText = "Body is not the Description",
+        jsoupBodyCharCount = 27, fetchLatencyMs = 0, parseLatencyMs = 0, rawHtmlSizeBytes = 100)
+
+    @Test fun aiCoreNewImportQueuesPreparedDescriptionWithoutSavingBookmark() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        val done = CompletableDeferred<ImportOutcome>()
+        try {
+            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
+                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.AICORE },
+                articleAcquirer = { directFixture(it) }, persistFallback = { error("Must queue for AI") })
+            repository.importUrl("https://direct.example/aicore") { done.complete(it.getOrThrow()) }
+            assertTrue(withTimeout(5000) { done.await() } is ImportOutcome.QueuedForAi)
+            val task = dao.getAllTasks().single()
+            assertEquals("READY", task.status)
+            assertEquals("Parsed Description", task.description)
+            assertTrue(task.articlePrepared)
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test fun disabledAcquisitionFailuresRemainRetryableAndSaveAfterRecovery() = runBlocking {
+        for (failure in listOf("offline", "404", "503", "parse")) {
+            val job = SupervisorJob()
+            val dao = FakeImportTaskDao()
+            var failed = true
+            val done = CompletableDeferred<Boolean>()
+            val saved = mutableListOf<BookmarkItem>()
+            try {
+                val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
+                    isAppInForeground = { true }, aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                    openModel = { error("Disabled retry must not initialize AICore") },
+                    articleAcquirer = {
+                        if (failed) when (failure) {
+                            "offline" -> throw java.io.IOException("Offline")
+                            "parse" -> throw IllegalArgumentException("Parse failed")
+                            else -> directFixture(it).copy(statusCode = failure.toInt())
+                        } else directFixture(it)
+                    }, persistFallback = { saved.add(it) })
+                repository.importUrl("https://direct.example/$failure") { done.complete(it.isFailure) }
+                assertTrue(withTimeout(5000) { done.await() })
+                val task = dao.getAllTasks().single()
+                assertEquals("ERROR", task.status)
+                assertEquals("Article acquisition failed", task.statusText)
+                failed = false
+                repository.retryErrorTask(task.id)
+                withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
+                assertEquals("Parsed Description", saved.single().description)
+                assertTrue(saved.single().isAiSkipped)
+            } finally { job.cancelAndJoin() }
+        }
+    }
+
+    @Test fun disabledSaveFailureKeepsPreparedTaskUntilDurableRetryCompletes() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        var failSave = true
+        var fetches = 0
+        val saveStarted = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val done = CompletableDeferred<Boolean>()
+        val saved = mutableListOf<BookmarkItem>()
+        try {
+            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
+                isAppInForeground = { true }, aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                openModel = { error("Disabled save retry must not initialize AICore") },
+                articleAcquirer = { fetches++; directFixture(it) }, persistFallback = {
+                    if (failSave) error("Disk full")
+                    saveStarted.complete(Unit)
+                    release.await()
+                    saved.add(it)
+                })
+            repository.importUrl("https://direct.example/storage") { done.complete(it.isFailure) }
+            assertTrue(withTimeout(5000) { done.await() })
+            val task = dao.getAllTasks().single()
+            assertEquals("Save failed", task.statusText)
+            assertTrue(task.articlePrepared)
+            failSave = false
+            repository.retryErrorTask(task.id)
+            withTimeout(5000) { saveStarted.await() }
+            assertNotNull(dao.getTaskById(task.id))
+            assertTrue(saved.isEmpty())
+            release.complete(Unit)
+            withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
+            assertEquals(1, fetches)
+            assertEquals("Parsed Description", saved.single().description)
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test fun disablingBetweenReadyTasksSkipsSecondModelCallWithoutConvertingUntilExecution() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(waitingEntity("one").copy(status = "READY", articlePrepared = true),
+            waitingEntity("two").copy(status = "READY", articlePrepared = true)))
+        var mode = me.bubblespark.tidilo.config.AiAnalysisMode.AICORE
+        var opens = 0
+        var analyzed = 0
+        val saved = mutableListOf<BookmarkItem>()
+        try {
+            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
+                isAppInForeground = { true }, aiAnalysisMode = { mode }, openModel = { opens++; fakeModel {} },
+                analyzeTask = { _, _ -> analyzed++; mode = me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                persistFallback = { saved.add(it) })
+            repository.promoteTaskToProcessing("one")
+            withTimeout(5000) { while (dao.getTaskById("one") != null) delay(5) }
+            assertEquals("READY", dao.getTaskById("two")!!.status)
+            repository.promoteTaskToProcessing("two")
+            withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
+            assertEquals(1, opens)
+            assertEquals(1, analyzed)
+            assertEquals(1, saved.size)
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test fun disabledCancellationFinishesActiveSaveAndRestoresWaitingTask() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(waitingEntity("active").copy(status = "READY", articlePrepared = true),
+            waitingEntity("waiting").copy(status = "READY", articlePrepared = true)))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val saved = mutableListOf<BookmarkItem>()
+        try {
+            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
+                isAppInForeground = { true }, aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                openModel = { error("Disabled cancellation must not initialize AICore") }, persistFallback = {
+                    started.complete(Unit)
+                    release.await()
+                    saved.add(it)
+                })
+            repository.aiAnalysisAll()
+            withTimeout(5000) { started.await() }
+            repository.cancelProcessing()
+            withTimeout(5000) { while (dao.getAllTasks().none { it.status == "READY" }) delay(5) }
+            release.complete(Unit)
+            withTimeout(5000) { while (dao.getCount() != 1) delay(5) }
+            assertEquals("READY", dao.getAllTasks().single().status)
+            assertEquals(1, saved.size)
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test fun disabledRestartResumesInterruptedProcessingWithoutOpeningModel() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        dao.insertOrUpdate(waitingEntity("interrupted").copy(status = "PROCESSING_AI", articlePrepared = true,
+            description = "Persisted Description"))
+        val saved = mutableListOf<BookmarkItem>()
+        try {
+            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
+                isAppInForeground = { true }, aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                openModel = { error("Disabled recovery must not initialize AICore") }, persistFallback = { saved.add(it) })
+            repository.retryWaitingProcessingTasks()
+            withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
+            assertEquals("Persisted Description", saved.single().description)
+        } finally { job.cancelAndJoin() }
+    }
 
     @Test fun manualContentRetryFetchFailuresDoNotFailOtherAiTasks() = runBlocking {
         val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
@@ -974,6 +1210,7 @@ class ImportRepositoryTest {
     }
 
     private class FakeImportTaskDao : ImportTaskDao {
+        var insertCount = 0
         val tasksFlow = MutableStateFlow<List<ImportTaskEntity>>(emptyList())
         var unavailableIds = emptySet<String>()
         var beforeClaim: () -> Unit = {}
@@ -1000,6 +1237,7 @@ class ImportRepositoryTest {
         }
 
         override suspend fun insertOrUpdate(task: ImportTaskEntity) {
+            insertCount++
             val current = tasksFlow.value.toMutableList()
             current.removeAll { it.id == task.id }
             current.add(task)

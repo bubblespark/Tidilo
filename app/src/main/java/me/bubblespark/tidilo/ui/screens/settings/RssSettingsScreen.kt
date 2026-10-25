@@ -233,7 +233,8 @@ internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onSa
                     }
                 }
                 if (aiAnalysisMode == me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE) {
-                    Text(stringResource(R.string.rss_ai_disabled_note), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.rss_ai_disabled_note), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error)
                 }
                 HorizontalDivider()
                 Text(stringResource(R.string.rss_max_saved_items), style = MaterialTheme.typography.titleSmall)

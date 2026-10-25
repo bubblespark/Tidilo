@@ -157,13 +157,16 @@ object AppConfig {
         }
     }
 
-    private val _aiAnalysisMode = MutableStateFlow(
-        AiAnalysisMode.fromCode(runCatching { prefs.getString(KEY_AI_ANALYSIS_MODE, null) }.getOrNull())
-    )
-    val aiAnalysisMode: StateFlow<AiAnalysisMode> = _aiAnalysisMode.asStateFlow()
+    private val aiAnalysisPreference = AiAnalysisPreference(
+        runCatching { prefs.getString(KEY_AI_ANALYSIS_MODE, null) }.getOrNull()?.let(AiAnalysisMode::fromCode)
+    ) { mode -> runCatching { prefs.edit().putString(KEY_AI_ANALYSIS_MODE, mode.code).apply() }; Unit }
+    val aiAnalysisMode: StateFlow<AiAnalysisMode> = aiAnalysisPreference.mode
 
     fun setAiAnalysisMode(mode: AiAnalysisMode) {
-        _aiAnalysisMode.value = mode
-        runCatching { prefs.edit().putString(KEY_AI_ANALYSIS_MODE, mode.code).apply() }
+        aiAnalysisPreference.setMode(mode)
+    }
+
+    internal suspend fun initializeAiAnalysisMode(isFreshInstallation: Boolean) {
+        aiAnalysisPreference.initialize(isFreshInstallation) { me.bubblespark.tidilo.data.AiCoreAvailability.check() }
     }
 }

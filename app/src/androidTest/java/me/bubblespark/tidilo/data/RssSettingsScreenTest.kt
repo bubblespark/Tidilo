@@ -21,6 +21,49 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSettingsScreenTest {
+    @Test fun aiCoreRadioIsDisabledWhileCheckingOrUnavailableAndRechecksOnReopen(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val shown = mutableStateOf(true)
+        val mode = mutableStateOf(me.bubblespark.tidilo.config.AiAnalysisMode.AICORE)
+        val firstCheck = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        val mounted = java.util.concurrent.atomic.AtomicBoolean(false)
+        var calls = 0
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                if (shown.value) {
+                    androidx.compose.runtime.DisposableEffect(Unit) {
+                        mounted.set(true)
+                        onDispose { mounted.set(false) }
+                    }
+                    me.bubblespark.tidilo.ui.screens.settings.AiAnalysisDialog(mode.value,
+                        onSelect = { mode.value = it; shown.value = false }, onDismiss = { shown.value = false },
+                        checkAvailable = { if (++calls == 1) firstCheck.await() else true })
+                }
+            } } }
+            node("Availability pending") { it.text?.toString()?.startsWith("Checking AICore") == true }
+            fun radio(label: String): AccessibilityNodeInfo? {
+                var candidate = find { it.text?.toString() == label }
+                while (candidate != null && !candidate.isCheckable) candidate = candidate.parent
+                return candidate
+            }
+            assertFalse(requireNotNull(radio("AICore")).isEnabled)
+            assertTrue(requireNotNull(radio("Disable")).isEnabled)
+            assertFalse(requireNotNull(radio("AICore")).performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            firstCheck.complete(false)
+            node("Unavailable explanation") { it.text?.toString() == "AICore is currently unavailable." }
+            assertFalse(requireNotNull(radio("AICore")).isEnabled)
+            assertEquals(me.bubblespark.tidilo.config.AiAnalysisMode.AICORE, mode.value)
+            clickText("Disable")
+            withTimeout(3000) { while (mounted.get()) delay(20) }
+            instrumentation.runOnMainSync { shown.value = true }
+            withTimeout(5000) { while (calls != 2 || radio("AICore")?.isEnabled != true) delay(30) }
+            clickText("AICore")
+            withTimeout(3000) { while (mode.value != me.bubblespark.tidilo.config.AiAnalysisMode.AICORE) delay(20) }
+            assertEquals(2, calls)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
     @Test fun globalAiDisableExplainsDirectFallbackWithoutRestrictingFeedChoices(): Unit = runBlocking {
         val previous = me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value
         me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE)
@@ -71,7 +114,8 @@ class RssSettingsScreenTest {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                me.bubblespark.tidilo.ui.screens.settings.SettingsScreen(onNavigateBack = {}, onNavigateToGenerateContentRequest = {})
+                me.bubblespark.tidilo.ui.screens.settings.SettingsScreen(onNavigateBack = {}, onNavigateToGenerateContentRequest = {},
+                    checkAiCoreAvailable = { true })
             } } }
             node("Fresh Settings screen") { it.text?.toString() == "Settings" }
             repeat(4) {

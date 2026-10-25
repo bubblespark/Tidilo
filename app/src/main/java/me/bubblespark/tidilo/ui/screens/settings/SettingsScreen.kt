@@ -2,8 +2,6 @@ package me.bubblespark.tidilo.ui.screens.settings
 
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,7 +67,6 @@ import androidx.compose.ui.res.vectorResource
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AiAnalysisMode
-import androidx.compose.ui.semantics.Role
 import me.bubblespark.tidilo.config.AppLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -88,7 +85,8 @@ fun SettingsScreen(
     onNavigateToDebug: () -> Unit = {},
     onNavigateToSummary: () -> Unit = {},
     onNavigateToRss: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    checkAiCoreAvailable: suspend () -> Boolean = { me.bubblespark.tidilo.data.AiCoreAvailability.check() }
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val isAutoRunAiOnActive by AppConfig.isAutoRunAiOnActive.collectAsStateWithLifecycle()
@@ -723,28 +721,9 @@ fun SettingsScreen(
     }
 
     if (showAiAnalysisDialog) {
-        AlertDialog(
-            onDismissRequest = { showAiAnalysisDialog = false },
-            title = { Text(stringResource(R.string.settings_ai_analysis_title)) },
-            text = {
-                Column(Modifier.selectableGroup()) {
-                    AiAnalysisMode.entries.forEach { mode ->
-                        Row(Modifier.fillMaxWidth().selectable(selected = aiAnalysisMode == mode, role = Role.RadioButton,
-                            onClick = { AppConfig.setAiAnalysisMode(mode); showAiAnalysisDialog = false })
-                            .padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = aiAnalysisMode == mode, onClick = null)
-                            Spacer(Modifier.width(12.dp))
-                            Text(stringResource(if (mode == AiAnalysisMode.AICORE) R.string.settings_ai_analysis_aicore
-                                else R.string.settings_ai_analysis_disable))
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showAiAnalysisDialog = false }) {
-                Text(stringResource(R.string.common_close))
-            } },
-            shape = RoundedCornerShape(24.dp)
-        )
+        AiAnalysisDialog(mode = aiAnalysisMode,
+            onSelect = { AppConfig.setAiAnalysisMode(it); showAiAnalysisDialog = false },
+            onDismiss = { showAiAnalysisDialog = false }, checkAvailable = checkAiCoreAvailable)
     }
 
     if (showFallbackDialog) {

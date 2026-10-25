@@ -468,6 +468,7 @@ class ImportRepository internal constructor(
             }
             try {
                 // Pre-Fetch Check (Primary Gate) - atomic duplicate check & mutation in database transaction
+                if (appContext != null) TidiloApplication.instance.awaitAiAnalysisInitialization()
                 val isEarlyHandled = runInDbOrLock(normalized) {
                     val preCheck = checkDuplicate(normalized)
                     handleDuplicateOrConflict(normalized, preCheck, importing.id, recordDuplicateOutcome)
@@ -834,6 +835,7 @@ class ImportRepository internal constructor(
     }
 
     private suspend fun nextProcessingTask(): ImportTask? {
+        if (appContext != null) TidiloApplication.instance.awaitAiAnalysisInitialization()
         taskDao.rejectUnavailableRss()
         reconcileRssPending()
         while (true) {

@@ -165,6 +165,7 @@ internal class RssRepository internal constructor(private val context: Context,
 
     /** XML success and article completion are separate durable checkpoints. */
     suspend fun fetchAll(since: Long, onlyFeedId: String? = null, authorizedOperation: String? = null): Boolean = withContext(Dispatchers.IO) {
+        me.bubblespark.tidilo.TidiloApplication.instance.awaitAiAnalysisInitialization()
         preferences.initialize()
         operation.withLock {
             val deadline = elapsedMillis() + 6 * 60_000L
@@ -242,6 +243,7 @@ internal class RssRepository internal constructor(private val context: Context,
 
     /** Explicit retry preserves the task's intended mode and never starts inference itself. */
     suspend fun retryAcquisition(taskId: String, promote: Boolean = false) = withContext(Dispatchers.IO) {
+        me.bubblespark.tidilo.TidiloApplication.instance.awaitAiAnalysisInitialization()
         preferences.initialize()
         operation.withLock {
             val task = db.importTaskDao().getTaskById(taskId) ?: return@withLock

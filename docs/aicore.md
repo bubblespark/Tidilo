@@ -8,7 +8,11 @@ This document details the on-device AI integration, prompt engineering architect
 
 ### AI Analysis selection
 
-Settings > AI > AI Analysis offers **AICore** (default) and **Disable**, persisted in AppConfig SharedPreferences and exposed as a StateFlow. This setting is independent of AICore error fallback.
+Settings > AI > AI Analysis offers **AICore** and **Disable**, persisted in AppConfig SharedPreferences and exposed as a StateFlow. This setting is independent of AICore error fallback.
+
+On the first launch of a fresh installation, a status-only check selects AICore only for `FeatureStatus.AVAILABLE`; DOWNLOADABLE, DOWNLOADING, UNAVAILABLE, unknown status, initialization/status failure, and a ten-second timeout select Disable. The persisted selection also serves as the initialization marker, so later launches do not repeat automatic selection. Existing saved settings and manual changes during the check take precedence. Updates without a saved setting preserve the previous AICore default. A fresh installation is identified by matching Android `firstInstallTime` and `lastUpdateTime`; an update before the first-ever launch conservatively preserves the previous default. Startup checking runs on IO, and normal imports, queued execution, and RSS acquisition wait for it before choosing a processing mode.
+
+Every opening of the AI Analysis dialog performs a fresh availability check. AICore is gray and unselectable while checking or whenever the result is not AVAILABLE; Disable remains enabled. An unavailable result does not itself modify the current selection. Closing and reopening checks again. Checks never download a model, generate content, or record inference usage, and the client closes on completion, failure, timeout, or cancellation.
 
 With Disable, normal manual/shared imports retain URL normalization, duplicate checks, HTML acquisition, parsed Description, OG image references/cache recovery, and domain icons. Successful acquisition saves immediately through BookmarkRepository.addBookmarkAndAwait with isAiSkipped = true and Tag.createEmpty(), without inserting a Ready task. Parsed OG Description takes precedence over standard Description; a missing Description remains empty. Body snippets are not persisted on bookmarks. Acquisition failures remain retryable Error tasks; persistence failures retain prepared data as Save failed.
 

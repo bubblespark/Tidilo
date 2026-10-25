@@ -27,6 +27,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImportRepositoryTest {
+    @Test fun disabledRssSkipDeletesTaskWithoutErrorAndContinuesBatch() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        dao.insertAll(listOf(waitingEntity("skipped").copy(status = "READY", articlePrepared = true, rssFeedId = "feed"),
+            waitingEntity("following").copy(status = "READY", articlePrepared = true, rssFeedId = "feed")))
+        val saved = mutableListOf<BookmarkItem>()
+        try {
+            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
+                isAppInForeground = { true }, aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                openModel = { error("Disabled RSS must not initialize AICore") }, persistFallback = {
+                    if (it.id == "skipped") throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
+                    saved.add(it)
+                })
+            repository.aiAnalysisAll()
+            withTimeout(5000) {
+                while (dao.getTasksByStatuses(listOf("WAITING_AI", "PROCESSING_AI")).isNotEmpty() || saved.isEmpty()) delay(5)
+            }
+            assertNull(dao.getTaskById("skipped"))
+            assertEquals(0, dao.getCount())
+            assertEquals(listOf("following"), saved.map { it.id })
+        } finally { job.cancelAndJoin() }
+    }
+
     @Test fun disabledNewImportSavesDescriptionWithoutInsertingTask() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()

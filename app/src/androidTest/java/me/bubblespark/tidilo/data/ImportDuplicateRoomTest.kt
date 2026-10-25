@@ -23,11 +23,40 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
 class ImportDuplicateRoomTest {
+    @Test fun disabledRssSkipRemovesTaskOnlyAfterNestedTransactionRollsBack() = runBlocking {
+        val job = kotlinx.coroutines.SupervisorJob()
+        val feed = me.bubblespark.tidilo.data.db.RssFeedEntity("skip-feed", "https://example.com/feed", "Feed", mode = "AI")
+        database.rssDao().putFeed(feed)
+        val task = ImportTask(id = "skip-task", url = "https://example.com/skipped-rss", title = "RSS",
+            rssFeedId = feed.id, articlePrepared = true, status = TaskStatus.READY, statusText = "Ready")
+        database.importTaskDao().insertOrUpdate(ImportTaskEntity.fromImportTask(task))
+        var attempted = false
+        try {
+            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job), isAppInForeground = { true },
+                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                openModel = { error("Disabled RSS must not initialize AICore") }, persistFallback = { bookmark ->
+                    attempted = true
+                    database.withTransaction {
+                        database.bookmarkDao().insertOrUpdate(BookmarkEntity.fromBookmarkItem(bookmark))
+                        throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
+                    }
+                })
+            repository.promoteTaskToProcessing(task.id)
+            withTimeout(5000) {
+                while (!attempted || database.importTaskDao().getTaskById(task.id)?.status in listOf("READY", "WAITING_AI", "PROCESSING_AI")) delay(10)
+            }
+            assertNull(database.importTaskDao().getTaskById(task.id))
+            assertNull(database.bookmarkDao().getBookmarkByUrl(task.url))
+        } finally { job.cancel(); job.join() }
+    }
+
     @Test fun completedRssPromotionReportsBookmarkSavedAfterCommitWithoutReanalysis() = runBlocking {
         val job = kotlinx.coroutines.SupervisorJob()
         val outcome = CompletableDeferred<Result<ImportOutcome>>()

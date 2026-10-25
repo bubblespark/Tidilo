@@ -35,6 +35,8 @@ New feeds default to **Direct**, with a retention count of **30**.
 
 Fallback acquisitions persist Direct intent through acquisition errors and retries, even if AICore is subsequently re-enabled. Disabling AI during an AI-intended acquisition also switches its completion/failure handling to Direct. Existing prepared Ready tasks remain unchanged until executed; disabled execution saves them without opening a Gemini client. Retention, receipts, source identity, duplicate checks, subscription revision/deletion checks, NSFW rules, and RSS network policy remain in effect.
 
+When disabled Ready execution rejects an RSS save with `RssImportSkipped` (removed source, write conflict, or blocked NSFW bookmarking), remove the task after the failed transaction rolls back without retaining a Save failed error. Continue processing the remaining batch. Ordinary persistence failures remain retryable errors; cancellation still propagates.
+
 The feed add/edit dialog always allows both Direct and AI Analyze selections. While global AI Analysis is Disable, show **AI Analysis is disabled in Settings. Feeds will be imported in Direct mode automatically.** below the radio choices regardless of which is selected. Selecting/saving AI Analyze retains that configured mode and does not trigger the explicit feed-mode conversion flow.
 
 - **Direct** saves every valid unseen entry supplied by the fetched feed. It bypasses Ready tasks and does not invoke AICore. It has no ingestion-count cap.

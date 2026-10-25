@@ -1069,6 +1069,7 @@ class ImportRepository internal constructor(
         try {
             persistFallback(skippedBookmark(target))
         } catch (e: CancellationException) { throw e }
+        catch (e: me.bubblespark.tidilo.data.rss.RssImportSkipped) { throw e }
         catch (e: Exception) { throw DirectBookmarkSaveFailure(target, e) }
     }
 
@@ -1133,6 +1134,10 @@ class ImportRepository internal constructor(
                 taskDao.deleteById(target.id)
             }
         } catch (e: CancellationException) { throw e }
+        catch (e: me.bubblespark.tidilo.data.rss.RssImportSkipped) {
+            taskDao.deleteById(target.id)
+            return
+        }
         catch (e: Exception) {
             retainDirectSaveError(target, e.cause ?: e)
             return

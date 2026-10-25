@@ -41,4 +41,34 @@ class PagingFeedbackTest {
         assertFalse(isBookmarkLoading(LoadState.NotLoading(false), itemCount = 15, isFilterChanging = true))
         assertFalse(isBookmarkLoading(LoadState.Error(IllegalStateException("Failed")), itemCount = 15, isFilterChanging = true))
     }
+
+    @Test
+    fun clearAndReenterQuerySequenceResetsKeyAndTriggersLoading() {
+        var lastLoadedQueryKey: String? = null
+
+        // 1. User enters "foo"
+        var activeQueryKey = "foo"
+        var isQueryChanging = activeQueryKey.isNotBlank() && activeQueryKey != lastLoadedQueryKey
+        assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 0, isFilterChanging = isQueryChanging))
+
+        // "foo" finishes loading (5 items present)
+        lastLoadedQueryKey = activeQueryKey
+        isQueryChanging = activeQueryKey.isNotBlank() && activeQueryKey != lastLoadedQueryKey
+        assertFalse(isBookmarkLoading(LoadState.NotLoading(false), itemCount = 5, isFilterChanging = isQueryChanging))
+
+        // Same-key background Room invalidation while viewing "foo" does not trigger loading
+        assertFalse(isBookmarkLoading(LoadState.Loading, itemCount = 5, isFilterChanging = isQueryChanging))
+
+        // 2. User clears the query (becomes blank)
+        activeQueryKey = ""
+        if (activeQueryKey.isBlank()) {
+            lastLoadedQueryKey = null
+        }
+
+        // 3. User re-enters "foo" while prior unfiltered items (e.g. 10 items) are retained
+        activeQueryKey = "foo"
+        isQueryChanging = activeQueryKey.isNotBlank() && activeQueryKey != lastLoadedQueryKey
+        assertTrue(isQueryChanging)
+        assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 10, isFilterChanging = isQueryChanging))
+    }
 }

@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
+import androidx.paging.PagingData
+import kotlinx.coroutines.flow.Flow
 import me.bubblespark.tidilo.R
 
 /** Displays a user-facing retry action without exposing database implementation details. */
@@ -40,3 +42,55 @@ internal fun boundaryFeedback(prepend: LoadState, append: LoadState): LoadState?
 /** Domain cards use aggregate state, independently of any retained bookmark pages. */
 internal fun bookmarkLoadState(state: LoadState, isDomainGrid: Boolean): LoadState =
     if (isDomainGrid) LoadState.NotLoading(false) else state
+
+/**
+ * Only treat refresh loading as initial/placeholder loading when there are no items rendered yet,
+ * or when the active filter/query has changed and the new generation has not finished loading.
+ * When items exist under the same filter, Paging retains the previous snapshot and diffs updates seamlessly in place.
+ */
+internal fun isBookmarkLoading(
+    refreshState: LoadState,
+    itemCount: Int,
+    isFilterChanging: Boolean = false
+): Boolean = refreshState is LoadState.Loading && (isFilterChanging || itemCount == 0)
+
+/**
+ * Determines whether the active query differs from the loaded search generation.
+ * Always returns false for blank queries since the history list is displayed instead of search results.
+ */
+internal fun isSearchQueryChanging(rawQuery: String, activeKey: String, loadedKey: String?): Boolean =
+    rawQuery.isNotBlank() && activeKey != loadedKey
+
+/**
+ * Builds the unique tracking key for a library filter generation, incorporating filter mode,
+ * specific domain or RSS feed filter, and NSFW content visibility.
+ */
+internal fun buildLibraryFilterKey(
+    filterMode: LibraryFilterMode,
+    selectedDomainFilter: String?,
+    selectedFeedId: String?,
+    isNsfwVisible: Boolean
+): String = "$filterMode/${selectedDomainFilter.orEmpty()}/${selectedFeedId.orEmpty()}/$isNsfwVisible"
+
+/**
+ * Builds the unique tracking key for a search query generation, incorporating normalized query
+ * and NSFW content visibility. Preserves NSFW visibility even for blank queries to ensure
+ * generation differentiation when content visibility toggles under an empty search field.
+ */
+internal fun buildSearchQueryKey(
+    searchQuery: String,
+    isNsfwVisible: Boolean
+): String {
+    val trimmed = searchQuery.trim()
+    return "$trimmed/$isNsfwVisible"
+}
+
+/**
+ * Associates an active Pager flow with its immutable generation tracking key.
+ * UI components observe this generation state to collect matching PagingData
+ * without handoff race conditions across filter transitions.
+ */
+data class PagingGeneration(
+    val key: String,
+    val flow: Flow<PagingData<BookmarkItem>>
+)

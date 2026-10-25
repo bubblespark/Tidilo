@@ -61,6 +61,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -99,7 +103,8 @@ fun SearchScreen(
     val searchHistory by viewModel.searchHistory.collectAsStateWithLifecycle()
     val initializationFailure by viewModel.initializationFailure.collectAsStateWithLifecycle()
     val searchCount by viewModel.searchCount.collectAsStateWithLifecycle()
-    val filteredBookmarks = viewModel.searchPages.collectAsLazyPagingItems()
+    val searchGeneration by viewModel.searchGeneration.collectAsStateWithLifecycle()
+    val filteredBookmarks = searchGeneration.flow.collectAsLazyPagingItems()
     val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
     val resultListState = rememberLazyListState()
     val resultGridState = rememberLazyGridState()
@@ -145,6 +150,12 @@ fun SearchScreen(
 
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val headerHeight = statusBarTop + 144.dp
+
+    val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
+    val activeQueryKey = remember(searchQuery, isNsfwVisible) {
+        buildSearchQueryKey(searchQuery, isNsfwVisible)
+    }
+    val isQueryChanging = isSearchQueryChanging(searchQuery, activeQueryKey, searchGeneration.key)
 
     Box(
         modifier = modifier
@@ -275,7 +286,7 @@ fun SearchScreen(
                 Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
                     PagingFeedback(LoadState.Error(initializationFailure!!), viewModel::retryInitialization)
                 }
-            } else if (filteredBookmarks.loadState.refresh is LoadState.Loading) {
+            } else if (isBookmarkLoading(filteredBookmarks.loadState.refresh, filteredBookmarks.itemCount, isQueryChanging)) {
                 Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
                     androidx.compose.material3.CircularProgressIndicator()
                 }

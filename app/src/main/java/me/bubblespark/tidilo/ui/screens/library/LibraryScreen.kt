@@ -72,6 +72,10 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -118,7 +122,8 @@ fun LibraryScreen(
     modifier: Modifier = Modifier
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
-    val bookmarks = viewModel.libraryPages.collectAsLazyPagingItems()
+    val libraryGeneration by viewModel.libraryGeneration.collectAsStateWithLifecycle()
+    val bookmarks = libraryGeneration.flow.collectAsLazyPagingItems()
     val filterMode by viewModel.filterMode.collectAsStateWithLifecycle()
     val selectedDomainFilter by viewModel.selectedDomainFilter.collectAsStateWithLifecycle()
     val selectedRssFeedFilter by viewModel.selectedRssFeedFilter.collectAsStateWithLifecycle()
@@ -134,8 +139,13 @@ fun LibraryScreen(
     val isDomainGrid = filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter == null
     val isRssGrid = filterMode == LibraryFilterMode.RSS && selectedFeed == null
     val isCollectionGrid = isDomainGrid || isRssGrid
+    val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
+    val activeFilterKey = remember(filterMode, selectedDomainFilter, selectedFeed?.id, isNsfwVisible) {
+        buildLibraryFilterKey(filterMode, selectedDomainFilter, selectedFeed?.id, isNsfwVisible)
+    }
+    val isFilterChanging = activeFilterKey != libraryGeneration.key
     val refreshState = bookmarkLoadState(bookmarks.loadState.refresh, isCollectionGrid)
-    val isLoading = !initialized || refreshState is LoadState.Loading ||
+    val isLoading = !initialized || isBookmarkLoading(refreshState, bookmarks.itemCount, isFilterChanging) ||
         (isDomainGrid && domainGroupsLoading) || (isRssGrid && rssFeedGroupsLoading)
     val context = LocalContext.current
     val localConfig = LocalConfiguration.current

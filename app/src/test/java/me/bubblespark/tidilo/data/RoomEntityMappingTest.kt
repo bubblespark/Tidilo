@@ -180,6 +180,24 @@ class RoomEntityMappingTest {
     }
 
     @Test
+    fun aiSkippedEntityTagsDoNotCreateClassificationTags() {
+        val bookmark = BookmarkEntity("rss-direct", "Post", "https://example.com/post", "Description",
+            entities = listOf("Kotlin", "Android"), createdAt = 1, updatedAt = 2, isAiSkipped = true)
+        val tag = bookmark.toBookmarkItem().tag
+        assertEquals(null, tag.category)
+        assertEquals(null, tag.subcategory)
+        assertEquals(listOf("Kotlin", "Android"), tag.entities)
+        val restoredTrash = TrashedBookmarkEntity.fromTrashedBookmarkItem(
+            TrashedBookmarkItem(bookmark.toBookmarkItem(), trashedAt = 3)).toTrashedBookmarkItem()
+        assertEquals(null, restoredTrash.bookmark.tag.category)
+        assertEquals(null, restoredTrash.bookmark.tag.subcategory)
+        assertEquals(listOf("Kotlin", "Android"), restoredTrash.bookmark.tag.entities)
+        assertEquals("Article", BookmarkEntity("ai", "Post", "https://example.com/ai", "Description",
+            category = "Article", subcategory = "Tech", entities = listOf("Kotlin"),
+            createdAt = 1, updatedAt = 2).toBookmarkItem().tag.category)
+    }
+
+    @Test
     fun testMigration5To6_dropsOgImagesTable() {
         val executedSql = mutableListOf<String>()
         val proxy = java.lang.reflect.Proxy.newProxyInstance(

@@ -111,5 +111,5 @@ data class BookmarkEntity(
 
 /** Mirrors the tags shown on cards while leaving the stored legacy values intact. */
 internal fun logicalBookmarkTag(category: String?, subcategory: String?, entities: List<String>, isAiSkipped: Boolean): Tag =
-    if (isAiSkipped && category == null && subcategory == null && entities.isEmpty()) Tag.createEmpty()
+    if (isAiSkipped && category == null && subcategory == null) Tag.create(null, null, entities).copy(category = null, subcategory = null)
     else Tag.create(category, subcategory, entities)

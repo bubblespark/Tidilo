@@ -6,6 +6,18 @@ This document details the on-device AI integration, prompt engineering architect
 
 ## 1. Overview & On-Device AI Architecture
 
+### AI Analysis selection
+
+Settings > AI > AI Analysis offers **AICore** (default) and **Disable**, persisted in AppConfig SharedPreferences and exposed as a StateFlow. This setting is independent of AICore error fallback.
+
+With Disable, normal manual/shared imports retain URL normalization, duplicate checks, HTML acquisition, parsed Description, OG image references/cache recovery, and domain icons. Successful acquisition saves immediately through BookmarkRepository.addBookmarkAndAwait with isAiSkipped = true and Tag.createEmpty(), without inserting a Ready task. Parsed OG Description takes precedence over standard Description; a missing Description remains empty. Body snippets are not persisted on bookmarks. Acquisition failures remain retryable Error tasks; persistence failures retain prepared data as Save failed.
+
+Changing the setting alone leaves existing Ready tasks untouched. Executing a single task or AI Analysis All while disabled saves the selected normal/RSS tasks without opening a Gemini client. Prepared tasks reuse metadata; unprepared tasks acquire articles first. Active work finishes under the existing cancellation policy while waiting work can return to Ready. Interrupted processing can resume without AICore. RSS execution retains source identity and subscription/network checks.
+
+RSS feeds configured for AI Analyze fall back to effective Direct acquisition while global AI Analysis is disabled; their configured mode is preserved. See [RSS modes](rss.md#modes-queue-and-inference).
+
+Import completion distinguishes a committed bookmark from an AI-queued task. Shared direct saves notify **Bookmark added** only after the save/promotion transaction commits. If a nested persistence transaction fails, Error recovery occurs after the failed outer transaction rolls back.
+
 Tidilo processes and categorizes web bookmarks locally on-device without transmitting user browsing data, URLs, or page contents to external cloud servers.
 
 ```

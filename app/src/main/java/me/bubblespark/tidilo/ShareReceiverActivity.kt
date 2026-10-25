@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import me.bubblespark.tidilo.data.ImportRepository
+import me.bubblespark.tidilo.data.ImportOutcome
 
 class ShareReceiverActivity : ComponentActivity() {
 
@@ -51,12 +52,13 @@ class ShareReceiverActivity : ComponentActivity() {
             val repository = ImportRepository.getInstance(applicationContext)
             val appContext = applicationContext
             repository.importUrl(validUrl) { result ->
-                result.onSuccess {
+                result.onSuccess { outcome ->
                     val count = repository.readyCount
                     showNotification(
                         context = appContext,
                         success = true,
-                        message = appContext.getString(R.string.notification_import_success, count)
+                        message = if (outcome is ImportOutcome.BookmarkSaved) appContext.getString(R.string.notification_bookmark_added)
+                            else appContext.getString(R.string.notification_import_success, count)
                     )
                 }.onFailure {
                     showNotification(

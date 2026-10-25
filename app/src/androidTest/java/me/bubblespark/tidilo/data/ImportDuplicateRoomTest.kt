@@ -1,10 +1,12 @@
 package me.bubblespark.tidilo.data
 
 import androidx.room.Room
+import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -26,6 +28,69 @@ import org.junit.Before
 import org.junit.Test
 
 class ImportDuplicateRoomTest {
+    @Test fun disabledRssPromotionReportsSuccessOnlyAfterCommit() = kotlinx.coroutines.runBlocking {
+        val job = kotlinx.coroutines.SupervisorJob()
+        val outcome = CompletableDeferred<Boolean>()
+        val finished = CompletableDeferred<Unit>()
+        val url = "https://example.com/promoted-direct"
+        database.importTaskDao().insertOrUpdate(ImportTaskEntity.fromImportTask(ImportTask(id = "promoted",
+            url = url, title = "Prepared", description = "Description", articlePrepared = true,
+            rssFeedId = "feed", status = TaskStatus.READY, statusText = "Ready")))
+        try {
+            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
+                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                persistFallback = { bookmark -> database.withTransaction { database.bookmarkDao().insertOrUpdate(BookmarkEntity.fromBookmarkItem(bookmark)) } })
+            repository.onEnteringFinalization = { finished.complete(Unit) }
+            repository.importUrl(url) { outcome.complete(it.isSuccess && !database.inTransaction()) }
+            withTimeout(5000) { finished.await() }
+            assertTrue("Success must be reported after the promotion transaction commits", outcome.await())
+            assertEquals(0, database.importTaskDao().getCount())
+        } finally { job.cancel(); job.join() }
+    }
+
+    @Test fun disabledReadyNestedSaveFailureRemainsAnErrorInsteadOfRepeating() = kotlinx.coroutines.runBlocking {
+        val job = kotlinx.coroutines.SupervisorJob()
+        val attempted = CompletableDeferred<Unit>()
+        database.importTaskDao().insertOrUpdate(ImportTaskEntity.fromImportTask(ImportTask(id = "ready-failure",
+            url = "https://example.com/ready-failure", title = "Prepared", articlePrepared = true,
+            status = TaskStatus.READY, statusText = "Ready")))
+        try {
+            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job), isAppInForeground = { true },
+                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                openModel = { error("AICore must not open") }, persistFallback = {
+                    attempted.complete(Unit)
+                    database.withTransaction { throw android.database.sqlite.SQLiteFullException("Simulated disk full") }
+                })
+            repository.promoteTaskToProcessing("ready-failure")
+            withTimeout(5000) { attempted.await() }
+            withTimeout(2000) { while (database.importTaskDao().getTaskById("ready-failure")?.status != "ERROR") delay(10) }
+            assertEquals("Save failed", database.importTaskDao().getTaskById("ready-failure")!!.statusText)
+        } finally { job.cancel(); job.join() }
+    }
+
+    @Test fun disabledNestedSaveFailureLeavesDurableErrorTask() = kotlinx.coroutines.runBlocking {
+        val job = kotlinx.coroutines.SupervisorJob()
+        val finished = CompletableDeferred<Unit>()
+        val callback = CompletableDeferred<Result<ImportOutcome>>()
+        try {
+            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
+                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
+                articleAcquirer = { createFakeParsedPage(it) }, persistFallback = {
+                    database.withTransaction { throw android.database.sqlite.SQLiteFullException("Simulated disk full") }
+                })
+            repository.onEnteringFinalization = { finished.complete(Unit) }
+            repository.importUrl("https://example.com/nested-failure") { callback.complete(it) }
+            withTimeout(5000) { finished.await() }
+            assertTrue(callback.await().isFailure)
+            val error = database.importTaskDao().getAllTasks().single()
+            assertEquals("ERROR", error.status)
+            assertEquals("Save failed", error.statusText)
+            assertTrue(error.articlePrepared)
+        } finally { job.cancel(); job.join() }
+    }
 
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private lateinit var database: AppDatabase
@@ -109,8 +174,8 @@ class ImportDuplicateRoomTest {
         val redirectReachedTransactionBoundary = CompletableDeferred<Unit>()
         val redirectReachedDaoLookup = CompletableDeferred<Unit>()
         var directTaskInserted = false
-        val directImportFinished = CompletableDeferred<Result<ImportTask>>()
-        val redirectImportFinished = CompletableDeferred<Result<ImportTask>>()
+        val directImportFinished = CompletableDeferred<Result<ImportOutcome>>()
+        val redirectImportFinished = CompletableDeferred<Result<ImportOutcome>>()
 
         val hookableTaskDao = HookableImportTaskDao(database.importTaskDao())
         val hookableBookmarkDao = HookableBookmarkDao(database.bookmarkDao())
@@ -153,6 +218,7 @@ class ImportDuplicateRoomTest {
             taskDao = hookableTaskDao,
             bookmarkDao = hookableBookmarkDao,
             notificationDao = database.importNotificationDao(),
+            aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.AICORE },
             repositoryScope = CoroutineScope(Dispatchers.IO),
             articleAcquirer = { url ->
                 if (url == redirectUrl) {

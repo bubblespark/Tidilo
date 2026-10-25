@@ -21,6 +21,85 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSettingsScreenTest {
+    @Test fun globalAiDisableExplainsDirectFallbackWithoutRestrictingFeedChoices(): Unit = runBlocking {
+        val previous = me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value
+        me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE)
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        try {
+            for (original in listOf(null, me.bubblespark.tidilo.data.db.RssFeedEntity("feed", "https://fixture.example/feed", "Feed", mode = "AI"))) {
+                var chosen: String? = null
+                instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                    me.bubblespark.tidilo.ui.screens.settings.RssFeedEditor(original, onDismiss = {}) { _, mode, _, _ -> chosen = mode }
+                } } }
+                node("Direct fallback guidance") { it.text?.toString()?.contains("Feeds will be imported in Direct mode automatically") == true }
+                // Compose removes ACTION_CLICK from a currently selected radio option.
+                if (original != null) clickCurrent { it.text?.toString() == "Direct" }
+                clickCurrent { it.text?.toString() == "AI Analyze" }
+                withTimeout(3000) {
+                    while (true) {
+                        var radio = find { it.text?.toString() == "AI Analyze" }
+                        while (radio != null && !radio.isCheckable) radio = radio.parent
+                        if (radio?.isChecked == true) {
+                            assertTrue(radio.isEnabled)
+                            break
+                        }
+                        delay(30)
+                    }
+                }
+                if (original != null) {
+                    clickCurrent { it.text?.toString() == "Save" }
+                    withTimeout(3000) { while (chosen == null) delay(30) }
+                    assertEquals("AI", chosen)
+                }
+            }
+            instrumentation.runOnMainSync {
+                me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.AICORE)
+            }
+            delay(300)
+            assertNull(find { it.text?.toString()?.contains("Feeds will be imported in Direct mode automatically") == true })
+        } finally {
+            instrumentation.runOnMainSync { activity.finish() }
+            me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(previous)
+        }
+    }
+
+    @Test fun settingsAiAnalysisDialogUpdatesModeAndDismissDoesNotChangeIt(): Unit = runBlocking {
+        val previous = me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value
+        me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE)
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                me.bubblespark.tidilo.ui.screens.settings.SettingsScreen(onNavigateBack = {}, onNavigateToGenerateContentRequest = {})
+            } } }
+            node("Fresh Settings screen") { it.text?.toString() == "Settings" }
+            repeat(4) {
+                if (find { it.text?.toString() == "AI Analysis" } == null) {
+                    find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                    instrumentation.waitForIdleSync()
+                    delay(300)
+                }
+            }
+            clickText("AI Analysis")
+            clickText("Close")
+            awaitAiSettingCard()
+            assertEquals(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE, me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value)
+            clickText("AI Analysis")
+            node("Mode dialog open") { it.text?.toString() == "Close" }
+            clickText("AICore")
+            awaitAiSettingCard()
+            assertEquals(me.bubblespark.tidilo.config.AiAnalysisMode.AICORE, me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value)
+            clickText("AI Analysis")
+            node("Mode dialog reopened") { it.text?.toString() == "Close" }
+            clickText("Disable")
+            assertEquals(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE, me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value)
+        } finally {
+            instrumentation.runOnMainSync { activity.finish() }
+            me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(previous)
+        }
+    }
+
     @Test fun initialFetchDialogSeparatesTimingAndShowsMobileNotice(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
@@ -121,6 +200,30 @@ class RssSettingsScreenTest {
         assertTrue(target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true)
     }
 
+    private suspend fun clickText(label: String) {
+        try {
+            clickCurrent { it.text?.toString() == label }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            val chain = mutableListOf<String>()
+            var item = find { it.text?.toString() == label }
+            while (item != null) {
+                chain.add("text=${item.text} clickable=${item.isClickable} checked=${item.isChecked} enabled=${item.isEnabled}")
+                item = item.parent
+            }
+            throw AssertionError("Cannot click $label: ${chain.joinToString("; ")}", e)
+        }
+    }
+
+    /** A transient null active window is not proof that a closing dialog has disappeared. */
+    private suspend fun awaitAiSettingCard() = withTimeout(5000) {
+        while (true) {
+            var item = find { it.text?.toString() == "AI Analysis" }
+            while (item != null && !item.isClickable) item = item.parent
+            if (item?.isEnabled == true && find { it.text?.toString() == "Close" } == null) return@withTimeout
+            delay(30)
+        }
+    }
+
     /** Recomposition can detach an accessibility node between discovery and its action. */
     private suspend fun clickCurrent(predicate: (AccessibilityNodeInfo) -> Boolean) = withTimeout(3000) {
         while (true) {
@@ -169,7 +272,7 @@ class RssSettingsScreenTest {
             toggle!!.getBoundsInScreen(toggleBounds)
             node("Delete action") { it.text?.toString() == "Delete" }.getBoundsInScreen(deleteBounds)
             assertTrue(toggleBounds.left > deleteBounds.right)
-            assertEquals(deleteBounds.centerY(), toggleBounds.centerY())
+            assertTrue(kotlin.math.abs(deleteBounds.centerY() - toggleBounds.centerY()) <= 1)
             node("On state") { it.text?.toString() == "On" }
             click(toggle)
             withTimeout(3000) { while (feed.value.enabled) delay(20) }

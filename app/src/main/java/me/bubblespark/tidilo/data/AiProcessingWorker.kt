@@ -25,7 +25,8 @@ internal class AiProcessingWorker<T : Any, S : Any>(
     private val handleFailure: suspend (T, Exception) -> Unit,
     private val reportSessionFailure: (Exception) -> Unit,
     private val selectionRetryDelayMs: Long = 1000L,
-    private val maxSessionRetries: Int = 3
+    private val maxSessionRetries: Int = 3,
+    private val processWithoutSession: suspend (T) -> Boolean = { false }
 ) {
     private val signals = Channel<Unit>(Channel.CONFLATED)
 
@@ -43,6 +44,7 @@ internal class AiProcessingWorker<T : Any, S : Any>(
                                 while (true) {
                                     val task = nextTask() ?: break
                                     try {
+                                        if (processWithoutSession(task)) continue
                                         val activeSession = session ?: openSession().also { session = it }
                                         processTask(activeSession, task)
                                     } catch (e: CancellationException) {

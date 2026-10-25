@@ -336,6 +336,9 @@ class ImportDuplicateRejectionTest {
         assertEquals("b1", notif.existingBookmarkId)
         assertEquals("example.com", notif.domain)
         assertEquals("https://example.com/rss-article", notif.url)
+        val outcome = requireNotNull(callbackResult).getOrThrow()
+        assertEquals(ImportOutcome.BookmarkSaved("b1", existing.url), outcome)
+        assertEquals(existing.copy(rssFeedId = null), updated)
     }
 
     @Test

@@ -28,6 +28,33 @@ import org.junit.Before
 import org.junit.Test
 
 class ImportDuplicateRoomTest {
+    @Test fun completedRssPromotionReportsBookmarkSavedAfterCommitWithoutReanalysis() = runBlocking {
+        val job = kotlinx.coroutines.SupervisorJob()
+        val outcome = CompletableDeferred<Result<ImportOutcome>>()
+        val finished = CompletableDeferred<Unit>()
+        var callbackInTransaction = true
+        val original = BookmarkEntity("completed", "Analyzed RSS", "https://example.com/completed", "AI Description",
+            category = "Article", subcategory = "Tech", entities = listOf("Kotlin"), note = "User note",
+            rssFeedId = "feed", createdAt = 7, updatedAt = 9)
+        database.bookmarkDao().insertOrUpdate(original)
+        try {
+            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = { error("Completed promotion must not acquire HTML") },
+                openModel = { error("Completed promotion must not initialize AICore") })
+            repository.onEnteringFinalization = { finished.complete(Unit) }
+            repository.importUrl(original.url) {
+                callbackInTransaction = database.inTransaction()
+                outcome.complete(it)
+            }
+            withTimeout(5000) { finished.await() }
+            assertEquals(ImportOutcome.BookmarkSaved(original.id, original.url), outcome.await().getOrThrow())
+            assertFalse(callbackInTransaction)
+            assertEquals(0, database.importTaskDao().getCount())
+            assertEquals(original.copy(rssFeedId = null), database.bookmarkDao().getBookmarkByUrl(original.url))
+        } finally { job.cancel(); job.join() }
+    }
+
     @Test fun disabledRssPromotionReportsSuccessOnlyAfterCommit() = kotlinx.coroutines.runBlocking {
         val job = kotlinx.coroutines.SupervisorJob()
         val outcome = CompletableDeferred<Boolean>()

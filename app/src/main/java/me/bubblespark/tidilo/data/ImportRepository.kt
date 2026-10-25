@@ -263,7 +263,7 @@ class ImportRepository internal constructor(
                         existingBookmarkId = result.bookmark.id
                     )
                 )
-                onImported?.invoke(Result.failure(DuplicateUrlException("Promoted from RSS to Library")))
+                onImported?.invoke(Result.success(ImportOutcome.BookmarkSaved(result.bookmark.id, url)))
                 return true
             }
 

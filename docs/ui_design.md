@@ -181,9 +181,16 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 - **Layout Hierarchy**:
   - Root `Box(Modifier.fillMaxSize())`: Hosts full-screen scrollable `Column`, scrim overlay, and bottom-anchored FAB menu.
   - **Scroll Separation**: The FAB menu and backdrop scrim are placed **outside** the scrollable `Column`. Expanding the menu triggers zero unintended scroll jumps, and the toggle button never clips off-screen.
-- **Shared `DomainWatermark` (Strict Non-Bleeding Placement)**:
-  - Positioned **directly beneath the Top Header Row** inside a `Box(Modifier.fillMaxWidth())` at `Alignment.TopEnd` with `offset(x = 20.dp)` (offset precisely counterbalances parent `padding(horizontal = 20.dp)`).
-  - **Zero Bleed-off**: Flushes completely against the physical right screen edge and top header bottom boundary without clipping outside the screen or encroaching into the header bar. Rendered using shared watermark parameters (`195dp`, 50% saturation, `0.14f` alpha, `RoundedCornerShape(20.dp)`).
+  - **Edge-to-Edge Status Bar Translucency & Scrim**:
+    - The scrollable `Column` extends edge-to-edge into the status bar area without root `statusBarsPadding()`.
+    - The top header `Row` applies `Modifier.statusBarsPadding()` directly, maintaining standard title bar alignment (`statusBarsPadding() + top = 4.dp, bottom = 4.dp`) at rest.
+    - A standardized 4-stop vertical gradient status bar protection scrim (`listOf(scrimBg.copy(0.85f), scrimBg.copy(0.50f), scrimBg.copy(0.15f), Color.Transparent)`) of height `statusBarTop + 28.dp` is anchored at `Alignment.TopCenter` and rendered via `Modifier.drawWithCache`, protecting status bar system icons when content scrolls underneath.
+- **Top Header & `og:image` Banner with Domain Watermark Fallback**:
+  - **`og:image` Banner Placement**: Positioned directly beneath the Top Header Row and above the bookmark title. Constrained to full width with a maximum vertical height of `200.dp` (`heightIn(max = 200.dp)`), preserving original aspect ratio via `ContentScale.Crop` with `RoundedCornerShape(16.dp)` clipping (`contentDescription = null`).
+  - **Reactive Cache & On-Demand Loading**: Integrated with `rememberOgImage` (`OgImageManager` cache observer and update notifications, triggering background on-demand fetching when uncached), unified across `BookmarkDetailScreen` and `BookmarkGridCard`.
+  - **Domain Icon Watermark Fallback (`DomainWatermark`)**:
+    - When `og:image` is available, the banner is rendered and the background `DomainWatermark` is suppressed to prevent visual overlap.
+    - When `og:image` is absent (`ogImageUrl == null` or load fails) and image resolution has completed (`ogState.resolved`), no empty banner space is reserved; the layout seamlessly falls back to displaying `DomainWatermark` (`195dp`, 50% saturation, `0.14f` alpha, `RoundedCornerShape(20.dp)`) in the upper-right background (`Alignment.TopEnd`, `offset(x = 20.dp)`).
 - **Material 3 Expressive FAB Menu (`FloatingActionButtonMenu`)**:
   - **Parent Toggle FAB**: Conforms to the mandatory bottom-right action button standard (**86dp CircleShape container, 40dp icon, 10dp elevation, bottom = 16dp, end = 16dp margin**). Toggles between `R.drawable.ic_menu_open` and `Close`.
   - **Menu Items (`FabMenuItem`)**: Expanded dynamically to follow the enlarged 86dp FAB scale:

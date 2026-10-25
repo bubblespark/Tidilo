@@ -2,7 +2,9 @@ package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.ui.navigation.Screen
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.text.SimpleDateFormat
@@ -369,5 +371,136 @@ class BookmarkDetailTest {
         draftEntities = Tag.addEntity(draftEntities, "  ")
         assertEquals(sizeBeforeBlank, draftEntities.size)
     }
+
+    @Test
+    fun testBookmarkItemOgImageDerivationForDetailScreen() {
+        val withOg = BookmarkItem(
+            id = "test-detail-og",
+            title = "Article with OG Image",
+            url = "https://example.com/article",
+            description = "Description",
+            tag = Tag.create("Article", "Tech", listOf("Android")),
+            ogImageUrl = "https://example.com/images/og-preview.png"
+        )
+        val filename = requireNotNull(withOg.ogImageFilename)
+        assertTrue(filename.isNotBlank())
+
+        val withoutOg = BookmarkItem(
+            id = "test-detail-no-og",
+            title = "Article without OG Image",
+            url = "https://example.com/article",
+            description = "Description",
+            tag = Tag.create("Article", "Tech", listOf("Android")),
+            ogImageUrl = null
+        )
+        org.junit.Assert.assertNull(withoutOg.ogImageFilename)
+
+        val withBlankOg = BookmarkItem(
+            id = "test-detail-blank-og",
+            title = "Article with Blank OG Image",
+            url = "https://example.com/article",
+            description = "Description",
+            tag = Tag.create("Article", "Tech", listOf("Android")),
+            ogImageUrl = "   "
+        )
+        org.junit.Assert.assertNull(withBlankOg.ogImageFilename)
+    }
+
+    @Test
+    fun testBookmarkDetailAspectRatioCalculation() {
+        // Normal 1200x630 og:image aspect ratio (~1.904)
+        val normalRatio = me.bubblespark.tidilo.ui.components.calculateOgAspectRatio(1200, 630)
+        assertTrue(normalRatio > 1.9f && normalRatio < 1.91f)
+
+        // Square 1:1 image
+        val squareRatio = me.bubblespark.tidilo.ui.components.calculateOgAspectRatio(600, 600)
+        assertEquals(1.0f, squareRatio, 0.001f)
+
+        // Tall portrait image
+        val portraitRatio = me.bubblespark.tidilo.ui.components.calculateOgAspectRatio(600, 1200)
+        assertEquals(0.5f, portraitRatio, 0.001f)
+
+        // Invalid height fallback
+        val zeroHeightRatio = me.bubblespark.tidilo.ui.components.calculateOgAspectRatio(100, 0)
+        assertEquals(me.bubblespark.tidilo.ui.components.DEFAULT_OG_ASPECT_RATIO, zeroHeightRatio, 0.001f)
+    }
+
+    @Test
+    fun testOgImageStateFailedLoadShowsDomainWatermarkFallback() {
+        // When on-demand fetch fails (returning null), resolved MUST be true so DomainWatermark fallback appears
+        val state = me.bubblespark.tidilo.ui.components.resolvedOgImageState(null)
+
+        assertNull("Failed fetch should produce null bitmap", state.bitmap)
+        assertTrue("State must be resolved after failure to prevent hiding watermark", state.resolved)
+        assertTrue("Fallback must be active after fetch failure", state.shouldShowFallback)
+        assertTrue("Watermark fallback must be active", state.shouldShowDomainWatermarkFallback)
+    }
+
+    @Test
+    fun testOgImageStateSuccessfulImageSuppressesWatermarkFallback() {
+        // When image load succeeds, resolved is true and DomainWatermark fallback must NOT be shown
+        val dummy = DummyImageBitmap()
+        val state = me.bubblespark.tidilo.ui.components.resolvedOgImageState(dummy)
+
+        assertNotNull("Successful fetch must produce non-null bitmap", state.bitmap)
+        assertEquals(dummy, state.bitmap)
+        assertTrue("State must be marked resolved", state.resolved)
+        assertFalse("Fallback must not be active when image is present", state.shouldShowFallback)
+        assertFalse("Watermark fallback must not be active when image is present", state.shouldShowDomainWatermarkFallback)
+    }
+
+    @Test
+    fun testOgImageStatePendingLoadHidesWatermarkDuringFetch() {
+        // While fetching an existing OG URL, resolved is false to prevent premature watermark flicker
+        val state = me.bubblespark.tidilo.ui.components.initialOgImageState(cached = null, ogFilename = "og_preview.webp")
+
+        assertNull("No bitmap yet while pending", state.bitmap)
+        assertFalse("Pending state must not be resolved yet", state.resolved)
+        assertFalse("Watermark fallback must not appear while fetch is in progress", state.shouldShowFallback)
+        assertFalse("DomainWatermark must be hidden while fetch is pending", state.shouldShowDomainWatermarkFallback)
+    }
+
+    @Test
+    fun testOgImageStateNoOgUrlResolvesImmediatelyWithFallback() {
+        // Bookmark without an OG image has no file to fetch, so it is resolved immediately with watermark fallback
+        val state = me.bubblespark.tidilo.ui.components.initialOgImageState(cached = null, ogFilename = null)
+
+        assertNull("No bitmap available", state.bitmap)
+        assertTrue("State must be immediately resolved when no OG file exists", state.resolved)
+        assertTrue("Fallback must be shown immediately", state.shouldShowFallback)
+        assertTrue("DomainWatermark must be shown immediately", state.shouldShowDomainWatermarkFallback)
+    }
+
+    @Test
+    fun testOgImageStateCachedHitResolvesImmediatelyWithImage() {
+        // When image is already in memory cache, it is immediately resolved without showing fallback
+        val dummy = DummyImageBitmap()
+        val state = me.bubblespark.tidilo.ui.components.initialOgImageState(cached = dummy, ogFilename = "og_preview.webp")
+
+        assertNotNull("Cached bitmap must be preserved", state.bitmap)
+        assertEquals(dummy, state.bitmap)
+        assertTrue("State must be immediately resolved when cache hit occurs", state.resolved)
+        assertFalse("Fallback must not be shown on cache hit", state.shouldShowFallback)
+        assertFalse("DomainWatermark must not be shown on cache hit", state.shouldShowDomainWatermarkFallback)
+    }
 }
 
+private class DummyImageBitmap : androidx.compose.ui.graphics.ImageBitmap {
+    override val width: Int get() = 1200
+    override val height: Int get() = 630
+    override val hasAlpha: Boolean get() = false
+    override val config: androidx.compose.ui.graphics.ImageBitmapConfig
+        get() = androidx.compose.ui.graphics.ImageBitmapConfig.Argb8888
+    override val colorSpace: androidx.compose.ui.graphics.colorspace.ColorSpace
+        get() = throw UnsupportedOperationException("Not needed in state unit test")
+    override fun readPixels(
+        buffer: IntArray,
+        startX: Int,
+        startY: Int,
+        width: Int,
+        height: Int,
+        bufferOffset: Int,
+        stride: Int
+    ) = Unit
+    override fun prepareToDraw() = Unit
+}

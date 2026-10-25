@@ -83,7 +83,7 @@ fun BookmarkGridCard(
     // Track completion explicitly: a null bitmap alone cannot distinguish pending from failed.
     val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
     val ogBitmap = ogState.bitmap
-    val domainIconBitmap by rememberDomainIcon(domain, bookmark.url, ogState.resolved && ogBitmap == null)
+    val domainIconBitmap by rememberDomainIcon(domain, bookmark.url, ogState.shouldShowFallback)
 
     val primaryColor = MaterialTheme.colorScheme.primary
     val domainAccentColor = remember(domain, primaryColor, iconRefreshSignal) {

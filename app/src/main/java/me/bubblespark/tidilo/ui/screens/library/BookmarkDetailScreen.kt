@@ -361,7 +361,7 @@ fun BookmarkDetailScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             // Upper right domain watermark (rendered only when og:image is unavailable and resolution completed)
-            if (ogBitmap == null && ogState.resolved) {
+            if (ogState.shouldShowDomainWatermarkFallback) {
                 DomainWatermark(
                     domain = domain,
                     modifier = Modifier

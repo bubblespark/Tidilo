@@ -26,7 +26,32 @@ fun calculateOgAspectRatio(width: Int, height: Int): Float {
 data class OgImageState(
     val bitmap: ImageBitmap?,
     val resolved: Boolean
-)
+) {
+    /**
+     * True when OG image resolution has completed and no image is available,
+     * indicating that a fallback (e.g. domain watermark or domain icon) should be shown.
+     */
+    val shouldShowFallback: Boolean
+        get() = bitmap == null && resolved
+
+    /**
+     * Explicit alias for [shouldShowFallback] in the context of domain watermark display.
+     */
+    val shouldShowDomainWatermarkFallback: Boolean
+        get() = shouldShowFallback
+}
+
+/**
+ * Determines the initial [OgImageState] before asynchronous loading begins.
+ */
+fun initialOgImageState(cached: ImageBitmap?, ogFilename: String?): OgImageState =
+    OgImageState(bitmap = cached, resolved = cached != null || ogFilename == null)
+
+/**
+ * Creates an [OgImageState] for a completed load or update.
+ */
+fun resolvedOgImageState(fetched: ImageBitmap?): OgImageState =
+    OgImageState(bitmap = fetched, resolved = true)
 
 /**
  * Reactively loads and caches the og:image for a bookmark, coordinating in-memory hits,
@@ -44,16 +69,16 @@ fun rememberOgImage(
 
     return key(context, url, domain, ogFilename, cacheGeneration) {
         val cached = if (domain != null && ogFilename != null) OgImageManager.getCachedOgImageBitmap(domain, ogFilename) else null
-        produceState(initialValue = OgImageState(cached, cached != null || ogFilename == null)) {
+        produceState(initialValue = initialOgImageState(cached, ogFilename)) {
             if (domain != null && ogFilename != null) {
                 coroutineScope {
                     launch {
                         OgImageManager.observeExactImageUpdates(ogFilename).collect {
-                            OgImageManager.getCachedOgImageBitmap(domain, ogFilename)?.let { value = OgImageState(it, true) }
+                            OgImageManager.getCachedOgImageBitmap(domain, ogFilename)?.let { value = resolvedOgImageState(it) }
                         }
                     }
                     if (cached == null) {
-                        value = OgImageState(OgImageManager.loadOrFetchOgImage(context, url, domain, ogImageUrl), true)
+                        value = resolvedOgImageState(OgImageManager.loadOrFetchOgImage(context, url, domain, ogImageUrl))
                     }
                 }
             }

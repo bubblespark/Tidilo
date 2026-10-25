@@ -43,11 +43,37 @@ class PagingFeedbackTest {
     }
 
     @Test
+    fun buildLibraryFilterKeyIncludesAllComponents() {
+        val key1 = buildLibraryFilterKey(LibraryFilterMode.NEWEST_FIRST, "example.com", "feed1", true)
+        val key2 = buildLibraryFilterKey(LibraryFilterMode.NEWEST_FIRST, "example.com", "feed1", false)
+        val key3 = buildLibraryFilterKey(LibraryFilterMode.DOMAIN, "example.com", "feed1", true)
+        val key4 = buildLibraryFilterKey(LibraryFilterMode.NEWEST_FIRST, "other.com", "feed1", true)
+        val key5 = buildLibraryFilterKey(LibraryFilterMode.NEWEST_FIRST, "example.com", "feed2", true)
+
+        assertNotEquals("NSFW flag must distinguish keys", key1, key2)
+        assertNotEquals("Filter mode must distinguish keys", key1, key3)
+        assertNotEquals("Domain filter must distinguish keys", key1, key4)
+        assertNotEquals("Feed ID must distinguish keys", key1, key5)
+    }
+
+    @Test
+    fun buildSearchQueryKeyNormalizesAndDifferentiatesNsfw() {
+        val key1 = buildSearchQueryKey("  android  ", true)
+        val key2 = buildSearchQueryKey("android", true)
+        val key3 = buildSearchQueryKey("android", false)
+        val keyBlank = buildSearchQueryKey("   ", true)
+
+        assertEquals("Whitespace must be trimmed", key1, key2)
+        assertNotEquals("NSFW flag must distinguish keys", key2, key3)
+        assertEquals("Blank query yields empty key", "", keyBlank)
+    }
+
+    @Test
     fun clearAndReenterQuerySequenceResetsKeyAndTriggersLoading() {
         var lastLoadedQueryKey: String? = null
 
         // 1. User enters "foo"
-        var activeQueryKey = "foo"
+        var activeQueryKey = buildSearchQueryKey("foo", isNsfwVisible = true)
         lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
         var isQueryChanging = isSearchQueryChanging(activeQueryKey, lastLoadedQueryKey)
         assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 0, isFilterChanging = isQueryChanging))
@@ -61,12 +87,12 @@ class PagingFeedbackTest {
         assertFalse(isBookmarkLoading(LoadState.Loading, itemCount = 5, isFilterChanging = isQueryChanging))
 
         // 2. User clears the query (becomes blank) -> production helper resets key to null
-        activeQueryKey = ""
+        activeQueryKey = buildSearchQueryKey("", isNsfwVisible = true)
         lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
         assertNull("Blank query must reset loaded key via production helper", lastLoadedQueryKey)
 
         // 3. User re-enters "foo" while prior unfiltered items (e.g. 10 items) are retained
-        activeQueryKey = "foo"
+        activeQueryKey = buildSearchQueryKey("foo", isNsfwVisible = true)
         lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
         isQueryChanging = isSearchQueryChanging(activeQueryKey, lastLoadedQueryKey)
         assertTrue("Re-entering foo must be recognized as changing via production helper", isQueryChanging)
@@ -77,13 +103,13 @@ class PagingFeedbackTest {
     fun nsfwVisibilityChangeTriggersLoadingTransition() {
         var lastLoadedFilterKey: String? = null
 
-        val filterMode = "NEWEST_FIRST"
-        val domain = ""
-        val feedId = ""
+        val filterMode = LibraryFilterMode.NEWEST_FIRST
+        val domain = null
+        val feedId = null
 
         // 1. Initial load with NSFW visible
         var isNsfw = true
-        var activeKey = "$filterMode/$domain/$feedId/$isNsfw"
+        var activeKey = buildLibraryFilterKey(filterMode, domain, feedId, isNsfw)
         var isFilterChanging = activeKey != lastLoadedFilterKey
         assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 0, isFilterChanging = isFilterChanging))
 
@@ -95,7 +121,7 @@ class PagingFeedbackTest {
 
         // 2. User turns off NSFW visibility
         isNsfw = false
-        activeKey = "$filterMode/$domain/$feedId/$isNsfw"
+        activeKey = buildLibraryFilterKey(filterMode, domain, feedId, isNsfw)
         isFilterChanging = activeKey != lastLoadedFilterKey
         assertTrue("Turning off NSFW must mark filter as changing", isFilterChanging)
         assertTrue("Must show loading to prevent showing NSFW items during transition",
@@ -108,14 +134,14 @@ class PagingFeedbackTest {
 
         val query = "android"
         var isNsfw = true
-        var activeKey = "$query/$isNsfw"
+        var activeKey = buildSearchQueryKey(query, isNsfw)
 
         lastLoadedKey = activeKey
         assertFalse(isSearchQueryChanging(activeKey, lastLoadedKey))
 
         // User toggles NSFW visibility
         isNsfw = false
-        activeKey = "$query/$isNsfw"
+        activeKey = buildSearchQueryKey(query, isNsfw)
         assertTrue("Toggling NSFW visibility in search must mark query as changing",
             isSearchQueryChanging(activeKey, lastLoadedKey))
         assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 5, isFilterChanging = isSearchQueryChanging(activeKey, lastLoadedKey)))

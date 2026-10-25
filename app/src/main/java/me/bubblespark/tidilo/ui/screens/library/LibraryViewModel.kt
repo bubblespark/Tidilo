@@ -196,6 +196,12 @@ class LibraryViewModel : ViewModel() {
             initialValue = emptyList()
         )
 
+    private val _currentLibraryGenerationKey = MutableStateFlow<String?>(null)
+    val currentLibraryGenerationKey: StateFlow<String?> = _currentLibraryGenerationKey.asStateFlow()
+
+    private val _currentSearchGenerationKey = MutableStateFlow<String?>(null)
+    val currentSearchGenerationKey: StateFlow<String?> = _currentSearchGenerationKey.asStateFlow()
+
     /**
      * Bookmarks filtered by selected domain (Newest first).
      */
@@ -203,6 +209,7 @@ class LibraryViewModel : ViewModel() {
         .flatMapLatest { (state, selection) ->
             val (mode, feedId) = selection
             val (domain, visible, ready) = state
+            _currentLibraryGenerationKey.value = buildLibraryFilterKey(mode, domain, feedId, visible)
             if (mode == LibraryFilterMode.RSS && feedId == null) flowOf(PagingData.empty())
             else if (ready) bookmarkRepository.pagedBookmarks("", domain, visible, if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL,
                 rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS }).onStart { emit(loadingPage()) }
@@ -212,6 +219,7 @@ class LibraryViewModel : ViewModel() {
 
     val searchPages = combine(debouncedSearchQuery, AppConfig.isNsfwContentVisible, bookmarkRepository.isInitialized) { query, visible, ready -> Triple(query, visible, ready) }
         .flatMapLatest { (query, visible, ready) ->
+            _currentSearchGenerationKey.value = buildSearchQueryKey(query, visible)
             if (ready) bookmarkRepository.pagedBookmarks(query, null, visible).onStart { emit(loadingPage()) }
             else flowOf(loadingPage())
         }

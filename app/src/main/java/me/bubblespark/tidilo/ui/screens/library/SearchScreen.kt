@@ -152,13 +152,13 @@ fun SearchScreen(
 
     val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
     val activeQueryKey = remember(searchQuery, isNsfwVisible) {
-        val trimmed = searchQuery.trim()
-        if (trimmed.isBlank()) "" else "$trimmed/$isNsfwVisible"
+        buildSearchQueryKey(searchQuery, isNsfwVisible)
     }
+    val currentSearchGenerationKey by viewModel.currentSearchGenerationKey.collectAsStateWithLifecycle()
     var lastLoadedQueryKey by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(activeQueryKey) {
+    LaunchedEffect(activeQueryKey, currentSearchGenerationKey) {
         lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
-        if (activeQueryKey.isNotBlank()) {
+        if (activeQueryKey.isNotBlank() && activeQueryKey == currentSearchGenerationKey) {
             snapshotFlow { filteredBookmarks.loadState.refresh }
                 .filter { it is LoadState.NotLoading || it is LoadState.Error }
                 .first()

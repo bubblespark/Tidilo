@@ -65,3 +65,26 @@ internal fun resolveLoadedQueryKeyOnInput(query: String, currentLoadedKey: Strin
  */
 internal fun isSearchQueryChanging(activeQuery: String, loadedQueryKey: String?): Boolean =
     activeQuery.isNotBlank() && activeQuery.trim() != loadedQueryKey
+
+/**
+ * Builds the unique tracking key for a library filter generation, incorporating filter mode,
+ * specific domain or RSS feed filter, and NSFW content visibility.
+ */
+internal fun buildLibraryFilterKey(
+    filterMode: LibraryFilterMode,
+    selectedDomainFilter: String?,
+    selectedFeedId: String?,
+    isNsfwVisible: Boolean
+): String = "$filterMode/${selectedDomainFilter.orEmpty()}/${selectedFeedId.orEmpty()}/$isNsfwVisible"
+
+/**
+ * Builds the unique tracking key for a search query generation, incorporating normalized query
+ * and NSFW content visibility. Blank queries yield an empty string key.
+ */
+internal fun buildSearchQueryKey(
+    searchQuery: String,
+    isNsfwVisible: Boolean
+): String {
+    val trimmed = searchQuery.trim()
+    return if (trimmed.isBlank()) "" else "$trimmed/$isNsfwVisible"
+}

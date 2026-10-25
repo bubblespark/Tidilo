@@ -140,14 +140,17 @@ fun LibraryScreen(
     val isCollectionGrid = isDomainGrid || isRssGrid
     val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
     val activeFilterKey = remember(filterMode, selectedDomainFilter, selectedFeed?.id, isNsfwVisible) {
-        "$filterMode/${selectedDomainFilter.orEmpty()}/${selectedFeed?.id.orEmpty()}/$isNsfwVisible"
+        buildLibraryFilterKey(filterMode, selectedDomainFilter, selectedFeed?.id, isNsfwVisible)
     }
+    val currentLibraryGenerationKey by viewModel.currentLibraryGenerationKey.collectAsStateWithLifecycle()
     var lastLoadedFilterKey by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(activeFilterKey) {
-        snapshotFlow { bookmarks.loadState.refresh }
-            .filter { it is LoadState.NotLoading || it is LoadState.Error }
-            .first()
-        lastLoadedFilterKey = activeFilterKey
+    LaunchedEffect(activeFilterKey, currentLibraryGenerationKey) {
+        if (activeFilterKey == currentLibraryGenerationKey) {
+            snapshotFlow { bookmarks.loadState.refresh }
+                .filter { it is LoadState.NotLoading || it is LoadState.Error }
+                .first()
+            lastLoadedFilterKey = activeFilterKey
+        }
     }
     val isFilterChanging = activeFilterKey != lastLoadedFilterKey
     val refreshState = bookmarkLoadState(bookmarks.loadState.refresh, isCollectionGrid)

@@ -1,6 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import androidx.paging.LoadState
+import androidx.paging.PagingData
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -145,5 +147,13 @@ class PagingFeedbackTest {
         assertTrue("Toggling NSFW visibility in search must mark query as changing",
             isSearchQueryChanging(activeKey, lastLoadedKey))
         assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 5, isFilterChanging = isSearchQueryChanging(activeKey, lastLoadedKey)))
+    }
+
+    @Test
+    fun pagingGenerationHoldsKeyAndFlow() {
+        val flow = flowOf(PagingData.empty<BookmarkItem>())
+        val gen = PagingGeneration("test-key", flow)
+        assertEquals("test-key", gen.key)
+        assertSame(flow, gen.flow)
     }
 }

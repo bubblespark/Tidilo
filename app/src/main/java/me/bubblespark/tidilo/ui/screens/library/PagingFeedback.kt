@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
+import androidx.paging.PagingData
+import kotlinx.coroutines.flow.Flow
 import me.bubblespark.tidilo.R
 
 /** Displays a user-facing retry action without exposing database implementation details. */
@@ -88,3 +90,13 @@ internal fun buildSearchQueryKey(
     val trimmed = searchQuery.trim()
     return if (trimmed.isBlank()) "" else "$trimmed/$isNsfwVisible"
 }
+
+/**
+ * Associates an active Pager flow with its immutable generation tracking key.
+ * UI components observe this generation state to collect matching PagingData
+ * without handoff race conditions across filter transitions.
+ */
+data class PagingGeneration(
+    val key: String,
+    val flow: Flow<PagingData<BookmarkItem>>
+)

@@ -122,7 +122,8 @@ fun LibraryScreen(
     modifier: Modifier = Modifier
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
-    val bookmarks = viewModel.libraryPages.collectAsLazyPagingItems()
+    val libraryGeneration by viewModel.libraryGeneration.collectAsStateWithLifecycle()
+    val bookmarks = libraryGeneration.flow.collectAsLazyPagingItems()
     val filterMode by viewModel.filterMode.collectAsStateWithLifecycle()
     val selectedDomainFilter by viewModel.selectedDomainFilter.collectAsStateWithLifecycle()
     val selectedRssFeedFilter by viewModel.selectedRssFeedFilter.collectAsStateWithLifecycle()
@@ -142,17 +143,7 @@ fun LibraryScreen(
     val activeFilterKey = remember(filterMode, selectedDomainFilter, selectedFeed?.id, isNsfwVisible) {
         buildLibraryFilterKey(filterMode, selectedDomainFilter, selectedFeed?.id, isNsfwVisible)
     }
-    val currentLibraryGenerationKey by viewModel.currentLibraryGenerationKey.collectAsStateWithLifecycle()
-    var lastLoadedFilterKey by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(activeFilterKey, currentLibraryGenerationKey) {
-        if (activeFilterKey == currentLibraryGenerationKey) {
-            snapshotFlow { bookmarks.loadState.refresh }
-                .filter { it is LoadState.NotLoading || it is LoadState.Error }
-                .first()
-            lastLoadedFilterKey = activeFilterKey
-        }
-    }
-    val isFilterChanging = activeFilterKey != lastLoadedFilterKey
+    val isFilterChanging = activeFilterKey != libraryGeneration.key
     val refreshState = bookmarkLoadState(bookmarks.loadState.refresh, isCollectionGrid)
     val isLoading = !initialized || isBookmarkLoading(refreshState, bookmarks.itemCount, isFilterChanging) ||
         (isDomainGrid && domainGroupsLoading) || (isRssGrid && rssFeedGroupsLoading)

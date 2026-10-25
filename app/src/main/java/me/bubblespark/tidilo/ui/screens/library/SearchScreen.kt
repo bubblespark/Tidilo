@@ -103,7 +103,8 @@ fun SearchScreen(
     val searchHistory by viewModel.searchHistory.collectAsStateWithLifecycle()
     val initializationFailure by viewModel.initializationFailure.collectAsStateWithLifecycle()
     val searchCount by viewModel.searchCount.collectAsStateWithLifecycle()
-    val filteredBookmarks = viewModel.searchPages.collectAsLazyPagingItems()
+    val searchGeneration by viewModel.searchGeneration.collectAsStateWithLifecycle()
+    val filteredBookmarks = searchGeneration.flow.collectAsLazyPagingItems()
     val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
     val resultListState = rememberLazyListState()
     val resultGridState = rememberLazyGridState()
@@ -154,18 +155,7 @@ fun SearchScreen(
     val activeQueryKey = remember(searchQuery, isNsfwVisible) {
         buildSearchQueryKey(searchQuery, isNsfwVisible)
     }
-    val currentSearchGenerationKey by viewModel.currentSearchGenerationKey.collectAsStateWithLifecycle()
-    var lastLoadedQueryKey by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(activeQueryKey, currentSearchGenerationKey) {
-        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
-        if (activeQueryKey.isNotBlank() && activeQueryKey == currentSearchGenerationKey) {
-            snapshotFlow { filteredBookmarks.loadState.refresh }
-                .filter { it is LoadState.NotLoading || it is LoadState.Error }
-                .first()
-            lastLoadedQueryKey = activeQueryKey
-        }
-    }
-    val isQueryChanging = isSearchQueryChanging(activeQueryKey, lastLoadedQueryKey)
+    val isQueryChanging = isSearchQueryChanging(activeQueryKey, searchGeneration.key)
 
     Box(
         modifier = modifier

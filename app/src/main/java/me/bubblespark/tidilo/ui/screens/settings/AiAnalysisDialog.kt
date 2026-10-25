@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -45,7 +46,7 @@ internal fun AiAnalysisDialog(
             Column(Modifier.selectableGroup()) {
                 AiAnalysisMode.entries.forEach { choice ->
                     val enabled = choice == AiAnalysisMode.DISABLE || available == true
-                    Row(Modifier.fillMaxWidth().selectable(selected = mode == choice, enabled = enabled,
+                    Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp).selectable(selected = mode == choice, enabled = enabled,
                         role = Role.RadioButton, onClick = { onSelect(choice) }).padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = mode == choice, onClick = null, enabled = enabled)

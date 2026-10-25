@@ -159,7 +159,7 @@ object AppConfig {
 
     private val aiAnalysisPreference = AiAnalysisPreference(
         runCatching { prefs.getString(KEY_AI_ANALYSIS_MODE, null) }.getOrNull()?.let(AiAnalysisMode::fromCode)
-    ) { mode -> runCatching { prefs.edit().putString(KEY_AI_ANALYSIS_MODE, mode.code).apply() }; Unit }
+    ) { mode -> runCatching { prefs.edit().putString(KEY_AI_ANALYSIS_MODE, mode.code).apply() } }
     val aiAnalysisMode: StateFlow<AiAnalysisMode> = aiAnalysisPreference.mode
 
     fun setAiAnalysisMode(mode: AiAnalysisMode) {

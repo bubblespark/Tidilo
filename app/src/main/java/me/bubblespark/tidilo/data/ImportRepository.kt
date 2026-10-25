@@ -1126,7 +1126,7 @@ class ImportRepository internal constructor(
                 if (taskDao.getTaskById(target.id)?.status != "PROCESSING_AI") return@runInDbOrLock
                 val existing = bookmarkDao?.getBookmarkByUrl(target.url)
                 if (existing != null) {
-                    if (target.rssFeedId == null && existing.rssFeedId != null) bookmarkDao?.clearRssFeedId(existing.id)
+                    if (target.rssFeedId == null && existing.rssFeedId != null) bookmarkDao.clearRssFeedId(existing.id)
                 } else {
                     persistDirectBookmark(target)
                 }

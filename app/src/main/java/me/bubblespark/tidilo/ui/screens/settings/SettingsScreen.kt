@@ -64,6 +64,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.Role
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AiAnalysisMode
@@ -216,7 +217,7 @@ fun SettingsScreen(
         )
 
         Card(
-            modifier = Modifier.fillMaxWidth().clickable { showAiAnalysisDialog = true },
+            modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { showAiAnalysisDialog = true },
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
         ) {

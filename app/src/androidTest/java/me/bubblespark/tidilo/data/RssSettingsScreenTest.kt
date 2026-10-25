@@ -8,6 +8,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import kotlinx.coroutines.delay
@@ -48,6 +52,12 @@ class RssSettingsScreenTest {
                 return candidate
             }
             assertFalse(requireNotNull(radio("AICore")).isEnabled)
+            for (label in listOf("AICore", "Disable")) {
+                val bounds = android.graphics.Rect()
+                requireNotNull(radio(label)).getBoundsInScreen(bounds)
+                assertTrue("$label row must be at least 48dp high",
+                    bounds.height() >= kotlin.math.ceil(48f * context.resources.displayMetrics.density).toInt())
+            }
             assertTrue(requireNotNull(radio("Disable")).isEnabled)
             assertFalse(requireNotNull(radio("AICore")).performAction(AccessibilityNodeInfo.ACTION_CLICK))
             firstCheck.complete(false)
@@ -125,6 +135,19 @@ class RssSettingsScreenTest {
                     delay(300)
                 }
             }
+            var hasButtonRole = false
+            instrumentation.runOnMainSync {
+                fun hasRole(node: SemanticsNode): Boolean =
+                    (node.config.getOrNull(SemanticsProperties.Role) == androidx.compose.ui.semantics.Role.Button &&
+                        node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == "AI Analysis" } == true) ||
+                        node.children.any(::hasRole)
+                fun inspect(view: android.view.View) {
+                    if (view is ViewRootForTest && hasRole(view.semanticsOwner.rootSemanticsNode)) hasButtonRole = true
+                    if (view is android.view.ViewGroup) for (index in 0 until view.childCount) inspect(view.getChildAt(index))
+                }
+                inspect(activity.window.decorView)
+            }
+            assertTrue("AI Analysis setting must expose the Button semantic role", hasButtonRole)
             clickText("AI Analysis")
             clickText("Close")
             awaitAiSettingCard()

@@ -61,6 +61,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -145,6 +149,19 @@ fun SearchScreen(
 
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val headerHeight = statusBarTop + 144.dp
+
+    val activeQueryKey = searchQuery.trim()
+    var lastLoadedQueryKey by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(activeQueryKey) {
+        if (activeQueryKey.isNotBlank()) {
+            snapshotFlow { filteredBookmarks.loadState.refresh }
+                .filter { it is LoadState.NotLoading || it is LoadState.Error }
+                .drop(if (filteredBookmarks.loadState.refresh is LoadState.Loading) 0 else 1)
+                .first()
+            lastLoadedQueryKey = activeQueryKey
+        }
+    }
+    val isQueryChanging = activeQueryKey.isNotBlank() && activeQueryKey != lastLoadedQueryKey
 
     Box(
         modifier = modifier
@@ -275,7 +292,7 @@ fun SearchScreen(
                 Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
                     PagingFeedback(LoadState.Error(initializationFailure!!), viewModel::retryInitialization)
                 }
-            } else if (isBookmarkLoading(filteredBookmarks.loadState.refresh, filteredBookmarks.itemCount)) {
+            } else if (isBookmarkLoading(filteredBookmarks.loadState.refresh, filteredBookmarks.itemCount, isQueryChanging)) {
                 Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
                     androidx.compose.material3.CircularProgressIndicator()
                 }

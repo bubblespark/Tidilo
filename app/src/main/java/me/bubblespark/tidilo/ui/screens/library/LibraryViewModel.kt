@@ -40,6 +40,9 @@ import org.json.JSONArray
 import java.text.Collator
 import java.util.Locale
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -196,6 +199,22 @@ class LibraryViewModel : ViewModel() {
             initialValue = emptyList()
         )
 
+    private var currentLibraryScope: CoroutineScope? = null
+    private fun newLibraryGenerationScope(): CoroutineScope {
+        currentLibraryScope?.cancel()
+        val scope = CoroutineScope(viewModelScope.coroutineContext + Job(viewModelScope.coroutineContext[Job]))
+        currentLibraryScope = scope
+        return scope
+    }
+
+    private var currentSearchScope: CoroutineScope? = null
+    private fun newSearchGenerationScope(): CoroutineScope {
+        currentSearchScope?.cancel()
+        val scope = CoroutineScope(viewModelScope.coroutineContext + Job(viewModelScope.coroutineContext[Job]))
+        currentSearchScope = scope
+        return scope
+    }
+
     private fun createInitialLibraryGeneration(): PagingGeneration {
         val mode = _filterMode.value
         val domain = _selectedDomainFilter.value
@@ -216,7 +235,8 @@ class LibraryViewModel : ViewModel() {
         } else {
             flowOf(loadingPage())
         }
-        return PagingGeneration(key, flow.cachedIn(viewModelScope))
+        val scope = newLibraryGenerationScope()
+        return PagingGeneration(key, flow.cachedIn(scope))
     }
 
     /**
@@ -247,7 +267,8 @@ class LibraryViewModel : ViewModel() {
         } else {
             flowOf(loadingPage())
         }
-        PagingGeneration(key, flow.cachedIn(viewModelScope))
+        val scope = newLibraryGenerationScope()
+        PagingGeneration(key, flow.cachedIn(scope))
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -264,7 +285,8 @@ class LibraryViewModel : ViewModel() {
         } else {
             flowOf(loadingPage())
         }
-        return PagingGeneration(key, flow.cachedIn(viewModelScope))
+        val scope = newSearchGenerationScope()
+        return PagingGeneration(key, flow.cachedIn(scope))
     }
 
     /**
@@ -283,7 +305,8 @@ class LibraryViewModel : ViewModel() {
         } else {
             flowOf(loadingPage())
         }
-        PagingGeneration(key, flow.cachedIn(viewModelScope))
+        val scope = newSearchGenerationScope()
+        PagingGeneration(key, flow.cachedIn(scope))
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -430,6 +453,12 @@ class LibraryViewModel : ViewModel() {
     private fun loadingPage(): PagingData<BookmarkItem> = PagingData.empty(
         sourceLoadStates = LoadStates(LoadState.Loading, LoadState.NotLoading(false), LoadState.NotLoading(false))
     )
+
+    override fun onCleared() {
+        super.onCleared()
+        currentLibraryScope?.cancel()
+        currentSearchScope?.cancel()
+    }
 
     companion object {
         fun filterBookmarks(items: List<BookmarkItem>, rawQuery: String): List<BookmarkItem> {

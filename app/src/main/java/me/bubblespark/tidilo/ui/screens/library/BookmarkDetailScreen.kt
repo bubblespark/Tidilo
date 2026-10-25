@@ -6,7 +6,9 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +25,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -64,7 +69,11 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import me.bubblespark.tidilo.data.DomainIconManager
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.layout.ContentScale
 import me.bubblespark.tidilo.ui.components.DomainWatermark
+import me.bubblespark.tidilo.ui.components.calculateOgAspectRatio
+import me.bubblespark.tidilo.ui.components.rememberOgImage
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -245,11 +254,14 @@ fun BookmarkDetailScreen(
 
     val domain = remember(bookmark.url) { DomainIconManager.extractDomain(bookmark.url) }
 
+    val ogFilename = bookmark.ogImageFilename
+    val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
+    val ogBitmap = ogState.bitmap
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
                 .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
                 .pointerInput(Unit) {
                     detectTapGestures(onTap = {
@@ -263,6 +275,7 @@ fun BookmarkDetailScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .statusBarsPadding()
                 .padding(top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -343,22 +356,39 @@ fun BookmarkDetailScreen(
             }
         }
 
-        // Content container directly beneath HEADER (places DomainWatermark clipped to upper right)
+        // Content container directly beneath HEADER (places DomainWatermark or og:image banner)
         Box(
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Upper right domain watermark (directly below HEADER, fitted inside screen right edge)
-            DomainWatermark(
-                domain = domain,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = 20.dp) // Cancels Column's 20dp horizontal padding to align with right screen edge
-            )
+            // Upper right domain watermark (rendered only when og:image is unavailable and resolution completed)
+            if (ogState.shouldShowDomainWatermarkFallback) {
+                DomainWatermark(
+                    domain = domain,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 20.dp) // Cancels Column's 20dp horizontal padding to align with right screen edge
+                )
+            }
 
             Column(
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Spacer(modifier = Modifier.height(20.dp))
+                if (ogBitmap != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Image(
+                        bitmap = ogBitmap,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                            .aspectRatio(calculateOgAspectRatio(ogBitmap.width, ogBitmap.height))
+                            .clip(RoundedCornerShape(16.dp))
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                } else {
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
 
                 // 2. Item Title
                 Text(
@@ -787,6 +817,29 @@ fun BookmarkDetailScreen(
         // Bottom spacer to prevent overlap with FAB menu
         Spacer(modifier = Modifier.height(96.dp))
     } // End of main scrolling Column
+
+    // Status bar protection gradient scrim for Edge-to-Edge immersion
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val scrimBg = MaterialTheme.colorScheme.background
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(statusBarTop + 28.dp)
+            .align(Alignment.TopCenter)
+            .drawWithCache {
+                val brush = Brush.verticalGradient(
+                    colors = listOf(
+                        scrimBg.copy(alpha = 0.85f),
+                        scrimBg.copy(alpha = 0.50f),
+                        scrimBg.copy(alpha = 0.15f),
+                        Color.Transparent
+                    )
+                )
+                onDrawBehind {
+                    drawRect(brush = brush)
+                }
+            }
+    )
 
     // Scrim (prevents clicks behind expanded menu and collapses on tap)
     if (isFabMenuExpanded) {

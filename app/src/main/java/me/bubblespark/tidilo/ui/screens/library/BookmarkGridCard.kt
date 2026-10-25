@@ -48,8 +48,7 @@ import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.ui.util.TimeFormatter
 import me.bubblespark.tidilo.ui.components.rememberDomainIcon
-
-private data class OgPreviewState(val bitmap: ImageBitmap?, val resolved: Boolean)
+import me.bubblespark.tidilo.ui.components.rememberOgImage
 
 /**
  * Modern 2-column Grid bookmark card with 1.91:1 og:image header,
@@ -77,32 +76,14 @@ fun BookmarkGridCard(
 
     val ogFilename = bookmark.ogImageFilename
 
-    val cacheGeneration by OgImageManager.cacheGenerationState.collectAsStateWithLifecycle()
-
     val iconRefreshSignal by remember(domain) {
         DomainIconManager.observeIconUpdates(domain)
     }.collectAsStateWithLifecycle(initialValue = 0L)
 
     // Track completion explicitly: a null bitmap alone cannot distinguish pending from failed.
-    val ogState by key(context, bookmark.url, domain, ogFilename, cacheGeneration) {
-        val cached = if (domain != null && ogFilename != null) OgImageManager.getCachedOgImageBitmap(domain, ogFilename) else null
-        produceState(initialValue = OgPreviewState(cached, cached != null || ogFilename == null)) {
-            if (domain != null && ogFilename != null) {
-                coroutineScope {
-                    launch {
-                        OgImageManager.observeExactImageUpdates(ogFilename).collect {
-                            OgImageManager.getCachedOgImageBitmap(domain, ogFilename)?.let { value = OgPreviewState(it, true) }
-                        }
-                    }
-                    if (cached == null) {
-                        value = OgPreviewState(OgImageManager.loadOrFetchOgImage(context, bookmark.url, domain, bookmark.ogImageUrl), true)
-                    }
-                }
-            }
-        }
-    }
+    val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
     val ogBitmap = ogState.bitmap
-    val domainIconBitmap by rememberDomainIcon(domain, bookmark.url, ogState.resolved && ogBitmap == null)
+    val domainIconBitmap by rememberDomainIcon(domain, bookmark.url, ogState.shouldShowFallback)
 
     val primaryColor = MaterialTheme.colorScheme.primary
     val domainAccentColor = remember(domain, primaryColor, iconRefreshSignal) {

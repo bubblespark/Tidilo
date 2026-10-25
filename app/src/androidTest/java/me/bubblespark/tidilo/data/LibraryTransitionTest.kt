@@ -2,12 +2,22 @@ package me.bubblespark.tidilo.data
 
 import android.content.Intent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.View
+import android.view.ViewGroup
+import android.view.ViewTreeObserver
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Recomposer
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.platform.AndroidUiDispatcher
+import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.test.platform.app.InstrumentationRegistry
@@ -33,6 +43,112 @@ import me.bubblespark.tidilo.config.AppConfig
 class LibraryTransitionTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
+
+    private suspend fun swipeBack(activity: ComponentActivity) {
+        val width = activity.resources.displayMetrics.widthPixels
+        val y = activity.resources.displayMetrics.heightPixels * 0.55f
+        val start = SystemClock.uptimeMillis()
+        fun send(action: Int, x: Float) {
+            val event = MotionEvent.obtain(start, SystemClock.uptimeMillis(), action, x, y, 0)
+            event.source = InputDevice.SOURCE_TOUCHSCREEN
+            assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true))
+            event.recycle()
+        }
+        send(MotionEvent.ACTION_DOWN, 1f)
+        for (step in 1..20) {
+            delay(16)
+            send(MotionEvent.ACTION_MOVE, width * 0.7f * step / 20)
+        }
+        send(MotionEvent.ACTION_UP, width * 0.7f)
+    }
+
+    @Test fun rssHeaderAndEdgeSwipeBackNeverRenderAnEmptyResultInAnyFrame(): Unit = runBlocking {
+        val db = AppDatabase.getInstance(context)
+        val id = UUID.randomUUID().toString()
+        val feed = RssFeedEntity(id, "https://rss120-back.example/$id", "000 RSS back regression", enabled = false)
+        val articles = (1..20).map { index -> BookmarkEntity("$id-$index", "RSS back article $index",
+            "https://rss120-back.example/$id/$index", "Summary", createdAt = index.toLong(), updatedAt = index.toLong(), rssFeedId = id) }
+        db.rssDao().putFeed(feed)
+        db.bookmarkDao().insertAll(articles)
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        lateinit var vm: LibraryViewModel
+        var oldMode = LibraryFilterMode.NEWEST_FIRST
+        var oldView = LibraryViewMode.LIST
+        var listener: ViewTreeObserver.OnDrawListener? = null
+        try {
+            instrumentation.runOnMainSync {
+                vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
+                oldMode = vm.filterMode.value
+                oldView = vm.viewMode.value
+                vm.setFilterMode(LibraryFilterMode.RSS)
+            }
+            for ((mode, gesture) in LibraryViewMode.entries.flatMap { listOf(it to false, it to true) }) {
+                instrumentation.runOnMainSync { vm.setViewMode(mode) }
+                awaitText(feed.title)
+                instrumentation.runOnMainSync { vm.selectRssFeedFilter(feed) }
+                awaitText("RSS back article 20")
+                delay(350)
+                val emptyFrames = mutableListOf<List<String>>()
+                var frames = 0
+                var observedArticle = false
+                fun texts(node: SemanticsNode): List<String> =
+                    node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } + node.children.flatMap(::texts)
+                fun roots(view: View): List<ViewRootForTest> = when (view) {
+                    is ViewRootForTest -> listOf(view)
+                    is ViewGroup -> (0 until view.childCount).flatMap { roots(view.getChildAt(it)) }
+                    else -> emptyList()
+                }
+                listener = ViewTreeObserver.OnDrawListener {
+                    val rendered = roots(activity.window.decorView).flatMap { texts(it.semanticsOwner.unmergedRootSemanticsNode) }
+                    frames++
+                    observedArticle = observedArticle || rendered.any { it == "RSS back article 20" }
+                    if (rendered.any { it == context.getString(me.bubblespark.tidilo.R.string.library_empty_title) }) emptyFrames += rendered
+                }
+                instrumentation.runOnMainSync { activity.window.decorView.viewTreeObserver.addOnDrawListener(listener) }
+                if (gesture) swipeBack(activity) else {
+                    val back = withTimeout(5000) {
+                        var found: AccessibilityNodeInfo? = null
+                        fun visit(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+                            if (node.contentDescription?.toString() == "Back to feeds") return node
+                            for (index in 0 until node.childCount) node.getChild(index)?.let { visit(it)?.let { match -> return match } }
+                            return null
+                        }
+                        while (found == null) {
+                            instrumentation.uiAutomation.clearCache()
+                            found = instrumentation.uiAutomation.rootInActiveWindow?.let(::visit)
+                            if (found == null) delay(20)
+                        }
+                        found
+                    }
+                    var button = back
+                    while (button != null && !button.isClickable) button = button.parent
+                    assertTrue("Header back must be clickable", button?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true)
+                }
+                val update = launch {
+                    delay(32)
+                    db.bookmarkDao().insertAll(listOf(articles.last().copy(description = "Updated during RSS back")))
+                }
+                delay(650)
+                update.join()
+                instrumentation.runOnMainSync { activity.window.decorView.viewTreeObserver.removeOnDrawListener(listener) }
+                listener = null
+                assertTrue("Test must sample transition frames", frames >= 2)
+                assertTrue("Frame observer must read the actual bookmark content", observedArticle)
+                assertTrue("$mode gesture=$gesture RSS back rendered an empty result in ${emptyFrames.size} frames: ${emptyFrames.firstOrNull()}", emptyFrames.isEmpty())
+                assertNull("Back must clear the selected feed", vm.selectedRssFeedFilter.value)
+                awaitText(feed.title)
+            }
+        } finally {
+            instrumentation.runOnMainSync {
+                listener?.let { activity.window.decorView.viewTreeObserver.removeOnDrawListener(it) }
+                runCatching { vm.setFilterMode(oldMode); vm.setViewMode(oldView) }
+                activity.finish()
+            }
+            articles.forEach { db.bookmarkDao().deleteById(it.id) }
+            db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(id))
+        }
+    }
 
     @Test fun selectedPagerSurvivesLibraryCompositionDisposal() {
         val store = ViewModelStore()

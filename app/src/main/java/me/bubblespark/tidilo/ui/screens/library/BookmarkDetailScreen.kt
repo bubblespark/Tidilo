@@ -8,7 +8,7 @@ import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -375,16 +375,21 @@ fun BookmarkDetailScreen(
             ) {
                 if (ogBitmap != null) {
                     Spacer(modifier = Modifier.height(12.dp))
-                    Image(
-                        bitmap = ogBitmap,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 200.dp)
-                            .aspectRatio(calculateOgAspectRatio(ogBitmap.width, ogBitmap.height))
-                            .clip(RoundedCornerShape(16.dp))
-                    )
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                        val bannerHeight = minOf(
+                            maxWidth / calculateOgAspectRatio(ogBitmap.width, ogBitmap.height),
+                            200.dp
+                        )
+                        Image(
+                            bitmap = ogBitmap,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(bannerHeight)
+                                .clip(RoundedCornerShape(16.dp))
+                        )
+                    }
                     Spacer(modifier = Modifier.height(16.dp))
                 } else {
                     Spacer(modifier = Modifier.height(20.dp))

@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.data
 import android.content.Intent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.ViewModelProvider
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.test.platform.app.InstrumentationRegistry
@@ -104,7 +105,7 @@ class ImportNotificationMenuTest {
 
         try {
             instrumentation.runOnMainSync {
-                val viewModel = ImportViewModel()
+                val viewModel = ViewModelProvider(activity)[ImportViewModel::class.java]
                 activity.setContent {
                     MaterialTheme {
                         ImportScreen(viewModel = viewModel)

@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.ui.screens.library
 
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
+import androidx.paging.PagingData
 import androidx.paging.LoadState
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -70,6 +71,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -103,6 +107,7 @@ import me.bubblespark.tidilo.ui.components.FrostedHeaderContainer
 import me.bubblespark.tidilo.ui.components.rememberFeedIcon
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -122,8 +127,6 @@ fun LibraryScreen(
     modifier: Modifier = Modifier
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
-    val libraryGeneration by viewModel.libraryGeneration.collectAsStateWithLifecycle()
-    val bookmarks = libraryGeneration.flow.collectAsLazyPagingItems()
     val filterMode by viewModel.filterMode.collectAsStateWithLifecycle()
     val selectedDomainFilter by viewModel.selectedDomainFilter.collectAsStateWithLifecycle()
     val selectedRssFeedFilter by viewModel.selectedRssFeedFilter.collectAsStateWithLifecycle()
@@ -132,50 +135,18 @@ fun LibraryScreen(
     val selectedFeed = rssFeedGroups.firstOrNull { it.feed.id == selectedRssFeedFilter?.id }?.feed ?: selectedRssFeedFilter
     val selectedFeedIcon = if (selectedFeed != null) rememberFeedIcon(selectedFeed).value else null
     val domainGroups by viewModel.domainGroups.collectAsStateWithLifecycle()
-    val libraryCount by viewModel.libraryCount.collectAsStateWithLifecycle()
     val initializationFailure by viewModel.initializationFailure.collectAsStateWithLifecycle()
     val initialized by viewModel.isInitialized.collectAsStateWithLifecycle()
     val domainGroupsLoading by viewModel.domainGroupsLoading.collectAsStateWithLifecycle()
-    val isDomainGrid = filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter == null
-    val isRssGrid = filterMode == LibraryFilterMode.RSS && selectedFeed == null
-    val isCollectionGrid = isDomainGrid || isRssGrid
     val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
-    val activeFilterKey = remember(filterMode, selectedDomainFilter, selectedFeed?.id, isNsfwVisible) {
-        buildLibraryFilterKey(filterMode, selectedDomainFilter, selectedFeed?.id, isNsfwVisible)
-    }
-    val isFilterChanging = activeFilterKey != libraryGeneration.key
-    val refreshState = bookmarkLoadState(bookmarks.loadState.refresh, isCollectionGrid)
-    val isLoading = !initialized || isBookmarkLoading(refreshState, bookmarks.itemCount, isFilterChanging) ||
-        (isDomainGrid && domainGroupsLoading) || (isRssGrid && rssFeedGroupsLoading)
+    val isLoading = !initialized ||
+        (filterMode == LibraryFilterMode.DOMAIN && domainGroupsLoading) ||
+        (filterMode == LibraryFilterMode.RSS && rssFeedGroupsLoading)
     val context = LocalContext.current
     val localConfig = LocalConfiguration.current
     val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
     var isViewModeMenuExpanded by remember { mutableStateOf(false) }
-    val iconRefreshSignal by remember(selectedDomainFilter) {
-        DomainIconManager.observeIconUpdates(selectedDomainFilter)
-    }.collectAsStateWithLifecycle(initialValue = 0L)
-
-    val selectedDomainColor by produceState<Color?>(
-        initialValue = selectedDomainFilter?.let {
-            DomainIconManager.getCachedDominantColor(it) ?: DomainIconManager.generateDomainAccentColor(it)
-        },
-        key1 = selectedDomainFilter,
-        key2 = iconRefreshSignal
-    ) {
-        val domain = selectedDomainFilter
-        if (domain != null) {
-            val cached = DomainIconManager.getCachedDominantColor(domain)
-            if (cached != null) {
-                value = cached
-            } else {
-                value = withContext(Dispatchers.IO) {
-                    DomainIconManager.getDominantColor(context, domain)
-                }
-            }
-        } else {
-            value = null
-        }
-    }
+    val selectedDomainColor = rememberDomainAccentColor(selectedDomainFilter)
 
     val domainGridState = rememberLazyGridState()
     val newestFirstListState = rememberLazyListState()
@@ -224,6 +195,24 @@ fun LibraryScreen(
         }
     }
 
+    val observedCount = key(displayState, isNsfwVisible) {
+        val initialCount = when (displayState) {
+            LibraryDisplayState.DomainGrid, LibraryDisplayState.RssFeedGrid -> 0
+            is LibraryDisplayState.DomainDrillDown -> domainGroups.firstOrNull { it.domain == selectedDomainFilter }?.count
+            is LibraryDisplayState.RssFeedDrillDown -> rssFeedGroups.firstOrNull { it.feed.id == selectedFeed?.id }?.count
+            LibraryDisplayState.NewestFirst -> null
+        }
+        val count by remember(displayState) {
+            if (displayState == LibraryDisplayState.DomainGrid || displayState == LibraryDisplayState.RssFeedGrid) flowOf(0)
+            else viewModel.libraryCount(
+                filterMode, selectedDomainFilter.takeIf { filterMode == LibraryFilterMode.DOMAIN },
+                selectedFeed?.id, isNsfwVisible
+            )
+        }.collectAsStateWithLifecycle(initialValue = initialCount)
+        count
+    }
+    val libraryCount = observedCount ?: 0
+
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val headerHeight = statusBarTop + 80.dp
 
@@ -252,125 +241,226 @@ fun LibraryScreen(
             Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
                 PagingFeedback(LoadState.Error(initializationFailure!!), viewModel::retryInitialization)
             }
-        } else if (isLoading && !(filterMode == LibraryFilterMode.RSS && selectedFeed != null)) {
-            SkeletonBookmarkList(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = headerHeight, start = 20.dp, end = 20.dp)
-            )
-        } else if (refreshState is LoadState.Error) {
-            Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
-                PagingFeedback(refreshState, bookmarks::retry)
-            }
         } else {
-            AnimatedContent(
-                targetState = displayState,
-                transitionSpec = {
-                    // Filter mode change, Domain Grid <-> DrillDown, or refresh: smooth Crossfade
-                    fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
-                            fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
-                },
-                label = "library_display_state",
-                modifier = Modifier.fillMaxSize()
-            ) { state ->
-                when (state) {
-                    is LibraryDisplayState.DomainGrid, is LibraryDisplayState.RssFeedGrid -> {
-                        val rss = state is LibraryDisplayState.RssFeedGrid
-                        if (if (rss) rssFeedGroups.isEmpty() else domainGroups.isEmpty()) {
+            key(isNsfwVisible) {
+                AnimatedContent(
+                    targetState = displayState,
+                    transitionSpec = {
+                        // Filter mode change, Domain Grid <-> DrillDown, or refresh: smooth Crossfade
+                        fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
+                                fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
+                    },
+                    label = "library_display_state",
+                    modifier = Modifier.fillMaxSize()
+                ) { state ->
+                    // Keep the selected window across details and release outgoing windows after exit.
+                    val collectionGrid = state == LibraryDisplayState.DomainGrid || state == LibraryDisplayState.RssFeedGrid
+                    val session = remember(state) {
+                        if (collectionGrid) null
+                        else viewModel.libraryPages(
+                            when (state) {
+                                is LibraryDisplayState.RssFeedDrillDown -> LibraryFilterMode.RSS
+                                LibraryDisplayState.NewestFirst -> LibraryFilterMode.NEWEST_FIRST
+                                else -> LibraryFilterMode.DOMAIN
+                            },
+                            (state as? LibraryDisplayState.DomainDrillDown)?.domain,
+                            (state as? LibraryDisplayState.RssFeedDrillDown)?.feed?.id,
+                            isNsfwVisible
+                        )
+                    }
+                    DisposableEffect(session) {
+                        session?.let { it.users++ }
+                        onDispose { session?.let(viewModel::releaseLibraryPages) }
+                    }
+                    SideEffect {
+                        if (state == displayState) session?.let(viewModel::activateLibraryPages)
+                    }
+                    val pages = session?.flow ?: remember { flowOf(PagingData.empty<BookmarkItem>()) }
+                    val bookmarks = pages.collectAsLazyPagingItems()
+                    val refreshState = bookmarkLoadState(bookmarks.loadState.refresh, collectionGrid)
+                    val loading = !initialized || isBookmarkLoading(refreshState, bookmarks.itemCount) ||
+                        (state == LibraryDisplayState.DomainGrid && domainGroupsLoading) ||
+                        (state == LibraryDisplayState.RssFeedGrid && rssFeedGroupsLoading)
+                    if (loading) {
+                        SkeletonBookmarkList(Modifier.fillMaxSize().padding(top = headerHeight, start = 20.dp, end = 20.dp))
+                    } else if (refreshState is LoadState.Error) {
+                        Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
+                            PagingFeedback(refreshState, bookmarks::retry)
+                        }
+                    } else when (state) {
+                        is LibraryDisplayState.DomainGrid, is LibraryDisplayState.RssFeedGrid -> {
+                            val rss = state is LibraryDisplayState.RssFeedGrid
+                            if (if (rss) rssFeedGroups.isEmpty() else domainGroups.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(top = headerHeight, start = 20.dp, end = 20.dp)
+                                ) {
+                                    EmptyLibraryMessage()
+                                }
+                            } else {
+                                LazyVerticalGrid(
+                                    state = if (rss) rssFeedGridState else domainGridState,
+                                    columns = GridCells.Fixed(2),
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(
+                                        top = headerHeight,
+                                        bottom = 140.dp,
+                                        start = 20.dp,
+                                        end = 20.dp
+                                    ),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    if (rss) {
+                                        items(items = rssFeedGroups, key = { it.feed.id }, contentType = { "rss_feed_card" }) { group ->
+                                            RssFeedCard(group, onClick = { viewModel.selectRssFeedFilter(group.feed) })
+                                        }
+                                    } else items(
+                                        items = domainGroups,
+                                        key = { it.domain },
+                                        contentType = { "domain_card" }
+                                    ) { group ->
+                                        DomainCard(
+                                            item = group,
+                                            onClick = {
+                                                viewModel.selectDomainFilter(group.domain)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        is LibraryDisplayState.DomainDrillDown, is LibraryDisplayState.RssFeedDrillDown -> {
+                            val feed = (state as? LibraryDisplayState.RssFeedDrillDown)?.feed?.let { snapshot ->
+                                rssFeedGroups.firstOrNull { it.feed.id == snapshot.id }?.feed ?: snapshot
+                            }
+                            val feedIcon = if (feed != null) rememberFeedIcon(feed).value else null
+                            val currentDomain = (state as? LibraryDisplayState.DomainDrillDown)?.domain
+                                ?: feed?.let(DomainIconManager::feedPublisherDomain).orEmpty()
+                            val domainColor = feedIcon?.color ?: rememberDomainAccentColor(currentDomain)
+                                ?: DomainIconManager.getCachedDominantColor(currentDomain)
+                                ?: DomainIconManager.generateDomainAccentColor(currentDomain)
+
+                            val domainBookmarks = bookmarks
+
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(top = headerHeight, start = 20.dp, end = 20.dp)
-                            ) {
-                                EmptyLibraryMessage()
-                            }
-                        } else {
-                            LazyVerticalGrid(
-                                state = if (rss) rssFeedGridState else domainGridState,
-                                columns = GridCells.Fixed(2),
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(
-                                    top = headerHeight,
-                                    bottom = 140.dp,
-                                    start = 20.dp,
-                                    end = 20.dp
-                                ),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                if (rss) {
-                                    items(items = rssFeedGroups, key = { it.feed.id }, contentType = { "rss_feed_card" }) { group ->
-                                        RssFeedCard(group, onClick = { viewModel.selectRssFeedFilter(group.feed) })
-                                    }
-                                } else items(
-                                    items = domainGroups,
-                                    key = { it.domain },
-                                    contentType = { "domain_card" }
-                                ) { group ->
-                                    DomainCard(
-                                        item = group,
-                                        onClick = {
-                                            viewModel.selectDomainFilter(group.domain)
+                                    .drawWithCache {
+                                        // Radiant ambient beam from top-right corner spreading across ~2/3 of the screen towards bottom-left
+                                        val ambientBeam = Brush.linearGradient(
+                                            colorStops = arrayOf(
+                                                0.00f to domainColor.copy(alpha = 0.32f),
+                                                0.22f to domainColor.copy(alpha = 0.22f),
+                                                0.45f to domainColor.copy(alpha = 0.13f),
+                                                0.68f to domainColor.copy(alpha = 0.05f),
+                                                0.84f to domainColor.copy(alpha = 0.015f),
+                                                1.00f to Color.Transparent
+                                            ),
+                                            start = Offset(size.width * 1.05f, -size.height * 0.02f),
+                                            end = Offset(-size.width * 0.15f, size.height * 0.90f)
+                                        )
+
+                                        // Deep spherical glow in top-right shoulder spreading across ~2/3 of screen
+                                        val cornerGlow = Brush.radialGradient(
+                                            colorStops = arrayOf(
+                                                0.00f to domainColor.copy(alpha = 0.22f),
+                                                0.30f to domainColor.copy(alpha = 0.13f),
+                                                0.60f to domainColor.copy(alpha = 0.05f),
+                                                0.82f to domainColor.copy(alpha = 0.012f),
+                                                1.00f to Color.Transparent
+                                            ),
+                                            center = Offset(size.width, 0f),
+                                            radius = size.height * 0.72f
+                                        )
+                                        onDrawBehind {
+                                            drawRect(brush = ambientBeam)
+                                            drawRect(brush = cornerGlow)
                                         }
-                                    )
+                                    }
+                            ) {
+                                if (domainBookmarks.itemCount == 0) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(top = headerHeight, start = 20.dp, end = 20.dp)
+                                    ) {
+                                        EmptyLibraryMessage()
+                                    }
+                                } else {
+                                    AnimatedContent(
+                                        targetState = viewMode,
+                                        transitionSpec = {
+                                            fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
+                                                    fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
+                                        },
+                                        label = "domain_view_mode_transition"
+                                    ) { mode ->
+                                        when (mode) {
+                                            LibraryViewMode.LIST -> {
+                                                LazyColumn(
+                                                    state = if (feed != null) rssDetailListState else domainDetailListState,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentPadding = PaddingValues(
+                                                        top = headerHeight,
+                                                        bottom = 140.dp,
+                                                        start = 20.dp,
+                                                        end = 20.dp
+                                                    ),
+                                                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                                                ) {
+                                                    items(
+                                                    count = domainBookmarks.itemCount,
+                                                    key = domainBookmarks.itemKey { it.id },
+                                                    contentType = { "bookmark_card" }
+                                                ) { index ->
+                                                    val item = domainBookmarks[index] ?: return@items
+                                                        BookmarkItemCard(
+                                                            bookmark = item,
+                                                            wordKeywords = emptyList(),
+                                                            tagKeywords = emptyList(),
+                                                            currentLanguage = currentLanguage,
+                                                            onClick = { onNavigateToDetail(item.id) }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            LibraryViewMode.GRID -> {
+                                                LazyVerticalGrid(
+                                                    state = if (feed != null) rssDetailGridState else domainDetailGridState,
+                                                    columns = GridCells.Fixed(2),
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentPadding = PaddingValues(
+                                                        top = headerHeight,
+                                                        bottom = 140.dp,
+                                                        start = 20.dp,
+                                                        end = 20.dp
+                                                    ),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    items(
+                                                    count = domainBookmarks.itemCount,
+                                                    key = domainBookmarks.itemKey { it.id },
+                                                    contentType = { "bookmark_grid_card" }
+                                                ) { index ->
+                                                    val item = domainBookmarks[index] ?: return@items
+                                                        BookmarkGridCard(
+                                                            bookmark = item,
+                                                            onClick = { onNavigateToDetail(item.id) },
+                                                            onLongClick = { peekBookmark = item }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
-                    is LibraryDisplayState.DomainDrillDown, is LibraryDisplayState.RssFeedDrillDown -> {
-                        val feed = (state as? LibraryDisplayState.RssFeedDrillDown)?.feed?.let { snapshot ->
-                            rssFeedGroups.firstOrNull { it.feed.id == snapshot.id }?.feed ?: snapshot
-                        }
-                        val feedIcon = if (feed != null) rememberFeedIcon(feed).value else null
-                        val currentDomain = (state as? LibraryDisplayState.DomainDrillDown)?.domain
-                            ?: feed?.let(DomainIconManager::feedPublisherDomain).orEmpty()
-                        val domainColor = feedIcon?.color ?: selectedDomainColor
-                            ?: DomainIconManager.getCachedDominantColor(currentDomain)
-                            ?: DomainIconManager.generateDomainAccentColor(currentDomain)
-
-                        val domainBookmarks = bookmarks
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .drawWithCache {
-                                    // Radiant ambient beam from top-right corner spreading across ~2/3 of the screen towards bottom-left
-                                    val ambientBeam = Brush.linearGradient(
-                                        colorStops = arrayOf(
-                                            0.00f to domainColor.copy(alpha = 0.32f),
-                                            0.22f to domainColor.copy(alpha = 0.22f),
-                                            0.45f to domainColor.copy(alpha = 0.13f),
-                                            0.68f to domainColor.copy(alpha = 0.05f),
-                                            0.84f to domainColor.copy(alpha = 0.015f),
-                                            1.00f to Color.Transparent
-                                        ),
-                                        start = Offset(size.width * 1.05f, -size.height * 0.02f),
-                                        end = Offset(-size.width * 0.15f, size.height * 0.90f)
-                                    )
-
-                                    // Deep spherical glow in top-right shoulder spreading across ~2/3 of screen
-                                    val cornerGlow = Brush.radialGradient(
-                                        colorStops = arrayOf(
-                                            0.00f to domainColor.copy(alpha = 0.22f),
-                                            0.30f to domainColor.copy(alpha = 0.13f),
-                                            0.60f to domainColor.copy(alpha = 0.05f),
-                                            0.82f to domainColor.copy(alpha = 0.012f),
-                                            1.00f to Color.Transparent
-                                        ),
-                                        center = Offset(size.width, 0f),
-                                        radius = size.height * 0.72f
-                                    )
-                                    onDrawBehind {
-                                        drawRect(brush = ambientBeam)
-                                        drawRect(brush = cornerGlow)
-                                    }
-                                }
-                        ) {
-                            if (feed != null && isLoading) {
-                                SkeletonBookmarkList(
-                                    modifier = Modifier.fillMaxSize().padding(top = headerHeight, start = 20.dp, end = 20.dp)
-                                )
-                            } else if (domainBookmarks.itemCount == 0) {
+                        is LibraryDisplayState.NewestFirst -> {
+                            if (bookmarks.itemCount == 0) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -385,12 +475,12 @@ fun LibraryScreen(
                                         fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
                                                 fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
                                     },
-                                    label = "domain_view_mode_transition"
+                                    label = "newest_first_view_mode_transition"
                                 ) { mode ->
                                     when (mode) {
                                         LibraryViewMode.LIST -> {
                                             LazyColumn(
-                                                state = if (feed != null) rssDetailListState else domainDetailListState,
+                                                state = newestFirstListState,
                                                 modifier = Modifier.fillMaxSize(),
                                                 contentPadding = PaddingValues(
                                                     top = headerHeight,
@@ -401,11 +491,11 @@ fun LibraryScreen(
                                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                                             ) {
                                                 items(
-                                                count = domainBookmarks.itemCount,
-                                                key = domainBookmarks.itemKey { it.id },
-                                                contentType = { "bookmark_card" }
-                                            ) { index ->
-                                                val item = domainBookmarks[index] ?: return@items
+                                                    count = bookmarks.itemCount,
+                                                    key = bookmarks.itemKey { it.id },
+                                                    contentType = { "bookmark_card" }
+                                                ) { index ->
+                                                    val item = bookmarks[index] ?: return@items
                                                     BookmarkItemCard(
                                                         bookmark = item,
                                                         wordKeywords = emptyList(),
@@ -418,7 +508,7 @@ fun LibraryScreen(
                                         }
                                         LibraryViewMode.GRID -> {
                                             LazyVerticalGrid(
-                                                state = if (feed != null) rssDetailGridState else domainDetailGridState,
+                                                state = newestFirstGridState,
                                                 columns = GridCells.Fixed(2),
                                                 modifier = Modifier.fillMaxSize(),
                                                 contentPadding = PaddingValues(
@@ -431,11 +521,11 @@ fun LibraryScreen(
                                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
                                                 items(
-                                                count = domainBookmarks.itemCount,
-                                                key = domainBookmarks.itemKey { it.id },
-                                                contentType = { "bookmark_grid_card" }
-                                            ) { index ->
-                                                val item = domainBookmarks[index] ?: return@items
+                                                    count = bookmarks.itemCount,
+                                                    key = bookmarks.itemKey { it.id },
+                                                    contentType = { "bookmark_grid_card" }
+                                                ) { index ->
+                                                    val item = bookmarks[index] ?: return@items
                                                     BookmarkGridCard(
                                                         bookmark = item,
                                                         onClick = { onNavigateToDetail(item.id) },
@@ -449,92 +539,15 @@ fun LibraryScreen(
                             }
                         }
                     }
-                    is LibraryDisplayState.NewestFirst -> {
-                        if (bookmarks.itemCount == 0) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(top = headerHeight, start = 20.dp, end = 20.dp)
-                            ) {
-                                EmptyLibraryMessage()
-                            }
-                        } else {
-                            AnimatedContent(
-                                targetState = viewMode,
-                                transitionSpec = {
-                                    fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
-                                            fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
-                                },
-                                label = "newest_first_view_mode_transition"
-                            ) { mode ->
-                                when (mode) {
-                                    LibraryViewMode.LIST -> {
-                                        LazyColumn(
-                                            state = newestFirstListState,
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentPadding = PaddingValues(
-                                                top = headerHeight,
-                                                bottom = 140.dp,
-                                                start = 20.dp,
-                                                end = 20.dp
-                                            ),
-                                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                                        ) {
-                                            items(
-                                                count = bookmarks.itemCount,
-                                                key = bookmarks.itemKey { it.id },
-                                                contentType = { "bookmark_card" }
-                                            ) { index ->
-                                                val item = bookmarks[index] ?: return@items
-                                                BookmarkItemCard(
-                                                    bookmark = item,
-                                                    wordKeywords = emptyList(),
-                                                    tagKeywords = emptyList(),
-                                                    currentLanguage = currentLanguage,
-                                                    onClick = { onNavigateToDetail(item.id) }
-                                                )
-                                            }
-                                        }
-                                    }
-                                    LibraryViewMode.GRID -> {
-                                        LazyVerticalGrid(
-                                            state = newestFirstGridState,
-                                            columns = GridCells.Fixed(2),
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentPadding = PaddingValues(
-                                                top = headerHeight,
-                                                bottom = 140.dp,
-                                                start = 20.dp,
-                                                end = 20.dp
-                                            ),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            items(
-                                                count = bookmarks.itemCount,
-                                                key = bookmarks.itemKey { it.id },
-                                                contentType = { "bookmark_grid_card" }
-                                            ) { index ->
-                                                val item = bookmarks[index] ?: return@items
-                                                BookmarkGridCard(
-                                                    bookmark = item,
-                                                    onClick = { onNavigateToDetail(item.id) },
-                                                    onLongClick = { peekBookmark = item }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                    if (!collectionGrid) {
+                        boundaryFeedback(bookmarks.loadState.prepend, bookmarks.loadState.append)?.let { feedback ->
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                                PagingFeedback(feedback, bookmarks::retry, Modifier.padding(bottom = 110.dp))
                             }
                         }
                     }
                 }
             }
-        }
-
-        boundaryFeedback(bookmarkLoadState(bookmarks.loadState.prepend, isCollectionGrid), bookmarkLoadState(bookmarks.loadState.append, isCollectionGrid))?.let { state ->
-            PagingFeedback(state, bookmarks::retry,
-                Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp))
         }
 
         // Expressive Header (slides out/in from top screen edge linked with scrolling, hidden during peek)
@@ -584,7 +597,7 @@ fun LibraryScreen(
                                 else -> defaultTitle
                             }
                             val headerSubtitle = when {
-                                isLoading ->
+                                isLoading || observedCount == null ->
                                     stringResource(R.string.library_subtitle_loading)
                                 filterMode == LibraryFilterMode.RSS && selectedFeed != null ->
                                     pluralStringResource(R.plurals.rss_subtitle_bookmarks, libraryCount, libraryCount)
@@ -614,23 +627,21 @@ fun LibraryScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
+                            val subtitlePresentation = LibrarySubtitle(
+                                headerSubtitle,
+                                selectedFeedIcon?.color ?: selectedDomainColor ?: MaterialTheme.colorScheme.primary
+                            )
                             AnimatedContent(
-                                targetState = headerSubtitle,
+                                targetState = subtitlePresentation,
                                 transitionSpec = {
                                     fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
                                 },
                                 label = "header_subtitle"
                             ) { subtitle ->
                                 Text(
-                                    text = subtitle,
+                                    text = subtitle.text,
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = if (filterMode == LibraryFilterMode.RSS && selectedFeedIcon != null) {
-                                        selectedFeedIcon.color
-                                    } else if (selectedDomainFilter != null && selectedDomainColor != null) {
-                                        selectedDomainColor!!
-                                    } else {
-                                        MaterialTheme.colorScheme.primary
-                                    }
+                                    color = subtitle.color
                                 )
                             }
                         }
@@ -870,4 +881,24 @@ private fun LibraryHeaderAnimatedVisibility(
     ) {
         content()
     }
+}
+
+/** Text and accent must remain paired while an outgoing subtitle fades away. */
+internal data class LibrarySubtitle(val text: String, val color: Color)
+
+@Composable
+private fun rememberDomainAccentColor(domain: String?): Color? = key(domain) {
+    val context = LocalContext.current
+    val updates by remember(domain) { DomainIconManager.observeIconUpdates(domain) }
+        .collectAsStateWithLifecycle(initialValue = 0L)
+    val color by produceState(
+        initialValue = domain?.let {
+            DomainIconManager.getCachedDominantColor(it) ?: DomainIconManager.generateDomainAccentColor(it)
+        }, key1 = updates
+    ) {
+        if (domain != null) value = withContext(Dispatchers.IO) {
+            DomainIconManager.getDominantColor(context, domain)
+        }
+    }
+    color
 }

@@ -153,9 +153,8 @@ fun SearchScreen(
     val activeQueryKey = searchQuery.trim()
     var lastLoadedQueryKey by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(activeQueryKey) {
-        if (activeQueryKey.isBlank()) {
-            lastLoadedQueryKey = null
-        } else {
+        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
+        if (activeQueryKey.isNotBlank()) {
             snapshotFlow { filteredBookmarks.loadState.refresh }
                 .filter { it is LoadState.NotLoading || it is LoadState.Error }
                 .drop(if (filteredBookmarks.loadState.refresh is LoadState.Loading) 0 else 1)
@@ -163,7 +162,7 @@ fun SearchScreen(
             lastLoadedQueryKey = activeQueryKey
         }
     }
-    val isQueryChanging = activeQueryKey.isNotBlank() && activeQueryKey != lastLoadedQueryKey
+    val isQueryChanging = isSearchQueryChanging(activeQueryKey, lastLoadedQueryKey)
 
     Box(
         modifier = modifier

@@ -48,27 +48,28 @@ class PagingFeedbackTest {
 
         // 1. User enters "foo"
         var activeQueryKey = "foo"
-        var isQueryChanging = activeQueryKey.isNotBlank() && activeQueryKey != lastLoadedQueryKey
+        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
+        var isQueryChanging = isSearchQueryChanging(activeQueryKey, lastLoadedQueryKey)
         assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 0, isFilterChanging = isQueryChanging))
 
         // "foo" finishes loading (5 items present)
         lastLoadedQueryKey = activeQueryKey
-        isQueryChanging = activeQueryKey.isNotBlank() && activeQueryKey != lastLoadedQueryKey
+        isQueryChanging = isSearchQueryChanging(activeQueryKey, lastLoadedQueryKey)
         assertFalse(isBookmarkLoading(LoadState.NotLoading(false), itemCount = 5, isFilterChanging = isQueryChanging))
 
         // Same-key background Room invalidation while viewing "foo" does not trigger loading
         assertFalse(isBookmarkLoading(LoadState.Loading, itemCount = 5, isFilterChanging = isQueryChanging))
 
-        // 2. User clears the query (becomes blank)
+        // 2. User clears the query (becomes blank) -> production helper resets key to null
         activeQueryKey = ""
-        if (activeQueryKey.isBlank()) {
-            lastLoadedQueryKey = null
-        }
+        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
+        assertNull("Blank query must reset loaded key via production helper", lastLoadedQueryKey)
 
         // 3. User re-enters "foo" while prior unfiltered items (e.g. 10 items) are retained
         activeQueryKey = "foo"
-        isQueryChanging = activeQueryKey.isNotBlank() && activeQueryKey != lastLoadedQueryKey
-        assertTrue(isQueryChanging)
+        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
+        isQueryChanging = isSearchQueryChanging(activeQueryKey, lastLoadedQueryKey)
+        assertTrue("Re-entering foo must be recognized as changing via production helper", isQueryChanging)
         assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 10, isFilterChanging = isQueryChanging))
     }
 }

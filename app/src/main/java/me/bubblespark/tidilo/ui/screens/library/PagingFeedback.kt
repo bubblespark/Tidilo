@@ -51,3 +51,17 @@ internal fun isBookmarkLoading(
     itemCount: Int,
     isFilterChanging: Boolean = false
 ): Boolean = refreshState is LoadState.Loading && (isFilterChanging || itemCount == 0)
+
+/**
+ * Resolves the updated loaded search key when input changes.
+ * Resets to null on blank queries to guarantee that re-entering the same term triggers loading.
+ */
+internal fun resolveLoadedQueryKeyOnInput(query: String, currentLoadedKey: String?): String? =
+    if (query.isBlank()) null else currentLoadedKey
+
+/**
+ * Determines whether the active query differs from the loaded search generation.
+ * Always returns false for blank queries since the history list is displayed instead of search results.
+ */
+internal fun isSearchQueryChanging(activeQuery: String, loadedQueryKey: String?): Boolean =
+    activeQuery.isNotBlank() && activeQuery.trim() != loadedQueryKey

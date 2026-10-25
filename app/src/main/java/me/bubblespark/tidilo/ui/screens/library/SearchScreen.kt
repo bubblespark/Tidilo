@@ -150,14 +150,17 @@ fun SearchScreen(
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val headerHeight = statusBarTop + 144.dp
 
-    val activeQueryKey = searchQuery.trim()
+    val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
+    val activeQueryKey = remember(searchQuery, isNsfwVisible) {
+        val trimmed = searchQuery.trim()
+        if (trimmed.isBlank()) "" else "$trimmed/$isNsfwVisible"
+    }
     var lastLoadedQueryKey by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(activeQueryKey) {
         lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
         if (activeQueryKey.isNotBlank()) {
             snapshotFlow { filteredBookmarks.loadState.refresh }
                 .filter { it is LoadState.NotLoading || it is LoadState.Error }
-                .drop(if (filteredBookmarks.loadState.refresh is LoadState.Loading) 0 else 1)
                 .first()
             lastLoadedQueryKey = activeQueryKey
         }

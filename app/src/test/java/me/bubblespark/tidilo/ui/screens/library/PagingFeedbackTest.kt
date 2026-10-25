@@ -72,4 +72,52 @@ class PagingFeedbackTest {
         assertTrue("Re-entering foo must be recognized as changing via production helper", isQueryChanging)
         assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 10, isFilterChanging = isQueryChanging))
     }
+
+    @Test
+    fun nsfwVisibilityChangeTriggersLoadingTransition() {
+        var lastLoadedFilterKey: String? = null
+
+        val filterMode = "NEWEST_FIRST"
+        val domain = ""
+        val feedId = ""
+
+        // 1. Initial load with NSFW visible
+        var isNsfw = true
+        var activeKey = "$filterMode/$domain/$feedId/$isNsfw"
+        var isFilterChanging = activeKey != lastLoadedFilterKey
+        assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 0, isFilterChanging = isFilterChanging))
+
+        // Settles with 10 bookmarks (including NSFW)
+        lastLoadedFilterKey = activeKey
+        isFilterChanging = activeKey != lastLoadedFilterKey
+        assertFalse(isFilterChanging)
+        assertFalse(isBookmarkLoading(LoadState.NotLoading(false), itemCount = 10, isFilterChanging = isFilterChanging))
+
+        // 2. User turns off NSFW visibility
+        isNsfw = false
+        activeKey = "$filterMode/$domain/$feedId/$isNsfw"
+        isFilterChanging = activeKey != lastLoadedFilterKey
+        assertTrue("Turning off NSFW must mark filter as changing", isFilterChanging)
+        assertTrue("Must show loading to prevent showing NSFW items during transition",
+            isBookmarkLoading(LoadState.Loading, itemCount = 10, isFilterChanging = isFilterChanging))
+    }
+
+    @Test
+    fun nsfwVisibilityChangeInSearchTriggersQueryChanging() {
+        var lastLoadedKey: String? = null
+
+        val query = "android"
+        var isNsfw = true
+        var activeKey = "$query/$isNsfw"
+
+        lastLoadedKey = activeKey
+        assertFalse(isSearchQueryChanging(activeKey, lastLoadedKey))
+
+        // User toggles NSFW visibility
+        isNsfw = false
+        activeKey = "$query/$isNsfw"
+        assertTrue("Toggling NSFW visibility in search must mark query as changing",
+            isSearchQueryChanging(activeKey, lastLoadedKey))
+        assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 5, isFilterChanging = isSearchQueryChanging(activeKey, lastLoadedKey)))
+    }
 }

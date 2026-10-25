@@ -32,6 +32,7 @@ This document defines the strict engineering standards, naming conventions, Comp
 - **Mandatory `contentType`**: Every lazy list must provide a `contentType` lambda (e.g., `contentType = { "bookmark_card" }`) to enable item composition recycling across scroll boundaries.
 - **Fixed items**: Single `item { ... }` blocks inside lazy lists should also specify explicit keys and `contentType` values when mixed with dynamic sections.
 - **Fast-Path In-Memory Cache Hits in Lazy Items**: When loading bitmaps or icons inside lazy cards (`produceState` in `BookmarkGridCard`, `rememberDomainIcon`), check the synchronous in-memory `LruCache` first (`cached != null`). When a memory cache hit occurs, skip launching `Dispatchers.IO` fetch coroutines and only subscribe to invalidation/update signals.
+- **No SubcomposeLayout / Lazy Layouts inside Intrinsic Measurement Containers**: Never place `LazyColumn`, `LazyRow`, or other `SubcomposeLayout`-based composables inside containers that enforce intrinsic measurement (such as `DropdownMenu`, which applies `Modifier.width(IntrinsicSize.Max)`). Doing so throws `IllegalStateException: Asking for intrinsic measurements of SubcomposeLayout layouts is not supported`. Use `Column` with `Modifier.verticalScroll(rememberScrollState())` for popups and menus.
 
 ### 2.3 Recomposition, 3-Phase Optimization, & Draw Caching
 - **Remember & Derived State**:

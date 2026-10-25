@@ -496,15 +496,13 @@ fun ImportScreen(
                                         )
                                     }
                                 } else {
-                                    LazyColumn(
+                                    Column(
                                         modifier = Modifier
                                             .heightIn(max = 380.dp)
                                             .fillMaxWidth()
+                                            .verticalScroll(rememberScrollState())
                                     ) {
-                                        items(
-                                            items = notifications,
-                                            key = { it.id }
-                                        ) { notification ->
+                                        notifications.forEach { notification ->
                                             val iconRes = when (notification.type) {
                                                 NotificationType.INFO.name -> R.drawable.ic_info
                                                 NotificationType.ERROR.name -> R.drawable.ic_error

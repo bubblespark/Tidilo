@@ -82,6 +82,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -503,67 +504,69 @@ fun ImportScreen(
                                             .verticalScroll(rememberScrollState())
                                     ) {
                                         notifications.forEach { notification ->
-                                            val iconRes = when (notification.type) {
-                                                NotificationType.INFO.name -> R.drawable.ic_info
-                                                NotificationType.ERROR.name -> R.drawable.ic_error
-                                                else -> R.drawable.ic_warning
-                                            }
-                                            val iconTint = when (notification.type) {
-                                                NotificationType.INFO.name -> MaterialTheme.colorScheme.primary
-                                                NotificationType.ERROR.name -> MaterialTheme.colorScheme.error
-                                                else -> MaterialTheme.colorScheme.tertiary
-                                            }
+                                            key(notification.id) {
+                                                val iconRes = when (notification.type) {
+                                                    NotificationType.INFO.name -> R.drawable.ic_info
+                                                    NotificationType.ERROR.name -> R.drawable.ic_error
+                                                    else -> R.drawable.ic_warning
+                                                }
+                                                val iconTint = when (notification.type) {
+                                                    NotificationType.INFO.name -> MaterialTheme.colorScheme.primary
+                                                    NotificationType.ERROR.name -> MaterialTheme.colorScheme.error
+                                                    else -> MaterialTheme.colorScheme.tertiary
+                                                }
 
-                                            ListItem(
-                                                modifier = Modifier.clickable(
-                                                    role = androidx.compose.ui.semantics.Role.Button,
-                                                    onClickLabel = "View bookmark"
-                                                ) {
-                                                    showNotificationPopup = false
-                                                    if (notification.existingBookmarkId != null) {
-                                                        onNavigateToDetail(notification.existingBookmarkId)
-                                                    } else {
-                                                        viewModel.findBookmarkIdByUrl(notification.url) { bookmarkId ->
-                                                            if (bookmarkId != null) {
-                                                                onNavigateToDetail(bookmarkId)
+                                                ListItem(
+                                                    modifier = Modifier.clickable(
+                                                        role = androidx.compose.ui.semantics.Role.Button,
+                                                        onClickLabel = "View bookmark"
+                                                    ) {
+                                                        showNotificationPopup = false
+                                                        if (notification.existingBookmarkId != null) {
+                                                            onNavigateToDetail(notification.existingBookmarkId)
+                                                        } else {
+                                                            viewModel.findBookmarkIdByUrl(notification.url) { bookmarkId ->
+                                                                if (bookmarkId != null) {
+                                                                    onNavigateToDetail(bookmarkId)
+                                                                }
                                                             }
                                                         }
+                                                    },
+                                                    leadingContent = {
+                                                        Icon(
+                                                            painter = painterResource(id = iconRes),
+                                                            contentDescription = notification.type,
+                                                            tint = iconTint,
+                                                            modifier = Modifier.size(22.dp)
+                                                        )
+                                                    },
+                                                    overlineContent = {
+                                                        Text(
+                                                            text = notification.domain,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.secondary
+                                                        )
+                                                    },
+                                                    headlineContent = {
+                                                        Text(
+                                                            text = notification.message,
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                    },
+                                                    supportingContent = {
+                                                        Text(
+                                                            text = notification.url,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.outline
+                                                        )
                                                     }
-                                                },
-                                                leadingContent = {
-                                                    Icon(
-                                                        painter = painterResource(id = iconRes),
-                                                        contentDescription = notification.type,
-                                                        tint = iconTint,
-                                                        modifier = Modifier.size(22.dp)
-                                                    )
-                                                },
-                                                overlineContent = {
-                                                    Text(
-                                                        text = notification.domain,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.secondary
-                                                    )
-                                                },
-                                                headlineContent = {
-                                                    Text(
-                                                        text = notification.message,
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        color = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                },
-                                                supportingContent = {
-                                                    Text(
-                                                        text = notification.url,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.outline
-                                                    )
-                                                }
-                                            )
-                                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                                )
+                                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                            }
                                         }
                                     }
                                 }

@@ -76,6 +76,7 @@ object AppConfig {
     private const val KEY_NSFW_CONTENT_BOOKMARKABLE = "nsfw_content_bookmarkable"
     private const val KEY_AUTO_RUN_AI_ON_ACTIVE = "auto_run_ai_on_active"
     private const val KEY_AICORE_FALLBACK_MODE = "aicore_fallback_mode"
+    private const val KEY_AI_ANALYSIS_MODE = "ai_analysis_mode"
 
     private val prefs by lazy {
         TidiloApplication.instance.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -154,5 +155,15 @@ object AppConfig {
         runCatching {
             prefs.edit().putString(KEY_AICORE_FALLBACK_MODE, mode.code).apply()
         }
+    }
+
+    private val _aiAnalysisMode = MutableStateFlow(
+        AiAnalysisMode.fromCode(runCatching { prefs.getString(KEY_AI_ANALYSIS_MODE, null) }.getOrNull())
+    )
+    val aiAnalysisMode: StateFlow<AiAnalysisMode> = _aiAnalysisMode.asStateFlow()
+
+    fun setAiAnalysisMode(mode: AiAnalysisMode) {
+        _aiAnalysisMode.value = mode
+        runCatching { prefs.edit().putString(KEY_AI_ANALYSIS_MODE, mode.code).apply() }
     }
 }

@@ -1,4 +1,9 @@
 <resources>
+    <string name="settings_ai_analysis_title">AI Analysis</string>
+    <string name="settings_ai_analysis_aicore">AICore</string>
+    <string name="settings_ai_analysis_disable">Disable</string>
+    <string name="rss_ai_disabled_note">AI Analysis is disabled in Settings. Feeds will be imported in Direct mode automatically.</string>
+    <string name="notification_bookmark_added">Bookmark added</string>
     <!-- App & Navigation -->
     <string name="app_name">Tidilo</string>
     <string name="nav_library">Library</string>

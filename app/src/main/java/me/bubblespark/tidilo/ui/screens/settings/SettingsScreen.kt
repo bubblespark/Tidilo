@@ -2,6 +2,8 @@ package me.bubblespark.tidilo.ui.screens.settings
 
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +68,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.config.AiAnalysisMode
+import androidx.compose.ui.semantics.Role
 import me.bubblespark.tidilo.config.AppLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -89,11 +93,13 @@ fun SettingsScreen(
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val isAutoRunAiOnActive by AppConfig.isAutoRunAiOnActive.collectAsStateWithLifecycle()
     val aiCoreFallbackMode by AppConfig.aiCoreFallbackMode.collectAsStateWithLifecycle()
+    val aiAnalysisMode by AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val localConfig = LocalConfiguration.current
     val scope = rememberCoroutineScope()
 
     var showFallbackDialog by remember { mutableStateOf(false) }
+    var showAiAnalysisDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showClearCacheConfirmDialog by remember { mutableStateOf(false) }
 
@@ -210,6 +216,30 @@ fun SettingsScreen(
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 4.dp, bottom = 12.dp)
         )
+
+        Card(
+            modifier = Modifier.fillMaxWidth().clickable { showAiAnalysisDialog = true },
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(40.dp)) {
+                    BoxContent(icon = Icons.Default.AutoAwesome, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_ai_analysis_title), style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(if (aiAnalysisMode == AiAnalysisMode.AICORE) R.string.settings_ai_analysis_aicore
+                        else R.string.settings_ai_analysis_disable), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline)
+                }
+                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null,
+                    modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
+            }
+        }
+        Spacer(Modifier.height(16.dp))
 
         // Auto-run AI Tagging on Active Card
         Card(
@@ -689,6 +719,31 @@ fun SettingsScreen(
                     Text(stringResource(R.string.common_cancel))
                 }
             }
+        )
+    }
+
+    if (showAiAnalysisDialog) {
+        AlertDialog(
+            onDismissRequest = { showAiAnalysisDialog = false },
+            title = { Text(stringResource(R.string.settings_ai_analysis_title)) },
+            text = {
+                Column(Modifier.selectableGroup()) {
+                    AiAnalysisMode.entries.forEach { mode ->
+                        Row(Modifier.fillMaxWidth().selectable(selected = aiAnalysisMode == mode, role = Role.RadioButton,
+                            onClick = { AppConfig.setAiAnalysisMode(mode); showAiAnalysisDialog = false })
+                            .padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = aiAnalysisMode == mode, onClick = null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(stringResource(if (mode == AiAnalysisMode.AICORE) R.string.settings_ai_analysis_aicore
+                                else R.string.settings_ai_analysis_disable))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showAiAnalysisDialog = false }) {
+                Text(stringResource(R.string.common_close))
+            } },
+            shape = RoundedCornerShape(24.dp)
         )
     }
 

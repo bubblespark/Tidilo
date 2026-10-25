@@ -13,7 +13,10 @@ import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.data.db.RssImageCleanupEntity
 import me.bubblespark.tidilo.data.db.RssSeenItemEntity
 
-internal class RssIngestionStore(private val database: AppDatabase) {
+internal class RssIngestionStore(
+    private val database: AppDatabase,
+    private val aiAnalysisMode: () -> me.bubblespark.tidilo.config.AiAnalysisMode = { AppConfig.aiAnalysisMode.value }
+) {
     private val rss = database.rssDao()
 
     suspend fun registrationSnapshot(url: String): RssRegistrationSnapshot? = database.withTransaction {
@@ -39,6 +42,7 @@ internal class RssIngestionStore(private val database: AppDatabase) {
         val current = rss.feed(feed.id) ?: return@withTransaction false
         if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
         require(current.retentionLimit == null || current.retentionLimit in 10..500)
+        val effectiveMode = effectiveRssImportMode(current.mode, aiAnalysisMode())
         val fresh = entries.distinctBy { it.url }.filter { entry ->
             if (rss.hasSeen(feed.id, entry.key, entry.url)) false
             else if (rss.urlExists(entry.url)) {
@@ -51,9 +55,9 @@ internal class RssIngestionStore(private val database: AppDatabase) {
         }.map { entry ->
             ImportTaskEntity(UUID.randomUUID().toString(), entry.url, entry.title, "ERROR", "Waiting for article acquisition",
                 createdAt = now, rssFeedId = feed.id, rssPublishedAt = entry.publishedAt,
-                intendedMode = current.mode, rssItemKey = entry.key)
+                intendedMode = effectiveMode, rssItemKey = entry.key)
         }
-        if (current.mode == "AI") {
+        if (effectiveMode == "AI") {
             val previous = rss.pending(feed.id)
             val staged = rss.unstartedAcquisitions(feed.id).filter { it.intendedMode == "AI" }
             val selected = selectRssPending(previous + staged, fresh)
@@ -73,12 +77,13 @@ internal class RssIngestionStore(private val database: AppDatabase) {
         if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
         val actual = database.importTaskDao().getTaskById(task.id) ?: return@withTransaction false
         if (actual.articlePrepared || actual.intendedMode != task.intendedMode) return@withTransaction false
+        val effectiveMode = effectiveRssImportMode(actual.intendedMode, aiAnalysisMode())
         val nsfw = article.isNsfw || DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(article.url))
-        if (task.intendedMode == "AI" && article.bodySnippet.isBlank() && article.description.isBlank()) {
+        if (effectiveMode == "AI" && article.bodySnippet.isBlank() && article.description.isBlank()) {
             throw IllegalArgumentException("Article contains no extracted content")
         }
         if ((!nsfw || AppConfig.isNsfwContentBookmarkable.value) && !rss.rssWriteConflict(article.url, task.id)) {
-            if (task.intendedMode == "DIRECT") {
+            if (effectiveMode == "DIRECT") {
                 database.bookmarkDao().insertOrUpdate(BookmarkEntity(task.id, article.title, article.url, article.description,
                     createdAt = task.createdAt, updatedAt = System.currentTimeMillis(), isNsfw = nsfw, isAiSkipped = true,
                     ogImageUrl = article.ogImageUrl, rssFeedId = feed.id, rssPublishedAt = task.rssPublishedAt))
@@ -106,6 +111,7 @@ internal class RssIngestionStore(private val database: AppDatabase) {
         if (actual.articlePrepared) return@withTransaction
         val attempts = actual.acquisitionAttempts + 1
         database.importTaskDao().insertOrUpdate(actual.copy(status = "ERROR", statusText = "Article acquisition failed",
+            intendedMode = effectiveRssImportMode(actual.intendedMode, aiAnalysisMode()),
             errorMessage = error.message ?: "Could not fetch article", acquisitionAttempts = attempts,
             acquisitionRetryAt = if (retryable && attempts < 5) System.currentTimeMillis() + 60_000L * attempts else Long.MAX_VALUE))
     }

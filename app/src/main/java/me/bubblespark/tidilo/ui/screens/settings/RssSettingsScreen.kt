@@ -204,7 +204,8 @@ internal fun RssSettingsContent(
 }
 
 @Composable
-private fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onSave: (String, String, Int?, Boolean) -> Unit) {
+internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onSave: (String, String, Int?, Boolean) -> Unit) {
+    val aiAnalysisMode by me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
     var url by remember(original) { mutableStateOf(original?.url.orEmpty()) }
     var mode by remember(original) { mutableStateOf(original?.mode ?: "DIRECT") }
     var unlimited by remember(original) { mutableStateOf(original != null && original.retentionLimit == null) }
@@ -230,6 +231,9 @@ private fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onSav
                         RadioButton(selected = mode == "AI", onClick = null)
                         Text(stringResource(R.string.rss_ai_mode))
                     }
+                }
+                if (aiAnalysisMode == me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE) {
+                    Text(stringResource(R.string.rss_ai_disabled_note), style = MaterialTheme.typography.bodySmall)
                 }
                 HorizontalDivider()
                 Text(stringResource(R.string.rss_max_saved_items), style = MaterialTheme.typography.titleSmall)

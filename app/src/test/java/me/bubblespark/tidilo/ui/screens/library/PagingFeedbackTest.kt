@@ -74,37 +74,52 @@ class PagingFeedbackTest {
     }
 
     @Test
-    fun clearAndReenterQuerySequenceResetsKeyAndTriggersLoading() {
-        var lastLoadedQueryKey: String? = null
+    fun clearAndReenterQuerySequenceResetsGenerationKeyAndTriggersLoading() {
+        // Initial state: search field is blank, initial Pager generation corresponds to empty query
+        var loadedGenerationKey = buildSearchQueryKey("", isNsfwVisible = true)
+        assertEquals("/true", loadedGenerationKey)
 
-        // 1. User enters "foo"
+        // 1. User types "foo": activeKey updates immediately while loaded Pager generation is still "/true"
         val query1 = "foo"
-        var activeQueryKey = buildSearchQueryKey(query1, isNsfwVisible = true)
-        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(query1, lastLoadedQueryKey)
-        var isQueryChanging = isSearchQueryChanging(query1, activeQueryKey, lastLoadedQueryKey)
-        assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 0, isFilterChanging = isQueryChanging))
+        val activeKey1 = buildSearchQueryKey(query1, isNsfwVisible = true)
+        assertEquals("foo/true", activeKey1)
 
-        // "foo" finishes loading (5 items present)
-        lastLoadedQueryKey = activeQueryKey
-        isQueryChanging = isSearchQueryChanging(query1, activeQueryKey, lastLoadedQueryKey)
-        assertFalse(isBookmarkLoading(LoadState.NotLoading(false), itemCount = 5, isFilterChanging = isQueryChanging))
+        val isQueryChanging1 = isSearchQueryChanging(query1, activeKey1, loadedGenerationKey)
+        assertTrue("Mismatch between activeKey and loaded generation marks query as changing", isQueryChanging1)
+        assertTrue("Loading is triggered when query is changing to prevent showing previous items",
+            isBookmarkLoading(LoadState.Loading, itemCount = 0, isFilterChanging = isQueryChanging1))
 
-        // Same-key background Room invalidation while viewing "foo" does not trigger loading
-        assertFalse(isBookmarkLoading(LoadState.Loading, itemCount = 5, isFilterChanging = isQueryChanging))
+        // "foo" generation finishes loading (5 search results arrived)
+        loadedGenerationKey = activeKey1
+        val isQueryChangingSettled = isSearchQueryChanging(query1, activeKey1, loadedGenerationKey)
+        assertFalse("Settled generation matches active key", isQueryChangingSettled)
+        assertFalse("Loading dismissed once generation settles",
+            isBookmarkLoading(LoadState.NotLoading(false), itemCount = 5, isFilterChanging = isQueryChangingSettled))
 
-        // 2. User clears the query (becomes blank) -> production helper resets key to null
+        // Same-key background Room invalidation while viewing "foo" does not re-trigger loading
+        assertFalse("Same-generation Room invalidation does not show loading spinner",
+            isBookmarkLoading(LoadState.Loading, itemCount = 5, isFilterChanging = isQueryChangingSettled))
+
+        // 2. User clears the query:
+        // SearchScreen immediately hides results and shows search history because rawQuery is blank.
+        // ViewModel resets searchGeneration to blank query generation key without debounce delay.
         val query2 = ""
-        activeQueryKey = buildSearchQueryKey(query2, isNsfwVisible = true)
-        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(query2, lastLoadedQueryKey)
-        assertNull("Blank query must reset loaded key via production helper", lastLoadedQueryKey)
+        val activeKey2 = buildSearchQueryKey(query2, isNsfwVisible = true)
+        assertFalse("Blank query never marks query changing since search history is shown",
+            isSearchQueryChanging(query2, activeKey2, loadedGenerationKey))
 
-        // 3. User re-enters "foo" while prior unfiltered items (e.g. 10 items) are retained
+        // ViewModel produces new generation for blank query
+        loadedGenerationKey = activeKey2
+        assertEquals("/true", loadedGenerationKey)
+
+        // 3. User re-enters "foo" while prior unfiltered items are retained:
+        // Active key immediately becomes "foo/true", which differs from reset generation "/true"
         val query3 = "foo"
-        activeQueryKey = buildSearchQueryKey(query3, isNsfwVisible = true)
-        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(query3, lastLoadedQueryKey)
-        isQueryChanging = isSearchQueryChanging(query3, activeQueryKey, lastLoadedQueryKey)
-        assertTrue("Re-entering foo must be recognized as changing via production helper", isQueryChanging)
-        assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 10, isFilterChanging = isQueryChanging))
+        val activeKey3 = buildSearchQueryKey(query3, isNsfwVisible = true)
+        val isQueryChangingReenter = isSearchQueryChanging(query3, activeKey3, loadedGenerationKey)
+        assertTrue("Re-entering foo differs from reset generation key and triggers changing state", isQueryChangingReenter)
+        assertTrue("Loading is triggered even when prior items exist to prevent showing stale results",
+            isBookmarkLoading(LoadState.Loading, itemCount = 10, isFilterChanging = isQueryChangingReenter))
     }
 
     @Test

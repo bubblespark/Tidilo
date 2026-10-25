@@ -65,8 +65,8 @@ internal fun resolveLoadedQueryKeyOnInput(query: String, currentLoadedKey: Strin
  * Determines whether the active query differs from the loaded search generation.
  * Always returns false for blank queries since the history list is displayed instead of search results.
  */
-internal fun isSearchQueryChanging(activeQuery: String, loadedQueryKey: String?): Boolean =
-    activeQuery.isNotBlank() && activeQuery.trim() != loadedQueryKey
+internal fun isSearchQueryChanging(rawQuery: String, activeKey: String, loadedKey: String?): Boolean =
+    rawQuery.isNotBlank() && activeKey != loadedKey
 
 /**
  * Builds the unique tracking key for a library filter generation, incorporating filter mode,
@@ -81,14 +81,15 @@ internal fun buildLibraryFilterKey(
 
 /**
  * Builds the unique tracking key for a search query generation, incorporating normalized query
- * and NSFW content visibility. Blank queries yield an empty string key.
+ * and NSFW content visibility. Preserves NSFW visibility even for blank queries to ensure
+ * generation differentiation when content visibility toggles under an empty search field.
  */
 internal fun buildSearchQueryKey(
     searchQuery: String,
     isNsfwVisible: Boolean
 ): String {
     val trimmed = searchQuery.trim()
-    return if (trimmed.isBlank()) "" else "$trimmed/$isNsfwVisible"
+    return "$trimmed/$isNsfwVisible"
 }
 
 /**

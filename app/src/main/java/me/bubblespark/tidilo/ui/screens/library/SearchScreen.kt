@@ -155,7 +155,7 @@ fun SearchScreen(
     val activeQueryKey = remember(searchQuery, isNsfwVisible) {
         buildSearchQueryKey(searchQuery, isNsfwVisible)
     }
-    val isQueryChanging = isSearchQueryChanging(activeQueryKey, searchGeneration.key)
+    val isQueryChanging = isSearchQueryChanging(searchQuery, activeQueryKey, searchGeneration.key)
 
     Box(
         modifier = modifier

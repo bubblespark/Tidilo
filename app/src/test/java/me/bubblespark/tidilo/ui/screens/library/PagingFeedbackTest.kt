@@ -63,11 +63,14 @@ class PagingFeedbackTest {
         val key1 = buildSearchQueryKey("  android  ", true)
         val key2 = buildSearchQueryKey("android", true)
         val key3 = buildSearchQueryKey("android", false)
-        val keyBlank = buildSearchQueryKey("   ", true)
+        val keyBlank1 = buildSearchQueryKey("   ", true)
+        val keyBlank2 = buildSearchQueryKey("", false)
 
         assertEquals("Whitespace must be trimmed", key1, key2)
         assertNotEquals("NSFW flag must distinguish keys", key2, key3)
-        assertEquals("Blank query yields empty key", "", keyBlank)
+        assertEquals("/true", keyBlank1)
+        assertEquals("/false", keyBlank2)
+        assertNotEquals("NSFW flag must distinguish blank keys", keyBlank1, keyBlank2)
     }
 
     @Test
@@ -75,28 +78,31 @@ class PagingFeedbackTest {
         var lastLoadedQueryKey: String? = null
 
         // 1. User enters "foo"
-        var activeQueryKey = buildSearchQueryKey("foo", isNsfwVisible = true)
-        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
-        var isQueryChanging = isSearchQueryChanging(activeQueryKey, lastLoadedQueryKey)
+        val query1 = "foo"
+        var activeQueryKey = buildSearchQueryKey(query1, isNsfwVisible = true)
+        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(query1, lastLoadedQueryKey)
+        var isQueryChanging = isSearchQueryChanging(query1, activeQueryKey, lastLoadedQueryKey)
         assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 0, isFilterChanging = isQueryChanging))
 
         // "foo" finishes loading (5 items present)
         lastLoadedQueryKey = activeQueryKey
-        isQueryChanging = isSearchQueryChanging(activeQueryKey, lastLoadedQueryKey)
+        isQueryChanging = isSearchQueryChanging(query1, activeQueryKey, lastLoadedQueryKey)
         assertFalse(isBookmarkLoading(LoadState.NotLoading(false), itemCount = 5, isFilterChanging = isQueryChanging))
 
         // Same-key background Room invalidation while viewing "foo" does not trigger loading
         assertFalse(isBookmarkLoading(LoadState.Loading, itemCount = 5, isFilterChanging = isQueryChanging))
 
         // 2. User clears the query (becomes blank) -> production helper resets key to null
-        activeQueryKey = buildSearchQueryKey("", isNsfwVisible = true)
-        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
+        val query2 = ""
+        activeQueryKey = buildSearchQueryKey(query2, isNsfwVisible = true)
+        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(query2, lastLoadedQueryKey)
         assertNull("Blank query must reset loaded key via production helper", lastLoadedQueryKey)
 
         // 3. User re-enters "foo" while prior unfiltered items (e.g. 10 items) are retained
-        activeQueryKey = buildSearchQueryKey("foo", isNsfwVisible = true)
-        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(activeQueryKey, lastLoadedQueryKey)
-        isQueryChanging = isSearchQueryChanging(activeQueryKey, lastLoadedQueryKey)
+        val query3 = "foo"
+        activeQueryKey = buildSearchQueryKey(query3, isNsfwVisible = true)
+        lastLoadedQueryKey = resolveLoadedQueryKeyOnInput(query3, lastLoadedQueryKey)
+        isQueryChanging = isSearchQueryChanging(query3, activeQueryKey, lastLoadedQueryKey)
         assertTrue("Re-entering foo must be recognized as changing via production helper", isQueryChanging)
         assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 10, isFilterChanging = isQueryChanging))
     }
@@ -139,14 +145,26 @@ class PagingFeedbackTest {
         var activeKey = buildSearchQueryKey(query, isNsfw)
 
         lastLoadedKey = activeKey
-        assertFalse(isSearchQueryChanging(activeKey, lastLoadedKey))
+        assertFalse(isSearchQueryChanging(query, activeKey, lastLoadedKey))
 
         // User toggles NSFW visibility
         isNsfw = false
         activeKey = buildSearchQueryKey(query, isNsfw)
         assertTrue("Toggling NSFW visibility in search must mark query as changing",
-            isSearchQueryChanging(activeKey, lastLoadedKey))
-        assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 5, isFilterChanging = isSearchQueryChanging(activeKey, lastLoadedKey)))
+            isSearchQueryChanging(query, activeKey, lastLoadedKey))
+        assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 5, isFilterChanging = isSearchQueryChanging(query, activeKey, lastLoadedKey)))
+    }
+
+    @Test
+    fun blankSearchQueryNeverMarksQueryChanging() {
+        val blankQuery = "   "
+        val activeKey = buildSearchQueryKey(blankQuery, isNsfwVisible = true)
+        val loadedKey = "previous_key"
+
+        assertFalse(
+            "Blank query must never be marked as changing since search history is shown",
+            isSearchQueryChanging(blankQuery, activeKey, loadedKey)
+        )
     }
 
     @Test

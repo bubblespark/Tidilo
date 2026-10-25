@@ -380,8 +380,8 @@ class BookmarkDetailTest {
             tag = Tag.create("Article", "Tech", listOf("Android")),
             ogImageUrl = "https://example.com/images/og-preview.png"
         )
-        assertNotNull(withOg.ogImageFilename)
-        assertTrue(withOg.ogImageFilename!!.isNotBlank())
+        val filename = requireNotNull(withOg.ogImageFilename)
+        assertTrue(filename.isNotBlank())
 
         val withoutOg = BookmarkItem(
             id = "test-detail-no-og",
@@ -407,21 +407,20 @@ class BookmarkDetailTest {
     @Test
     fun testBookmarkDetailAspectRatioCalculation() {
         // Normal 1200x630 og:image aspect ratio (~1.904)
-        val normalRatio = if (630 > 0) 1200f / 630f else 1.91f
+        val normalRatio = me.bubblespark.tidilo.ui.components.calculateOgAspectRatio(1200, 630)
         assertTrue(normalRatio > 1.9f && normalRatio < 1.91f)
 
         // Square 1:1 image
-        val squareRatio = if (600 > 0) 600f / 600f else 1.91f
+        val squareRatio = me.bubblespark.tidilo.ui.components.calculateOgAspectRatio(600, 600)
         assertEquals(1.0f, squareRatio, 0.001f)
 
         // Tall portrait image
-        val portraitRatio = if (1200 > 0) 600f / 1200f else 1.91f
+        val portraitRatio = me.bubblespark.tidilo.ui.components.calculateOgAspectRatio(600, 1200)
         assertEquals(0.5f, portraitRatio, 0.001f)
 
         // Invalid height fallback
-        val zeroHeight = 0
-        val zeroHeightRatio = if (zeroHeight > 0) 100f / zeroHeight.toFloat() else 1.91f
-        assertEquals(1.91f, zeroHeightRatio, 0.001f)
+        val zeroHeightRatio = me.bubblespark.tidilo.ui.components.calculateOgAspectRatio(100, 0)
+        assertEquals(me.bubblespark.tidilo.ui.components.DEFAULT_OG_ASPECT_RATIO, zeroHeightRatio, 0.001f)
     }
 }
 

@@ -69,13 +69,11 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import me.bubblespark.tidilo.data.DomainIconManager
-import me.bubblespark.tidilo.data.OgImageManager
-import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.runtime.key
-import androidx.compose.runtime.produceState
-import kotlinx.coroutines.coroutineScope
 import me.bubblespark.tidilo.ui.components.DomainWatermark
+import me.bubblespark.tidilo.ui.components.calculateOgAspectRatio
+import me.bubblespark.tidilo.ui.components.rememberOgImage
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -133,7 +131,6 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val DETAIL_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
-private data class OgDetailState(val bitmap: ImageBitmap?, val resolved: Boolean)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -258,25 +255,7 @@ fun BookmarkDetailScreen(
     val domain = remember(bookmark.url) { DomainIconManager.extractDomain(bookmark.url) }
 
     val ogFilename = bookmark.ogImageFilename
-    val cacheGeneration by OgImageManager.cacheGenerationState.collectAsStateWithLifecycle()
-
-    val ogState by key(context, bookmark.url, domain, ogFilename, cacheGeneration) {
-        val cached = if (domain != null && ogFilename != null) OgImageManager.getCachedOgImageBitmap(domain, ogFilename) else null
-        produceState(initialValue = OgDetailState(cached, cached != null || ogFilename == null)) {
-            if (domain != null && ogFilename != null) {
-                coroutineScope {
-                    launch {
-                        OgImageManager.observeExactImageUpdates(ogFilename).collect {
-                            OgImageManager.getCachedOgImageBitmap(domain, ogFilename)?.let { value = OgDetailState(it, true) }
-                        }
-                    }
-                    if (cached == null) {
-                        value = OgDetailState(OgImageManager.loadOrFetchOgImage(context, bookmark.url, domain, bookmark.ogImageUrl), true)
-                    }
-                }
-            }
-        }
-    }
+    val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
     val ogBitmap = ogState.bitmap
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -381,8 +360,8 @@ fun BookmarkDetailScreen(
         Box(
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Upper right domain watermark (rendered only when og:image is unavailable)
-            if (ogBitmap == null) {
+            // Upper right domain watermark (rendered only when og:image is unavailable and resolution completed)
+            if (ogBitmap == null && ogState.resolved) {
                 DomainWatermark(
                     domain = domain,
                     modifier = Modifier
@@ -398,14 +377,12 @@ fun BookmarkDetailScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     Image(
                         bitmap = ogBitmap,
-                        contentDescription = bookmark.title,
+                        contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = 200.dp)
-                            .aspectRatio(
-                                if (ogBitmap.height > 0) ogBitmap.width.toFloat() / ogBitmap.height.toFloat() else 1.91f
-                            )
+                            .aspectRatio(calculateOgAspectRatio(ogBitmap.width, ogBitmap.height))
                             .clip(RoundedCornerShape(16.dp))
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -849,8 +826,8 @@ fun BookmarkDetailScreen(
             .fillMaxWidth()
             .height(statusBarTop + 28.dp)
             .align(Alignment.TopCenter)
-            .background(
-                Brush.verticalGradient(
+            .drawWithCache {
+                val brush = Brush.verticalGradient(
                     colors = listOf(
                         scrimBg.copy(alpha = 0.85f),
                         scrimBg.copy(alpha = 0.50f),
@@ -858,7 +835,10 @@ fun BookmarkDetailScreen(
                         Color.Transparent
                     )
                 )
-            )
+                onDrawBehind {
+                    drawRect(brush = brush)
+                }
+            }
     )
 
     // Scrim (prevents clicks behind expanded menu and collapses on tap)

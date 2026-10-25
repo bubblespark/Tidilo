@@ -42,8 +42,12 @@ internal fun bookmarkLoadState(state: LoadState, isDomainGrid: Boolean): LoadSta
     if (isDomainGrid) LoadState.NotLoading(false) else state
 
 /**
- * Only treat refresh loading as initial/placeholder loading when there are no items rendered yet.
- * When items exist, Paging retains the previous snapshot and diffs updates seamlessly in place.
+ * Only treat refresh loading as initial/placeholder loading when there are no items rendered yet,
+ * or when the active filter/query has changed and the new generation has not finished loading.
+ * When items exist under the same filter, Paging retains the previous snapshot and diffs updates seamlessly in place.
  */
-internal fun isBookmarkLoading(refreshState: LoadState, itemCount: Int): Boolean =
-    refreshState is LoadState.Loading && itemCount == 0
+internal fun isBookmarkLoading(
+    refreshState: LoadState,
+    itemCount: Int,
+    isFilterChanging: Boolean = false
+): Boolean = refreshState is LoadState.Loading && (isFilterChanging || itemCount == 0)

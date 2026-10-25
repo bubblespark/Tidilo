@@ -72,6 +72,10 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -134,8 +138,20 @@ fun LibraryScreen(
     val isDomainGrid = filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter == null
     val isRssGrid = filterMode == LibraryFilterMode.RSS && selectedFeed == null
     val isCollectionGrid = isDomainGrid || isRssGrid
+    val activeFilterKey = remember(filterMode, selectedDomainFilter, selectedFeed?.id) {
+        "$filterMode/${selectedDomainFilter.orEmpty()}/${selectedFeed?.id.orEmpty()}"
+    }
+    var lastLoadedFilterKey by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(activeFilterKey) {
+        snapshotFlow { bookmarks.loadState.refresh }
+            .filter { it is LoadState.NotLoading || it is LoadState.Error }
+            .drop(if (bookmarks.loadState.refresh is LoadState.Loading) 0 else 1)
+            .first()
+        lastLoadedFilterKey = activeFilterKey
+    }
+    val isFilterChanging = activeFilterKey != lastLoadedFilterKey
     val refreshState = bookmarkLoadState(bookmarks.loadState.refresh, isCollectionGrid)
-    val isLoading = !initialized || isBookmarkLoading(refreshState, bookmarks.itemCount) ||
+    val isLoading = !initialized || isBookmarkLoading(refreshState, bookmarks.itemCount, isFilterChanging) ||
         (isDomainGrid && domainGroupsLoading) || (isRssGrid && rssFeedGroupsLoading)
     val context = LocalContext.current
     val localConfig = LocalConfiguration.current

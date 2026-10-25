@@ -32,4 +32,13 @@ class PagingFeedbackTest {
         assertFalse(isBookmarkLoading(LoadState.NotLoading(true), itemCount = 0))
         assertFalse(isBookmarkLoading(LoadState.Error(IllegalStateException("Failed")), itemCount = 0))
     }
+
+    @Test
+    fun bookmarkLoadingTriggersWhenFilterIsChangingRegardlessOfRetainedItems() {
+        assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 15, isFilterChanging = true))
+        assertTrue(isBookmarkLoading(LoadState.Loading, itemCount = 0, isFilterChanging = true))
+        assertFalse(isBookmarkLoading(LoadState.Loading, itemCount = 15, isFilterChanging = false))
+        assertFalse(isBookmarkLoading(LoadState.NotLoading(false), itemCount = 15, isFilterChanging = true))
+        assertFalse(isBookmarkLoading(LoadState.Error(IllegalStateException("Failed")), itemCount = 15, isFilterChanging = true))
+    }
 }

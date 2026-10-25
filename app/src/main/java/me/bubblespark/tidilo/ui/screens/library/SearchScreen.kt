@@ -275,7 +275,7 @@ fun SearchScreen(
                 Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
                     PagingFeedback(LoadState.Error(initializationFailure!!), viewModel::retryInitialization)
                 }
-            } else if (filteredBookmarks.loadState.refresh is LoadState.Loading) {
+            } else if (isBookmarkLoading(filteredBookmarks.loadState.refresh, filteredBookmarks.itemCount)) {
                 Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
                     androidx.compose.material3.CircularProgressIndicator()
                 }

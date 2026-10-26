@@ -19,6 +19,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -590,7 +591,7 @@ fun LibraryScreen(
                             }
                         }
 
-                        Column {
+                        Column(Modifier.weight(1f)) {
                             val defaultTitle = stringResource(R.string.library_header_title)
                             val headerTitle = when {
                                 filterMode == LibraryFilterMode.RSS -> selectedFeed?.title ?: stringResource(R.string.rss_title)
@@ -614,19 +615,33 @@ fun LibraryScreen(
                             }
 
                             AnimatedContent(
-                                targetState = headerTitle,
+                                targetState = headerTitle to isDrillDown,
                                 transitionSpec = {
                                     fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
                                 },
                                 label = "header_title"
-                            ) { title ->
+                            ) { (title, drillDown) ->
+                                val titleLength = title.codePointCount(0, title.length)
                                 Text(
                                     text = title,
-                                    style = MaterialTheme.typography.headlineMedium,
+                                    modifier = if (drillDown) Modifier.basicMarquee(initialDelayMillis = 2000)
+                                        else Modifier,
+                                    style = when {
+                                        !drillDown || titleLength <= 6 -> MaterialTheme.typography.headlineMedium
+                                        titleLength <= 9 -> MaterialTheme.typography.headlineSmall.copy(
+                                            fontSize = 23.sp, lineHeight = 28.sp
+                                        )
+                                        titleLength <= 13 -> MaterialTheme.typography.titleLarge.copy(
+                                            fontSize = 20.sp, lineHeight = 25.sp
+                                        )
+                                        else -> MaterialTheme.typography.titleMedium.copy(
+                                            fontSize = 17.sp, lineHeight = 22.sp
+                                        )
+                                    },
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onBackground,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = if (drillDown) TextOverflow.Clip else TextOverflow.Ellipsis
                                 )
                             }
                             val subtitlePresentation = LibrarySubtitle(

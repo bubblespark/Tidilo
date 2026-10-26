@@ -74,6 +74,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.OgImageManager
+import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
 import android.widget.Toast
 import androidx.compose.material.icons.filled.DeleteSweep
 import kotlinx.coroutines.launch
@@ -211,8 +212,7 @@ fun SettingsScreen(
 
         Card(
             modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) {
-                val intent = me.bubblespark.tidilo.data.notifications.NotificationCoordinator
-                    .getInstance(context).settingsIntent()
+                val intent = NotificationCoordinator.getInstance(context).settingsIntent()
                 if (launchContext !is android.app.Activity) intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                 launchContext.startActivity(intent)
             },
@@ -233,7 +233,8 @@ fun SettingsScreen(
                     Text(stringResource(R.string.settings_notification_description),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null,
+                    modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
             }
         }
         Spacer(modifier = Modifier.height(24.dp))

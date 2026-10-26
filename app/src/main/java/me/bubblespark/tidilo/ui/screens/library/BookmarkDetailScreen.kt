@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import kotlinx.coroutines.ensureActive
@@ -573,7 +574,7 @@ fun BookmarkDetailScreen(
                             domain = domain,
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .offset(x = 20.dp) // Cancels Column's 20dp horizontal padding to align with right screen edge
+                                .offset(x = HeaderDefaults.HorizontalPadding) // Cancels scaffold horizontal padding to align with right screen edge
                         )
                     }
 

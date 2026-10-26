@@ -1,13 +1,8 @@
 package me.bubblespark.tidilo.data
 
-import android.app.Instrumentation
 import android.content.Intent
-import android.content.IntentFilter
-import android.provider.Settings
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -18,7 +13,6 @@ import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.data.notifications.NotificationCategory
 import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
-import me.bubblespark.tidilo.ui.screens.settings.SettingsScreen
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -57,25 +51,34 @@ class NotificationNavigationTest {
     @Test fun notificationCardDirectlyLaunchesAppSystemSettings() = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
-        val monitor = instrumentation.addMonitor(IntentFilter(Settings.ACTION_APP_NOTIFICATION_SETTINGS),
-            Instrumentation.ActivityResult(0, null), true)
         try {
-            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                SettingsScreen(onNavigateBack = {}, onNavigateToGenerateContentRequest = {}, checkAiCoreAvailable = { false })
-            } } }
+            click { it.contentDescription?.toString() == activity.getString(R.string.title_settings) }
             awaitText("Notification")
-            withTimeout(5000) {
-                while (monitor.hits == 0) {
-                    var target = find { it.text?.toString() == "Notification" }
-                    while (target != null && !target.isClickable) target = target.parent
-                    target?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    delay(100)
+            repeat(2) {
+                android.util.Log.i("NotificationSettingsTest", "Opening OS settings iteration=$it")
+                click { it.text?.toString() == "Notification" }
+                withTimeout(8000) {
+                    while (instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString() != "com.android.settings") delay(50)
+                    android.util.Log.i("NotificationSettingsTest", "OS settings visible")
+                    while (find { it.text?.toString()?.contains(context.getString(R.string.app_name)) == true } == null) delay(50)
                 }
+                assertNotNull(find { it.text?.toString()?.contains(context.getString(R.string.app_name)) == true })
+                assertFalse(activity.isFinishing)
+                instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                android.util.Log.i("NotificationSettingsTest", "Returning to app")
+                awaitText("Notification")
             }
-            assertEquals(1, monitor.hits)
         } finally {
-            instrumentation.removeMonitor(monitor)
             instrumentation.runOnMainSync { activity.finish() }
+        }
+    }
+
+    private suspend fun click(predicate: (AccessibilityNodeInfo) -> Boolean) = withTimeout(5000) {
+        while (true) {
+            var target = find(predicate)
+            while (target != null && !target.isClickable) target = target.parent
+            if (target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) return@withTimeout
+            delay(50)
         }
     }
 

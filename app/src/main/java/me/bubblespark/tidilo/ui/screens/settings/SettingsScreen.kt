@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -94,6 +95,7 @@ fun SettingsScreen(
     val aiCoreFallbackMode by AppConfig.aiCoreFallbackMode.collectAsStateWithLifecycle()
     val aiAnalysisMode by AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val launchContext = LocalView.current.context
     val localConfig = LocalConfiguration.current
     val scope = rememberCoroutineScope()
 
@@ -209,13 +211,21 @@ fun SettingsScreen(
 
         Card(
             modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) {
-                context.startActivity(me.bubblespark.tidilo.data.notifications.NotificationCoordinator
-                    .getInstance(context).settingsIntent())
+                val intent = me.bubblespark.tidilo.data.notifications.NotificationCoordinator
+                    .getInstance(context).settingsIntent()
+                if (launchContext !is android.app.Activity) intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                launchContext.startActivity(intent)
             },
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
         ) {
             Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(40.dp)) {
+                    BoxContent(icon = ImageVector.vectorResource(R.drawable.ic_notifications),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.settings_notification_title),
                         style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)

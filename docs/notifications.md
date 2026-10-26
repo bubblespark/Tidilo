@@ -1,6 +1,6 @@
 # Android OS Notifications
 
-Tidilo registers five independently configurable Android notification channels. Settings > Notification directly opens the app's system notification settings. The host Activity requests `POST_NOTIFICATIONS` once when needed; denial or a blocked channel never prevents ingestion. New notification copy is English only.
+Tidilo registers five independently configurable Android notification channels. Settings > Notification uses `ic_notifications` in the standard circular card icon container and directly opens the app's system notification settings. It launches from the host view's Activity context rather than the localized Compose resource context, preserving Back navigation to Tidilo; non-Activity hosts use `FLAG_ACTIVITY_NEW_TASK`. The host Activity requests `POST_NOTIFICATIONS` once when needed; denial or a blocked channel never prevents ingestion. New notification copy is English only.
 
 | Channel | Event | Tap destination |
 | --- | --- | --- |

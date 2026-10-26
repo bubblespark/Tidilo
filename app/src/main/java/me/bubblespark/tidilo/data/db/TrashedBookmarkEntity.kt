@@ -4,7 +4,6 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
-import me.bubblespark.tidilo.ui.screens.library.Tag
 import me.bubblespark.tidilo.ui.screens.library.TrashedBookmarkItem
 
 /**
@@ -43,15 +42,7 @@ data class TrashedBookmarkEntity(
             title = title,
             url = url,
             description = description,
-            tag = if (isAiSkipped && category == null && subcategory == null && entities.isEmpty()) {
-                Tag.createEmpty()
-            } else {
-                Tag.create(
-                    category = category,
-                    subcategory = subcategory,
-                    entities = entities
-                )
-            },
+            tag = logicalBookmarkTag(category, subcategory, entities, isAiSkipped),
             createdAt = createdAt,
             updatedAt = updatedAt,
             note = note,

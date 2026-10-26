@@ -8,9 +8,10 @@ import java.time.format.DateTimeFormatter
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
+import me.bubblespark.tidilo.ui.screens.library.Tag
 
 data class RssEntry(val key: String, val url: String, val title: String, val description: String,
-    val bodySnippet: String, val imageUrl: String?, val publishedAt: Long?)
+    val bodySnippet: String, val imageUrl: String?, val publishedAt: Long?, val categories: List<String> = emptyList())
 data class RssFeedDocument(val title: String, val entries: List<RssEntry>,
     val iconUrl: String? = null, val siteUrl: String? = null)
 
@@ -82,8 +83,15 @@ internal object RssFeedParser {
         }
         val published = item.child(if (atom) "published" else "pubDate")?.text()
             ?: item.children().firstOrNull { it.tagName().endsWith(":date") }?.text()
+        val categories = item.children().asSequence()
+            .filter { it.localName() == "category" && it.namespaceUri() == item.namespaceUri() }
+            .map { category ->
+                if (atom) category.attr("term").takeIf { it.trim().removePrefix("#").trim().isNotBlank() }
+                    ?: category.attr("label") else category.text()
+            }
+            .fold(emptyList<String>()) { values, category -> Tag.addEntity(values, category) }
         return RssEntry(key, url, item.child("title")?.let(::plain).orEmpty().ifBlank { url },
-            description?.let(::plain).orEmpty(), snippet, image, published?.let(::date))
+            description?.let(::plain).orEmpty(), snippet, image, published?.let(::date), categories)
     }
 
     private fun Element.localName() = tagName().substringAfterLast(':').lowercase()

@@ -5,6 +5,28 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssFeedParserTest {
+    @Test fun rssEntryCategoriesAreNormalizedDeduplicatedAndCapped() {
+        val extras = (1..12).joinToString("") { "<category>Topic$it</category>" }
+        val xml = """<rss xmlns:media="http://search.yahoo.com/mrss/"><channel>
+            <category>Feed only</category><item><link>https://example.com/post</link>
+            <category>  #Kotlin  </category><category>kotlin</category>
+            <category># </category><media:category>Media only</media:category>$extras
+            </item></channel></rss>"""
+        val categories = RssFeedParser.parse(xml, "https://example.com/feed").entries.single().categories
+        assertEquals(listOf("Kotlin") + (1..9).map { "Topic$it" }, categories)
+    }
+
+    @Test fun atomCategoriesUseTermThenLabelFromEntryNamespace() {
+        val xml = """<a:feed xmlns:a="http://www.w3.org/2005/Atom" xmlns:m="http://search.yahoo.com/mrss/">
+            <a:category term="Feed only"/><a:entry><a:link href="https://example.com/post"/>
+            <a:category term="  #Android  " label="Ignored"/>
+            <a:category term=" " label="  #News  "/>
+            <a:category label="news"/><a:category/><m:category term="Media only"/>
+            </a:entry></a:feed>"""
+        assertEquals(listOf("Android", "News"),
+            RssFeedParser.parse(xml, "https://example.com/feed").entries.single().categories)
+    }
+
     private fun metadata(xml: String): Pair<String?, String?> {
         val document = RssFeedParser.parse(xml, "https://feed.example/xml/feed")
         return document.iconUrl to document.siteUrl

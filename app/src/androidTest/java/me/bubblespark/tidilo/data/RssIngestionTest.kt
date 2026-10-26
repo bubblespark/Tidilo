@@ -220,7 +220,7 @@ class RssIngestionTest {
     /** Exercises the store with explicitly prepared fixture content, rather than treating XML as HTML. */
     private suspend fun ingestPreparedFixture(db: AppDatabase, feed: RssFeedEntity,
         entries: List<RssEntry>, now: Long): Boolean = db.withTransaction {
-        val store = RssIngestionStore(db)
+        val store = RssIngestionStore(db) { me.bubblespark.tidilo.config.AiAnalysisMode.AICORE }
         if (!store.stage(feed, entries, now)) return@withTransaction false
         for (task in db.importTaskDao().getAllTasks().filter { it.rssFeedId == feed.id && !it.articlePrepared }) {
             val entry = entries.firstOrNull { it.url == task.url } ?: continue

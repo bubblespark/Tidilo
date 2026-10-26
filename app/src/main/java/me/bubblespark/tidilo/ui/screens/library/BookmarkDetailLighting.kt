@@ -66,7 +66,12 @@ internal fun Modifier.detailAmbientLight(
         if (!showFallback) return@drawBehind
         Offset(size.width, 0f)
     }
-    val strength = if (dark) 0.28f else 0.13f
+    val strength = if (showFallback) {
+        if (dark) 0.28f else 0.13f
+    } else {
+        if (dark) 0.16f else 0.07f
+    }
+    val downwashStrength = if (showFallback) 0.65f else 0.40f
     drawRect(Brush.radialGradient(
         0f to accent.copy(alpha = accent.alpha * strength),
         0.55f to accent.copy(alpha = accent.alpha * strength * 0.45f),
@@ -74,7 +79,7 @@ internal fun Modifier.detailAmbientLight(
         center = center, radius = size.width * 1.05f
     ))
     drawRect(Brush.linearGradient(
-        0f to accent.copy(alpha = accent.alpha * strength * 0.65f),
+        0f to accent.copy(alpha = accent.alpha * strength * downwashStrength),
         0.65f to accent.copy(alpha = accent.alpha * strength * 0.18f),
         1f to Color.Transparent,
         start = center, end = center + Offset(0f, size.width * 1.6f)
@@ -90,7 +95,7 @@ internal fun Modifier.detailBannerLight(color: State<Color>): Modifier =
         for (step in 12 downTo 1) {
             val inset = spread * step / 12f
             drawRoundRect(
-                color = accent.copy(alpha = accent.alpha * 0.008f * (1f - step / 13f)),
+                color = accent.copy(alpha = accent.alpha * 0.006f * (1f - step / 13f)),
                 topLeft = Offset(-inset, -inset),
                 size = Size(size.width + inset * 2, size.height + inset * 2),
                 cornerRadius = CornerRadius(16.dp.toPx() + inset)
@@ -98,8 +103,8 @@ internal fun Modifier.detailBannerLight(color: State<Color>): Modifier =
         }
     }
     .shadow(8.dp, RoundedCornerShape(16.dp), clip = false,
-        ambientColor = color.value.copy(alpha = 0.25f), spotColor = color.value.copy(alpha = 0.45f))
+        ambientColor = color.value.copy(alpha = 0.16f), spotColor = color.value.copy(alpha = 0.24f))
     .border(1.dp, Brush.verticalGradient(listOf(
-        color.value.copy(alpha = color.value.alpha * 0.60f),
-        color.value.copy(alpha = color.value.alpha * 0.15f)
+        color.value.copy(alpha = color.value.alpha * 0.80f),
+        color.value.copy(alpha = color.value.alpha * 0.08f)
     )), RoundedCornerShape(16.dp))

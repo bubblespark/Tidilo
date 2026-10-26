@@ -237,21 +237,98 @@ class LibraryTransitionTest {
     }
 
     private fun assertAccentStillDrawn(before: android.graphics.Bitmap, during: android.graphics.Bitmap, bounds: android.graphics.Rect) {
-        var colored = 0
-        var retained = 0
+        data class Ink(val x: Int, val y: Int, val hue: Float)
+        val mask = mutableListOf<Ink>()
         val oldHsv = FloatArray(3)
-        val newHsv = FloatArray(3)
         for (y in bounds.top until bounds.bottom) for (x in bounds.left until bounds.right) {
             android.graphics.Color.colorToHSV(before.getPixel(x, y), oldHsv)
-            if (oldHsv[1] > 0.35f) {
-                colored++
-                android.graphics.Color.colorToHSV(during.getPixel(x, y), newHsv)
-                val distance = kotlin.math.abs(oldHsv[0] - newHsv[0])
-                if (minOf(distance, 360f - distance) < 20f && newHsv[1] > 0.15f) retained++
-            }
+            if (oldHsv[1] > 0.35f) mask += Ink(x, y, oldHsv[0])
         }
-        assertTrue("Fixture must contain accent-colored subtitle pixels", colored > 30)
-        assertTrue("Outgoing subtitle must retain its accent: $retained / $colored", retained > colored * 0.35)
+        assertTrue("Fixture must contain accent-colored subtitle pixels", mask.size > 30)
+
+        // Navigation shrinks horizontally and the centered title block can move vertically.
+        // Locate ONE translation by glyph shape, independently of the expected hue.
+        val density = context.resources.displayMetrics.density
+        val maxX = (52 * density).toInt()
+        val maxY = (24 * density).toInt()
+        val area = android.graphics.Rect(maxOf(0, bounds.left - maxX), maxOf(0, bounds.top - maxY),
+            minOf(during.width, bounds.right + maxX), minOf(during.height, bounds.bottom + maxY))
+        val width = area.width()
+        val pixels = IntArray(width * area.height())
+        during.getPixels(pixels, 0, width, area.left, area.top, width, area.height())
+        val ink = BooleanArray(pixels.size)
+        val colored = BooleanArray(pixels.size)
+        val hues = FloatArray(pixels.size)
+        val luminances = pixels.map { pixel ->
+            (0.2126f * android.graphics.Color.red(pixel) + 0.7152f * android.graphics.Color.green(pixel) +
+                0.0722f * android.graphics.Color.blue(pixel)) / 255f
+        }
+        val background = luminances.sorted()[luminances.size / 2]
+        val hsv = FloatArray(3)
+        pixels.forEachIndexed { index, pixel ->
+            android.graphics.Color.colorToHSV(pixel, hsv)
+            colored[index] = hsv[1] > 0.15f
+            ink[index] = colored[index] || kotlin.math.abs(luminances[index] - background) > 0.15f
+            hues[index] = hsv[0]
+        }
+        val stride = width + 1
+        val sums = IntArray(stride * (area.height() + 1))
+        for (y in 0 until area.height()) for (x in 0 until width) {
+            val index = (y + 1) * stride + x + 1
+            sums[index] = (if (ink[y * width + x]) 1 else 0) + sums[index - 1] + sums[index - stride] - sums[index - stride - 1]
+        }
+        var bestScore = -1f
+        var bestX = 0
+        var bestY = 0
+        fun score(dx: Int, dy: Int) {
+            val left = bounds.left + dx - area.left
+            val top = bounds.top + dy - area.top
+            val right = left + bounds.width()
+            val bottom = top + bounds.height()
+            if (left < 0 || top < 0 || right > width || bottom > area.height()) return
+            val count = sums[bottom * stride + right] - sums[top * stride + right] -
+                sums[bottom * stride + left] + sums[top * stride + left]
+            val overlap = mask.count { ink[(it.y + dy - area.top) * width + it.x + dx - area.left] }
+            val shapeScore = 2f * overlap / (mask.size + count)
+            if (shapeScore > bestScore) { bestScore = shapeScore; bestX = dx; bestY = dy }
+        }
+        val step = maxOf(1, density.toInt())
+        for (dy in -maxY..maxY step step) for (dx in -maxX..maxX step step) score(dx, dy)
+        val coarseX = bestX
+        val coarseY = bestY
+        for (dy in coarseY - step..coarseY + step) for (dx in coarseX - step..coarseX + step) score(dx, dy)
+        assertTrue("Outgoing subtitle glyph shape must survive motion: $bestScore", bestScore > 0.65f)
+        val retained = mask.count {
+            val index = (it.y + bestY - area.top) * width + it.x + bestX - area.left
+            val distance = kotlin.math.abs(it.hue - hues[index])
+            colored[index] && minOf(distance, 360f - distance) < 20f
+        }
+        assertTrue("Outgoing subtitle must retain its accent at translation ($bestX,$bestY): $retained / ${mask.size}", retained > mask.size * 0.35)
+    }
+
+    @Test fun accentAssertionTracksOneTranslationAndRejectsWrongColor(): Unit {
+        val before = android.graphics.Bitmap.createBitmap(180, 100, android.graphics.Bitmap.Config.ARGB_8888)
+        val during = before.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+        val wrong = before.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+        val paint = android.graphics.Paint().apply { color = android.graphics.Color.MAGENTA; textSize = 18f; isAntiAlias = true }
+        try {
+            before.eraseColor(android.graphics.Color.WHITE)
+            during.eraseColor(android.graphics.Color.WHITE)
+            wrong.eraseColor(android.graphics.Color.WHITE)
+            android.graphics.Canvas(before).drawText("1 bookmark", 8f, 24f, paint)
+            android.graphics.Canvas(during).drawText("1 bookmark", 30f, 42f, paint)
+            val bounds = android.graphics.Rect(4, 6, 116, 28)
+            assertAccentStillDrawn(before, during, bounds)
+            for (color in listOf(android.graphics.Color.BLUE, android.graphics.Color.GRAY, android.graphics.Color.WHITE)) {
+                wrong.eraseColor(android.graphics.Color.WHITE)
+                paint.color = color
+                android.graphics.Canvas(wrong).drawText("1 bookmark", 30f, 42f, paint)
+                paint.color = android.graphics.Color.MAGENTA
+                // Wrong hue, lost saturation, and missing text must not match a nearby label.
+                android.graphics.Canvas(wrong).drawText("99 feeds", 8f, 65f, paint)
+                org.junit.Assert.assertThrows(AssertionError::class.java) { assertAccentStillDrawn(before, wrong, bounds) }
+            }
+        } finally { before.recycle(); during.recycle(); wrong.recycle() }
     }
 
     @Test fun outgoingFeedAndDomainKeepTheirBookmarksUntilExitCompletes(): Unit = runBlocking {

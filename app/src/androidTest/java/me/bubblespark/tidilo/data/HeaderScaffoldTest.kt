@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
@@ -40,18 +42,20 @@ class HeaderScaffoldTest {
         val scale = mutableStateOf(1f)
         val titleSize = mutableStateOf(28)
         val subtitle = mutableStateOf(true)
+        val dark = mutableStateOf(false)
         var action = Rect.Zero
         var header = Rect.Zero
         var body = Rect.Zero
         var expectedTop = 0f
         var rowHeight = 0f
         var density = 1f
+        var titleLeft = 0f
         val activity = host()
         try {
             instrumentation.runOnMainSync {
                 activity.setContent {
                     CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale.value)) {
-                        MaterialTheme {
+                        MaterialTheme(colorScheme = if (dark.value) darkColorScheme() else lightColorScheme()) {
                             val d = LocalDensity.current
                             density = d.density
                             expectedTop = with(d) { HeaderDefaults.bodyTopPadding().toPx() }
@@ -59,9 +63,12 @@ class HeaderScaffoldTest {
                             Box(Modifier.size(320.dp, 500.dp)) {
                                 TidiloScreenScaffold(header = {
                                     TidiloFrostedHeader(
-                                        title = { Text("日本語 Long collection", fontSize = titleSize.value.sp, maxLines = 1) },
+                                        title = { Text("日本語 Long collection", modifier = Modifier.onGloballyPositioned { titleLeft = it.boundsInRoot().left }, fontSize = titleSize.value.sp, maxLines = 1) },
                                         modifier = Modifier.onGloballyPositioned { header = it.boundsInRoot() },
                                         subtitle = if (subtitle.value) ({ Text("12 bookmarks") }) else null,
+                                        navigationIcon = if (titleSize.value == 23) ({
+                                            IconButton({}, Modifier.padding(end = 4.dp).size(48.dp)) { Text("B") }
+                                        }) else null,
                                         actions = { IconButton({}, Modifier.size(48.dp).onGloballyPositioned { action = it.boundsInRoot() }) { Text("A") } }
                                     )
                                 }) { padding ->
@@ -74,8 +81,8 @@ class HeaderScaffoldTest {
                     }
                 }
             }
-            for (fontScale in listOf(1f, 1.3f, 2f)) {
-                instrumentation.runOnMainSync { scale.value = fontScale }
+            for (darkMode in listOf(false, true)) for (fontScale in listOf(1f, 1.3f, 2f)) {
+                instrumentation.runOnMainSync { scale.value = fontScale; dark.value = darkMode }
                 delay(250)
                 val centers = mutableListOf<Float>()
                 for (size in listOf(28, 23, 20, 17)) {
@@ -84,6 +91,7 @@ class HeaderScaffoldTest {
                     instrumentation.runOnMainSync {
                         centers += action.center.y
                         assertEquals(expectedTop, body.top, 1.1f)
+                        assertEquals((if (size == 23) 72f else 20f) * density, titleLeft, 1.1f)
                         assertEquals(6f * density, body.top - header.bottom, 1.1f)
                         assertTrue(action.width >= 48f * density - 1f)
                         assertTrue(action.right <= 320f * density)

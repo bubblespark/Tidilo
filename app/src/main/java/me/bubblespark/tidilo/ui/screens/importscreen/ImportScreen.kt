@@ -1,6 +1,5 @@
 package me.bubblespark.tidilo.ui.screens.importscreen
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.animation.core.Animatable
@@ -14,10 +13,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
@@ -31,8 +26,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,8 +33,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -120,8 +111,9 @@ import me.bubblespark.tidilo.data.ImportTask
 import me.bubblespark.tidilo.data.ImportingTask
 import me.bubblespark.tidilo.data.TaskStatus
 import me.bubblespark.tidilo.ui.components.DomainWatermark
-import me.bubblespark.tidilo.ui.components.FrostedHeaderContainer
-import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
+import me.bubblespark.tidilo.ui.components.HeaderDefaults
+import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -246,19 +238,198 @@ fun ImportScreen(
         }
     }
 
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val headerHeight = statusBarTop + 80.dp
+    val headerHeight = HeaderDefaults.bodyTopPadding()
 
-    Box(modifier = modifier.fillMaxSize()) {
+    TidiloScreenScaffold(
+        modifier = modifier,
+        hideHeaderOnScroll = true,
+        bottomContentPadding = HeaderDefaults.BottomNavigationPadding,
+        // Expressive Header (slides out/in from top screen boundary linked with scroll)
+        header = {
+            TidiloFrostedHeader(
+                title = {
+                    Text(
+                        text = stringResource(R.string.import_header_title),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = stringResource(R.string.import_header_subtitle),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.secondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                actions = {
+                    Box {
+                        IconButton(
+                            onClick = {
+                                showNotificationPopup = true
+                                viewModel.markAllNotificationsAsRead()
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            BadgedBox(
+                                badge = {
+                                    if (unreadNotificationCount > 0) {
+                                        Badge {
+                                            Text(if (unreadNotificationCount > 99) "99+" else unreadNotificationCount.toString())
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_notifications),
+                                    contentDescription = if (unreadNotificationCount > 0) {
+                                        "Notifications, $unreadNotificationCount unread"
+                                    } else {
+                                        "Notifications"
+                                    },
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showNotificationPopup,
+                            onDismissRequest = { showNotificationPopup = false },
+                            modifier = Modifier
+                                .widthIn(min = 320.dp, max = 360.dp)
+                                .background(MaterialTheme.colorScheme.surface)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Notifications",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (notifications.isNotEmpty()) {
+                                    TextButton(onClick = { viewModel.clearAllNotifications() }) {
+                                        Text("Clear all", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                            if (notifications.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "No notifications",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                            } else {
+                                Column(
+                                    modifier = Modifier
+                                        .heightIn(max = 380.dp)
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    notifications.forEach { notification ->
+                                        key(notification.id) {
+                                            val iconRes = when (notification.type) {
+                                                NotificationType.INFO.name -> R.drawable.ic_info
+                                                NotificationType.ERROR.name -> R.drawable.ic_error
+                                                else -> R.drawable.ic_warning
+                                            }
+                                            val iconTint = when (notification.type) {
+                                                NotificationType.INFO.name -> MaterialTheme.colorScheme.primary
+                                                NotificationType.ERROR.name -> MaterialTheme.colorScheme.error
+                                                else -> MaterialTheme.colorScheme.tertiary
+                                            }
+
+                                            ListItem(
+                                                modifier = Modifier.clickable(
+                                                    role = androidx.compose.ui.semantics.Role.Button,
+                                                    onClickLabel = "View bookmark"
+                                                ) {
+                                                    showNotificationPopup = false
+                                                    if (notification.existingBookmarkId != null) {
+                                                        onNavigateToDetail(notification.existingBookmarkId)
+                                                    } else {
+                                                        viewModel.findBookmarkIdByUrl(notification.url) { bookmarkId ->
+                                                            if (bookmarkId != null) {
+                                                                onNavigateToDetail(bookmarkId)
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                leadingContent = {
+                                                    Icon(
+                                                        painter = painterResource(id = iconRes),
+                                                        contentDescription = notification.type,
+                                                        tint = iconTint,
+                                                        modifier = Modifier.size(22.dp)
+                                                    )
+                                                },
+                                                overlineContent = {
+                                                    Text(
+                                                        text = notification.domain,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.secondary
+                                                    )
+                                                },
+                                                headlineContent = {
+                                                    Text(
+                                                        text = notification.message,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                },
+                                                supportingContent = {
+                                                    Text(
+                                                        text = notification.url,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.outline
+                                                    )
+                                                }
+                                            )
+                                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    IconButton(
+                        onClick = { showImportDialog = true },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = stringResource(R.string.import_button_content_desc),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            )
+        }
+    ) { contentPadding ->
         // 2 sections (Ready, Error)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                top = headerHeight,
-                bottom = 140.dp,
-                start = 20.dp,
-                end = 20.dp
-            ),
+            contentPadding = contentPadding,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // ==================== 1. Ready Group (defaults to open) ====================
@@ -396,196 +567,7 @@ fun ImportScreen(
             }
         }
 
-        // Expressive Header (slides out/in from top screen boundary linked with scroll)
-        ImportHeaderAnimatedVisibility(
-            modifier = Modifier.align(Alignment.TopCenter)
-        ) {
-            FrostedHeaderContainer {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = stringResource(R.string.import_header_title),
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = stringResource(R.string.import_header_subtitle),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                    }
 
-                    // Right actions: Notification Bell and Import (+) button
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box {
-                            IconButton(
-                                onClick = {
-                                    showNotificationPopup = true
-                                    viewModel.markAllNotificationsAsRead()
-                                },
-                                modifier = Modifier.size(44.dp)
-                            ) {
-                                BadgedBox(
-                                    badge = {
-                                        if (unreadNotificationCount > 0) {
-                                            Badge {
-                                                Text(if (unreadNotificationCount > 99) "99+" else unreadNotificationCount.toString())
-                                            }
-                                        }
-                                    }
-                                ) {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.ic_notifications),
-                                        contentDescription = if (unreadNotificationCount > 0) {
-                                            "Notifications, $unreadNotificationCount unread"
-                                        } else {
-                                            "Notifications"
-                                        },
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            DropdownMenu(
-                                expanded = showNotificationPopup,
-                                onDismissRequest = { showNotificationPopup = false },
-                                modifier = Modifier
-                                    .widthIn(min = 320.dp, max = 360.dp)
-                                    .background(MaterialTheme.colorScheme.surface)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Notifications",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    if (notifications.isNotEmpty()) {
-                                        TextButton(onClick = { viewModel.clearAllNotifications() }) {
-                                            Text("Clear all", style = MaterialTheme.typography.labelMedium)
-                                        }
-                                    }
-                                }
-
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                                if (notifications.isEmpty()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(24.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "No notifications",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.outline
-                                        )
-                                    }
-                                } else {
-                                    Column(
-                                        modifier = Modifier
-                                            .heightIn(max = 380.dp)
-                                            .fillMaxWidth()
-                                            .verticalScroll(rememberScrollState())
-                                    ) {
-                                        notifications.forEach { notification ->
-                                            key(notification.id) {
-                                                val iconRes = when (notification.type) {
-                                                    NotificationType.INFO.name -> R.drawable.ic_info
-                                                    NotificationType.ERROR.name -> R.drawable.ic_error
-                                                    else -> R.drawable.ic_warning
-                                                }
-                                                val iconTint = when (notification.type) {
-                                                    NotificationType.INFO.name -> MaterialTheme.colorScheme.primary
-                                                    NotificationType.ERROR.name -> MaterialTheme.colorScheme.error
-                                                    else -> MaterialTheme.colorScheme.tertiary
-                                                }
-
-                                                ListItem(
-                                                    modifier = Modifier.clickable(
-                                                        role = androidx.compose.ui.semantics.Role.Button,
-                                                        onClickLabel = "View bookmark"
-                                                    ) {
-                                                        showNotificationPopup = false
-                                                        if (notification.existingBookmarkId != null) {
-                                                            onNavigateToDetail(notification.existingBookmarkId)
-                                                        } else {
-                                                            viewModel.findBookmarkIdByUrl(notification.url) { bookmarkId ->
-                                                                if (bookmarkId != null) {
-                                                                    onNavigateToDetail(bookmarkId)
-                                                                }
-                                                            }
-                                                        }
-                                                    },
-                                                    leadingContent = {
-                                                        Icon(
-                                                            painter = painterResource(id = iconRes),
-                                                            contentDescription = notification.type,
-                                                            tint = iconTint,
-                                                            modifier = Modifier.size(22.dp)
-                                                        )
-                                                    },
-                                                    overlineContent = {
-                                                        Text(
-                                                            text = notification.domain,
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = MaterialTheme.colorScheme.secondary
-                                                        )
-                                                    },
-                                                    headlineContent = {
-                                                        Text(
-                                                            text = notification.message,
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                            fontWeight = FontWeight.SemiBold,
-                                                            color = MaterialTheme.colorScheme.onSurface
-                                                        )
-                                                    },
-                                                    supportingContent = {
-                                                        Text(
-                                                            text = notification.url,
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis,
-                                                            style = MaterialTheme.typography.bodySmall,
-                                                            color = MaterialTheme.colorScheme.outline
-                                                        )
-                                                    }
-                                                )
-                                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        IconButton(
-                            onClick = { showImportDialog = true },
-                            modifier = Modifier.size(44.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = stringResource(R.string.import_button_content_desc),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-        }
 
         // Undo SnackbarHost (placed above the floating navigation bar)
         SnackbarHost(
@@ -1346,34 +1328,5 @@ private fun resolveTaskStatusText(item: ImportTask): String {
         text == "Completed" -> stringResource(R.string.import_status_completed)
         text == "Queued" || text == "Ready" || text == "Ready for AI Analysis" || text == "Ready • Added without metadata" -> stringResource(R.string.import_status_ready)
         else -> text
-    }
-}
-
-
-@Composable
-private fun ImportHeaderAnimatedVisibility(
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
-) {
-    val isBarsVisible = LocalBarsVisible.current
-    AnimatedVisibility(
-        visible = isBarsVisible,
-        enter = slideInVertically(
-            initialOffsetY = { -it },
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow
-            )
-        ) + fadeIn(animationSpec = tween(200)),
-        exit = slideOutVertically(
-            targetOffsetY = { -it },
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow
-            )
-        ) + fadeOut(animationSpec = tween(150)),
-        modifier = modifier
-    ) {
-        content()
     }
 }

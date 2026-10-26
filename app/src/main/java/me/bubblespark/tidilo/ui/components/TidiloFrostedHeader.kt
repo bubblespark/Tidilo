@@ -8,6 +8,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import me.bubblespark.tidilo.R
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,7 +41,7 @@ fun TidiloFrostedHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             navigationIcon?.let { navigation ->
-                Box(Modifier.padding(end = 4.dp), contentAlignment = Alignment.Center) { navigation() }
+                Box(contentAlignment = Alignment.Center) { navigation() }
             }
             Column(Modifier.weight(1f)) {
                 title()
@@ -39,4 +50,28 @@ fun TidiloFrostedHeader(
             Row(verticalAlignment = Alignment.CenterVertically, content = actions)
         }
     }
+}
+
+/** Standard secondary-page header, including loading and unavailable-content states. */
+@Composable
+fun TidiloPageHeader(
+    title: String,
+    onNavigateBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    TidiloFrostedHeader(
+        title = {
+            Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        modifier = modifier,
+        navigationIcon = {
+            IconButton(onNavigateBack, Modifier.padding(end = 4.dp).size(48.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back),
+                    tint = MaterialTheme.colorScheme.onBackground)
+            }
+        },
+        actions = actions
+    )
 }

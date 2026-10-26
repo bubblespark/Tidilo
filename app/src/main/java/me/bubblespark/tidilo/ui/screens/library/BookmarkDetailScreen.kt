@@ -1,5 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
+import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import kotlinx.coroutines.ensureActive
 
 import android.content.Intent
@@ -25,9 +28,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -149,36 +149,20 @@ fun BookmarkDetailScreen(
     val detailFlow = remember(viewModel, bookmarkId, detailRetry) { viewModel.bookmarkDetails(bookmarkId) }
     val detailState by detailFlow.collectAsStateWithLifecycle(initialValue = BookmarkDetailState())
     val bookmark = detailState.bookmark
-    if (detailState.loading) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            androidx.compose.material3.CircularProgressIndicator()
-        }
-        return
-    }
-
-    if (detailState.error != null) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            PagingFeedback(androidx.paging.LoadState.Error(detailState.error!!), { detailRetry++ })
-        }
-        return
-    }
-    if (bookmark == null) {
-        Box(
-            modifier = modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.common_back)
+    if (detailState.loading || detailState.error != null || bookmark == null) {
+        TidiloScreenScaffold(
+            modifier = modifier,
+            // Top Header: Back Button + Title + Save Button
+        header = { TidiloPageHeader(stringResource(R.string.detail_title), onNavigateBack) }
+        ) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                when {
+                    detailState.loading -> androidx.compose.material3.CircularProgressIndicator()
+                    detailState.error != null -> PagingFeedback(
+                        androidx.paging.LoadState.Error(requireNotNull(detailState.error)), { detailRetry++ }
                     )
+                    else -> Text(stringResource(R.string.detail_item_not_found), color = MaterialTheme.colorScheme.outline)
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.detail_item_not_found),
-                    color = MaterialTheme.colorScheme.outline
-                )
             }
         }
         return
@@ -258,7 +242,315 @@ fun BookmarkDetailScreen(
     val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
     val ogBitmap = ogState.bitmap
 
-    Box(modifier = modifier.fillMaxSize()) {
+    TidiloScreenScaffold(
+        modifier = modifier,
+        hideHeaderOnScroll = false,
+        header = {
+            TidiloFrostedHeader(
+                title = {
+                    Text(
+                        text = stringResource(R.string.detail_title),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = {
+                            if (!isSaving) {
+                                if (hasChanges) {
+                                    showDiscardConfirmDialog = true
+                                } else {
+                                    onNavigateBack()
+                                }
+                            }
+                        },
+                        enabled = !isSaving,
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.common_back),
+                            tint = if (isSaving) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                },
+                actions = {
+                    Button(
+                        onClick = {
+                            if (hasChanges && !isSaving) {
+                                isSaving = true
+                                coroutineScope.launch {
+                                    try {
+                                        viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsNsfw)
+                                        onNavigateBack()
+                                    } catch (e: Exception) {
+                                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                        Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
+                                    } finally {
+                                        isSaving = false
+                                    }
+                                }
+                            }
+                        },
+                        enabled = hasChanges && !isSaving,
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Text(
+                                text = stringResource(R.string.detail_save),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            )
+        },
+        overlay = {
+            // Scrim (prevents clicks behind expanded menu and collapses on tap)
+            if (isFabMenuExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.32f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            isFabMenuExpanded = false
+                        }
+                )
+            }
+
+            // M3 FAB Menu (Material 3 Expressive: matches expanded action button 86dp / 40dp icon / 16dp margin)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp, end = 16.dp),
+                contentAlignment = Alignment.BottomEnd
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    AnimatedVisibility(
+                        visible = isFabMenuExpanded,
+                        enter = fadeIn(animationSpec = tween(180)) + slideInVertically(
+                            initialOffsetY = { it / 2 },
+                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                        ),
+                        exit = fadeOut(animationSpec = tween(120)) + slideOutVertically(
+                            targetOffsetY = { it / 2 },
+                            animationSpec = tween(120)
+                        )
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            // Top: Delete button
+                            FabMenuItem(
+                                label = stringResource(R.string.detail_action_delete),
+                                icon = Icons.Default.Delete,
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                                onClick = {
+                                    isFabMenuExpanded = false
+                                    showDeleteConfirmDialog = true
+                                }
+                            )
+
+                            // Bottom: AI Summary button
+                            FabMenuItem(
+                                label = stringResource(R.string.detail_action_ai_summary),
+                                icon = Icons.Default.AutoAwesome,
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                onClick = {
+                                    isFabMenuExpanded = false
+                                    onNavigateToAiReview(bookmark.id)
+                                }
+                            )
+                        }
+                    }
+
+                    // Parent toggle FAB: matches expanded action button (86dp circular container, 40dp icon, 10dp elevation)
+                    Surface(
+                        onClick = { isFabMenuExpanded = !isFabMenuExpanded },
+                        modifier = Modifier.size(86.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        shadowElevation = 10.dp,
+                        tonalElevation = 6.dp
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isFabMenuExpanded) Icons.Default.Close else ImageVector.vectorResource(R.drawable.ic_menu_open),
+                                contentDescription = stringResource(if (isFabMenuExpanded) R.string.detail_fab_close else R.string.detail_fab_open),
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Discard changes confirmation dialog
+            if (showDiscardConfirmDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDiscardConfirmDialog = false },
+                    title = {
+                        Text(
+                            text = stringResource(R.string.detail_dialog_discard_title),
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = stringResource(R.string.detail_dialog_discard_message)
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showDiscardConfirmDialog = false
+                                onNavigateBack()
+                            }
+                        ) {
+                            Text(
+                                text = stringResource(R.string.common_ok),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showDiscardConfirmDialog = false }
+                        ) {
+                            Text(
+                                text = stringResource(R.string.common_cancel)
+                            )
+                        }
+                    }
+                )
+            }
+
+            // Delete confirmation dialog
+            if (showDeleteConfirmDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteConfirmDialog = false },
+                    title = {
+                        Text(
+                            text = stringResource(R.string.detail_dialog_delete_title),
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = stringResource(R.string.detail_dialog_delete_message)
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showDeleteConfirmDialog = false
+                                coroutineScope.launch {
+                                    try {
+                                        if (viewModel.deleteBookmark(bookmark.id)) onNavigateBack()
+                                    } catch (e: Exception) {
+                                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                        Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        ) {
+                            Text(
+                                text = stringResource(R.string.common_delete),
+                                color = MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                            Text(stringResource(R.string.common_cancel))
+                        }
+                    },
+                    shape = RoundedCornerShape(24.dp)
+                )
+            }
+
+            // Tag edit dialogs & bottom sheet
+            if (showTagEditDialog) {
+                BookmarkTagEditDialog(
+                    selectedCategory = draftCategory,
+                    selectedSubcategory = draftSubcategory,
+                    selectedEntities = draftEntities,
+                    isNsfw = draftIsNsfw,
+                    isNsfwContentVisible = isNsfwContentVisible,
+                    onCategoryChanged = { draftCategory = it },
+                    onSubcategoryChanged = { draftSubcategory = it },
+                    onNsfwChanged = { draftIsNsfw = it },
+                    onAddEntityClick = { showAddEntityDialog = true },
+                    onOpenEntityPickerClick = { showEntityBottomSheet = true },
+                    onConfirm = {
+                        editedTag = Tag.create(draftCategory, draftSubcategory, draftEntities)
+                        editedIsNsfw = draftIsNsfw
+                        showTagEditDialog = false
+                    },
+                    onDismiss = { showTagEditDialog = false }
+                )
+            }
+
+            if (showAddEntityDialog) {
+                AddEntityDialog(
+                    onDismiss = { showAddEntityDialog = false },
+                    onConfirm = { newEntity ->
+                        draftEntities = Tag.addEntity(draftEntities, newEntity)
+                    }
+                )
+            }
+
+            if (showEntityBottomSheet) {
+                val allLibraryEntities by viewModel.entityNames.collectAsStateWithLifecycle()
+                EntityTagPickerBottomSheet(
+                    selectedEntities = draftEntities,
+                    allEntities = (allLibraryEntities + draftEntities).distinct(),
+                    onToggleEntity = { entity ->
+                        draftEntities = Tag.toggleEntity(draftEntities, entity)
+                    },
+                    onRemoveEntity = { entity ->
+                        draftEntities = draftEntities.filterNot { it.equals(entity, ignoreCase = true) }
+                    },
+                    onDismiss = { showEntityBottomSheet = false }
+                )
+            }
+        }
+    ) { contentPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -269,807 +561,475 @@ fun BookmarkDetailScreen(
                     })
                 }
                 .verticalScroll(scrollState)
-                .padding(horizontal = 20.dp)
+                .padding(contentPadding)
         ) {
-        // 1. Top Header: Back Button + Title + Save Button
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = {
-                        if (!isSaving) {
-                            if (hasChanges) {
-                                showDiscardConfirmDialog = true
-                            } else {
-                                onNavigateBack()
-                            }
-                        }
-                    },
-                    enabled = !isSaving,
-                    modifier = Modifier
-                        .padding(end = 4.dp)
-                        .size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.common_back),
-                        tint = if (isSaving) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onBackground
-                    )
-                }
-                Text(
-                    text = stringResource(R.string.detail_title),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-            }
-
-            // Top-right "Save" button (filled pill button; visually disabled when no unsaved changes or saving)
-            Button(
-                onClick = {
-                    if (hasChanges && !isSaving) {
-                        isSaving = true
-                        coroutineScope.launch {
-                            try {
-                                viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsNsfw)
-                                onNavigateBack()
-                            } catch (e: Exception) {
-                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                                Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
-                            } finally {
-                                isSaving = false
-                            }
-                        }
-                    }
-                },
-                enabled = hasChanges && !isSaving,
-                shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                ),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
-            ) {
-                if (isSaving) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                } else {
-                    Text(
-                        text = stringResource(R.string.detail_save),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-
-        // Content container directly beneath HEADER (places DomainWatermark or og:image banner)
-        Box(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // Upper right domain watermark (rendered only when og:image is unavailable and resolution completed)
-            if (ogState.shouldShowDomainWatermarkFallback) {
-                DomainWatermark(
-                    domain = domain,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 20.dp) // Cancels Column's 20dp horizontal padding to align with right screen edge
-                )
-            }
-
-            Column(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (ogBitmap != null) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                        val bannerHeight = minOf(
-                            maxWidth / calculateOgAspectRatio(ogBitmap.width, ogBitmap.height),
-                            200.dp
-                        )
-                        Image(
-                            bitmap = ogBitmap,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(bannerHeight)
-                                .clip(RoundedCornerShape(16.dp))
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                } else {
-                    Spacer(modifier = Modifier.height(20.dp))
-                }
-
-                // 2. Item Title
-                Text(
-                    text = bookmark.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    lineHeight = MaterialTheme.typography.titleLarge.lineHeight * 1.15f,
+                // Content container directly beneath HEADER (places DomainWatermark or og:image banner)
+                Box(
                     modifier = Modifier.fillMaxWidth()
-                )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // 3. URL (tap to launch browser, long press to copy to clipboard)
-        @OptIn(ExperimentalFoundationApi::class)
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .combinedClickable(
-                    onClick = {
-                        runCatching {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(bookmark.url)).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            }
-                            context.startActivity(intent)
-                        }.onFailure {
-                            Toast
-                                .makeText(
-                                    context,
-                                    context.getString(R.string.bookmark_could_not_open_browser),
-                                    Toast.LENGTH_SHORT
-                                )
-                                .show()
-                        }
-                    },
-                    onLongClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        coroutineScope.launch {
-                            val clipData = ClipData.newPlainText("URL", bookmark.url)
-                            clipboard.setClipEntry(clipData.toClipEntry())
-                        }
-                        Toast
-                            .makeText(
-                                context,
-                                context.getString(R.string.detail_url_copied),
-                                Toast.LENGTH_SHORT
-                            )
-                            .show()
+                ) {
+                    // Upper right domain watermark (rendered only when og:image is unavailable and resolution completed)
+                    if (ogState.shouldShowDomainWatermarkFallback) {
+                        DomainWatermark(
+                            domain = domain,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(x = 20.dp) // Cancels Column's 20dp horizontal padding to align with right screen edge
+                        )
                     }
-                ),
-            shape = RoundedCornerShape(12.dp),
-            color = Color.Transparent
-        ) {
-            Row(
-                modifier = Modifier.padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                    contentDescription = stringResource(R.string.detail_open_url),
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = bookmark.url,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    textDecoration = TextDecoration.Underline,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
 
-        if (bookmark.isAiSkipped) {
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Warning,
-                    contentDescription = null,
-                    tint = WarningColor.textOrIcon,
-                    modifier = Modifier.size(16.dp)
-                )
-                Text(
-                    text = stringResource(R.string.detail_ai_not_analyzed_warning),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = WarningColor.textOrIcon
-                )
-            }
-            Spacer(modifier = Modifier.height(14.dp))
-        } else {
-            Spacer(modifier = Modifier.height(24.dp))
-        }
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (ogBitmap != null) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                                val bannerHeight = minOf(
+                                    maxWidth / calculateOgAspectRatio(ogBitmap.width, ogBitmap.height),
+                                    200.dp
+                                )
+                                Image(
+                                    bitmap = ogBitmap,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(bannerHeight)
+                                        .clip(RoundedCornerShape(16.dp))
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        } else {
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
 
-        // 4. Section: Tags & Classification
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Tag,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.detail_section_tags),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
+                        // 2. Item Title
+                        Text(
+                            text = bookmark.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            lineHeight = MaterialTheme.typography.titleLarge.lineHeight * 1.15f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
 
-            CompositionLocalProvider(
-                LocalMinimumInteractiveComponentSize provides Dp.Unspecified
-            ) {
-                IconButton(
-                    onClick = {
-                        draftCategory = editedTag.category
-                        draftSubcategory = editedTag.subcategory
-                        draftEntities = editedTag.entities
-                        draftIsNsfw = editedIsNsfw
-                        showTagEditDialog = true
-                    },
-                    modifier = Modifier.size(24.dp)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 3. URL (tap to launch browser, long press to copy to clipboard)
+                @OptIn(ExperimentalFoundationApi::class)
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .combinedClickable(
+                            onClick = {
+                                runCatching {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(bookmark.url)).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    context.startActivity(intent)
+                                }.onFailure {
+                                    Toast
+                                        .makeText(
+                                            context,
+                                            context.getString(R.string.bookmark_could_not_open_browser),
+                                            Toast.LENGTH_SHORT
+                                        )
+                                        .show()
+                                }
+                            },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                coroutineScope.launch {
+                                    val clipData = ClipData.newPlainText("URL", bookmark.url)
+                                    clipboard.setClipEntry(clipData.toClipEntry())
+                                }
+                                Toast
+                                    .makeText(
+                                        context,
+                                        context.getString(R.string.detail_url_copied),
+                                        Toast.LENGTH_SHORT
+                                    )
+                                    .show()
+                            }
+                        ),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.Transparent
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Edit,
-                        contentDescription = stringResource(R.string.detail_edit_tags),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                            contentDescription = stringResource(R.string.detail_open_url),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = bookmark.url,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textDecoration = TextDecoration.Underline,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
-            }
-        }
 
-        Spacer(modifier = Modifier.height(10.dp))
+                if (bookmark.isAiSkipped) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Warning,
+                            contentDescription = null,
+                            tint = WarningColor.textOrIcon,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.detail_ai_not_analyzed_warning),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = WarningColor.textOrIcon
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                } else {
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
 
-        // [category] > [subcategory] newline [entities] (uniform 8.dp line spacing)
-        CompositionLocalProvider(
-            LocalMinimumInteractiveComponentSize provides Dp.Unspecified
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Line 1: [category] > [subcategory] (+ [NSFW])
+                // 4. Section: Tags & Classification
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
-                    // Category
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(localizedCategory) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Tag,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.detail_section_tags),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
 
-                    Text(
-                        text = ">",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-
-                    // Subcategory
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(localizedSubcategory) },
-                        leadingIcon = {
+                    CompositionLocalProvider(
+                        LocalMinimumInteractiveComponentSize provides Dp.Unspecified
+                    ) {
+                        IconButton(
+                            onClick = {
+                                draftCategory = editedTag.category
+                                draftSubcategory = editedTag.subcategory
+                                draftEntities = editedTag.entities
+                                draftIsNsfw = editedIsNsfw
+                                showTagEditDialog = true
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
                             Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                                imageVector = Icons.Outlined.Edit,
+                                contentDescription = stringResource(R.string.detail_edit_tags),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
                             )
-                        },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-                } else if (localizedCategory.isNotBlank()) {
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(localizedCategory) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-                } else if (localizedSubcategory.isNotBlank()) {
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(localizedSubcategory) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    )
+                        }
+                    }
                 }
 
+                Spacer(modifier = Modifier.height(10.dp))
 
-                if (editedIsNsfw) {
-                    AssistChip(
-                        onClick = {},
-                        label = { Text("NSFW", fontWeight = FontWeight.Bold) },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            labelColor = MaterialTheme.colorScheme.onErrorContainer
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-                }
-            }
-
-            // Line 2: [entities] (disables LocalMinimumInteractiveComponentSize to compact multi-line height)
-            if (editedTag.entities.isNotEmpty()) {
+                // [category] > [subcategory] newline [entities] (uniform 8.dp line spacing)
                 CompositionLocalProvider(
                     LocalMinimumInteractiveComponentSize provides Dp.Unspecified
                 ) {
-                    FlowRow(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        editedTag.entities.forEach { entity ->
+                        // Line 1: [category] > [subcategory] (+ [NSFW])
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                        if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
+                            // Category
                             AssistChip(
                                 onClick = {},
-                                label = { Text(entity.removePrefix("#")) },
+                                label = { Text(localizedCategory) },
                                 leadingIcon = {
                                     Icon(
-                                        imageVector = Icons.Default.Tag,
+                                        imageVector = Icons.Default.Folder,
                                         contentDescription = null,
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 },
                                 colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
-                                    labelColor = MaterialTheme.colorScheme.onSurface
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+
+                            Text(
+                                text = ">",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+
+                            // Subcategory
+                            AssistChip(
+                                onClick = {},
+                                label = { Text(localizedSubcategory) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Folder,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        } else if (localizedCategory.isNotBlank()) {
+                            AssistChip(
+                                onClick = {},
+                                label = { Text(localizedCategory) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Folder,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        } else if (localizedSubcategory.isNotBlank()) {
+                            AssistChip(
+                                onClick = {},
+                                label = { Text(localizedSubcategory) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Folder,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+
+
+                        if (editedIsNsfw) {
+                            AssistChip(
+                                onClick = {},
+                                label = { Text("NSFW", fontWeight = FontWeight.Bold) },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                    labelColor = MaterialTheme.colorScheme.onErrorContainer
                                 ),
                                 shape = RoundedCornerShape(10.dp)
                             )
                         }
                     }
+
+                    // Line 2: [entities] (disables LocalMinimumInteractiveComponentSize to compact multi-line height)
+                    if (editedTag.entities.isNotEmpty()) {
+                        CompositionLocalProvider(
+                            LocalMinimumInteractiveComponentSize provides Dp.Unspecified
+                        ) {
+                            FlowRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                editedTag.entities.forEach { entity ->
+                                    AssistChip(
+                                        onClick = {},
+                                        label = { Text(entity.removePrefix("#")) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Tag,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        },
+                                        colors = AssistChipDefaults.assistChipColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
+                                            labelColor = MaterialTheme.colorScheme.onSurface
+                                        ),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
-        }
-    }
 
-        Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
-        // 5. Section: Summary
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.AutoAwesome,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = stringResource(R.string.detail_section_summary),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-        ) {
-            Text(
-                text = bookmark.description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.3f,
-                modifier = Modifier.padding(14.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // 6. Section: Note (Note label + character count counter)
-        Column(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // 5. Section: Summary
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
-                        imageVector = Icons.Outlined.EditNote,
+                        imageVector = Icons.Default.AutoAwesome,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = stringResource(R.string.detail_section_note),
+                        text = stringResource(R.string.detail_section_summary),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
-                Text(
-                    text = "${noteText.length}/200",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = if (noteText.length >= 200) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
-                )
-            }
+                Spacer(modifier = Modifier.height(10.dp))
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            OutlinedTextField(
-                value = noteText,
-                onValueChange = { input ->
-                    val limited = if (input.length > 200) input.take(200) else input
-                    noteText = limited
-                },
-                placeholder = {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
                     Text(
-                        text = stringResource(R.string.detail_note_placeholder),
+                        text = bookmark.description,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurface,
+                        lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.3f,
+                        modifier = Modifier.padding(14.dp)
                     )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 100.dp, max = 150.dp)
-                    .onFocusChanged { focusState ->
-                        isNoteFocused = focusState.isFocused
-                    },
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                )
-            )
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // 7. Date watermark (Created / Updated)
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 20.dp),
-            horizontalAlignment = Alignment.End
-        ) {
-            Text(
-                text = stringResource(R.string.detail_created_at, formattedCreatedAt),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = stringResource(R.string.detail_updated_at, formattedUpdatedAt),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
-            )
-        }
-
-        } // End of inner content Column beneath Header
-    } // End of content Box beneath Header
-
-        // Bottom spacer to prevent overlap with FAB menu
-        Spacer(modifier = Modifier.height(96.dp))
-    } // End of main scrolling Column
-
-    // Status bar protection gradient scrim for Edge-to-Edge immersion
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val scrimBg = MaterialTheme.colorScheme.background
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(statusBarTop + 28.dp)
-            .align(Alignment.TopCenter)
-            .drawWithCache {
-                val brush = Brush.verticalGradient(
-                    colors = listOf(
-                        scrimBg.copy(alpha = 0.85f),
-                        scrimBg.copy(alpha = 0.50f),
-                        scrimBg.copy(alpha = 0.15f),
-                        Color.Transparent
-                    )
-                )
-                onDrawBehind {
-                    drawRect(brush = brush)
                 }
-            }
-    )
 
-    // Scrim (prevents clicks behind expanded menu and collapses on tap)
-    if (isFabMenuExpanded) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.32f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {
-                    isFabMenuExpanded = false
-                }
-        )
-    }
+                Spacer(modifier = Modifier.height(24.dp))
 
-    // M3 FAB Menu (Material 3 Expressive: matches expanded action button 86dp / 40dp icon / 16dp margin)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .navigationBarsPadding()
-            .padding(bottom = 16.dp, end = 16.dp),
-        contentAlignment = Alignment.BottomEnd
-    ) {
-        Column(
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            AnimatedVisibility(
-                visible = isFabMenuExpanded,
-                enter = fadeIn(animationSpec = tween(180)) + slideInVertically(
-                    initialOffsetY = { it / 2 },
-                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-                ),
-                exit = fadeOut(animationSpec = tween(120)) + slideOutVertically(
-                    targetOffsetY = { it / 2 },
-                    animationSpec = tween(120)
-                )
-            ) {
+                // 6. Section: Note (Note label + character count counter)
                 Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Top: Delete button
-                    FabMenuItem(
-                        label = stringResource(R.string.detail_action_delete),
-                        icon = Icons.Default.Delete,
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                        onClick = {
-                            isFabMenuExpanded = false
-                            showDeleteConfirmDialog = true
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.EditNote,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(R.string.detail_section_note),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                         }
-                    )
 
-                    // Bottom: AI Summary button
-                    FabMenuItem(
-                        label = stringResource(R.string.detail_action_ai_summary),
-                        icon = Icons.Default.AutoAwesome,
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        onClick = {
-                            isFabMenuExpanded = false
-                            onNavigateToAiReview(bookmark.id)
-                        }
+                        Text(
+                            text = "${noteText.length}/200",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = if (noteText.length >= 200) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = noteText,
+                        onValueChange = { input ->
+                            val limited = if (input.length > 200) input.take(200) else input
+                            noteText = limited
+                        },
+                        placeholder = {
+                            Text(
+                                text = stringResource(R.string.detail_note_placeholder),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 100.dp, max = 150.dp)
+                            .onFocusChanged { focusState ->
+                                isNoteFocused = focusState.isFocused
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                        )
                     )
                 }
-            }
 
-            // Parent toggle FAB: matches expanded action button (86dp circular container, 40dp icon, 10dp elevation)
-            Surface(
-                onClick = { isFabMenuExpanded = !isFabMenuExpanded },
-                modifier = Modifier.size(86.dp),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                shadowElevation = 10.dp,
-                tonalElevation = 6.dp
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                Spacer(modifier = Modifier.height(28.dp))
+
+                // 7. Date watermark (Created / Updated)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 20.dp),
+                    horizontalAlignment = Alignment.End
                 ) {
-                    Icon(
-                        imageVector = if (isFabMenuExpanded) Icons.Default.Close else ImageVector.vectorResource(R.drawable.ic_menu_open),
-                        contentDescription = stringResource(if (isFabMenuExpanded) R.string.detail_fab_close else R.string.detail_fab_open),
-                        modifier = Modifier.size(40.dp)
+                    Text(
+                        text = stringResource(R.string.detail_created_at, formattedCreatedAt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(R.string.detail_updated_at, formattedUpdatedAt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
                     )
                 }
-            }
+
+                } // End of inner content Column beneath Header
+            } // End of content Box beneath Header
+
+                // Bottom spacer to prevent overlap with FAB menu
+                Spacer(modifier = Modifier.height(96.dp))
         }
-    }
-
-    // Discard changes confirmation dialog
-    if (showDiscardConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showDiscardConfirmDialog = false },
-            title = {
-                Text(
-                    text = stringResource(R.string.detail_dialog_discard_title),
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = stringResource(R.string.detail_dialog_discard_message)
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDiscardConfirmDialog = false
-                        onNavigateBack()
-                    }
-                ) {
-                    Text(
-                        text = stringResource(R.string.common_ok),
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showDiscardConfirmDialog = false }
-                ) {
-                    Text(
-                        text = stringResource(R.string.common_cancel)
-                    )
-                }
-            }
-        )
-    }
-
-    // Delete confirmation dialog
-    if (showDeleteConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirmDialog = false },
-            title = {
-                Text(
-                    text = stringResource(R.string.detail_dialog_delete_title),
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = stringResource(R.string.detail_dialog_delete_message)
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteConfirmDialog = false
-                        coroutineScope.launch {
-                            try {
-                                if (viewModel.deleteBookmark(bookmark.id)) onNavigateBack()
-                            } catch (e: Exception) {
-                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                                Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
-                ) {
-                    Text(
-                        text = stringResource(R.string.common_delete),
-                        color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            },
-            shape = RoundedCornerShape(24.dp)
-        )
-    }
-
-    // Tag edit dialogs & bottom sheet
-    if (showTagEditDialog) {
-        BookmarkTagEditDialog(
-            selectedCategory = draftCategory,
-            selectedSubcategory = draftSubcategory,
-            selectedEntities = draftEntities,
-            isNsfw = draftIsNsfw,
-            isNsfwContentVisible = isNsfwContentVisible,
-            onCategoryChanged = { draftCategory = it },
-            onSubcategoryChanged = { draftSubcategory = it },
-            onNsfwChanged = { draftIsNsfw = it },
-            onAddEntityClick = { showAddEntityDialog = true },
-            onOpenEntityPickerClick = { showEntityBottomSheet = true },
-            onConfirm = {
-                editedTag = Tag.create(draftCategory, draftSubcategory, draftEntities)
-                editedIsNsfw = draftIsNsfw
-                showTagEditDialog = false
-            },
-            onDismiss = { showTagEditDialog = false }
-        )
-    }
-
-    if (showAddEntityDialog) {
-        AddEntityDialog(
-            onDismiss = { showAddEntityDialog = false },
-            onConfirm = { newEntity ->
-                draftEntities = Tag.addEntity(draftEntities, newEntity)
-            }
-        )
-    }
-
-    if (showEntityBottomSheet) {
-        val allLibraryEntities by viewModel.entityNames.collectAsStateWithLifecycle()
-        EntityTagPickerBottomSheet(
-            selectedEntities = draftEntities,
-            allEntities = (allLibraryEntities + draftEntities).distinct(),
-            onToggleEntity = { entity ->
-                draftEntities = Tag.toggleEntity(draftEntities, entity)
-            },
-            onRemoveEntity = { entity ->
-                draftEntities = draftEntities.filterNot { it.equals(entity, ignoreCase = true) }
-            },
-            onDismiss = { showEntityBottomSheet = false }
-        )
-    }
-} // End of Box (fillMaxSize)
+    } // End of shared screen scaffold
 } // End of BookmarkDetailScreen
 
 /**

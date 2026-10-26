@@ -16,6 +16,95 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSharedPipelineTest {
+    @Test fun resumedAndExplicitArticleRetryKeepTheirOriginalLogicalRun() = runBlocking {
+        for (explicit in listOf(false, true)) {
+            val db = database()
+            me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE)
+            var failing = true
+            try {
+                val feed = RssFeedEntity("feed", "https://fixture-feed.example/feed", "Feed")
+                db.rssDao().putFeed(feed)
+                val events = db.rssNotificationDao()
+                events.putRun(me.bubblespark.tidilo.data.db.RssNotificationRunEntity("original", "daily", 1, true))
+                events.putRun(me.bubblespark.tidilo.data.db.RssNotificationRunEntity("resume", "initial", 1, false))
+                val repo = repository(db, { requested, _, _ -> RssHttpPage(200, requested, xml()) }, network { request ->
+                    ArticleResponse(request, if (request.startsWith(url)) { if (failing) 503 else 200 } else 404,
+                        html.toByteArray(), "text/html")
+                })
+                assertFalse(repo.fetchAll(1, notificationRunId = "original"))
+                val task = db.importTaskDao().getAllTasks().single()
+                failing = false
+                if (explicit) repo.retryAcquisition(task.id) else {
+                    db.importTaskDao().insertOrUpdate(task.copy(acquisitionRetryAt = 0))
+                    assertTrue(repo.fetchAll(1, notificationRunId = "resume"))
+                }
+                assertEquals(listOf("DIRECT"), events.items("original").map { it.outcome })
+                assertTrue(events.items("resume").isEmpty())
+            } finally { db.close() }
+        }
+    }
+    private var originalAiMode = me.bubblespark.tidilo.config.AiAnalysisMode.AICORE
+
+    @org.junit.Before fun selectFixtureAiMode() {
+        originalAiMode = me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value
+        me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.AICORE)
+    }
+
+    @org.junit.After fun restoreAiMode() {
+        me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(originalAiMode)
+    }
+
+    @Test fun notificationAccountingSurvivesRetryWithoutRecountingDirectSaves() = runBlocking {
+        val db = database()
+        me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE)
+        var failSecond = true
+        try {
+            val feed = RssFeedEntity("feed", "https://fixture-feed.example/feed", "Feed")
+            db.rssDao().putFeed(feed)
+            val events = db.rssNotificationDao()
+            events.putRun(me.bubblespark.tidilo.data.db.RssNotificationRunEntity("run", "work", 1, true))
+            val repo = repository(db, { requested, _, _ -> RssHttpPage(200, requested, xml(2)) }, network { request ->
+                when {
+                    request == "$url/2" && failSecond -> ArticleResponse(request, 503, byteArrayOf(), "text/html")
+                    request.startsWith("$url/") -> ArticleResponse(request, 200, html.toByteArray(), "text/html")
+                    else -> ArticleResponse(request, 404, byteArrayOf(), "text/html")
+                }
+            })
+            assertFalse(repo.fetchAll(1, notificationRunId = "run"))
+            assertEquals(setOf("DIRECT", "IMPORT_ERROR"), events.items("run").map { it.outcome }.toSet())
+            assertTrue(events.unpublishedRuns().isEmpty())
+            failSecond = false
+            val retry = db.importTaskDao().getAllTasks().single()
+            db.importTaskDao().insertOrUpdate(retry.copy(acquisitionRetryAt = 0))
+            assertTrue(repo.fetchAll(1, notificationRunId = "run"))
+            assertEquals(listOf("DIRECT", "DIRECT"), events.items("run").map { it.outcome })
+            assertEquals(2, db.bookmarkDao().getCount())
+            events.finish("run")
+            assertTrue(repo.fetchAll(1, notificationRunId = "run"))
+            assertEquals(2, events.items("run").size)
+        } finally { db.close() }
+    }
+
+    @Test fun notificationSummarySeparatesDirectFromThisRunsAiReadyAdmissions() = runBlocking {
+        val db = database()
+        try {
+            for (mode in listOf("DIRECT", "AI")) db.rssDao().putFeed(
+                RssFeedEntity(mode, "https://fixture-feed.example/$mode", mode, mode = mode))
+            val events = db.rssNotificationDao()
+            events.putRun(me.bubblespark.tidilo.data.db.RssNotificationRunEntity("run", "work", 1, true))
+            val repo = repository(db, { requested, _, _ ->
+                RssHttpPage(200, requested, xml(2).replace(url, "$url/${requested.substringAfterLast('/')}"))
+            }, network { request ->
+                ArticleResponse(request, if (request.startsWith(url)) 200 else 404, html.toByteArray(), "text/html")
+            })
+            assertTrue(repo.fetchAll(1, notificationRunId = "run"))
+            assertEquals(2, events.items("run").count { it.outcome == "DIRECT" })
+            assertEquals(2, events.items("run").count { it.outcome == "AI" })
+            events.finish("run")
+            assertEquals(2, events.unpublishedRuns().single().pendingAi)
+            assertEquals(2, db.bookmarkDao().getCount())
+        } finally { db.close() }
+    }
     @Test fun registrationAndFetchPersistMetadataAndNotModifiedPreservesIt() = runBlocking {
         val db = database()
         var status = 200

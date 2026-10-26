@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -73,6 +74,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.OgImageManager
+import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
 import android.widget.Toast
 import androidx.compose.material.icons.filled.DeleteSweep
 import kotlinx.coroutines.launch
@@ -94,6 +96,7 @@ fun SettingsScreen(
     val aiCoreFallbackMode by AppConfig.aiCoreFallbackMode.collectAsStateWithLifecycle()
     val aiAnalysisMode by AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val launchContext = LocalView.current.context
     val localConfig = LocalConfiguration.current
     val scope = rememberCoroutineScope()
 
@@ -205,6 +208,35 @@ fun SettingsScreen(
             }
         }
 
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) {
+                val intent = NotificationCoordinator.getInstance(context).settingsIntent()
+                if (launchContext !is android.app.Activity) intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                launchContext.startActivity(intent)
+            },
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(40.dp)) {
+                    BoxContent(icon = ImageVector.vectorResource(R.drawable.ic_notifications),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_notification_title),
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(stringResource(R.string.settings_notification_description),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null,
+                    modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
+            }
+        }
         Spacer(modifier = Modifier.height(24.dp))
 
         // AI Section Header

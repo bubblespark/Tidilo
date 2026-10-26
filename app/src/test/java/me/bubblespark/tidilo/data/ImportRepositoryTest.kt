@@ -27,6 +27,34 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImportRepositoryTest {
+    @Test fun invalidImportReportsOneDetailedOsError() = runBlocking {
+        val job = SupervisorJob()
+        val reported = mutableListOf<Throwable>()
+        try {
+            val repository = ImportRepository(taskDao = FakeImportTaskDao(),
+                repositoryScope = CoroutineScope(coroutineContext + job), reportImportError = { reported.add(it) })
+            assertTrue(repository.importUrl("not a URL").isFailure)
+            assertEquals(listOf("Invalid HTTP/HTTPS URL"), reported.map { it.message })
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test fun quotaErrorReportsOnceWhileReturningWholeBatchToReady() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        val closed = CompletableDeferred<Unit>()
+        val reported = mutableListOf<Int?>()
+        try {
+            dao.insertAll(listOf(waitingEntity("a"), waitingEntity("b")))
+            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
+                isAppInForeground = { true }, openModel = { fakeModel { closed.complete(Unit) } },
+                analyzeTask = { _, _ -> throw AiCoreExecutionException(27, "Battery quota exceeded") },
+                fallbackMode = { AiCoreFallbackMode.DISABLE }, reportAiCoreError = { _, code -> reported.add(code) })
+            repository.retryWaitingProcessingTasks()
+            withTimeout(5000) { closed.await() }
+            assertEquals(listOf(27), reported)
+            assertEquals(2, dao.getTasksByStatuses(listOf("READY")).size)
+        } finally { job.cancelAndJoin() }
+    }
     @Test fun disabledRssSkipDeletesTaskWithoutErrorAndContinuesBatch() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()
@@ -1210,6 +1238,7 @@ class ImportRepositoryTest {
     }
 
     private class FakeImportTaskDao : ImportTaskDao {
+        override fun observeReadyNotificationCount(): Flow<Int> = getAllTasksFlow().map { tasks -> tasks.count { it.status == "READY" } }
         var insertCount = 0
         val tasksFlow = MutableStateFlow<List<ImportTaskEntity>>(emptyList())
         var unavailableIds = emptySet<String>()

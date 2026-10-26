@@ -1,5 +1,7 @@
 # Data Models, State Flows, & Persistence Interfaces
 
+Room 13 adds local RSS notification run/item accounting, including atomic article outcomes and completion-time Ready snapshots. `MIGRATION_12_13` preserves all existing bookmark, subscription, queue, and in-app notification tables. See [Android OS Notifications](notifications.md).
+
 This document specifies all core domain models, state transition machines, serialization schemas, and reactive data streams used throughout Tidilo.
 
 ---

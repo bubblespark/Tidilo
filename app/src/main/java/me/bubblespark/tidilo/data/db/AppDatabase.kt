@@ -20,9 +20,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RssSeenItemEntity::class,
         RssImageCleanupEntity::class,
         ImportTaskEntity::class,
-        ImportNotificationEntity::class
+        ImportNotificationEntity::class,
+        RssNotificationRunEntity::class,
+        RssNotificationItemEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -34,8 +36,15 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun trashDao(): TrashDao
     abstract fun importTaskDao(): ImportTaskDao
     abstract fun importNotificationDao(): ImportNotificationDao
+    abstract fun rssNotificationDao(): RssNotificationDao
 
     companion object {
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS rss_notification_runs (id TEXT NOT NULL PRIMARY KEY, workId TEXT NOT NULL, requestedAt INTEGER NOT NULL, showSummary INTEGER NOT NULL, completed INTEGER NOT NULL, published INTEGER NOT NULL, pendingAi INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS rss_notification_items (runId TEXT NOT NULL, itemId TEXT NOT NULL, outcome TEXT NOT NULL, detail TEXT NOT NULL, PRIMARY KEY(runId, itemId))")
+            }
+        }
         /** Repairs an already-installed prerelease v7 once, before Room publishes any queries. */
         internal val DERIVED_DATA_CALLBACK = object : Callback() {
             override fun onOpen(db: SupportSQLiteDatabase) {
@@ -174,7 +183,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }

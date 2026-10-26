@@ -21,7 +21,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AiAnalysisShareTest {
-    @Test fun disabledShareSavesParsedDescriptionAndPostsBookmarkAdded(): Unit = runBlocking {
+    @Test fun disabledShareSavesParsedDescriptionWithoutSuccessNotification(): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val originalMode = AppConfig.aiAnalysisMode.value
@@ -62,10 +62,11 @@ class AiAnalysisShareTest {
             })
             withTimeout(15000) {
                 while (db.bookmarkDao().getBookmarkByUrl(url) == null) delay(30)
-                while (notifications.activeNotifications.none {
-                    it.notification.extras.getCharSequence("android.text")?.toString() == "Bookmark added"
-                }) delay(30)
             }
+            delay(300)
+            assertTrue(notifications.activeNotifications.none {
+                it.id == 1001 || it.notification.extras.getCharSequence("android.text")?.toString() == "Bookmark added"
+            })
             val bookmark = db.bookmarkDao().getBookmarkByUrl(url)!!
             assertEquals("Publisher Description", bookmark.description)
             assertEquals("Shared fixture", bookmark.title)

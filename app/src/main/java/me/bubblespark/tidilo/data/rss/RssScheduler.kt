@@ -57,12 +57,13 @@ internal object RssScheduler {
                 .setId(manual.id).setInputData(workDataOf("requestedAt" to preferences.manualRequestedAt()))
                 .setConstraints(constraints(settings.wifiOnly)).build()).get()
             val zone = ZoneId.systemDefault()
-            val tag = "rss:${settings.hour}:${settings.minute}:${settings.wifiOnly}:$zone"
+            val tag = "rss-notifications:${settings.hour}:${settings.minute}:${settings.wifiOnly}:$zone"
             val current = manager.getWorkInfosForUniqueWork(DAILY).get().firstOrNull { !it.state.isFinished }
             if (!force && current?.tags?.contains(tag) == true) return@withLock
             val now = Instant.now()
             val next = nextRssFetchAt(now, settings.time, zone)
             val request = PeriodicWorkRequestBuilder<RssFetchWorker>(24, TimeUnit.HOURS)
+                .setInputData(workDataOf("requestedAt" to next.toEpochMilli()))
                 .setConstraints(constraints(settings.wifiOnly))
                 .setInitialDelay(Duration.between(now, next))
                 .setNextScheduleTimeOverride(next.toEpochMilli())

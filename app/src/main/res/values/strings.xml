@@ -1,4 +1,10 @@
 <resources>
+    <string name="settings_notification_title">Notification</string>
+    <string name="settings_notification_description">Manage notifications in system settings</string>
+    <string name="notification_ready_body">There are %1$d URLs awaiting AI analysis.\nTap to open for AI analysis.</string>
+    <string name="notification_rss_complete_body">RSS import completed.\nSaved directly: %1$d items.\nPending AI analysis: %2$d items.</string>
+    <string name="notification_rss_disabled_body">Some RSS feeds have been disabled because they failed to import.\nTap here to view details.</string>
+    <string name="notification_rss_article_errors">Failed to import %1$d RSS articles.\n%2$s</string>
     <string name="settings_ai_analysis_title">AI Analysis</string>
     <string name="settings_ai_analysis_aicore">AICore</string>
     <string name="settings_ai_analysis_disable">Disable</string>

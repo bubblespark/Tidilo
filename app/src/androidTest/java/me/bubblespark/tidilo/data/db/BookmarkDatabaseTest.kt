@@ -43,7 +43,7 @@ class BookmarkDatabaseTest {
             helper.close()
             val db = database(name)
             try {
-                assertEquals(12, db.openHelper.readableDatabase.version)
+                assertEquals(13, db.openHelper.readableDatabase.version)
                 val feed = db.rssDao().feed("feed")!!
                 assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
                 assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)
@@ -104,7 +104,7 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showNsfw: Boolean = true): List<BookmarkEntity> {

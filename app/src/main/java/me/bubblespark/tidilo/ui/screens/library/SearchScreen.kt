@@ -15,6 +15,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -63,6 +65,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -119,6 +122,8 @@ fun SearchScreen(
     var hadFocus by remember { mutableStateOf(false) }
 
     var inputAttachment by remember { mutableStateOf<Any?>(null) }
+    val density = LocalDensity.current
+    var searchInputHeight by remember { mutableStateOf(0.dp) }
     val currentQuery by rememberUpdatedState(searchQuery)
     val currentViewMode by rememberUpdatedState(viewMode)
     // Lazy input may be detached: bring its item back before requesting keyboard focus.
@@ -168,7 +173,10 @@ fun SearchScreen(
             onValueChange = { viewModel.onSearchQueryChanged(it) },
             modifier = Modifier
                 .fillMaxWidth()
-                .onGloballyPositioned { inputAttachment = attachment }
+                .onGloballyPositioned {
+                    inputAttachment = attachment
+                    searchInputHeight = with(density) { it.size.height.toDp() }
+                }
                 .focusRequester(focusRequester)
                 .onFocusChanged { focusState ->
                     if (hadFocus && !focusState.isFocused) {
@@ -241,9 +249,11 @@ fun SearchScreen(
             singleLine = true
         )
     }
+    val loadingResults = isBookmarkLoading(filteredBookmarks.loadState.refresh, filteredBookmarks.itemCount, isQueryChanging)
+    val centerFeedback = initializationFailure != null || loadingResults || filteredBookmarks.loadState.refresh is LoadState.Error
     val feedback: (@Composable () -> Unit)? = when {
         initializationFailure != null -> ({ PagingFeedback(LoadState.Error(requireNotNull(initializationFailure)), viewModel::retryInitialization) })
-        isBookmarkLoading(filteredBookmarks.loadState.refresh, filteredBookmarks.itemCount, isQueryChanging) -> ({ androidx.compose.material3.CircularProgressIndicator() })
+        loadingResults -> ({ androidx.compose.material3.CircularProgressIndicator() })
         filteredBookmarks.loadState.refresh is LoadState.Error -> ({ PagingFeedback(filteredBookmarks.loadState.refresh, filteredBookmarks::retry) })
         filteredBookmarks.itemCount == 0 -> ({ EmptySearchResult(query = searchQuery) })
         else -> null
@@ -278,154 +288,163 @@ fun SearchScreen(
         }) },
         overlay = { BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null } }
     ) { contentPadding ->
-        val showingHistory = searchQuery.isBlank()
-        val showingGrid = !showingHistory && viewMode == LibraryViewMode.GRID
-        // One lazy parent keeps the input node focused across blank/nonblank queries.
-        // Separate states retain history, list, and grid scroll windows independently.
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(if (showingGrid) 2 else 1),
-            state = when {
-                showingHistory -> historyState
-                showingGrid -> resultGridState
-                else -> resultListState
-            },
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = contentPadding,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(if (showingHistory) 4.dp else if (showingGrid) 10.dp else 16.dp)
-        ) {
-            item(key = "search_input", span = { GridItemSpan(maxLineSpan) }, contentType = "search_input") { searchInput() }
-            if (showingHistory) {
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.search_recent_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-
-                        if (searchHistory.isNotEmpty()) {
-                            TextButton(
-                                onClick = { viewModel.clearSearchHistory() },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.common_clear),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                }
-
-                if (searchHistory.isEmpty()) {
+        BoxWithConstraints(Modifier.fillMaxSize().imePadding()) {
+            val showingHistory = searchQuery.isBlank()
+            val showingGrid = !showingHistory && viewMode == LibraryViewMode.GRID
+            val itemSpacing = if (showingHistory) 4.dp else if (showingGrid) 10.dp else 16.dp
+            // One lazy parent keeps the input node focused across blank/nonblank queries.
+            // Separate states retain history, list, and grid scroll windows independently.
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(if (showingGrid) 2 else 1),
+                state = when {
+                    showingHistory -> historyState
+                    showingGrid -> resultGridState
+                    else -> resultListState
+                },
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = contentPadding,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(itemSpacing)
+            ) {
+                item(key = "search_input", span = { GridItemSpan(maxLineSpan) }, contentType = "search_input") { searchInput() }
+                if (showingHistory) {
                     item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 40.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = stringResource(R.string.search_no_recent),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                    }
-                } else {
-                    items(
-                        items = searchHistory.take(10),
-                        key = { "history:$it" },
-                        contentType = { "history_item" }
-                    ) { historyItem ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    viewModel.onSearchQueryChanged(historyItem)
-                                    viewModel.addSearchHistory(historyItem)
-                                    focusManager.clearFocus()
-                                }
-                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.History,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(24.dp)
-                            )
-
-                            Spacer(modifier = Modifier.width(16.dp))
-
                             Text(
-                                text = historyItem,
-                                style = MaterialTheme.typography.bodyMedium,
-                                minLines = 2,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.weight(1f)
+                                text = stringResource(R.string.search_recent_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground
                             )
 
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            IconButton(
-                                onClick = { viewModel.removeSearchHistoryItem(historyItem) },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = stringResource(R.string.common_remove),
-                                    tint = MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                            if (searchHistory.isNotEmpty()) {
+                                TextButton(
+                                    onClick = { viewModel.clearSearchHistory() },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.common_clear),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
                     }
-                }
-            } else if (feedback != null) {
-                item(key = "search_feedback", span = { GridItemSpan(maxLineSpan) }) { feedback() }
-            } else {
-                items(count = filteredBookmarks.itemCount,
-                    key = filteredBookmarks.itemKey { "bookmark:${it.id}" },
-                    contentType = { if (showingGrid) "bookmark_grid_card" else "bookmark_card" }
-                ) { index ->
-                    val item = filteredBookmarks[index] ?: return@items
-                    if (showingGrid) {
-                        BookmarkGridCard(bookmark = item, onLongClick = { peekBookmark = item }, onClick = {
-                            viewModel.addSearchHistory(searchQuery)
-                            onNavigateToDetail(item.id)
-                        })
+
+                    if (searchHistory.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 40.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.search_no_recent),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
                     } else {
-                        BookmarkItemCard(
-                            bookmark = item,
-                            wordKeywords = wordKeywords,
-                            tagKeywords = tagKeywords,
-                            currentLanguage = currentLanguage,
-                            onClick = {
+                        items(
+                            items = searchHistory.take(10),
+                            key = { "history:$it" },
+                            contentType = { "history_item" }
+                        ) { historyItem ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        viewModel.onSearchQueryChanged(historyItem)
+                                        viewModel.addSearchHistory(historyItem)
+                                        focusManager.clearFocus()
+                                    }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.History,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(24.dp)
+                                )
+
+                                Spacer(modifier = Modifier.width(16.dp))
+
+                                Text(
+                                    text = historyItem,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    minLines = 2,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                IconButton(
+                                    onClick = { viewModel.removeSearchHistoryItem(historyItem) },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = stringResource(R.string.common_remove),
+                                        tint = MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else if (feedback != null) {
+                    item(key = "search_feedback", span = { GridItemSpan(maxLineSpan) }) {
+                        if (centerFeedback) {
+                            SearchResultFeedback(maxHeight, contentPadding, searchInputHeight, itemSpacing) { feedback() }
+                        } else {
+                            feedback()
+                        }
+                    }
+                } else {
+                    items(count = filteredBookmarks.itemCount,
+                        key = filteredBookmarks.itemKey { "bookmark:${it.id}" },
+                        contentType = { if (showingGrid) "bookmark_grid_card" else "bookmark_card" }
+                    ) { index ->
+                        val item = filteredBookmarks[index] ?: return@items
+                        if (showingGrid) {
+                            BookmarkGridCard(bookmark = item, onLongClick = { peekBookmark = item }, onClick = {
                                 viewModel.addSearchHistory(searchQuery)
                                 onNavigateToDetail(item.id)
-                            }
-                        )
+                            })
+                        } else {
+                            BookmarkItemCard(
+                                bookmark = item,
+                                wordKeywords = wordKeywords,
+                                tagKeywords = tagKeywords,
+                                currentLanguage = currentLanguage,
+                                onClick = {
+                                    viewModel.addSearchHistory(searchQuery)
+                                    onNavigateToDetail(item.id)
+                                }
+                            )
+                        }
                     }
                 }
             }
-        }
-        boundaryFeedback(filteredBookmarks.loadState.prepend, filteredBookmarks.loadState.append)?.let { state ->
-            PagingFeedback(state, filteredBookmarks::retry,
-                Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp))
+            boundaryFeedback(filteredBookmarks.loadState.prepend, filteredBookmarks.loadState.append)?.let { state ->
+                PagingFeedback(state, filteredBookmarks::retry,
+                    Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp))
+            }
         }
     }
 }

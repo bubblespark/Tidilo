@@ -12,7 +12,7 @@ import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.data.db.RssImageCleanupEntity
 import me.bubblespark.tidilo.data.db.RssSeenItemEntity
-import me.bubblespark.tidilo.ui.screens.library.Tag
+import me.bubblespark.tidilo.data.EntityTagPolicy
 
 internal class RssIngestionStore(
     private val database: AppDatabase,
@@ -86,7 +86,7 @@ internal class RssIngestionStore(
         if ((!nsfw || AppConfig.isNsfwContentBookmarkable.value) && !rss.rssWriteConflict(article.url, task.id)) {
             if (effectiveMode == "DIRECT") {
                 database.bookmarkDao().insertOrUpdate(BookmarkEntity(task.id, article.title, article.url, article.description,
-                    entities = actual.assignedTags.take(Tag.MAX_ENTITIES), createdAt = task.createdAt,
+                    entities = actual.assignedTags.take(EntityTagPolicy.MAX_ENTITIES), createdAt = task.createdAt,
                     updatedAt = System.currentTimeMillis(), isNsfw = nsfw, isAiSkipped = true,
                     ogImageUrl = article.ogImageUrl, rssFeedId = feed.id, rssPublishedAt = task.rssPublishedAt))
                 database.importTaskDao().deleteById(task.id)

@@ -40,25 +40,27 @@ data class Tag(
 ) {
     companion object {
         const val DEFAULT_TAG = "None"
+        const val MAX_ENTITIES = EntityTagPolicy.MAX_ENTITIES
         fun create(category: String?, subcategory: String?, entities: List<String> = emptyList()): Tag
         fun createEmpty(): Tag = Tag(category = null, subcategory = null, entities = emptyList())
+        fun addEntity(current: List<String>, newEntity: String): List<String>
+        fun toggleEntity(current: List<String>, entity: String): List<String>
     }
 }
 ```
 
-### 1.3 Disposable Image Caching & URL-Distinct Identity (`cacheDir`)
-Managed in `data/OgImageManager.kt` and `data/DomainIconManager.kt`:
+### 1.2 `EntityTagPolicy`
+Managed in `data/EntityTagPolicy.kt`:
 
-- **URL-Distinct Image Identity (SHA-256)**:
-  `OgImageManager.computeImageKey(resolvedOgUrl)` normalizes the resolved image URL (preserving query parameters while stripping fragments) and generates a deterministic SHA-256 hash ending in `.webp`. This guarantees bookmarks from the same domain with identical basenames (e.g. `/article-a/og.png` and `/article-b/og.png`) remain completely distinct. `BookmarkEntity` persists both `domain` and `ogImageKey` and maps them directly into `BookmarkItem` (`domain` and `ogImageFilename` constructor properties), avoiding repeated URL parsing and SHA-256 hashing on the UI thread.
-- **Disposable File Storage (`context.cacheDir`)**:
-  Compressed WebP OG images and PNG domain icons are stored as individual files under `cacheDir/og_images` and `cacheDir/domain_icons`. This enables both the OS "Clear cache" and in-app "Clear image cache" actions without risking user bookmark data.
-- **In-App Cache Clearing, Generation Token, & Bounded Notification Streams**:
-  An atomic generation token (`cacheGeneration: AtomicLong` / `cacheGeneration: Long`) invalidates and discards in-flight downloads when cache is cleared. In-memory `LruCache` buffers and derived brand colors are evicted, while dedicated full cache-clearing events, monotonic per-domain revisions (`observeIconUpdates`, `observeOgImageUpdates: Flow<Long>`), and a shared exact-image update stream (`observeExactImageUpdates: Flow<String>` backed by `MAX_PENDING_FALLBACK_KEYS = 128` and `RECONCILE_ALL_KEY` overflow coalescing) notify visible Compose components upon every save, clear, and lifecycle resume without unbounded per-key `StateFlow` retention or global forced recomposition.
-- **Negative Caching for Failed Domain Icons (`.none` sentinel)**:
-  When `fetchAndSaveDomainIcon` exhausts all candidates without discovering an icon meeting the 96×96 minimum threshold or encounters non-2xx HTTP responses, a zero-byte marker file (`cacheDir/domain_icons/<domain>.none`) is written. `DomainIconManager.shouldSkipFetch` checks this marker with a 14-day TTL (`NEGATIVE_CACHE_TTL_MS`), preventing unbounded network retries on every app startup (`BookmarkRepository.warmUpDomainIconsAsync`). Markers are invalidated upon manual icon refresh (`clearAllNegativeMarkers`) or cache reset (`clearCache`).
+Shared non-UI policy for normalizing, deduplicating, and bounding entity tags across parser, ingestion, and UI layers:
+- Trims whitespace and strips a single leading `#` prefix.
+- Ignores blank entries.
+- Deduplicates tags case-insensitively while preserving insertion order and the original casing of the first encountered occurrence.
+- Caps the maximum number of tags at `MAX_ENTITIES` (10).
+- `Tag.addEntity`, `Tag.toggleEntity`, and `Tag.MAX_ENTITIES` delegate directly to `EntityTagPolicy`.
 
-### 1.2 `TrashedBookmarkItem`
+
+### 1.3 `TrashedBookmarkItem`
 Located in `ui/screens/library/BookmarkItem.kt`:
 
 ```kotlin
@@ -68,6 +70,9 @@ data class TrashedBookmarkItem(
     val trashedAt: Long = System.currentTimeMillis()
 )
 ```
+
+### 1.4 Disposable Image Caching & URL-Distinct Identity (`cacheDir`)
+Managed in `data/OgImageManager.kt` and `data/DomainIconManager.kt`:
 
 #### Trash Retention & Lifecycle Rules
 - **Physical Exclusion**: Trashed items are physically excluded from normal bookmarks list, search feeds, and category queries.

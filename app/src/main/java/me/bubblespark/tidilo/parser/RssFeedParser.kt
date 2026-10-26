@@ -8,7 +8,7 @@ import java.time.format.DateTimeFormatter
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
-import me.bubblespark.tidilo.ui.screens.library.Tag
+import me.bubblespark.tidilo.data.EntityTagPolicy
 
 data class RssEntry(val key: String, val url: String, val title: String, val description: String,
     val bodySnippet: String, val imageUrl: String?, val publishedAt: Long?, val categories: List<String> = emptyList())
@@ -83,13 +83,15 @@ internal object RssFeedParser {
         }
         val published = item.child(if (atom) "published" else "pubDate")?.text()
             ?: item.children().firstOrNull { it.tagName().endsWith(":date") }?.text()
-        val categories = item.children().asSequence()
-            .filter { it.localName() == "category" && it.namespaceUri() == item.namespaceUri() }
-            .map { category ->
-                if (atom) category.attr("term").takeIf { it.trim().removePrefix("#").trim().isNotBlank() }
-                    ?: category.attr("label") else category.text()
-            }
-            .fold(emptyList<String>()) { values, category -> Tag.addEntity(values, category) }
+        val categories = EntityTagPolicy.normalizeEntities(
+            item.children().asSequence()
+                .filter { it.localName() == "category" && it.namespaceUri() == item.namespaceUri() }
+                .map { category ->
+                    if (atom) category.attr("term").takeIf { EntityTagPolicy.clean(it) != null }
+                        ?: category.attr("label") else category.text()
+                }
+                .asIterable()
+        )
         return RssEntry(key, url, item.child("title")?.let(::plain).orEmpty().ifBlank { url },
             description?.let(::plain).orEmpty(), snippet, image, published?.let(::date), categories)
     }

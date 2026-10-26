@@ -2,7 +2,6 @@ package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
-import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween

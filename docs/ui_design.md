@@ -140,6 +140,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
   - **Contextual Behavior**:
     - `LibraryScreen`: Filter FAB menu toggle button (`R.drawable.ic_filter_list` / `Icons.Default.Close`). Expands a Material 3 Expressive pill menu with two persistent options: "Domain" on top (`R.drawable.ic_domain`, 28dp) and "Newest first" below (`R.drawable.ic_arrow_downward`, 28dp). The active mode pill is highlighted using `primaryContainer` / `onPrimaryContainer`, and inactive using `secondaryContainer` / `onSecondaryContainer`. The pill size matches `BookmarkDetailScreen`'s FAB menu exactly (`horizontal = 24dp, vertical = 16dp`, typography `titleMedium`, SemiBold) and remains invariant regardless of the FAB container's 56dp/86dp scaling state, aligning flush to the right edge of the FAB. When expanded, the floating navigation bar hides downwards using official Edge-to-Edge slide-out animation, returning on dismissal.
     - `SearchScreen`: Search action button (`Icons.Default.Search`). The search field is the first scrolling body item, including history, list/grid results and loading/empty/error states. Grid input spans both columns. Tapping the action scrolls the active body to the input, waits for layout attachment, requests focus and reopens the keyboard even after manual dismissal. History/bookmark keys are namespaced separately from structural items. There is no second header tier or independent 144dp header allowance.
+    - Loading and refresh-error feedback is centered in the remaining body viewport below the measured search field and item spacing, excluding scaffold top/bottom clearances. The viewport follows IME padding so feedback remains above the keyboard. Empty-result cards retain their existing layout. Feedback can grow beyond its minimum viewport allowance when its content needs more height.
     - `ImportScreen`: Filled accent sparkle button (`Icons.Default.AutoAwesome`) triggering batch `aiAnalysisAll()` execution. (Consists of 2 sections: Ready, Error; tapping 'AI Analysis All' promotes items directly to processing without confirmation dialogs, while individual items are operated via swipe gestures).
 - **Left-Side AI Processing Status Indicator (`AiProcessingIndicatorButton` & `AiProcessingSpeechBubble`)**:
   - **Symmetric Left Placement**: Anchored symmetrically on the left side of `TidiloBottomBar` at `offset(x = -actionButtonOffsetX)` (opposite to the right action button).
@@ -367,6 +368,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 
 ### 6.10 Application-Wide Title Bar & Header Geometry Standardization
 - **Shared Source of Truth (`HeaderDefaults`, `TidiloFrostedHeader`, `TidiloScreenScaffold`)**:
+  - Settings, NSFW, RSS, Summary, Debug and AI generation settings use `TidiloPageHeader` for the title/navigation boilerplate. Its optional subtitle slot retains Debug's secondary text, and its actions slot retains the generation reset control.
   - The header owns status-bar padding; the body receives matching top clearance from the scaffold. Do not apply status-bar padding again to the body.
   - Horizontal Screen Margin: `start = 20.dp, end = 20.dp`.
   - Title Text Typography: `MaterialTheme.typography.headlineMedium`, `fontWeight = FontWeight.Bold`, `color = MaterialTheme.colorScheme.onBackground`.
@@ -383,6 +385,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Visibility Policy**:
   - `hideHeaderOnScroll` defaults to false. Library/Search/Import explicitly enable it and reuse MainActivity's `LocalBarsVisible` signal. Settings and all secondary pages explicitly keep fixed headers.
   - One shared slide/fade implementation retains the existing spring and 200ms enter/150ms exit fades. Peek suppression is a separate `headerVisible` input. Header disappearance never collapses body padding or jumps the list.
+  - The scroll-related `LocalBarsVisible` read lives inside the narrow `ScaffoldHeaderVisibility` child, independently of the body and overlay composition scopes. Fixed headers do not subscribe to that scroll signal.
   - Content is drawn first, the header second, and optional overlays last. MainActivity retains bottom-navigation/FAB/scroll-detector ownership. Navigation between pages and Library title/subtitle/list-grid transitions are unchanged.
 
 ### 6.11 AI Skipped (AICore Fallback) Representation & Detail Layout Rhythm

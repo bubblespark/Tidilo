@@ -308,7 +308,7 @@ fun SearchScreen(
             ) {
                 item(key = "search_input", span = { GridItemSpan(maxLineSpan) }, contentType = "search_input") { searchInput() }
                 if (showingHistory) {
-                    item {
+                    item(key = "search_history_header", contentType = "history_header") {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -340,7 +340,7 @@ fun SearchScreen(
                     }
 
                     if (searchHistory.isEmpty()) {
-                        item {
+                        item(key = "search_history_empty", contentType = "history_empty") {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -408,7 +408,7 @@ fun SearchScreen(
                         }
                     }
                 } else if (feedback != null) {
-                    item(key = "search_feedback", span = { GridItemSpan(maxLineSpan) }) {
+                    item(key = "search_feedback", span = { GridItemSpan(maxLineSpan) }, contentType = "search_feedback") {
                         if (centerFeedback) {
                             SearchResultFeedback(maxHeight, contentPadding, searchInputHeight, itemSpacing) { feedback() }
                         } else {

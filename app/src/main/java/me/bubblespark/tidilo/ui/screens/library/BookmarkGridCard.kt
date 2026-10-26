@@ -52,7 +52,7 @@ import me.bubblespark.tidilo.ui.components.rememberOgImage
 
 /**
  * Modern 2-column Grid bookmark card with 16:9 og:image header,
- * fixed height container, muted domain name, 3-line fixed title matching List style (titleMedium SemiBold),
+ * fixed height container, muted domain name, 3-line fixed title matching List style (titleSmall SemiBold),
  * relative time, and long-press summary peek.
  */
 @OptIn(ExperimentalFoundationApi::class)

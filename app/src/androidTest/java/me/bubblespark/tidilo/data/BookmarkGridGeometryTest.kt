@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.ui.screens.library.BookmarkGridCard
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
@@ -89,7 +88,17 @@ class BookmarkGridGeometryTest {
                 host.await(activity) { host.text(it, date) }
                 for (fontScale in listOf(1f, 1.15f)) {
                     host.main { scale.value = fontScale }
-                    delay(250)
+                    // Both captions must have been measured at the requested scale before checking bounds.
+                    host.await(activity) { node ->
+                        if (!host.text(node, date)) false else {
+                            val dates = host.nodes(activity).filter { host.text(it, date) }
+                            dates.size == 2 && dates.all { caption ->
+                                val layouts = mutableListOf<TextLayoutResult>()
+                                caption.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts) == true &&
+                                    layouts.singleOrNull()?.layoutInput?.density?.fontScale == fontScale
+                            }
+                        }
+                    }
                     host.main {
                         val dates = host.nodes(activity).filter { host.text(it, date) }.sortedBy { it.boundsInRoot.left }
                         assertEquals(2, dates.size)
@@ -98,6 +107,7 @@ class BookmarkGridGeometryTest {
                         dates.forEachIndexed { index, node ->
                             val layouts = mutableListOf<TextLayoutResult>()
                             assertTrue(node.config[SemanticsActions.GetTextLayoutResult].action!!.invoke(layouts))
+                            assertEquals(fontScale, layouts.single().layoutInput.density.fontScale, 0f)
                             assertEquals(1, layouts.single().lineCount)
                             assertFalse("The date must fit vertically at font scale $fontScale", layouts.single().didOverflowHeight)
                             assertTrue("Date must clear the rounded bottom at font scale $fontScale",

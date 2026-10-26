@@ -4,13 +4,14 @@ import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.rememberFeedIcon
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RssFeed
@@ -508,11 +510,17 @@ internal fun RssSettingsContent(
         )
     }
 
+    // Modal Bottom Sheet for Add / Edit Feed
     if (showEditor) {
-        RssFeedEditor(editing, onDismiss = { showEditor = false }) { url, mode, limit, convert ->
-            onFeed(editing, url, mode, limit, convert)
-            showEditor = false
-        }
+        RssFeedBottomSheet(
+            original = editing,
+            onDismiss = { showEditor = false },
+            onDelete = editing?.let { feed -> { deleting = feed } },
+            onSave = { url, mode, limit, convert ->
+                onFeed(editing, url, mode, limit, convert)
+                showEditor = false
+            }
+        )
     }
 
     deleting?.let { feed ->
@@ -534,6 +542,7 @@ internal fun RssSettingsContent(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RssFeedItemCard(
     feed: RssFeedEntity,
@@ -549,7 +558,13 @@ private fun RssFeedItemCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .clickable(enabled = !busy, onClick = onEdit),
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(),
+                enabled = !busy,
+                onClick = onEdit,
+                onLongClick = onDelete
+            ),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -557,9 +572,9 @@ private fun RssFeedItemCard(
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Header row: Domain icon + Title / Domain + Switch
+            // Upper row: Domain icon + Title (full width marquee) & Publisher domain
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -588,8 +603,9 @@ private fun RssFeedItemCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(14.dp))
 
+                // Title + Domain: Takes full available horizontal width!
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = feed.title,
@@ -597,7 +613,10 @@ private fun RssFeedItemCard(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        modifier = Modifier.basicMarquee(
+                            initialDelayMillis = 2000,
+                            repeatDelayMillis = 2000
+                        )
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -608,27 +627,19 @@ private fun RssFeedItemCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Switch(
-                    checked = feed.enabled,
-                    onCheckedChange = { onToggleEnabled(it) },
-                    enabled = !busy
-                )
             }
 
-            // Metadata row: Pills (AI/Direct mode, Max items) + Delete button
+            // Lower row: Metadata Pills (left) + Switch Toggle (bottom-right)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                // Left: Mode & Limit Pills
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Mode pill
                     val isAi = feed.mode == "AI"
                     Surface(
                         shape = RoundedCornerShape(8.dp),
@@ -658,7 +669,6 @@ private fun RssFeedItemCard(
                         }
                     }
 
-                    // Max saved items pill
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant
@@ -673,19 +683,12 @@ private fun RssFeedItemCard(
                     }
                 }
 
-                // Delete button (clean icon button)
-                IconButton(
-                    onClick = onDelete,
-                    enabled = !busy,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Delete,
-                        contentDescription = stringResource(R.string.common_delete),
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                // Right: Switch Toggle moved to bottom-right
+                Switch(
+                    checked = feed.enabled,
+                    onCheckedChange = { onToggleEnabled(it) },
+                    enabled = !busy
+                )
             }
 
             // Error notice
@@ -758,8 +761,18 @@ private fun RssEmptyStateCard() {
     }
 }
 
+/**
+ * Modern Material 3 ModalBottomSheet for adding or editing an RSS subscription.
+ * Replaces cramped modal dialog with spacious, organized bottom sheet.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onSave: (String, String, Int?, Boolean) -> Unit) {
+internal fun RssFeedBottomSheet(
+    original: RssFeedEntity?,
+    onDismiss: () -> Unit,
+    onDelete: (() -> Unit)? = null,
+    onSave: (String, String, Int?, Boolean) -> Unit
+) {
     val aiAnalysisMode by me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
     var url by remember(original) { mutableStateOf(original?.url.orEmpty()) }
     var mode by remember(original) { mutableStateOf(original?.mode ?: "DIRECT") }
@@ -767,56 +780,275 @@ internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onSa
     var limit by remember(original) { mutableStateOf((original?.retentionLimit ?: 30).toString()) }
     var convert by remember { mutableStateOf(false) }
     val validLimit = unlimited || limit.toIntOrNull()?.let { it in 10..500 } == true
-    AlertDialog(onDismissRequest = onDismiss,
-        title = { Text(stringResource(if (original == null) R.string.rss_add_feed else R.string.rss_edit)) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(url, { url = it }, label = { Text(stringResource(R.string.rss_feed_url)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
-                HorizontalDivider()
-                Text(stringResource(R.string.rss_import_mode), style = MaterialTheme.typography.titleSmall)
-                Column(Modifier.selectableGroup()) {
-                    Row(Modifier.fillMaxWidth().selectable(mode == "DIRECT", role = Role.RadioButton,
-                        onClick = { mode = "DIRECT" }), verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = mode == "DIRECT", onClick = null)
-                        Text(stringResource(R.string.rss_direct_mode))
-                    }
-                    Row(Modifier.fillMaxWidth().selectable(mode == "AI", role = Role.RadioButton,
-                        onClick = { mode = "AI" }), verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = mode == "AI", onClick = null)
-                        Text(stringResource(R.string.rss_ai_mode))
-                    }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 6.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            // Header: Title and Close button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(if (original == null) R.string.rss_add_feed else R.string.rss_edit),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.rss_cancel),
+                        tint = MaterialTheme.colorScheme.outline
+                    )
                 }
-                if (aiAnalysisMode == me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE) {
-                    Text(stringResource(R.string.rss_ai_disabled_note), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error)
-                }
-                HorizontalDivider()
-                Text(stringResource(R.string.rss_max_saved_items), style = MaterialTheme.typography.titleSmall)
-                Row(Modifier.fillMaxWidth().toggleable(unlimited, role = Role.Checkbox,
-                    onValueChange = { unlimited = it }), verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(unlimited, null)
-                    Text(stringResource(R.string.rss_unlimited))
-                }
-                if (!unlimited) OutlinedTextField(limit, { limit = it },
-                    label = { Text(stringResource(R.string.rss_retention_input)) }, isError = !validLimit,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                Text(stringResource(R.string.rss_retention_note), style = MaterialTheme.typography.bodySmall)
-                if (original?.mode == "AI" && mode == "DIRECT") {
-                    Text(stringResource(R.string.rss_mode_change_note), style = MaterialTheme.typography.bodySmall)
-                    Row(Modifier.fillMaxWidth().toggleable(convert, role = Role.Checkbox,
-                        onValueChange = { convert = it }), verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(convert, null)
-                        Text(stringResource(R.string.rss_convert_pending))
-                    }
-                }
-                if (original != null && url.trim() != original.url) Text(stringResource(R.string.rss_url_change_note),
-                    style = MaterialTheme.typography.bodySmall)
             }
-        },
-        confirmButton = { TextButton(onClick = { onSave(url.trim(), mode, if (unlimited) null else limit.toInt(), convert) },
-            enabled = url.isNotBlank() && validLimit) { Text(stringResource(R.string.rss_save)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.rss_cancel)) } })
+
+            // 1. Feed URL field
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                label = { Text(stringResource(R.string.rss_feed_url)) },
+                placeholder = { Text("https://example.com/rss.xml") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (original != null && url.trim() != original.url) {
+                Text(
+                    text = stringResource(R.string.rss_url_change_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+
+            // 2. Import Mode selection (Pill style toggle cards)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(R.string.rss_import_mode),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Direct mode chip
+                    val isDirectSelected = mode == "DIRECT"
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { mode = "DIRECT" },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isDirectSelected) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainer,
+                        border = if (!isDirectSelected) androidx.compose.foundation.BorderStroke(
+                            1.dp, MaterialTheme.colorScheme.outlineVariant
+                        ) else null
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.rss_direct_mode),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (isDirectSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isDirectSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // AI mode chip
+                    val isAiSelected = mode == "AI"
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { mode = "AI" },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isAiSelected) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainer,
+                        border = if (!isAiSelected) androidx.compose.foundation.BorderStroke(
+                            1.dp, MaterialTheme.colorScheme.outlineVariant
+                        ) else null
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = if (isAiSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(R.string.rss_ai_mode),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (isAiSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isAiSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                if (aiAnalysisMode == me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE) {
+                    Text(
+                        text = stringResource(R.string.rss_ai_disabled_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                if (original?.mode == "AI" && mode == "DIRECT") {
+                    Text(
+                        text = stringResource(R.string.rss_mode_change_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(convert, role = Role.Checkbox, onValueChange = { convert = it }),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(convert, null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(R.string.rss_convert_pending),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+
+            // 3. Max saved items
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(R.string.rss_max_saved_items),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                // Unlimited toggle row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .toggleable(unlimited, role = Role.Switch, onValueChange = { unlimited = it })
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = stringResource(R.string.rss_unlimited),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Switch(checked = unlimited, onCheckedChange = null)
+                }
+
+                if (!unlimited) {
+                    OutlinedTextField(
+                        value = limit,
+                        onValueChange = { limit = it },
+                        label = { Text(stringResource(R.string.rss_retention_input)) },
+                        isError = !validLimit,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(16.dp),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Text(
+                    text = stringResource(R.string.rss_retention_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 4. Action Buttons (Delete on left if editing, Save on right)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                if (original != null && onDelete != null) {
+                    TextButton(
+                        onClick = {
+                            onDismiss()
+                            onDelete()
+                        },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.rss_delete),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.width(1.dp))
+                }
+
+                Button(
+                    onClick = {
+                        onSave(url.trim(), mode, if (unlimited) null else limit.toInt(), convert)
+                    },
+                    enabled = url.isNotBlank() && validLimit,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.rss_save),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

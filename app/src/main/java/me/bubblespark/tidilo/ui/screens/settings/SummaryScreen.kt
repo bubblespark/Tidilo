@@ -1,6 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
-import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import androidx.compose.foundation.layout.size
 
@@ -21,7 +21,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -86,16 +85,9 @@ internal fun SummaryContent(
     TidiloScreenScaffold(
         hideHeaderOnScroll = false,
         header = {
-            TidiloFrostedHeader(
-                title = {
-                    Text(stringResource(R.string.summary_title), style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack, modifier = Modifier.padding(end = 4.dp).size(48.dp)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
-                    }
-                }
+            TidiloPageHeader(
+                title = stringResource(R.string.summary_title),
+                onNavigateBack = onNavigateBack
             )
         }
     ) { contentPadding ->

@@ -58,6 +58,7 @@ fun TidiloPageHeader(
     title: String,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
+    subtitle: (@Composable () -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     TidiloFrostedHeader(
@@ -66,6 +67,7 @@ fun TidiloPageHeader(
                 color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
         },
         modifier = modifier,
+        subtitle = subtitle,
         navigationIcon = {
             IconButton(onNavigateBack, Modifier.padding(end = 4.dp).size(48.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back),

@@ -1,6 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
-import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 import android.os.Build
@@ -19,7 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -69,16 +68,10 @@ fun SettingsDebugScreen(
         hideHeaderOnScroll = false,
         // Top Header
         header = {
-            TidiloFrostedHeader(
-                title = {
-                    Text(
-                        text = stringResource(R.string.settings_debug_title),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
+            TidiloPageHeader(
+                title = stringResource(R.string.settings_debug_title),
+                onNavigateBack = onNavigateBack,
+                subtitle = {
                     Text(
                         text = stringResource(R.string.settings_debug_subtitle),
                         style = MaterialTheme.typography.labelMedium,
@@ -86,20 +79,6 @@ fun SettingsDebugScreen(
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .size(48.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.common_back),
-                            tint = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
                 }
             )
         }

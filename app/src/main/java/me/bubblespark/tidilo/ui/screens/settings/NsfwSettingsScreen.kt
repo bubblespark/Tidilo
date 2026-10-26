@@ -1,6 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
-import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 import kotlinx.coroutines.launch
@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Bookmark
@@ -82,31 +81,9 @@ fun NsfwSettingsScreen(
         hideHeaderOnScroll = false,
         // Header with Back button
         header = {
-            TidiloFrostedHeader(
-                title = {
-                    Text(
-                        text = stringResource(R.string.title_nsfw_contents),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .size(48.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.common_back),
-                            tint = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-                }
+            TidiloPageHeader(
+                title = stringResource(R.string.title_nsfw_contents),
+                onNavigateBack = onNavigateBack
             )
         }
     ) { contentPadding ->

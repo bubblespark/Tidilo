@@ -30,6 +30,9 @@ import me.bubblespark.tidilo.MainActivity
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
+import me.bubblespark.tidilo.ui.components.TidiloPageHeader
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
 import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
 import org.junit.Assert.*
 import org.junit.Test
@@ -37,6 +40,29 @@ import org.junit.Test
 /** Measures actual layouts rather than asserting on the geometry implementation. */
 class HeaderScaffoldTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+    @Test fun pageHeaderKeepsSubtitleAndActionSlots(): Unit = runBlocking {
+        val helper = HeaderTestHost()
+        val activity = helper.launch()
+        var resets = 0
+        try {
+            helper.main {
+                activity.setContent { MaterialTheme {
+                    TidiloPageHeader("Debug", {}, subtitle = { Text("Device details") }, actions = {
+                        IconButton({ resets++ }) { Text("Reset") }
+                    })
+                } }
+            }
+            helper.await(activity) { helper.text(it, "Device details") }
+            val reset = helper.await(activity) { helper.text(it, "Reset") }
+            helper.main {
+                var node = reset
+                while (node.config.getOrNull(SemanticsActions.OnClick) == null) node = requireNotNull(node.parent)
+                assertTrue(node.config[SemanticsActions.OnClick].action?.invoke() == true)
+            }
+            assertEquals(1, resets)
+        } finally { helper.main { activity.finish() } }
+    }
 
     @Test fun stableGeometryAcrossTitleSizesSubtitlesAndFontScales(): Unit = runBlocking {
         val scale = mutableStateOf(1f)

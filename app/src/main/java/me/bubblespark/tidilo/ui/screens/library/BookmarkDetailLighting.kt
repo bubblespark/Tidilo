@@ -86,7 +86,7 @@ internal fun Modifier.detailAmbientLight(
     ))
 }
 
-/** Paint bloom and shadow before image clipping; draw the specular rim over the artwork. */
+/** Paint bloom and shadow before image clipping; frame the emissive artwork with a uniform rim. */
 internal fun Modifier.detailBannerLight(color: State<Color>): Modifier =
     drawBehind {
         val accent = color.value
@@ -104,7 +104,4 @@ internal fun Modifier.detailBannerLight(color: State<Color>): Modifier =
     }
     .shadow(8.dp, RoundedCornerShape(16.dp), clip = false,
         ambientColor = color.value.copy(alpha = 0.16f), spotColor = color.value.copy(alpha = 0.24f))
-    .border(1.dp, Brush.verticalGradient(listOf(
-        color.value.copy(alpha = color.value.alpha * 0.80f),
-        color.value.copy(alpha = color.value.alpha * 0.08f)
-    )), RoundedCornerShape(16.dp))
+    .border(1.dp, color.value.copy(alpha = color.value.alpha * 0.60f), RoundedCornerShape(16.dp))

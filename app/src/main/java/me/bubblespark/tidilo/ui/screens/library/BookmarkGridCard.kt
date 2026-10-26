@@ -94,10 +94,13 @@ fun BookmarkGridCard(
     }
 
     val hasSummary = bookmark.description.isNotBlank()
+    val cardStyle = rememberBookmarkCardStyle(MaterialTheme.colorScheme.surfaceContainer)
+    val cardShape = RoundedCornerShape(16.dp)
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
+            .bookmarkCardLighting(cardStyle, cardShape)
             .clip(RoundedCornerShape(16.dp))
             .combinedClickable(
                 onClick = onClick,
@@ -106,10 +109,10 @@ fun BookmarkGridCard(
                 } else null
             ),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 2.dp
+        color = cardStyle.containerColor,
+        tonalElevation = 0.dp
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth().bookmarkCardSurfaceWash(cardStyle)) {
             // 1. Top Image Area (Aspect Ratio 1.91:1)
             Box(
                 modifier = Modifier

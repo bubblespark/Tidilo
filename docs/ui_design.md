@@ -163,6 +163,12 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 
 ### 6.2 `BookmarkItemCard`
 - **Shape**: `RoundedCornerShape(24.dp)`.
+- **Shared Bookmark Lighting**: `BookmarkCardStyle.kt` decorates list and grid bookmark cards (including Search) with a 1dp accent rim and a 4dp shadow. Grid cards retain their 16dp corners, image treatment, and long-press summary behavior.
+- **Destination Accent**: Domain/RSS drill-down content provides its background beam's `domainColor` through `LocalCardAccentColor`, scoped inside each animated destination so outgoing cards retain their own accent. Unspecified accents use `MaterialTheme.colorScheme.primary`; existing domain image placeholders keep their own domain colors.
+- **Incident Direction**: The rim and light surface wash use a pure accent fade from top-right (`Offset(Float.POSITIVE_INFINITY, 0f)`) to bottom-left (`Offset(0f, Float.POSITIVE_INFINITY)`), without neutral outline blending.
+- **Light Appearance**: White containers with zero tonal elevation, rim alpha 0.38 to 0.04, a subtle inner wash from 0.045 to zero, brand ambient shadow alpha 0.25, and black contact/spot shadow alpha 0.10. Explicit white/black and colored shadows are intentional exceptions to general semantic-color guidance for this lighting treatment.
+- **Dark Appearance**: Preserve list `surfaceContainerHigh` and grid `surfaceContainer`, with rim alpha 0.65 to 0.05, brand ambient shadow alpha 0.25, brand spot shadow alpha 0.50, and no inner wash. Appearance follows the applied color scheme's background luminance, including explicit theme overrides.
+- **Drawing Order**: Draw shadows outside rounded clipping, wash behind content, and rim over content so images cannot conceal the illuminated edge.
 - **Navigation Debounce Guard**: Incorporates single-click throttle protection (800ms debounce interval + `Lifecycle.State.RESUMED` navigation gate in `TidiloNavGraph`) preventing duplicate detail screens on rapid consecutive taps.
 - **Hierarchy**:
   1. Title (with keyword highlighting when searching) + external browser icon button.
@@ -448,7 +454,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Inter-column gap (`horizontalArrangement`): `8.dp` (tightened spacing maximizing card and image surface area).
   - Vertical row spacing (`verticalArrangement`): `10.dp`.
 - **Card Container & Shape (`BookmarkGridCard.kt`)**:
-  - `Surface` container with `shape = RoundedCornerShape(16.dp)`, `color = MaterialTheme.colorScheme.surfaceContainer`, and `tonalElevation = 2.dp`.
+  - `Surface` container with `shape = RoundedCornerShape(16.dp)` and `tonalElevation = 0.dp`. Uses white in Light Mode and `surfaceContainer` in Dark Mode, with the shared bookmark lighting defined in section 6.2.
   - Supports combined touch interactions via `combinedClickable(onClick, onLongClick)`.
   - Fully uniform vertical height across all cards: fixed image aspect ratio `1.91f` combined with fixed-height information container (`116.dp`).
 - **Top Image Region (1.91:1 Aspect Ratio)**:

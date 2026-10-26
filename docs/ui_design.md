@@ -326,7 +326,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Container color: `MaterialTheme.colorScheme.surfaceContainerHigh`.
   - `DomainWatermark`: Scaled to `size = 96.dp`, alpha `0.20f`, positioned at `Alignment.TopEnd` with `offset(x = 16.dp, y = (-6).dp)`.
   - Content layout: Vertical `Column` with `14.dp` padding inside front card:
-    - Display Name header: `titleMedium`, Bold, max 2 lines with ellipsis. Falls back to domain URL if empty.
+    - Display Name header (shared by Domain and RSS decks): Bold, max 3 lines. Select typography by Unicode code point count: up to 10 uses `titleMedium` (16sp / 24sp); 11–18 uses `titleSmall` with 14.5sp / 19sp; 19 or more uses `bodyMedium` with 13.5sp / 17sp. Overrides are local to the collection title. Ellipsis remains the final fallback beyond three lines. Falls back to domain URL if empty.
     - Domain URL: `bodySmall`, high-contrast `onSurfaceVariant` color, single line with ellipsis.
     - Bookmark count badge: Pill surface badge (`dominantColor.copy(alpha = 0.20f)`) with bookmark icon (`Icons.Default.Bookmark`) and calibrated high-luminance count text (`"%d items"`).
 - **Drill-down Interaction & Radiant Ambient Background**:
@@ -337,6 +337,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
     - Corner radial glow (`Brush.radialGradient`): Centered at `Offset(size.width, 0f)` with deep radius `size.height * 0.72f` (~650-700dp), bathing the upper 2/3 of the screen in a soft atmospheric bloom (`0.22f` -> `0.13f` -> `0.05f` -> `0.012f` -> `Transparent`).
     - Seamlessly harmonizes with the card top-right ambient illumination, establishing deep spatial coherence.
   - Screen header shows domain display name with a back navigation arrow button (`Icons.AutoMirrored.Filled.ArrowBack`).
+  - Domain and RSS drill-down titles remain single-line and scale by Unicode code point count: up to 6 uses `headlineMedium` (28sp / 36sp); 7–9 uses `headlineSmall` with 23sp / 28sp; 10–13 uses `titleLarge` with 20sp / 25sp; 14 or more uses `titleMedium` with 17sp / 22sp. The title column takes the remaining width between navigation and action buttons. `basicMarquee(initialDelayMillis = 2000)` scrolls overflowing titles without ellipsis; fitting titles remain still. Normal collection headers retain their existing typography. Title text and drill-down status travel together through `AnimatedContent`, preserving outgoing typography during navigation.
   - Header subtitle text color dynamically coordinates with `selectedDomainColor`.
   - System back gesture is captured via `BackHandler` to return to the domain grid rather than exiting or switching tabs.
   - **Drill-down Content State Retention during Exit Transition**: Each animated destination collects a bounded Pager for its own domain or feed identity. The ViewModel retains the selected session across detail navigation to preserve its loaded window and scroll position. Animated compositions lease their sessions; nonselected sessions cancel when the last exit finishes. Rapid A-to-B-to-A navigation reactivates A even if its composition is reused. Clearing the global selection cannot replace outgoing items with another query or an empty feed-grid generation. NSFW visibility changes discard visible destinations immediately and use a new visibility-specific session.

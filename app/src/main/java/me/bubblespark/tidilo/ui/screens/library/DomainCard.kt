@@ -39,6 +39,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.DomainIconManager
@@ -198,12 +199,21 @@ internal fun LibraryDeckCard(
                         .padding(horizontal = 14.dp, vertical = 14.dp)
                 ) {
                     // Domain display name (header)
+                    val titleLength = item.displayName.codePointCount(0, item.displayName.length)
                     Text(
                         text = item.displayName,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = when {
+                            titleLength <= 10 -> MaterialTheme.typography.titleMedium
+                            titleLength <= 18 -> MaterialTheme.typography.titleSmall.copy(
+                                fontSize = 14.5.sp, lineHeight = 19.sp
+                            )
+                            else -> MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = 13.5.sp, lineHeight = 17.sp
+                            )
+                        },
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
 

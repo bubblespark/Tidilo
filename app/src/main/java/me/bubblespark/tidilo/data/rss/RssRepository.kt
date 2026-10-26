@@ -164,7 +164,8 @@ internal class RssRepository internal constructor(private val context: Context,
     }
 
     /** XML success and article completion are separate durable checkpoints. */
-    suspend fun fetchAll(since: Long, onlyFeedId: String? = null, authorizedOperation: String? = null): Boolean = withContext(Dispatchers.IO) {
+    suspend fun fetchAll(since: Long, onlyFeedId: String? = null, authorizedOperation: String? = null,
+        notificationRunId: String? = null): Boolean = withContext(Dispatchers.IO) {
         me.bubblespark.tidilo.TidiloApplication.instance.awaitAiAnalysisInitialization()
         preferences.initialize()
         operation.withLock {
@@ -191,13 +192,13 @@ internal class RssRepository internal constructor(private val context: Context,
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (waiting: RssWifiUnavailable) { throw waiting }
                     catch (_: Exception) {
-                        store.disableAfterXmlFailure(feed)
-                        scheduleChanged()
+                        store.disableAfterXmlFailure(feed, notificationRunId)
+                        // The worker realigns scheduling after it publishes the aggregated result.
                         continue
                     }
                     val now = System.currentTimeMillis()
                     val committed = db.withTransaction {
-                        if (!store.stage(feed, fetched.document?.entries.orEmpty(), now)) return@withTransaction false
+                        if (!store.stage(feed, fetched.document?.entries.orEmpty(), now, notificationRunId)) return@withTransaction false
                         val current = requireNotNull(dao.feed(feed.id))
                         dao.putFeed(current.copy(title = fetched.document?.title ?: current.title,
                             iconUrl = if (fetched.document == null) current.iconUrl else fetched.document.iconUrl,
@@ -219,7 +220,7 @@ internal class RssRepository internal constructor(private val context: Context,
                     if (elapsedMillis() + 35_000L >= deadline) throw RssAcquisitionYield()
                     val current = dao.feed(feed.id)
                     if (current == null || current.deleted || !current.enabled || current.revision != feed.revision) break
-                    coroutineScope { window.map { task -> async { acquireTask(feed, task, network) } }.awaitAll() }
+                    coroutineScope { window.map { task -> async { acquireTask(feed, task, network, runId = notificationRunId) } }.awaitAll() }
                     store.enforceRetention(feed.id, feed.revision)
                 }
                 val pending = db.importTaskDao().getAllTasks().any {
@@ -276,11 +277,12 @@ internal class RssRepository internal constructor(private val context: Context,
     }
 
     private suspend fun acquireTask(feed: RssFeedEntity, task: me.bubblespark.tidilo.data.db.ImportTaskEntity,
-        network: me.bubblespark.tidilo.parser.ArticleNetwork, promote: Boolean = false) {
+        network: me.bubblespark.tidilo.parser.ArticleNetwork, promote: Boolean = false, runId: String? = null) {
         try {
+            store.claimNotificationTask(runId, task.id)
             val parsed = me.bubblespark.tidilo.parser.ArticleAcquirer.acquire(task.url, network)
             val article = me.bubblespark.tidilo.parser.ArticlePreparation.prepare(parsed)
-            if (!store.complete(feed, task, article, promote)) return
+            if (!store.complete(feed, task, article, promote, runId)) return
             val domain = DomainIconManager.extractDomain(article.url)
             DomainPolicyManager.registerDomain(domain, false, article.siteName)
             if (article.isNsfw && !AppConfig.isNsfwContentBookmarkable.value) return
@@ -296,7 +298,7 @@ internal class RssRepository internal constructor(private val context: Context,
         catch (error: Exception) {
             val retryable = error is IOException && (error !is RssHttpFailure || error.retryable) &&
                 (error !is me.bubblespark.tidilo.parser.ArticleHttpFailure || error.retryable)
-            store.failArticle(feed, task, error, retryable)
+            store.failArticle(feed, task, error, retryable, runId)
         }
     }
 

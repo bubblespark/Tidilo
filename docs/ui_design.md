@@ -1,5 +1,7 @@
 # UI Design & Material 3 Expressive Specification
 
+OS notification channels and the Settings > Notification system-settings entry are specified in [Android OS Notifications](notifications.md). The entry opens system settings directly, without an intermediate dialog. ImportScreen's bell history remains unchanged.
+
 Tidilo strictly adheres to Google's **Material 3 Expressive** design specification, emphasizing organic fluid motion, prominent rounded shapes, expressive typography, tonal surface hierarchy, and deep Edge-to-Edge immersion.
 
 ---

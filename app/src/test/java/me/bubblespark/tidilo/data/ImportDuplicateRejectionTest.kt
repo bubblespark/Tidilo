@@ -164,6 +164,7 @@ class ImportDuplicateRejectionTest {
     }
 
     private class TestImportTaskDao : ImportTaskDao {
+        override fun observeReadyNotificationCount(): kotlinx.coroutines.flow.Flow<Int> = kotlinx.coroutines.flow.flowOf(0)
         val tasks = mutableMapOf<String, ImportTaskEntity>()
         private val tasksFlow = MutableStateFlow<List<ImportTaskEntity>>(emptyList())
         var onBeforeInsert: (suspend (ImportTaskEntity) -> Unit)? = null

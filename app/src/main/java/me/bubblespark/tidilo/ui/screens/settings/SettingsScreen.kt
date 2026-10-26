@@ -207,6 +207,27 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        Card(
+            modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) {
+                context.startActivity(me.bubblespark.tidilo.data.notifications.NotificationCoordinator
+                    .getInstance(context).settingsIntent())
+            },
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_notification_title),
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(stringResource(R.string.settings_notification_description),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, modifier = Modifier.size(16.dp))
+            }
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+
         // AI Section Header
         Text(
             text = stringResource(R.string.settings_section_ai),

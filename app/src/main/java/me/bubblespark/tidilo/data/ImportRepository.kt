@@ -79,7 +79,13 @@ class ImportRepository internal constructor(
     private val persistFallback: suspend (BookmarkItem) -> Unit = {
         BookmarkRepository.getInstance().addBookmarkAndAwait(it)
     },
-    private val aiAnalysisMode: () -> AiAnalysisMode = { AppConfig.aiAnalysisMode.value }
+    private val aiAnalysisMode: () -> AiAnalysisMode = { AppConfig.aiAnalysisMode.value },
+    private val reportImportError: (Throwable) -> Unit = { error -> context?.let {
+        me.bubblespark.tidilo.data.notifications.NotificationCoordinator.getInstance(it).importError(error)
+    } },
+    private val reportAiCoreError: (Throwable, Int?) -> Unit = { error, code -> context?.let {
+        me.bubblespark.tidilo.data.notifications.NotificationCoordinator.getInstance(it).aiCoreError(error, code)
+    } }
 ) {
 
     private val appContext: Context? = context?.applicationContext
@@ -378,11 +384,15 @@ class ImportRepository internal constructor(
         title: String? = null,
         onImported: ((Result<ImportOutcome>) -> Unit)? = null
     ): Result<Int> {
+        fun reportOutcome(result: Result<ImportOutcome>) {
+            result.exceptionOrNull()?.let(reportImportError)
+            onImported?.invoke(result)
+        }
         val trimmed = rawUrl.trim()
         val normalized = WebPageParser.normalizeUrl(trimmed)
         if (normalized == null || !isValidHttpUrl(normalized)) {
             val ex = IllegalArgumentException("Invalid HTTP/HTTPS URL")
-            onImported?.invoke(Result.failure(ex))
+            reportOutcome(Result.failure(ex))
             return Result.failure(ex)
         }
 
@@ -453,7 +463,7 @@ class ImportRepository internal constructor(
                 targetDeferred?.complete(Unit)
                 throw t
             }
-            onImported?.invoke(Result.failure(ex))
+            reportOutcome(Result.failure(ex))
             return Result.failure(ex)
         }
 
@@ -463,7 +473,7 @@ class ImportRepository internal constructor(
             var duplicateOutcome: Result<ImportOutcome>? = null
             val recordDuplicateOutcome: (Result<ImportOutcome>) -> Unit = { duplicateOutcome = it }
             fun reportCommittedDuplicate() {
-                duplicateOutcome?.let { onImported?.invoke(it) }
+                duplicateOutcome?.let { reportOutcome(it) }
                 duplicateOutcome = null
             }
             try {
@@ -564,7 +574,7 @@ class ImportRepository internal constructor(
                     return@launch
                 }
                 if (outcome is ImportOutcome.BookmarkSaved) cacheDirectOgImage(newItem)
-                onImported?.invoke(Result.success(outcome))
+                reportOutcome(Result.success(outcome))
             } catch (e: DuplicateUrlException) {
                 // Handled in handleDuplicateOrConflict; ignore
             } catch (e: CancellationException) {
@@ -572,7 +582,7 @@ class ImportRepository internal constructor(
             } catch (e: DirectBookmarkSaveFailure) {
                 // A failed nested Room transaction invalidates its outer transaction. Recover only after rollback.
                 runInDbOrLock(e.target.url) { retainDirectSaveError(e.target, e.cause ?: e) }
-                onImported?.invoke(Result.failure(e.cause ?: e))
+                reportOutcome(Result.failure(e.cause ?: e))
             } catch (e: Exception) {
                 duplicateOutcome = null
                 // Fallback: If network/parsing throws, create fallback task with basic details
@@ -603,7 +613,7 @@ class ImportRepository internal constructor(
                 if (!isFallbackInserted) {
                     return@launch
                 }
-                onImported?.invoke(Result.failure(e))
+                reportOutcome(Result.failure(e))
             } finally {
                 onEnteringFinalization?.invoke(importing.id)
                 val pendingJobs = synchronized(_importingTasks) {
@@ -981,6 +991,7 @@ class ImportRepository internal constructor(
                     saveBookmarkFallback(target)
                 } else {
                     moveAllProcessingToReady()
+                    reportAiCoreError(throwable, errorCode)
                 }
             }
 
@@ -999,6 +1010,7 @@ class ImportRepository internal constructor(
                         saveBookmarkFallback(target)
                     } else {
                         moveAllProcessingToError(target, errorMessage.ifBlank { "AICore busy: Retry limit exceeded (3/3)" })
+                        reportAiCoreError(throwable, errorCode)
                     }
                 }
             }
@@ -1018,6 +1030,7 @@ class ImportRepository internal constructor(
                         saveBookmarkFallback(target)
                     } else {
                         moveAllProcessingToError(target, errorMessage.ifBlank { "AICore background blocked: Retry limit exceeded (3/3)" })
+                        reportAiCoreError(throwable, errorCode)
                     }
                 }
             }
@@ -1027,6 +1040,9 @@ class ImportRepository internal constructor(
                     saveBookmarkFallback(target)
                 } else {
                     moveAllProcessingToError(target, errorMessage.ifBlank { "AICore inference failure" })
+                    if (throwable !is CancellationException && isAiCoreError(errorCode, throwable)) {
+                        reportAiCoreError(throwable, errorCode)
+                    }
                 }
             }
         }

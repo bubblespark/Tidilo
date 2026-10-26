@@ -1,5 +1,7 @@
 # AICore & Gemini Nano Architecture and Prompt Design Specification
 
+Actionable quota/terminal failures also use the independent AICore Errors OS channel; retries, fallback, and existing dialogs retain their behavior. See [Android OS Notifications](notifications.md).
+
 This document details the on-device AI integration, prompt engineering architecture, generation configuration parameters, and output parsing pipeline for Tidilo.
 
 ---

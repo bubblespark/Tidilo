@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface ImportTaskDao {
+    @Query("SELECT COUNT(*) FROM import_tasks WHERE status = 'READY'")
+    fun observeReadyNotificationCount(): Flow<Int>
 
     @Query("SELECT * FROM import_tasks ORDER BY createdAt DESC")
     fun getAllTasksFlow(): Flow<List<ImportTaskEntity>>

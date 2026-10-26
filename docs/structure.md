@@ -21,6 +21,7 @@ app/src/main/java/com/ykgudev/tidilo/
 │   ├── CollectionCounts.kt              # Atomic active/trash count projection
 │   ├── BookmarkSource.kt                # Explicit ALL/MANUAL/RSS SQL query scope
 │   ├── rss/                             # Feed acquisition, transactional ingestion, retention, preferences, scheduling
+│   ├── notifications/                   # OS channels, Ready-threshold policy, RSS result publishing, destination intents
 │   ├── BookmarkRepository.kt            # Bookmark CRUD, Trash lifecycle (30-day, 100-cap), JSON serialization
 │   ├── DomainIconManager.kt             # Shared on-demand domain icon recovery, caching, color, and transparency
 │   ├── DomainIconResolver.kt            # Prioritized HTML discovery and short-circuit icon selection

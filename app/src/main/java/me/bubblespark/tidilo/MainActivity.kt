@@ -1,6 +1,14 @@
 package me.bubblespark.tidilo
 
 import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -70,6 +78,20 @@ import java.util.Locale
 import me.bubblespark.tidilo.config.AppLanguage
 
 class MainActivity : ComponentActivity() {
+    private val notificationDestination = mutableStateOf<String?>(null)
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        lifecycleScope.launch(Dispatchers.IO) { NotificationCoordinator.getInstance(this@MainActivity).refresh() }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        notificationDestination.value = notificationRoute(intent)
+    }
+
+    private fun notificationRoute(intent: Intent?): String? =
+        intent?.getStringExtra(NotificationCoordinator.EXTRA_DESTINATION)
+            ?.takeIf { it in setOf(Screen.Import.route, Screen.Library.route, Screen.RssSettings.route) }
 
     override fun attachBaseContext(newBase: android.content.Context) {
         val prefs = newBase.getSharedPreferences("tidilo_app_config_prefs", android.content.Context.MODE_PRIVATE)
@@ -87,6 +109,13 @@ class MainActivity : ComponentActivity() {
         // Enable Edge-to-Edge display recommended for Android 15+
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        notificationDestination.value = notificationRoute(intent)
+        val notificationPrefs = getSharedPreferences("tidilo_notifications", MODE_PRIVATE)
+        if (!notificationPrefs.getBoolean("permission_requested", false) &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notificationPrefs.edit().putBoolean("permission_requested", true).apply()
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         // Ensure Activity resources are initialized with the configured language
         val initialLang = AppConfig.currentLanguage.value
@@ -127,7 +156,10 @@ class MainActivity : ComponentActivity() {
                 LocalContext provides localizedContext
             ) {
                 TidiloTheme {
-                    TidiloApp()
+                    TidiloApp(notificationRoute = notificationDestination.value, onNotificationConsumed = {
+                        notificationDestination.value = null
+                        intent.removeExtra(NotificationCoordinator.EXTRA_DESTINATION)
+                    })
                 }
             }
         }
@@ -139,7 +171,9 @@ fun TidiloApp(
     sharedUrl: String? = null,
     modifier: Modifier = Modifier,
     importViewModel: ImportViewModel = viewModel(),
-    libraryViewModel: LibraryViewModel = viewModel()
+    libraryViewModel: LibraryViewModel = viewModel(),
+    notificationRoute: String? = null,
+    onNotificationConsumed: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     val readyTasks by importViewModel.readyTasks.collectAsStateWithLifecycle()
@@ -147,6 +181,16 @@ fun TidiloApp(
     val aiProcessingProgress by importViewModel.aiProcessingProgress.collectAsStateWithLifecycle()
     val quotaExceededDialogVisible by importViewModel.quotaExceededDialogVisible.collectAsStateWithLifecycle()
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
+
+    LaunchedEffect(notificationRoute) {
+        if (notificationRoute != null) {
+            navController.navigate(notificationRoute) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+            }
+            onNotificationConsumed()
+        }
+    }
 
     // When receiving a shared URL via Intent, import to Ready and navigate to Import screen automatically
     LaunchedEffect(sharedUrl) {

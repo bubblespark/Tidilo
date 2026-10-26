@@ -68,6 +68,12 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.vector.ImageVector
 import me.bubblespark.tidilo.data.DomainIconManager
 import androidx.compose.ui.draw.drawWithCache
@@ -242,9 +248,15 @@ fun BookmarkDetailScreen(
     val ogFilename = bookmark.ogImageFilename
     val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
     val ogBitmap = ogState.bitmap
+    val detailAccent = rememberDetailAccent(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
+    val bannerBounds = remember(bookmark.id, ogBitmap) { mutableStateOf<Rect?>(null) }
+    val lightingHostOrigin = remember { mutableStateOf(Offset.Zero) }
+    val darkLighting = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
     TidiloScreenScaffold(
-        modifier = modifier,
+        modifier = modifier
+            .onGloballyPositioned { lightingHostOrigin.value = it.positionInRoot() }
+            .detailAmbientLight(detailAccent, bannerBounds, lightingHostOrigin, darkLighting, ogState.shouldShowFallback),
         hideHeaderOnScroll = false,
         header = {
             TidiloFrostedHeader(
@@ -566,7 +578,11 @@ fun BookmarkDetailScreen(
         ) {
                 // Content container directly beneath HEADER (places DomainWatermark or og:image banner)
                 Box(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().onGloballyPositioned {
+                        if (ogBitmap == null) {
+                            bannerBounds.value = Rect(it.positionInRoot() + Offset(it.size.width.toFloat(), 0f), Size.Zero)
+                        }
+                    }
                 ) {
                     // Upper right domain watermark (rendered only when og:image is unavailable and resolution completed)
                     if (ogState.shouldShowDomainWatermarkFallback) {
@@ -586,7 +602,7 @@ fun BookmarkDetailScreen(
                             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                                 val bannerHeight = minOf(
                                     maxWidth / calculateOgAspectRatio(ogBitmap.width, ogBitmap.height),
-                                    200.dp
+                                    300.dp
                                 )
                                 Image(
                                     bitmap = ogBitmap,
@@ -595,6 +611,10 @@ fun BookmarkDetailScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(bannerHeight)
+                                        .onGloballyPositioned {
+                                            bannerBounds.value = Rect(it.positionInRoot(), Size(it.size.width.toFloat(), it.size.height.toFloat()))
+                                        }
+                                        .detailBannerLight(detailAccent)
                                         .clip(RoundedCornerShape(16.dp))
                                 )
                             }
@@ -759,6 +779,8 @@ fun BookmarkDetailScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         // Line 1: [category] > [subcategory] (+ [NSFW])
+                        val hasCategoryLine = localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() || editedIsNsfw
+                        if (hasCategoryLine) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -860,6 +882,8 @@ fun BookmarkDetailScreen(
                         }
                     }
 
+                        }
+
                     // Line 2: [entities] (disables LocalMinimumInteractiveComponentSize to compact multi-line height)
                     if (editedTag.entities.isNotEmpty()) {
                         CompositionLocalProvider(
@@ -867,8 +891,7 @@ fun BookmarkDetailScreen(
                         ) {
                             FlowRow(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp),
+                                    .fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {

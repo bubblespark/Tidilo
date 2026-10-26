@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.key
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -37,6 +40,7 @@ class BookmarkDetailImageLayoutTest {
     @Test fun portraitArtworkStaysInsideBanner() = verifyArtwork(200, 400)
     @Test fun landscapeArtworkKeepsNaturalHeight() = verifyArtwork(800, 200)
     @Test fun standardOgArtworkStaysInsideBanner() = verifyArtwork(1200, 630)
+    @Test fun sixteenByNineArtworkKeepsNaturalHeight() = verifyArtwork(640, 360)
 
     private fun verifyArtwork(imageWidth: Int, imageHeight: Int): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -69,6 +73,7 @@ class BookmarkDetailImageLayoutTest {
             instrumentation.runOnMainSync {
                 val vm = ViewModelProvider(host)[LibraryViewModel::class.java]
                 host.setContent {
+                    CompositionLocalProvider(LocalDensity provides Density(1.75f)) {
                     MaterialTheme {
                         Surface {
                             Box(Modifier.width(width.value.dp)) {
@@ -76,12 +81,13 @@ class BookmarkDetailImageLayoutTest {
                             }
                         }
                     }
+                    }
                 }
             }
             withTimeout(10000) {
                 while (OgImageManager.getCachedOgImageBitmap(domain, filename) == null) delay(20)
             }
-            for (availableWidth in listOf(320, 360)) {
+            for (availableWidth in listOf(320, 360, 408, 440, 540, 600)) {
                 instrumentation.runOnMainSync { width.value = availableWidth }
                 delay(350)
                 instrumentation.waitForIdleSync()
@@ -102,8 +108,8 @@ class BookmarkDetailImageLayoutTest {
                     found
                 }
                 val titleBounds = Rect().also(title::getBoundsInScreen)
-                val density = context.resources.displayMetrics.density
-                val expectedHeight = minOf((availableWidth - 40) * imageHeight.toFloat() / imageWidth, 200f) * density
+                val density = 1.75f
+                val expectedHeight = minOf((availableWidth - 40) * imageHeight.toFloat() / imageWidth, 300f) * density
                 val bottom = titleBounds.top - (16 * density).roundToInt()
                 val top = bottom - expectedHeight.roundToInt()
                 val screenshot = instrumentation.uiAutomation.takeScreenshot()
@@ -122,7 +128,9 @@ class BookmarkDetailImageLayoutTest {
                     }
                     assertTrue("Fixture must render blue artwork", inside > 1000)
                     assertTrue("$imageWidth x $imageHeight at ${availableWidth}dp: $outside image pixels outside [$top, $bottom), painted [$first, $last]", outside == 0)
-                    assertTrue("Banner must retain its intended height", kotlin.math.abs((last - first + 1) - expectedHeight) <= 4)
+                    // The 1dp rim covers both ends of the image; compare the remaining pure artwork.
+                    val expectedArtworkHeight = expectedHeight - 2 * density
+                    assertTrue("$imageWidth x $imageHeight at ${availableWidth}dp: painted ${last - first + 1}, expected $expectedArtworkHeight, bounds $first..$last", kotlin.math.abs((last - first + 1) - expectedArtworkHeight) <= 2)
                     val corner = screenshot.getPixel((20 * density).roundToInt() + 2, top + 2)
                     assertTrue("The rounded top-left corner must exclude artwork", Color.red(corner) > 10 || Color.green(corner) > 10 || Color.blue(corner) < 245)
                     java.io.File(context.cacheDir, "issue123-$imageWidth-$imageHeight.png").outputStream().use {

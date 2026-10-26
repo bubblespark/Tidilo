@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.collection.LruCache
 import kotlinx.coroutines.CoroutineScope
@@ -72,6 +74,48 @@ object OgImageManager {
         override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
     }
 
+    private val ogDominantColorCache = LruCache<String, Color>(128)
+    private val dominantColorLock = Any()
+    private class ColorSampling(val identity: String, var invalidated: Boolean = false)
+    private val activeColorSampling = mutableSetOf<ColorSampling>()
+
+    /** Resolves the displayed image's accent, returning null if invalidated while sampling. */
+    internal suspend fun getDominantColor(domain: String, imageKey: String?, bitmap: ImageBitmap): Color? {
+        val androidBitmap = bitmap.asAndroidBitmap()
+        val source = if (imageKey.isNullOrBlank()) fallbackCacheKey(domain) else cacheKey(domain, imageKey)
+        return resolveDominantColor("$source|${androidBitmap.generationId}") {
+            DomainIconManager.extractDominantColor(androidBitmap, domain)
+        }
+    }
+
+    internal suspend fun resolveDominantColor(identity: String, extract: suspend () -> Color): Color? =
+        withContext(Dispatchers.Default) {
+            val sampling = synchronized(dominantColorLock) {
+                ogDominantColorCache.get(identity)?.let { return@withContext it }
+                ColorSampling(identity).also { activeColorSampling.add(it) }
+            }
+            try {
+                val color = extract()
+                val workContext = currentCoroutineContext()
+                synchronized(dominantColorLock) {
+                    workContext.ensureActive()
+                    if (sampling.invalidated) null else color.also { ogDominantColorCache.put(identity, it) }
+                }
+            } finally {
+                synchronized(dominantColorLock) { activeColorSampling.remove(sampling) }
+            }
+        }
+
+    /** Also invalidates in-flight sampling, so clearing cannot repopulate stale entries. */
+    internal fun invalidateDominantColors(source: String? = null) = synchronized(dominantColorLock) {
+        activeColorSampling.filter { source == null || it.identity.substringBeforeLast('|') == source }
+            .forEach { it.invalidated = true }
+        if (source == null) ogDominantColorCache.evictAll() else {
+            ogDominantColorCache.snapshot().keys.filter { it.substringBeforeLast('|') == source }
+                .forEach { ogDominantColorCache.remove(it) }
+        }
+    }
+
     private val downloads = OgImageFetchCoordinator<ImageBitmap>()
     private val cacheGeneration = downloads.generation
     private val _cacheGenerationState = MutableStateFlow(0L)
@@ -96,7 +140,12 @@ object OgImageManager {
                 exact.length() == latest.length() && exact.readBytes().contentEquals(latest.readBytes())
             if (matchesLatest && !latest.delete()) throw IOException("Could not remove RSS image copy")
             if (exact.exists() && !exact.delete()) throw IOException("Could not remove RSS image")
-            memoryCache.snapshot().keys.filter { it.endsWith("/$imageKey") }.forEach { memoryCache.remove(it) }
+            memoryCache.snapshot().keys.filter { it.endsWith("/$imageKey") }.forEach {
+                memoryCache.remove(it)
+                invalidateDominantColors(it)
+            }
+            invalidateDominantColors(cacheKey(domain, imageKey))
+            if (matchesLatest) invalidateDominantColors(fallbackCacheKey(domain))
             if (matchesLatest) memoryCache.remove(fallbackCacheKey(domain))
             notifyExactImageUpdated(domain, imageKey)
         }
@@ -332,6 +381,7 @@ object OgImageManager {
     @VisibleForTesting
     fun clearMemoryCache() {
         memoryCache.evictAll()
+        invalidateDominantColors()
     }
 
     /**
@@ -342,6 +392,7 @@ object OgImageManager {
         cacheMutex.withLock {
             downloads.clear()
             memoryCache.evictAll()
+            invalidateDominantColors()
             val dir = File(context.cacheDir, "og_images")
             if (dir.exists()) {
                 dir.deleteRecursively()
@@ -582,6 +633,8 @@ object OgImageManager {
                 writeAtomically(getOgImageFile(context, imageKey), compressed.bytes)
                 // Legacy domain previews remain available only to callers explicitly requesting them.
                 runCatching { writeAtomically(getDomainLatestImageFile(context, domain), compressed.bytes) }
+                invalidateDominantColors(cacheKey(domain, imageKey))
+                invalidateDominantColors(fallbackCacheKey(domain))
                 memoryCache.put(cacheKey(domain, imageKey), bitmap)
                 memoryCache.put(fallbackCacheKey(domain), bitmap)
                 notifyExactImageUpdated(domain, imageKey)

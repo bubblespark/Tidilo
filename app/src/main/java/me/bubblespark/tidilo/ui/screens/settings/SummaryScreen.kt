@@ -1,5 +1,9 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import me.bubblespark.tidilo.ui.components.TidiloPageHeader
+import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
+import androidx.compose.foundation.layout.size
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,13 +16,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -80,83 +82,86 @@ internal fun SummaryContent(
     onRefreshCache: () -> Unit,
     zone: ZoneId = ZoneId.systemDefault()
 ) {
-    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
-        .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onNavigateBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
-            }
-            Text(stringResource(R.string.summary_title), style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold)
+    TidiloScreenScaffold(
+        hideHeaderOnScroll = false,
+        header = {
+            TidiloPageHeader(
+                title = stringResource(R.string.summary_title),
+                onNavigateBack = onNavigateBack
+            )
         }
-        SummarySection(stringResource(R.string.summary_aicore)) {
-            when (usage) {
-                AiUsageState.Loading -> SummaryLoading()
-                AiUsageState.Error -> SummaryError(onRetryUsage)
-                is AiUsageState.Ready -> {
-                    if (usage.persistenceFailed) {
-                        Text(stringResource(R.string.summary_save_warning), color = MaterialTheme.colorScheme.error)
-                        TextButton(onClick = onRetryUsage) { Text(stringResource(R.string.summary_retry)) }
-                    }
-                    val day = usage.snapshot.days[today] ?: DailyAiUsage()
-                    SummaryValue(stringResource(R.string.summary_today), day.total.toString())
-                    Text(stringResource(R.string.summary_outcomes, day.success, day.failed),
-                        style = MaterialTheme.typography.bodyMedium)
-                    Text(stringResource(R.string.summary_pending_outcomes, day.cancelled, day.interrupted, day.pending),
-                        style = MaterialTheme.typography.bodySmall)
-                    SummaryValue(stringResource(R.string.summary_debug), day.debug.toString())
-                    Text(stringResource(R.string.summary_last_seven), style = MaterialTheme.typography.titleSmall)
-                    UsageBars(usage.snapshot.week(today))
-                    Text(stringResource(R.string.summary_recorded_since, usage.snapshot.recordedSince.toString()),
-                        style = MaterialTheme.typography.bodySmall)
-                    HorizontalDivider()
-                    val quota = usage.snapshot.lastQuota
-                    SummaryValue(stringResource(R.string.summary_quota),
-                        quota?.let { stringResource(R.string.summary_calls, it.calls) } ?: "—")
-                    if (quota != null) {
-                        Text(stringResource(R.string.summary_quota_day, quota.date.toString()),
+    ) { contentPadding ->
+        Column(Modifier.fillMaxSize().navigationBarsPadding()
+            .verticalScroll(rememberScrollState()).padding(contentPadding),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SummarySection(stringResource(R.string.summary_aicore)) {
+                when (usage) {
+                    AiUsageState.Loading -> SummaryLoading()
+                    AiUsageState.Error -> SummaryError(onRetryUsage)
+                    is AiUsageState.Ready -> {
+                        if (usage.persistenceFailed) {
+                            Text(stringResource(R.string.summary_save_warning), color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = onRetryUsage) { Text(stringResource(R.string.summary_retry)) }
+                        }
+                        val day = usage.snapshot.days[today] ?: DailyAiUsage()
+                        SummaryValue(stringResource(R.string.summary_today), day.total.toString())
+                        Text(stringResource(R.string.summary_outcomes, day.success, day.failed),
+                            style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.summary_pending_outcomes, day.cancelled, day.interrupted, day.pending),
                             style = MaterialTheme.typography.bodySmall)
-                        Text(formatSummaryTime(quota.detectedAt, zone), style = MaterialTheme.typography.bodySmall)
+                        SummaryValue(stringResource(R.string.summary_debug), day.debug.toString())
+                        Text(stringResource(R.string.summary_last_seven), style = MaterialTheme.typography.titleSmall)
+                        UsageBars(usage.snapshot.week(today))
+                        Text(stringResource(R.string.summary_recorded_since, usage.snapshot.recordedSince.toString()),
+                            style = MaterialTheme.typography.bodySmall)
+                        HorizontalDivider()
+                        val quota = usage.snapshot.lastQuota
+                        SummaryValue(stringResource(R.string.summary_quota),
+                            quota?.let { stringResource(R.string.summary_calls, it.calls) } ?: "—")
+                        if (quota != null) {
+                            Text(stringResource(R.string.summary_quota_day, quota.date.toString()),
+                                style = MaterialTheme.typography.bodySmall)
+                            Text(formatSummaryTime(quota.detectedAt, zone), style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text(stringResource(R.string.summary_quota_note), style = MaterialTheme.typography.bodySmall)
                     }
-                    Text(stringResource(R.string.summary_quota_note), style = MaterialTheme.typography.bodySmall)
                 }
             }
-        }
-        SummarySection(stringResource(R.string.summary_collection)) {
-            when (counts) {
-                SummaryLoad.Loading -> SummaryLoading()
-                SummaryLoad.Error -> SummaryError(onRetryCounts)
-                is SummaryLoad.Ready -> {
-                    SummaryValue(stringResource(R.string.summary_bookmarks), counts.value.active.toString())
-                    SummaryValue(stringResource(R.string.summary_trash),
-                        "${counts.value.trash} / ${BookmarkRepository.MAX_TRASH_CAPACITY}")
+            SummarySection(stringResource(R.string.summary_collection)) {
+                when (counts) {
+                    SummaryLoad.Loading -> SummaryLoading()
+                    SummaryLoad.Error -> SummaryError(onRetryCounts)
+                    is SummaryLoad.Ready -> {
+                        SummaryValue(stringResource(R.string.summary_bookmarks), counts.value.active.toString())
+                        SummaryValue(stringResource(R.string.summary_trash),
+                            "${counts.value.trash} / ${BookmarkRepository.MAX_TRASH_CAPACITY}")
+                    }
                 }
             }
-        }
-        SummarySection(stringResource(R.string.summary_storage)) {
-            when (cache) {
-                SummaryLoad.Loading -> SummaryLoading()
-                SummaryLoad.Error -> SummaryError(onRefreshCache)
-                is SummaryLoad.Ready -> {
-                    val snapshot = cache.value
-                    CacheValue(stringResource(R.string.summary_icons), snapshot.iconFiles, snapshot.iconBytes)
-                    CacheValue(stringResource(R.string.summary_images), snapshot.ogFiles, snapshot.ogBytes)
-                    SummaryValue(stringResource(R.string.summary_other), formatCacheBytes(snapshot.otherBytes))
-                    HorizontalDivider()
-                    SummaryValue(stringResource(R.string.summary_total), formatCacheBytes(snapshot.totalBytes))
-                    Text(stringResource(R.string.summary_checked, formatSummaryTime(snapshot.checkedAt, zone)),
-                        style = MaterialTheme.typography.bodySmall)
-                    Text(stringResource(R.string.summary_physical_note), style = MaterialTheme.typography.bodySmall)
+            SummarySection(stringResource(R.string.summary_storage)) {
+                when (cache) {
+                    SummaryLoad.Loading -> SummaryLoading()
+                    SummaryLoad.Error -> SummaryError(onRefreshCache)
+                    is SummaryLoad.Ready -> {
+                        val snapshot = cache.value
+                        CacheValue(stringResource(R.string.summary_icons), snapshot.iconFiles, snapshot.iconBytes)
+                        CacheValue(stringResource(R.string.summary_images), snapshot.ogFiles, snapshot.ogBytes)
+                        SummaryValue(stringResource(R.string.summary_other), formatCacheBytes(snapshot.otherBytes))
+                        HorizontalDivider()
+                        SummaryValue(stringResource(R.string.summary_total), formatCacheBytes(snapshot.totalBytes))
+                        Text(stringResource(R.string.summary_checked, formatSummaryTime(snapshot.checkedAt, zone)),
+                            style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.summary_physical_note), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                TextButton(onClick = onRefreshCache, enabled = cache !is SummaryLoad.Loading) {
+                    Text(stringResource(R.string.summary_refresh))
                 }
             }
-            TextButton(onClick = onRefreshCache, enabled = cache !is SummaryLoad.Loading) {
-                Text(stringResource(R.string.summary_refresh))
-            }
+            Text(stringResource(R.string.summary_privacy), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
         }
-        Text(stringResource(R.string.summary_privacy), style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(8.dp))
     }
 }
 

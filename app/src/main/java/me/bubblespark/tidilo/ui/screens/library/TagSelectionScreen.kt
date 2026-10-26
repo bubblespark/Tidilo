@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -17,7 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -209,247 +210,248 @@ fun TagSelectionScreen(
         applyAndNavigateBack()
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-    ) {
-        initializationFailure?.let { PagingFeedback(androidx.paging.LoadState.Error(it), viewModel::retryInitialization) }
-        // Top Menu: Back (←) button, title, and Clear button
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                IconButton(
-                    onClick = applyAndNavigateBack,
-                    modifier = Modifier
-                        .padding(end = 4.dp)
-                        .size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.tag_selection_back_and_apply),
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
-                }
-                Column {
+    TidiloScreenScaffold(
+        modifier = modifier,
+        hideHeaderOnScroll = false,
+        header = {
+            TidiloFrostedHeader(
+                title = {
                     Text(
                         text = stringResource(R.string.tag_selection_title),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = stringResource(R.string.tag_selection_subtitle, selectedTags.size),
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                }
-            }
-
-            // Top-right Clear button (text button without background)
-            TextButton(
-                onClick = {
-                    selectedTags = emptySet()
                 },
-                enabled = selectedTags.isNotEmpty(),
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                )
-            ) {
-                Text(
-                    text = stringResource(R.string.common_clear),
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Top Search: Tag search component (matches regardless of '#')
-        OutlinedTextField(
-            value = tagSearchQuery,
-            onValueChange = { tagSearchQuery = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = {
-                Text(
-                    text = stringResource(R.string.tag_selection_search_placeholder),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = stringResource(R.string.tag_selection_search_content_desc),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            trailingIcon = {
-                if (tagSearchQuery.isNotEmpty()) {
-                    IconButton(onClick = { tagSearchQuery = "" }) {
-                        Icon(
-                            imageVector = Icons.Default.Clear,
-                            contentDescription = stringResource(R.string.common_clear),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            },
-            shape = RoundedCornerShape(20.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                unfocusedBorderColor = Color.Transparent,
-                focusedBorderColor = MaterialTheme.colorScheme.primary
-            ),
-            singleLine = true
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Group 1: Category (always visible even when 0 items)
-        TagGroupSection(
-            title = stringResource(R.string.tag_group_category),
-            tags = categoryTags,
-            selectedTags = selectedTags,
-            onTagToggled = { tagId ->
-                selectedTags = if (selectedTags.contains(tagId)) {
-                    selectedTags - tagId
-                } else {
-                    selectedTags + tagId
-                }
-            },
-            activeColor = MaterialTheme.colorScheme.primary,
-            activeContentColor = MaterialTheme.colorScheme.onPrimary
-        )
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // Group 2: Subcategory (always visible even when 0 items)
-        TagGroupSection(
-            title = stringResource(R.string.tag_group_subcategory),
-            tags = subcategoryTags,
-            selectedTags = selectedTags,
-            onTagToggled = { tagId ->
-                selectedTags = if (selectedTags.contains(tagId)) {
-                    selectedTags - tagId
-                } else {
-                    selectedTags + tagId
-                }
-            },
-            activeColor = MaterialTheme.colorScheme.secondary,
-            activeContentColor = MaterialTheme.colorScheme.onSecondary
-        )
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // Group 3: Entity category (specific category - includes M3 Sort Menu)
-        TagGroupSection(
-            title = stringResource(R.string.tag_group_entity),
-            tags = entityTags,
-            selectedTags = selectedTags,
-            onTagToggled = { tagId ->
-                selectedTags = if (selectedTags.contains(tagId)) {
-                    selectedTags - tagId
-                } else {
-                    selectedTags + tagId
-                }
-            },
-            activeColor = MaterialTheme.colorScheme.tertiary,
-            activeContentColor = MaterialTheme.colorScheme.onTertiary,
-            headerTrailing = {
-                Box {
+                navigationIcon = {
                     IconButton(
-                        onClick = { isSortMenuExpanded = true },
-                        modifier = Modifier.size(36.dp)
+                        onClick = applyAndNavigateBack,
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .size(48.dp)
                     ) {
                         Icon(
-                            imageVector = ImageVector.vectorResource(R.drawable.ic_sort),
-                            contentDescription = stringResource(R.string.tag_sort_content_desc),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.tag_selection_back_and_apply),
+                            tint = MaterialTheme.colorScheme.onBackground
                         )
                     }
-
-                    DropdownMenu(
-                        expanded = isSortMenuExpanded,
-                        onDismissRequest = { isSortMenuExpanded = false },
-                        shape = RoundedCornerShape(16.dp),
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        tonalElevation = 6.dp
+                },
+                actions = {
+                    TextButton(
+                        onClick = {
+                            selectedTags = emptySet()
+                        },
+                        enabled = selectedTags.isNotEmpty(),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                        )
                     ) {
-                        CompositionLocalProvider(
-                            LocalContext provides context,
-                            LocalConfiguration provides localConfig
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = stringResource(R.string.tag_sort_count),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = if (entitySortMode == EntitySortMode.COUNT) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (entitySortMode == EntitySortMode.COUNT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                    )
-                                },
-                                onClick = {
-                                    entitySortMode = EntitySortMode.COUNT
-                                    isSortMenuExpanded = false
-                                },
-                                trailingIcon = if (entitySortMode == EntitySortMode.COUNT) {
-                                    {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                } else null
-                            )
+                        Text(
+                            text = stringResource(R.string.common_clear),
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                }
+            )
+        }
+    ) { contentPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(contentPadding)
+        ) {
+            initializationFailure?.let { PagingFeedback(androidx.paging.LoadState.Error(it), viewModel::retryInitialization) }
+            // Top Menu: Back (←) button, title, and Clear button
 
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = stringResource(R.string.tag_sort_name),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = if (entitySortMode == EntitySortMode.NAME) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (entitySortMode == EntitySortMode.NAME) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                    )
-                                },
-                                onClick = {
-                                    entitySortMode = EntitySortMode.NAME
-                                    isSortMenuExpanded = false
-                                },
-                                trailingIcon = if (entitySortMode == EntitySortMode.NAME) {
-                                    {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                } else null
+
+
+            // Top Search: Tag search component (matches regardless of '#')
+            OutlinedTextField(
+                value = tagSearchQuery,
+                onValueChange = { tagSearchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = {
+                    Text(
+                        text = stringResource(R.string.tag_selection_search_placeholder),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = stringResource(R.string.tag_selection_search_content_desc),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                trailingIcon = {
+                    if (tagSearchQuery.isNotEmpty()) {
+                        IconButton(onClick = { tagSearchQuery = "" }) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = stringResource(R.string.common_clear),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
-                }
-            }
-        )
+                },
+                shape = RoundedCornerShape(20.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary
+                ),
+                singleLine = true
+            )
 
-        Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Group 1: Category (always visible even when 0 items)
+            TagGroupSection(
+                title = stringResource(R.string.tag_group_category),
+                tags = categoryTags,
+                selectedTags = selectedTags,
+                onTagToggled = { tagId ->
+                    selectedTags = if (selectedTags.contains(tagId)) {
+                        selectedTags - tagId
+                    } else {
+                        selectedTags + tagId
+                    }
+                },
+                activeColor = MaterialTheme.colorScheme.primary,
+                activeContentColor = MaterialTheme.colorScheme.onPrimary
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Group 2: Subcategory (always visible even when 0 items)
+            TagGroupSection(
+                title = stringResource(R.string.tag_group_subcategory),
+                tags = subcategoryTags,
+                selectedTags = selectedTags,
+                onTagToggled = { tagId ->
+                    selectedTags = if (selectedTags.contains(tagId)) {
+                        selectedTags - tagId
+                    } else {
+                        selectedTags + tagId
+                    }
+                },
+                activeColor = MaterialTheme.colorScheme.secondary,
+                activeContentColor = MaterialTheme.colorScheme.onSecondary
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Group 3: Entity category (specific category - includes M3 Sort Menu)
+            TagGroupSection(
+                title = stringResource(R.string.tag_group_entity),
+                tags = entityTags,
+                selectedTags = selectedTags,
+                onTagToggled = { tagId ->
+                    selectedTags = if (selectedTags.contains(tagId)) {
+                        selectedTags - tagId
+                    } else {
+                        selectedTags + tagId
+                    }
+                },
+                activeColor = MaterialTheme.colorScheme.tertiary,
+                activeContentColor = MaterialTheme.colorScheme.onTertiary,
+                headerTrailing = {
+                    Box {
+                        IconButton(
+                            onClick = { isSortMenuExpanded = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = ImageVector.vectorResource(R.drawable.ic_sort),
+                                contentDescription = stringResource(R.string.tag_sort_content_desc),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = isSortMenuExpanded,
+                            onDismissRequest = { isSortMenuExpanded = false },
+                            shape = RoundedCornerShape(16.dp),
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            tonalElevation = 6.dp
+                        ) {
+                            CompositionLocalProvider(
+                                LocalContext provides context,
+                                LocalConfiguration provides localConfig
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = stringResource(R.string.tag_sort_count),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (entitySortMode == EntitySortMode.COUNT) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (entitySortMode == EntitySortMode.COUNT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    onClick = {
+                                        entitySortMode = EntitySortMode.COUNT
+                                        isSortMenuExpanded = false
+                                    },
+                                    trailingIcon = if (entitySortMode == EntitySortMode.COUNT) {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    } else null
+                                )
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = stringResource(R.string.tag_sort_name),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (entitySortMode == EntitySortMode.NAME) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (entitySortMode == EntitySortMode.NAME) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    onClick = {
+                                        entitySortMode = EntitySortMode.NAME
+                                        isSortMenuExpanded = false
+                                    },
+                                    trailingIcon = if (entitySortMode == EntitySortMode.NAME) {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    } else null
+                                )
+                            }
+                        }
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+        }
     }
 }
 

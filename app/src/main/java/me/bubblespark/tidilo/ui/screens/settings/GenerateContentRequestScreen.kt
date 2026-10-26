@@ -1,5 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import me.bubblespark.tidilo.ui.components.TidiloPageHeader
+import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,14 +13,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -50,7 +51,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import me.bubblespark.tidilo.R
@@ -67,298 +67,270 @@ fun GenerateContentRequestScreen(
     var showResetConfirmDialog by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp)
-    ) {
+    TidiloScreenScaffold(
+        modifier = modifier,
+        hideHeaderOnScroll = false,
         // Top Header: Back Button, Title, Default Button
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                IconButton(
-                    onClick = onNavigateBack,
-                    modifier = Modifier
-                        .padding(end = 4.dp)
-                        .size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.common_back),
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
+        header = {
+            TidiloPageHeader(
+                title = stringResource(R.string.title_generate_content_request),
+                onNavigateBack = onNavigateBack,
+                actions = {
+                    IconButton(
+                        onClick = { showResetConfirmDialog = true },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = ImageVector.vectorResource(R.drawable.ic_reset_wrench),
+                            contentDescription = stringResource(R.string.gcr_reset_default_content_desc),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
-                Text(
-                    text = stringResource(R.string.title_generate_content_request),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Reset Wrench icon button (without background)
-            IconButton(
-                onClick = { showResetConfirmDialog = true },
-                modifier = Modifier.size(44.dp)
-            ) {
-                Icon(
-                    imageVector = ImageVector.vectorResource(R.drawable.ic_reset_wrench),
-                    contentDescription = stringResource(R.string.gcr_reset_default_content_desc),
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
+            )
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Parameter Items List (1 parameter 2 lines)
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) { contentPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
         ) {
-            // 1. cachedContextName: String, null, Text fields
-            item(key = "cachedContextName") {
-                ParameterCard(
-                    enabled = state.cachedContextNameEnabled,
-                    onEnabledChange = { viewModel.setCachedContextNameEnabled(it) },
-                    name = "cachedContextName",
-                    displayValue = if (state.cachedContextName.isBlank()) "null" else state.cachedContextName
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+            // Parameter Items List (1 parameter 2 lines)
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = contentPadding,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // 1. cachedContextName: String, null, Text fields
+                item(key = "cachedContextName") {
+                    ParameterCard(
+                        enabled = state.cachedContextNameEnabled,
+                        onEnabledChange = { viewModel.setCachedContextNameEnabled(it) },
+                        name = "cachedContextName",
+                        displayValue = if (state.cachedContextName.isBlank()) "null" else state.cachedContextName
                     ) {
-                        OutlinedTextField(
-                            value = state.cachedContextName,
-                            onValueChange = { viewModel.setCachedContextName(it) },
-                            placeholder = { Text("null") },
-                            singleLine = true,
-                            enabled = state.cachedContextNameEnabled,
-                            shape = RoundedCornerShape(12.dp),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                            ),
-                            modifier = Modifier.width(220.dp)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            OutlinedTextField(
+                                value = state.cachedContextName,
+                                onValueChange = { viewModel.setCachedContextName(it) },
+                                placeholder = { Text("null") },
+                                singleLine = true,
+                                enabled = state.cachedContextNameEnabled,
+                                shape = RoundedCornerShape(12.dp),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                modifier = Modifier.width(220.dp)
+                            )
+                        }
                     }
                 }
-            }
 
-            // 2. candidateCount: Int, 1, Text fields (numeric digits only)
-            item(key = "candidateCount") {
-                ParameterCard(
-                    enabled = state.candidateCountEnabled,
-                    onEnabledChange = { viewModel.setCandidateCountEnabled(it) },
-                    name = "candidateCount",
-                    displayValue = "${state.candidateCount}"
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                // 2. candidateCount: Int, 1, Text fields (numeric digits only)
+                item(key = "candidateCount") {
+                    ParameterCard(
+                        enabled = state.candidateCountEnabled,
+                        onEnabledChange = { viewModel.setCandidateCountEnabled(it) },
+                        name = "candidateCount",
+                        displayValue = "${state.candidateCount}"
                     ) {
-                        OutlinedTextField(
-                            value = "${state.candidateCount}",
-                            onValueChange = { input ->
-                                val digitsOnly = input.filter { it.isDigit() }
-                                val intVal = digitsOnly.toIntOrNull() ?: 0
-                                viewModel.setCandidateCount(intVal)
-                            },
-                            singleLine = true,
-                            enabled = state.candidateCountEnabled,
-                            shape = RoundedCornerShape(12.dp),
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                            ),
-                            modifier = Modifier.width(160.dp)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            OutlinedTextField(
+                                value = "${state.candidateCount}",
+                                onValueChange = { input ->
+                                    val digitsOnly = input.filter { it.isDigit() }
+                                    val intVal = digitsOnly.toIntOrNull() ?: 0
+                                    viewModel.setCandidateCount(intVal)
+                                },
+                                singleLine = true,
+                                enabled = state.candidateCountEnabled,
+                                shape = RoundedCornerShape(12.dp),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                modifier = Modifier.width(160.dp)
+                            )
+                        }
                     }
                 }
-            }
 
-            // 3. enableThinking: Boolean, false, Switch(on/off)
-            item(key = "enableThinking") {
-                ParameterCard(
-                    enabled = state.enableThinkingEnabled,
-                    onEnabledChange = { viewModel.setEnableThinkingEnabled(it) },
-                    name = "enableThinking",
-                    displayValue = if (state.enableThinking) "true" else "false"
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                // 3. enableThinking: Boolean, false, Switch(on/off)
+                item(key = "enableThinking") {
+                    ParameterCard(
+                        enabled = state.enableThinkingEnabled,
+                        onEnabledChange = { viewModel.setEnableThinkingEnabled(it) },
+                        name = "enableThinking",
+                        displayValue = if (state.enableThinking) "true" else "false"
                     ) {
-                        Switch(
-                            checked = state.enableThinking,
-                            onCheckedChange = { viewModel.setEnableThinking(it) },
-                            enabled = state.enableThinkingEnabled
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            Switch(
+                                checked = state.enableThinking,
+                                onCheckedChange = { viewModel.setEnableThinking(it) },
+                                enabled = state.enableThinkingEnabled
+                            )
+                        }
                     }
                 }
-            }
 
-            // 4. maxOutputTokens: Int, 4096, Text fields (numeric digits only)
-            item(key = "maxOutputTokens") {
-                ParameterCard(
-                    enabled = state.maxOutputTokensEnabled,
-                    onEnabledChange = { viewModel.setMaxOutputTokensEnabled(it) },
-                    name = "maxOutputTokens",
-                    displayValue = "${state.maxOutputTokens}"
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                // 4. maxOutputTokens: Int, 4096, Text fields (numeric digits only)
+                item(key = "maxOutputTokens") {
+                    ParameterCard(
+                        enabled = state.maxOutputTokensEnabled,
+                        onEnabledChange = { viewModel.setMaxOutputTokensEnabled(it) },
+                        name = "maxOutputTokens",
+                        displayValue = "${state.maxOutputTokens}"
                     ) {
-                        OutlinedTextField(
-                            value = "${state.maxOutputTokens}",
-                            onValueChange = { input ->
-                                val digitsOnly = input.filter { it.isDigit() }
-                                val intVal = digitsOnly.toIntOrNull() ?: 0
-                                viewModel.setMaxOutputTokens(intVal)
-                            },
-                            singleLine = true,
-                            enabled = state.maxOutputTokensEnabled,
-                            shape = RoundedCornerShape(12.dp),
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                            ),
-                            modifier = Modifier.width(160.dp)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            OutlinedTextField(
+                                value = "${state.maxOutputTokens}",
+                                onValueChange = { input ->
+                                    val digitsOnly = input.filter { it.isDigit() }
+                                    val intVal = digitsOnly.toIntOrNull() ?: 0
+                                    viewModel.setMaxOutputTokens(intVal)
+                                },
+                                singleLine = true,
+                                enabled = state.maxOutputTokensEnabled,
+                                shape = RoundedCornerShape(12.dp),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                modifier = Modifier.width(160.dp)
+                            )
+                        }
                     }
                 }
-            }
 
-            // 5. seed: Int, 0, Text fields (numeric digits only)
-            item(key = "seed") {
-                ParameterCard(
-                    enabled = state.seedEnabled,
-                    onEnabledChange = { viewModel.setSeedEnabled(it) },
-                    name = "seed",
-                    displayValue = "${state.seed}"
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                // 5. seed: Int, 0, Text fields (numeric digits only)
+                item(key = "seed") {
+                    ParameterCard(
+                        enabled = state.seedEnabled,
+                        onEnabledChange = { viewModel.setSeedEnabled(it) },
+                        name = "seed",
+                        displayValue = "${state.seed}"
                     ) {
-                        OutlinedTextField(
-                            value = "${state.seed}",
-                            onValueChange = { input ->
-                                val digitsOnly = input.filter { it.isDigit() }
-                                val intVal = digitsOnly.toIntOrNull() ?: 0
-                                viewModel.setSeed(intVal)
-                            },
-                            singleLine = true,
-                            enabled = state.seedEnabled,
-                            shape = RoundedCornerShape(12.dp),
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                            ),
-                            modifier = Modifier.width(160.dp)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            OutlinedTextField(
+                                value = "${state.seed}",
+                                onValueChange = { input ->
+                                    val digitsOnly = input.filter { it.isDigit() }
+                                    val intVal = digitsOnly.toIntOrNull() ?: 0
+                                    viewModel.setSeed(intVal)
+                                },
+                                singleLine = true,
+                                enabled = state.seedEnabled,
+                                shape = RoundedCornerShape(12.dp),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                modifier = Modifier.width(160.dp)
+                            )
+                        }
                     }
                 }
-            }
 
-            // 6. temperature: Float, 0.0f, Horizontal Slider (Standard) 0.1 step, 0.0-1.0 (center-aligned)
-            item(key = "temperature") {
-                ParameterCard(
-                    enabled = state.temperatureEnabled,
-                    onEnabledChange = { viewModel.setTemperatureEnabled(it) },
-                    name = "temperature",
-                    displayValue = String.format(Locale.US, "%.1f", state.temperature)
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                // 6. temperature: Float, 0.0f, Horizontal Slider (Standard) 0.1 step, 0.0-1.0 (center-aligned)
+                item(key = "temperature") {
+                    ParameterCard(
+                        enabled = state.temperatureEnabled,
+                        onEnabledChange = { viewModel.setTemperatureEnabled(it) },
+                        name = "temperature",
+                        displayValue = String.format(Locale.US, "%.1f", state.temperature)
                     ) {
-                        Slider(
-                            value = state.temperature,
-                            onValueChange = { newValue ->
-                                val rounded = round(newValue * 10f) / 10f
-                                viewModel.setTemperature(rounded)
-                            },
-                            valueRange = 0.0f..1.0f,
-                            steps = 9, // 9 steps for 0.1 increments (0.1, 0.2, ..., 0.9)
-                            enabled = state.temperatureEnabled,
-                            modifier = Modifier.fillMaxWidth(0.9f)
-                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Slider(
+                                value = state.temperature,
+                                onValueChange = { newValue ->
+                                    val rounded = round(newValue * 10f) / 10f
+                                    viewModel.setTemperature(rounded)
+                                },
+                                valueRange = 0.0f..1.0f,
+                                steps = 9, // 9 steps for 0.1 increments (0.1, 0.2, ..., 0.9)
+                                enabled = state.temperatureEnabled,
+                                modifier = Modifier.fillMaxWidth(0.9f)
+                            )
+                        }
                     }
                 }
-            }
 
-            // 7. topK: Int, 3, Text fields (numeric digits only)
-            item(key = "topK") {
-                ParameterCard(
-                    enabled = state.topKEnabled,
-                    onEnabledChange = { viewModel.setTopKEnabled(it) },
-                    name = "topK",
-                    displayValue = "${state.topK}"
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                // 7. topK: Int, 3, Text fields (numeric digits only)
+                item(key = "topK") {
+                    ParameterCard(
+                        enabled = state.topKEnabled,
+                        onEnabledChange = { viewModel.setTopKEnabled(it) },
+                        name = "topK",
+                        displayValue = "${state.topK}"
                     ) {
-                        OutlinedTextField(
-                            value = "${state.topK}",
-                            onValueChange = { input ->
-                                val digitsOnly = input.filter { it.isDigit() }
-                                val intVal = digitsOnly.toIntOrNull() ?: 0
-                                viewModel.setTopK(intVal)
-                            },
-                            singleLine = true,
-                            enabled = state.topKEnabled,
-                            shape = RoundedCornerShape(12.dp),
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                            ),
-                            modifier = Modifier.width(160.dp)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            OutlinedTextField(
+                                value = "${state.topK}",
+                                onValueChange = { input ->
+                                    val digitsOnly = input.filter { it.isDigit() }
+                                    val intVal = digitsOnly.toIntOrNull() ?: 0
+                                    viewModel.setTopK(intVal)
+                                },
+                                singleLine = true,
+                                enabled = state.topKEnabled,
+                                shape = RoundedCornerShape(12.dp),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                modifier = Modifier.width(160.dp)
+                            )
+                        }
                     }
                 }
-            }
 
-            item(key = "bottomSpacer") {
-                Spacer(modifier = Modifier.height(28.dp))
+                item(key = "bottomSpacer") {
+                    Spacer(modifier = Modifier.height(28.dp))
+                }
             }
         }
     }

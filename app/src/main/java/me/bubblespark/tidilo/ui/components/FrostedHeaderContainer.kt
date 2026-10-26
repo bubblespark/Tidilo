@@ -45,8 +45,8 @@ private val SMOOTHERSTEP_CURVE = listOf(
 fun FrostedHeaderContainer(
     modifier: Modifier = Modifier,
     contentAlpha: Float = 0.85f,
-    fadeHeight: Dp = 18.dp,
-    decayOverlap: Dp = 6.dp,
+    fadeHeight: Dp = HeaderDefaults.FadeHeight,
+    decayOverlap: Dp = HeaderDefaults.DecayOverlap,
     content: @Composable () -> Unit
 ) {
     val bgColor = MaterialTheme.colorScheme.background

@@ -1,13 +1,13 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
+import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -97,7 +96,8 @@ fun BookmarkAiReviewScreen(
     bookmarkId: String,
     viewModel: LibraryViewModel,
     onNavigateBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    generateProposal: suspend (String, me.bubblespark.tidilo.config.AppLanguage, String?) -> Result<TaggingResult> = GeminiTaggingService::generateProposal
 ) {
     val context = LocalContext.current
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
@@ -107,36 +107,19 @@ fun BookmarkAiReviewScreen(
     val detailFlow = remember(viewModel, bookmarkId, detailRetry) { viewModel.bookmarkDetails(bookmarkId) }
     val detailState by detailFlow.collectAsStateWithLifecycle(initialValue = BookmarkDetailState())
     val bookmark = detailState.bookmark
-    if (detailState.loading) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            androidx.compose.material3.CircularProgressIndicator()
-        }
-        return
-    }
-
-    if (detailState.error != null) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            PagingFeedback(androidx.paging.LoadState.Error(detailState.error!!), { detailRetry++ })
-        }
-        return
-    }
-    if (bookmark == null) {
-        Box(
-            modifier = modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.common_back)
+    if (detailState.loading || detailState.error != null || bookmark == null) {
+        TidiloScreenScaffold(
+            modifier = modifier,
+            header = { TidiloPageHeader(stringResource(R.string.ai_review_title), onNavigateBack) }
+        ) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                when {
+                    detailState.loading -> androidx.compose.material3.CircularProgressIndicator()
+                    detailState.error != null -> PagingFeedback(
+                        androidx.paging.LoadState.Error(requireNotNull(detailState.error)), { detailRetry++ }
                     )
+                    else -> Text(stringResource(R.string.detail_item_not_found), color = MaterialTheme.colorScheme.outline)
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.detail_item_not_found),
-                    color = MaterialTheme.colorScheme.outline
-                )
             }
         }
         return
@@ -156,11 +139,7 @@ fun BookmarkAiReviewScreen(
     // Trigger AI inference on entry or retry
     LaunchedEffect(bookmarkId, retryCount) {
         uiState = AiReviewUiState.Loading
-        val result = GeminiTaggingService.generateProposal(
-            url = bookmark.url,
-            language = currentLanguage,
-            preferredTitle = bookmark.title
-        )
+        val result = generateProposal(bookmark.url, currentLanguage, bookmark.title)
         uiState = result.fold(
             onSuccess = { proposal ->
                 AiReviewUiState.Success(proposal)
@@ -171,365 +150,361 @@ fun BookmarkAiReviewScreen(
         )
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-        ) {
-            // Header bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = {
-                        if (uiState is AiReviewUiState.Success) {
-                            showDiscardConfirmDialog = true
-                        } else {
-                            onNavigateBack()
-                        }
-                    },
-                    modifier = Modifier
-                        .padding(end = 4.dp)
-                        .size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.common_back),
-                        tint = MaterialTheme.colorScheme.onBackground
+    TidiloScreenScaffold(
+        modifier = modifier,
+        hideHeaderOnScroll = false,
+        header = {
+            TidiloFrostedHeader(
+                title = {
+                    Text(
+                        text = stringResource(R.string.ai_review_title),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                }
-
-                Text(
-                    text = stringResource(R.string.ai_review_title),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            // Body according to state
-            when (val state = uiState) {
-                is AiReviewUiState.Loading -> {
-                    Box(
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = {
+                            if (uiState is AiReviewUiState.Success) {
+                                showDiscardConfirmDialog = true
+                            } else {
+                                onNavigateBack()
+                            }
+                        },
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
+                            .padding(end = 4.dp)
+                            .size(48.dp)
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(48.dp),
-                                strokeWidth = 4.dp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.height(20.dp))
-                            Text(
-                                text = stringResource(R.string.ai_review_loading_title),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = stringResource(R.string.ai_review_loading_subtitle),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.common_back),
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
                     }
                 }
-
-                is AiReviewUiState.Error -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ErrorOutline,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(48.dp)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = stringResource(R.string.ai_review_error_title),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = state.message,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            )
-                            Spacer(modifier = Modifier.height(24.dp))
-                            Button(
-                                onClick = { retryCount++ },
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text(stringResource(R.string.common_retry))
+            )
+        },
+        overlay = {
+            // Floating Checkmark FAB (matches Detail screen design and position: 86dp circular container, 40dp icon, 16dp margins)
+            if (uiState is AiReviewUiState.Success) {
+                val proposal = (uiState as AiReviewUiState.Success).proposal
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .navigationBarsPadding()
+                        .padding(bottom = 16.dp, end = 16.dp),
+                    contentAlignment = Alignment.BottomEnd
+                ) {
+                    Surface(
+                        onClick = {
+                            if (isSaving) return@Surface
+                            isSaving = true
+                            val finalSummary = if (selectedSummarySource == ProposalSource.PROPOSAL) {
+                                proposal.summary
+                            } else {
+                                bookmark.description
                             }
-                        }
-                    }
-                }
 
-                is AiReviewUiState.Success -> {
-                    val proposal = state.proposal
-                    val scrollState = rememberScrollState()
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(scrollState)
-                            .padding(horizontal = 16.dp)
-                    ) {
-                        // Target item overview header
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Text(
-                                    text = bookmark.title,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
+                            val finalTag = if (selectedTagSource == ProposalSource.PROPOSAL) {
+                                me.bubblespark.tidilo.ui.screens.library.Tag.create(
+                                    category = proposal.category,
+                                    subcategory = proposal.subcategory,
+                                    entities = proposal.entities
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = bookmark.url,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                            } else {
+                                bookmark.tag
                             }
-                        }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                            persistenceScope.launch {
+                                try {
+                                    viewModel.updateBookmarkFields(
+                                        id = bookmark.id,
+                                        description = finalSummary,
+                                        tag = finalTag
+                                    )
 
-                        // 1. Section: Summary
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.ai_review_applied_toast),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+
+                                    onNavigateBack()
+                                } catch (e: Exception) {
+                                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                    Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
+                                } finally {
+                                    isSaving = false
+                                }
+                            }
+                        },
+                        modifier = Modifier.size(86.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        shadowElevation = 10.dp,
+                        tonalElevation = 6.dp
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = stringResource(R.string.ai_review_section_summary),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
+                                imageVector = Icons.Default.Check,
+                                contentDescription = stringResource(R.string.ai_review_apply_changes),
+                                modifier = Modifier.size(40.dp)
                             )
                         }
-                        Text(
-                            text = stringResource(R.string.ai_review_select_summary),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
-                        )
-
-                        // Option 1: AI Proposal
-                        SummaryComparisonCard(
-                            title = stringResource(R.string.ai_review_proposal_badge),
-                            text = proposal.summary,
-                            isSelected = selectedSummarySource == ProposalSource.PROPOSAL,
-                            isAi = true,
-                            onClick = { selectedSummarySource = ProposalSource.PROPOSAL }
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Option 2: Current
-                        SummaryComparisonCard(
-                            title = stringResource(R.string.ai_review_current_badge),
-                            text = bookmark.description.ifBlank {
-                                stringResource(R.string.ai_review_no_summary)
-                            },
-                            isSelected = selectedSummarySource == ProposalSource.CURRENT,
-                            isAi = false,
-                            onClick = { selectedSummarySource = ProposalSource.CURRENT }
-                        )
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        // 2. Section: Category & Tags
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = stringResource(R.string.ai_review_section_tags),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.ai_review_select_tags),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
-                        )
-
-                        // Option 1: AI Proposal
-                        TagComparisonCard(
-                            title = stringResource(R.string.ai_review_proposal_badge),
-                            category = proposal.category,
-                            subcategory = proposal.subcategory,
-                            entities = proposal.entities,
-                            isSelected = selectedTagSource == ProposalSource.PROPOSAL,
-                            isAi = true,
-                            onClick = { selectedTagSource = ProposalSource.PROPOSAL }
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Option 2: Current
-                        TagComparisonCard(
-                            title = stringResource(R.string.ai_review_current_badge),
-                            category = bookmark.tag.category,
-                            subcategory = bookmark.tag.subcategory,
-                            entities = bookmark.tag.entities,
-                            isSelected = selectedTagSource == ProposalSource.CURRENT,
-                            isAi = false,
-                            onClick = { selectedTagSource = ProposalSource.CURRENT }
-                        )
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        // 3. Section: Note Info Notice
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.EditNote,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = stringResource(R.string.ai_review_note_notice),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-
-                        // Space for floating check button
-                        Spacer(modifier = Modifier.height(130.dp))
                     }
                 }
             }
         }
-
-        // Floating Checkmark FAB (matches Detail screen design and position: 86dp circular container, 40dp icon, 16dp margins)
-        if (uiState is AiReviewUiState.Success) {
-            val proposal = (uiState as AiReviewUiState.Success).proposal
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .navigationBarsPadding()
-                    .padding(bottom = 16.dp, end = 16.dp),
-                contentAlignment = Alignment.BottomEnd
-            ) {
-                Surface(
-                    onClick = {
-                        if (isSaving) return@Surface
-                        isSaving = true
-                        val finalSummary = if (selectedSummarySource == ProposalSource.PROPOSAL) {
-                            proposal.summary
-                        } else {
-                            bookmark.description
-                        }
-
-                        val finalTag = if (selectedTagSource == ProposalSource.PROPOSAL) {
-                            me.bubblespark.tidilo.ui.screens.library.Tag.create(
-                                category = proposal.category,
-                                subcategory = proposal.subcategory,
-                                entities = proposal.entities
-                            )
-                        } else {
-                            bookmark.tag
-                        }
-
-                        persistenceScope.launch {
-                            try {
-                                viewModel.updateBookmarkFields(
-                                    id = bookmark.id,
-                                    description = finalSummary,
-                                    tag = finalTag
-                                )
-
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.ai_review_applied_toast),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-
-                                onNavigateBack()
-                            } catch (e: Exception) {
-                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                                Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
-                            } finally {
-                                isSaving = false
-                            }
-                        }
-                    },
-                    modifier = Modifier.size(86.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    shadowElevation = 10.dp,
-                    tonalElevation = 6.dp
+    ) { contentPadding ->
+        // Body according to state
+        when (val state = uiState) {
+            is AiReviewUiState.Loading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(contentPadding).padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = stringResource(R.string.ai_review_apply_changes),
-                            modifier = Modifier.size(40.dp)
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(48.dp),
+                            strokeWidth = 4.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text(
+                            text = stringResource(R.string.ai_review_loading_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.ai_review_loading_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
                         )
                     }
+                }
+            }
+
+            is AiReviewUiState.Error -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(contentPadding).padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = stringResource(R.string.ai_review_error_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = state.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = { retryCount++ },
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(stringResource(R.string.common_retry))
+                        }
+                    }
+                }
+            }
+
+            is AiReviewUiState.Success -> {
+                val proposal = state.proposal
+                val scrollState = rememberScrollState()
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                        .padding(contentPadding)
+                ) {
+                    // Target item overview header
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = bookmark.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = bookmark.url,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // 1. Section: Summary
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.ai_review_section_summary),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.ai_review_select_summary),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
+                    )
+
+                    // Option 1: AI Proposal
+                    SummaryComparisonCard(
+                        title = stringResource(R.string.ai_review_proposal_badge),
+                        text = proposal.summary,
+                        isSelected = selectedSummarySource == ProposalSource.PROPOSAL,
+                        isAi = true,
+                        onClick = { selectedSummarySource = ProposalSource.PROPOSAL }
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Option 2: Current
+                    SummaryComparisonCard(
+                        title = stringResource(R.string.ai_review_current_badge),
+                        text = bookmark.description.ifBlank {
+                            stringResource(R.string.ai_review_no_summary)
+                        },
+                        isSelected = selectedSummarySource == ProposalSource.CURRENT,
+                        isAi = false,
+                        onClick = { selectedSummarySource = ProposalSource.CURRENT }
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // 2. Section: Category & Tags
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.ai_review_section_tags),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.ai_review_select_tags),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
+                    )
+
+                    // Option 1: AI Proposal
+                    TagComparisonCard(
+                        title = stringResource(R.string.ai_review_proposal_badge),
+                        category = proposal.category,
+                        subcategory = proposal.subcategory,
+                        entities = proposal.entities,
+                        isSelected = selectedTagSource == ProposalSource.PROPOSAL,
+                        isAi = true,
+                        onClick = { selectedTagSource = ProposalSource.PROPOSAL }
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Option 2: Current
+                    TagComparisonCard(
+                        title = stringResource(R.string.ai_review_current_badge),
+                        category = bookmark.tag.category,
+                        subcategory = bookmark.tag.subcategory,
+                        entities = bookmark.tag.entities,
+                        isSelected = selectedTagSource == ProposalSource.CURRENT,
+                        isAi = false,
+                        onClick = { selectedTagSource = ProposalSource.CURRENT }
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // 3. Section: Note Info Notice
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.EditNote,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.ai_review_note_notice),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+
+                    // Space for floating check button
+                    Spacer(modifier = Modifier.height(130.dp))
                 }
             }
         }

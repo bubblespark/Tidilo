@@ -39,6 +39,9 @@ app/src/main/java/com/ykgudev/tidilo/
 │
 └── ui/                                  # Presentation layer (100% Jetpack Compose)
     ├── components/                      # Shared reusable UI elements
+    │   ├── HeaderDefaults.kt            # Shared font-aware header geometry and body clearance
+    │   ├── TidiloFrostedHeader.kt        # Independent slot-based toolbar and secondary-page header
+    │   ├── TidiloScreenScaffold.kt       # Body/header/overlay layers and optional scroll-linked header visibility
     │   ├── DomainWatermark.kt           # Shared 195dp, 50% saturation, 0.14 alpha domain icon watermark
     │   └── DomainIconState.kt           # Generation-scoped icon loading and completion observation
     │

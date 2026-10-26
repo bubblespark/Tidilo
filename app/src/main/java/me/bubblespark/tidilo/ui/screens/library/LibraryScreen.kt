@@ -8,15 +8,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseInOutCubic
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -28,15 +24,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -104,10 +96,11 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
-import me.bubblespark.tidilo.ui.components.FrostedHeaderContainer
+import me.bubblespark.tidilo.ui.components.HeaderDefaults
+import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.rememberFeedIcon
 import me.bubblespark.tidilo.data.db.RssFeedEntity
-import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -214,8 +207,7 @@ fun LibraryScreen(
     }
     val libraryCount = observedCount ?: 0
 
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val headerHeight = statusBarTop + 80.dp
+    val headerHeight = HeaderDefaults.bodyTopPadding()
 
     var peekBookmark by remember { mutableStateOf<BookmarkItem?>(null) }
     LaunchedEffect(filterMode, selectedDomainFilter, selectedFeed?.id) { peekBookmark = null }
@@ -237,7 +229,196 @@ fun LibraryScreen(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    TidiloScreenScaffold(
+        modifier = modifier,
+        hideHeaderOnScroll = true,
+        bottomContentPadding = HeaderDefaults.BottomNavigationPadding,
+        headerVisible = peekBookmark == null,
+        overlay = { BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null } },
+        // Expressive Header (slides out/in from top screen edge linked with scrolling, hidden during peek)
+        header = {
+            TidiloFrostedHeader(
+                title = {
+                    val defaultTitle = stringResource(R.string.library_header_title)
+                    val headerTitle = when {
+                        filterMode == LibraryFilterMode.RSS -> selectedFeed?.title ?: stringResource(R.string.rss_title)
+                        filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
+                            DomainPolicyManager.getDisplayName(selectedDomainFilter)
+                        else -> defaultTitle
+                    }
+                    val headerSubtitle = when {
+                        isLoading || observedCount == null ->
+                            stringResource(R.string.library_subtitle_loading)
+                        filterMode == LibraryFilterMode.RSS && selectedFeed != null ->
+                            pluralStringResource(R.plurals.rss_subtitle_bookmarks, libraryCount, libraryCount)
+                        filterMode == LibraryFilterMode.RSS ->
+                            pluralStringResource(R.plurals.rss_subtitle_feeds, rssFeedGroups.size, rssFeedGroups.size)
+                        filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
+                            stringResource(R.string.library_subtitle_domain_bookmarks, libraryCount)
+                        filterMode == LibraryFilterMode.DOMAIN ->
+                            stringResource(R.string.library_subtitle_domains, domainGroups.size)
+                        else ->
+                            stringResource(R.string.library_subtitle_tagged_bookmarks, libraryCount)
+                    }
+
+                    AnimatedContent(
+                        targetState = headerTitle to isDrillDown,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
+                        },
+                        label = "header_title"
+                    ) { (title, drillDown) ->
+                        val titleLength = title.codePointCount(0, title.length)
+                        Text(
+                            text = title,
+                            modifier = if (drillDown) Modifier.basicMarquee(initialDelayMillis = 2000)
+                                else Modifier,
+                            style = when {
+                                !drillDown || titleLength <= 6 -> MaterialTheme.typography.headlineMedium
+                                titleLength <= 9 -> MaterialTheme.typography.headlineSmall.copy(
+                                    fontSize = 23.sp, lineHeight = 28.sp
+                                )
+                                titleLength <= 13 -> MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = 20.sp, lineHeight = 25.sp
+                                )
+                                else -> MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 17.sp, lineHeight = 22.sp
+                                )
+                            },
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            maxLines = 1,
+                            overflow = if (drillDown) TextOverflow.Clip else TextOverflow.Ellipsis
+                        )
+                    }
+                    val subtitlePresentation = LibrarySubtitle(
+                        headerSubtitle,
+                        selectedFeedIcon?.color ?: selectedDomainColor ?: MaterialTheme.colorScheme.primary
+                    )
+                    AnimatedContent(
+                        targetState = subtitlePresentation,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
+                        },
+                        label = "header_subtitle"
+                    ) { subtitle ->
+                        Text(
+                            text = subtitle.text,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = subtitle.color,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                },
+                navigationIcon = {
+                    AnimatedVisibility(
+                        visible = isDrillDown,
+                        enter = fadeIn(animationSpec = tween(200)) + expandHorizontally(),
+                        exit = fadeOut(animationSpec = tween(150)) + shrinkHorizontally()
+                    ) {
+                        IconButton(
+                            onClick = { if (peekBookmark == null) clearCollectionFilter() else peekBookmark = null },
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(48.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(if (filterMode == LibraryFilterMode.RSS) R.string.rss_back_to_feeds else R.string.library_back_to_domains),
+                                tint = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    // View mode toggle menu button
+                    Box {
+                        IconButton(
+                            onClick = { if (peekBookmark == null) isViewModeMenuExpanded = true else peekBookmark = null },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(
+                                imageVector = ImageVector.vectorResource(R.drawable.ic_dashboard_2_gear),
+                                contentDescription = stringResource(R.string.library_view_mode_menu_desc),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        val menuWidth = 200.dp
+                        DropdownMenu(
+                            expanded = isViewModeMenuExpanded,
+                            onDismissRequest = { isViewModeMenuExpanded = false },
+                            offset = DpOffset(x = 96.dp - menuWidth, y = 0.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            tonalElevation = 6.dp,
+                            modifier = Modifier.width(menuWidth)
+                        ) {
+                            CompositionLocalProvider(
+                                LocalContext provides context,
+                                LocalConfiguration provides localConfig
+                            ) {
+                                LibraryViewMode.entries.forEach { mode ->
+                                    val isSelected = mode == viewMode
+                                    DropdownMenuItem(
+                                        modifier = Modifier.semantics { this.selected = isSelected },
+                                        text = {
+                                            Text(
+                                                text = stringResource(mode.labelRes),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                if (isSelected) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                } else {
+                                                    Spacer(modifier = Modifier.size(18.dp))
+                                                }
+                                                Icon(
+                                                    imageVector = mode.icon,
+                                                    contentDescription = null,
+                                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            viewModel.setViewMode(mode)
+                                            isViewModeMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Settings button
+                    IconButton(
+                        onClick = { if (peekBookmark == null) onNavigateToSettings() else peekBookmark = null },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.title_settings),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            )
+        }
+    ) { contentPadding ->
         if (initializationFailure != null) {
             Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
                 PagingFeedback(LoadState.Error(initializationFailure!!), viewModel::retryInitialization)
@@ -304,12 +485,7 @@ fun LibraryScreen(
                                     state = if (rss) rssFeedGridState else domainGridState,
                                     columns = GridCells.Fixed(2),
                                     modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(
-                                        top = headerHeight,
-                                        bottom = 140.dp,
-                                        start = 20.dp,
-                                        end = 20.dp
-                                    ),
+                                    contentPadding = contentPadding,
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
@@ -404,12 +580,7 @@ fun LibraryScreen(
                                                     LazyColumn(
                                                         state = if (feed != null) rssDetailListState else domainDetailListState,
                                                         modifier = Modifier.fillMaxSize(),
-                                                        contentPadding = PaddingValues(
-                                                            top = headerHeight,
-                                                            bottom = 140.dp,
-                                                            start = 20.dp,
-                                                            end = 20.dp
-                                                        ),
+                                                        contentPadding = contentPadding,
                                                         verticalArrangement = Arrangement.spacedBy(16.dp)
                                                     ) {
                                                         items(
@@ -433,12 +604,7 @@ fun LibraryScreen(
                                                         state = if (feed != null) rssDetailGridState else domainDetailGridState,
                                                         columns = GridCells.Fixed(2),
                                                         modifier = Modifier.fillMaxSize(),
-                                                        contentPadding = PaddingValues(
-                                                            top = headerHeight,
-                                                            bottom = 140.dp,
-                                                            start = 20.dp,
-                                                            end = 20.dp
-                                                        ),
+                                                        contentPadding = contentPadding,
                                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                         verticalArrangement = Arrangement.spacedBy(10.dp)
                                                     ) {
@@ -485,12 +651,7 @@ fun LibraryScreen(
                                             LazyColumn(
                                                 state = newestFirstListState,
                                                 modifier = Modifier.fillMaxSize(),
-                                                contentPadding = PaddingValues(
-                                                    top = headerHeight,
-                                                    bottom = 140.dp,
-                                                    start = 20.dp,
-                                                    end = 20.dp
-                                                ),
+                                                contentPadding = contentPadding,
                                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                                             ) {
                                                 items(
@@ -514,12 +675,7 @@ fun LibraryScreen(
                                                 state = newestFirstGridState,
                                                 columns = GridCells.Fixed(2),
                                                 modifier = Modifier.fillMaxSize(),
-                                                contentPadding = PaddingValues(
-                                                    top = headerHeight,
-                                                    bottom = 140.dp,
-                                                    start = 20.dp,
-                                                    end = 20.dp
-                                                ),
+                                                contentPadding = contentPadding,
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
@@ -553,207 +709,7 @@ fun LibraryScreen(
             }
         }
 
-        // Expressive Header (slides out/in from top screen edge linked with scrolling, hidden during peek)
-        LibraryHeaderAnimatedVisibility(
-            peekBookmark = peekBookmark,
-            modifier = Modifier.align(Alignment.TopCenter)
-        ) {
-            FrostedHeaderContainer {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        // Back button during domain drilldown
-                        AnimatedVisibility(
-                            visible = isDrillDown,
-                            enter = fadeIn(animationSpec = tween(200)) + expandHorizontally(),
-                            exit = fadeOut(animationSpec = tween(150)) + shrinkHorizontally()
-                        ) {
-                            IconButton(
-                                onClick = { if (peekBookmark == null) clearCollectionFilter() else peekBookmark = null },
-                                modifier = Modifier
-                                    .padding(end = 4.dp)
-                                    .size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = stringResource(if (filterMode == LibraryFilterMode.RSS) R.string.rss_back_to_feeds else R.string.library_back_to_domains),
-                                    tint = MaterialTheme.colorScheme.onBackground
-                                )
-                            }
-                        }
 
-                        Column(Modifier.weight(1f)) {
-                            val defaultTitle = stringResource(R.string.library_header_title)
-                            val headerTitle = when {
-                                filterMode == LibraryFilterMode.RSS -> selectedFeed?.title ?: stringResource(R.string.rss_title)
-                                filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
-                                    DomainPolicyManager.getDisplayName(selectedDomainFilter)
-                                else -> defaultTitle
-                            }
-                            val headerSubtitle = when {
-                                isLoading || observedCount == null ->
-                                    stringResource(R.string.library_subtitle_loading)
-                                filterMode == LibraryFilterMode.RSS && selectedFeed != null ->
-                                    pluralStringResource(R.plurals.rss_subtitle_bookmarks, libraryCount, libraryCount)
-                                filterMode == LibraryFilterMode.RSS ->
-                                    pluralStringResource(R.plurals.rss_subtitle_feeds, rssFeedGroups.size, rssFeedGroups.size)
-                                filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
-                                    stringResource(R.string.library_subtitle_domain_bookmarks, libraryCount)
-                                filterMode == LibraryFilterMode.DOMAIN ->
-                                    stringResource(R.string.library_subtitle_domains, domainGroups.size)
-                                else ->
-                                    stringResource(R.string.library_subtitle_tagged_bookmarks, libraryCount)
-                            }
-
-                            AnimatedContent(
-                                targetState = headerTitle to isDrillDown,
-                                transitionSpec = {
-                                    fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
-                                },
-                                label = "header_title"
-                            ) { (title, drillDown) ->
-                                val titleLength = title.codePointCount(0, title.length)
-                                Text(
-                                    text = title,
-                                    modifier = if (drillDown) Modifier.basicMarquee(initialDelayMillis = 2000)
-                                        else Modifier,
-                                    style = when {
-                                        !drillDown || titleLength <= 6 -> MaterialTheme.typography.headlineMedium
-                                        titleLength <= 9 -> MaterialTheme.typography.headlineSmall.copy(
-                                            fontSize = 23.sp, lineHeight = 28.sp
-                                        )
-                                        titleLength <= 13 -> MaterialTheme.typography.titleLarge.copy(
-                                            fontSize = 20.sp, lineHeight = 25.sp
-                                        )
-                                        else -> MaterialTheme.typography.titleMedium.copy(
-                                            fontSize = 17.sp, lineHeight = 22.sp
-                                        )
-                                    },
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                    maxLines = 1,
-                                    overflow = if (drillDown) TextOverflow.Clip else TextOverflow.Ellipsis
-                                )
-                            }
-                            val subtitlePresentation = LibrarySubtitle(
-                                headerSubtitle,
-                                selectedFeedIcon?.color ?: selectedDomainColor ?: MaterialTheme.colorScheme.primary
-                            )
-                            AnimatedContent(
-                                targetState = subtitlePresentation,
-                                transitionSpec = {
-                                    fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
-                                },
-                                label = "header_subtitle"
-                            ) { subtitle ->
-                                Text(
-                                    text = subtitle.text,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = subtitle.color
-                                )
-                            }
-                        }
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // View mode toggle menu button
-                        Box {
-                            IconButton(
-                                onClick = { if (peekBookmark == null) isViewModeMenuExpanded = true else peekBookmark = null },
-                                modifier = Modifier.size(44.dp)
-                            ) {
-                                Icon(
-                                    imageVector = ImageVector.vectorResource(R.drawable.ic_dashboard_2_gear),
-                                    contentDescription = stringResource(R.string.library_view_mode_menu_desc),
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
-                            val menuWidth = 200.dp
-                            DropdownMenu(
-                                expanded = isViewModeMenuExpanded,
-                                onDismissRequest = { isViewModeMenuExpanded = false },
-                                offset = DpOffset(x = 88.dp - menuWidth, y = 0.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                tonalElevation = 6.dp,
-                                modifier = Modifier.width(menuWidth)
-                            ) {
-                                CompositionLocalProvider(
-                                    LocalContext provides context,
-                                    LocalConfiguration provides localConfig
-                                ) {
-                                    LibraryViewMode.entries.forEach { mode ->
-                                        val isSelected = mode == viewMode
-                                        DropdownMenuItem(
-                                            modifier = Modifier.semantics { this.selected = isSelected },
-                                            text = {
-                                                Text(
-                                                    text = stringResource(mode.labelRes),
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                                )
-                                            },
-                                            leadingIcon = {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    if (isSelected) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Check,
-                                                            contentDescription = null,
-                                                            tint = MaterialTheme.colorScheme.primary,
-                                                            modifier = Modifier.size(18.dp)
-                                                        )
-                                                    } else {
-                                                        Spacer(modifier = Modifier.size(18.dp))
-                                                    }
-                                                    Icon(
-                                                        imageVector = mode.icon,
-                                                        contentDescription = null,
-                                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                }
-                                            },
-                                            onClick = {
-                                                viewModel.setViewMode(mode)
-                                                isViewModeMenuExpanded = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Settings button
-                        IconButton(
-                            onClick = { if (peekBookmark == null) onNavigateToSettings() else peekBookmark = null },
-                            modifier = Modifier.size(44.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = stringResource(R.string.title_settings),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null }
     }
 }
 
@@ -871,34 +827,7 @@ internal fun BookmarkSummaryPeekOverlay(bookmark: BookmarkItem?, headerHeight: a
 }
 
 
-@Composable
-private fun LibraryHeaderAnimatedVisibility(
-    peekBookmark: BookmarkItem?,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
-) {
-    val isBarsVisible = LocalBarsVisible.current
-    AnimatedVisibility(
-        visible = isBarsVisible && peekBookmark == null,
-        enter = slideInVertically(
-            initialOffsetY = { -it },
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow
-            )
-        ) + fadeIn(animationSpec = tween(200)),
-        exit = slideOutVertically(
-            targetOffsetY = { -it },
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow
-            )
-        ) + fadeOut(animationSpec = tween(150)),
-        modifier = modifier
-    ) {
-        content()
-    }
-}
+
 
 /** Text and accent must remain paired while an outgoing subtitle fades away. */
 internal data class LibrarySubtitle(val text: String, val color: Color)

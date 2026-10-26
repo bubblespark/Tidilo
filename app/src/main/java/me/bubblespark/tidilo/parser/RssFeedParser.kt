@@ -83,13 +83,15 @@ internal object RssFeedParser {
         }
         val published = item.child(if (atom) "published" else "pubDate")?.text()
             ?: item.children().firstOrNull { it.tagName().endsWith(":date") }?.text()
-        val categories = item.children().asSequence()
-            .filter { it.localName() == "category" && it.namespaceUri() == item.namespaceUri() }
-            .map { category ->
-                if (atom) category.attr("term").takeIf { EntityTagPolicy.clean(it) != null }
-                    ?: category.attr("label") else category.text()
-            }
-            .fold(emptyList<String>()) { values, category -> EntityTagPolicy.addEntity(values, category) }
+        val categories = EntityTagPolicy.normalizeEntities(
+            item.children().asSequence()
+                .filter { it.localName() == "category" && it.namespaceUri() == item.namespaceUri() }
+                .map { category ->
+                    if (atom) category.attr("term").takeIf { EntityTagPolicy.clean(it) != null }
+                        ?: category.attr("label") else category.text()
+                }
+                .asIterable()
+        )
         return RssEntry(key, url, item.child("title")?.let(::plain).orEmpty().ifBlank { url },
             description?.let(::plain).orEmpty(), snippet, image, published?.let(::date), categories)
     }

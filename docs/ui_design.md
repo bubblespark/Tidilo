@@ -468,17 +468,18 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Card Container & Shape (`BookmarkGridCard.kt`)**:
   - `Surface` container with `shape = RoundedCornerShape(16.dp)` and `tonalElevation = 0.dp`. Uses white in Light Mode and `surfaceContainer` in Dark Mode, with the shared bookmark lighting defined in section 6.2.
   - Supports combined touch interactions via `combinedClickable(onClick, onLongClick)`.
-  - Fully uniform vertical height across all cards: fixed image aspect ratio `1.91f` combined with fixed-height information container (`116.dp`).
-- **Top Image Region (1.91:1 Aspect Ratio)**:
-  - Fixed ratio `1.91f` matching standard Open Graph (OGP) dimensions (1200x630), clipped to card top corners (`topStart = 16.dp, topEnd = 16.dp`).
+  - Fully uniform vertical height across equal-width cards: fixed image aspect ratio `16f / 9f` combined with fixed-height information container (`132.dp`), shared by Library and Search grids.
+- **Top Image Region (16:9 Aspect Ratio)**:
+  - Fixed ratio `16f / 9f` preserves the framing of 16:9 artwork with `ContentScale.Crop`, clipped to card top corners (`topStart = 16.dp, topEnd = 16.dp`). Other image ratios are still cropped to fill.
   - When the bookmark's exact og:image is cached: Decodes WebP from local cache storage and displays using `ContentScale.Crop`.
   - When og:image is absent or pending: Displays the domain accent gradient with a centered cached domain favicon (`36.dp`), then a bundled Material Rounded Link icon (`24.dp` inside a `36.dp` rounded container) if no icon exists. Uses the theme primary color when the domain is unavailable. Never uses initials or another bookmark's OG image.
   - Missing/corrupt previews with a persisted OG URL recover on demand through shared, four-worker-limited background requests. Exact-image completion updates cards without restarting sibling downloads. See [Bookmark Preview Cache](og_image_cache.md) for cancellation, retry, and cache-clear semantics.
   - Domain icon network recovery waits for a completed OG miss, or starts immediately when no OG URL exists. Cached icons may display during OG loading. Successful OG previews do not trigger icon network recovery from that card.
-- **Bottom Information Hierarchy (Fixed Height: 116dp)**:
+- **Bottom Information Hierarchy (Fixed Height: 132dp)**:
+  - Internal padding: `start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp`, keeping the date above the rounded bottom corners. Fixed height does not guarantee unclipped text at arbitrary system font scales.
   - ❶ **Domain Name**: Subtle caption (`labelSmall`, `11.sp`, `lineHeight = 15.sp`, `color = MaterialTheme.colorScheme.outline`, single-line ellipsis).
   - ❷ **Bookmark Title**: Positioned immediately below the domain name. High-readability 3-line reservation (`minLines = 3, maxLines = 3`, `style = MaterialTheme.typography.titleSmall`, `FontWeight.SemiBold`, `overflow = TextOverflow.Ellipsis`).
-  - ❸ **Created Date (Relative Time)**: Bottom caption (`labelSmall`, `outline`, formatted via `TimeFormatter`). Snapped to the bottom-left of every card tile via `Spacer(Modifier.weight(1f))` ensuring a perfectly aligned baseline across all cards regardless of title line count.
+  - ❸ **Created Date (Relative Time)**: Single-line bottom caption (`labelSmall`, `outline`, formatted via `TimeFormatter`), on its own row below the title. Snapped to the bottom-left of every card tile via `Spacer(Modifier.weight(1f))` ensuring a perfectly aligned baseline across all cards regardless of title line count.
 - **Relative Time Formatting Rules (`TimeFormatter.kt`)**:
   - `< 1 minute`: "Just now"
   - `1 to 59 minutes`: "1 minute ago" / "%d minutes ago"

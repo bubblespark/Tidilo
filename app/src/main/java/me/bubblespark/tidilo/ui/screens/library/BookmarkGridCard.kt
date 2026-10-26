@@ -51,7 +51,7 @@ import me.bubblespark.tidilo.ui.components.rememberDomainIcon
 import me.bubblespark.tidilo.ui.components.rememberOgImage
 
 /**
- * Modern 2-column Grid bookmark card with 1.91:1 og:image header,
+ * Modern 2-column Grid bookmark card with 16:9 og:image header,
  * fixed height container, muted domain name, 3-line fixed title matching List style (titleMedium SemiBold),
  * relative time, and long-press summary peek.
  */
@@ -113,11 +113,11 @@ fun BookmarkGridCard(
         tonalElevation = 0.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth().bookmarkCardSurfaceWash(cardStyle)) {
-            // 1. Top Image Area (Aspect Ratio 1.91:1)
+            // 1. Top Image Area (Aspect Ratio 16:9)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1.91f)
+                    .aspectRatio(16f / 9f)
                     .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                     .background(
                         brush = Brush.verticalGradient(
@@ -168,12 +168,12 @@ fun BookmarkGridCard(
                 }
             }
 
-            // 2. Bottom Information Area (Tightly fitted, matching List style typography)
+            // 2. Bottom Information Area (Fixed height with clearance above rounded corners)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(116.dp)
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .height(132.dp)
+                    .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp)
             ) {
                 // ❶ Domain Name (Softer contrast)
                 Text(

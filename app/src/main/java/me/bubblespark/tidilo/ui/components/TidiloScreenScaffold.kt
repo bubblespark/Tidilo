@@ -38,18 +38,34 @@ fun TidiloScreenScaffold(
     )
     Box(modifier.fillMaxSize()) {
         content(padding)
-        AnimatedVisibility(
-            visible = headerVisible && (!hideHeaderOnScroll || LocalBarsVisible.current),
-            enter = slideInVertically(
-                initialOffsetY = { -it },
-                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
-            ) + fadeIn(tween(200)),
-            exit = slideOutVertically(
-                targetOffsetY = { -it },
-                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
-            ) + fadeOut(tween(150)),
+        ScaffoldHeaderVisibility(
+            header = header,
+            hideHeaderOnScroll = hideHeaderOnScroll,
+            headerVisible = headerVisible,
             modifier = Modifier.align(Alignment.TopCenter)
-        ) { header() }
+        )
         overlay?.invoke(this)
     }
+}
+
+/** Observe scroll visibility only in the header's restart scope. */
+@Composable
+private fun ScaffoldHeaderVisibility(
+    header: @Composable () -> Unit,
+    hideHeaderOnScroll: Boolean,
+    headerVisible: Boolean,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = headerVisible && (!hideHeaderOnScroll || LocalBarsVisible.current),
+        enter = slideInVertically(
+            initialOffsetY = { -it },
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+        ) + fadeIn(tween(200)),
+        exit = slideOutVertically(
+            targetOffsetY = { -it },
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+        ) + fadeOut(tween(150)),
+        modifier = modifier
+    ) { header() }
 }

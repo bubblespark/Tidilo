@@ -129,11 +129,6 @@ internal fun RssSettingsContent(
                     .padding(bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                if (busy) {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(2.dp))
-                    )
-                }
                 if (error != null) {
                     Card(
                         shape = RoundedCornerShape(16.dp),
@@ -316,42 +311,25 @@ internal fun RssSettingsContent(
                             ) {
                                 Surface(
                                     shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    color = MaterialTheme.colorScheme.primaryContainer,
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                         Icon(
                                             imageVector = Icons.Default.Wifi,
                                             contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 }
                                 Spacer(modifier = Modifier.width(16.dp))
-                                Column {
-                                    Text(
-                                        text = stringResource(R.string.rss_wifi_only),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    if (settings.wifiOnly && wifi == false) {
-                                        Text(
-                                            text = stringResource(R.string.rss_wifi_blocked),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.error
-                                        )
-                                    } else {
-                                        Text(
-                                            text = stringResource(R.string.rss_schedule_note),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.outline,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = stringResource(R.string.rss_wifi_only),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
                             }
                             Switch(
                                 checked = settings.wifiOnly,
@@ -371,11 +349,19 @@ internal fun RssSettingsContent(
                                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            if (busy) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = stringResource(R.string.rss_fetch_now),

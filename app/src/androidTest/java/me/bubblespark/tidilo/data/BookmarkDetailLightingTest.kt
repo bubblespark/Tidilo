@@ -102,8 +102,12 @@ class BookmarkDetailLightingTest {
                     }
                     Rect().also(node::getBoundsInScreen)
                 }
-                val sampleY = if (fallback) title.top + (20 * density).roundToInt()
-                    else title.top - ((16 + bannerHeight / 2) * density).roundToInt()
+                // After scrolling, the new image-free title can sit beneath the frosted header.
+                // Sample beside the URL body instead, so this assertion measures ambient lighting.
+                val sampleY = if (fallback) {
+                    val urlNode = requireNotNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, item.url) })
+                    Rect().also(urlNode::getBoundsInScreen).centerY()
+                } else title.top - ((16 + bannerHeight / 2) * density).roundToInt()
                 val target = if (fallback) DomainIconManager.generateDomainAccentColor(domain)
                     else if (index == 0) Color(0xFFF5AA14) else Color(0xFF14BEF0)
                 val channels = listOf(target.red, target.green, target.blue)

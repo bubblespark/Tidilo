@@ -3,7 +3,6 @@ package me.bubblespark.tidilo.ui.screens.library
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -12,7 +11,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -20,6 +19,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -27,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.OgImageManager
+import kotlin.math.ceil
 
 /** The bookmark key owns animation state so a new detail never inherits its predecessor's hue. */
 @Composable
@@ -102,6 +104,29 @@ internal fun Modifier.detailBannerLight(color: State<Color>): Modifier =
             )
         }
     }
-    .shadow(8.dp, RoundedCornerShape(16.dp), clip = false,
-        ambientColor = color.value.copy(alpha = 0.16f), spotColor = color.value.copy(alpha = 0.24f))
-    .border(1.dp, color.value.copy(alpha = color.value.alpha * 0.60f), RoundedCornerShape(16.dp))
+    .graphicsLayer {
+        val accent = color.value
+        shadowElevation = 8.dp.toPx()
+        shape = RoundedCornerShape(16.dp)
+        clip = false
+        ambientShadowColor = accent.copy(alpha = 0.16f)
+        spotShadowColor = accent.copy(alpha = 0.24f)
+    }
+    .drawWithCache {
+        // Match Modifier.border's pixel-rounded width and keep the entire stroke inside the image.
+        val strokeWidth = ceil(1.dp.toPx())
+        val halfStroke = strokeWidth / 2f
+        val stroke = Stroke(strokeWidth)
+        val radius = CornerRadius((16.dp.toPx() - halfStroke).coerceAtLeast(0f))
+        onDrawWithContent {
+            drawContent()
+            val accent = color.value
+            drawRoundRect(
+                color = accent.copy(alpha = accent.alpha * 0.60f),
+                topLeft = Offset(halfStroke, halfStroke),
+                size = Size(size.width - strokeWidth, size.height - strokeWidth),
+                cornerRadius = radius,
+                style = stroke
+            )
+        }
+    }

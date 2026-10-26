@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.data.DomainIconManager
+import me.bubblespark.tidilo.data.EntityTagPolicy
 import me.bubblespark.tidilo.data.OgImageManager
 
 import androidx.compose.runtime.Immutable
@@ -17,7 +18,7 @@ data class Tag(
 ) {
     companion object {
         const val DEFAULT_TAG = "None"
-        const val MAX_ENTITIES = 10
+        const val MAX_ENTITIES = EntityTagPolicy.MAX_ENTITIES
 
         fun create(
             category: String?,
@@ -26,9 +27,7 @@ data class Tag(
         ): Tag {
             val cat = category?.trim()?.removePrefix("#")?.trim()?.ifBlank { DEFAULT_TAG } ?: DEFAULT_TAG
             val sub = subcategory?.trim()?.removePrefix("#")?.trim()?.ifBlank { DEFAULT_TAG } ?: DEFAULT_TAG
-            val cleanEntities = entities
-                .map { it.trim().removePrefix("#").trim() }
-                .filter { it.isNotBlank() }
+            val cleanEntities = entities.mapNotNull { EntityTagPolicy.clean(it) }
             return Tag(category = cat, subcategory = sub, entities = cleanEntities)
         }
 
@@ -37,28 +36,14 @@ data class Tag(
         /**
          * Adds an entity tag to the current list if not already present and limit has not been reached.
          */
-        fun addEntity(current: List<String>, newEntity: String): List<String> {
-            val clean = newEntity.trim().removePrefix("#").trim()
-            if (clean.isBlank()) return current
-            if (current.size >= MAX_ENTITIES) return current
-            if (current.any { it.equals(clean, ignoreCase = true) }) return current
-            return current + clean
-        }
+        fun addEntity(current: List<String>, newEntity: String): List<String> =
+            EntityTagPolicy.addEntity(current, newEntity)
 
         /**
          * Toggles an entity tag in the current list: removes if present, adds if absent and below MAX_ENTITIES.
          */
-        fun toggleEntity(current: List<String>, entity: String): List<String> {
-            val clean = entity.trim().removePrefix("#").trim()
-            if (clean.isBlank()) return current
-            return if (current.any { it.equals(clean, ignoreCase = true) }) {
-                current.filterNot { it.equals(clean, ignoreCase = true) }
-            } else if (current.size < MAX_ENTITIES) {
-                current + clean
-            } else {
-                current
-            }
-        }
+        fun toggleEntity(current: List<String>, entity: String): List<String> =
+            EntityTagPolicy.toggleEntity(current, entity)
     }
 }
 

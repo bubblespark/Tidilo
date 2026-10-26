@@ -1,9 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.settings
-
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.rememberFeedIcon
-
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.basicMarquee
@@ -25,6 +23,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Inbox
@@ -32,6 +31,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -47,7 +47,6 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import me.bubblespark.tidilo.data.rss.RssSettings
-
 @Composable
 fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = viewModel()) {
     val feeds by model.feeds.collectAsStateWithLifecycle()
@@ -73,7 +72,6 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
         RssRegistrationDialog(it.snapshot.savedCount, it.limit, busy, model::confirmRegistration, model::dismissRegistration)
     }
 }
-
 @Composable
 internal fun RssInitialFetchDialog(mobileNotice: Boolean, connected: Boolean, busy: Boolean,
     onFetch: () -> Unit, onLater: () -> Unit) {
@@ -86,7 +84,6 @@ internal fun RssInitialFetchDialog(mobileNotice: Boolean, connected: Boolean, bu
         confirmButton = { TextButton(onClick = onFetch, enabled = connected && !busy) { Text(stringResource(R.string.rss_fetch_now)) } },
         dismissButton = { TextButton(onClick = onLater, enabled = !busy) { Text(stringResource(R.string.rss_later)) } })
 }
-
 @Composable
 internal fun RssRegistrationDialog(count: Int, limit: Int?, busy: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.rss_register_existing_title)) },
@@ -98,7 +95,6 @@ internal fun RssRegistrationDialog(count: Int, limit: Int?, busy: Boolean, onCon
         confirmButton = { TextButton(onClick = onConfirm, enabled = !busy) { Text(stringResource(R.string.rss_register)) } },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.rss_cancel)) } })
 }
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RssSettingsContent(
@@ -111,9 +107,9 @@ internal fun RssSettingsContent(
     var editing by remember { mutableStateOf<RssFeedEntity?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<RssFeedEntity?>(null) }
+    var isDailyFetchEnabled by remember { mutableStateOf(true) }
     val ready = (feeds as? SummaryLoad.Ready)?.value.orEmpty()
     val aiFeeds = ready.count { it.enabled && it.mode == "AI" }
-
     TidiloScreenScaffold(
         hideHeaderOnScroll = false,
         header = {
@@ -138,7 +134,6 @@ internal fun RssSettingsContent(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(2.dp))
                     )
                 }
-
                 if (error != null) {
                     Card(
                         shape = RoundedCornerShape(16.dp),
@@ -165,7 +160,6 @@ internal fun RssSettingsContent(
                         }
                     }
                 }
-
                 // ==========================================
                 // Section 1: Sync & Schedule (Preference Card)
                 // ==========================================
@@ -177,14 +171,70 @@ internal fun RssSettingsContent(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(start = 4.dp)
                     )
-
                     RssCard {
+                        // 0. Daily fetch master toggle row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .alpha(if (isDailyFetchEnabled) 1f else 0.45f)
+                                .toggleable(
+                                    value = isDailyFetchEnabled,
+                                    enabled = !busy,
+                                    role = Role.Switch,
+                                    onValueChange = { isDailyFetchEnabled = it }
+                                )
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Sync,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column {
+                                    Text(
+                                        text = stringResource(R.string.rss_daily_fetch),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.rss_daily_fetch_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = isDailyFetchEnabled,
+                                onCheckedChange = null,
+                                enabled = !busy
+                            )
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                         // 1. Daily fetch time row
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable(enabled = !busy) { showTime = true }
+                                .clickable(enabled = !busy && isDailyFetchEnabled) { showTime = true }
+                                .alpha(if (isDailyFetchEnabled) 1f else 0.45f)
                                 .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -222,7 +272,6 @@ internal fun RssSettingsContent(
                                     )
                                 }
                             }
-
                             // Time pill in primaryContainer (M3 Floating Action style)
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
@@ -244,17 +293,16 @@ internal fun RssSettingsContent(
                                 }
                             }
                         }
-
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
                         // 2. Fetch only over Wi-Fi row
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
+                                .alpha(if (isDailyFetchEnabled) 1f else 0.45f)
                                 .toggleable(
                                     value = settings.wifiOnly,
-                                    enabled = !busy,
+                                    enabled = !busy && isDailyFetchEnabled,
                                     role = Role.Switch,
                                     onValueChange = { onSettings(settings.copy(wifiOnly = it)) }
                                 )
@@ -305,16 +353,13 @@ internal fun RssSettingsContent(
                                     }
                                 }
                             }
-
                             Switch(
                                 checked = settings.wifiOnly,
                                 onCheckedChange = null,
-                                enabled = !busy
+                                enabled = !busy && isDailyFetchEnabled
                             )
                         }
-
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
                         // 3. Fetch now button (Full-width expressive tonal button)
                         FilledTonalButton(
                             onClick = onFetch,
@@ -339,7 +384,6 @@ internal fun RssSettingsContent(
                             )
                         }
                     }
-
                     // AI Queue Info Callout
                     Surface(
                         shape = RoundedCornerShape(16.dp),
@@ -382,7 +426,6 @@ internal fun RssSettingsContent(
                         }
                     }
                 }
-
                 // ==========================================
                 // Section 2: Subscriptions (Feed List)
                 // ==========================================
@@ -394,7 +437,6 @@ internal fun RssSettingsContent(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(start = 4.dp)
                     )
-
                     when (feeds) {
                         SummaryLoad.Loading -> {
                             Box(
@@ -450,7 +492,6 @@ internal fun RssSettingsContent(
                     }
                 }
             }
-
             // Floating Action Button (matching TidiloBottomBar action button specification)
             Surface(
                 modifier = Modifier
@@ -487,7 +528,6 @@ internal fun RssSettingsContent(
             }
         }
     }
-
     if (showTime) {
         val time = rememberTimePickerState(settings.hour, settings.minute, is24Hour = true)
         AlertDialog(
@@ -509,7 +549,6 @@ internal fun RssSettingsContent(
             }
         )
     }
-
     // Modal Bottom Sheet for Add / Edit Feed
     if (showEditor) {
         RssFeedBottomSheet(
@@ -522,7 +561,6 @@ internal fun RssSettingsContent(
             }
         )
     }
-
     deleting?.let { feed ->
         AlertDialog(
             onDismissRequest = { deleting = null },
@@ -541,7 +579,6 @@ internal fun RssSettingsContent(
         )
     }
 }
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RssFeedItemCard(
@@ -553,7 +590,6 @@ private fun RssFeedItemCard(
 ) {
     val iconVisual by rememberFeedIcon(feed)
     val publisherDomain = remember(feed) { DomainIconManager.feedPublisherDomain(feed) ?: feed.url }
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -602,9 +638,7 @@ private fun RssFeedItemCard(
                         }
                     }
                 }
-
                 Spacer(modifier = Modifier.width(14.dp))
-
                 // Title + Domain: Takes full available horizontal width!
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -628,7 +662,6 @@ private fun RssFeedItemCard(
                     )
                 }
             }
-
             // Lower row: Metadata Pills (left) + Switch Toggle (bottom-right)
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -668,7 +701,6 @@ private fun RssFeedItemCard(
                             )
                         }
                     }
-
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant
@@ -682,7 +714,6 @@ private fun RssFeedItemCard(
                         )
                     }
                 }
-
                 // Right: Switch Toggle moved to bottom-right
                 Switch(
                     checked = feed.enabled,
@@ -690,7 +721,6 @@ private fun RssFeedItemCard(
                     enabled = !busy
                 )
             }
-
             // Error notice
             feed.error?.let { err ->
                 Surface(
@@ -717,7 +747,6 @@ private fun RssFeedItemCard(
         }
     }
 }
-
 @Composable
 private fun RssEmptyStateCard() {
     Card(
@@ -760,7 +789,6 @@ private fun RssEmptyStateCard() {
         }
     }
 }
-
 /**
  * Modern Material 3 ModalBottomSheet for adding or editing an RSS subscription.
  * Replaces cramped modal dialog with spacious, organized bottom sheet.
@@ -781,7 +809,6 @@ internal fun RssFeedBottomSheet(
     var convert by remember { mutableStateOf(false) }
     val validLimit = unlimited || limit.toIntOrNull()?.let { it in 10..500 } == true
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -818,7 +845,6 @@ internal fun RssFeedBottomSheet(
                     )
                 }
             }
-
             // 1. Feed URL field
             OutlinedTextField(
                 value = url,
@@ -830,7 +856,6 @@ internal fun RssFeedBottomSheet(
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth()
             )
-
             if (original != null && url.trim() != original.url) {
                 Text(
                     text = stringResource(R.string.rss_url_change_note),
@@ -838,7 +863,6 @@ internal fun RssFeedBottomSheet(
                     color = MaterialTheme.colorScheme.outline
                 )
             }
-
             // 2. Import Mode selection (Pill style toggle cards)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -847,7 +871,6 @@ internal fun RssFeedBottomSheet(
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -881,7 +904,6 @@ internal fun RssFeedBottomSheet(
                             )
                         }
                     }
-
                     // AI mode chip
                     val isAiSelected = mode == "AI"
                     Surface(
@@ -920,7 +942,6 @@ internal fun RssFeedBottomSheet(
                         }
                     }
                 }
-
                 if (aiAnalysisMode == me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE) {
                     Text(
                         text = stringResource(R.string.rss_ai_disabled_note),
@@ -928,7 +949,6 @@ internal fun RssFeedBottomSheet(
                         color = MaterialTheme.colorScheme.error
                     )
                 }
-
                 if (original?.mode == "AI" && mode == "DIRECT") {
                     Text(
                         text = stringResource(R.string.rss_mode_change_note),
@@ -950,7 +970,6 @@ internal fun RssFeedBottomSheet(
                     }
                 }
             }
-
             // 3. Max saved items
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -959,11 +978,9 @@ internal fun RssFeedBottomSheet(
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-
                 // Unlimited toggle row
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .toggleable(unlimited, role = Role.Switch, onValueChange = { unlimited = it })
                         .padding(vertical = 4.dp),
@@ -977,7 +994,6 @@ internal fun RssFeedBottomSheet(
                     )
                     Switch(checked = unlimited, onCheckedChange = null)
                 }
-
                 if (!unlimited) {
                     OutlinedTextField(
                         value = limit,
@@ -990,16 +1006,13 @@ internal fun RssFeedBottomSheet(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-
                 Text(
                     text = stringResource(R.string.rss_retention_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline
                 )
             }
-
             Spacer(modifier = Modifier.height(4.dp))
-
             // 4. Action Buttons (Delete on left if editing, Save on right)
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1031,7 +1044,6 @@ internal fun RssFeedBottomSheet(
                 } else {
                     Spacer(modifier = Modifier.width(1.dp))
                 }
-
                 Button(
                     onClick = {
                         onSave(url.trim(), mode, if (unlimited) null else limit.toInt(), convert)
@@ -1050,7 +1062,6 @@ internal fun RssFeedBottomSheet(
         }
     }
 }
-
 @Composable
 private fun RssCard(compact: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),

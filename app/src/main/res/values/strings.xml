@@ -315,6 +315,8 @@
     <string name="rss_ready_hint">AI Analyze feeds add their latest items here.</string>
     <string name="rss_source">RSS · %1$s</string>
     <string name="rss_subtitle">Feed subscriptions and daily fetching</string>
+    <string name="rss_daily_fetch">Daily fetch</string>
+    <string name="rss_daily_fetch_desc">Automatically fetch subscriptions once a day</string>
     <string name="rss_schedule">Daily fetch time</string>
     <string name="rss_wifi_only">Fetch only over Wi-Fi</string>
     <string name="rss_schedule_note">Runs around the selected local time. System battery controls may delay fetching. Wi-Fi-only applies to scheduled and manual RSS fetching.</string>

@@ -18,6 +18,58 @@ import org.junit.Test
 
 class OgImageManagerTest {
 
+    @Test fun dominantColorsAreImageSpecificAndReuseCachedResults(): Unit = runBlocking {
+        OgImageManager.clearMemoryCache()
+        var extractions = 0
+        suspend fun color(key: String, value: androidx.compose.ui.graphics.Color) =
+            OgImageManager.resolveDominantColor(key) { extractions++; value }
+        val amber = androidx.compose.ui.graphics.Color(0xFFFFAA00)
+        val cyan = androidx.compose.ui.graphics.Color(0xFF00CCFF)
+        assertEquals(amber, color("example/a|1", amber))
+        assertEquals(cyan, color("example/b|2", cyan))
+        assertEquals(amber, color("example/a|1", cyan))
+        assertEquals(2, extractions)
+        OgImageManager.invalidateDominantColors("example/a")
+        assertEquals(cyan, color("example/a|1", cyan))
+        assertEquals(3, extractions)
+        OgImageManager.clearMemoryCache()
+    }
+
+    @Test fun dominantColorsHaveBoundedLruAndClearWithMemoryCache(): Unit = runBlocking {
+        OgImageManager.clearMemoryCache()
+        val amber = androidx.compose.ui.graphics.Color(0xFFFFAA00)
+        val cyan = androidx.compose.ui.graphics.Color(0xFF00CCFF)
+        repeat(128) { index -> OgImageManager.resolveDominantColor("example/$index|1") { amber } }
+        assertEquals(amber, OgImageManager.resolveDominantColor("example/0|1") { cyan })
+        OgImageManager.resolveDominantColor("example/128|1") { cyan }
+        assertEquals(cyan, OgImageManager.resolveDominantColor("example/1|1") { cyan })
+        assertEquals(amber, OgImageManager.resolveDominantColor("example/0|1") { cyan })
+        OgImageManager.clearMemoryCache()
+        assertEquals(cyan, OgImageManager.resolveDominantColor("example/0|1") { cyan })
+        OgImageManager.clearMemoryCache()
+    }
+
+    @Test fun invalidationDuringExtractionCannotRepopulateColorCache(): Unit = runBlocking {
+        OgImageManager.clearMemoryCache()
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val amber = androidx.compose.ui.graphics.Color(0xFFFFAA00)
+        val cyan = androidx.compose.ui.graphics.Color(0xFF00CCFF)
+        val job = launch {
+            OgImageManager.resolveDominantColor("example/a|1") {
+                started.complete(Unit)
+                finish.await()
+                amber
+            }
+        }
+        started.await()
+        OgImageManager.invalidateDominantColors("example/a")
+        finish.complete(Unit)
+        job.join()
+        assertEquals(cyan, OgImageManager.resolveDominantColor("example/a|1") { cyan })
+        OgImageManager.clearMemoryCache()
+    }
+
     @Test
     fun testConstants() {
         assertEquals(640, OgImageManager.MAX_IMAGE_DIMENSION)

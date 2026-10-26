@@ -101,14 +101,14 @@ fun BookmarkGridCard(
         modifier = modifier
             .fillMaxWidth()
             .bookmarkCardLighting(cardStyle, cardShape)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(cardShape)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = if (hasSummary && onLongClick != null) {
                     { onLongClick() }
                 } else null
             ),
-        shape = RoundedCornerShape(16.dp),
+        shape = cardShape,
         color = cardStyle.containerColor,
         tonalElevation = 0.dp
     ) {

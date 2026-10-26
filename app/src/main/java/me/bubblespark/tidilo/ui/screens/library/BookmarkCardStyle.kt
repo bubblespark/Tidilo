@@ -34,6 +34,8 @@ internal fun rememberBookmarkCardStyle(darkContainerColor: Color): BookmarkCardS
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     return remember(accent, dark, darkContainerColor) {
         BookmarkCardStyle(
+            // Intentional exceptions per docs/ui_design.md: white surfaces and black contact shadows
+            // preserve crisp contrast without muddy coloration under tinted ambient beams.
             containerColor = if (dark) darkContainerColor else Color.White,
             rim = Brush.linearGradient(
                 colors = listOf(accent.copy(alpha = if (dark) 0.65f else 0.38f),

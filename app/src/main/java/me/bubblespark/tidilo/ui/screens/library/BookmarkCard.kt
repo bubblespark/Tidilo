@@ -124,7 +124,7 @@ fun BookmarkItemCard(
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().bookmarkCardLighting(cardStyle, cardShape),
-        shape = RoundedCornerShape(24.dp), // M3 Expressive Large Rounding
+        shape = cardShape, // M3 Expressive Large Rounding
         colors = CardDefaults.cardColors(
             containerColor = cardStyle.containerColor
         ),
@@ -135,7 +135,7 @@ fun BookmarkItemCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
+                .clip(cardShape)
                 .bookmarkCardSurfaceWash(cardStyle)
         ) {
             // Background watermark layer: domain icon (lightly displayed clipped in top-right)

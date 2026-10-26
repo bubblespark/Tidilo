@@ -106,7 +106,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 
 1. **Full-screen Surface**: `MainActivity` calls `enableEdgeToEdge()` and sets `contentWindowInsets = WindowInsets(0, 0, 0, 0)` on the root `Scaffold`.
 2. **Scroll Immersion & Actual Scroll Tracking**:
-   - Lazy lists occupy the full physical screen with `contentPadding` accommodating the top app bar (`statusBars + 76dp`) and the bottom navigation bar (`140dp`).
+   - Lazy lists occupy the full physical screen with shared scaffold `contentPadding`: normally `statusBars + 104dp` at the top and `140dp` total bottom clearance on the three root tabs. Secondary pages preserve their own navigation/IME and floating-action clearance.
    - Content flows freely under the translucent status and navigation bars.
    - **`onPostScroll` Consumption-based Connection**: Controls only hide when content **actually consumes vertical scroll** (`consumed.y < -30f`), completely preventing false dismissals on screens with few or non-scrollable items (such as ImportScreen or empty Library). Reappears when content actually scrolls up (`consumed.y > +20f`) or is pulled down at the top overscroll boundary (`available.y > +20f`).
 3. **Status Bar Scrim**:
@@ -139,7 +139,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
     - When navigation reappears (scroll up): Smoothly contracts back to 56dp container / 28dp icon with low bouncy spring animation.
   - **Contextual Behavior**:
     - `LibraryScreen`: Filter FAB menu toggle button (`R.drawable.ic_filter_list` / `Icons.Default.Close`). Expands a Material 3 Expressive pill menu with two persistent options: "Domain" on top (`R.drawable.ic_domain`, 28dp) and "Newest first" below (`R.drawable.ic_arrow_downward`, 28dp). The active mode pill is highlighted using `primaryContainer` / `onPrimaryContainer`, and inactive using `secondaryContainer` / `onSecondaryContainer`. The pill size matches `BookmarkDetailScreen`'s FAB menu exactly (`horizontal = 24dp, vertical = 16dp`, typography `titleMedium`, SemiBold) and remains invariant regardless of the FAB container's 56dp/86dp scaling state, aligning flush to the right edge of the FAB. When expanded, the floating navigation bar hides downwards using official Edge-to-Edge slide-out animation, returning on dismissal.
-    - `SearchScreen`: Search action button (`Icons.Default.Search`). Tapping requests focus to top search input bar and guarantees keyboard expansion (`keyboardController?.show()`) even if the input was already focused while the keyboard was dismissed. (Settings button on Search header removed).
+    - `SearchScreen`: Search action button (`Icons.Default.Search`). The search field is the first scrolling body item, including history, list/grid results and loading/empty/error states. Grid input spans both columns. Tapping the action scrolls the active body to the input, waits for layout attachment, requests focus and reopens the keyboard even after manual dismissal. History/bookmark keys are namespaced separately from structural items. There is no second header tier or independent 144dp header allowance.
     - `ImportScreen`: Filled accent sparkle button (`Icons.Default.AutoAwesome`) triggering batch `aiAnalysisAll()` execution. (Consists of 2 sections: Ready, Error; tapping 'AI Analysis All' promotes items directly to processing without confirmation dialogs, while individual items are operated via swipe gestures).
 - **Left-Side AI Processing Status Indicator (`AiProcessingIndicatorButton` & `AiProcessingSpeechBubble`)**:
   - **Symmetric Left Placement**: Anchored symmetrically on the left side of `TidiloBottomBar` at `offset(x = -actionButtonOffsetX)` (opposite to the right action button).
@@ -187,12 +187,12 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 
 ### 6.4 `BookmarkDetailScreen` & Material 3 Expressive FAB Menu
 - **Layout Hierarchy**:
-  - Root `Box(Modifier.fillMaxSize())`: Hosts full-screen scrollable `Column`, scrim overlay, and bottom-anchored FAB menu.
+  - Root `TidiloScreenScaffold`: Hosts the full-screen scrollable body, fixed frosted header, scrim overlay, and bottom-anchored FAB menu.
   - **Scroll Separation**: The FAB menu and backdrop scrim are placed **outside** the scrollable `Column`. Expanding the menu triggers zero unintended scroll jumps, and the toggle button never clips off-screen.
   - **Edge-to-Edge Status Bar Translucency & Scrim**:
     - The scrollable `Column` extends edge-to-edge into the status bar area without root `statusBarsPadding()`.
-    - The top header `Row` applies `Modifier.statusBarsPadding()` directly, maintaining standard title bar alignment (`statusBarsPadding() + top = 4.dp, bottom = 4.dp`) at rest.
-    - A standardized 4-stop vertical gradient status bar protection scrim (`listOf(scrimBg.copy(0.85f), scrimBg.copy(0.50f), scrimBg.copy(0.15f), Color.Transparent)`) of height `statusBarTop + 28.dp` is anchored at `Alignment.TopCenter` and rendered via `Modifier.drawWithCache`, protecting status bar system icons when content scrolls underneath.
+    - The shared header owns status-bar padding and the standard font-aware 80dp row. Back and Save remain visible while the body scrolls beneath it.
+    - The shared neutral frosted background protects the status bar and title area; a separate detail-only status-bar gradient is unnecessary. Body padding uses shared top clearance, while note editing retains navigation/IME avoidance and the existing FAB clearance.
 - **Top Header & `og:image` Banner with Domain Watermark Fallback**:
   - **`og:image` Banner Placement**: Positioned directly beneath the Top Header Row and above the bookmark title, with 12dp above and 16dp below. A full-width `BoxWithConstraints` supplies the available width; the image height is explicitly `min(availableWidth / imageAspectRatio, 200.dp)`. `ContentScale.Crop` preserves image proportions and center-crops taller artwork inside this viewport, with `RoundedCornerShape(16.dp)` clipping (`contentDescription = null`). Do not combine fixed full width, a 200dp height cap, and an image `aspectRatio` modifier: conflicting constraints can produce an oversized child that paints over adjacent content.
   - **Reactive Cache & On-Demand Loading**: Integrated with `rememberOgImage` (`OgImageManager` cache observer and update notifications, triggering background on-demand fetching when uncached), unified across `BookmarkDetailScreen` and `BookmarkGridCard`.
@@ -314,7 +314,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 ### 6.8 `DomainCard` & Library Domain Filter Mode
 - **2-Column Grid Layout (`LazyVerticalGrid(GridCells.Fixed(2))`)**:
   - Horizontal/vertical arrangement with `12.dp` spacing, `20.dp` screen horizontal padding.
-  - Content padding accounts for top header (`statusBars + 76dp`) and bottom navigation (`140dp`).
+  - Content padding comes from the shared screen scaffold: normally `statusBars + 104dp` at the top and `140dp` at the bottom.
 - **Card Design (`DomainCard.kt`)**:
   - Layout: Top-right diagonal stacked deck structure with a fixed 2-layer background stack (`168.dp` total height, `154.dp` card height).
     - Deepest Layer (Layer 2): `surfaceContainerLow` container with `padding(start = 14.dp)`, `154.dp` height, top offset `0.dp`, peeking towards top-right (`x = TotalWidth - 7..TotalWidth`, `y = 0..7dp`), and subtle border (`dominantColor.copy(alpha = 0.18f)`).
@@ -353,31 +353,37 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **14-Stop Smootherstep Attenuation Curve**:
   - Implements Ken Perlin's quintic smootherstep equation ($S(t) = 6t^5 - 15t^4 + 10t^3$, $\alpha(t) = 1 - S(t)$) sampled across 14 finely spaced gradient stops.
   - Because both first and second derivatives are zero at $t=0$ and $t=1$ ($d\alpha/dt = 0$, $d^2\alpha/dt^2 = 0$), the transition is optically seamless, entirely eliminating optical Mach banding.
-- **Text-Adjacent Decay Proximity (`decayOverlap = 6.dp`, `fadeHeight = 18.dp`)**:
-  - Rather than maintaining an opaque block below the text, decay starts right at the bottom edge / baseline of the header subtitle text and gently cascades downward over 24dp.
-  - Combined with tightened header Row padding (`top = 4.dp, bottom = 4.dp`) and calibrated list content padding (`headerHeight = statusBarTop + 80.dp`), cards at rest sit completely clear of the dissolved header with zero overlap, smoothly entering the fade zone only when scrolled.
+- **Shared Geometry (`decayOverlap = 6.dp`, `fadeHeight = 18.dp`)**:
+  - The unchanged smootherstep drawing starts decay 6dp before the content row ends and reaches transparency after its 18dp trailing spacer. Decay overlap and body clearance are distinct tokens.
+  - `HeaderDefaults` defines an 80dp standard content row, excluding the status bar and including internal vertical space. `TidiloFrostedHeader` centers the title/subtitle block and navigation/actions inside that row. No extra outer 4dp top/bottom allowance is added.
+  - The fade ends at `statusBarTop + rowHeight + 18dp`. Resting content begins another 6dp below it: normally `statusBarTop + 104dp`. Header and body use the same font-aware row height, preventing independent magic-number drift.
+  - Enlarged fonts may increase the shared row height beyond 80dp, using baseline headlineMedium/labelMedium measurements plus 8dp. Actual title length, local title scaling, subtitle absence and transition state never change the row height within the same typography configuration.
   - Status bar and title text retain 100% legibility contrast, while the bottom shelf dissolves organically into the underlying content.
 - **Pure Neutral Translucency (No Color Overlays on Header)**:
   - Header relies exclusively on neutral frost translucency (`contentAlpha = 0.85f`) and smootherstep dissolution without applying artificial colored lighting layers, eliminating color collision and shelf artifacts.
   - The underlying screen's ambient illumination shines naturally through the translucent frosted glass with complete optical clarity.
 - **Touch-through Transparency**: Lower dissolve zone uses a non-interactive `Spacer`, allowing pointer events to interact freely with underlying lazy lists.
-- **Adopted Screens**: Unified across `LibraryScreen`, `SearchScreen`, and `ImportScreen`.
+- **Adopted Screens**: All three root tabs, Settings and its subpages, bookmark details, tag selection and AI review. Their headers remain independent of scrolling content, including loading/error/not-found states on detail/review pages.
 
 ### 6.10 Application-Wide Title Bar & Header Geometry Standardization
-- **Baseline Source of Truth (`LibraryScreen`)**:
-  - Distance from Status Bar: `statusBarsPadding()` immediately followed by `top = 4.dp, bottom = 4.dp` padding.
+- **Shared Source of Truth (`HeaderDefaults`, `TidiloFrostedHeader`, `TidiloScreenScaffold`)**:
+  - The header owns status-bar padding; the body receives matching top clearance from the scaffold. Do not apply status-bar padding again to the body.
   - Horizontal Screen Margin: `start = 20.dp, end = 20.dp`.
   - Title Text Typography: `MaterialTheme.typography.headlineMedium`, `fontWeight = FontWeight.Bold`, `color = MaterialTheme.colorScheme.onBackground`.
-  - Vertical Center Line: Coordinated at $Y \approx 217\text{px}$ across Pixel / standard densities.
+  - Action/navigation centers share `statusBarTop + rowHeight / 2`; device-specific pixel coordinates are not geometry tokens.
 - **Back Navigation Affordance (`IconButton`)**:
-  - Dimensions & End Spacing: `modifier = Modifier.padding(end = 4.dp).size(40.dp)`.
+  - Dimensions & End Spacing: 48dp interactive slot with 4dp trailing separation; icon artwork is unchanged. Animated navigation slots reserve no width after exit.
   - Icon Vector & Tint: `Icons.AutoMirrored.Filled.ArrowBack` with `tint = MaterialTheme.colorScheme.onBackground`.
-  - Horizontal Title Text Alignment: Exactly $64\text{dp}$ ($20\text{dp} + 40\text{dp} + 4\text{dp}$) from the screen start edge across all screens with back navigation.
+  - Horizontal Title Text Alignment: 72dp (`20dp + 48dp + 4dp`) from the start edge when the navigation slot is present, and 20dp when absent.
 - **Secondary Actions & Toolbar Buttons**:
-  - Header Action Buttons: Standardized to `modifier = Modifier.size(44.dp)` (e.g. Settings gear in Library, Add link in Import, Reset Wrench in GenerateContentRequest).
+  - Header Icon Buttons: 48dp interactive slots (Settings gear in Library, Add link in Import, Reset Wrench in GenerateContentRequest). Title slots take the remaining width so actions stay visible at large font sizes.
 - **Unified Screens**:
   - Tab Screens without Back Button: `LibraryScreen`, `SearchScreen`, `ImportScreen`.
-  - Sub-Screens with Back Button: `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `NsfwSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `BookmarkAiReviewScreen`.
+  - Sub-Screens with Back Button: `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `NsfwSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `SummaryScreen`, `RssSettingsScreen`, `BookmarkAiReviewScreen`. Library Domain/RSS drill-downs also show Back; root tabs do not.
+- **Visibility Policy**:
+  - `hideHeaderOnScroll` defaults to false. Library/Search/Import explicitly enable it and reuse MainActivity's `LocalBarsVisible` signal. Settings and all secondary pages explicitly keep fixed headers.
+  - One shared slide/fade implementation retains the existing spring and 200ms enter/150ms exit fades. Peek suppression is a separate `headerVisible` input. Header disappearance never collapses body padding or jumps the list.
+  - Content is drawn first, the header second, and optional overlays last. MainActivity retains bottom-navigation/FAB/scroll-detector ownership. Navigation between pages and Library title/subtitle/list-grid transitions are unchanged.
 
 ### 6.11 AI Skipped (AICore Fallback) Representation & Detail Layout Rhythm
 - **Bookmark Card (`BookmarkCard.kt`)**:
@@ -428,12 +434,12 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 ### 6.14 Library Bookmark List View Mode Dropdown Menu Specification (`LibraryScreen.kt`, `LibraryViewMode.kt`)
 - **Header Action Button & Material Symbols Icon**:
   - Placed immediately to the left of the Settings button in `LibraryScreen.kt`'s frosted header row.
-  - Sized at `44.dp` matching the Settings `IconButton`.
+  - Sized at `48.dp` matching the Settings `IconButton` interactive slot.
   - Displays `R.drawable.ic_dashboard_2_gear` (Material Symbols Outlined `dashboard_2_gear`, 24dp), providing visual affordance for layout/dashboard customization.
 - **Dropdown Menu Positioning & Container Geometry**:
   - Anchored directly to the button container using Material 3 `DropdownMenu`.
   - Width is fixed to `200.dp`, providing a generous and polished layout that avoids feeling narrow or cramped.
-  - Aligned flush to the right edge of the header row and bookmark cards (`screenWidth - 20.dp`) by applying `offset = DpOffset(x = 88.dp - menuWidth, y = 0.dp)`.
+  - Aligned flush to the right edge of the header row and bookmark cards (`screenWidth - 20.dp`) by applying `offset = DpOffset(x = 96.dp - menuWidth, y = 0.dp)` for the two 48dp action slots.
   - Follows Tidilo menu design language with `shape = RoundedCornerShape(16.dp)`, `containerColor = MaterialTheme.colorScheme.surfaceContainerHigh`, and `tonalElevation = 6.dp`.
   - Wrapped with `CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig)` to ensure accurate localization in dynamic popup windows.
 - **Item Order & Leading Checkmark Alignment**:
@@ -479,7 +485,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 - **Prominent Borderless Summary Peek Overlay (`LibraryScreen.kt`)**:
   - Long-pressing any grid card automatically transitions the screen into full Edge-to-Edge display (hiding the header) and reveals a clean, borderless overlay.
   - Background blur is completely omitted for crisp, natural clarity; the overlay applies the theme background color at 85% opacity (`MaterialTheme.colorScheme.background.copy(alpha = 0.85f)`).
-  - Displays the `✨ AI Summary` badge and summary text in `MaterialTheme.typography.bodyMedium` (lineHeight 24sp), positioned at a stable, fixed vertical offset (`headerHeight`).
+  - Displays the `✨ AI Summary` badge and summary text in `MaterialTheme.typography.bodyMedium` (lineHeight 24sp), positioned at the shared body top clearance, normally `statusBars + 104dp`.
   - Tapping anywhere on the screen or using the system back gesture dismisses the peek overlay and restores the previous Edge-to-Edge/bars state cleanly.
 - **Shared View Mode Synchronization**:
   - The active `LibraryViewMode` (`LIST` or `GRID`) is uniformly applied to both the primary **Newest First** list and the **Domain > BookmarkList (Drill-Down)** list.

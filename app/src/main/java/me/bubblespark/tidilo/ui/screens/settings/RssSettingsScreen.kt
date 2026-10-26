@@ -1,5 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -92,95 +95,105 @@ internal fun RssSettingsContent(
     var editing by remember { mutableStateOf<RssFeedEntity?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<RssFeedEntity?>(null) }
-    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
-        .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back)) }
-            Text(stringResource(R.string.rss_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        }
-        RssCard {
-            Text(stringResource(R.string.rss_schedule), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(onClick = { showTime = true }, enabled = !busy,
-                    shape = RoundedCornerShape(8.dp), modifier = Modifier.defaultMinSize(minWidth = 96.dp, minHeight = 56.dp)) {
-                    Text(String.format(Locale.US, "%02d:%02d", settings.hour, settings.minute),
-                        style = MaterialTheme.typography.titleMedium)
+    TidiloScreenScaffold(
+        hideHeaderOnScroll = false,
+        header = {
+            TidiloFrostedHeader(
+                title = {
+                    Text(stringResource(R.string.rss_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack, modifier = Modifier.padding(end = 4.dp).size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back)) }
                 }
-                if (settings.wifiOnly && wifi == false) Text(stringResource(R.string.rss_wifi_blocked),
-                    modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall)
-            }
-            Row(Modifier.fillMaxWidth().toggleable(settings.wifiOnly, enabled = !busy, role = Role.Switch,
-                onValueChange = { onSettings(settings.copy(wifiOnly = it)) }), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.rss_wifi_only), Modifier.weight(1f))
-                Switch(checked = settings.wifiOnly, onCheckedChange = null, enabled = !busy)
-            }
-            Text(stringResource(R.string.rss_schedule_note), style = MaterialTheme.typography.bodySmall)
-            Button(onClick = onFetch, enabled = !busy && (feeds as? SummaryLoad.Ready)?.value?.any { it.enabled } == true) {
-                Text(stringResource(R.string.rss_fetch_now))
-            }
+            )
         }
-        val ready = (feeds as? SummaryLoad.Ready)?.value.orEmpty()
-        val aiFeeds = ready.count { it.enabled && it.mode == "AI" }
-        RssCard {
-            Text(stringResource(R.string.rss_max_queue, aiFeeds * 5), style = MaterialTheme.typography.bodySmall)
-            if (aiFeeds * 5 > 20) Text(stringResource(R.string.rss_quota_warning), color = MaterialTheme.colorScheme.error)
-            Text(stringResource(R.string.rss_queue_note), style = MaterialTheme.typography.bodySmall)
-        }
-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (error != null) RssCard {
-            Text(error, color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = onDismissError) { Text(stringResource(R.string.rss_dismiss)) }
-        }
-        Button(onClick = { editing = null; showEditor = true }, enabled = !busy) { Text(stringResource(R.string.rss_add_feed)) }
-        when (feeds) {
-            SummaryLoad.Loading -> Text(stringResource(R.string.summary_loading))
-            SummaryLoad.Error -> {
-                Text(stringResource(R.string.summary_error))
-                TextButton(onClick = onRetry) { Text(stringResource(R.string.summary_retry)) }
+    ) { contentPadding ->
+        Column(Modifier.fillMaxSize().navigationBarsPadding()
+            .verticalScroll(rememberScrollState()).padding(contentPadding),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            RssCard {
+                Text(stringResource(R.string.rss_schedule), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = { showTime = true }, enabled = !busy,
+                        shape = RoundedCornerShape(8.dp), modifier = Modifier.defaultMinSize(minWidth = 96.dp, minHeight = 56.dp)) {
+                        Text(String.format(Locale.US, "%02d:%02d", settings.hour, settings.minute),
+                            style = MaterialTheme.typography.titleMedium)
+                    }
+                    if (settings.wifiOnly && wifi == false) Text(stringResource(R.string.rss_wifi_blocked),
+                        modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Row(Modifier.fillMaxWidth().toggleable(settings.wifiOnly, enabled = !busy, role = Role.Switch,
+                    onValueChange = { onSettings(settings.copy(wifiOnly = it)) }), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.rss_wifi_only), Modifier.weight(1f))
+                    Switch(checked = settings.wifiOnly, onCheckedChange = null, enabled = !busy)
+                }
+                Text(stringResource(R.string.rss_schedule_note), style = MaterialTheme.typography.bodySmall)
+                Button(onClick = onFetch, enabled = !busy && (feeds as? SummaryLoad.Ready)?.value?.any { it.enabled } == true) {
+                    Text(stringResource(R.string.rss_fetch_now))
+                }
             }
-            is SummaryLoad.Ready -> {
-                if (ready.isEmpty()) Text(stringResource(R.string.rss_no_feeds))
-                ready.forEach { feed ->
-                    key(feed.id) {
-                        RssCard(compact = true) {
-                            Text(feed.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(feed.url, style = MaterialTheme.typography.bodySmall, maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(stringResource(if (feed.mode == "AI") R.string.rss_ai_mode else R.string.rss_direct_mode),
-                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(feed.retentionLimit?.let { stringResource(R.string.rss_retention_compact, it) }
-                                    ?: stringResource(R.string.rss_unlimited),
-                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            feed.error?.let {
-                                Text(if (it == "XML_FETCH_FAILED") stringResource(R.string.rss_xml_fetch_failed) else it,
-                                    color = MaterialTheme.colorScheme.error)
-                                if (it == "XML_FETCH_FAILED" && !feed.enabled) Text(stringResource(R.string.rss_enable_to_retry),
-                                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                            }
-                            val enabledLabel = stringResource(R.string.rss_enabled)
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = { editing = feed; showEditor = true }, enabled = !busy) { Text(stringResource(R.string.rss_edit_compact)) }
-                                TextButton(onClick = { deleting = feed }, enabled = !busy) { Text(stringResource(R.string.common_delete)) }
-                                Spacer(Modifier.weight(1f))
-                                Row(Modifier.toggleable(feed.enabled, enabled = !busy, role = Role.Switch,
-                                    onValueChange = { onEnabled(feed.id, it) }).semantics { contentDescription = enabledLabel },
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(stringResource(if (feed.enabled) R.string.rss_on else R.string.rss_off),
-                                        style = MaterialTheme.typography.labelSmall)
-                                    Switch(checked = feed.enabled, onCheckedChange = null, enabled = !busy)
+            val ready = (feeds as? SummaryLoad.Ready)?.value.orEmpty()
+            val aiFeeds = ready.count { it.enabled && it.mode == "AI" }
+            RssCard {
+                Text(stringResource(R.string.rss_max_queue, aiFeeds * 5), style = MaterialTheme.typography.bodySmall)
+                if (aiFeeds * 5 > 20) Text(stringResource(R.string.rss_quota_warning), color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.rss_queue_note), style = MaterialTheme.typography.bodySmall)
+            }
+            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (error != null) RssCard {
+                Text(error, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onDismissError) { Text(stringResource(R.string.rss_dismiss)) }
+            }
+            Button(onClick = { editing = null; showEditor = true }, enabled = !busy) { Text(stringResource(R.string.rss_add_feed)) }
+            when (feeds) {
+                SummaryLoad.Loading -> Text(stringResource(R.string.summary_loading))
+                SummaryLoad.Error -> {
+                    Text(stringResource(R.string.summary_error))
+                    TextButton(onClick = onRetry) { Text(stringResource(R.string.summary_retry)) }
+                }
+                is SummaryLoad.Ready -> {
+                    if (ready.isEmpty()) Text(stringResource(R.string.rss_no_feeds))
+                    ready.forEach { feed ->
+                        key(feed.id) {
+                            RssCard(compact = true) {
+                                Text(feed.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(feed.url, style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(stringResource(if (feed.mode == "AI") R.string.rss_ai_mode else R.string.rss_direct_mode),
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(feed.retentionLimit?.let { stringResource(R.string.rss_retention_compact, it) }
+                                        ?: stringResource(R.string.rss_unlimited),
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                feed.error?.let {
+                                    Text(if (it == "XML_FETCH_FAILED") stringResource(R.string.rss_xml_fetch_failed) else it,
+                                        color = MaterialTheme.colorScheme.error)
+                                    if (it == "XML_FETCH_FAILED" && !feed.enabled) Text(stringResource(R.string.rss_enable_to_retry),
+                                        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                }
+                                val enabledLabel = stringResource(R.string.rss_enabled)
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = { editing = feed; showEditor = true }, enabled = !busy) { Text(stringResource(R.string.rss_edit_compact)) }
+                                    TextButton(onClick = { deleting = feed }, enabled = !busy) { Text(stringResource(R.string.common_delete)) }
+                                    Spacer(Modifier.weight(1f))
+                                    Row(Modifier.toggleable(feed.enabled, enabled = !busy, role = Role.Switch,
+                                        onValueChange = { onEnabled(feed.id, it) }).semantics { contentDescription = enabledLabel },
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(stringResource(if (feed.enabled) R.string.rss_on else R.string.rss_off),
+                                            style = MaterialTheme.typography.labelSmall)
+                                        Switch(checked = feed.enabled, onCheckedChange = null, enabled = !busy)
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+            Spacer(Modifier.height(12.dp))
         }
-        Spacer(Modifier.height(12.dp))
     }
     if (showTime) {
         val time = rememberTimePickerState(settings.hour, settings.minute, is24Hour = true)

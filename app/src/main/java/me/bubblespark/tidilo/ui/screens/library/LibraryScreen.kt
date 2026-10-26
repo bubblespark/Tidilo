@@ -344,113 +344,115 @@ fun LibraryScreen(
 
                             val domainBookmarks = bookmarks
 
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .drawWithCache {
-                                        // Radiant ambient beam from top-right corner spreading across ~2/3 of the screen towards bottom-left
-                                        val ambientBeam = Brush.linearGradient(
-                                            colorStops = arrayOf(
-                                                0.00f to domainColor.copy(alpha = 0.32f),
-                                                0.22f to domainColor.copy(alpha = 0.22f),
-                                                0.45f to domainColor.copy(alpha = 0.13f),
-                                                0.68f to domainColor.copy(alpha = 0.05f),
-                                                0.84f to domainColor.copy(alpha = 0.015f),
-                                                1.00f to Color.Transparent
-                                            ),
-                                            start = Offset(size.width * 1.05f, -size.height * 0.02f),
-                                            end = Offset(-size.width * 0.15f, size.height * 0.90f)
-                                        )
+                            CompositionLocalProvider(LocalCardAccentColor provides domainColor) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .drawWithCache {
+                                            // Radiant ambient beam from top-right corner spreading across ~2/3 of the screen towards bottom-left
+                                            val ambientBeam = Brush.linearGradient(
+                                                colorStops = arrayOf(
+                                                    0.00f to domainColor.copy(alpha = 0.32f),
+                                                    0.22f to domainColor.copy(alpha = 0.22f),
+                                                    0.45f to domainColor.copy(alpha = 0.13f),
+                                                    0.68f to domainColor.copy(alpha = 0.05f),
+                                                    0.84f to domainColor.copy(alpha = 0.015f),
+                                                    1.00f to Color.Transparent
+                                                ),
+                                                start = Offset(size.width * 1.05f, -size.height * 0.02f),
+                                                end = Offset(-size.width * 0.15f, size.height * 0.90f)
+                                            )
 
-                                        // Deep spherical glow in top-right shoulder spreading across ~2/3 of screen
-                                        val cornerGlow = Brush.radialGradient(
-                                            colorStops = arrayOf(
-                                                0.00f to domainColor.copy(alpha = 0.22f),
-                                                0.30f to domainColor.copy(alpha = 0.13f),
-                                                0.60f to domainColor.copy(alpha = 0.05f),
-                                                0.82f to domainColor.copy(alpha = 0.012f),
-                                                1.00f to Color.Transparent
-                                            ),
-                                            center = Offset(size.width, 0f),
-                                            radius = size.height * 0.72f
-                                        )
-                                        onDrawBehind {
-                                            drawRect(brush = ambientBeam)
-                                            drawRect(brush = cornerGlow)
+                                            // Deep spherical glow in top-right shoulder spreading across ~2/3 of screen
+                                            val cornerGlow = Brush.radialGradient(
+                                                colorStops = arrayOf(
+                                                    0.00f to domainColor.copy(alpha = 0.22f),
+                                                    0.30f to domainColor.copy(alpha = 0.13f),
+                                                    0.60f to domainColor.copy(alpha = 0.05f),
+                                                    0.82f to domainColor.copy(alpha = 0.012f),
+                                                    1.00f to Color.Transparent
+                                                ),
+                                                center = Offset(size.width, 0f),
+                                                radius = size.height * 0.72f
+                                            )
+                                            onDrawBehind {
+                                                drawRect(brush = ambientBeam)
+                                                drawRect(brush = cornerGlow)
+                                            }
                                         }
-                                    }
-                            ) {
-                                if (domainBookmarks.itemCount == 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(top = headerHeight, start = 20.dp, end = 20.dp)
-                                    ) {
-                                        EmptyLibraryMessage()
-                                    }
-                                } else {
-                                    AnimatedContent(
-                                        targetState = viewMode,
-                                        transitionSpec = {
-                                            fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
-                                                    fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
-                                        },
-                                        label = "domain_view_mode_transition"
-                                    ) { mode ->
-                                        when (mode) {
-                                            LibraryViewMode.LIST -> {
-                                                LazyColumn(
-                                                    state = if (feed != null) rssDetailListState else domainDetailListState,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    contentPadding = PaddingValues(
-                                                        top = headerHeight,
-                                                        bottom = 140.dp,
-                                                        start = 20.dp,
-                                                        end = 20.dp
-                                                    ),
-                                                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                                                ) {
-                                                    items(
-                                                    count = domainBookmarks.itemCount,
-                                                    key = domainBookmarks.itemKey { it.id },
-                                                    contentType = { "bookmark_card" }
-                                                ) { index ->
-                                                    val item = domainBookmarks[index] ?: return@items
-                                                        BookmarkItemCard(
-                                                            bookmark = item,
-                                                            wordKeywords = emptyList(),
-                                                            tagKeywords = emptyList(),
-                                                            currentLanguage = currentLanguage,
-                                                            onClick = { onNavigateToDetail(item.id) }
-                                                        )
+                                ) {
+                                    if (domainBookmarks.itemCount == 0) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(top = headerHeight, start = 20.dp, end = 20.dp)
+                                        ) {
+                                            EmptyLibraryMessage()
+                                        }
+                                    } else {
+                                        AnimatedContent(
+                                            targetState = viewMode,
+                                            transitionSpec = {
+                                                fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
+                                                        fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
+                                            },
+                                            label = "domain_view_mode_transition"
+                                        ) { mode ->
+                                            when (mode) {
+                                                LibraryViewMode.LIST -> {
+                                                    LazyColumn(
+                                                        state = if (feed != null) rssDetailListState else domainDetailListState,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        contentPadding = PaddingValues(
+                                                            top = headerHeight,
+                                                            bottom = 140.dp,
+                                                            start = 20.dp,
+                                                            end = 20.dp
+                                                        ),
+                                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                                    ) {
+                                                        items(
+                                                        count = domainBookmarks.itemCount,
+                                                        key = domainBookmarks.itemKey { it.id },
+                                                        contentType = { "bookmark_card" }
+                                                    ) { index ->
+                                                        val item = domainBookmarks[index] ?: return@items
+                                                            BookmarkItemCard(
+                                                                bookmark = item,
+                                                                wordKeywords = emptyList(),
+                                                                tagKeywords = emptyList(),
+                                                                currentLanguage = currentLanguage,
+                                                                onClick = { onNavigateToDetail(item.id) }
+                                                            )
+                                                        }
                                                     }
                                                 }
-                                            }
-                                            LibraryViewMode.GRID -> {
-                                                LazyVerticalGrid(
-                                                    state = if (feed != null) rssDetailGridState else domainDetailGridState,
-                                                    columns = GridCells.Fixed(2),
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    contentPadding = PaddingValues(
-                                                        top = headerHeight,
-                                                        bottom = 140.dp,
-                                                        start = 20.dp,
-                                                        end = 20.dp
-                                                    ),
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                                ) {
-                                                    items(
-                                                    count = domainBookmarks.itemCount,
-                                                    key = domainBookmarks.itemKey { it.id },
-                                                    contentType = { "bookmark_grid_card" }
-                                                ) { index ->
-                                                    val item = domainBookmarks[index] ?: return@items
-                                                        BookmarkGridCard(
-                                                            bookmark = item,
-                                                            onClick = { onNavigateToDetail(item.id) },
-                                                            onLongClick = { peekBookmark = item }
-                                                        )
+                                                LibraryViewMode.GRID -> {
+                                                    LazyVerticalGrid(
+                                                        state = if (feed != null) rssDetailGridState else domainDetailGridState,
+                                                        columns = GridCells.Fixed(2),
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        contentPadding = PaddingValues(
+                                                            top = headerHeight,
+                                                            bottom = 140.dp,
+                                                            start = 20.dp,
+                                                            end = 20.dp
+                                                        ),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                                    ) {
+                                                        items(
+                                                        count = domainBookmarks.itemCount,
+                                                        key = domainBookmarks.itemKey { it.id },
+                                                        contentType = { "bookmark_grid_card" }
+                                                    ) { index ->
+                                                        val item = domainBookmarks[index] ?: return@items
+                                                            BookmarkGridCard(
+                                                                bookmark = item,
+                                                                onClick = { onNavigateToDetail(item.id) },
+                                                                onLongClick = { peekBookmark = item }
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }

@@ -75,6 +75,8 @@ fun BookmarkItemCard(
     onClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val cardStyle = rememberBookmarkCardStyle(MaterialTheme.colorScheme.surfaceContainerHigh)
+    val cardShape = RoundedCornerShape(24.dp)
     // Localized category and subcategory labels
     val localizedCategory = remember(bookmark.tag.category, context) {
         bookmark.tag.category?.let { Category.toLocalized(it, context) } ?: ""
@@ -121,10 +123,10 @@ fun BookmarkItemCard(
 
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp), // M3 Expressive Large Rounding
+        modifier = Modifier.fillMaxWidth().bookmarkCardLighting(cardStyle, cardShape),
+        shape = cardShape, // M3 Expressive Large Rounding
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            containerColor = cardStyle.containerColor
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
@@ -133,7 +135,8 @@ fun BookmarkItemCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
+                .clip(cardShape)
+                .bookmarkCardSurfaceWash(cardStyle)
         ) {
             // Background watermark layer: domain icon (lightly displayed clipped in top-right)
             DomainWatermark(

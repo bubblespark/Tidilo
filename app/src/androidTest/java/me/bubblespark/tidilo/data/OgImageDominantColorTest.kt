@@ -14,8 +14,8 @@ class OgImageDominantColorTest {
         try {
             amber.eraseColor(android.graphics.Color.rgb(245, 170, 20))
             cyan.eraseColor(android.graphics.Color.rgb(20, 190, 240))
-            val first = OgImageManager.getDominantColor("palette.example", "amber", amber.asImageBitmap())
-            val second = OgImageManager.getDominantColor("palette.example", "cyan", cyan.asImageBitmap())
+            val first = requireNotNull(OgImageManager.getDominantColor("palette.example", "amber", amber.asImageBitmap()))
+            val second = requireNotNull(OgImageManager.getDominantColor("palette.example", "cyan", cyan.asImageBitmap()))
             assertTrue(first.red > first.blue + 0.3f)
             assertTrue(second.blue > second.red + 0.3f)
             assertEquals(first, OgImageManager.getDominantColor("palette.example", "amber", amber.asImageBitmap()))

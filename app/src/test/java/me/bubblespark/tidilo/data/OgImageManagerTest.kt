@@ -53,19 +53,21 @@ class OgImageManagerTest {
         OgImageManager.clearMemoryCache()
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
+        val result = CompletableDeferred<androidx.compose.ui.graphics.Color?>()
         val amber = androidx.compose.ui.graphics.Color(0xFFFFAA00)
         val cyan = androidx.compose.ui.graphics.Color(0xFF00CCFF)
         val job = launch {
-            OgImageManager.resolveDominantColor("example/a|1") {
+            result.complete(OgImageManager.resolveDominantColor("example/a|1") {
                 started.complete(Unit)
                 finish.await()
                 amber
-            }
+            })
         }
         started.await()
         OgImageManager.invalidateDominantColors("example/a")
         finish.complete(Unit)
         job.join()
+        assertNull("An invalidated extraction must not publish its old color to the caller", result.await())
         assertEquals(cyan, OgImageManager.resolveDominantColor("example/a|1") { cyan })
         OgImageManager.clearMemoryCache()
     }

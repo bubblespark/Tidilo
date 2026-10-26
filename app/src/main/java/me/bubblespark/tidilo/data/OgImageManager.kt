@@ -76,10 +76,11 @@ object OgImageManager {
 
     private val ogDominantColorCache = LruCache<String, Color>(128)
     private val dominantColorLock = Any()
-    private var dominantColorRevision = 0L
+    private class ColorSampling(val identity: String, var invalidated: Boolean = false)
+    private val activeColorSampling = mutableSetOf<ColorSampling>()
 
-    /** Resolves the displayed image's accent without retaining its bitmap in the color cache. */
-    internal suspend fun getDominantColor(domain: String, imageKey: String?, bitmap: ImageBitmap): Color {
+    /** Resolves the displayed image's accent, returning null if invalidated while sampling. */
+    internal suspend fun getDominantColor(domain: String, imageKey: String?, bitmap: ImageBitmap): Color? {
         val androidBitmap = bitmap.asAndroidBitmap()
         val source = if (imageKey.isNullOrBlank()) fallbackCacheKey(domain) else cacheKey(domain, imageKey)
         return resolveDominantColor("$source|${androidBitmap.generationId}") {
@@ -87,24 +88,28 @@ object OgImageManager {
         }
     }
 
-    internal suspend fun resolveDominantColor(identity: String, extract: suspend () -> Color): Color =
+    internal suspend fun resolveDominantColor(identity: String, extract: suspend () -> Color): Color? =
         withContext(Dispatchers.Default) {
-            val revision = synchronized(dominantColorLock) {
+            val sampling = synchronized(dominantColorLock) {
                 ogDominantColorCache.get(identity)?.let { return@withContext it }
-                dominantColorRevision
+                ColorSampling(identity).also { activeColorSampling.add(it) }
             }
-            val color = extract()
-            val workContext = currentCoroutineContext()
-            synchronized(dominantColorLock) {
-                workContext.ensureActive()
-                if (revision == dominantColorRevision) ogDominantColorCache.put(identity, color)
+            try {
+                val color = extract()
+                val workContext = currentCoroutineContext()
+                synchronized(dominantColorLock) {
+                    workContext.ensureActive()
+                    if (sampling.invalidated) null else color.also { ogDominantColorCache.put(identity, it) }
+                }
+            } finally {
+                synchronized(dominantColorLock) { activeColorSampling.remove(sampling) }
             }
-            color
         }
 
     /** Also invalidates in-flight sampling, so clearing cannot repopulate stale entries. */
     internal fun invalidateDominantColors(source: String? = null) = synchronized(dominantColorLock) {
-        dominantColorRevision++
+        activeColorSampling.filter { source == null || it.identity.substringBeforeLast('|') == source }
+            .forEach { it.invalidated = true }
         if (source == null) ogDominantColorCache.evictAll() else {
             ogDominantColorCache.snapshot().keys.filter { it.substringBeforeLast('|') == source }
                 .forEach { ogDominantColorCache.remove(it) }
@@ -135,7 +140,10 @@ object OgImageManager {
                 exact.length() == latest.length() && exact.readBytes().contentEquals(latest.readBytes())
             if (matchesLatest && !latest.delete()) throw IOException("Could not remove RSS image copy")
             if (exact.exists() && !exact.delete()) throw IOException("Could not remove RSS image")
-            memoryCache.snapshot().keys.filter { it.endsWith("/$imageKey") }.forEach { memoryCache.remove(it) }
+            memoryCache.snapshot().keys.filter { it.endsWith("/$imageKey") }.forEach {
+                memoryCache.remove(it)
+                invalidateDominantColors(it)
+            }
             invalidateDominantColors(cacheKey(domain, imageKey))
             if (matchesLatest) invalidateDominantColors(fallbackCacheKey(domain))
             if (matchesLatest) memoryCache.remove(fallbackCacheKey(domain))

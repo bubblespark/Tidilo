@@ -25,6 +25,55 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSettingsScreenTest {
+    @Test fun feedListScrollsBehindTheFixedRssHeader(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        try {
+            val feeds = (1..12).map { me.bubblespark.tidilo.data.db.RssFeedEntity(
+                "header-$it", "https://header-$it.invalid/feed", "Feed $it") }
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(feeds), RssSettings(), false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
+                    onDelete = {}, onFetch = {}, onDismissError = {})
+            } } }
+            host.await(activity) { host.text(it, "Daily fetch") && it.boundsInRoot.height > 0f }
+            val list = host.await(activity) {
+                it.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) != null &&
+                    it.config.getOrNull(SemanticsProperties.CollectionInfo) != null
+            }
+            instrumentation.waitForIdleSync()
+            host.await(activity) { host.text(it, "RSS") && it.boundsInRoot.height > 0f }
+            var headerBounds = androidx.compose.ui.geometry.Rect.Zero
+            host.main {
+                headerBounds = host.nodes(activity).first { host.text(it, "RSS") && it.boundsInRoot.height > 0f }.boundsInRoot
+                assertTrue("The scrolling viewport must extend behind the header", list.boundsInRoot.top < headerBounds.top)
+            }
+            host.main { assertTrue(list.config[androidx.compose.ui.semantics.SemanticsActions.ScrollBy].action?.invoke(0f, 500f) == true) }
+            delay(500)
+            var before = 0f
+            host.main { before = list.config[SemanticsProperties.VerticalScrollAxisRange].value() }
+            val start = android.os.SystemClock.uptimeMillis()
+            val x = headerBounds.center.x
+            val y = headerBounds.center.y
+            fun gesture(action: Int, eventY: Float) = host.main {
+                val event = android.view.MotionEvent.obtain(start, android.os.SystemClock.uptimeMillis(), action, x, eventY, 0)
+                try { activity.dispatchTouchEvent(event) } finally { event.recycle() }
+            }
+            gesture(android.view.MotionEvent.ACTION_DOWN, y)
+            repeat(12) { step ->
+                android.os.SystemClock.sleep(16)
+                gesture(android.view.MotionEvent.ACTION_MOVE, y + (step + 1) * 16f)
+            }
+            gesture(android.view.MotionEvent.ACTION_UP, y + 192f)
+            instrumentation.waitForIdleSync()
+            host.main {
+                val after = list.config[SemanticsProperties.VerticalScrollAxisRange].value()
+                assertTrue("A drag starting on the header must scroll the list: $before -> $after", after < before)
+            }
+            host.await(activity) { host.text(it, "RSS") }
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
     @Test fun longPressRequestsConfirmationBeforeDeletingFeed(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity

@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.ui.screens.settings
 
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
+import me.bubblespark.tidilo.ui.components.HeaderDefaults
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -10,6 +11,7 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -115,18 +117,21 @@ internal fun RssSettingsContent(
     val readyFeeds = (feeds as? SummaryLoad.Ready)?.value.orEmpty()
     val editing = readyFeeds.firstOrNull { it.id == editingId }
     val deleting = readyFeeds.firstOrNull { it.id == deletingId }
+    val listState = rememberLazyListState()
     TidiloScreenScaffold(
         hideHeaderOnScroll = false,
         header = {
             TidiloPageHeader(
                 title = stringResource(R.string.rss_title),
-                onNavigateBack = onBack
+                onNavigateBack = onBack,
+                scrollState = listState
             )
         }
     ) { contentPadding ->
-        Box(Modifier.fillMaxSize().padding(contentPadding)) {
-        LazyColumn(Modifier.fillMaxSize().navigationBarsPadding(),
-            contentPadding = PaddingValues(bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Box(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize().navigationBarsPadding(), state = listState,
+            contentPadding = PaddingValues(start = HeaderDefaults.HorizontalPadding, end = HeaderDefaults.HorizontalPadding,
+                top = contentPadding.calculateTopPadding(), bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item(key = "schedule-heading") {
             Text(stringResource(R.string.rss_schedule), style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
@@ -209,7 +214,8 @@ internal fun RssSettingsContent(
             }
         }
         FloatingActionButton(onClick = { if (!busy) { editingId = null; showEditor = true } },
-            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(16.dp)
+            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
+                .padding(end = HeaderDefaults.HorizontalPadding + 16.dp, bottom = 16.dp)
                 .semantics { if (busy) disabled() },
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,

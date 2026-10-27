@@ -369,11 +369,15 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Header relies exclusively on neutral frost translucency (`contentAlpha = 0.85f`) and smootherstep dissolution without applying artificial colored lighting layers, eliminating color collision and shelf artifacts.
   - The underlying screen's ambient illumination shines naturally through the translucent frosted glass with complete optical clarity.
 - **Touch-through Transparency**: Lower dissolve zone uses a non-interactive `Spacer`, allowing pointer events to interact freely with underlying lazy lists.
+- **Header Body Input**: The content `Box`, including status-bar padding, consumes taps with `detectTapGestures` so blank space and inactive titles cannot activate cards beneath the frost. The dissolve spacer remains outside this input boundary. The container itself has no clickable accessibility semantics.
+- **Header-Origin Scrolling**: Library, Search and bookmark detail supply their existing active `ScrollableState`. A vertical `scrollable` on the header body forwards drags and flings to that state, because consuming overlay taps alone removes the underlying list from the hit path. Header scroll progress is tracked separately from body animation progress while sharing the body's scroll mutation arbitration; an ongoing body animation must not steal title or icon taps as immediate drags.
 - **Adopted Screens**: All three root tabs, Settings and its subpages, bookmark details, tag selection and AI review. Their headers remain independent of scrolling content, including loading/error/not-found states on detail/review pages.
 
 ### 6.10 Application-Wide Title Bar & Header Geometry Standardization
 - **Shared Source of Truth (`HeaderDefaults`, `TidiloFrostedHeader`, `TidiloScreenScaffold`)**:
   - Settings, NSFW, RSS, Summary, Debug and AI generation settings use `TidiloPageHeader` for the title/navigation boilerplate. Its optional subtitle slot retains Debug's secondary text, and its actions slot retains the generation reset control.
+  - `TidiloFrostedHeader` and `TidiloPageHeader` expose an optional `onTitleClick` callback. Only the weighted title/subtitle column is clickable when supplied, with `TextHandleMove` haptic feedback and no ripple. Navigation and action slots remain independent; blank row/status-bar padding only absorbs taps.
+  - Library binds the title action to `animateScrollToItem(0)` on the active Newest list/grid, Domain deck/detail list/grid, or RSS deck/detail list/grid. Index 0 with offset 0 skips animation. Other states retain their positions under existing navigation rules, and changing the active state cancels any pending title-scroll coroutine. Search and bookmark detail enable header-origin scrolling without adding a title-tap action.
   - The header owns status-bar padding; the body receives matching top clearance from the scaffold. Do not apply status-bar padding again to the body.
   - Horizontal Screen Margin: `start = 20.dp, end = 20.dp`.
   - Title Text Typography: `MaterialTheme.typography.headlineMedium`, `fontWeight = FontWeight.Bold`, `color = MaterialTheme.colorScheme.onBackground`.

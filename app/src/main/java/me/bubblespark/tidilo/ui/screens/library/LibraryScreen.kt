@@ -30,6 +30,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -64,6 +67,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.key
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -104,6 +108,7 @@ import me.bubblespark.tidilo.data.db.RssFeedEntity
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 private sealed interface LibraryDisplayState {
     data object NewestFirst : LibraryDisplayState
@@ -189,6 +194,15 @@ fun LibraryScreen(
         }
     }
 
+    val activeScrollState: ScrollableState = when (displayState) {
+        LibraryDisplayState.NewestFirst -> if (viewMode == LibraryViewMode.LIST) newestFirstListState else newestFirstGridState
+        LibraryDisplayState.DomainGrid -> domainGridState
+        is LibraryDisplayState.DomainDrillDown -> if (viewMode == LibraryViewMode.LIST) domainDetailListState else domainDetailGridState
+        LibraryDisplayState.RssFeedGrid -> rssFeedGridState
+        is LibraryDisplayState.RssFeedDrillDown -> if (viewMode == LibraryViewMode.LIST) rssDetailListState else rssDetailGridState
+    }
+    val headerScope = key(activeScrollState) { rememberCoroutineScope() }
+
     val observedCount = key(displayState, isNsfwVisible) {
         val initialCount = when (displayState) {
             LibraryDisplayState.DomainGrid, LibraryDisplayState.RssFeedGrid -> 0
@@ -238,6 +252,19 @@ fun LibraryScreen(
         // Expressive Header (slides out/in from top screen edge linked with scrolling, hidden during peek)
         header = {
             TidiloFrostedHeader(
+                scrollState = activeScrollState,
+                onTitleClick = {
+                    headerScope.launch {
+                        when (val state = activeScrollState) {
+                            is LazyListState -> if (state.firstVisibleItemIndex != 0 || state.firstVisibleItemScrollOffset != 0) {
+                                state.animateScrollToItem(0)
+                            }
+                            is LazyGridState -> if (state.firstVisibleItemIndex != 0 || state.firstVisibleItemScrollOffset != 0) {
+                                state.animateScrollToItem(0)
+                            }
+                        }
+                    }
+                },
                 title = {
                     val defaultTitle = stringResource(R.string.library_header_title)
                     val headerTitle = when {

@@ -88,7 +88,7 @@ Tidilo adheres to modern Android architecture best practices with **Unidirection
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/your-username/tidilo.git
+   git clone https://github.com/bubblespark/Tidilo.git
    cd tidilo
    ```
 

@@ -327,8 +327,6 @@ Aggregate/trash reads wait for initialization. Failed reads publish a recoverabl
 state and restart on explicit retry. Trash moves and capacity enforcement share
 one transaction. Domain NSFW changes await the SQL update and policy publication
 in the application scope so navigating away cannot interrupt those two steps.
-See `issue81-progress.md` for verification and measurement limits.
-
 
 Domain policy failure handling: the domain-wide SQL flag update and policy-save
 callback execute inside one Room transaction. A policy-file exception rolls back

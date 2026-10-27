@@ -7,12 +7,17 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.db.RssFeedEntity
@@ -28,10 +33,21 @@ internal data class RssRegistrationRequest(
     val snapshot: RssRegistrationSnapshot
 )
 
+internal enum class ManualFetchStatus { Checking, Idle, Waiting, Running }
+
+internal fun manualFetchStatus(states: List<WorkInfo.State>): ManualFetchStatus = when {
+    states.any { it == WorkInfo.State.RUNNING } -> ManualFetchStatus.Running
+    states.any { !it.isFinished } -> ManualFetchStatus.Waiting
+    else -> ManualFetchStatus.Idle
+}
+
 class RssSettingsViewModel(application: Application, private val savedState: androidx.lifecycle.SavedStateHandle) : AndroidViewModel(application) {
     private val repository = RssRepository.getInstance(application)
     private val preferences = RssPreferences.getInstance(application)
     val settings = preferences.state
+    internal val manualFetch = WorkManager.getInstance(application).getWorkInfosForUniqueWorkFlow(RssScheduler.MANUAL)
+        .map { infos -> manualFetchStatus(infos.map { it.state }) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), ManualFetchStatus.Checking)
     private val _feeds = MutableStateFlow<SummaryLoad<List<RssFeedEntity>>>(SummaryLoad.Loading)
     val feeds = _feeds.asStateFlow()
     private val _busy = MutableStateFlow(false)

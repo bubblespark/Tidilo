@@ -25,6 +25,145 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSettingsScreenTest {
+    @Test fun manualFetchWaitsWithoutProgressAndReenablesAfterCompletion(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val status = mutableStateOf(me.bubblespark.tidilo.ui.screens.settings.ManualFetchStatus.Waiting)
+        var fetches = 0
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
+                    "waiting-test", "https://example.invalid/feed", "Example"))), RssSettings(), false, null, false,
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
+                    onDelete = {}, onFetch = { fetches++ }, onDismissError = {}, manualFetch = status.value)
+            } } }
+            val waiting = node("Waiting status") { it.text?.toString() == "Waiting to fetch" }
+            var button: AccessibilityNodeInfo? = waiting
+            while (button != null && !button.isClickable) button = button.parent
+            assertFalse(requireNotNull(button).isEnabled)
+            assertNull(find { it.className?.toString() == "android.widget.ProgressBar" })
+            instrumentation.runOnMainSync { status.value = me.bubblespark.tidilo.ui.screens.settings.ManualFetchStatus.Running }
+            node("Running progress") { it.className?.toString() == "android.widget.ProgressBar" }
+            instrumentation.runOnMainSync { status.value = me.bubblespark.tidilo.ui.screens.settings.ManualFetchStatus.Idle }
+            clickText("Fetch now")
+            withTimeout(3000) { while (fetches == 0) delay(20) }
+            assertEquals(1, fetches)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Test fun feedListScrollsBehindTheFixedRssHeader(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        try {
+            val feeds = (1..12).map { me.bubblespark.tidilo.data.db.RssFeedEntity(
+                "header-$it", "https://header-$it.invalid/feed", "Feed $it") }
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(feeds), RssSettings(), false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
+                    onDelete = {}, onFetch = {}, onDismissError = {})
+            } } }
+            host.await(activity) { host.text(it, "Daily fetch") && it.boundsInRoot.height > 0f }
+            val list = host.await(activity) {
+                it.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) != null &&
+                    it.config.getOrNull(SemanticsProperties.CollectionInfo) != null
+            }
+            instrumentation.waitForIdleSync()
+            host.await(activity) { host.text(it, "RSS") && it.boundsInRoot.height > 0f }
+            var headerBounds = androidx.compose.ui.geometry.Rect.Zero
+            host.main {
+                headerBounds = host.nodes(activity).first { host.text(it, "RSS") && it.boundsInRoot.height > 0f }.boundsInRoot
+                assertTrue("The scrolling viewport must extend behind the header", list.boundsInRoot.top < headerBounds.top)
+            }
+            host.main { assertTrue(list.config[androidx.compose.ui.semantics.SemanticsActions.ScrollBy].action?.invoke(0f, 500f) == true) }
+            delay(500)
+            var before = 0f
+            host.main { before = list.config[SemanticsProperties.VerticalScrollAxisRange].value() }
+            val start = android.os.SystemClock.uptimeMillis()
+            val x = headerBounds.center.x
+            val y = headerBounds.center.y
+            fun gesture(action: Int, eventY: Float) = host.main {
+                val event = android.view.MotionEvent.obtain(start, android.os.SystemClock.uptimeMillis(), action, x, eventY, 0)
+                try { activity.dispatchTouchEvent(event) } finally { event.recycle() }
+            }
+            gesture(android.view.MotionEvent.ACTION_DOWN, y)
+            repeat(12) { step ->
+                android.os.SystemClock.sleep(16)
+                gesture(android.view.MotionEvent.ACTION_MOVE, y + (step + 1) * 16f)
+            }
+            gesture(android.view.MotionEvent.ACTION_UP, y + 192f)
+            instrumentation.waitForIdleSync()
+            host.main {
+                val after = list.config[SemanticsProperties.VerticalScrollAxisRange].value()
+                assertTrue("A drag starting on the header must scroll the list: $before -> $after", after < before)
+            }
+            host.await(activity) { host.text(it, "RSS") }
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Test fun longPressRequestsConfirmationBeforeDeletingFeed(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        var deleted: String? = null
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
+                    "delete-test", "https://example.com/feed", "Example"))), RssSettings(), false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
+                    onDelete = { deleted = it }, onFetch = {}, onDismissError = {})
+            } } }
+            repeat(8) {
+                if (find { it.text?.toString() == "Example" } == null) {
+                    find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                    delay(100)
+                }
+            }
+            var card: AccessibilityNodeInfo? = node("Feed title") { it.text?.toString() == "Example" }
+            while (card != null && !card.isLongClickable) card = card.parent
+            assertTrue(requireNotNull(card).performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK))
+            node("Delete confirmation") { it.text?.toString()?.startsWith("Stop fetching") == true }
+            assertNull(deleted)
+            clickText("Cancel")
+            assertNull(deleted)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Test fun manualFetchShowsProgressAndPreventsDuplicateRequests(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
+                    "progress-test", "https://example.com/feed", "Example"))), RssSettings(), false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
+                    onDelete = {}, onFetch = {}, onDismissError = {}, manualFetch = me.bubblespark.tidilo.ui.screens.settings.ManualFetchStatus.Running)
+            } } }
+            val label = node("Fetch now") { it.text?.toString() == "Fetch now" }
+            var button: AccessibilityNodeInfo? = label
+            while (button != null && !button.isClickable) button = button.parent
+            assertFalse(requireNotNull(button).isEnabled)
+            node("Fetch progress") { it.className?.toString() == "android.widget.ProgressBar" }
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Test fun dailyToggleUpdatesSettingWithoutDisablingManualFetch(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val settings = mutableStateOf(RssSettings())
+        var fetched = false
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
+                    "daily-test", "https://example.com/feed", "Example"))), settings.value, false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = { settings.value = it },
+                    onFeed = { _, _, _, _, _ -> }, onDelete = {}, onFetch = { fetched = true }, onDismissError = {})
+            } } }
+            clickText("Daily fetch")
+            withTimeout(3000) { while (settings.value.dailyEnabled) delay(20) }
+            clickText("Fetch now")
+            withTimeout(3000) { while (!fetched) delay(20) }
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
     @Test fun aiCoreRadioIsDisabledWhileCheckingOrUnavailableAndRechecksOnReopen(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
@@ -82,8 +221,9 @@ class RssSettingsScreenTest {
         try {
             for (original in listOf(null, me.bubblespark.tidilo.data.db.RssFeedEntity("feed", "https://fixture.example/feed", "Feed", mode = "AI"))) {
                 var chosen: String? = null
+                val visible = mutableStateOf(true)
                 instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                    me.bubblespark.tidilo.ui.screens.settings.RssFeedEditor(original, onDismiss = {}) { _, mode, _, _ -> chosen = mode }
+                    if (visible.value) me.bubblespark.tidilo.ui.screens.settings.RssFeedEditor(original, onDismiss = { visible.value = false }) { _, mode, _, _ -> chosen = mode }
                 } } }
                 node("Direct fallback guidance") { it.text?.toString()?.contains("Feeds will be imported in Direct mode automatically") == true }
                 // Compose removes ACTION_CLICK from a currently selected radio option.
@@ -104,13 +244,15 @@ class RssSettingsScreenTest {
                     clickCurrent { it.text?.toString() == "Save" }
                     withTimeout(3000) { while (chosen == null) delay(30) }
                     assertEquals("AI", chosen)
+                } else {
+                    instrumentation.runOnMainSync { visible.value = false }
+                    withTimeout(3000) { while (find { it.text?.toString()?.contains("Feeds will be imported in Direct mode automatically") == true } != null) delay(30) }
                 }
             }
             instrumentation.runOnMainSync {
                 me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.AICORE)
             }
-            delay(300)
-            assertNull(find { it.text?.toString()?.contains("Feeds will be imported in Direct mode automatically") == true })
+            withTimeout(3000) { while (find { it.text?.toString()?.contains("Feeds will be imported in Direct mode automatically") == true } != null) delay(30) }
         } finally {
             instrumentation.runOnMainSync { activity.finish() }
             me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(previous)
@@ -316,7 +458,7 @@ class RssSettingsScreenTest {
             } } }
             node("Simple queue guidance") { it.text?.toString() == "Maximum AI queue: 0 items" }
             repeat(8) {
-                if (find { it.contentDescription?.toString() == "Enabled" } == null) {
+                if (find { it.text?.toString() == "Direct" } == null) {
                     find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                     delay(100)
                 }
@@ -335,17 +477,14 @@ class RssSettingsScreenTest {
             while (toggle != null && !toggle.isCheckable) toggle = toggle.parent
             assertNotNull(toggle)
             val toggleBounds = android.graphics.Rect()
-            val deleteBounds = android.graphics.Rect()
             toggle!!.getBoundsInScreen(toggleBounds)
-            node("Delete action") { it.text?.toString() == "Delete" }.getBoundsInScreen(deleteBounds)
-            assertTrue(toggleBounds.left > deleteBounds.right)
-            assertTrue(kotlin.math.abs(deleteBounds.centerY() - toggleBounds.centerY()) <= 1)
-            node("On state") { it.text?.toString() == "On" }
+            assertTrue(toggleBounds.left > retentionBounds.right)
             click(toggle)
             withTimeout(3000) { while (feed.value.enabled) delay(20) }
-            node("Off state") { it.text?.toString() == "Off" }
             instrumentation.runOnMainSync { feed.value = feed.value.copy(error = null, retentionLimit = 30) }
             node("Numeric maximum") { it.text?.toString() == "Max 30" }
+            click(node("Feed title") { it.text?.toString() == "Example" })
+            node("Delete in editor") { it.text?.toString() == "Delete feed" }
             delay(250)
             val screenshot = instrumentation.uiAutomation.takeScreenshot()
             try { File(context.getExternalFilesDir(null), "issue96-compact-feed.png").outputStream().use {
@@ -405,7 +544,7 @@ class RssSettingsScreenTest {
             val blockedBounds = android.graphics.Rect()
             node("Time control") { it.text?.toString() == "00:00" }.getBoundsInScreen(timeBounds)
             blocked.getBoundsInScreen(blockedBounds)
-            assertTrue("Warning appears beside the time", blockedBounds.left > timeBounds.right)
+            assertTrue("Warning appears below the time", blockedBounds.top >= timeBounds.bottom)
             val blockedScreenshot = instrumentation.uiAutomation.takeScreenshot()
             try { File(context.getExternalFilesDir(null), "issue91-wifi-blocked.png").outputStream().use {
                 blockedScreenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
@@ -423,7 +562,7 @@ class RssSettingsScreenTest {
             try { File(context.getExternalFilesDir(null), "issue91-rss-settings.png").outputStream().use {
                 screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
             } } finally { screenshot.recycle() }
-            click(node("Add feed") { it.text?.toString() == "Add feed" })
+            click(node("Add feed") { it.contentDescription?.toString() == "Add feed" })
             node("Import Mode section") { it.text?.toString() == "Import Mode" }
             node("Max saved items section") { it.text?.toString() == "Max saved items" }
             node("Default retention") { it.isEditable && it.text?.toString() == "30" }

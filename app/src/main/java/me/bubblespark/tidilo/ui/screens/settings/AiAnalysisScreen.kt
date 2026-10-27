@@ -80,6 +80,11 @@ fun AiAnalysisScreen(
     LaunchedEffect(Unit) {
         isAiCoreAvailable = checkAiCoreAvailable()
     }
+    LaunchedEffect(isAiCoreAvailable) {
+        if (isAiCoreAvailable == false && aiAnalysisMode == AiAnalysisMode.AICORE) {
+            AppConfig.setAiAnalysisMode(AiAnalysisMode.DISABLE)
+        }
+    }
 
     TidiloScreenScaffold(
         modifier = modifier,
@@ -120,10 +125,11 @@ fun AiAnalysisScreen(
                 Column {
                     // Mode 1: AICore
                     val isAiCoreSelected = aiAnalysisMode == AiAnalysisMode.AICORE
+                    val isAiCoreEnabled = isAiCoreAvailable == true
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(role = Role.RadioButton) { AppConfig.setAiAnalysisMode(AiAnalysisMode.AICORE) }
+                            .clickable(enabled = isAiCoreEnabled, role = Role.RadioButton) { AppConfig.setAiAnalysisMode(AiAnalysisMode.AICORE) }
                             .padding(horizontal = 20.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -133,7 +139,8 @@ fun AiAnalysisScreen(
                         ) {
                             RadioButton(
                                 selected = isAiCoreSelected,
-                                onClick = null
+                                onClick = null,
+                                enabled = isAiCoreEnabled
                             )
                         }
                         Spacer(modifier = Modifier.width(16.dp))
@@ -142,7 +149,7 @@ fun AiAnalysisScreen(
                                 text = stringResource(R.string.settings_ai_analysis_aicore),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = if (isAiCoreSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = if (isAiCoreEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             if (isAiCoreAvailable == false) {

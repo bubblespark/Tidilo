@@ -260,6 +260,7 @@ fun BookmarkDetailScreen(
         hideHeaderOnScroll = false,
         header = {
             TidiloFrostedHeader(
+                scrollState = scrollState,
                 title = {
                     Text(
                         text = stringResource(R.string.detail_title),

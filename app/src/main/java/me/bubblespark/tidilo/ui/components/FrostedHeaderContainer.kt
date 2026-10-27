@@ -1,16 +1,27 @@
 package me.bubblespark.tidilo.ui.components
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.ScrollableState
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -47,9 +58,11 @@ fun FrostedHeaderContainer(
     contentAlpha: Float = 0.85f,
     fadeHeight: Dp = HeaderDefaults.FadeHeight,
     decayOverlap: Dp = HeaderDefaults.DecayOverlap,
+    scrollState: ScrollableState? = null,
     content: @Composable () -> Unit
 ) {
     val bgColor = MaterialTheme.colorScheme.background
+    val headerScrollState = scrollState?.let { remember(it) { HeaderScrollState(it) } }
 
     Column(
         modifier = modifier
@@ -96,12 +109,31 @@ fun FrostedHeaderContainer(
                 }
             }
     ) {
-        // Content container
-        Box(modifier = Modifier.fillMaxWidth()) {
+        // The overlay owns the hit path. Reuse the body's state for header-origin drags.
+        Box(modifier = Modifier.fillMaxWidth()
+            .then(if (headerScrollState != null) Modifier.scrollable(
+                state = headerScrollState,
+                orientation = Orientation.Vertical,
+                reverseDirection = true
+            ) else Modifier)
+            .pointerInput(Unit) { detectTapGestures {} }) {
             content()
         }
 
         // Dissolve zone spacer allowing smooth attenuation without intercepting touches
         Spacer(modifier = Modifier.height(fadeHeight))
+    }
+}
+
+/** Body animations must not make the header intercept title/button downs as immediate drags. */
+private class HeaderScrollState(private val body: ScrollableState) : ScrollableState by body {
+    override var isScrollInProgress by mutableStateOf(false)
+        private set
+
+    override suspend fun scroll(scrollPriority: MutatePriority, block: suspend ScrollScope.() -> Unit) {
+        body.scroll(scrollPriority) {
+            isScrollInProgress = true
+            try { block() } finally { isScrollInProgress = false }
+        }
     }
 }

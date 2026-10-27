@@ -1,6 +1,9 @@
 package me.bubblespark.tidilo.ui.components
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.ScrollableState
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -20,8 +23,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import me.bubblespark.tidilo.R
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 
 /** A stable toolbar row; title-specific typography and transitions belong to its slots. */
@@ -31,9 +37,12 @@ fun TidiloFrostedHeader(
     modifier: Modifier = Modifier,
     subtitle: (@Composable () -> Unit)? = null,
     navigationIcon: (@Composable () -> Unit)? = null,
+    scrollState: ScrollableState? = null,
+    onTitleClick: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
-    FrostedHeaderContainer(modifier) {
+    val haptic = LocalHapticFeedback.current
+    FrostedHeaderContainer(modifier, scrollState = scrollState) {
         Row(
             Modifier.fillMaxWidth().statusBarsPadding()
                 .height(HeaderDefaults.rowHeight())
@@ -43,7 +52,15 @@ fun TidiloFrostedHeader(
             navigationIcon?.let { navigation ->
                 Box(contentAlignment = Alignment.Center) { navigation() }
             }
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).then(if (onTitleClick != null) {
+                Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onTitleClick()
+                }
+            } else Modifier)) {
                 title()
                 subtitle?.invoke()
             }
@@ -59,6 +76,8 @@ fun TidiloPageHeader(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
     subtitle: (@Composable () -> Unit)? = null,
+    scrollState: ScrollableState? = null,
+    onTitleClick: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     TidiloFrostedHeader(
@@ -68,6 +87,8 @@ fun TidiloPageHeader(
         },
         modifier = modifier,
         subtitle = subtitle,
+        scrollState = scrollState,
+        onTitleClick = onTitleClick,
         navigationIcon = {
             IconButton(onNavigateBack, Modifier.padding(end = 4.dp).size(48.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back),

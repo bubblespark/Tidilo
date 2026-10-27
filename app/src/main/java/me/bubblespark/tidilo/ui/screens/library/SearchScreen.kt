@@ -265,7 +265,11 @@ fun SearchScreen(
         hideHeaderOnScroll = true,
         headerVisible = peekBookmark == null,
         bottomContentPadding = HeaderDefaults.BottomNavigationPadding,
-        header = { TidiloFrostedHeader(title = {
+        header = { TidiloFrostedHeader(scrollState = when {
+            searchQuery.isBlank() -> historyState
+            viewMode == LibraryViewMode.GRID -> resultGridState
+            else -> resultListState
+        }, title = {
             Text(
                 text = stringResource(R.string.search_header_title),
                 style = MaterialTheme.typography.headlineMedium,

@@ -28,6 +28,7 @@ import androidx.navigation.navArgument
 import me.bubblespark.tidilo.ui.screens.library.BookmarkAiReviewScreen
 import me.bubblespark.tidilo.ui.screens.library.BookmarkDetailScreen
 import me.bubblespark.tidilo.ui.screens.settings.SettingsScreen
+import me.bubblespark.tidilo.ui.screens.settings.AiAnalysisScreen
 import me.bubblespark.tidilo.ui.screens.settings.SettingsDebugScreen
 import me.bubblespark.tidilo.ui.screens.settings.GenerateContentRequestScreen
 
@@ -207,6 +208,9 @@ fun TidiloNavGraph(
                 onNavigateBack = {
                     navController.popBackStack()
                 },
+                onNavigateToAiAnalysis = {
+                    navController.navigate(Screen.AiAnalysis.route)
+                },
                 onNavigateToGenerateContentRequest = {
                     navController.navigate(Screen.GenerateContentRequest.route)
                 },
@@ -217,6 +221,17 @@ fun TidiloNavGraph(
                 onNavigateToSummary = { navController.navigate(Screen.Summary.route) },
                 onNavigateToDebug = {
                     navController.navigate(Screen.SettingsDebug.route)
+                }
+            )
+        }
+        composable(Screen.AiAnalysis.route) {
+            AiAnalysisScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToGenerateContentRequest = {
+                    navController.navigate(Screen.GenerateContentRequest.route)
+                },
+                onNavigateToNsfwContents = {
+                    navController.navigate(Screen.NsfwContents.route)
                 }
             )
         }

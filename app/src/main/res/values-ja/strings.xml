@@ -172,6 +172,17 @@
     <string name="settings_language_title">言語</string>
     <string name="settings_language_dialog_title">言語を選択</string>
     <string name="settings_section_ai">AI</string>
+    <string name="settings_ai_analysis_title">AI解析</string>
+    <string name="settings_ai_analysis_aicore">AICore</string>
+    <string name="settings_ai_analysis_disable">無効</string>
+    <string name="settings_ai_analysis_checking">AICoreの利用可否を確認中…</string>
+    <string name="settings_ai_analysis_unavailable">現在AICoreは利用できません。</string>
+    <string name="settings_ai_analysis_card_subtitle">オンデバイスAIによる要約・タグ付けエンジンの設定</string>
+    <string name="settings_ai_analysis_aicore_desc">オンデバイスのGemini Nanoで要約・タグ分類を実行します</string>
+    <string name="settings_ai_analysis_disable_desc">AIによる解析を行わずにブックマークを保存します</string>
+    <string name="settings_section_automation">自動化</string>
+    <string name="settings_section_content_safety">コンテンツの安全性</string>
+    <string name="settings_aicore_fallback_card_subtitle">オンデバイスAIでエラーや制限が発生した際の動作</string>
     <string name="settings_auto_run_ai_title">アクティブ時にAI処理を自動実行</string>
     <string name="settings_auto_run_ai_subtitle">アプリ起動や復帰時にQueuingタスクを自動実行</string>
     <string name="settings_aicore_fallback_title">AICoreエラー発生時の代替処理</string>

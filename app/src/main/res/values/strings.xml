@@ -10,6 +10,12 @@
     <string name="settings_ai_analysis_disable">Disable</string>
     <string name="settings_ai_analysis_checking">Checking AICore availability…</string>
     <string name="settings_ai_analysis_unavailable">AICore is currently unavailable.</string>
+    <string name="settings_ai_analysis_card_subtitle">Configure on-device AI tagging and summarization engine</string>
+    <string name="settings_ai_analysis_aicore_desc">Summarize and categorize bookmarks using on-device Gemini Nano</string>
+    <string name="settings_ai_analysis_disable_desc">Save bookmarks directly without AI analysis</string>
+    <string name="settings_section_automation">Automation</string>
+    <string name="settings_section_content_safety">Content Safety</string>
+    <string name="settings_aicore_fallback_card_subtitle">Behavior when on-device AI encounters errors or limits</string>
     <string name="rss_ai_disabled_note">AI Analysis is disabled in Settings. Feeds will be imported in Direct mode automatically.</string>
     <string name="notification_bookmark_added">Bookmark added</string>
     <!-- App & Navigation -->

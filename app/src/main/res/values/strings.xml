@@ -325,6 +325,9 @@
     <string name="rss_queue_note">Each AI feed keeps its newest 5 unstarted tasks, including AI waiters. Running tasks, errors, retries, and manual usage are separate.</string>
     <string name="rss_dismiss">Dismiss</string>
     <string name="rss_add_feed">Add feed</string>
+    <string name="rss_feed_count">RSS (%1$d)</string>
+    <string name="rss_daily_fetch">Daily fetch</string>
+    <string name="rss_daily_fetch_desc">Automatically fetch subscriptions once a day</string>
     <string name="rss_no_feeds">No feed subscriptions yet</string>
     <string name="rss_ai_mode">AI Analyze</string>
     <string name="rss_direct_mode">Direct</string>

@@ -9,11 +9,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-data class RssSettings(val hour: Int = 0, val minute: Int = 0, val wifiOnly: Boolean = true) {
+data class RssSettings(val hour: Int = 0, val minute: Int = 0, val wifiOnly: Boolean = true, val dailyEnabled: Boolean = true) {
     val time: LocalTime get() = LocalTime.of(hour, minute)
 }
 
-internal class RssPreferences private constructor(context: Context) {
+internal class RssPreferences internal constructor(context: Context) {
     private val preferences = context.getSharedPreferences("tidilo_rss", Context.MODE_PRIVATE)
     private val mutex = Mutex()
     private var loaded = false
@@ -24,7 +24,8 @@ internal class RssPreferences private constructor(context: Context) {
         mutex.withLock {
             if (!loaded) {
                 _state.value = RssSettings(preferences.getInt("hour", 0).coerceIn(0, 23),
-                    preferences.getInt("minute", 0).coerceIn(0, 59), preferences.getBoolean("wifi", true))
+                    preferences.getInt("minute", 0).coerceIn(0, 59), preferences.getBoolean("wifi", true),
+                    preferences.getBoolean("dailyEnabled", true))
                 loaded = true
             }
         }
@@ -34,7 +35,8 @@ internal class RssPreferences private constructor(context: Context) {
         require(settings.hour in 0..23 && settings.minute in 0..59)
         mutex.withLock {
             if (!preferences.edit().putInt("hour", settings.hour).putInt("minute", settings.minute)
-                    .putBoolean("wifi", settings.wifiOnly).commit()) throw java.io.IOException("Could not save RSS settings")
+                    .putBoolean("wifi", settings.wifiOnly).putBoolean("dailyEnabled", settings.dailyEnabled)
+                    .commit()) throw java.io.IOException("Could not save RSS settings")
             _state.value = settings
             loaded = true
         }

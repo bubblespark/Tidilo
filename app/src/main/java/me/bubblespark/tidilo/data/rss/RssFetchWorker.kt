@@ -24,7 +24,7 @@ class RssFetchWorker(context: Context, parameters: WorkerParameters) : Coroutine
         val boundary = if (scheduled > now) scheduled.minusDays(1) else scheduled
         val requestedAt = inputData.getLong("requestedAt", boundary.toInstant().toEpochMilli())
         // Periodic WorkRequest IDs repeat; an unfinished logical run survives retries and midnight.
-        val run = db.withTransaction {
+        val run = RssScheduler.withRunStartLock { db.withTransaction {
             selectRssNotificationRun(notifications.unfinishedRun(id.toString()),
                 notifications.runFor(id.toString(), requestedAt), notifications.latestRun(id.toString()),
                 runAttemptCount, inputData.keyValueMap.containsKey("requestedAt")) ?: RssNotificationRunEntity(
@@ -32,14 +32,14 @@ class RssFetchWorker(context: Context, parameters: WorkerParameters) : Coroutine
                 requestedAt,
                 inputData.getString("feedId") == null
             ).also { notifications.putRun(it) }
-        }
+        } }
         return runRssFetchAttempt(runAttemptCount, fetch = {
             run.completed || RssRepository.getInstance(applicationContext).fetchAll(run.requestedAt, inputData.getString("feedId"),
                 inputData.getString("operationId"), run.id)
         }, realign = {
             notifications.finish(run.id)
             NotificationCoordinator.getInstance(applicationContext).publishCompletedRssRuns()
-            RssScheduler.reschedule(applicationContext, force = true)
+            RssScheduler.reschedule(applicationContext, force = true, finishingWorkId = id)
         })
     }
 }

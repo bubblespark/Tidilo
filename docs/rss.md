@@ -92,6 +92,8 @@ JVM fixtures cover formats, metadata, HTTP validators/failure handling, stable s
 
 The feed editor groups Direct/AI Analyze under Import Mode and Unlimited/retained count under Max saved items. New feeds default to30; editing existing subscriptions preserves their settings. Fetch now uses a filled Material button.
 
+Daily fetch defaults to enabled, including for existing installations. Disabling it cancels the periodic request while preserving the configured time and Wi-Fi preference. An already-started run is allowed to finish or resume after interruption before its periodic request is cancelled, preserving its durable notification accounting; no new daily run is scheduled afterward. Manual fetch and initial feed fetch remain available and continue to use the Wi-Fi preference. Re-enabling daily fetch schedules the next run at the selected local time; startup and clock or timezone reconciliation respect the saved switch. The editor is a bottom sheet and feed deletion always requires confirmation.
+
 ## Acquisition reliability and HTTP policy
 
 Requests prefer validated Wi-Fi even when Wi-Fi-only is OFF; another validated network is allowed only as fallback. Actual feed-XML acquisition/validation failures disable the feed immediately. Transient article errors retain up to five failed attempts durably, then require explicit retry. Worker execution uses bounded slices and durable item checkpoints; time-slice yields and connectivity waits do not consume the publisher-error retry budget. Incomplete operations resume through WorkManager, with startup reconciliation as a fallback. Missing Wi-Fi remains a connectivity wait and does not itself terminate the request. Clock/timezone receiver failures are logged and always finish the asynchronous receiver.

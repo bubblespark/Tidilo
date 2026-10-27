@@ -14,6 +14,10 @@
     <string name="settings_ai_analysis_aicore_desc">Summarize and categorize bookmarks using on-device Gemini Nano</string>
     <string name="settings_ai_analysis_disable_desc">Save bookmarks directly without AI analysis</string>
     <string name="settings_section_automation">Automation</string>
+    <string name="settings_ai_analysis_using_model_title">Using AI Model</string>
+    <string name="settings_section_aicore_parameters">AICore parameters</string>
+    <string name="settings_aicore_fallback_section_title">AICore error fallback</string>
+    <string name="settings_aicore_fallback_section_desc">If an error occurs, the import will be completed without performing AI analysis.\nNo tags are set, and the summary is taken from the “Description” field on the web page.</string>
     <string name="settings_section_content_safety">Content Safety</string>
     <string name="settings_aicore_fallback_card_subtitle">Behavior when on-device AI encounters errors or limits</string>
     <string name="rss_ai_disabled_note">AI Analysis is disabled in Settings. Feeds will be imported in Direct mode automatically.</string>
@@ -216,9 +220,9 @@
     <string name="settings_aicore_fallback_dialog_title">AICore Error Fallback</string>
     <string name="settings_fallback_mode_disable">Disable</string>
     <string name="settings_fallback_mode_disable_desc">Do not fallback; move items to Error</string>
-    <string name="settings_fallback_mode_quota">Only if the AICore quota is exceeded</string>
+    <string name="settings_fallback_mode_quota">If the quota is exceeded</string>
     <string name="settings_fallback_mode_quota_desc">Save without AI summary &amp; tags only when battery quota is exceeded</string>
-    <string name="settings_fallback_mode_all">All</string>
+    <string name="settings_fallback_mode_all">All AICore errors</string>
     <string name="settings_fallback_mode_all_desc">Save without AI summary &amp; tags on all AICore errors</string>
     <string name="settings_generate_content_title">GenerateContentRequest</string>
     <string name="settings_generate_content_subtitle">Configure AICore request parameters</string>

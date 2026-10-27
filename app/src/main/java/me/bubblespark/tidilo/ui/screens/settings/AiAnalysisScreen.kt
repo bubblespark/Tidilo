@@ -19,9 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Card
@@ -41,7 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -94,10 +92,10 @@ fun AiAnalysisScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             // ==========================================
-            // Section 1: AI Analysis Engine Selection
+            // Section 1: Using AI Model
             // ==========================================
             Text(
-                text = stringResource(R.string.settings_ai_analysis_title),
+                text = stringResource(R.string.settings_ai_analysis_using_model_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
@@ -111,65 +109,30 @@ fun AiAnalysisScreen(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 )
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    // Header inside card
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                text = stringResource(R.string.settings_ai_analysis_title),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = stringResource(R.string.settings_ai_analysis_card_subtitle),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
+                Column {
                     // Mode 1: AICore
                     val isAiCoreSelected = aiAnalysisMode == AiAnalysisMode.AICORE
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { AppConfig.setAiAnalysisMode(AiAnalysisMode.AICORE) }
-                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                            .clickable(role = Role.RadioButton) { AppConfig.setAiAnalysisMode(AiAnalysisMode.AICORE) }
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(
-                            selected = isAiCoreSelected,
-                            onClick = { AppConfig.setAiAnalysisMode(AiAnalysisMode.AICORE) }
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                        Box(
+                            modifier = Modifier.size(40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            RadioButton(
+                                selected = isAiCoreSelected,
+                                onClick = null
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = stringResource(R.string.settings_ai_analysis_aicore),
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = if (isAiCoreSelected) FontWeight.Bold else FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -196,27 +159,34 @@ fun AiAnalysisScreen(
                         }
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                    )
 
                     // Mode 2: Disable
                     val isDisableSelected = aiAnalysisMode == AiAnalysisMode.DISABLE
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { AppConfig.setAiAnalysisMode(AiAnalysisMode.DISABLE) }
-                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                            .clickable(role = Role.RadioButton) { AppConfig.setAiAnalysisMode(AiAnalysisMode.DISABLE) }
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(
-                            selected = isDisableSelected,
-                            onClick = { AppConfig.setAiAnalysisMode(AiAnalysisMode.DISABLE) }
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                        Box(
+                            modifier = Modifier.size(40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            RadioButton(
+                                selected = isDisableSelected,
+                                onClick = null
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = stringResource(R.string.settings_ai_analysis_disable),
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = if (isDisableSelected) FontWeight.Bold else FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -252,7 +222,7 @@ fun AiAnalysisScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
+                        .padding(horizontal = 20.dp, vertical = 20.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -299,19 +269,26 @@ fun AiAnalysisScreen(
             }
 
             // ==========================================
-            // Section 3: AICore Exclusive Settings
+            // Section 3 & 4: AICore Exclusive Settings
             // (Visible ONLY when aiAnalysisMode == AICORE)
             // ==========================================
             if (aiAnalysisMode == AiAnalysisMode.AICORE) {
-                Text(
-                    text = stringResource(R.string.dialog_aicore_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 4.dp)
-                )
+                // Section 3: AICore error fallback
+                Column(modifier = Modifier.padding(start = 4.dp)) {
+                    Text(
+                        text = stringResource(R.string.settings_aicore_fallback_section_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.settings_aicore_fallback_section_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
 
-                // Item 1: AICore Error Fallback (In-place Radio Buttons, No Dialog)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -319,83 +296,53 @@ fun AiAnalysisScreen(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     )
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Refresh,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column {
-                                Text(
-                                    text = stringResource(R.string.settings_aicore_fallback_title),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = stringResource(R.string.settings_aicore_fallback_card_subtitle),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            }
-                        }
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
+                    Column {
                         AiCoreFallbackMode.entries.forEachIndexed { index, mode ->
                             val isSelected = mode == aiCoreFallbackMode
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { AppConfig.setAiCoreFallbackMode(mode) }
-                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                    .clickable(role = Role.RadioButton) { AppConfig.setAiCoreFallbackMode(mode) }
+                                    .padding(horizontal = 20.dp, vertical = 14.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                RadioButton(
-                                    selected = isSelected,
-                                    onClick = { AppConfig.setAiCoreFallbackMode(mode) }
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = stringResource(mode.labelRes),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = stringResource(mode.descRes),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.outline
+                                Box(
+                                    modifier = Modifier.size(40.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = null
                                     )
                                 }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Text(
+                                    text = stringResource(mode.labelRes),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                             if (index < AiCoreFallbackMode.entries.size - 1) {
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 20.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                                )
                             }
                         }
                     }
                 }
 
-                // Item 2: GenerateContentRequest Navigation Card
+                // Section 4: AICore parameters
+                Text(
+                    text = stringResource(R.string.settings_section_aicore_parameters),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -408,7 +355,7 @@ fun AiAnalysisScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
+                            .padding(horizontal = 20.dp, vertical = 20.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -458,7 +405,7 @@ fun AiAnalysisScreen(
             }
 
             // ==========================================
-            // Section 4: Content Safety (NSFW Contents)
+            // Section 5: Content Safety (NSFW Contents)
             // ==========================================
             Text(
                 text = stringResource(R.string.settings_section_content_safety),
@@ -480,7 +427,7 @@ fun AiAnalysisScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
+                        .padding(horizontal = 20.dp, vertical = 20.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {

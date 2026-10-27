@@ -45,15 +45,15 @@ enum class AiCoreFallbackMode(
     ),
     QUOTA_EXCEEDED_ONLY(
         "quota_only",
-        "AICore超過時のみ",
-        "Only if the AICore quota is exceeded",
+        "クォータ上限に達した場合のみ",
+        "If the quota is exceeded",
         labelRes = R.string.settings_fallback_mode_quota,
         descRes = R.string.settings_fallback_mode_quota_desc
     ),
     ALL(
         "all",
-        "全て",
-        "All",
+        "すべてのAICoreエラー",
+        "All AICore errors",
         labelRes = R.string.settings_fallback_mode_all,
         descRes = R.string.settings_fallback_mode_all_desc
     );

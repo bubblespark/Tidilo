@@ -669,12 +669,12 @@ class ImportRepositoryTest {
         assertEquals("Disable", AiCoreFallbackMode.DISABLE.enLabel)
 
         assertEquals("quota_only", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.code)
-        assertEquals("AICore超過時のみ", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.jaLabel)
-        assertEquals("Only if the AICore quota is exceeded", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.enLabel)
+        assertEquals("クォータ上限に達した場合のみ", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.jaLabel)
+        assertEquals("If the quota is exceeded", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.enLabel)
 
         assertEquals("all", AiCoreFallbackMode.ALL.code)
-        assertEquals("全て", AiCoreFallbackMode.ALL.jaLabel)
-        assertEquals("All", AiCoreFallbackMode.ALL.enLabel)
+        assertEquals("すべてのAICoreエラー", AiCoreFallbackMode.ALL.jaLabel)
+        assertEquals("All AICore errors", AiCoreFallbackMode.ALL.enLabel)
 
         assertEquals(AiCoreFallbackMode.DISABLE, AiCoreFallbackMode.fromCode("disable"))
         assertEquals(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, AiCoreFallbackMode.fromCode("quota_only"))

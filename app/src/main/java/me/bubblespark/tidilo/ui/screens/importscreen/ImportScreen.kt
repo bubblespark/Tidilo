@@ -520,6 +520,8 @@ fun ImportScreen(
                 }
             }
 
+            item { Spacer(modifier = Modifier.height(4.dp)) }
+
             // ==================== 3. Error Group (defaults to open) ====================
             item {
                 CollapsibleGroupHeader(

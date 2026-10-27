@@ -55,7 +55,7 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
     val feeds by model.feeds.collectAsStateWithLifecycle()
     val settings by model.settings.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle()
-    val fetching by model.fetching.collectAsStateWithLifecycle()
+    val manualFetch by model.manualFetch.collectAsStateWithLifecycle()
     val error by model.error.collectAsStateWithLifecycle()
     val wifi by model.wifi.collectAsStateWithLifecycle()
     val registration by model.registration.collectAsStateWithLifecycle()
@@ -66,7 +66,7 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
         onPauseOrDispose { model.stopListening() }
     }
     RssSettingsContent(feeds, settings, busy, error, wifi, onNavigateBack, model::retry,
-        model::saveSettings, model::saveFeed, model::deleteFeed, model::fetchNow, model::clearError, model::setEnabled, fetching)
+        model::saveSettings, model::saveFeed, model::deleteFeed, model::fetchNow, model::clearError, model::setEnabled, manualFetch)
     if (initialFetch != null) {
         val mobileNotice = settings.wifiOnly && wifi == false
         RssInitialFetchDialog(mobileNotice, online == true && wifi != null, busy,
@@ -108,7 +108,8 @@ internal fun RssSettingsContent(
     feeds: SummaryLoad<List<RssFeedEntity>>, settings: RssSettings, busy: Boolean, error: String?, wifi: Boolean?,
     onBack: () -> Unit, onRetry: () -> Unit, onSettings: (RssSettings) -> Unit,
     onFeed: (RssFeedEntity?, String, String, Int?, Boolean) -> Unit, onDelete: (String) -> Unit,
-    onFetch: () -> Unit, onDismissError: () -> Unit, onEnabled: (String, Boolean) -> Unit = { _, _ -> }, fetching: Boolean = false
+    onFetch: () -> Unit, onDismissError: () -> Unit, onEnabled: (String, Boolean) -> Unit = { _, _ -> },
+    manualFetch: ManualFetchStatus = ManualFetchStatus.Idle
 ) {
     var showTime by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -171,13 +172,17 @@ internal fun RssSettingsContent(
                     Switch(checked = settings.wifiOnly, onCheckedChange = null, enabled = !busy && settings.dailyEnabled)
                 }
                 Text(stringResource(R.string.rss_schedule_note), style = MaterialTheme.typography.bodySmall)
-                FilledTonalButton(onClick = onFetch, modifier = Modifier.fillMaxWidth(), enabled = !busy && !fetching && (feeds as? SummaryLoad.Ready)?.value?.any { it.enabled } == true) {
+                FilledTonalButton(onClick = onFetch, modifier = Modifier.fillMaxWidth(), enabled = !busy && manualFetch == ManualFetchStatus.Idle && (feeds as? SummaryLoad.Ready)?.value?.any { it.enabled } == true) {
                     Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
-                        if (fetching) CircularProgressIndicator(Modifier.fillMaxSize(), strokeWidth = 2.dp)
+                        if (manualFetch == ManualFetchStatus.Running) CircularProgressIndicator(Modifier.fillMaxSize(), strokeWidth = 2.dp)
                         else Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.fillMaxSize())
                     }
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.rss_fetch_now))
+                    Text(stringResource(when (manualFetch) {
+                        ManualFetchStatus.Checking -> R.string.rss_fetch_checking
+                        ManualFetchStatus.Waiting -> R.string.rss_fetch_waiting
+                        else -> R.string.rss_fetch_now
+                    }))
                 }
             }
             }

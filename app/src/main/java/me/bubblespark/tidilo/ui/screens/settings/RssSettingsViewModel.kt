@@ -33,13 +33,21 @@ internal data class RssRegistrationRequest(
     val snapshot: RssRegistrationSnapshot
 )
 
+internal enum class ManualFetchStatus { Checking, Idle, Waiting, Running }
+
+internal fun manualFetchStatus(states: List<WorkInfo.State>): ManualFetchStatus = when {
+    states.any { it == WorkInfo.State.RUNNING } -> ManualFetchStatus.Running
+    states.any { !it.isFinished } -> ManualFetchStatus.Waiting
+    else -> ManualFetchStatus.Idle
+}
+
 class RssSettingsViewModel(application: Application, private val savedState: androidx.lifecycle.SavedStateHandle) : AndroidViewModel(application) {
     private val repository = RssRepository.getInstance(application)
     private val preferences = RssPreferences.getInstance(application)
     val settings = preferences.state
-    val fetching = WorkManager.getInstance(application).getWorkInfosForUniqueWorkFlow(RssScheduler.MANUAL)
-        .map { infos -> infos.any { it.state == WorkInfo.State.RUNNING } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    internal val manualFetch = WorkManager.getInstance(application).getWorkInfosForUniqueWorkFlow(RssScheduler.MANUAL)
+        .map { infos -> manualFetchStatus(infos.map { it.state }) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), ManualFetchStatus.Checking)
     private val _feeds = MutableStateFlow<SummaryLoad<List<RssFeedEntity>>>(SummaryLoad.Loading)
     val feeds = _feeds.asStateFlow()
     private val _busy = MutableStateFlow(false)

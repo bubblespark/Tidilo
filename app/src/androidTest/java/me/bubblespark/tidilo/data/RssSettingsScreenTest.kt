@@ -25,6 +25,32 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSettingsScreenTest {
+    @Test fun manualFetchWaitsWithoutProgressAndReenablesAfterCompletion(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val status = mutableStateOf(me.bubblespark.tidilo.ui.screens.settings.ManualFetchStatus.Waiting)
+        var fetches = 0
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
+                    "waiting-test", "https://example.invalid/feed", "Example"))), RssSettings(), false, null, false,
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
+                    onDelete = {}, onFetch = { fetches++ }, onDismissError = {}, manualFetch = status.value)
+            } } }
+            val waiting = node("Waiting status") { it.text?.toString() == "Waiting to fetch" }
+            var button: AccessibilityNodeInfo? = waiting
+            while (button != null && !button.isClickable) button = button.parent
+            assertFalse(requireNotNull(button).isEnabled)
+            assertNull(find { it.className?.toString() == "android.widget.ProgressBar" })
+            instrumentation.runOnMainSync { status.value = me.bubblespark.tidilo.ui.screens.settings.ManualFetchStatus.Running }
+            node("Running progress") { it.className?.toString() == "android.widget.ProgressBar" }
+            instrumentation.runOnMainSync { status.value = me.bubblespark.tidilo.ui.screens.settings.ManualFetchStatus.Idle }
+            clickText("Fetch now")
+            withTimeout(3000) { while (fetches == 0) delay(20) }
+            assertEquals(1, fetches)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
     @Test fun feedListScrollsBehindTheFixedRssHeader(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()
@@ -109,7 +135,7 @@ class RssSettingsScreenTest {
                 RssSettingsContent(SummaryLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
                     "progress-test", "https://example.com/feed", "Example"))), RssSettings(), false, null, true,
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
-                    onDelete = {}, onFetch = {}, onDismissError = {}, fetching = true)
+                    onDelete = {}, onFetch = {}, onDismissError = {}, manualFetch = me.bubblespark.tidilo.ui.screens.settings.ManualFetchStatus.Running)
             } } }
             val label = node("Fetch now") { it.text?.toString() == "Fetch now" }
             var button: AccessibilityNodeInfo? = label

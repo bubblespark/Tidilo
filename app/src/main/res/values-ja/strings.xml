@@ -181,6 +181,7 @@
     <string name="settings_ai_analysis_aicore_desc">オンデバイスのGemini Nanoで要約・タグ分類を実行します</string>
     <string name="settings_ai_analysis_disable_desc">AIによる解析を行わずにブックマークを保存します</string>
     <string name="settings_section_automation">自動化</string>
+    <string name="settings_section_aicore_automation">AICore自動化</string>
     <string name="settings_ai_analysis_using_model_title">使用するAIモデル</string>
     <string name="settings_section_aicore_parameters">AICoreパラメータ</string>
     <string name="settings_aicore_fallback_section_title">AICoreエラー発生時の代替処理</string>

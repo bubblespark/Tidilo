@@ -14,6 +14,7 @@
     <string name="settings_ai_analysis_aicore_desc">Summarize and categorize bookmarks using on-device Gemini Nano</string>
     <string name="settings_ai_analysis_disable_desc">Save bookmarks directly without AI analysis</string>
     <string name="settings_section_automation">Automation</string>
+    <string name="settings_section_aicore_automation">AICore Automation</string>
     <string name="settings_ai_analysis_using_model_title">Using AI Model</string>
     <string name="settings_section_aicore_parameters">AICore parameters</string>
     <string name="settings_aicore_fallback_section_title">AICore error fallback</string>

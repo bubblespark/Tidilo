@@ -1,13 +1,16 @@
 package me.bubblespark.tidilo.data
 
 import androidx.activity.compose.setContent
+import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.lifecycle.ViewModelProvider
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -33,25 +36,28 @@ class LibraryScrollToTopTest {
             }
         }
         val bookmarks = rssBookmarks + rssBookmarks.map { it.copy(id = "${it.id}-manual", url = "${it.url}/manual", rssFeedId = null) }
-        feeds.forEach { db.rssDao().putFeed(it) }
-        db.bookmarkDao().insertAll(bookmarks)
         val oldDiscoverer = DomainIconManager.htmlDiscoverer
         val oldDownloader = DomainIconManager.httpDownloader
-        DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), true, false) }
-        DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, true, false) }
-        val activity = host.launch()
+        var activityToFinish: ComponentActivity? = null
+        var restoreViewModel: (() -> Unit)? = null
         lateinit var vm: LibraryViewModel
-        lateinit var oldFilter: LibraryFilterMode
-        lateinit var oldView: LibraryViewMode
-        var oldDomain: String? = null
-        var oldFeed: RssFeedEntity? = null
         try {
+            feeds.forEach { db.rssDao().putFeed(it) }
+            db.bookmarkDao().insertAll(bookmarks)
+            DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), true, false) }
+            DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, true, false) }
+            val activity = host.launch()
+            activityToFinish = activity
             host.main {
                 vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
-                oldFilter = vm.filterMode.value
-                oldView = vm.viewMode.value
-                oldDomain = vm.selectedDomainFilter.value
-                oldFeed = vm.selectedRssFeedFilter.value
+                val oldFilter = vm.filterMode.value
+                val oldView = vm.viewMode.value
+                val oldDomain = vm.selectedDomainFilter.value
+                val oldFeed = vm.selectedRssFeedFilter.value
+                restoreViewModel = {
+                    vm.setFilterMode(oldFilter); vm.setViewMode(oldView)
+                    vm.selectDomainFilter(oldDomain); vm.selectRssFeedFilter(oldFeed)
+                }
                 activity.setContent { MaterialTheme { LibraryScreen(vm) } }
             }
             val variants = listOf(
@@ -102,16 +108,34 @@ class LibraryScrollToTopTest {
                 assertEquals("Active layout returns to the exact start: $filter/$detail/$view", 0f, axis.value(), 0f)
             }
         } finally {
-            host.main {
-                activity.setContent { }
-                vm.setFilterMode(oldFilter); vm.setViewMode(oldView)
-                vm.selectDomainFilter(oldDomain); vm.selectRssFeedFilter(oldFeed)
-                activity.finish()
+            withContext(NonCancellable) {
+                try {
+                    activityToFinish?.let { activity ->
+                        host.main {
+                            try {
+                                activity.setContent { }
+                            } finally {
+                                try {
+                                    restoreViewModel?.invoke()
+                                } finally {
+                                    activity.finish()
+                                }
+                            }
+                        }
+                    }
+                } finally {
+                    try {
+                        bookmarks.forEach { db.bookmarkDao().deleteById(it.id) }
+                    } finally {
+                        try {
+                            feeds.forEach { db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(it.id)) }
+                        } finally {
+                            DomainIconManager.htmlDiscoverer = oldDiscoverer
+                            DomainIconManager.httpDownloader = oldDownloader
+                        }
+                    }
+                }
             }
-            bookmarks.forEach { db.bookmarkDao().deleteById(it.id) }
-            feeds.forEach { db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(it.id)) }
-            DomainIconManager.htmlDiscoverer = oldDiscoverer
-            DomainIconManager.httpDownloader = oldDownloader
         }
     }
 }

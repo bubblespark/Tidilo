@@ -15,22 +15,20 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.runBlocking
-import me.bubblespark.tidilo.config.AppConfig
-import me.bubblespark.tidilo.config.AppLanguage
 import me.bubblespark.tidilo.parser.WebPageParser
-import me.bubblespark.tidilo.service.GeminiTaggingService
 import me.bubblespark.tidilo.ui.screens.debug.BodyTextTab
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.*
 import org.junit.Test
 
 class WebParserPromptPreviewTest {
-    @Test fun promptSelectionDisplaysAndCopiesActualPromptAcrossLanguageAndPageChanges(): Unit = runBlocking {
+    @Test fun promptChoiceDisplaysAndCopiesFullFilteredBodyInsteadOfPromptInstructions(): Unit = runBlocking {
         val host = HeaderTestHost()
-        val previousLanguage = AppConfig.currentLanguage.value
+        val editorial = "Editorial device content. ".repeat(45).trim()
         val page = mutableStateOf(WebPageParser.parseHtml("https://example.com/review", """
             <title>Device review</title><meta name="description" content="Review description">
-            <article><p>${"Editorial device content. ".repeat(45)}</p><div class="ad-slot"><p>UnrelatedPromotion</p></div></article>
+            <article><p>$editorial</p><div class="ad-slot"><p>UnrelatedPromotion</p></div>
+            <div class="af_box"><b>AffiliateWidget for sale</b></div></article>
         """.trimIndent()))
         val mode = mutableStateOf(0)
         val fontScale = mutableStateOf(1f)
@@ -38,7 +36,6 @@ class WebParserPromptPreviewTest {
         val activity = host.launch()
         try {
             host.main {
-                AppConfig.setLanguage(AppLanguage.ENGLISH)
                 activity.setContent {
                     val density = LocalDensity.current
                     CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale.value)) {
@@ -57,11 +54,12 @@ class WebParserPromptPreviewTest {
             }
             val promptChip = host.await(activity) { host.text(it, "Prompt") }
             click(promptChip)
-            var expected = GeminiTaggingService.buildPrompt(page.value.resolvedUrl, page.value, AppLanguage.ENGLISH)
+            var expected = editorial
             host.await(activity) { host.text(it, expected) }
             assertFalse(expected.contains("UnrelatedPromotion"))
-            assertEquals(800, me.bubblespark.tidilo.parser.ArticlePreparation.prepare(page.value).bodySnippet.length)
-            click(host.await(activity) { host.text(it, "Copy Prompt") })
+            assertTrue("Inspection includes text beyond the AI snippet limit", expected.length > 800)
+            assertTrue("Raw extraction remains available", requireNotNull(page.value.readabilityArticle).textContent.contains("AffiliateWidget"))
+            click(host.await(activity) { host.text(it, "Copy Body") })
             assertEquals(expected, copied)
             for (scale in listOf(1f, 2f)) {
                 host.main { fontScale.value = scale }
@@ -70,59 +68,56 @@ class WebParserPromptPreviewTest {
                     val chips = host.nodes(activity).filter { node -> node.config.getOrNull(SemanticsProperties.Role) == androidx.compose.ui.semantics.Role.Checkbox }
                     assertEquals("All three choices are measured", 3, chips.size)
                     for (chip in chips) assertTrue("Chip fits narrow viewport", chip.boundsInRoot.right <= 360 * host.context.resources.displayMetrics.density + 1)
-                    val heading = host.nodes(activity).first { host.text(it, "Final prompt • body limited to 800 characters") }
-                    val copy = host.nodes(activity).first { host.text(it, "Copy Prompt") }
+                    val heading = host.nodes(activity).first { host.text(it, "Ad-filtered body • before the 800-character limit") }
+                    val copy = host.nodes(activity).first { host.text(it, "Copy Body") }
                     assertTrue("Copy action stays below the full-width heading", copy.boundsInRoot.top >= heading.boundsInRoot.bottom)
                 }
                 host.capture("issue153-prompt-${scale.toInt()}")
             }
-            host.main { fontScale.value = 1f; AppConfig.setLanguage(AppLanguage.JAPANESE) }
-            expected = GeminiTaggingService.buildPrompt(page.value.resolvedUrl, page.value, AppLanguage.JAPANESE)
+            host.main {
+                fontScale.value = 1f
+                page.value = WebPageParser.parseHtml("https://example.com/next", "<title>Next</title><p>Replacement editorial body.</p>")
+            }
+            expected = "Next Replacement editorial body."
             host.await(activity) { host.text(it, expected) }
-            host.main { page.value = page.value.copy(title = "Replacement title", readabilityArticle = null, jsoupBodyText = "Fallback\nbody") }
-            expected = GeminiTaggingService.buildPrompt(page.value.resolvedUrl, page.value, AppLanguage.JAPANESE)
-            host.await(activity) { host.text(it, expected) }
-            assertTrue(expected.contains("Content: Fallback body"))
-            click(host.await(activity) { host.text(it, "Copy Prompt") })
+            click(host.await(activity) { host.text(it, "Copy Body") })
             assertEquals(expected, copied)
             host.main { mode.value = 1 }
-            host.await(activity) { host.text(it, "Fallback\nbody") }
+            host.await(activity) { host.text(it, page.value.jsoupBodyText) }
             click(host.await(activity) { host.text(it, "Copy Body") })
-            assertEquals("Fallback\nbody", copied)
+            assertEquals(page.value.jsoupBodyText, copied)
             host.main { mode.value = 0 }
-            host.await(activity) { host.text(it, "No body text extracted with this method.") }
+            host.await(activity) { host.text(it, requireNotNull(page.value.readabilityArticle).textContent) }
         } finally {
-            host.main { AppConfig.setLanguage(previousLanguage); activity.finish() }
+            host.main { activity.finish() }
         }
     }
 
-    @Test fun httpErrorPagesShowWhyPromptIsUnavailableAndDisableCopy(): Unit = runBlocking {
+    @Test fun filteredBodyRemainsInspectableAndCopyableForHttpErrors(): Unit = runBlocking {
         val host = HeaderTestHost()
         val page = mutableStateOf(WebPageParser.parseHtml("https://example.com/missing", "<title>Missing</title><p>Not found</p>", statusCode = 404))
-        var copied = false
+        var copied: String? = null
         val activity = host.launch()
         try {
             host.main {
                 activity.setContent {
                     TidiloTheme(dynamicColor = false) {
-                        BodyTextTab(page.value, 2, {}, { copied = true })
+                        BodyTextTab(page.value, 2, {}, { copied = it })
                     }
                 }
             }
-            for (status in listOf(404, 403, 500)) {
+            for (status in listOf(404, 403, 500, 200)) {
                 host.main { page.value = page.value.copy(statusCode = status) }
-                host.await(activity) { host.text(it, "Prompt unavailable: HTTP $status. A successful response is required.") }
-                val copy = host.await(activity) { host.text(it, "Copy Prompt") }
+                host.await(activity) { host.text(it, "Missing Not found") }
+                val copy = host.await(activity) { host.text(it, "Copy Body") }
                 host.main {
                     var target = copy
                     while (target.config.getOrNull(SemanticsActions.OnClick) == null) target = requireNotNull(target.parent)
-                    assertTrue(target.config.contains(SemanticsProperties.Disabled))
+                    assertFalse(target.config.contains(SemanticsProperties.Disabled))
+                    assertTrue(target.config[SemanticsActions.OnClick].action?.invoke() == true)
                 }
+                assertEquals("Missing Not found", copied)
             }
-            assertFalse(copied)
-            host.main { page.value = page.value.copy(statusCode = 200) }
-            val expected = GeminiTaggingService.buildPrompt(page.value.resolvedUrl, page.value, AppConfig.currentLanguage.value)
-            host.await(activity) { host.text(it, expected) }
         } finally { host.main { activity.finish() } }
     }
 }

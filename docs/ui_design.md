@@ -529,7 +529,7 @@ Settings > Data Management includes a Summary entry showing AICore usage, collec
 
 ## Debug Web Parser
 
-The Body Text panel keeps Readability4J and Jsoup Clean modes and adds a Prompt mode. The three filter chips wrap onto additional rows on narrow screens or with large fonts. Details use the full width with the copy button below them. Prompt displays the complete generated prompt in the current app language, including the prepared Content field limited to 800 characters, and Copy Prompt copies exactly the displayed string. Non-2xx responses show why the prompt is unavailable and disable its copy action. The preview uses the same builder as production and never invokes AICore. Existing extraction modes retain their Copy Body action.
+The Body Text panel offers Readability4J, Jsoup Clean, and Prompt modes. Readability4J retains the original extraction for comparison; Prompt shows only the full ad-filtered body before snippet truncation, without prompt instructions or metadata. All modes use Copy Body to copy exactly the displayed text. HTTP error bodies remain inspectable and copyable without invoking production preparation or AICore. The three filter chips wrap onto additional rows on narrow screens or with large fonts. Details use the full width with the copy button below them.
 
 ## RSS Settings and Library Scope
 

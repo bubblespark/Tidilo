@@ -8,6 +8,8 @@ This document specifies all core domain models, state transition machines, seria
 
 ## 1. Domain Data Models
 
+`parser/ParsedWebPage` is a transient extraction result, separate from persisted bookmarks and queue items. It retains the original `readabilityArticle` for inspection and a nullable `cleanedBodyText` for the full ad-filtered Readability/Jsoup result. `promptBodyText` selects that cleaned result, including an intentionally empty result; only legacy callers without it use the original Readability/Jsoup fallback. Debug displays the full body, while ArticlePreparation truncates it to the existing 800-character snippet. No database migration is required.
+
 ### 1.1 `BookmarkItem` & `Tag`
 Located in `ui/screens/library/BookmarkItem.kt`:
 

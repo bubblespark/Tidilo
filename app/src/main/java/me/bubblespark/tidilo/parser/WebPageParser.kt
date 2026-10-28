@@ -217,33 +217,29 @@ object WebPageParser {
         val iconCandidates = me.bubblespark.tidilo.data.DomainIconResolver.parseHtml(doc, finalUrl)
         val imageBaseUrl = doc.baseUri()
 
-        // Remove explicit ad blocks only after metadata and icon extraction, before either text extractor.
-        doc.body().select("[class], [id]")
+        // Keep the original extraction for comparison in the debug workbench.
+        val readabilityArticle = extractReadabilityArticle(finalUrl, doc)
+
+        // Remove common ad blocks after metadata extraction, before preparing the AI body.
+        val adElements = doc.body().select("[class], [id]")
             .filter { element ->
                 element.normalName() !in PROTECTED_CONTENT_TAGS &&
-                    (AD_MARKER_REGEX.containsMatchIn(element.className()) ||
+                    (element.hasClass("af_box") || element.id() == "af_box" ||
+                        AD_MARKER_REGEX.containsMatchIn(element.className()) ||
                         AD_MARKER_REGEX.containsMatchIn(element.id()))
             }
-            .forEach { it.remove() }
+        adElements.forEach { it.remove() }
 
-        // 7. Body text extraction: Readability4J (Mozilla Readability algorithm)
-        val readabilityArticle = try {
-            val readability = Readability4J(finalUrl, doc.clone())
-            val article = readability.parse()
-            val text = article.textContent?.trim().orEmpty()
-            ExtractedArticle(
-                title = article.title?.trim()?.takeIf { it.isNotBlank() },
-                byline = article.byline?.trim()?.takeIf { it.isNotBlank() },
-                excerpt = article.excerpt?.trim()?.takeIf { it.isNotBlank() },
-                textContent = text,
-                charCount = text.length
-            )
-        } catch (_: Exception) {
-            null
+        // Reuse extraction when no matching blocks were removed.
+        val cleanedArticle = when {
+            adElements.isEmpty() -> readabilityArticle
+            doc.body().text().isBlank() -> null
+            else -> extractReadabilityArticle(finalUrl, doc)
         }
 
-        // 8. Body text extraction: Jsoup DOM cleaning fallback
+        // Body text extraction: Jsoup DOM cleaning fallback.
         val jsoupBodyText = extractJsoupCleanText(doc)
+        val cleanedBodyText = cleanedArticle?.textContent?.takeIf { it.isNotBlank() } ?: jsoupBodyText
 
         // 9. Derive canonical/resolved URL (resolving Google share wrapper, URL shorteners, canonical link, og:url)
         val resolvedUrl = resolveRealUrl(
@@ -294,9 +290,26 @@ object WebPageParser {
             faviconUrl = faviconUrl,
             isNsfwSignal = isNsfwSignal,
             iconCandidates = iconCandidates,
-            imageBaseUrl = imageBaseUrl
+            imageBaseUrl = imageBaseUrl,
+            cleanedBodyText = cleanedBodyText
         )
     }
+
+    private fun extractReadabilityArticle(finalUrl: String, doc: Document): ExtractedArticle? =
+        try {
+            val readability = Readability4J(finalUrl, doc.clone())
+            val article = readability.parse()
+            val text = article.textContent?.trim().orEmpty()
+            ExtractedArticle(
+                title = article.title?.trim()?.takeIf { it.isNotBlank() },
+                byline = article.byline?.trim()?.takeIf { it.isNotBlank() },
+                excerpt = article.excerpt?.trim()?.takeIf { it.isNotBlank() },
+                textContent = text,
+                charCount = text.length
+            )
+        } catch (_: Exception) {
+            null
+        }
 
     /**
      * Determines whether the parsed web page contains NSFW signals based on:

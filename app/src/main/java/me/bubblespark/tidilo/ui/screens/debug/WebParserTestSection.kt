@@ -81,9 +81,6 @@ import me.bubblespark.tidilo.parser.ParsedWebPage
 import me.bubblespark.tidilo.parser.WebMetaTag
 import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.R
-import me.bubblespark.tidilo.config.AppConfig
-import me.bubblespark.tidilo.service.GeminiTaggingService
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 
 private val WHITESPACE_REGEX = Regex("\\s+")
@@ -788,14 +785,8 @@ internal fun BodyTextTab(
     onModeChange: (Int) -> Unit,
     onCopy: (String) -> Unit
 ) {
-    val language by AppConfig.currentLanguage.collectAsStateWithLifecycle()
-    val prompt = remember(page, language, mode) {
-        if (mode == 2 && page.statusCode in 200..299) {
-            GeminiTaggingService.buildPrompt(page.resolvedUrl, page, language)
-        } else ""
-    }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        // Wrap extraction and final prompt choices on narrow screens and with large fonts.
+        // Wrap extraction and filtered-body choices on narrow screens and with large fonts.
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -836,7 +827,7 @@ internal fun BodyTextTab(
         val activeText = when (mode) {
             0 -> page.readabilityArticle?.textContent.orEmpty()
             1 -> page.jsoupBodyText
-            else -> prompt
+            else -> page.promptBodyText
         }
 
         val activeCharCount = activeText.length
@@ -870,7 +861,6 @@ internal fun BodyTextTab(
             Button(
                 onClick = { onCopy(activeText) },
                 modifier = Modifier.align(Alignment.End),
-                enabled = mode != 2 || page.statusCode in 200..299,
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -883,10 +873,7 @@ internal fun BodyTextTab(
                     modifier = Modifier.size(14.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    if (mode == 2) stringResource(R.string.debug_parser_copy_prompt) else "Copy Body",
-                    style = MaterialTheme.typography.labelSmall
-                )
+                Text("Copy Body", style = MaterialTheme.typography.labelSmall)
             }
         }
 
@@ -919,14 +906,7 @@ internal fun BodyTextTab(
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
             modifier = Modifier.fillMaxWidth()
         ) {
-            if (mode == 2 && page.statusCode !in 200..299) {
-                Text(
-                    text = stringResource(R.string.debug_parser_prompt_http_error, page.statusCode),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(14.dp)
-                )
-            } else if (activeText.isBlank()) {
+            if (activeText.isBlank()) {
                 Text(
                     text = "No body text extracted with this method.",
                     style = MaterialTheme.typography.bodySmall,

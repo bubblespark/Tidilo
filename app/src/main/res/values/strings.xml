@@ -247,9 +247,7 @@
     <string name="debug_aicore_status_title">Gemini Nano / AICore Status</string>
     <string name="debug_mlkit_genai_title">ML Kit GenAI Prompt API Test</string>
     <string name="debug_parser_prompt">Prompt</string>
-    <string name="debug_parser_prompt_description">Final prompt • body limited to 800 characters</string>
-    <string name="debug_parser_copy_prompt">Copy Prompt</string>
-    <string name="debug_parser_prompt_http_error">Prompt unavailable: HTTP %1$d. A successful response is required.</string>
+    <string name="debug_parser_prompt_description">Ad-filtered body • before the 800-character limit</string>
 
     <!-- Notifications -->
     <string name="notification_channel_name">Import Notifications</string>

@@ -19,23 +19,24 @@ class WebPageAdFilteringTest {
                 assertTrue(page.jsoupBodyText.contains("battery life"))
                 assertTrue(requireNotNull(page.readabilityArticle).textContent.contains("battery life"))
                 assertFalse("Jsoup: $attribute=$marker", page.jsoupBodyText.contains("UnrelatedPromotion"))
-                assertFalse("Readability: $attribute=$marker", page.readabilityArticle.textContent.contains("UnrelatedPromotion"))
+                assertFalse("Filtered body: $attribute=$marker", page.promptBodyText.contains("UnrelatedPromotion"))
                 assertFalse("Prompt: $attribute=$marker", GeminiTaggingService.buildPrompt(page.resolvedUrl, page, AppLanguage.ENGLISH).contains("UnrelatedPromotion"))
             }
         }
     }
 
-    @Test fun unrelatedNamesAffiliateWidgetsAndProductMentionsRemain() {
+    @Test fun unrelatedNamesAndProductMentionsRemainButAffiliateBoxesAreRemoved() {
         val page = WebPageParser.parseHtml("https://example.com/review", """
             <title>Device review</title><article><p>$editorial</p>
-            <div class="download reading adventure shadow" id="adapter"><p>Logicool G304 costs 100 dollars in this review.</p></div>
+            <div class="download reading adventure shadow af_boxed" id="adapter"><p>Logicool G304 costs 100 dollars in this review.</p></div>
             <div class="af_box"><p>AffiliateWidget remains available for inspection.</p></div>
             </article>
         """.trimIndent())
-        for (text in listOf(page.jsoupBodyText, requireNotNull(page.readabilityArticle).textContent)) {
+        assertTrue(requireNotNull(page.readabilityArticle).textContent.contains("AffiliateWidget"))
+        for (text in listOf(page.jsoupBodyText, page.promptBodyText)) {
             assertTrue(text.contains("Logicool G304"))
             assertTrue(text.contains("100 dollars"))
-            assertTrue(text.contains("AffiliateWidget"))
+            assertFalse(text.contains("AffiliateWidget"))
         }
     }
 
@@ -55,7 +56,7 @@ class WebPageAdFilteringTest {
         assertEquals("Article", page.jsonLdList.single().type)
         assertTrue(requireNotNull(page.iconCandidates).any { it.url == "https://cdn.example.com/assets/icon.png" })
         assertEquals("https://cdn.example.com/assets/cover.png", ArticlePreparation.prepare(page).ogImageUrl)
-        for (text in listOf(page.jsoupBodyText, requireNotNull(page.readabilityArticle).textContent)) {
+        for (text in listOf(page.jsoupBodyText, page.promptBodyText)) {
             assertTrue(text.contains("EditorialConclusion"))
             assertFalse(text.contains("NestedPromotion"))
         }
@@ -64,12 +65,34 @@ class WebPageAdFilteringTest {
     @Test fun preparedSnippetAndPromptKeepTheExistingLimitAndFallback() {
         val parsed = WebPageParser.parseHtml("https://example.com/review", "<title>Device review</title><p>$editorial</p>")
         val text = "A".repeat(799) + "\n" + "TruncatedTail"
-        val page = parsed.copy(readabilityArticle = requireNotNull(parsed.readabilityArticle).copy(textContent = text, charCount = text.length))
+        val page = parsed.copy(readabilityArticle = requireNotNull(parsed.readabilityArticle).copy(textContent = text, charCount = text.length), cleanedBodyText = null)
         val expected = "A".repeat(799) + " "
         assertEquals(expected, ArticlePreparation.prepare(page).bodySnippet)
         assertTrue(GeminiTaggingService.buildPrompt(page.resolvedUrl, page, AppLanguage.ENGLISH).endsWith("Content: $expected"))
         assertFalse(GeminiTaggingService.buildPrompt(page.resolvedUrl, page, AppLanguage.ENGLISH).contains("TruncatedTail"))
         val fallback = page.copy(readabilityArticle = null, jsoupBodyText = "Fallback\nbody")
         assertTrue(GeminiTaggingService.buildPrompt(page.resolvedUrl, fallback, AppLanguage.ENGLISH).endsWith("Content: Fallback body"))
+    }
+
+    @Test fun affiliateBoxesAreRemovedAcrossHostsBeforeSnippetTruncation() {
+        for (host in listOf("publisher.example", "another.example")) {
+            val page = WebPageParser.parseHtml("https://$host/review", """
+                <title>Device review</title><article>
+                <div class="af_box"><b>AffiliateWidget for sale</b></div>
+                <p>${editorial.repeat(2)}</p></article>
+            """.trimIndent())
+            assertTrue(page.promptBodyText.length > 800)
+            assertFalse(page.promptBodyText.contains("AffiliateWidget"))
+            assertTrue(page.promptBodyText.startsWith("This device review"))
+            assertEquals(page.promptBodyText.take(800).replace("\n", " "), ArticlePreparation.prepare(page).bodySnippet)
+            assertFalse(GeminiTaggingService.buildPrompt(page.resolvedUrl, page, AppLanguage.ENGLISH).contains("AffiliateWidget"))
+        }
+    }
+
+    @Test fun completelyFilteredBodyNeverFallsBackToUnfilteredAds() {
+        val page = WebPageParser.parseHtml("https://example.com/promotion", "<title>Promotion</title><div class='af_box'><p>${editorial.repeat(2)}</p></div>")
+        assertTrue(requireNotNull(page.readabilityArticle).textContent.isNotBlank())
+        assertEquals("", page.promptBodyText)
+        assertEquals("", ArticlePreparation.prepare(page).bodySnippet)
     }
 }

@@ -33,29 +33,25 @@ enum class AiCoreFallbackMode(
     val code: String,
     val jaLabel: String,
     val enLabel: String,
-    @StringRes val labelRes: Int = 0,
-    @StringRes val descRes: Int = 0
+    @StringRes val labelRes: Int = 0
 ) {
     DISABLE(
         "disable",
         "無効",
         "Disable",
-        labelRes = R.string.settings_fallback_mode_disable,
-        descRes = R.string.settings_fallback_mode_disable_desc
+        labelRes = R.string.settings_fallback_mode_disable
     ),
     QUOTA_EXCEEDED_ONLY(
         "quota_only",
         "AICore超過時のみ",
         "Only if the AICore quota is exceeded",
-        labelRes = R.string.settings_fallback_mode_quota,
-        descRes = R.string.settings_fallback_mode_quota_desc
+        labelRes = R.string.settings_fallback_mode_quota
     ),
     ALL(
         "all",
         "全て",
         "All",
-        labelRes = R.string.settings_fallback_mode_all,
-        descRes = R.string.settings_fallback_mode_all_desc
+        labelRes = R.string.settings_fallback_mode_all
     );
 
     fun getLabel(isJapanese: Boolean): String = if (isJapanese) jaLabel else enLabel

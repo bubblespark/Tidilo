@@ -22,6 +22,8 @@ class TidiloNavGraphTest {
         // Subscreen to subscreen
         assertFalse(isBottomNavTabSwitch(Screen.Settings.route, Screen.NsfwContents.route))
         assertFalse(isBottomNavTabSwitch(Screen.Settings.route, Screen.GenerateContentRequest.route))
+        assertFalse(isBottomNavTabSwitch(Screen.Settings.route, Screen.AiAnalysis.route))
+        assertFalse(isBottomNavTabSwitch(Screen.AiAnalysis.route, Screen.Library.route))
 
         // Null / Unknown
         assertFalse(isBottomNavTabSwitch(null, Screen.Library.route))

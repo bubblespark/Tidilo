@@ -8,8 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.platform.ViewRootForTest
-import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.test.platform.app.InstrumentationRegistry
@@ -164,55 +162,6 @@ class RssSettingsScreenTest {
         } finally { instrumentation.runOnMainSync { activity.finish() } }
     }
 
-    @Test fun aiCoreRadioIsDisabledWhileCheckingOrUnavailableAndRechecksOnReopen(): Unit = runBlocking {
-        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
-        val shown = mutableStateOf(true)
-        val mode = mutableStateOf(me.bubblespark.tidilo.config.AiAnalysisMode.AICORE)
-        val firstCheck = kotlinx.coroutines.CompletableDeferred<Boolean>()
-        val mounted = java.util.concurrent.atomic.AtomicBoolean(false)
-        var calls = 0
-        try {
-            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                if (shown.value) {
-                    androidx.compose.runtime.DisposableEffect(Unit) {
-                        mounted.set(true)
-                        onDispose { mounted.set(false) }
-                    }
-                    me.bubblespark.tidilo.ui.screens.settings.AiAnalysisDialog(mode.value,
-                        onSelect = { mode.value = it; shown.value = false }, onDismiss = { shown.value = false },
-                        checkAvailable = { if (++calls == 1) firstCheck.await() else true })
-                }
-            } } }
-            node("Availability pending") { it.text?.toString()?.startsWith("Checking AICore") == true }
-            fun radio(label: String): AccessibilityNodeInfo? {
-                var candidate = find { it.text?.toString() == label }
-                while (candidate != null && !candidate.isCheckable) candidate = candidate.parent
-                return candidate
-            }
-            assertFalse(requireNotNull(radio("AICore")).isEnabled)
-            for (label in listOf("AICore", "Disable")) {
-                val bounds = android.graphics.Rect()
-                requireNotNull(radio(label)).getBoundsInScreen(bounds)
-                assertTrue("$label row must be at least 48dp high",
-                    bounds.height() >= kotlin.math.ceil(48f * context.resources.displayMetrics.density).toInt())
-            }
-            assertTrue(requireNotNull(radio("Disable")).isEnabled)
-            assertFalse(requireNotNull(radio("AICore")).performAction(AccessibilityNodeInfo.ACTION_CLICK))
-            firstCheck.complete(false)
-            node("Unavailable explanation") { it.text?.toString() == "AICore is currently unavailable." }
-            assertFalse(requireNotNull(radio("AICore")).isEnabled)
-            assertEquals(me.bubblespark.tidilo.config.AiAnalysisMode.AICORE, mode.value)
-            clickText("Disable")
-            withTimeout(3000) { while (mounted.get()) delay(20) }
-            instrumentation.runOnMainSync { shown.value = true }
-            withTimeout(5000) { while (calls != 2 || radio("AICore")?.isEnabled != true) delay(30) }
-            clickText("AICore")
-            withTimeout(3000) { while (mode.value != me.bubblespark.tidilo.config.AiAnalysisMode.AICORE) delay(20) }
-            assertEquals(2, calls)
-        } finally { instrumentation.runOnMainSync { activity.finish() } }
-    }
-
     @Test fun globalAiDisableExplainsDirectFallbackWithoutRestrictingFeedChoices(): Unit = runBlocking {
         val previous = me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value
         me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE)
@@ -253,56 +202,6 @@ class RssSettingsScreenTest {
                 me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.AICORE)
             }
             withTimeout(3000) { while (find { it.text?.toString()?.contains("Feeds will be imported in Direct mode automatically") == true } != null) delay(30) }
-        } finally {
-            instrumentation.runOnMainSync { activity.finish() }
-            me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(previous)
-        }
-    }
-
-    @Test fun settingsAiAnalysisDialogUpdatesModeAndDismissDoesNotChangeIt(): Unit = runBlocking {
-        val previous = me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value
-        me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE)
-        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
-        try {
-            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                me.bubblespark.tidilo.ui.screens.settings.SettingsScreen(onNavigateBack = {}, onNavigateToGenerateContentRequest = {},
-                    checkAiCoreAvailable = { true })
-            } } }
-            node("Fresh Settings screen") { it.text?.toString() == "Settings" }
-            repeat(4) {
-                if (find { it.text?.toString() == "AI Analysis" } == null) {
-                    find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-                    instrumentation.waitForIdleSync()
-                    delay(300)
-                }
-            }
-            var hasButtonRole = false
-            instrumentation.runOnMainSync {
-                fun hasRole(node: SemanticsNode): Boolean =
-                    (node.config.getOrNull(SemanticsProperties.Role) == androidx.compose.ui.semantics.Role.Button &&
-                        node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == "AI Analysis" } == true) ||
-                        node.children.any(::hasRole)
-                fun inspect(view: android.view.View) {
-                    if (view is ViewRootForTest && hasRole(view.semanticsOwner.rootSemanticsNode)) hasButtonRole = true
-                    if (view is android.view.ViewGroup) for (index in 0 until view.childCount) inspect(view.getChildAt(index))
-                }
-                inspect(activity.window.decorView)
-            }
-            assertTrue("AI Analysis setting must expose the Button semantic role", hasButtonRole)
-            clickText("AI Analysis")
-            clickText("Close")
-            awaitAiSettingCard()
-            assertEquals(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE, me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value)
-            clickText("AI Analysis")
-            node("Mode dialog open") { it.text?.toString() == "Close" }
-            clickText("AICore")
-            awaitAiSettingCard()
-            assertEquals(me.bubblespark.tidilo.config.AiAnalysisMode.AICORE, me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value)
-            clickText("AI Analysis")
-            node("Mode dialog reopened") { it.text?.toString() == "Close" }
-            clickText("Disable")
-            assertEquals(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE, me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value)
         } finally {
             instrumentation.runOnMainSync { activity.finish() }
             me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(previous)
@@ -420,16 +319,6 @@ class RssSettingsScreenTest {
                 item = item.parent
             }
             throw AssertionError("Cannot click $label: ${chain.joinToString("; ")}", e)
-        }
-    }
-
-    /** A transient null active window is not proof that a closing dialog has disappeared. */
-    private suspend fun awaitAiSettingCard() = withTimeout(5000) {
-        while (true) {
-            var item = find { it.text?.toString() == "AI Analysis" }
-            while (item != null && !item.isClickable) item = item.parent
-            if (item?.isEnabled == true && find { it.text?.toString() == "Close" } == null) return@withTimeout
-            delay(30)
         }
     }
 

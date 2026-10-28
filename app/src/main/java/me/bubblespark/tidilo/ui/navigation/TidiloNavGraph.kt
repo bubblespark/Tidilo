@@ -28,6 +28,8 @@ import androidx.navigation.navArgument
 import me.bubblespark.tidilo.ui.screens.library.BookmarkAiReviewScreen
 import me.bubblespark.tidilo.ui.screens.library.BookmarkDetailScreen
 import me.bubblespark.tidilo.ui.screens.settings.SettingsScreen
+import me.bubblespark.tidilo.ui.screens.settings.AiAnalysisScreen
+import androidx.lifecycle.compose.dropUnlessResumed
 import me.bubblespark.tidilo.ui.screens.settings.SettingsDebugScreen
 import me.bubblespark.tidilo.ui.screens.settings.GenerateContentRequestScreen
 
@@ -207,16 +209,24 @@ fun TidiloNavGraph(
                 onNavigateBack = {
                     navController.popBackStack()
                 },
-                onNavigateToGenerateContentRequest = {
-                    navController.navigate(Screen.GenerateContentRequest.route)
-                },
-                onNavigateToNsfwContents = {
-                    navController.navigate(Screen.NsfwContents.route)
+                onNavigateToAiAnalysis = dropUnlessResumed {
+                    navController.navigate(Screen.AiAnalysis.route) { launchSingleTop = true }
                 },
                 onNavigateToRss = { navController.navigate(Screen.RssSettings.route) },
                 onNavigateToSummary = { navController.navigate(Screen.Summary.route) },
                 onNavigateToDebug = {
                     navController.navigate(Screen.SettingsDebug.route)
+                }
+            )
+        }
+        composable(Screen.AiAnalysis.route) {
+            AiAnalysisScreen(
+                onNavigateBack = dropUnlessResumed { navController.popBackStack() },
+                onNavigateToGenerateContentRequest = dropUnlessResumed {
+                    navController.navigate(Screen.GenerateContentRequest.route) { launchSingleTop = true }
+                },
+                onNavigateToNsfwContents = dropUnlessResumed {
+                    navController.navigate(Screen.NsfwContents.route) { launchSingleTop = true }
                 }
             )
         }

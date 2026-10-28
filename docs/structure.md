@@ -72,6 +72,8 @@ app/src/main/java/com/ykgudev/tidilo/
     │   │   └── QueueViewModel.kt        # Enqueueing, promote-to-running, retry triggers
     │   │
     │   └── settings/                    # User preferences & LLM inference parameters
+    │       ├── AiAnalysisScreen.kt                # Inline AI model, automation, fallback, parameters, and safety settings
+    │       ├── SettingsComponents.kt              # Grouped cards and accessible settings rows
     │       ├── GenerateContentRequestScreen.kt    # Fine-grained tuning for Gemini Nano inference
     │       ├── GenerateContentRequestViewModel.kt # State management for inference parameters
     │       ├── SettingsDebugScreen.kt             # Diagnostics: AICore prompt API tests & Web Parser workbench
@@ -80,7 +82,7 @@ app/src/main/java/com/ykgudev/tidilo/
     │       ├── SummaryDate.kt                     # DST-aware local midnight scheduling
     │       ├── RssSettingsScreen.kt               # Subscription editor, daily time and Wi-Fi-only controls
     │       ├── RssSettingsViewModel.kt            # Feed/settings state and lifecycle network observation
-    │       └── SettingsScreen.kt                  # App language selection, image cache clearing, Debug navigation
+    │       └── SettingsScreen.kt                  # Grouped General, Data Management, and Debug navigation
     │
     └── theme/                           # Design tokens & Material 3 theme styling
         ├── Color.kt                     # M3 light/dark palette, primary/secondary/container colors

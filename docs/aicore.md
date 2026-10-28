@@ -10,11 +10,11 @@ This document details the on-device AI integration, prompt engineering architect
 
 ### AI Analysis selection
 
-Settings > AI > AI Analysis offers **AICore** and **Disable**, persisted in AppConfig SharedPreferences and exposed as a StateFlow. This setting is independent of AICore error fallback.
+Settings > General > AI Analysis opens a dedicated configuration page offering **AICore** and **Disable**, persisted in AppConfig SharedPreferences and exposed as a StateFlow. This setting is independent of AICore error fallback.
 
 On the first launch of a fresh installation, a status-only check selects AICore only for `FeatureStatus.AVAILABLE`; DOWNLOADABLE, DOWNLOADING, UNAVAILABLE, unknown status, initialization/status failure, and a ten-second timeout select Disable. The persisted selection also serves as the initialization marker, so later launches do not repeat automatic selection. Existing saved settings and manual changes during the check take precedence. Updates without a saved setting preserve the previous AICore default. A fresh installation is identified by matching Android `firstInstallTime` and `lastUpdateTime`; an update before the first-ever launch conservatively preserves the previous default. If package inspection fails, treat installation history as unknown and preserve that default rather than failing the shared initialization gate; coroutine cancellation still propagates. Startup checking runs on IO, and normal imports, queued execution, and RSS acquisition wait for it before choosing a processing mode.
 
-Every opening of the AI Analysis dialog performs a fresh availability check. AICore is gray and unselectable while checking or whenever the result is not AVAILABLE; Disable remains enabled. An unavailable result does not itself modify the current selection. Closing and reopening checks again. Checks never download a model, generate content, or record inference usage, and the client closes on completion, failure, timeout, or cancellation.
+Every entry to the AI Analysis page performs a fresh availability check. AICore is gray and unselectable while checking or whenever the result is not AVAILABLE; Disable remains enabled. An unavailable result does not itself modify the current selection. Leaving and reopening checks again. Automatic Disable selection applies only to the existing fresh-install initialization; settings-page checks never replace a saved choice. AICore-only controls hide when Disable is selected, preserving fallback, request parameter, and automation preferences. Content Safety remains available in either mode. Checks never download a model, generate content, or record inference usage, and the client closes on completion, failure, timeout, or cancellation.
 
 With Disable, normal manual/shared imports retain URL normalization, duplicate checks, HTML acquisition, parsed Description, OG image references/cache recovery, and domain icons. Successful acquisition saves immediately through BookmarkRepository.addBookmarkAndAwait with isAiSkipped = true and Tag.createEmpty(), without inserting a Ready task. Parsed OG Description takes precedence over standard Description; a missing Description remains empty. Body snippets are not persisted on bookmarks. Acquisition failures remain retryable Error tasks; persistence failures retain prepared data as Save failed.
 
@@ -274,10 +274,10 @@ AICore inference is only permitted while the app is in the foreground (`TidiloAp
 | **JSON Parse Malformed** | SLM formatting anomaly | Unparseable JSON syntax | Gracefully caught in `GeminiTaggingService`; falls back to HTML OGP metadata without throwing an unrecoverable exception. |
 
 ### AICore Error Fallback Modes (`AppConfig.aiCoreFallbackMode`)
-Users can configure the fallback behavior under **Settings ➔ AI ➔ AICoreエラー発生時のフォールバック**:
+Users can configure the fallback behavior under **Settings > General > AI Analysis > AICore error fallback** using inline radio choices:
 - **`無効 (Disable)`** *(Default)*: Standard behavior where quota exceeded triggers a warning dialog and other fatal errors push items to the `Error` list.
-- **`AICore超過時のみ (Only if the AICore quota is exceeded)`**: Triggers fallback exclusively when error code `PER_APP_BATTERY_USE_QUOTA_EXCEEDED (27)` is returned. Items are saved into the Library as bookmarks with `isAiSkipped = true` without showing the error dialog.
-- **`全て (All)`**: Applies fallback to quota exceeded and all AICore error codes (after retry exhaustion where applicable).
+- **`If the quota is exceeded`**: Triggers fallback exclusively when error code `PER_APP_BATTERY_USE_QUOTA_EXCEEDED (27)` is returned. Items are saved into the Library as bookmarks with `isAiSkipped = true` without showing the error dialog.
+- **`All AICore errors`**: Applies fallback to quota exceeded and all AICore error codes (after retry exhaustion where applicable).
 
 #### Fallback Bookmark Contract
 - **`isAiSkipped`**: `true` (renders an "AI Skipped" badge in bookmark list and detail cards).

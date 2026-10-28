@@ -82,6 +82,14 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.CollectionsBookmark
     )
 
+    data object AiAnalysis : Screen(
+        route = "settings_ai_analysis",
+        title = "AI Analysis",
+        titleRes = R.string.settings_ai_analysis_title,
+        selectedIcon = Icons.Filled.CollectionsBookmark,
+        unselectedIcon = Icons.Outlined.CollectionsBookmark
+    )
+
     data object GenerateContentRequest : Screen(
         route = "generate_content_request",
         title = "GenerateContentRequest",

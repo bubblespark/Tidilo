@@ -211,17 +211,11 @@
     <string name="settings_section_general">General</string>
     <string name="settings_language_title">Language</string>
     <string name="settings_language_dialog_title">Select Language</string>
-    <string name="settings_section_ai">AI</string>
     <string name="settings_auto_run_ai_title">Run AI when active</string>
     <string name="settings_auto_run_ai_subtitle">Auto-promote Queuing tasks when app becomes active</string>
-    <string name="settings_aicore_fallback_title">AICore error fallback</string>
-    <string name="settings_aicore_fallback_dialog_title">AICore Error Fallback</string>
     <string name="settings_fallback_mode_disable">Disable</string>
-    <string name="settings_fallback_mode_disable_desc">Do not fallback; move items to Error</string>
     <string name="settings_fallback_mode_quota">If the quota is exceeded</string>
-    <string name="settings_fallback_mode_quota_desc">Save without AI summary &amp; tags only when battery quota is exceeded</string>
     <string name="settings_fallback_mode_all">All AICore errors</string>
-    <string name="settings_fallback_mode_all_desc">Save without AI summary &amp; tags on all AICore errors</string>
     <string name="settings_generate_content_title">GenerateContentRequest</string>
     <string name="settings_generate_content_subtitle">Configure AICore request parameters</string>
     <string name="settings_nsfw_title">NSFW Contents</string>

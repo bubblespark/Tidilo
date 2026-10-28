@@ -171,17 +171,11 @@
     <string name="settings_section_general">全般</string>
     <string name="settings_language_title">言語</string>
     <string name="settings_language_dialog_title">言語を選択</string>
-    <string name="settings_section_ai">AI</string>
     <string name="settings_auto_run_ai_title">アクティブ時にAI処理を自動実行</string>
     <string name="settings_auto_run_ai_subtitle">アプリ起動や復帰時にQueuingタスクを自動実行</string>
-    <string name="settings_aicore_fallback_title">AICoreエラー発生時の代替処理</string>
-    <string name="settings_aicore_fallback_dialog_title">AICoreエラー発生時の代替処理</string>
     <string name="settings_fallback_mode_disable">無効</string>
-    <string name="settings_fallback_mode_disable_desc">代替処理は行われず、エラーとして扱われます。</string>
     <string name="settings_fallback_mode_quota">AICoreの割り当て量を超えた場合のみ</string>
-    <string name="settings_fallback_mode_quota_desc">AICoreエラーの割り当て超過発生時のみ、AIによる要約とタグ付けを省略して保存する。</string>
     <string name="settings_fallback_mode_all">全て</string>
-    <string name="settings_fallback_mode_all_desc">全てのAICoreエラー発生時、AIによる要約とタグ付けを省略して保存する。</string>
     <string name="settings_generate_content_title">GenerateContentRequest</string>
     <string name="settings_generate_content_subtitle">AICoreのリクエストパラメータの設定</string>
     <string name="settings_nsfw_title">NSFW コンテンツ</string>

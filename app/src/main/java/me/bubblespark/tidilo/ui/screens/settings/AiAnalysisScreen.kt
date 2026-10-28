@@ -64,9 +64,19 @@ fun AiAnalysisScreen(
     val currentCheck by rememberUpdatedState(checkAiCoreAvailable)
     LaunchedEffect(Unit) { available = currentCheck() }
 
-    AiAnalysisContent(mode, fallback, autoRun, available, onNavigateBack,
-        AppConfig::setAiAnalysisMode, AppConfig::setAiCoreFallbackMode, AppConfig::setAutoRunAiOnActive,
-        onNavigateToGenerateContentRequest, onNavigateToNsfwContents, modifier)
+    AiAnalysisContent(
+        mode = mode,
+        fallback = fallback,
+        autoRun = autoRun,
+        available = available,
+        onNavigateBack = onNavigateBack,
+        onModeChange = AppConfig::setAiAnalysisMode,
+        onFallbackChange = AppConfig::setAiCoreFallbackMode,
+        onAutoRunChange = AppConfig::setAutoRunAiOnActive,
+        onNavigateToParameters = onNavigateToGenerateContentRequest,
+        onNavigateToSafety = onNavigateToNsfwContents,
+        modifier = modifier
+    )
 }
 
 @Composable

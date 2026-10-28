@@ -104,6 +104,8 @@ To fit within the limited context window of on-device LLMs and minimize inferenc
 2. **Metadata Description**:
    - `og:description` or `<meta name="description">`.
 3. **Body Text Normalization**:
+   - Before either body extractor runs, remove elements whose class or ID contains a case-insensitive, whitespace/hyphen/underscore-delimited `ad`, `ads`, `advert`, `advertisement`, `advertising`, or `adsbygoogle` token. Preserve `html`, `body`, `main`, and `article` roots. Metadata and icon candidates are extracted before this destructive cleanup.
+   - This common filter has no site-specific rules. Substring matches such as `download` and ambiguous affiliate markers such as `af_box` remain untouched; product names, prices, and purchase links alone do not trigger removal.
    - Extracted using Readability4J (main article content cleaner) with fallback to Jsoup body text.
    - Cleaned of excessive whitespace and line breaks (`replace("\n", " ")`).
    - **Context Window Ceiling**: Hard truncated to the first **800 characters** (`bodySnippet.take(800)`).
@@ -111,6 +113,8 @@ To fit within the limited context window of on-device LLMs and minimize inferenc
    - HTML fetching, Readability4J body extraction, OGP metadata detection, and domain icon caching are executed and completed **immediately at URL ingestion time (enqueue)**.
    - The precomputed snippets (`bodySnippet`, `description`, `siteName`, `isNsfw`) are stored in `QueueItem` and persisted into preferences.
    - When a task transitions to **Running**, `GeminiTaggingService` activates the **Fast Path**, completely bypassing redundant HTTP network calls and DOM parsing to invoke on-device AICore inference with zero I/O delay, slashing Running task latency from ~1.8s to ~1.0s.
+
+The debug web parser's Body Text panel offers Readability4J, Jsoup Clean, and Prompt modes. Prompt renders and copies the complete string from `GeminiTaggingService.buildPrompt()` in the current app language, including metadata and the prepared, truncated Content field. It does not run inference. The preview reflects the current parse, not a previously queued snippet; existing prepared tasks and saved tags are not rewritten by the filter.
 
 ---
 

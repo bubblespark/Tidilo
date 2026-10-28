@@ -18,6 +18,11 @@ object WebPageParser {
     internal const val USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     private const val TIMEOUT_MS = 15000
+    private val AD_MARKER_REGEX = Regex(
+        "(^|[\\s_-])(ad|ads|advert|advertisement|advertising|adsbygoogle)(?=$|[\\s_-])",
+        RegexOption.IGNORE_CASE
+    )
+    private val PROTECTED_CONTENT_TAGS = setOf("html", "body", "main", "article")
 
     internal val REQUEST_HEADERS = mapOf(
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -211,6 +216,15 @@ object WebPageParser {
 
         val iconCandidates = me.bubblespark.tidilo.data.DomainIconResolver.parseHtml(doc, finalUrl)
         val imageBaseUrl = doc.baseUri()
+
+        // Remove explicit ad blocks only after metadata and icon extraction, before either text extractor.
+        doc.body().select("[class], [id]")
+            .filter { element ->
+                element.normalName() !in PROTECTED_CONTENT_TAGS &&
+                    (AD_MARKER_REGEX.containsMatchIn(element.className()) ||
+                        AD_MARKER_REGEX.containsMatchIn(element.id()))
+            }
+            .forEach { it.remove() }
 
         // 7. Body text extraction: Readability4J (Mozilla Readability algorithm)
         val readabilityArticle = try {
@@ -445,7 +459,7 @@ object WebPageParser {
             // Strip non-content elements like scripts, styles, navigation, headers, footers
             doc.select(
                 "script, style, noscript, nav, header, footer, aside, form, svg, iframe, " +
-                "[role=banner], [role=navigation], [role=complementary], .ad, .ads, .sidebar, .menu"
+                "[role=banner], [role=navigation], [role=complementary], .sidebar, .menu"
             ).remove()
 
             // Prefer <article> or <main> if available

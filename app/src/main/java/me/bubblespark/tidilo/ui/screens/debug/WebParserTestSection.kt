@@ -67,6 +67,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.toClipEntry
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -79,6 +80,10 @@ import me.bubblespark.tidilo.parser.JsonLdItem
 import me.bubblespark.tidilo.parser.ParsedWebPage
 import me.bubblespark.tidilo.parser.WebMetaTag
 import me.bubblespark.tidilo.parser.WebPageParser
+import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.service.GeminiTaggingService
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 
 private val WHITESPACE_REGEX = Regex("\\s+")
@@ -112,7 +117,7 @@ fun WebParserTestSection(
     var parserState by remember { mutableStateOf<WebParserUiState>(WebParserUiState.Idle) }
     var selectedTab by remember { mutableIntStateOf(0) }
     var metaSearchFilter by remember { mutableStateOf("") }
-    var bodyExtractorMode by remember { mutableIntStateOf(0) } // 0: Readability4J, 1: Jsoup Clean
+    var bodyExtractorMode by remember { mutableIntStateOf(0) } // 0: Readability4J, 1: Jsoup Clean, 2: Prompt
 
     val sampleUrls = remember {
         listOf(
@@ -776,17 +781,25 @@ private fun AllMetaTagsTab(
 }
 
 @Composable
-private fun BodyTextTab(
+@OptIn(ExperimentalLayoutApi::class)
+internal fun BodyTextTab(
     page: ParsedWebPage,
     mode: Int,
     onModeChange: (Int) -> Unit,
     onCopy: (String) -> Unit
 ) {
+    val language by AppConfig.currentLanguage.collectAsStateWithLifecycle()
+    val prompt = remember(page, language, mode) {
+        if (mode == 2 && page.statusCode in 200..299) {
+            GeminiTaggingService.buildPrompt(page.resolvedUrl, page, language)
+        } else ""
+    }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        // Mode Selector: Readability4J vs Jsoup DOM Clean
-        Row(
+        // Wrap extraction and final prompt choices on narrow screens and with large fonts.
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             FilterChip(
                 selected = mode == 0,
@@ -795,7 +808,6 @@ private fun BodyTextTab(
                     Text("Readability4J (${page.readabilityArticle?.charCount ?: 0} chars)")
                 },
                 shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.weight(1f),
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
                 )
@@ -808,34 +820,39 @@ private fun BodyTextTab(
                     Text("Jsoup Clean (${page.jsoupBodyCharCount} chars)")
                 },
                 shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.weight(1f),
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer
                 )
             )
+
+            FilterChip(
+                selected = mode == 2,
+                onClick = { onModeChange(2) },
+                label = { Text(stringResource(R.string.debug_parser_prompt)) },
+                shape = RoundedCornerShape(10.dp)
+            )
         }
 
-        val activeText = if (mode == 0) {
-            page.readabilityArticle?.textContent.orEmpty()
-        } else {
-            page.jsoupBodyText
+        val activeText = when (mode) {
+            0 -> page.readabilityArticle?.textContent.orEmpty()
+            1 -> page.jsoupBodyText
+            else -> prompt
         }
 
-        val activeCharCount = if (mode == 0) {
-            page.readabilityArticle?.charCount ?: 0
-        } else {
-            page.jsoupBodyCharCount
-        }
+        val activeCharCount = activeText.length
 
         // Details header
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Column {
                 Text(
-                    text = if (mode == 0) "Mozilla Readability Algorithm" else "Jsoup Heuristic DOM Stripping",
+                    text = when (mode) {
+                        0 -> "Mozilla Readability Algorithm"
+                        1 -> "Jsoup Heuristic DOM Stripping"
+                        else -> stringResource(R.string.debug_parser_prompt_description)
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -852,6 +869,8 @@ private fun BodyTextTab(
 
             Button(
                 onClick = { onCopy(activeText) },
+                modifier = Modifier.align(Alignment.End),
+                enabled = mode != 2 || page.statusCode in 200..299,
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -864,7 +883,10 @@ private fun BodyTextTab(
                     modifier = Modifier.size(14.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Copy Body", style = MaterialTheme.typography.labelSmall)
+                Text(
+                    if (mode == 2) stringResource(R.string.debug_parser_copy_prompt) else "Copy Body",
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
         }
 
@@ -897,7 +919,14 @@ private fun BodyTextTab(
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
             modifier = Modifier.fillMaxWidth()
         ) {
-            if (activeText.isBlank()) {
+            if (mode == 2 && page.statusCode !in 200..299) {
+                Text(
+                    text = stringResource(R.string.debug_parser_prompt_http_error, page.statusCode),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(14.dp)
+                )
+            } else if (activeText.isBlank()) {
                 Text(
                     text = "No body text extracted with this method.",
                     style = MaterialTheme.typography.bodySmall,

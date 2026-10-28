@@ -105,8 +105,9 @@ This document defines the strict engineering standards, naming conventions, Comp
 - **Parse Once per URL**: Never parse the same HTML payload into a Jsoup `Document` multiple times during URL ingestion (`WebPageParser.kt`, `DomainIconResolver.kt`).
 - **Respect Destructive DOM Mutators**: Because `Readability4J.parse()` and `extractJsoupCleanText()` destructively remove elements from the Jsoup `Document`, execute operations in strict order:
   1. Run non-destructive metadata and icon candidate extraction (`DomainIconResolver.parseHtml(doc, finalUrl)`) on `doc` first.
-  2. Pass `doc.clone()` to `Readability4J(finalUrl, doc.clone()).parse()`.
-  3. Run `extractJsoupCleanText(doc)` last on `doc` directly without an extra clone.
+  2. Remove explicit ad blocks from the body using the shared class/ID token filter, preserving structural content roots.
+  3. Pass `doc.clone()` to `Readability4J(finalUrl, doc.clone()).parse()`.
+  4. Run `extractJsoupCleanText(doc)` last on `doc` directly without an extra clone.
 - **Avoid Byte Array Re-Encoding**: Measure raw HTML payload size via Jsoup's `response.bodyAsBytes().size` instead of calling `rawHtml.toByteArray(Charsets.UTF_8).size`.
 
 ### 4.2 Hoisting `Regex`, `DateTimeFormatter`, and Enum Lookup Maps

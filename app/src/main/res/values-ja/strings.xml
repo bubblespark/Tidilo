@@ -242,4 +242,34 @@
     <string name="subcategory_hobby">趣味・スポーツ</string>
     <string name="subcategory_adult">大人の嗜好</string>
     <string name="subcategory_education">教育</string>
+
+    <!-- Summary Screen -->
+    <string name="summary_title">サマリー</string>
+    <string name="summary_subtitle">ライブラリ統計、ゴミ箱、キャッシュストレージ管理</string>
+    <string name="summary_collection_status">コレクション状況</string>
+    <string name="summary_active_bookmarks">アクティブなブックマーク</string>
+    <string name="summary_items_count">%1$d 件</string>
+    <string name="summary_total_bookmarks">保存済みブックマーク</string>
+    <string name="summary_local_storage_note">お使いの端末ローカルに安全に保存されています</string>
+    <string name="summary_trash_capacity">%1$d / %2$d 件</string>
+    <string name="summary_trash_note">ゴミ箱の項目は30日後に自動消去されます</string>
+    <string name="summary_clear_cache_button">画像キャッシュを削除</string>
+    <string name="summary_clear_cache_dialog_title">画像キャッシュを削除しますか？</string>
+    <string name="summary_clear_cache_dialog_message">保存されているプレビュー画像とドメインアイコンを消去します。次回閲覧時に再取得されます。</string>
+    <string name="summary_storage_privacy">すべてのブックマークデータとキャッシュはお使いの端末内のみに保存されます。</string>
+    <string name="summary_collection">コレクション</string>
+    <string name="summary_bookmarks">ブックマーク（ゴミ箱を除く）</string>
+    <string name="summary_trash">ゴミ箱</string>
+    <string name="summary_storage">キャッシュストレージ</string>
+    <string name="summary_icons">ドメインアイコン (PNG)</string>
+    <string name="summary_images">ページ画像 (WebP)</string>
+    <string name="summary_other">その他のキャッシュ</string>
+    <string name="summary_total">合計キャッシュサイズ</string>
+    <string name="summary_files">%1$d 個の画像ファイル</string>
+    <string name="summary_checked">最終確認: %1$s</string>
+    <string name="summary_refresh">ストレージを更新</string>
+    <string name="summary_loading">読み込み中…</string>
+    <string name="summary_error">統計情報を読み込めませんでした。</string>
+    <string name="summary_retry">再試行</string>
+    <string name="summary_privacy">データはお使いの端末内のみに保持されます。</string>
 </resources>

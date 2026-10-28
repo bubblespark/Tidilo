@@ -25,6 +25,8 @@ import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.CacheStorageRepository
 import me.bubblespark.tidilo.data.CacheStorageSnapshot
 import me.bubblespark.tidilo.data.CollectionCounts
+import me.bubblespark.tidilo.data.DomainIconManager
+import me.bubblespark.tidilo.data.OgImageManager
 
 sealed interface SummaryLoad<out T> {
     data object Loading : SummaryLoad<Nothing>
@@ -85,6 +87,18 @@ class SummaryViewModel(application: Application) : AndroidViewModel(application)
             } catch (_: Exception) {
                 _cache.value = SummaryLoad.Error
             }
+        }
+    }
+
+    fun clearCache(onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            withContext(Dispatchers.IO) {
+                OgImageManager.clearImageCache(app)
+                DomainIconManager.clearCache(app)
+            }
+            refreshCache()
+            onDone()
         }
     }
 

@@ -76,7 +76,7 @@ class SummaryScreenTest {
                 }
             }
             click(awaitNode("Summary entry") { it.text?.toString()?.startsWith("Summary") == true })
-            awaitNode("AICore section") { it.text?.toString() == "AICore usage" }
+            awaitNode("Collection section") { it.text?.toString() == activity.getString(R.string.summary_collection_status) }
             delay(1000)
             instrumentation.waitForIdleSync()
             val screenshot = instrumentation.uiAutomation.takeScreenshot()

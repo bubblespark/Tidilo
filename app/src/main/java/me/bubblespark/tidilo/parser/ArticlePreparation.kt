@@ -30,7 +30,7 @@ object ArticlePreparation {
             preferredTitle.nonblank() ?: parsed.ogpTags["og:title"].nonblank() ?: parsed.title.nonblank() ?: host,
             parsed.ogpTags["og:site_name"].nonblank() ?: host,
             parsed.ogpTags["og:description"].nonblank() ?: parsed.standardMetaTags["description"].nonblank().orEmpty(),
-            (parsed.readabilityArticle?.textContent.nonblank() ?: parsed.jsoupBodyText).take(800).replace("\n", " "),
+            parsed.promptBodyText.take(800).replace("\n", " "),
             (parsed.ogpTags["og:image"].nonblank() ?: parsed.twitterTags["twitter:image"].nonblank())?.let {
                 runCatching { URI(parsed.imageBaseUrl).resolve(it).toString() }.getOrNull()
             }, parsed.isNsfwSignal)

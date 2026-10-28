@@ -527,6 +527,10 @@ non-suspending request; returning from details with the same query preserves the
 
 Settings > Data Management includes a Summary entry showing AICore usage, collection counts, and physical cache storage in rounded tonal cards. Daily bars have date/count accessibility descriptions and distinguish unrecorded dates from zero. Sections expose independent loading/retry states. Storage refresh runs on entry/resume/manual request and includes its measurement timestamp. Quota information is historical, never a remaining-capacity gauge. See [Application Summary](application_summary.md) for exact counting and formatting rules.
 
+## Debug Web Parser
+
+The Body Text panel offers Readability4J, Jsoup Clean, and Prompt modes. Readability4J retains the original extraction for comparison; Prompt shows only the full ad-filtered body before snippet truncation, without prompt instructions or metadata. All modes use Copy Body to copy exactly the displayed text. HTTP error bodies remain inspectable and copyable without invoking production preparation or AICore. The three filter chips wrap onto additional rows on narrow screens or with large fonts. Details use the full width with the copy button below them.
+
 ## Settings and AI Analysis
 
 Settings groups existing rows into General (Language, Notification, AI Analysis), Data Management (Summary, RSS, Clear Image Cache), and Debug cards. Cards use 20dp corners, surfaceContainerHigh, 20dp row padding, 40dp decorative circular icons, and inset outlineVariant dividers at alpha 0.25. Navigation rows expose a single Button target; text wraps within its weighted column.

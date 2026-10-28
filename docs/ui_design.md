@@ -176,7 +176,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 - **Hierarchy**:
   1. Title (with keyword highlighting when searching) + external browser icon button.
   2. URL (1 line, ellipsis).
-  3. Description (AI-synthesized one-sentence summary).
+  3. Description (AI-synthesized one- or two-sentence summary).
   4. Tag row: `[Category] > [Subcategory]`.
   5. Entity tags: FlowRow of `CompactTagBadge` chips with `#` icon.
 

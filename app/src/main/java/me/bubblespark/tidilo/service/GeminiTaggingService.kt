@@ -282,14 +282,14 @@ object GeminiTaggingService {
         val summaryInstruction = if (language.isJapanese) {
             """
             - Language: Japanese.
-            - Length: Exactly 1 concise sentence (approx. 50 characters).
+            - Length: One or two concise sentences (approximately 50-100 characters).
             - Focus on what this web page introduces, explains, or provides, NOT the dictionary definition of the subject.
             - State objective facts; do NOT include promotional hype, sales talk, or subjective opinions.
             """.trimIndent()
         } else {
             """
             - Language: English.
-            - Length: Exactly 1 concise sentence (under 100 characters, approx. 15-20 words).
+            - Length: One or two concise sentences (under 200 characters, approx. 15-40 words).
             - Focus on what this web page introduces, explains, or provides, NOT the dictionary definition of the subject.
             - State objective facts; do NOT include promotional hype, sales talk, or subjective opinions.
             """.trimIndent()
@@ -297,7 +297,7 @@ object GeminiTaggingService {
 
         return """
         You are a Web Content Tagging and Categorization Assistant.
-        Analyze the provided web page information, write a 1-sentence summary, accurately classify categories, extract entity tags, and respond with ONLY a pure JSON string.
+        Analyze the provided web page information, write a one- or two-sentence summary, accurately classify categories, extract entity tags, and respond with ONLY a pure JSON string.
 
         [1. Summary Rules]
         $summaryInstruction
@@ -338,7 +338,7 @@ object GeminiTaggingService {
         [Output Format]
         Respond with ONLY a valid JSON object. Do not include any explanations, markdown code blocks (such as ```json), or backticks.
         {
-          "summary": "1-sentence summary",
+          "summary": "one- or two-sentence summary",
           "category": "One of the 7 Category keys",
           "subcategory": "One of the 11 Subcategory keys",
           "entities": ["entity1", "entity2", "entity3"]

@@ -126,7 +126,7 @@ The prompt is constructed dynamically by `GeminiTaggingService.buildPrompt()`. I
 
 ```
 You are a Web Content Tagging and Categorization Assistant.
-Analyze the provided web page information, write a 1-sentence summary, accurately classify categories, extract entity tags, and respond with ONLY a pure JSON string.
+Analyze the provided web page information, write a one- or two-sentence summary, accurately classify categories, extract entity tags, and respond with ONLY a pure JSON string.
 
 [1. Summary Rules]
 <Language-specific summary instruction>
@@ -167,7 +167,7 @@ Select EXACTLY 1 most relevant subcategory from the following 11 choices (use ex
 [Output Format]
 Respond with ONLY a valid JSON object. Do not include any explanations, markdown code blocks (such as ```json), or backticks.
 {
-  "summary": "1-sentence summary",
+  "summary": "one- or two-sentence summary",
   "category": "One of the 7 Category keys",
   "subcategory": "One of the 11 Subcategory keys",
   "entities": ["entity1", "entity2", "entity3"]
@@ -188,12 +188,12 @@ Content: <bodySnippet (up to 800 chars)>
 The summary instruction is conditioned on `AppConfig.currentLanguage`:
 
 ### Japanese (`AppLanguage.JAPANESE`)
-- **Length**: Exactly 1 concise sentence (**approximately 50 characters**).
+- **Length**: One or two concise sentences (**approximately 50-100 characters**).
 - **Core Directive**: Focus on what this web page **introduces, explains, or provides**, NOT the dictionary definition of the subject.
 - **Tone**: Strictly objective facts; no promotional sales talk or subjective opinions.
 
 ### English (`AppLanguage.ENGLISH`)
-- **Length**: Exactly 1 concise sentence (**under 100 characters**, approx. 15–20 words).
+- **Length**: One or two concise sentences (**under 200 characters**, approx. 15–40 words).
 - **Core Directive**: Focus on what this web page **introduces, explains, or provides**, NOT the dictionary definition of the subject.
 - **Tone**: Strictly objective facts; no marketing hype.
 
@@ -214,7 +214,7 @@ val response = model.generateContent(request)
 
 | Parameter | Production Value | Debug Configurable | Purpose & Rationale |
 | :--- | :--- | :--- | :--- |
-| **`maxOutputTokens`** | `256` | Yes (1–2048) | Capped at 256 tokens. A 1-sentence summary and 3 JSON keys never exceed ~150 tokens. Capping prevents runaway loops and reduces inference latency to < 1.2s. |
+| **`maxOutputTokens`** | `256` | Yes (1–2048) | Default token budget for the summary and structured tags; configurable independently of summary length guidance. |
 | **`temperature`** | *Default (0.0)* | Yes (0.0–2.0) | Defaults to greedy deterministic decoding (0.0) to strictly enforce JSON formatting and taxonomy adherence without hallucination. |
 | **`topK`** | *Default (40)* | Yes (1–100) | Restricts candidate tokens to top probable cluster. |
 | **`candidateCount`** | `1` | Yes (1–4) | Single candidate generation minimizes memory pressure and execution time on mobile NPUs. |

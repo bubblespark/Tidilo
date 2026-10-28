@@ -4,7 +4,7 @@
 
 **Tidilo** is a next-generation Android bookmarking and personal knowledge management application powered by on-device AI.  
 Instead of manual folder sorting or manual tagging, Tidilo leverages Google's **Gemini Nano** foundation model running locally via the Android system **AICore** service. When a user shares a URL from a web browser or enqueues a link within the app, Tidilo scrapes the page, parses semantic metadata (OGP, meta tags, Mozilla Readability article body), resolves wrappers or shortened links, and invokes Gemini Nano on-device to automatically:
-1. Synthesize an objective, one-sentence summary.
+1. Synthesize an objective, one- or two-sentence summary.
 2. Classify the content into one of **7 Top-Level Categories** (Article, Media, Tool, Commerce, Community, Official, Reference).
 3. Classify into one of **11 Subcategories** (Tech, Business, Society, Life, Food, Travel, Game, Entertainment, Hobby, Adult, Education).
 4. Extract 2 to 10 canonical **Entity Keywords** (tools, brand names, technologies, creative works), strictly filtering noise like years, buzzwords, or generic modifiers.

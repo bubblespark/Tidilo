@@ -276,8 +276,8 @@
     <string name="subcategory_education">Education</string>
     <string name="common_save_failed">Could not save changes. Please try again.</string>
     <string name="library_load_failed">Could not load bookmarks.</string>
-    <string name="summary_title">Summary</string>
-    <string name="summary_subtitle">Bookmark collection statistics and cache storage</string>
+    <string name="summary_title">Storage</string>
+    <string name="summary_subtitle">Bookmark counts and cache storage</string>
     <string name="summary_collection_status">Collection Status</string>
     <string name="summary_active_bookmarks">Active Bookmarks</string>
     <string name="summary_items_count">%1$d items</string>
@@ -307,8 +307,8 @@
     <string name="summary_bookmarks">Bookmarks (excluding trash)</string>
     <string name="summary_trash">Trash</string>
     <string name="summary_storage">Cache storage</string>
-    <string name="summary_icons">Domain icons (PNG)</string>
-    <string name="summary_images">Page images (WebP)</string>
+    <string name="summary_icons">Domain icons</string>
+    <string name="summary_images">Page images</string>
     <string name="summary_other">Other cache</string>
     <string name="summary_total">Total cache size</string>
     <string name="summary_files">%1$d image files</string>

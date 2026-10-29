@@ -70,12 +70,12 @@ class SummaryScreenTest {
             click(awaitNode("Settings button") { it.contentDescription?.toString() == settings })
             awaitNode("Settings heading: ${activity.getString(R.string.settings_title)}") { it.text?.toString() == activity.getString(R.string.settings_title) }
             repeat(10) {
-                if (find { it.text?.toString()?.startsWith("Summary") == true } == null) {
+                if (find { it.text?.toString()?.startsWith(activity.getString(R.string.summary_title)) == true } == null) {
                     find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                     delay(150)
                 }
             }
-            click(awaitNode("Summary entry") { it.text?.toString()?.startsWith("Summary") == true })
+            click(awaitNode("Summary entry") { it.text?.toString()?.startsWith(activity.getString(R.string.summary_title)) == true })
             awaitNode("Collection section") { it.text?.toString() == activity.getString(R.string.summary_collection_status) }
             delay(1000)
             instrumentation.waitForIdleSync()
@@ -92,7 +92,7 @@ class SummaryScreenTest {
                 }
             }
             click(awaitNode("Refresh storage button") { it.text?.toString() == "Refresh storage" })
-            awaitNode("Cache timestamp") { it.text?.toString()?.startsWith("Last checked:") == true }
+            awaitNode("Total cache size") { it.text?.toString() == activity.getString(R.string.summary_total) }
             instrumentation.runOnMainSync { activity.onBackPressedDispatcher.onBackPressed() }
             awaitNode("Returned Summary entry subtitle") { it.text?.toString() == activity.getString(R.string.summary_subtitle) }
         } finally { instrumentation.runOnMainSync { activity.finish() } }

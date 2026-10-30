@@ -16,7 +16,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material3.AlertDialog
@@ -28,7 +27,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,16 +40,10 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.widget.Toast
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AppLanguage
-import me.bubblespark.tidilo.data.DomainIconManager
-import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
@@ -62,7 +54,7 @@ fun SettingsScreen(
     onNavigateToAiAnalysis: () -> Unit,
     modifier: Modifier = Modifier,
     onNavigateToDebug: () -> Unit = {},
-    onNavigateToSummary: () -> Unit = {},
+    onNavigateToStorage: () -> Unit = {},
     onNavigateToRss: () -> Unit = {}
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
@@ -70,9 +62,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val launchContext = LocalView.current.context
     val localConfig = LocalConfiguration.current
-    val scope = rememberCoroutineScope()
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
-    var showClearCacheConfirmDialog by rememberSaveable { mutableStateOf(false) }
 
     TidiloScreenScaffold(modifier = modifier, header = {
         TidiloPageHeader(title = stringResource(R.string.settings_title), onNavigateBack = onNavigateBack)
@@ -100,14 +90,10 @@ fun SettingsScreen(
             SettingsSectionTitle(stringResource(R.string.settings_section_data))
             SettingsGroup {
                 SettingsNavigationRow(stringResource(R.string.summary_title), stringResource(R.string.summary_subtitle),
-                    ImageVector.vectorResource(R.drawable.ic_summarize), onNavigateToSummary)
+                    ImageVector.vectorResource(R.drawable.ic_summarize), onNavigateToStorage)
                 SettingsDivider()
                 SettingsNavigationRow(stringResource(R.string.rss_title), stringResource(R.string.rss_subtitle),
                     Icons.Default.RssFeed, onNavigateToRss)
-                SettingsDivider()
-                SettingsNavigationRow(stringResource(R.string.settings_clear_image_cache_title),
-                    stringResource(R.string.settings_clear_image_cache_subtitle), Icons.Default.DeleteSweep,
-                    onClick = { showClearCacheConfirmDialog = true })
             }
             Spacer(Modifier.height(24.dp))
             SettingsSectionTitle(stringResource(R.string.settings_section_debug))
@@ -116,54 +102,6 @@ fun SettingsScreen(
                     Icons.Default.BugReport, onNavigateToDebug)
             }
         }
-    }
-
-    if (showClearCacheConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showClearCacheConfirmDialog = false },
-            title = {
-                Text(
-                    text = stringResource(R.string.settings_clear_image_cache_dialog_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = stringResource(R.string.settings_clear_image_cache_dialog_message),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showClearCacheConfirmDialog = false
-                        scope.launch {
-                            withContext(Dispatchers.IO) {
-                                OgImageManager.clearImageCache(context)
-                                DomainIconManager.clearCache(context)
-                            }
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.settings_clear_image_cache_done),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                ) {
-                    Text(
-                        text = stringResource(R.string.common_clear),
-                        color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearCacheConfirmDialog = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            }
-        )
     }
 
     if (showLanguageDialog) {

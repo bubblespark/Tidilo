@@ -42,4 +42,26 @@ class CacheStorageRepositoryTest {
         assertEquals("1,234 KB (1.2 MB)", formatCacheBytes(1234L * 1024))
         assertEquals("1,048,576 KB (1,024.0 MB)", formatCacheBytes(1024L * 1024 * 1024))
     }
+    @Test fun rescanAfterDirectFileDeletionYieldsZero() = runBlocking {
+        val root = Files.createTempDirectory("summary-clear-test").toFile()
+        try {
+            val ogDir = root.resolve("og_images").apply { mkdirs() }
+            val iconDir = root.resolve("domain_icons").apply { mkdirs() }
+            ogDir.resolve("sample.webp").writeBytes(ByteArray(256))
+            iconDir.resolve("sample.png").writeBytes(ByteArray(128))
+
+            val initial = CacheStorageRepository.scan(root)
+            assertEquals(1, initial.ogFiles)
+            assertEquals(1, initial.iconFiles)
+            assertTrue(initial.totalBytes > 0)
+
+            ogDir.listFiles()?.forEach { it.delete() }
+            iconDir.listFiles()?.forEach { it.delete() }
+
+            val afterClear = CacheStorageRepository.scan(root)
+            assertEquals(0, afterClear.ogFiles)
+            assertEquals(0, afterClear.iconFiles)
+            assertEquals(0L, afterClear.totalBytes)
+        } finally { root.deleteRecursively() }
+    }
 }

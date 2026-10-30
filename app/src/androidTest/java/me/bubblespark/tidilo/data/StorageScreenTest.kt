@@ -22,13 +22,13 @@ import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.MainActivity
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.TidiloApplication
-import me.bubblespark.tidilo.ui.screens.settings.SummaryLoad
-import me.bubblespark.tidilo.ui.screens.settings.SummaryScreen
-import me.bubblespark.tidilo.ui.screens.settings.SummaryViewModel
+import me.bubblespark.tidilo.ui.screens.settings.StorageLoad
+import me.bubblespark.tidilo.ui.screens.settings.StorageScreen
+import me.bubblespark.tidilo.ui.screens.settings.StorageViewModel
 import org.junit.Assert.*
 import org.junit.Test
 
-class SummaryScreenTest {
+class StorageScreenTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
 
@@ -61,7 +61,7 @@ class SummaryScreenTest {
         assertTrue(target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true)
     }
 
-    @Test fun settingsSummaryNavigationRefreshAndBack(): Unit = runBlocking {
+    @Test fun settingsStorageNavigationRefreshAndBack(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         ) as ComponentActivity
@@ -70,31 +70,38 @@ class SummaryScreenTest {
             click(awaitNode("Settings button") { it.contentDescription?.toString() == settings })
             awaitNode("Settings heading: ${activity.getString(R.string.settings_title)}") { it.text?.toString() == activity.getString(R.string.settings_title) }
             repeat(10) {
-                if (find { it.text?.toString()?.startsWith("Summary") == true } == null) {
+                if (find { it.text?.toString()?.startsWith(activity.getString(R.string.summary_title)) == true } == null) {
                     find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                     delay(150)
                 }
             }
-            click(awaitNode("Summary entry") { it.text?.toString()?.startsWith("Summary") == true })
-            awaitNode("AICore section") { it.text?.toString() == "AICore usage" }
+            click(awaitNode("Storage entry") { it.text?.toString()?.startsWith(activity.getString(R.string.summary_title)) == true })
+            awaitNode("Total Bookmarks") { it.text?.toString() == activity.getString(R.string.summary_total_bookmarks) }
             delay(1000)
             instrumentation.waitForIdleSync()
             val screenshot = instrumentation.uiAutomation.takeScreenshot()
             try {
-                File(context.getExternalFilesDir(null), "issue89-summary.png").outputStream().use {
+                File(context.getExternalFilesDir(null), "issue161-storage.png").outputStream().use {
                     screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
                 }
             } finally { screenshot.recycle() }
             repeat(12) {
-                if (find { it.text?.toString() == "Refresh storage" } == null) {
+                if (find { it.text?.toString() == activity.getString(R.string.summary_clear_cache_button) } == null) {
                     find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                     delay(100)
                 }
             }
-            click(awaitNode("Refresh storage button") { it.text?.toString() == "Refresh storage" })
-            awaitNode("Cache timestamp") { it.text?.toString()?.startsWith("Last checked:") == true }
+            val clearBtn = awaitNode("Clear cache button") { it.text?.toString() == activity.getString(R.string.summary_clear_cache_button) }
+            awaitNode("Total cache size") { it.text?.toString() == activity.getString(R.string.summary_total) }
+            click(clearBtn)
+            awaitNode("Clear cache confirmation") {
+                it.text?.toString() == activity.getString(R.string.summary_clear_cache_dialog_message)
+            }
+            click(awaitNode("Cancel clear cache") {
+                it.text?.toString() == activity.getString(R.string.common_cancel)
+            })
             instrumentation.runOnMainSync { activity.onBackPressedDispatcher.onBackPressed() }
-            awaitNode("Returned Summary entry subtitle") { it.text?.toString() == activity.getString(R.string.summary_subtitle) }
+            awaitNode("Returned Storage entry subtitle") { it.text?.toString() == activity.getString(R.string.summary_subtitle) }
         } finally { instrumentation.runOnMainSync { activity.finish() } }
     }
 
@@ -103,7 +110,7 @@ class SummaryScreenTest {
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         ) as ComponentActivity
         lateinit var registry: LifecycleRegistry
-        lateinit var model: SummaryViewModel
+        lateinit var model: StorageViewModel
         var initialized = false
         try {
             instrumentation.runOnMainSync {
@@ -112,24 +119,24 @@ class SummaryScreenTest {
                 }
                 registry = LifecycleRegistry(owner)
                 registry.currentState = Lifecycle.State.RESUMED
-                model = SummaryViewModel(context.applicationContext as TidiloApplication)
+                model = StorageViewModel(context.applicationContext as TidiloApplication)
                 initialized = true
                 activity.setContent {
                     CompositionLocalProvider(LocalLifecycleOwner provides owner) {
-                        MaterialTheme { SummaryScreen({}, model) }
+                        MaterialTheme { StorageScreen({}, model) }
                     }
                 }
             }
             suspend fun ready() = withTimeout(5000) {
-                while (model.cache.value !is SummaryLoad.Ready) delay(20)
-                (model.cache.value as SummaryLoad.Ready).value.checkedAt
+                while (model.cache.value !is StorageLoad.Ready) delay(20)
+                (model.cache.value as StorageLoad.Ready).value.checkedAt
             }
             val previous = ready()
             instrumentation.runOnMainSync { registry.currentState = Lifecycle.State.STARTED }
             instrumentation.waitForIdleSync()
             instrumentation.runOnMainSync { registry.currentState = Lifecycle.State.RESUMED }
             withTimeout(5000) {
-                while ((model.cache.value as? SummaryLoad.Ready)?.value?.checkedAt?.let { it > previous } != true) delay(20)
+                while ((model.cache.value as? StorageLoad.Ready)?.value?.checkedAt?.let { it > previous } != true) delay(20)
             }
         } finally {
             instrumentation.runOnMainSync {

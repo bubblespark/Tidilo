@@ -51,7 +51,7 @@ class SettingsHeaderTest {
     @Test fun nsfwHeaderStaysFixed() = verify { back -> NsfwSettingsScreen(onNavigateBack = back) }
     @Test fun debugHeaderStaysFixed() = verify { back -> SettingsDebugScreen(onNavigateBack = back) }
     @Test fun generationHeaderStaysFixed() = verify { back -> GenerateContentRequestScreen(onNavigateBack = back) }
-    @Test fun summaryHeaderStaysFixed() = verify { back -> SummaryScreen(onNavigateBack = back) }
+    @Test fun storageHeaderStaysFixed() = verify { back -> StorageScreen(onNavigateBack = back) }
     @Test fun rssHeaderStaysFixed() = verify { back -> RssSettingsScreen(onNavigateBack = back) }
 
     private fun verify(content: @Composable (() -> Unit) -> Unit): Unit = runBlocking {

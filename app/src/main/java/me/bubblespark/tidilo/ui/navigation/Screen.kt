@@ -50,9 +50,9 @@ sealed class Screen(
         selectedIcon = Icons.Filled.CollectionsBookmark, unselectedIcon = Icons.Outlined.CollectionsBookmark
     )
 
-    data object Summary : Screen(
-        route = "settings_summary",
-        title = "Summary",
+    data object Storage : Screen(
+        route = "settings_storage",
+        title = "Storage",
         titleRes = R.string.summary_title,
         selectedIcon = Icons.Filled.CollectionsBookmark,
         unselectedIcon = Icons.Outlined.CollectionsBookmark
@@ -128,5 +128,6 @@ sealed class Screen(
 
     companion object {
         val allTabs = listOf(Library, Search, Import)
+        val Summary = Storage
     }
 }

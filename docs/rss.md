@@ -2,7 +2,7 @@
 
 Daily fetch and Fetch Now completion/error aggregation is specified in [Android OS Notifications](notifications.md). XML failures notify RSS Errors after disabling the feed; individual article failures notify Import Errors once per logical operation without disabling the feed. Room 13 durably records notification outcomes alongside existing article writes.
 
-Settings > Data Management is ordered Summary, RSS, Clear Image Cache. RSS (`settings_rss`) manages RSS 2, Atom, and RDF subscriptions. All subscription state, receipts, article content, and AI output remain on the device. Feed acquisition requests the publisher's XML and article HTML through shared manual/RSS preparation; it does not send bookmark content to an AI service.
+Settings > Data Management is ordered Storage, RSS. RSS (`settings_rss`) manages RSS 2, Atom, and RDF subscriptions. All subscription state, receipts, article content, and AI output remain on the device. Feed acquisition requests the publisher's XML and article HTML through shared manual/RSS preparation; it does not send bookmark content to an AI service.
 
 ## Settings and acquisition
 
@@ -75,7 +75,7 @@ Deletion records a durable image-cleanup outbox after selecting excess bookmarks
 
 Library's Newest First and Domain modes show manual bookmarks only. RSS mode first shows a two-column feed deck grid, grouped by `rssFeedId` over visible active bookmarks. Feeds without visible saved articles are absent; disabled and deleted subscriptions with saved articles remain browsable. Feed titles sort ASCII first, then with the Japanese Collator and feed-ID ties. Each card shows the feed title, publisher domain (`siteUrl` host, falling back to feed URL host), and visible saved count. The deck geometry, spacing, border illumination, 96dp watermark at alpha 0.20, and ambient brand colors share Domain mode's presentation.
 
-Tapping a feed crossfades into its newest-first, feed-scoped Paging list or grid. The header shows its title, saved bookmark count, and Back to feeds action. Header back and system back return to the feed grid; a summary peek is dismissed first. Feed grid and detail list/grid keep separate scroll states. Selecting another feed resets detail positions; returning from an article with the same selection retains them. Mode changes clear both domain and feed selections. Feed metadata changes update artwork/title without restarting the screen transition. Search and Tag Selection include both sources with the existing NSFW rules. Summary counts include both sources and exclude trash from the active total.
+Tapping a feed crossfades into its newest-first, feed-scoped Paging list or grid. The header shows its title, saved bookmark count, and Back to feeds action. Header back and system back return to the feed grid; a summary peek is dismissed first. Feed grid and detail list/grid keep separate scroll states. Selecting another feed resets detail positions; returning from an article with the same selection retains them. Mode changes clear both domain and feed selections. Feed metadata changes update artwork/title without restarting the screen transition. Search and Tag Selection include both sources with the existing NSFW rules. Storage counts include both sources and exclude trash from the active total.
 
 ## Feed identity, metadata, and icon recovery (Room 12)
 

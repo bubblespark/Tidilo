@@ -91,12 +91,6 @@ fun StorageScreen(
 }
 
 @Composable
-fun SummaryScreen(
-    onNavigateBack: () -> Unit,
-    viewModel: StorageViewModel = viewModel()
-) = StorageScreen(onNavigateBack, viewModel)
-
-@Composable
 internal fun StorageContent(
     counts: StorageLoad<CollectionCounts>,
     cache: StorageLoad<CacheStorageSnapshot>,

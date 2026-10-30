@@ -31,4 +31,4 @@ Storage is scanned on entry and on every resume (including resume without stop),
 
 ## Validation
 
-JVM coverage exercises concurrent attempts, quota snapshots, cancellation, midnight/timezone attribution, pending recovery, write failures/corruption, physical cache totals, byte formatting, and DST scheduling. Android tests exercise actual SharedPreferences recovery, Room invalidation/counts, symlink exclusion, Settings navigation/back, clear-cache confirmation dialog with cancellation, and resume without stop. Emulator tests do not invoke AICore.
+JVM coverage exercises concurrent attempts, quota snapshots, cancellation, midnight/timezone attribution, pending recovery, write failures/corruption, physical cache totals, and byte formatting. Android tests exercise actual SharedPreferences recovery, Room invalidation/counts, symlink exclusion, Settings navigation/back, clear-cache confirmation dialog with cancellation, and resume without stop. Emulator tests do not invoke AICore.

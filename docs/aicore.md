@@ -313,7 +313,7 @@ For #113, the verifier failed on the original minified APK and passed after the 
 
 ## Local Inference Usage Accounting
 
-The production `GeminiTaggingService.runNanoInference` and debug `DebugPromptTester` SDK calls are wrapped by `AiCoreUsageRepository`. Counting occurs at the SDK attempt boundary, including retries; setup, parsing, and persistence are excluded. Results and cancellation retain their original behavior even if statistics cannot be saved. Settings Summary exposes daily outcomes and the first quota-27 detection benchmark per start date, without suggesting a fixed quota or midnight reset. See [Application Summary](application_summary.md) for the complete contract.
+The production `GeminiTaggingService.runNanoInference` and debug `DebugPromptTester` SDK calls are wrapped by `AiCoreUsageRepository`. Counting occurs at the SDK attempt boundary, including retries; setup, parsing, and persistence are excluded. Results and cancellation retain their original behavior even if statistics cannot be saved. AiCoreUsageRepository tracks daily outcomes and the first quota-27 detection benchmark per start date, without suggesting a fixed quota or midnight reset. See [Application Summary](application_summary.md) for the complete contract.
 
 ## RSS Foreground Inference
 

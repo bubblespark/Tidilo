@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.util.Locale
 import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import me.bubblespark.tidilo.data.rss.replaceRssTriggerTime
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.RssFeedEntity
@@ -54,6 +55,8 @@ import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.rss.RssSettings
 import me.bubblespark.tidilo.ui.components.rememberFeedIcon
 import me.bubblespark.tidilo.ui.theme.DestructiveActionColors
+
+private val TRIGGER_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
 @Composable
 fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = viewModel()) {
@@ -265,7 +268,7 @@ internal fun RssSettingsContent(
             onDismissRequest = { deletingTriggerMinute = null },
             title = { Text(stringResource(R.string.rss_delete_trigger_title)) },
             text = { Text(stringResource(R.string.rss_delete_trigger_message,
-                String.format(Locale.US, "%02d:%02d", trigger.hour, trigger.minute))) },
+                trigger.format(TRIGGER_TIME_FORMATTER))) },
             confirmButton = { TextButton(enabled = !busy, onClick = {
                 if (deletingTriggerMinute != null && !busy) {
                     deletingTriggerMinute = null
@@ -314,7 +317,7 @@ internal fun RssSettingsContent(
 
 @Composable
 private fun RssTriggerTimeCard(time: LocalTime, busy: Boolean, onRemove: () -> Unit, onEdit: () -> Unit) {
-    val label = String.format(Locale.US, "%02d:%02d", time.hour, time.minute)
+    val label = time.format(TRIGGER_TIME_FORMATTER)
     val editLabel = stringResource(R.string.rss_edit_trigger_time, label)
     RssCard(compact = true) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

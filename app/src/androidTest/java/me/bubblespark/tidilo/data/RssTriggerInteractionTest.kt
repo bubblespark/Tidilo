@@ -198,6 +198,8 @@ class RssTriggerInteractionTest {
                     assertTrue("Picker confirmation remains visible at font scale $scale", bounds.height() > 0 &&
                         bounds.bottom < activity.window.decorView.height)
                     host.instrumentation.waitForIdleSync()
+                    // Capture the settled dialog rather than its translucent entrance frame.
+                    delay(400)
                     val picker = host.instrumentation.uiAutomation.takeScreenshot()
                     try { java.io.File(host.context.getExternalFilesDir(null), "issue160-picker-$dark-$scale.png").outputStream().use {
                         picker.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)

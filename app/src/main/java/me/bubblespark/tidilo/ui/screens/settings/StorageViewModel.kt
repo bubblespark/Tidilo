@@ -24,12 +24,6 @@ sealed interface StorageLoad<out T> {
     data object Error : StorageLoad<Nothing>
 }
 
-sealed interface SummaryLoad<out T> {
-    data object Loading : SummaryLoad<Nothing>
-    data class Ready<T>(val value: T) : SummaryLoad<T>
-    data object Error : SummaryLoad<Nothing>
-}
-
 class StorageViewModel(application: Application) : AndroidViewModel(application) {
     private val bookmarks = BookmarkRepository.getInstance(application)
 
@@ -110,4 +104,3 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
     }
 }
 
-typealias SummaryViewModel = StorageViewModel

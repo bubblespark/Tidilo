@@ -113,7 +113,7 @@ internal fun RssRegistrationDialog(count: Int, limit: Int?, busy: Boolean, onCon
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RssSettingsContent(
-    feeds: SummaryLoad<List<RssFeedEntity>>, settings: RssSettings, busy: Boolean, error: String?, wifi: Boolean?,
+    feeds: StorageLoad<List<RssFeedEntity>>, settings: RssSettings, busy: Boolean, error: String?, wifi: Boolean?,
     onBack: () -> Unit, onRetry: () -> Unit, onSettings: (RssSettings) -> Unit,
     onFeed: (RssFeedEntity?, String, String, Int?, Boolean) -> Unit, onDelete: (String) -> Unit,
     onFetch: () -> Unit, onDismissError: () -> Unit, onEnabled: (String, Boolean) -> Unit = { _, _ -> },
@@ -126,7 +126,7 @@ internal fun RssSettingsContent(
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var showEditor by rememberSaveable { mutableStateOf(false) }
     var deletingId by rememberSaveable { mutableStateOf<String?>(null) }
-    val readyFeeds = (feeds as? SummaryLoad.Ready)?.value.orEmpty()
+    val readyFeeds = (feeds as? StorageLoad.Ready)?.value.orEmpty()
     val editing = readyFeeds.firstOrNull { it.id == editingId }
     val deleting = readyFeeds.firstOrNull { it.id == deletingId }
     val listState = rememberLazyListState()
@@ -172,7 +172,7 @@ internal fun RssSettingsContent(
                     Switch(checked = settings.wifiOnly, onCheckedChange = null, enabled = !busy && settings.dailyEnabled)
                 }
                 Text(stringResource(R.string.rss_schedule_note), style = MaterialTheme.typography.bodySmall)
-                FilledTonalButton(onClick = onFetch, modifier = Modifier.fillMaxWidth(), enabled = !busy && manualFetch == ManualFetchStatus.Idle && (feeds as? SummaryLoad.Ready)?.value?.any { it.enabled } == true) {
+                FilledTonalButton(onClick = onFetch, modifier = Modifier.fillMaxWidth(), enabled = !busy && manualFetch == ManualFetchStatus.Idle && (feeds as? StorageLoad.Ready)?.value?.any { it.enabled } == true) {
                     Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
                         if (manualFetch == ManualFetchStatus.Running) CircularProgressIndicator(Modifier.fillMaxSize(), strokeWidth = 2.dp)
                         else Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.fillMaxSize())
@@ -217,7 +217,7 @@ internal fun RssSettingsContent(
                 Text(error, color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = onDismissError) { Text(stringResource(R.string.rss_dismiss)) }
             } }
-            if (feeds is SummaryLoad.Ready) {
+            if (feeds is StorageLoad.Ready) {
                 item(key = "feed-heading") { Text(stringResource(R.string.rss_feed_count, ready.size),
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) }
                 item(key = "queue") {
@@ -231,14 +231,14 @@ internal fun RssSettingsContent(
                 }
             }
             when (feeds) {
-                SummaryLoad.Loading -> item(key = "loading") { Text(stringResource(R.string.summary_loading)) }
-                SummaryLoad.Error -> item(key = "load-error") {
+                StorageLoad.Loading -> item(key = "loading") { Text(stringResource(R.string.summary_loading)) }
+                StorageLoad.Error -> item(key = "load-error") {
                     Column {
                     Text(stringResource(R.string.summary_error))
                     TextButton(onClick = onRetry) { Text(stringResource(R.string.summary_retry)) }
                     }
                 }
-                is SummaryLoad.Ready -> {
+                is StorageLoad.Ready -> {
                     if (ready.isEmpty()) item(key = "empty") { RssCard { Text(stringResource(R.string.rss_no_feeds)) } }
                     items(ready, key = { "feed:${it.id}" }, contentType = { "feed" }) { feed ->
                             RssFeedCard(feed, busy, onEdit = { editingId = feed.id; showEditor = true },

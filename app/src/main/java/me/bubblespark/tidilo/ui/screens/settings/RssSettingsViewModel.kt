@@ -48,7 +48,7 @@ class RssSettingsViewModel(application: Application, private val savedState: and
     internal val manualFetch = WorkManager.getInstance(application).getWorkInfosForUniqueWorkFlow(RssScheduler.MANUAL)
         .map { infos -> manualFetchStatus(infos.map { it.state }) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), ManualFetchStatus.Checking)
-    private val _feeds = MutableStateFlow<SummaryLoad<List<RssFeedEntity>>>(SummaryLoad.Loading)
+    private val _feeds = MutableStateFlow<StorageLoad<List<RssFeedEntity>>>(StorageLoad.Loading)
     val feeds = _feeds.asStateFlow()
     private val _busy = MutableStateFlow(false)
     val busy = _busy.asStateFlow()
@@ -77,9 +77,9 @@ class RssSettingsViewModel(application: Application, private val savedState: and
         action { preferences.initialize() }
         feedsJob?.cancel()
         feedsJob = viewModelScope.launch {
-            _feeds.value = SummaryLoad.Loading
-            repository.feeds.catch { _feeds.value = SummaryLoad.Error }
-                .collect { _feeds.value = SummaryLoad.Ready(it.filter { feed -> !feed.deleted }) }
+            _feeds.value = StorageLoad.Loading
+            repository.feeds.catch { _feeds.value = StorageLoad.Error }
+                .collect { _feeds.value = StorageLoad.Ready(it.filter { feed -> !feed.deleted }) }
         }
     }
 

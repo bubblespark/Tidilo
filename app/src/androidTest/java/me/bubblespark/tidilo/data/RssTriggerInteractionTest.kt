@@ -24,7 +24,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.data.rss.RssSettings
 import me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent
-import me.bubblespark.tidilo.ui.screens.settings.SummaryLoad
+import me.bubblespark.tidilo.ui.screens.settings.StorageLoad
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.*
 import org.junit.Test
@@ -59,7 +59,7 @@ class RssTriggerInteractionTest {
         try {
             host.main { activity.setContent { MaterialTheme {
                 if (mounted.value) CompositionLocalProvider(LocalSaveableStateRegistry provides registry.value) {
-                    RssSettingsContent(SummaryLoad.Ready(emptyList()), settings.value, false, null, true,
+                    RssSettingsContent(StorageLoad.Ready(emptyList()), settings.value, false, null, true,
                         onBack = {}, onRetry = {}, onSettings = { settings.value = it; updates++ },
                         onFeed = { _, _, _, _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
                 }
@@ -119,7 +119,7 @@ class RssTriggerInteractionTest {
                         val density = LocalDensity.current.density
                         CompositionLocalProvider(LocalDensity provides Density(density, scale)) {
                             Surface { Box(Modifier.width(360.dp)) {
-                                RssSettingsContent(SummaryLoad.Ready(emptyList()), settings, false, null, true,
+                                RssSettingsContent(StorageLoad.Ready(emptyList()), settings, false, null, true,
                                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
                                     onDelete = {}, onFetch = {}, onDismissError = {})
                             } }

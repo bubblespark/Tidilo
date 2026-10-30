@@ -42,7 +42,7 @@ class CacheStorageRepositoryTest {
         assertEquals("1,234 KB (1.2 MB)", formatCacheBytes(1234L * 1024))
         assertEquals("1,048,576 KB (1,024.0 MB)", formatCacheBytes(1024L * 1024 * 1024))
     }
-    @Test fun clearRemovesNestedFilesAndRescanYieldsZero() = runBlocking {
+    @Test fun rescanAfterDirectFileDeletionYieldsZero() = runBlocking {
         val root = Files.createTempDirectory("summary-clear-test").toFile()
         try {
             val ogDir = root.resolve("og_images").apply { mkdirs() }

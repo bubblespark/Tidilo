@@ -55,7 +55,6 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
     onNavigateToDebug: () -> Unit = {},
     onNavigateToStorage: () -> Unit = {},
-    onNavigateToSummary: () -> Unit = onNavigateToStorage,
     onNavigateToRss: () -> Unit = {}
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()

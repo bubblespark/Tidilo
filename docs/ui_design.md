@@ -525,7 +525,7 @@ non-suspending request; returning from details with the same query preserves the
 
 ## Storage Dashboard
 
-Settings > Data Management includes a Storage entry showing collection counts (Hero card) and physical cache storage in rounded tonal cards, with a proportional multi-color StorageBar and consolidated cache clearance. Sections expose independent loading/retry states. Storage refresh runs on entry/resume/manual request and includes its measurement timestamp. See [Application Summary](application_summary.md) for exact counting and formatting rules.
+Settings > Data Management includes a Storage entry showing collection counts (Hero card) and physical cache storage in rounded tonal cards, with a proportional multi-color StorageBar and consolidated cache clearance. Sections expose independent loading/retry states. Storage scans run on entry and resume, with error retry affordances. See [Storage Dashboard](application_summary.md) for exact counting and formatting rules.
 
 ## Debug Web Parser
 

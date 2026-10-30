@@ -58,8 +58,6 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.CollectionsBookmark
     )
 
-    val Summary = Storage
-
     data object SettingsDebug : Screen(
         route = "settings_debug",
         title = "Debug",
@@ -130,5 +128,6 @@ sealed class Screen(
 
     companion object {
         val allTabs = listOf(Library, Search, Import)
+        val Summary = Storage
     }
 }

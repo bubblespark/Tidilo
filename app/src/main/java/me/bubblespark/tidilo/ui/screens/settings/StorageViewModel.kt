@@ -78,6 +78,7 @@ class StorageViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearCache(onDone: () -> Unit = {}) {
         viewModelScope.launch {
+            _cache.value = StorageLoad.Loading
             val app = getApplication<Application>()
             withContext(Dispatchers.IO) {
                 OgImageManager.clearImageCache(app)

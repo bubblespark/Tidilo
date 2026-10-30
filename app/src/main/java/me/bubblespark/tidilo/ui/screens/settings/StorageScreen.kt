@@ -44,6 +44,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import java.text.NumberFormat
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -104,7 +106,7 @@ internal fun StorageContent(
     onClearCache: ((() -> Unit) -> Unit)? = null
 ) {
     val context = LocalContext.current
-    var showClearCacheConfirmDialog by remember { mutableStateOf(false) }
+    var showClearCacheConfirmDialog by rememberSaveable { mutableStateOf(false) }
 
     TidiloScreenScaffold(
         hideHeaderOnScroll = false,
@@ -121,7 +123,7 @@ internal fun StorageContent(
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(contentPadding)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // ==========================================
@@ -177,8 +179,7 @@ internal fun StorageContent(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     IconButton(
-                                        onClick = onRetryCounts,
-                                        modifier = Modifier.size(28.dp)
+                                        onClick = onRetryCounts
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Refresh,
@@ -191,8 +192,9 @@ internal fun StorageContent(
                             }
                             is StorageLoad.Ready -> {
                                 val total = counts.value.active + counts.value.trash
+                                val formattedTotal = NumberFormat.getIntegerInstance().format(total)
                                 Text(
-                                    text = total.toString(),
+                                    text = formattedTotal,
                                     style = MaterialTheme.typography.headlineLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer

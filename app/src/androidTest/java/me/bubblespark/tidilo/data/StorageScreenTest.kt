@@ -91,8 +91,15 @@ class StorageScreenTest {
                     delay(100)
                 }
             }
-            awaitNode("Clear cache button") { it.text?.toString() == activity.getString(R.string.summary_clear_cache_button) }
+            val clearBtn = awaitNode("Clear cache button") { it.text?.toString() == activity.getString(R.string.summary_clear_cache_button) }
             awaitNode("Total cache size") { it.text?.toString() == activity.getString(R.string.summary_total) }
+            click(clearBtn)
+            awaitNode("Clear cache confirmation") {
+                it.text?.toString() == activity.getString(R.string.summary_clear_cache_dialog_message)
+            }
+            click(awaitNode("Cancel clear cache") {
+                it.text?.toString() == activity.getString(R.string.common_cancel)
+            })
             instrumentation.runOnMainSync { activity.onBackPressedDispatcher.onBackPressed() }
             awaitNode("Returned Storage entry subtitle") { it.text?.toString() == activity.getString(R.string.summary_subtitle) }
         } finally { instrumentation.runOnMainSync { activity.finish() } }

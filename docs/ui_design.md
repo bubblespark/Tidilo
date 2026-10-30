@@ -375,7 +375,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
 
 ### 6.10 Application-Wide Title Bar & Header Geometry Standardization
 - **Shared Source of Truth (`HeaderDefaults`, `TidiloFrostedHeader`, `TidiloScreenScaffold`)**:
-  - Settings, NSFW, RSS, Summary, Debug and AI generation settings use `TidiloPageHeader` for the title/navigation boilerplate. Its optional subtitle slot retains Debug's secondary text, and its actions slot retains the generation reset control.
+  - Settings, NSFW, RSS, Storage, Debug and AI generation settings use `TidiloPageHeader` for the title/navigation boilerplate. Its optional subtitle slot retains Debug's secondary text, and its actions slot retains the generation reset control.
   - `TidiloFrostedHeader` and `TidiloPageHeader` expose an optional `onTitleClick` callback. Only the weighted title/subtitle column is clickable when supplied, with `TextHandleMove` haptic feedback and no ripple. Navigation and action slots remain independent; blank row/status-bar padding only absorbs taps.
   - Library binds the title action to `animateScrollToItem(0)` on the active Newest list/grid, Domain deck/detail list/grid, or RSS deck/detail list/grid. Index 0 with offset 0 skips animation. Other states retain their positions under existing navigation rules, and changing the active state cancels any pending title-scroll coroutine. Search and bookmark detail enable header-origin scrolling without adding a title-tap action.
   - The header owns status-bar padding; the body receives matching top clearance from the scaffold. Do not apply status-bar padding again to the body.

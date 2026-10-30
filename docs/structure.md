@@ -79,7 +79,6 @@ app/src/main/java/com/ykgudev/tidilo/
     │       ├── SettingsDebugScreen.kt             # Diagnostics: AICore prompt API tests & Web Parser workbench
     │       ├── StorageScreen.kt                   # Storage dashboard, bookmark metrics, cache bar, and clearance
     │       ├── StorageViewModel.kt                # Collection counts, physical cache scanning, and cache clearing
-    │       ├── SummaryDate.kt                     # DST-aware local midnight scheduling
     │       ├── RssSettingsScreen.kt               # Subscription editor, daily time and Wi-Fi-only controls
     │       ├── RssSettingsViewModel.kt            # Feed/settings state and lifecycle network observation
     │       └── SettingsScreen.kt                  # Grouped General, Data Management, and Debug navigation

@@ -18,7 +18,7 @@ import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.MainActivity
 import me.bubblespark.tidilo.data.rss.RssSettings
 import me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent
-import me.bubblespark.tidilo.ui.screens.settings.SummaryLoad
+import me.bubblespark.tidilo.ui.screens.settings.StorageLoad
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -29,7 +29,7 @@ class RssSettingsScreenTest {
         val settings = mutableStateOf(RssSettings())
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                RssSettingsContent(SummaryLoad.Ready(emptyList()), settings.value, false, null, true,
+                RssSettingsContent(StorageLoad.Ready(emptyList()), settings.value, false, null, true,
                     onBack = {}, onRetry = {}, onSettings = { settings.value = it },
                     onFeed = { _, _, _, _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
             } } }
@@ -82,7 +82,7 @@ class RssSettingsScreenTest {
         val settings = mutableStateOf(RssSettings(listOf(java.time.LocalTime.of(8, 0), java.time.LocalTime.of(18, 30))))
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                RssSettingsContent(SummaryLoad.Ready(emptyList()), settings.value, false, null, true,
+                RssSettingsContent(StorageLoad.Ready(emptyList()), settings.value, false, null, true,
                     onBack = {}, onRetry = {}, onSettings = { settings.value = it },
                     onFeed = { _, _, _, _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
             } } }
@@ -115,7 +115,7 @@ class RssSettingsScreenTest {
             "queue-$it", "https://queue-$it.invalid/feed", "Queue $it", mode = "AI") })
         try {
             host.main { activity.setContent { MaterialTheme {
-                RssSettingsContent(SummaryLoad.Ready(feeds.value), RssSettings(), false, null, true,
+                RssSettingsContent(StorageLoad.Ready(feeds.value), RssSettings(), false, null, true,
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
                     onDelete = {}, onFetch = {}, onDismissError = {})
             } } }
@@ -170,7 +170,7 @@ class RssSettingsScreenTest {
         var fetches = 0
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                RssSettingsContent(SummaryLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
+                RssSettingsContent(StorageLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
                     "waiting-test", "https://example.invalid/feed", "Example"))), RssSettings(), false, null, false,
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
                     onDelete = {}, onFetch = { fetches++ }, onDismissError = {}, manualFetch = status.value)
@@ -196,7 +196,7 @@ class RssSettingsScreenTest {
             val feeds = (1..12).map { me.bubblespark.tidilo.data.db.RssFeedEntity(
                 "header-$it", "https://header-$it.invalid/feed", "Feed $it") }
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                RssSettingsContent(SummaryLoad.Ready(feeds), RssSettings(), false, null, true,
+                RssSettingsContent(StorageLoad.Ready(feeds), RssSettings(), false, null, true,
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
                     onDelete = {}, onFetch = {}, onDismissError = {})
             } } }
@@ -244,7 +244,7 @@ class RssSettingsScreenTest {
         var deleted: String? = null
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                RssSettingsContent(SummaryLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
+                RssSettingsContent(StorageLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
                     "delete-test", "https://example.com/feed", "Example"))), RssSettings(), false, null, true,
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
                     onDelete = { deleted = it }, onFetch = {}, onDismissError = {})
@@ -270,7 +270,7 @@ class RssSettingsScreenTest {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                RssSettingsContent(SummaryLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
+                RssSettingsContent(StorageLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
                     "progress-test", "https://example.com/feed", "Example"))), RssSettings(), false, null, true,
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
                     onDelete = {}, onFetch = {}, onDismissError = {}, manualFetch = me.bubblespark.tidilo.ui.screens.settings.ManualFetchStatus.Running)
@@ -290,7 +290,7 @@ class RssSettingsScreenTest {
         var fetched = false
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                RssSettingsContent(SummaryLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
+                RssSettingsContent(StorageLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
                     "daily-test", "https://example.com/feed", "Example"))), settings.value, false, null, true,
                     onBack = {}, onRetry = {}, onSettings = { settings.value = it },
                     onFeed = { _, _, _, _, _ -> }, onDelete = {}, onFetch = { fetched = true }, onDismissError = {})
@@ -374,7 +374,7 @@ class RssSettingsScreenTest {
             enabled = false, error = "XML_FETCH_FAILED")
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                RssSettingsContent(SummaryLoad.Ready(listOf(feed)), RssSettings(), false, null, true,
+                RssSettingsContent(StorageLoad.Ready(listOf(feed)), RssSettings(), false, null, true,
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> }, onDelete = {},
                     onFetch = {}, onDismissError = {})
             } } }
@@ -479,7 +479,7 @@ class RssSettingsScreenTest {
             retentionLimit = null, error = "HTTP 500", lastAttemptAt = 100, lastSuccessAt = 50))
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                RssSettingsContent(SummaryLoad.Ready(listOf(feed.value)), RssSettings(), false, null, true,
+                RssSettingsContent(StorageLoad.Ready(listOf(feed.value)), RssSettings(), false, null, true,
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> }, onDelete = {},
                     onFetch = {}, onDismissError = {}, onEnabled = { id, value ->
                         assertEquals("feed", id); feed.value = feed.value.copy(enabled = value)
@@ -559,7 +559,7 @@ class RssSettingsScreenTest {
         try {
             instrumentation.runOnMainSync {
                 activity.setContent { MaterialTheme {
-                    RssSettingsContent(SummaryLoad.Ready(emptyList()), settings.value, false, null, wifi.value,
+                    RssSettingsContent(StorageLoad.Ready(emptyList()), settings.value, false, null, wifi.value,
                         onBack = { backed = true }, onRetry = {}, onSettings = { settings.value = it },
                         onFeed = { _, url, mode, limit, _ -> savedUrl = url; savedMode = mode; savedLimit = limit },
                         onDelete = {}, onFetch = {}, onDismissError = {})

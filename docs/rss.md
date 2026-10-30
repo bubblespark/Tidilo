@@ -2,7 +2,7 @@
 
 Daily fetch and Fetch Now completion/error aggregation is specified in [Android OS Notifications](notifications.md). XML failures notify RSS Errors after disabling the feed; individual article failures notify Import Errors once per logical operation without disabling the feed. Room 13 durably records notification outcomes alongside existing article writes.
 
-Settings > Data Management is ordered Summary, RSS, Clear Image Cache. RSS (`settings_rss`) manages RSS 2, Atom, and RDF subscriptions. All subscription state, receipts, article content, and AI output remain on the device. Feed acquisition requests the publisher's XML and article HTML through shared manual/RSS preparation; it does not send bookmark content to an AI service.
+Settings > Data Management is ordered Storage, RSS. RSS (`settings_rss`) manages RSS 2, Atom, and RDF subscriptions. All subscription state, receipts, article content, and AI output remain on the device. Feed acquisition requests the publisher's XML and article HTML through shared manual/RSS preparation; it does not send bookmark content to an AI service.
 
 ## Settings and acquisition
 

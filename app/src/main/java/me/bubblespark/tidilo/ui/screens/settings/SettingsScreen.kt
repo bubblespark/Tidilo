@@ -51,7 +51,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,14 +70,7 @@ import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.config.AppLanguage
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import me.bubblespark.tidilo.data.DomainIconManager
-import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
-import android.widget.Toast
-import androidx.compose.material.icons.filled.DeleteSweep
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
 
 @Composable
@@ -99,12 +91,10 @@ fun SettingsScreen(
     val context = LocalContext.current
     val launchContext = LocalView.current.context
     val localConfig = LocalConfiguration.current
-    val scope = rememberCoroutineScope()
 
     var showFallbackDialog by remember { mutableStateOf(false) }
     var showAiAnalysisDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
-    var showClearCacheConfirmDialog by remember { mutableStateOf(false) }
 
     TidiloScreenScaffold(
         modifier = modifier,
@@ -557,64 +547,6 @@ fun SettingsScreen(
                         tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(16.dp))
                 }
             }
-            Spacer(Modifier.height(12.dp))
-
-            // Clear Image Cache Card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showClearCacheConfirmDialog = true },
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            BoxContent(
-                                icon = Icons.Default.DeleteSweep,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                text = stringResource(R.string.settings_clear_image_cache_title),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = stringResource(R.string.settings_clear_image_cache_subtitle),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                    }
-
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -686,54 +618,6 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
-    }
-
-    if (showClearCacheConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showClearCacheConfirmDialog = false },
-            title = {
-                Text(
-                    text = stringResource(R.string.settings_clear_image_cache_dialog_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = stringResource(R.string.settings_clear_image_cache_dialog_message),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showClearCacheConfirmDialog = false
-                        scope.launch {
-                            withContext(Dispatchers.IO) {
-                                OgImageManager.clearImageCache(context)
-                                DomainIconManager.clearCache(context)
-                            }
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.settings_clear_image_cache_done),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                ) {
-                    Text(
-                        text = stringResource(R.string.common_clear),
-                        color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearCacheConfirmDialog = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            }
-        )
     }
 
     if (showAiAnalysisDialog) {

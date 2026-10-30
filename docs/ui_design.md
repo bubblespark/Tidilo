@@ -390,7 +390,7 @@ When a standalone 86dp bottom-right button expands into a menu (such as `Bookmar
   - Header Icon Buttons: 48dp interactive slots (Settings gear in Library, Add link in Import, Reset Wrench in GenerateContentRequest). Title slots take the remaining width so actions stay visible at large font sizes.
 - **Unified Screens**:
   - Tab Screens without Back Button: `LibraryScreen`, `SearchScreen`, `ImportScreen`.
-  - Sub-Screens with Back Button: `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `NsfwSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `SummaryScreen`, `RssSettingsScreen`, `BookmarkAiReviewScreen`. Library Domain/RSS drill-downs also show Back; root tabs do not.
+  - Sub-Screens with Back Button: `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `NsfwSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `StorageScreen`, `RssSettingsScreen`, `BookmarkAiReviewScreen`. Library Domain/RSS drill-downs also show Back; root tabs do not.
 - **Visibility Policy**:
   - `hideHeaderOnScroll` defaults to false. Library/Search/Import explicitly enable it and reuse MainActivity's `LocalBarsVisible` signal. Settings and all secondary pages explicitly keep fixed headers.
   - One shared slide/fade implementation retains the existing spring and 200ms enter/150ms exit fades. Peek suppression is a separate `headerVisible` input. Header disappearance never collapses body padding or jumps the list.
@@ -523,9 +523,9 @@ back, or query change. A changed query resets both layout positions with a
 non-suspending request; returning from details with the same query preserves them.
 
 
-## Application Summary
+## Storage Dashboard
 
-Settings > Data Management includes a Summary entry showing AICore usage, collection counts, and physical cache storage in rounded tonal cards. Daily bars have date/count accessibility descriptions and distinguish unrecorded dates from zero. Sections expose independent loading/retry states. Storage refresh runs on entry/resume/manual request and includes its measurement timestamp. Quota information is historical, never a remaining-capacity gauge. See [Application Summary](application_summary.md) for exact counting and formatting rules.
+Settings > Data Management includes a Storage entry showing collection counts (Hero card) and physical cache storage in rounded tonal cards, with a proportional multi-color StorageBar and consolidated cache clearance. Sections expose independent loading/retry states. Storage refresh runs on entry/resume/manual request and includes its measurement timestamp. See [Application Summary](application_summary.md) for exact counting and formatting rules.
 
 ## Debug Web Parser
 
@@ -533,7 +533,7 @@ The Body Text panel offers Readability4J, Jsoup Clean, and Prompt modes. Readabi
 
 ## Settings and AI Analysis
 
-Settings groups existing rows into General (Language, Notification, AI Analysis), Data Management (Summary, RSS, Clear Image Cache), and Debug cards. Cards use 20dp corners, surfaceContainerHigh, 20dp row padding, 40dp decorative circular icons, and inset outlineVariant dividers at alpha 0.25. Navigation rows expose a single Button target; text wraps within its weighted column.
+Settings groups existing rows into General (Language, Notification, AI Analysis), Data Management (Storage, RSS), and Debug cards. Cards use 20dp corners, surfaceContainerHigh, 20dp row padding, 40dp decorative circular icons, and inset outlineVariant dividers at alpha 0.25. Navigation rows expose a single Button target; text wraps within its weighted column.
 
 General > AI Analysis opens a dedicated secondary page using the shared fixed header and centralized slide/predictive-back transitions. Its sections are Using AI Model, Automation, AICore error fallback, AICore parameters, and Content Safety. AICore and Disable are inline radio rows in a selectable group, each at least 48dp high. A fresh installation automatically selects AICore only when the initial readiness check returns AVAILABLE; otherwise it selects Disable. Existing/manual selections remain unchanged. Each page entry checks readiness again: AICore is unselectable and its label uses 0.38 alpha while checking or unavailable, with checking guidance or an error-colored unavailable explanation. Disable remains enabled. The check never writes the selected mode, downloads a model, generates content, or records inference usage.
 

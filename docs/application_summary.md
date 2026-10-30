@@ -1,6 +1,6 @@
-# Application Summary
+# Storage Dashboard
 
-Settings > Data Management > Summary (`Screen.Summary`, route `settings_summary`) displays statistics stored and calculated on the device. Its Settings entry uses the Material Symbols Outlined Summarize vector (24dp, weight400, FILL0, GRAD0, ROND50), displayed through the shared 20dp icon helper inside the standard 40dp primary-container circle with 16dp text spacing. The screen never invokes AICore, downloads model assets, or sends telemetry.
+Settings > Data Management > Storage (`Screen.Storage`, route `settings_storage`) displays statistics stored and calculated on the device. Its Settings entry uses the Material Symbols Outlined Summarize vector (24dp, weight400, FILL0, GRAD0, ROND50), displayed through the shared 20dp icon helper inside the standard 40dp primary-container circle with 16dp text spacing. The screen never invokes AICore, downloads model assets, or sends telemetry.
 
 ## Inference usage
 
@@ -16,7 +16,7 @@ Seven bars show today and the preceding six dates, including recorded zero count
 
 ## Collection counts
 
-`BookmarkDao.observeCollectionCounts()` obtains active and trashed counts in one SQL statement and observes both tables. `BookmarkRepository` gates observation on initialization and supports retry after failures. Counts include manual and RSS sources, NSFW, and other filtered items; active bookmarks exclude trash. The trash denominator is the existing `MAX_TRASH_CAPACITY` (100). No complete collection is loaded for these totals. Summary itself adds no Room tables; RSS uses schema9 as described in [RSS subscriptions](rss.md).
+`BookmarkDao.observeCollectionCounts()` obtains active and trashed counts in one SQL statement and observes both tables. `BookmarkRepository` gates observation on initialization and supports retry after failures. Counts include manual and RSS sources, NSFW, and other filtered items; active bookmarks exclude trash. The trash denominator is the existing `MAX_TRASH_CAPACITY` (100). No complete collection is loaded for these totals. Storage dashboard itself adds no Room tables; RSS uses schema9 as described in [RSS subscriptions](rss.md).
 
 ## Cache storage
 
@@ -29,7 +29,7 @@ Seven bars show today and the preceding six dates, including recorded zero count
 
 Each byte category is formatted as comma-grouped KB plus MB with one decimal digit, using binary units (1 KB = 1,024 bytes; 1 MB = 1,048,576 bytes). Positive sub-KB sizes round up to 1 KB; MB uses the underlying byte count. Display rounding can make the sum of displayed rounded KB differ from the rounded total; underlying bytes reconcile exactly.
 
-Storage is scanned on entry, every resume (including resume without stop), and manual refresh. It is not polled in the background. Loading and errors are distinct from a successful zero-size result; successful scans include a last-checked timestamp. Usage, collection, and storage errors remain independent.
+Storage is scanned on entry, every resume (including resume without stop), and manual refresh. It is not polled in the background. Loading and errors are distinct from a successful zero-size result; successful scans include a last-checked timestamp. Usage, collection, and storage errors remain independent. The Storage dashboard consolidates cache clearance: users can clear image and icon caches (OgImageManager and DomainIconManager) directly from the Cache Storage card via a confirmation dialog, automatically rescanning storage upon completion.
 
 ## Validation
 

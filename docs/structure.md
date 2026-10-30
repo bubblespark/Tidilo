@@ -77,8 +77,8 @@ app/src/main/java/com/ykgudev/tidilo/
     │       ├── GenerateContentRequestScreen.kt    # Fine-grained tuning for Gemini Nano inference
     │       ├── GenerateContentRequestViewModel.kt # State management for inference parameters
     │       ├── SettingsDebugScreen.kt             # Diagnostics: AICore prompt API tests & Web Parser workbench
-    │       ├── SummaryScreen.kt                   # Usage, collection, and cache statistics
-    │       ├── SummaryViewModel.kt                # Independent section states and resumed lifecycle refresh
+    │       ├── StorageScreen.kt                   # Storage dashboard, bookmark metrics, cache bar, and clearance
+    │       ├── StorageViewModel.kt                # Collection counts, physical cache scanning, and cache clearing
     │       ├── SummaryDate.kt                     # DST-aware local midnight scheduling
     │       ├── RssSettingsScreen.kt               # Subscription editor, daily time and Wi-Fi-only controls
     │       ├── RssSettingsViewModel.kt            # Feed/settings state and lifecycle network observation

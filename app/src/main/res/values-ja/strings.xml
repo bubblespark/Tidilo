@@ -264,6 +264,7 @@
     <string name="summary_icons">ドメインアイコン</string>
     <string name="summary_images">ページ画像</string>
     <string name="summary_other">その他のキャッシュ</string>
+    <string name="summary_temp_data">一時データ</string>
     <string name="summary_total">合計キャッシュサイズ</string>
     <string name="summary_files">%1$d 個の画像ファイル</string>
     <string name="summary_checked">最終確認: %1$s</string>

@@ -310,6 +310,7 @@
     <string name="summary_icons">Domain icons</string>
     <string name="summary_images">Page images</string>
     <string name="summary_other">Other cache</string>
+    <string name="summary_temp_data">Temporary data</string>
     <string name="summary_total">Total cache size</string>
     <string name="summary_files">%1$d image files</string>
     <string name="summary_checked">Last checked: %1$s</string>

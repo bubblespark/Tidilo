@@ -76,7 +76,7 @@ class SummaryScreenTest {
                 }
             }
             click(awaitNode("Summary entry") { it.text?.toString()?.startsWith(activity.getString(R.string.summary_title)) == true })
-            awaitNode("Collection section") { it.text?.toString() == activity.getString(R.string.summary_collection_status) }
+            awaitNode("Total Bookmarks") { it.text?.toString() == activity.getString(R.string.summary_total_bookmarks) }
             delay(1000)
             instrumentation.waitForIdleSync()
             val screenshot = instrumentation.uiAutomation.takeScreenshot()
@@ -86,12 +86,12 @@ class SummaryScreenTest {
                 }
             } finally { screenshot.recycle() }
             repeat(12) {
-                if (find { it.text?.toString() == "Refresh storage" } == null) {
+                if (find { it.text?.toString() == activity.getString(R.string.summary_clear_cache_button) } == null) {
                     find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                     delay(100)
                 }
             }
-            click(awaitNode("Refresh storage button") { it.text?.toString() == "Refresh storage" })
+            awaitNode("Clear cache button") { it.text?.toString() == activity.getString(R.string.summary_clear_cache_button) }
             awaitNode("Total cache size") { it.text?.toString() == activity.getString(R.string.summary_total) }
             instrumentation.runOnMainSync { activity.onBackPressedDispatcher.onBackPressed() }
             awaitNode("Returned Summary entry subtitle") { it.text?.toString() == activity.getString(R.string.summary_subtitle) }

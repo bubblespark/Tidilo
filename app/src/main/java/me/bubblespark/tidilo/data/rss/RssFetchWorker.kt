@@ -35,7 +35,7 @@ class RssFetchWorker(context: Context, parameters: WorkerParameters) : Coroutine
         }, realign = {
             notifications.finish(run.id)
             NotificationCoordinator.getInstance(applicationContext).publishCompletedRssRuns()
-            RssScheduler.reschedule(applicationContext, force = true, finishingWorkId = id)
+            RssScheduler.reschedule(applicationContext, finishingWorkId = id)
         })
     }
 }

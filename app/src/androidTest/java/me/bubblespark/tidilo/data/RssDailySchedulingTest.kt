@@ -148,6 +148,38 @@ class RssDailySchedulingTest {
         }
     }
 
+    @Test fun wifiPolicyEditKeepsOverdueUnstartedRequestBoundary() = runBlocking {
+        val manager = WorkManager.getInstance(context)
+        val family = "rss-test-overdue-${UUID.randomUUID()}"
+        val time = LocalTime.now().minusHours(2).withSecond(0).withNano(0)
+        val minute = time.hour * 60 + time.minute
+        val requestedAt = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(2)
+        val zone = java.time.ZoneId.systemDefault()
+        val request = androidx.work.PeriodicWorkRequestBuilder<RssFetchWorker>(24, TimeUnit.HOURS)
+            .setInputData(workDataOf("triggerMinuteOfDay" to minute, "requestedAt" to requestedAt))
+            .setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkRequest(
+                android.net.NetworkRequest.Builder().addTransportType(android.net.NetworkCapabilities.TRANSPORT_ETHERNET).build(),
+                androidx.work.NetworkType.CONNECTED).build())
+            .setNextScheduleTimeOverride(requestedAt)
+            .addTag("$family:triggers").addTag("$family:minute:$minute").addTag("$family:zone:$zone")
+            .addTag("$family:at:$requestedAt").addTag("rss-notifications:$minute:true:$zone").build()
+        try {
+            manager.enqueueUniquePeriodicWork("$family-$minute", androidx.work.ExistingPeriodicWorkPolicy.KEEP, request).result.get()
+            assertEquals(WorkInfo.State.ENQUEUED, requireNotNull(manager.getWorkInfoById(request.id).get()).state)
+            assertTrue(requireNotNull(manager.getWorkInfoById(request.id).get()).nextScheduleTimeMillis < System.currentTimeMillis())
+            val edited = RssSettings(listOf(time, time.plusHours(5)).sorted(), dailyEnabled = true)
+            RssScheduler.scheduleDaily(manager, edited, false, family)
+            assertEquals("Adding another time must not move the overdue sibling", requestedAt,
+                requireNotNull(manager.getWorkInfoById(request.id).get()).nextScheduleTimeMillis)
+            RssScheduler.scheduleDaily(manager, edited.copy(wifiOnly = false), false, family)
+            val spec = requireNotNull(androidx.work.impl.WorkManagerImpl.getInstance(context).workDatabase
+                .workSpecDao().getWorkSpec(request.id.toString()))
+            assertEquals("A policy edit must retain the overdue request, not tomorrow's boundary", requestedAt,
+                spec.input.getLong("requestedAt", -1))
+            assertEquals(minute, spec.input.getInt("triggerMinuteOfDay", -1))
+        } finally { manager.cancelAllWorkByTag("$family:triggers").result.get() }
+    }
+
     @Test fun disablingDefersCancellationUntilUnfinishedRunIsFinalized() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()

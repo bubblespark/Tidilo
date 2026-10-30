@@ -52,8 +52,27 @@ class RssSettingsScreenTest {
             assertFalse(settings.value.dailyEnabled)
             assertTrue(settings.value.wifiOnly)
             click(node("Delete trigger") { it.contentDescription?.toString() == "Remove trigger time 08:00" })
+            node("Trigger delete confirmation") { it.text?.toString() == "Delete the trigger time 08:00?" }
+            assertEquals(listOf(java.time.LocalTime.of(8, 0)), settings.value.triggerTimes)
+            instrumentation.waitForIdleSync()
+            delay(400)
+            val confirmation = instrumentation.uiAutomation.takeScreenshot()
+            try { File(context.getExternalFilesDir(null), "issue160-delete-confirmation.png").outputStream().use {
+                confirmation.compress(Bitmap.CompressFormat.PNG, 100, it)
+            } } finally { confirmation.recycle() }
+            clickText("Cancel")
+            assertEquals(listOf(java.time.LocalTime.of(8, 0)), settings.value.triggerTimes)
+            click(node("Delete trigger again") { it.contentDescription?.toString() == "Remove trigger time 08:00" })
+            clickText("Delete")
             node("Restored unset") { it.text?.toString() == "Not set" }
             assertTrue(settings.value.triggerTimes.isEmpty())
+            instrumentation.runOnMainSync { settings.value = settings.value.copy(triggerTimes = listOf(java.time.LocalTime.of(8, 0))) }
+            click(node("Delete disappearing trigger") { it.contentDescription?.toString() == "Remove trigger time 08:00" })
+            node("Pending deletion") { it.text?.toString() == "Delete the trigger time 08:00?" }
+            instrumentation.runOnMainSync { settings.value = settings.value.copy(triggerTimes = listOf(java.time.LocalTime.NOON), wifiOnly = false) }
+            withTimeout(3000) { while (find { it.text?.toString() == "Delete the trigger time 08:00?" } != null) delay(30) }
+            assertEquals(listOf(java.time.LocalTime.NOON), settings.value.triggerTimes)
+            assertFalse(settings.value.wifiOnly)
         } finally { instrumentation.runOnMainSync { activity.finish() } }
     }
 
@@ -80,12 +99,68 @@ class RssSettingsScreenTest {
             while (add != null && !add.isClickable) add = add.parent
             assertFalse(requireNotNull(add).isEnabled)
             click(node("Delete noon") { it.contentDescription?.toString() == "Remove trigger time 12:00" })
+            clickText("Delete")
             node("Reduced count") { it.text?.toString() == "2 / 3" }
             assertTrue(node("Reenabled add") { it.contentDescription?.toString() == "Add trigger time" }.isEnabled)
             click(node("Edit time") { it.contentDescription?.toString() == "Edit trigger time 18:30" })
             clickText("Save")
             assertEquals(listOf(java.time.LocalTime.of(8, 0), java.time.LocalTime.of(18, 30)), settings.value.triggerTimes)
         } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Test fun queueCardBelongsToRssSectionAndRetainsCountHighlight(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val feeds = mutableStateOf((1..4).map { me.bubblespark.tidilo.data.db.RssFeedEntity(
+            "queue-$it", "https://queue-$it.invalid/feed", "Queue $it", mode = "AI") })
+        try {
+            host.main { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(feeds.value), RssSettings(), false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
+                    onDelete = {}, onFetch = {}, onDismissError = {})
+            } } }
+            suspend fun verify(count: Int, highlighted: Boolean) {
+                val label = "Maximum AI queue: $count items"
+                var visible = false
+                repeat(10) {
+                    if (!visible) {
+                        var scroll: (suspend (androidx.compose.ui.geometry.Offset) -> androidx.compose.ui.geometry.Offset)? = null
+                        host.main {
+                            visible = host.nodes(activity).any { host.text(it, label) && it.boundsInRoot.height > 0f }
+                            scroll = host.nodes(activity).first { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.ScrollByOffset) != null }
+                                .config[androidx.compose.ui.semantics.SemanticsActions.ScrollByOffset]
+                        }
+                        if (!visible) kotlinx.coroutines.withContext(androidx.compose.ui.platform.AndroidUiDispatcher.Main) {
+                            requireNotNull(scroll).invoke(androidx.compose.ui.geometry.Offset(0f, 220f))
+                        }
+                    }
+                }
+                val queue = host.await(activity) { host.text(it, label) }
+                host.main {
+                    val heading = host.nodes(activity).first { host.text(it, "RSS (${feeds.value.size})") }
+                    assertTrue("The queue card is below the RSS heading", queue.positionInRoot.y > heading.positionInRoot.y)
+                    val layout = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+                    assertTrue(queue.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action?.invoke(layout) == true)
+                    assertEquals(1, layout.single().lineCount)
+                    assertEquals(androidx.compose.ui.text.style.TextAlign.Center, layout.single().layoutInput.style.textAlign)
+                    val expected = if (highlighted) androidx.compose.material3.lightColorScheme().error else androidx.compose.material3.lightColorScheme().onSurfaceVariant
+                    assertEquals(expected, layout.single().layoutInput.style.color)
+                    assertFalse(host.nodes(activity).any { it.config.getOrNull(SemanticsProperties.Text)?.any { text ->
+                        text.text.startsWith("Each AI feed") || text.text.startsWith("A large AI queue") } == true })
+                }
+                instrumentation.waitForIdleSync()
+                val screenshot = instrumentation.uiAutomation.takeScreenshot()
+                try { File(context.getExternalFilesDir(null), "issue160-queue-$count.png").outputStream().use {
+                    screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
+                } } finally { screenshot.recycle() }
+            }
+            verify(20, false)
+            host.main { feeds.value = feeds.value + listOf(
+                me.bubblespark.tidilo.data.db.RssFeedEntity("queue-5", "https://queue-5.invalid/feed", "Queue 5", mode = "AI"),
+                me.bubblespark.tidilo.data.db.RssFeedEntity("direct", "https://direct.invalid/feed", "Direct"),
+                me.bubblespark.tidilo.data.db.RssFeedEntity("disabled", "https://disabled.invalid/feed", "Disabled", mode = "AI", enabled = false)) }
+            verify(25, true)
+        } finally { host.main { activity.finish() } }
     }
 
     @Test fun manualFetchWaitsWithoutProgressAndReenablesAfterCompletion(): Unit = runBlocking {

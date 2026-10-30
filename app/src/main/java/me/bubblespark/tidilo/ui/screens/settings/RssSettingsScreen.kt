@@ -38,6 +38,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -116,6 +118,7 @@ internal fun RssSettingsContent(
 ) {
     var showTime by rememberSaveable { mutableStateOf(false) }
     var timeToEdit by rememberSaveable { mutableStateOf<Int?>(null) }
+    var deletingTriggerMinute by rememberSaveable { mutableStateOf<Int?>(null) }
     val currentSettings by rememberUpdatedState(settings)
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var showEditor by rememberSaveable { mutableStateOf(false) }
@@ -203,24 +206,27 @@ internal fun RssSettingsContent(
             }
             items(settings.triggerTimes.sorted(), key = { "trigger:${it.hour * 60 + it.minute}" }, contentType = { "trigger" }) { trigger ->
                 RssTriggerTimeCard(trigger, busy,
-                    onRemove = { onSettings(currentSettings.copy(triggerTimes = currentSettings.triggerTimes - trigger)) },
+                    onRemove = { deletingTriggerMinute = trigger.hour * 60 + trigger.minute },
                     onEdit = { timeToEdit = trigger.hour * 60 + trigger.minute; showTime = true })
             }
             val ready = readyFeeds
-            val aiFeeds = ready.count { it.enabled && it.mode == "AI" }
-            item(key = "queue") {
-            RssCard {
-                Text(stringResource(R.string.rss_max_queue, aiFeeds * 5), style = MaterialTheme.typography.bodySmall)
-                if (aiFeeds * 5 > 20) Text(stringResource(R.string.rss_quota_warning), color = MaterialTheme.colorScheme.error)
-                Text(stringResource(R.string.rss_queue_note), style = MaterialTheme.typography.bodySmall)
-            }
-            }
             if (error != null) item(key = "error") { RssCard {
                 Text(error, color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = onDismissError) { Text(stringResource(R.string.rss_dismiss)) }
             } }
-            if (feeds is SummaryLoad.Ready) item(key = "feed-heading") { Text(stringResource(R.string.rss_feed_count, ready.size),
-                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) }
+            if (feeds is SummaryLoad.Ready) {
+                item(key = "feed-heading") { Text(stringResource(R.string.rss_feed_count, ready.size),
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) }
+                item(key = "queue") {
+                    val maxQueue = ready.count { it.enabled && it.mode == "AI" } * 5
+                    RssCard(compact = true) {
+                        Text(stringResource(R.string.rss_max_queue, maxQueue), modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
+                            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                            color = if (maxQueue > 20) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
             when (feeds) {
                 SummaryLoad.Loading -> item(key = "loading") { Text(stringResource(R.string.summary_loading)) }
                 SummaryLoad.Error -> item(key = "load-error") {
@@ -249,6 +255,25 @@ internal fun RssSettingsContent(
             Icon(Icons.Default.Add, contentDescription = stringResource(R.string.rss_add_feed))
         }
         }
+    }
+    deletingTriggerMinute?.let { minute ->
+        val trigger = LocalTime.of(minute / 60, minute % 60)
+        LaunchedEffect(settings.triggerTimes, minute) {
+            if (trigger !in settings.triggerTimes) deletingTriggerMinute = null
+        }
+        if (trigger in settings.triggerTimes) AlertDialog(
+            onDismissRequest = { deletingTriggerMinute = null },
+            title = { Text(stringResource(R.string.rss_delete_trigger_title)) },
+            text = { Text(stringResource(R.string.rss_delete_trigger_message,
+                String.format(Locale.US, "%02d:%02d", trigger.hour, trigger.minute))) },
+            confirmButton = { TextButton(enabled = !busy, onClick = {
+                if (deletingTriggerMinute != null && !busy) {
+                    deletingTriggerMinute = null
+                    if (trigger in currentSettings.triggerTimes) onSettings(currentSettings.copy(triggerTimes = currentSettings.triggerTimes - trigger))
+                }
+            }) { Text(stringResource(R.string.common_delete)) } },
+            dismissButton = { TextButton(onClick = { deletingTriggerMinute = null }) { Text(stringResource(R.string.rss_cancel)) } }
+        )
     }
     if (showTime) {
         val original = timeToEdit?.let { LocalTime.of(it / 60, it % 60) }

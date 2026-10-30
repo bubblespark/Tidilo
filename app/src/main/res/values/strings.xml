@@ -327,8 +327,6 @@
     <string name="rss_fetch_checking">Checking fetch status</string>
     <string name="rss_fetch_waiting">Waiting to fetch</string>
     <string name="rss_max_queue">Maximum AI queue: %1$d items</string>
-    <string name="rss_quota_warning">A large AI queue may reach AICore usage restrictions. Consider Direct mode or the AICore fallback setting. This warning is an estimate, not a fixed SDK quota.</string>
-    <string name="rss_queue_note">Each AI feed keeps its newest 5 unstarted tasks, including AI waiters. Running tasks, errors, retries, and manual usage are separate.</string>
     <string name="rss_dismiss">Dismiss</string>
     <string name="rss_add_feed">Add feed</string>
     <string name="rss_feed_count">RSS (%1$d)</string>
@@ -342,6 +340,8 @@
     <string name="rss_edit_trigger_time">Edit trigger time %1$s</string>
     <string name="rss_remove_trigger_time">Remove trigger time %1$s</string>
     <string name="rss_trigger_duplicate">This time is already set.</string>
+    <string name="rss_delete_trigger_title">Delete trigger time</string>
+    <string name="rss_delete_trigger_message">Delete the trigger time %1$s?</string>
     <string name="rss_no_feeds">No feed subscriptions yet</string>
     <string name="rss_ai_mode">AI Analyze</string>
     <string name="rss_direct_mode">Direct</string>

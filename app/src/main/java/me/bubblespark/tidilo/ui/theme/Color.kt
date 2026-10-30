@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.ui.theme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.lightColorScheme
 
 // Expressive M3 Light Colors
 val PrimaryLight = Color(0xFF006874)
@@ -51,6 +52,13 @@ val OnSurfaceDark = Color(0xFFDEE3E4)
 val SurfaceVariantDark = Color(0xFF3F484A)
 val OnSurfaceVariantDark = Color(0xFFBFC8CA)
 val OutlineDark = Color(0xFF899294)
+
+// Compact destructive actions retain a saturated red and white pair in both themes.
+object DestructiveActionColors {
+    private val palette = lightColorScheme()
+    val container: Color = palette.error
+    val content: Color = palette.onError
+}
 
 // Accent Tag Colors for Expressive Chips
 val TagTech = Color(0xFF388E3C)

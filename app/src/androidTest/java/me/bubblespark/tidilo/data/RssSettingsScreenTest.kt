@@ -23,6 +23,71 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSettingsScreenTest {
+    @Test fun emptyTriggerSectionIsSeparateAndEditableWhileOff(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val settings = mutableStateOf(RssSettings())
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(emptyList()), settings.value, false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = { settings.value = it },
+                    onFeed = { _, _, _, _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
+            } } }
+            node("Unset trigger card") { it.text?.toString() == "Not set" }
+            node("Empty counter") { it.text?.toString() == "0 / 3" }
+            val heading = node("Trigger heading") { it.text?.toString() == "Trigger time" }
+            val dailyBounds = android.graphics.Rect()
+            val triggerBounds = android.graphics.Rect()
+            node("Daily heading") { it.text?.toString() == "Daily fetch time" }.getBoundsInScreen(dailyBounds)
+            heading.getBoundsInScreen(triggerBounds)
+            assertTrue(triggerBounds.top > dailyBounds.bottom)
+            assertNull(find { it.text?.toString() == "Up to 3 times per day" })
+            click(node("Add trigger") { it.contentDescription?.toString() == "Add trigger time" })
+            clickText("Cancel")
+            assertTrue(settings.value.triggerTimes.isEmpty())
+            click(node("Add trigger") { it.contentDescription?.toString() == "Add trigger time" })
+            clickText("Add")
+            withTimeout(3000) { while (settings.value.triggerTimes.isEmpty()) delay(20) }
+            assertEquals(listOf(java.time.LocalTime.of(8, 0)), settings.value.triggerTimes)
+            assertFalse(settings.value.dailyEnabled)
+            assertTrue(settings.value.wifiOnly)
+            click(node("Delete trigger") { it.contentDescription?.toString() == "Remove trigger time 08:00" })
+            node("Restored unset") { it.text?.toString() == "Not set" }
+            assertTrue(settings.value.triggerTimes.isEmpty())
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Test fun duplicateAndLimitDoNotMutateSettings(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val settings = mutableStateOf(RssSettings(listOf(java.time.LocalTime.of(8, 0), java.time.LocalTime.of(18, 30))))
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(emptyList()), settings.value, false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = { settings.value = it },
+                    onFeed = { _, _, _, _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
+            } } }
+            click(node("Add trigger") { it.contentDescription?.toString() == "Add trigger time" })
+            node("Duplicate feedback") { it.text?.toString() == "This time is already set." }
+            var save: AccessibilityNodeInfo? = node("Duplicate add") { it.text?.toString() == "Add" }
+            while (save != null && !save.isClickable) save = save.parent
+            assertFalse(requireNotNull(save).isEnabled)
+            clickText("Cancel")
+            instrumentation.runOnMainSync { settings.value = settings.value.copy(triggerTimes = listOf(
+                java.time.LocalTime.of(8, 0), java.time.LocalTime.NOON, java.time.LocalTime.of(18, 30))) }
+            node("Full count") { it.text?.toString() == "3 / 3" }
+            var add: AccessibilityNodeInfo? = node("Full add") { it.contentDescription?.toString() == "Add trigger time" }
+            while (add != null && !add.isClickable) add = add.parent
+            assertFalse(requireNotNull(add).isEnabled)
+            click(node("Delete noon") { it.contentDescription?.toString() == "Remove trigger time 12:00" })
+            node("Reduced count") { it.text?.toString() == "2 / 3" }
+            assertTrue(node("Reenabled add") { it.contentDescription?.toString() == "Add trigger time" }.isEnabled)
+            click(node("Edit time") { it.contentDescription?.toString() == "Edit trigger time 18:30" })
+            clickText("Save")
+            assertEquals(listOf(java.time.LocalTime.of(8, 0), java.time.LocalTime.of(18, 30)), settings.value.triggerTimes)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
     @Test fun manualFetchWaitsWithoutProgressAndReenablesAfterCompletion(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
@@ -429,11 +494,11 @@ class RssSettingsScreenTest {
             assertNull(find { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." })
             instrumentation.runOnMainSync { wifi.value = false }
             val blocked = node("Wi-Fi blocked status") { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." }
-            val timeBounds = android.graphics.Rect()
+            val wifiBounds = android.graphics.Rect()
             val blockedBounds = android.graphics.Rect()
-            node("Time control") { it.text?.toString() == "00:00" }.getBoundsInScreen(timeBounds)
+            node("Wi-Fi control") { it.text?.toString() == "Fetch only over Wi-Fi" }.getBoundsInScreen(wifiBounds)
             blocked.getBoundsInScreen(blockedBounds)
-            assertTrue("Warning appears below the time", blockedBounds.top >= timeBounds.bottom)
+            assertTrue("Warning remains inside the policy card, above Wi-Fi", blockedBounds.bottom <= wifiBounds.top)
             val blockedScreenshot = instrumentation.uiAutomation.takeScreenshot()
             try { File(context.getExternalFilesDir(null), "issue91-wifi-blocked.png").outputStream().use {
                 blockedScreenshot.compress(Bitmap.CompressFormat.PNG, 100, it)

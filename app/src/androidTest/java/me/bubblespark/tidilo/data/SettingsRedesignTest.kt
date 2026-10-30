@@ -41,7 +41,7 @@ class SettingsRedesignTest {
         try {
             host.main { activity.setContent { TidiloTheme {
                 SettingsScreen({}, { ai++ }, onNavigateToRss = { rss++ },
-                    onNavigateToSummary = { summary++ }, onNavigateToDebug = { debug++ })
+                    onNavigateToStorage = { summary++ }, onNavigateToDebug = { debug++ })
             } } }
             suspend fun click(label: Int) = invokeClick(host.await(activity) {
                 host.text(it, host.context.getString(label)) && clickableOrNull(it) != null
@@ -60,9 +60,6 @@ class SettingsRedesignTest {
             click(R.string.settings_language_title)
             awaitDialogText(R.string.settings_language_dialog_title)
             clickDialogText(R.string.common_close)
-            click(R.string.settings_clear_image_cache_title)
-            awaitDialogText(R.string.settings_clear_image_cache_dialog_message)
-            clickDialogText(R.string.common_cancel)
         } finally { host.main { activity.finish() } }
     }
 

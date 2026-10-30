@@ -213,7 +213,7 @@ fun TidiloNavGraph(
                     navController.navigate(Screen.AiAnalysis.route) { launchSingleTop = true }
                 },
                 onNavigateToRss = { navController.navigate(Screen.RssSettings.route) },
-                onNavigateToSummary = { navController.navigate(Screen.Summary.route) },
+                onNavigateToStorage = { navController.navigate(Screen.Storage.route) },
                 onNavigateToDebug = {
                     navController.navigate(Screen.SettingsDebug.route)
                 }
@@ -233,8 +233,8 @@ fun TidiloNavGraph(
         composable(Screen.RssSettings.route) {
             me.bubblespark.tidilo.ui.screens.settings.RssSettingsScreen(onNavigateBack = { navController.popBackStack() })
         }
-        composable(Screen.Summary.route) {
-            me.bubblespark.tidilo.ui.screens.settings.SummaryScreen(
+        composable(Screen.Storage.route) {
+            me.bubblespark.tidilo.ui.screens.settings.StorageScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }

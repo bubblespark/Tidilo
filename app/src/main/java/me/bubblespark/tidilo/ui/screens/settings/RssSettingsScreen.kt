@@ -44,6 +44,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.util.Locale
+import java.time.LocalTime
+import me.bubblespark.tidilo.data.rss.replaceRssTriggerTime
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import me.bubblespark.tidilo.data.DomainIconManager
@@ -157,7 +159,8 @@ internal fun RssSettingsContent(
                     Text(stringResource(R.string.rss_schedule), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                     OutlinedButton(onClick = { showTime = true }, enabled = !busy && settings.dailyEnabled,
                         shape = RoundedCornerShape(8.dp), modifier = Modifier.defaultMinSize(minWidth = 96.dp, minHeight = 56.dp)) {
-                        Text(String.format(Locale.US, "%02d:%02d", settings.hour, settings.minute),
+                        val firstTime = settings.triggerTimes.firstOrNull() ?: LocalTime.of(8, 0)
+                        Text(String.format(Locale.US, "%02d:%02d", firstTime.hour, firstTime.minute),
                             style = MaterialTheme.typography.titleMedium)
                     }
                 }
@@ -231,10 +234,12 @@ internal fun RssSettingsContent(
         }
     }
     if (showTime) {
-        val time = rememberTimePickerState(settings.hour, settings.minute, is24Hour = true)
+        val firstTime = settings.triggerTimes.firstOrNull()
+        val time = rememberTimePickerState(firstTime?.hour ?: 8, firstTime?.minute ?: 0, is24Hour = true)
         AlertDialog(onDismissRequest = { showTime = false }, title = { Text(stringResource(R.string.rss_schedule)) },
             text = { TimePicker(time) }, confirmButton = {
-                TextButton(onClick = { onSettings(settings.copy(hour = time.hour, minute = time.minute)); showTime = false }) {
+                TextButton(onClick = { replaceRssTriggerTime(settings.triggerTimes, firstTime, LocalTime.of(time.hour, time.minute))
+                    ?.let { onSettings(settings.copy(triggerTimes = it)) }; showTime = false }) {
                     Text(stringResource(R.string.rss_save))
                 }
             }, dismissButton = { TextButton(onClick = { showTime = false }) { Text(stringResource(R.string.rss_cancel)) } })

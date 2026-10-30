@@ -146,7 +146,7 @@ class RssSettingsScreenTest {
     @Test fun dailyToggleUpdatesSettingWithoutDisablingManualFetch(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
-        val settings = mutableStateOf(RssSettings())
+        val settings = mutableStateOf(RssSettings(dailyEnabled = true))
         var fetched = false
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
@@ -410,7 +410,7 @@ class RssSettingsScreenTest {
     @Test fun scheduleWifiAndDirectFeedEditorExposeIndependentControls(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
-        val settings = mutableStateOf(RssSettings())
+        val settings = mutableStateOf(RssSettings(listOf(java.time.LocalTime.MIDNIGHT), dailyEnabled = true))
         val wifi = mutableStateOf<Boolean?>(null)
         var savedMode: String? = null
         var savedLimit: Int? = 1
@@ -445,7 +445,7 @@ class RssSettingsScreenTest {
             withTimeout(3000) { while (find { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." } != null) delay(20) }
             click(node("Time picker") { it.text?.toString() == "00:00" })
             click(node("Cancel time") { it.text?.toString() == "Cancel" })
-            assertEquals(0, settings.value.hour)
+            assertEquals(listOf(java.time.LocalTime.MIDNIGHT), settings.value.triggerTimes)
             delay(500)
             val screenshot = instrumentation.uiAutomation.takeScreenshot()
             try { File(context.getExternalFilesDir(null), "issue91-rss-settings.png").outputStream().use {

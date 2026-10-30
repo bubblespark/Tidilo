@@ -9,35 +9,45 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-data class RssSettings(val hour: Int = 0, val minute: Int = 0, val wifiOnly: Boolean = true, val dailyEnabled: Boolean = true) {
-    val time: LocalTime get() = LocalTime.of(hour, minute)
+data class RssSettings(val triggerTimes: List<LocalTime> = emptyList(), val wifiOnly: Boolean = true, val dailyEnabled: Boolean = false) {
+    init { encodeRssTriggerTimes(triggerTimes) }
 }
 
 internal class RssPreferences internal constructor(context: Context) {
     private val preferences = context.getSharedPreferences("tidilo_rss", Context.MODE_PRIVATE)
     private val mutex = Mutex()
     private var loaded = false
+    private var migrationPending = false
     private val _state = MutableStateFlow(RssSettings())
     val state = _state.asStateFlow()
 
     suspend fun initialize() = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (!loaded) {
-                _state.value = RssSettings(preferences.getInt("hour", 0).coerceIn(0, 23),
-                    preferences.getInt("minute", 0).coerceIn(0, 59), preferences.getBoolean("wifi", true),
-                    preferences.getBoolean("dailyEnabled", true))
+                migrationPending = migrationPending || preferences.getInt("scheduleVersion", 0) < 1
+                if (migrationPending) {
+                    if (!preferences.edit().putInt("scheduleVersion", 1).putString("triggerMinutes", "")
+                            .putBoolean("dailyEnabled", false).remove("hour").remove("minute").commit())
+                        throw java.io.IOException("Could not initialize RSS settings")
+                    migrationPending = false
+                }
+                _state.value = RssSettings(decodeRssTriggerTimes(preferences.getString("triggerMinutes", "")),
+                    preferences.getBoolean("wifi", true), preferences.getBoolean("dailyEnabled", false))
                 loaded = true
             }
         }
     }
 
     suspend fun save(settings: RssSettings) = withContext(Dispatchers.IO) {
-        require(settings.hour in 0..23 && settings.minute in 0..59)
+        val saved = settings.copy(triggerTimes = settings.triggerTimes.sorted())
+        val encoded = encodeRssTriggerTimes(saved.triggerTimes)
         mutex.withLock {
-            if (!preferences.edit().putInt("hour", settings.hour).putInt("minute", settings.minute)
-                    .putBoolean("wifi", settings.wifiOnly).putBoolean("dailyEnabled", settings.dailyEnabled)
+            if (!preferences.edit().putInt("scheduleVersion", 1).putString("triggerMinutes", encoded)
+                    .remove("hour").remove("minute")
+                    .putBoolean("wifi", saved.wifiOnly).putBoolean("dailyEnabled", saved.dailyEnabled)
                     .commit()) throw java.io.IOException("Could not save RSS settings")
-            _state.value = settings
+            _state.value = saved
+            migrationPending = false
             loaded = true
         }
     }

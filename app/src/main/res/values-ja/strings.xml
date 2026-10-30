@@ -289,20 +289,6 @@
     <string name="summary_clear_cache_dialog_title">画像キャッシュを削除しますか？</string>
     <string name="summary_clear_cache_dialog_message">プレビュー画像とドメインアイコンのキャッシュを削除します。表示時に再ダウンロードされます。</string>
     <string name="summary_storage_privacy">すべてのデータとキャッシュは端末内でのみ管理されます。</string>
-    <string name="summary_aicore">AICore使用状況</string>
-    <string name="summary_today">本日の推論呼び出し</string>
-    <string name="summary_outcomes">成功: %1$d · 失敗: %2$d</string>
-    <string name="summary_pending_outcomes">キャンセル: %1$d · 中断: %2$d · 保留: %3$d</string>
-    <string name="summary_debug">本日のデバッグ呼び出しを含む</string>
-    <string name="summary_last_seven">過去7日間</string>
-    <string name="summary_recorded_since">記録開始: %1$s</string>
-    <string name="summary_quota">過去の制限検知</string>
-    <string name="summary_quota_day">推論開始日: %1$s</string>
-    <string name="summary_calls">%1$d回</string>
-    <string name="summary_quota_note">制限エラー（27）が最初に検知された日の呼び出し回数です。残り枠ではなく過去の実績です。</string>
-    <string name="summary_day_calls">%1$s: %2$d回</string>
-    <string name="summary_day_unrecorded">%1$s: 未記録</string>
-    <string name="summary_unrecorded">— 記録開始前のデータはありません</string>
     <string name="summary_collection">コレクション</string>
     <string name="summary_bookmarks">ブックマーク（ごみ箱を除く）</string>
     <string name="summary_trash">ごみ箱</string>
@@ -312,14 +298,9 @@
     <string name="summary_other">その他のキャッシュ</string>
     <string name="summary_total">キャッシュ合計</string>
     <string name="summary_files">%1$d個の画像ファイル</string>
-    <string name="summary_checked">最終確認: %1$s</string>
-    <string name="summary_physical_note">一時ファイルを含みます。画像数は保存された複製を含みます。1 KB = 1,024バイト。</string>
-    <string name="summary_refresh">容量を再計算</string>
     <string name="summary_loading">読み込み中…</string>
     <string name="summary_error">統計情報を読み込めませんでした。</string>
     <string name="summary_retry">再試行</string>
-    <string name="summary_save_warning">使用状況を保存できませんでした。アプリ終了時に件数が失われる可能性があります。</string>
-    <string name="summary_privacy">統計データは端末内にのみ保存されます。プロンプトやURL、生成内容は記録に含まれません。</string>
     <string name="rss_title">RSS</string>
     <string name="rss_ready">Ready - RSS</string>
     <string name="rss_ready_empty">待機中のRSS記事はありません</string>

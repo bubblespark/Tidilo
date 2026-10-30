@@ -23,6 +23,146 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSettingsScreenTest {
+    @Test fun emptyTriggerSectionIsSeparateAndEditableWhileOff(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val settings = mutableStateOf(RssSettings())
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(emptyList()), settings.value, false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = { settings.value = it },
+                    onFeed = { _, _, _, _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
+            } } }
+            node("Unset trigger card") { it.text?.toString() == "Not set" }
+            node("Empty counter") { it.text?.toString() == "0 / 3" }
+            val heading = node("Trigger heading") { it.text?.toString() == "Trigger time" }
+            val dailyBounds = android.graphics.Rect()
+            val triggerBounds = android.graphics.Rect()
+            node("Daily heading") { it.text?.toString() == "Daily fetch time" }.getBoundsInScreen(dailyBounds)
+            heading.getBoundsInScreen(triggerBounds)
+            assertTrue(triggerBounds.top > dailyBounds.bottom)
+            assertNull(find { it.text?.toString() == "Up to 3 times per day" })
+            click(node("Add trigger") { it.contentDescription?.toString() == "Add trigger time" })
+            clickText("Cancel")
+            assertTrue(settings.value.triggerTimes.isEmpty())
+            click(node("Add trigger") { it.contentDescription?.toString() == "Add trigger time" })
+            clickText("Add")
+            withTimeout(3000) { while (settings.value.triggerTimes.isEmpty()) delay(20) }
+            assertEquals(listOf(java.time.LocalTime.of(8, 0)), settings.value.triggerTimes)
+            assertFalse(settings.value.dailyEnabled)
+            assertTrue(settings.value.wifiOnly)
+            click(node("Delete trigger") { it.contentDescription?.toString() == "Remove trigger time 08:00" })
+            node("Trigger delete confirmation") { it.text?.toString() == "Delete the trigger time 08:00?" }
+            assertEquals(listOf(java.time.LocalTime.of(8, 0)), settings.value.triggerTimes)
+            instrumentation.waitForIdleSync()
+            delay(400)
+            val confirmation = instrumentation.uiAutomation.takeScreenshot()
+            try { File(context.getExternalFilesDir(null), "issue160-delete-confirmation.png").outputStream().use {
+                confirmation.compress(Bitmap.CompressFormat.PNG, 100, it)
+            } } finally { confirmation.recycle() }
+            clickText("Cancel")
+            assertEquals(listOf(java.time.LocalTime.of(8, 0)), settings.value.triggerTimes)
+            click(node("Delete trigger again") { it.contentDescription?.toString() == "Remove trigger time 08:00" })
+            clickText("Delete")
+            node("Restored unset") { it.text?.toString() == "Not set" }
+            assertTrue(settings.value.triggerTimes.isEmpty())
+            instrumentation.runOnMainSync { settings.value = settings.value.copy(triggerTimes = listOf(java.time.LocalTime.of(8, 0))) }
+            click(node("Delete disappearing trigger") { it.contentDescription?.toString() == "Remove trigger time 08:00" })
+            node("Pending deletion") { it.text?.toString() == "Delete the trigger time 08:00?" }
+            instrumentation.runOnMainSync { settings.value = settings.value.copy(triggerTimes = listOf(java.time.LocalTime.NOON), wifiOnly = false) }
+            withTimeout(3000) { while (find { it.text?.toString() == "Delete the trigger time 08:00?" } != null) delay(30) }
+            assertEquals(listOf(java.time.LocalTime.NOON), settings.value.triggerTimes)
+            assertFalse(settings.value.wifiOnly)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Test fun duplicateAndLimitDoNotMutateSettings(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val settings = mutableStateOf(RssSettings(listOf(java.time.LocalTime.of(8, 0), java.time.LocalTime.of(18, 30))))
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(emptyList()), settings.value, false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = { settings.value = it },
+                    onFeed = { _, _, _, _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
+            } } }
+            click(node("Add trigger") { it.contentDescription?.toString() == "Add trigger time" })
+            node("Duplicate feedback") { it.text?.toString() == "This time is already set." }
+            var save: AccessibilityNodeInfo? = node("Duplicate add") { it.text?.toString() == "Add" }
+            while (save != null && !save.isClickable) save = save.parent
+            assertFalse(requireNotNull(save).isEnabled)
+            clickText("Cancel")
+            instrumentation.runOnMainSync { settings.value = settings.value.copy(triggerTimes = listOf(
+                java.time.LocalTime.of(8, 0), java.time.LocalTime.NOON, java.time.LocalTime.of(18, 30))) }
+            node("Full count") { it.text?.toString() == "3 / 3" }
+            var add: AccessibilityNodeInfo? = node("Full add") { it.contentDescription?.toString() == "Add trigger time" }
+            while (add != null && !add.isClickable) add = add.parent
+            assertFalse(requireNotNull(add).isEnabled)
+            click(node("Delete noon") { it.contentDescription?.toString() == "Remove trigger time 12:00" })
+            clickText("Delete")
+            node("Reduced count") { it.text?.toString() == "2 / 3" }
+            assertTrue(node("Reenabled add") { it.contentDescription?.toString() == "Add trigger time" }.isEnabled)
+            click(node("Edit time") { it.contentDescription?.toString() == "Edit trigger time 18:30" })
+            clickText("Save")
+            assertEquals(listOf(java.time.LocalTime.of(8, 0), java.time.LocalTime.of(18, 30)), settings.value.triggerTimes)
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Test fun queueCardBelongsToRssSectionAndRetainsCountHighlight(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val feeds = mutableStateOf((1..4).map { me.bubblespark.tidilo.data.db.RssFeedEntity(
+            "queue-$it", "https://queue-$it.invalid/feed", "Queue $it", mode = "AI") })
+        try {
+            host.main { activity.setContent { MaterialTheme {
+                RssSettingsContent(SummaryLoad.Ready(feeds.value), RssSettings(), false, null, true,
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
+                    onDelete = {}, onFetch = {}, onDismissError = {})
+            } } }
+            suspend fun verify(count: Int, highlighted: Boolean) {
+                val label = "Maximum AI queue: $count items"
+                var visible = false
+                repeat(10) {
+                    if (!visible) {
+                        var scroll: (suspend (androidx.compose.ui.geometry.Offset) -> androidx.compose.ui.geometry.Offset)? = null
+                        host.main {
+                            visible = host.nodes(activity).any { host.text(it, label) && it.boundsInRoot.height > 0f }
+                            scroll = host.nodes(activity).first { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.ScrollByOffset) != null }
+                                .config[androidx.compose.ui.semantics.SemanticsActions.ScrollByOffset]
+                        }
+                        if (!visible) kotlinx.coroutines.withContext(androidx.compose.ui.platform.AndroidUiDispatcher.Main) {
+                            requireNotNull(scroll).invoke(androidx.compose.ui.geometry.Offset(0f, 220f))
+                        }
+                    }
+                }
+                val queue = host.await(activity) { host.text(it, label) }
+                host.main {
+                    val heading = host.nodes(activity).first { host.text(it, "RSS (${feeds.value.size})") }
+                    assertTrue("The queue card is below the RSS heading", queue.positionInRoot.y > heading.positionInRoot.y)
+                    val layout = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+                    assertTrue(queue.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action?.invoke(layout) == true)
+                    assertEquals(1, layout.single().lineCount)
+                    assertEquals(androidx.compose.ui.text.style.TextAlign.Center, layout.single().layoutInput.style.textAlign)
+                    val expected = if (highlighted) androidx.compose.material3.lightColorScheme().error else androidx.compose.material3.lightColorScheme().onSurfaceVariant
+                    assertEquals(expected, layout.single().layoutInput.style.color)
+                    assertFalse(host.nodes(activity).any { it.config.getOrNull(SemanticsProperties.Text)?.any { text ->
+                        text.text.startsWith("Each AI feed") || text.text.startsWith("A large AI queue") } == true })
+                }
+                instrumentation.waitForIdleSync()
+                val screenshot = instrumentation.uiAutomation.takeScreenshot()
+                try { File(context.getExternalFilesDir(null), "issue160-queue-$count.png").outputStream().use {
+                    screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
+                } } finally { screenshot.recycle() }
+            }
+            verify(20, false)
+            host.main { feeds.value = feeds.value + listOf(
+                me.bubblespark.tidilo.data.db.RssFeedEntity("queue-5", "https://queue-5.invalid/feed", "Queue 5", mode = "AI"),
+                me.bubblespark.tidilo.data.db.RssFeedEntity("direct", "https://direct.invalid/feed", "Direct"),
+                me.bubblespark.tidilo.data.db.RssFeedEntity("disabled", "https://disabled.invalid/feed", "Disabled", mode = "AI", enabled = false)) }
+            verify(25, true)
+        } finally { host.main { activity.finish() } }
+    }
+
     @Test fun manualFetchWaitsWithoutProgressAndReenablesAfterCompletion(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
@@ -146,7 +286,7 @@ class RssSettingsScreenTest {
     @Test fun dailyToggleUpdatesSettingWithoutDisablingManualFetch(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
-        val settings = mutableStateOf(RssSettings())
+        val settings = mutableStateOf(RssSettings(dailyEnabled = true))
         var fetched = false
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
@@ -410,7 +550,7 @@ class RssSettingsScreenTest {
     @Test fun scheduleWifiAndDirectFeedEditorExposeIndependentControls(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
-        val settings = mutableStateOf(RssSettings())
+        val settings = mutableStateOf(RssSettings(listOf(java.time.LocalTime.MIDNIGHT), dailyEnabled = true))
         val wifi = mutableStateOf<Boolean?>(null)
         var savedMode: String? = null
         var savedLimit: Int? = 1
@@ -429,11 +569,11 @@ class RssSettingsScreenTest {
             assertNull(find { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." })
             instrumentation.runOnMainSync { wifi.value = false }
             val blocked = node("Wi-Fi blocked status") { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." }
-            val timeBounds = android.graphics.Rect()
+            val wifiBounds = android.graphics.Rect()
             val blockedBounds = android.graphics.Rect()
-            node("Time control") { it.text?.toString() == "00:00" }.getBoundsInScreen(timeBounds)
+            node("Wi-Fi control") { it.text?.toString() == "Fetch only over Wi-Fi" }.getBoundsInScreen(wifiBounds)
             blocked.getBoundsInScreen(blockedBounds)
-            assertTrue("Warning appears below the time", blockedBounds.top >= timeBounds.bottom)
+            assertTrue("Warning remains inside the policy card, above Wi-Fi", blockedBounds.bottom <= wifiBounds.top)
             val blockedScreenshot = instrumentation.uiAutomation.takeScreenshot()
             try { File(context.getExternalFilesDir(null), "issue91-wifi-blocked.png").outputStream().use {
                 blockedScreenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
@@ -445,7 +585,7 @@ class RssSettingsScreenTest {
             withTimeout(3000) { while (find { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." } != null) delay(20) }
             click(node("Time picker") { it.text?.toString() == "00:00" })
             click(node("Cancel time") { it.text?.toString() == "Cancel" })
-            assertEquals(0, settings.value.hour)
+            assertEquals(listOf(java.time.LocalTime.MIDNIGHT), settings.value.triggerTimes)
             delay(500)
             val screenshot = instrumentation.uiAutomation.takeScreenshot()
             try { File(context.getExternalFilesDir(null), "issue91-rss-settings.png").outputStream().use {

@@ -116,7 +116,7 @@ class RssSettingsViewModel(application: Application, private val savedState: and
 
     fun saveSettings(value: RssSettings) = action {
         preferences.save(value)
-        RssScheduler.reschedule(getApplication(), force = true)
+        RssScheduler.reschedule(getApplication())
     }
 
     fun saveFeed(original: RssFeedEntity?, url: String, mode: String, limit: Int?, convert: Boolean) =

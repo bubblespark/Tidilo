@@ -27,7 +27,7 @@ internal class RssRepository internal constructor(private val context: Context,
     private val db: AppDatabase = AppDatabase.getInstance(context),
     private val requestOverride: (suspend (String, Map<String, String>, Boolean) -> RssHttpPage)? = null,
     private val networkOverride: me.bubblespark.tidilo.parser.ArticleNetwork? = null,
-    private val scheduleChanged: suspend () -> Unit = { RssScheduler.reschedule(context, force = true) },
+    private val scheduleChanged: suspend () -> Unit = { RssScheduler.reschedule(context) },
     private val enqueueInitial: suspend (String, String, Boolean) -> Unit = { feedId, operationId, mobile ->
         RssScheduler.fetchInitial(context, feedId, operationId, mobile)
     },

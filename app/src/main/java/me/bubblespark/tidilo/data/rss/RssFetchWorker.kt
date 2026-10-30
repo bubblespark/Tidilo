@@ -3,7 +3,10 @@ package me.bubblespark.tidilo.data.rss
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import java.time.ZonedDateTime
+import java.time.Instant
+import java.time.LocalTime
+import java.time.ZoneId
+import androidx.work.Data
 import kotlinx.coroutines.CancellationException
 import androidx.room.withTransaction
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -19,29 +22,41 @@ class RssFetchWorker(context: Context, parameters: WorkerParameters) : Coroutine
         val notifications = db.rssNotificationDao()
         val preferences = RssPreferences.getInstance(applicationContext)
         preferences.initialize()
-        val now = ZonedDateTime.now()
-        val scheduled = now.toLocalDate().atTime(preferences.state.value.time).atZone(now.zone)
-        val boundary = if (scheduled > now) scheduled.minusDays(1) else scheduled
-        val requestedAt = inputData.getLong("requestedAt", boundary.toInstant().toEpochMilli())
-        // Periodic WorkRequest IDs repeat; an unfinished logical run survives retries and midnight.
-        val run = RssScheduler.withRunStartLock { db.withTransaction {
-            selectRssNotificationRun(notifications.unfinishedRun(id.toString()),
-                notifications.runFor(id.toString(), requestedAt), notifications.latestRun(id.toString()),
-                runAttemptCount, inputData.keyValueMap.containsKey("requestedAt")) ?: RssNotificationRunEntity(
-                UUID.randomUUID().toString(), id.toString(),
-                requestedAt,
-                inputData.getString("feedId") == null
-            ).also { notifications.putRun(it) }
-        } }
+        val run = RssScheduler.withRunStartLock {
+            startRssFetchRun(db, id, inputData, tags, runAttemptCount, preferences.state.value)
+        }
+        if (run == null) {
+            RssScheduler.reschedule(applicationContext, finishingWorkId = id)
+            return Result.success()
+        }
         return runRssFetchAttempt(runAttemptCount, fetch = {
             run.completed || RssRepository.getInstance(applicationContext).fetchAll(run.requestedAt, inputData.getString("feedId"),
                 inputData.getString("operationId"), run.id)
         }, realign = {
             notifications.finish(run.id)
             NotificationCoordinator.getInstance(applicationContext).publishCompletedRssRuns()
-            RssScheduler.reschedule(applicationContext, force = true, finishingWorkId = id)
+            RssScheduler.reschedule(applicationContext, finishingWorkId = id)
         })
     }
+}
+
+/** Called under the scheduler lock; stale periodic work may only resume an existing logical run. */
+internal suspend fun startRssFetchRun(db: AppDatabase, workId: UUID, input: Data, tags: Set<String>,
+    attempt: Int, settings: RssSettings, now: Instant = Instant.now()): RssNotificationRunEntity? = db.withTransaction {
+    val notifications = db.rssNotificationDao()
+    notifications.unfinishedRun(workId.toString())?.let { return@withTransaction it }
+    val minute = input.getInt("triggerMinuteOfDay", -1)
+    val scheduled = input.keyValueMap.containsKey("triggerMinuteOfDay") || tags.any { it.startsWith("rss-notifications:") }
+    if (scheduled && (!settings.dailyEnabled || minute !in 0..1439 ||
+            settings.triggerTimes.none { it.hour * 60 + it.minute == minute } || db.rssDao().enabledFeeds().isEmpty()))
+        return@withTransaction null
+    val boundary = if (minute in 0..1439) rssTriggerBoundary(now, LocalTime.of(minute / 60, minute % 60), ZoneId.systemDefault()) else now
+    val requestedAt = input.getLong("requestedAt", boundary.toEpochMilli())
+    // Periodic IDs repeat; retries keep the original logical run and its item ownership.
+    selectRssNotificationRun(null, notifications.runFor(workId.toString(), requestedAt),
+        notifications.latestRun(workId.toString()), attempt, input.keyValueMap.containsKey("requestedAt"))
+        ?: RssNotificationRunEntity(UUID.randomUUID().toString(), workId.toString(), requestedAt,
+            input.getString("feedId") == null).also { notifications.putRun(it) }
 }
 
 /** Article retries are bounded durably per item; infrastructure errors have five worker attempts. */

@@ -6,9 +6,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RssDailySettingsTest {
-    @Test fun dailyFetchDefaultsToEnabledAndCanBeDisabled() {
+    @Test fun dailyFetchDefaultsOffAndUnsetAndCanBeConfigured() {
         val original = RssSettings()
-        assertTrue(original.dailyEnabled)
-        assertFalse(original.copy(dailyEnabled = false).dailyEnabled)
+        assertFalse(original.dailyEnabled)
+        assertTrue(original.triggerTimes.isEmpty())
+        assertTrue(original.wifiOnly)
+        assertTrue(original.copy(dailyEnabled = true).dailyEnabled)
     }
 }

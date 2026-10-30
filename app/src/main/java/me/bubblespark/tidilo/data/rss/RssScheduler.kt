@@ -14,6 +14,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.WorkInfo
 import androidx.work.workDataOf
 import java.time.Duration
 import java.time.Instant
@@ -43,47 +44,74 @@ internal object RssScheduler {
         else setRequiredNetworkType(NetworkType.CONNECTED)
     }.build()
 
-    suspend fun reschedule(context: Context, force: Boolean = false, finishingWorkId: UUID? = null) = withContext(Dispatchers.IO) {
+    suspend fun reschedule(context: Context, realignClock: Boolean = false, finishingWorkId: UUID? = null) = withContext(Dispatchers.IO) {
         lock.withLock {
             val preferences = RssPreferences.getInstance(context)
             preferences.initialize()
             val manager = WorkManager.getInstance(context)
-            if (AppDatabase.getInstance(context).rssDao().enabledFeeds().isEmpty()) {
-                manager.cancelUniqueWork(DAILY).result.get()
+            val db = AppDatabase.getInstance(context)
+            val settings = preferences.state.value
+            if (db.rssDao().enabledFeeds().isEmpty()) {
+                scheduleDaily(manager, settings.copy(dailyEnabled = false), realignClock, DAILY, db.rssNotificationDao(), finishingWorkId)
                 manager.cancelUniqueWork(MANUAL).result.get()
                 return@withLock
             }
-            val settings = preferences.state.value
             val manual = manager.getWorkInfosForUniqueWork(MANUAL).get().firstOrNull { !it.state.isFinished }
             if (manual != null) manager.updateWork(OneTimeWorkRequestBuilder<RssFetchWorker>()
                 .setId(manual.id).setInputData(workDataOf("requestedAt" to preferences.manualRequestedAt()))
                 .setConstraints(constraints(settings.wifiOnly)).build()).get()
-            scheduleDaily(manager, settings, force, DAILY, AppDatabase.getInstance(context).rssNotificationDao(), finishingWorkId)
+            scheduleDaily(manager, settings, realignClock, DAILY, db.rssNotificationDao(), finishingWorkId)
         }
     }
 
-    internal suspend fun scheduleDaily(manager: WorkManager, settings: RssSettings, force: Boolean, name: String,
+    internal suspend fun scheduleDaily(manager: WorkManager, settings: RssSettings, realignClock: Boolean, name: String,
         notifications: RssNotificationDao? = null, finishingWorkId: UUID? = null) {
-        if (!settings.dailyEnabled) {
-            val current = manager.getWorkInfosForUniqueWork(name).get().firstOrNull { !it.state.isFinished }
-            if (current != null && current.id != finishingWorkId &&
-                (current.state == androidx.work.WorkInfo.State.RUNNING || notifications?.unfinishedRun(current.id.toString()) != null)) return
-            manager.cancelUniqueWork(name).result.get()
-            return
+        val desired = if (settings.dailyEnabled) settings.triggerTimes.associateBy { it.hour * 60 + it.minute } else emptyMap()
+        val existing = (manager.getWorkInfosByTag("$name:triggers").get() +
+            manager.getWorkInfosForUniqueWork(name).get()).filter { !it.state.isFinished }.distinctBy { it.id }
+        for (work in existing) {
+            val minute = work.tags.firstOrNull { it.startsWith("$name:minute:") }?.substringAfterLast(':')?.toIntOrNull()
+            if (minute in desired.keys) continue
+            val unfinished = notifications?.unfinishedRun(work.id.toString())
+            if (work.id != finishingWorkId && (work.state == WorkInfo.State.RUNNING || unfinished != null)) continue
+            manager.cancelWorkById(work.id).result.get()
         }
         val zone = ZoneId.systemDefault()
-        val tag = "rss-notifications:${settings.hour}:${settings.minute}:${settings.wifiOnly}:$zone"
-        val current = manager.getWorkInfosForUniqueWork(name).get().firstOrNull { !it.state.isFinished }
-        if (!force && current?.tags?.contains(tag) == true) return
-        val now = Instant.now()
-        val next = nextRssFetchAt(now, settings.time, zone)
-        val request = PeriodicWorkRequestBuilder<RssFetchWorker>(24, TimeUnit.HOURS)
-            .setInputData(workDataOf("requestedAt" to next.toEpochMilli()))
-            .setConstraints(constraints(settings.wifiOnly))
-            .setInitialDelay(Duration.between(now, next))
-            .setNextScheduleTimeOverride(next.toEpochMilli())
-            .addTag(tag).build()
-        manager.enqueueUniquePeriodicWork(name, ExistingPeriodicWorkPolicy.UPDATE, request).result.get()
+        for ((minute, time) in desired) {
+            val workName = "$name-$minute"
+            val current = manager.getWorkInfosForUniqueWork(workName).get().firstOrNull { !it.state.isFinished }
+            val tag = "rss-notifications:$minute:${settings.wifiOnly}:$zone"
+            val unchanged = current?.tags?.contains(tag) == true
+            val unfinished = current?.let { notifications?.unfinishedRun(it.id.toString()) }
+            val builder = PeriodicWorkRequestBuilder<RssFetchWorker>(24, TimeUnit.HOURS)
+                .setConstraints(constraints(settings.wifiOnly)).addTag("$name:triggers")
+                .addTag("$name:minute:$minute").addTag("$name:zone:$zone").addTag(tag)
+            if (current != null && current.id != finishingWorkId &&
+                (current.state == WorkInfo.State.RUNNING || unfinished != null)) {
+                // Updating constraints must not override an unfinished run's retry/backoff or boundary.
+                if (!unchanged && unfinished != null) manager.updateWork(builder.setId(current.id)
+                    .addTag("$name:at:${unfinished.requestedAt}")
+                    .setInputData(workDataOf("triggerMinuteOfDay" to minute, "requestedAt" to unfinished.requestedAt)).build()).get()
+                continue
+            }
+            if (unchanged && current.id != finishingWorkId && (!realignClock || finishingWorkId != null)) continue
+            if (current != null && current.id != finishingWorkId && !realignClock && "$name:zone:$zone" in current.tags) {
+                val requestedAt = current.tags.firstOrNull { it.startsWith("$name:at:") }?.substringAfterLast(':')?.toLongOrNull()
+                if (requestedAt != null) {
+                    // The same WorkRequest carries its boundary tag and input atomically. A policy edit
+                    // updates constraints without postponing an overdue, not-yet-started acquisition.
+                    manager.updateWork(builder.setId(current.id).addTag("$name:at:$requestedAt")
+                        .setInputData(workDataOf("triggerMinuteOfDay" to minute, "requestedAt" to requestedAt)).build()).get()
+                    continue
+                }
+            }
+            val now = Instant.now()
+            val next = nextRssFetchAt(now, time, zone)
+            val request = builder.addTag("$name:at:${next.toEpochMilli()}")
+                .setInputData(workDataOf("triggerMinuteOfDay" to minute, "requestedAt" to next.toEpochMilli()))
+                .setInitialDelay(Duration.between(now, next)).setNextScheduleTimeOverride(next.toEpochMilli()).build()
+            manager.enqueueUniquePeriodicWork(workName, ExistingPeriodicWorkPolicy.UPDATE, request).result.get()
+        }
     }
 
     internal suspend fun <T> withRunStartLock(block: suspend () -> T): T = lock.withLock { block() }
@@ -121,7 +149,7 @@ class RssScheduleReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            try { RssScheduler.reschedule(context, force = true) }
+            try { RssScheduler.reschedule(context, realignClock = true) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { Log.w("RssScheduleReceiver", "RSS reschedule failed", error) }
             finally { pending.finish() }

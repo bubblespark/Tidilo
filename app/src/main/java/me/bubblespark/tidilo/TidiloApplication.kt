@@ -45,7 +45,7 @@ class TidiloApplication : Application() {
         }
         applicationScope.launch { AiCoreUsageRepository.getInstance(this@TidiloApplication).initialize() }
         applicationScope.launch {
-            runCatching { me.bubblespark.tidilo.data.rss.RssScheduler.reschedule(this@TidiloApplication, force = false) }
+            runCatching { me.bubblespark.tidilo.data.rss.RssScheduler.reschedule(this@TidiloApplication) }
         }
         NotificationCoordinator.getInstance(this).apply {
             createChannels()

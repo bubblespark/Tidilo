@@ -52,6 +52,12 @@ val SurfaceVariantDark = Color(0xFF3F484A)
 val OnSurfaceVariantDark = Color(0xFFBFC8CA)
 val OutlineDark = Color(0xFF899294)
 
+// Compact destructive actions retain a saturated red and white pair in both themes.
+object DestructiveActionColors {
+    val container: Color = Color(0xFFBA1A1A)
+    val content: Color = Color(0xFFFFFFFF)
+}
+
 // Accent Tag Colors for Expressive Chips
 val TagTech = Color(0xFF388E3C)
 val TagAI = Color(0xFF7B1FA2)

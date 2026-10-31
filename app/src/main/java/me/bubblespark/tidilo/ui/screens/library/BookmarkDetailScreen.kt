@@ -333,8 +333,8 @@ fun BookmarkDetailScreen(
         overlay = {
             Row(
                 modifier = Modifier.fillMaxSize().navigationBarsPadding()
-                    .padding(start = 12.dp, end = 12.dp, bottom = 16.dp),
-                horizontalArrangement = Arrangement.End,
+                    .padding(start = 12.dp, end = 12.dp, bottom = 34.dp),
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.Bottom
             ) {
                 Surface(
@@ -358,16 +358,11 @@ fun BookmarkDetailScreen(
                                 contentDescription = stringResource(R.string.bookmark_collection_placeholder),
                                 modifier = Modifier.size(20.dp))
                         }
-                        IconButton(
-                            onClick = { viewModel.toggleLike(bookmark.id) },
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(if (bookmark.isLiked) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                        ) {
+                        IconButton(onClick = { viewModel.toggleLike(bookmark.id) }) {
                             Icon(
                                 imageVector = if (bookmark.isLiked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
                                 contentDescription = stringResource(if (bookmark.isLiked) R.string.bookmark_unlike else R.string.bookmark_like),
-                                tint = if (bookmark.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (bookmark.isLiked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -376,7 +371,7 @@ fun BookmarkDetailScreen(
                 Spacer(Modifier.width(8.dp))
                 Surface(
                     onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
-                    modifier = Modifier.size(56.dp),
+                    modifier = Modifier.size(48.dp),
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.primaryContainer,
                     shadowElevation = 4.dp

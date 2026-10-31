@@ -24,7 +24,7 @@ internal fun BookmarkLikeIndicator(liked: Boolean) {
     Icon(
         imageVector = if (liked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
         contentDescription = stringResource(if (liked) R.string.bookmark_liked else R.string.bookmark_not_liked),
-        tint = if (liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        tint = if (liked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.size(20.dp).pointerInput(Unit) { detectTapGestures(onTap = {}) }
     )
 }

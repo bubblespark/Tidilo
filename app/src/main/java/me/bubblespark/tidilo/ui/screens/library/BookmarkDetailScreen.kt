@@ -333,7 +333,8 @@ fun BookmarkDetailScreen(
         overlay = {
             Row(
                 modifier = Modifier.fillMaxSize().navigationBarsPadding()
-                    .padding(start = 12.dp, end = 12.dp, bottom = 31.6.dp),
+                    .padding(start = 12.dp, end = 12.dp, bottom = 31.6.dp)
+                    .offset(x = 30.8.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.Bottom
             ) {

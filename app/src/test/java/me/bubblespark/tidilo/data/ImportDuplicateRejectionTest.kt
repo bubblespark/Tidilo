@@ -118,6 +118,10 @@ class ImportDuplicateRejectionTest {
     }
 
     private class TestBookmarkDao : BookmarkDao {
+        override suspend fun toggleLike(id: String, now: Long) = Unit
+        override suspend fun recordBrowserOpen(id: String, now: Long) = Unit
+        override suspend fun recordDetailView(id: String, now: Long) = Unit
+        override suspend fun recordSummaryPeek(id: String, now: Long) = Unit
         val bookmarks = mutableMapOf<String, BookmarkEntity>()
 
         override suspend fun getBookmarkByUrl(url: String): BookmarkEntity? =

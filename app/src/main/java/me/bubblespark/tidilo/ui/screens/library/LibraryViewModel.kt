@@ -323,6 +323,11 @@ class LibraryViewModel : ViewModel() {
     val initializationFailure = bookmarkRepository.initializationFailure
     fun retryInitialization() = bookmarkRepository.retryInitialization()
 
+    fun toggleLike(id: String) { viewModelScope.launch(Dispatchers.IO) { bookmarkRepository.toggleLike(id, System.currentTimeMillis()) } }
+    fun recordBrowserOpen(id: String) { viewModelScope.launch(Dispatchers.IO) { bookmarkRepository.recordBrowserOpen(id, System.currentTimeMillis()) } }
+    fun recordDetailView(id: String) { viewModelScope.launch(Dispatchers.IO) { bookmarkRepository.recordDetailView(id, System.currentTimeMillis()) } }
+    fun recordSummaryPeek(id: String) { viewModelScope.launch(Dispatchers.IO) { bookmarkRepository.recordSummaryPeek(id, System.currentTimeMillis()) } }
+
     fun bookmarkDetails(id: String): Flow<BookmarkDetailState> = bookmarkRepository.observeBookmark(id)
         .map { BookmarkDetailState(it, false) }
         .catch { emit(BookmarkDetailState(loading = false, error = it)) }

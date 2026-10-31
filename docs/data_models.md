@@ -2,6 +2,8 @@
 
 Room 13 adds local RSS notification run/item accounting, including atomic article outcomes and completion-time Ready snapshots. `MIGRATION_12_13` preserves all existing bookmark, subscription, queue, and in-app notification tables. See [Android OS Notifications](notifications.md).
 
+Room 14 adds local engagement state to active and trashed bookmarks without replacing existing tables. `MIGRATION_13_14` initializes Like and counts to zero and the last interaction timestamp to null. Atomic updates record successful browser opens, detail entries, and grid summary peeks; liking updates the timestamp, while unliking preserves it. Edits, replacement, RSS promotion, and trash transfer preserve these fields.
+
 This document specifies all core domain models, state transition machines, serialization schemas, and reactive data streams used throughout Tidilo.
 
 ---
@@ -26,6 +28,11 @@ data class BookmarkItem(
     val note: String = "",
     val isNsfw: Boolean = false,
     val isAiSkipped: Boolean = false,
+    val isLiked: Boolean = false,
+    val browserOpenCount: Int = 0,
+    val detailViewCount: Int = 0,
+    val summaryPeekCount: Int = 0,
+    val lastInteractedAt: Long? = null,
     val ogImageUrl: String? = null,
     val rssFeedId: String? = null,
     val rssPublishedAt: Long? = null,

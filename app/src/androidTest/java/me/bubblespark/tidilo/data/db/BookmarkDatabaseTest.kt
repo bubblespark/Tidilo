@@ -26,6 +26,52 @@ import java.util.UUID
 import java.security.MessageDigest
 
 class BookmarkDatabaseTest {
+    @Test fun engagementMutationsAreAtomicAndLikeOffPreservesTimestamp() = runBlocking {
+        val name = "issue165-atomic-${UUID.randomUUID()}.db"
+        val db = database(name)
+        try {
+            val dao = db.bookmarkDao()
+            dao.insertOrUpdate(BookmarkEntity("liked", "Saved", "https://example.com", "", createdAt = 1, updatedAt = 1))
+            coroutineScope {
+                repeat(40) { launch(Dispatchers.IO) { dao.recordBrowserOpen("liked", 10) } }
+                repeat(30) { launch(Dispatchers.IO) { dao.recordDetailView("liked", 20) } }
+                repeat(20) { launch(Dispatchers.IO) { dao.recordSummaryPeek("liked", 30) } }
+            }
+            val counts = dao.getBookmarkById("liked")!!
+            assertEquals(40, counts.browserOpenCount)
+            assertEquals(30, counts.detailViewCount)
+            assertEquals(20, counts.summaryPeekCount)
+            dao.toggleLike("liked", 1234)
+            assertTrue(dao.observeById("liked").first()!!.isLiked)
+            dao.toggleLike("liked", 2345)
+            val unliked = dao.getBookmarkById("liked")!!
+            assertFalse(unliked.isLiked)
+            assertEquals(1234L, unliked.lastInteractedAt)
+            dao.recordBrowserOpen("missing", 1)
+            dao.toggleLike("missing", 1)
+        } finally { db.close(); context.deleteDatabase(name) }
+    }
+    @Test fun versionThirteenPreservesRowsAndDefaultsEngagement() = runBlocking {
+        val name = "issue165-${UUID.randomUUID()}.db"
+        val helper = legacy(name, 13)
+        val old = helper.writableDatabase
+        old.execSQL("INSERT INTO bookmarks(id,title,url,description,entities,createdAt,updatedAt,note,isNsfw,isAiSkipped) VALUES('active','Active','https://example.com/a','Summary','[]',1,2,'Note',0,0)")
+        old.execSQL("INSERT INTO trashed_bookmarks(id,title,url,description,entities,createdAt,updatedAt,note,isNsfw,isAiSkipped,trashedAt) VALUES('trash','Trash','https://example.com/t','Summary','[]',1,2,'Trash note',0,0,3)")
+        old.execSQL("INSERT INTO rss_feeds(id,url,title,mode,retentionLimit,deleted,revision,enabled) VALUES('feed','https://example.com/feed','Feed','DIRECT',100,0,4,0)")
+        helper.close()
+        val db = database(name)
+        try {
+            for (table in listOf("bookmarks", "trashed_bookmarks")) {
+                db.openHelper.readableDatabase.query("SELECT isLiked,browserOpenCount,detailViewCount,summaryPeekCount,lastInteractedAt,note FROM $table").use {
+                    assertTrue(it.moveToFirst())
+                    for (column in 0..3) assertEquals(0, it.getInt(column))
+                    assertTrue(it.isNull(4))
+                    assertEquals(if (table == "bookmarks") "Note" else "Trash note", it.getString(5))
+                }
+            }
+            assertEquals("Feed", db.rssDao().feed("feed")!!.title)
+        } finally { db.close(); context.deleteDatabase(name) }
+    }
     @Test fun bothVersionElevenSchemasUpgradeWithoutLosingSavedData() = runBlocking {
         for (feedMetadataVariant in listOf(false, true)) {
             val name = "issue108-v11-${UUID.randomUUID()}.db"
@@ -43,7 +89,7 @@ class BookmarkDatabaseTest {
             helper.close()
             val db = database(name)
             try {
-                assertEquals(13, db.openHelper.readableDatabase.version)
+                assertEquals(14, db.openHelper.readableDatabase.version)
                 val feed = db.rssDao().feed("feed")!!
                 assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
                 assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)
@@ -104,7 +150,7 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showNsfw: Boolean = true): List<BookmarkEntity> {
@@ -341,6 +387,8 @@ class BookmarkDatabaseTest {
                             db.execSQL("ALTER TABLE rss_feeds ADD COLUMN siteUrl TEXT")
                         } else AppDatabase.MIGRATION_10_11.migrate(db)
                     }
+                    if (version >= 12) AppDatabase.MIGRATION_11_12.migrate(db)
+                    if (version >= 13) AppDatabase.MIGRATION_12_13.migrate(db)
                     if (version in 4..5) db.execSQL("CREATE TABLE og_images (id TEXT PRIMARY KEY)")
                 }
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = error("Unexpected legacy upgrade")

@@ -6,12 +6,9 @@ import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import kotlinx.coroutines.ensureActive
 
-import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -52,21 +49,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.geometry.Offset
@@ -109,6 +92,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -156,6 +141,13 @@ fun BookmarkDetailScreen(
     val detailFlow = remember(viewModel, bookmarkId, detailRetry) { viewModel.bookmarkDetails(bookmarkId) }
     val detailState by detailFlow.collectAsStateWithLifecycle(initialValue = BookmarkDetailState())
     val bookmark = detailState.bookmark
+    var detailRecorded by rememberSaveable(bookmarkId) { mutableStateOf(false) }
+    LaunchedEffect(bookmarkId, bookmark?.id) {
+        if (bookmark != null && !detailRecorded) {
+            detailRecorded = true
+            viewModel.recordDetailView(bookmarkId)
+        }
+    }
     if (detailState.loading || detailState.error != null || bookmark == null) {
         TidiloScreenScaffold(
             modifier = modifier,
@@ -185,7 +177,6 @@ fun BookmarkDetailScreen(
         mutableStateOf(bookmark.isNsfw)
     }
     var showDiscardConfirmDialog by remember { mutableStateOf(false) }
-    var isFabMenuExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     var showTagEditDialog by remember { mutableStateOf(false) }
@@ -340,94 +331,61 @@ fun BookmarkDetailScreen(
             )
         },
         overlay = {
-            // Scrim (prevents clicks behind expanded menu and collapses on tap)
-            if (isFabMenuExpanded) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.32f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            isFabMenuExpanded = false
-                        }
-                )
-            }
-
-            // M3 FAB Menu (Material 3 Expressive: matches expanded action button 86dp / 40dp icon / 16dp margin)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .navigationBarsPadding()
-                    .padding(bottom = 16.dp, end = 16.dp),
-                contentAlignment = Alignment.BottomEnd
+            Row(
+                modifier = Modifier.fillMaxSize().navigationBarsPadding()
+                    .padding(start = 12.dp, end = 12.dp, bottom = 16.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.Bottom
             ) {
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                Surface(
+                    shape = RoundedCornerShape(32.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shadowElevation = 4.dp
                 ) {
-                    AnimatedVisibility(
-                        visible = isFabMenuExpanded,
-                        enter = fadeIn(animationSpec = tween(180)) + slideInVertically(
-                            initialOffsetY = { it / 2 },
-                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-                        ),
-                        exit = fadeOut(animationSpec = tween(120)) + slideOutVertically(
-                            targetOffsetY = { it / 2 },
-                            animationSpec = tween(120)
-                        )
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.End,
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { showDeleteConfirmDialog = true }) {
+                            Icon(ImageVector.vectorResource(R.drawable.ic_delete),
+                                contentDescription = stringResource(R.string.detail_action_delete),
+                                tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                        }
+                        IconButton(onClick = { onNavigateToAiReview(bookmark.id) }) {
+                            Icon(Icons.Default.AutoAwesome,
+                                contentDescription = stringResource(R.string.detail_action_ai_summary),
+                                modifier = Modifier.size(20.dp))
+                        }
+                        IconButton(onClick = {}) {
+                            Icon(ImageVector.vectorResource(R.drawable.ic_star),
+                                contentDescription = stringResource(R.string.bookmark_collection_placeholder),
+                                modifier = Modifier.size(20.dp))
+                        }
+                        IconButton(
+                            onClick = { viewModel.toggleLike(bookmark.id) },
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (bookmark.isLiked) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                         ) {
-                            // Top: Delete button
-                            FabMenuItem(
-                                label = stringResource(R.string.detail_action_delete),
-                                icon = Icons.Default.Delete,
-                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                                onClick = {
-                                    isFabMenuExpanded = false
-                                    showDeleteConfirmDialog = true
-                                }
-                            )
-
-                            // Bottom: AI Summary button
-                            FabMenuItem(
-                                label = stringResource(R.string.detail_action_ai_summary),
-                                icon = Icons.Default.AutoAwesome,
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                onClick = {
-                                    isFabMenuExpanded = false
-                                    onNavigateToAiReview(bookmark.id)
-                                }
+                            Icon(
+                                imageVector = if (bookmark.isLiked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
+                                contentDescription = stringResource(if (bookmark.isLiked) R.string.bookmark_unlike else R.string.bookmark_like),
+                                tint = if (bookmark.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
-
-                    // Parent toggle FAB: matches expanded action button (86dp circular container, 40dp icon, 10dp elevation)
-                    Surface(
-                        onClick = { isFabMenuExpanded = !isFabMenuExpanded },
-                        modifier = Modifier.size(86.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        shadowElevation = 10.dp,
-                        tonalElevation = 6.dp
-                    ) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = if (isFabMenuExpanded) Icons.Default.Close else ImageVector.vectorResource(R.drawable.ic_menu_open),
-                                contentDescription = stringResource(if (isFabMenuExpanded) R.string.detail_fab_close else R.string.detail_fab_open),
-                                modifier = Modifier.size(40.dp)
-                            )
-                        }
+                }
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
+                    modifier = Modifier.size(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shadowElevation = 4.dp
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(ImageVector.vectorResource(R.drawable.ic_open_in_browser),
+                            contentDescription = stringResource(R.string.bookmark_open_in_browser),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -644,20 +602,7 @@ fun BookmarkDetailScreen(
                         .clip(RoundedCornerShape(12.dp))
                         .combinedClickable(
                             onClick = {
-                                runCatching {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(bookmark.url)).apply {
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                    }
-                                    context.startActivity(intent)
-                                }.onFailure {
-                                    Toast
-                                        .makeText(
-                                            context,
-                                            context.getString(R.string.bookmark_could_not_open_browser),
-                                            Toast.LENGTH_SHORT
-                                        )
-                                        .show()
-                                }
+                                openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) }
                             },
                             onLongClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -1051,51 +996,8 @@ fun BookmarkDetailScreen(
                 } // End of inner content Column beneath Header
             } // End of content Box beneath Header
 
-                // Bottom spacer to prevent overlap with FAB menu
+                // Bottom spacer to prevent overlap with the toolbar
                 Spacer(modifier = Modifier.height(96.dp))
         }
     } // End of shared screen scaffold
 } // End of BookmarkDetailScreen
-
-/**
- * FAB menu item adhering to Material 3 Expressive guidelines.
- * - Large pill shape (CircleShape) matching parent FAB expansion (86dp)
- * - Harmonious composition of icon (28dp) and text (titleMedium)
- * - Right-aligned to parent FAB end, extending left based on text length
- */
-@Composable
-private fun FabMenuItem(
-    label: String,
-    icon: ImageVector,
-    containerColor: Color,
-    contentColor: Color,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = containerColor,
-        contentColor = contentColor,
-        tonalElevation = 4.dp,
-        shadowElevation = 6.dp
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(28.dp),
-                tint = contentColor
-            )
-            Spacer(modifier = Modifier.width(14.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = contentColor
-            )
-        }
-    }
-}

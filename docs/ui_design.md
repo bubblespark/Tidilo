@@ -173,6 +173,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 - **Dark Appearance**: Preserve list `surfaceContainerHigh` and grid `surfaceContainer`, with rim alpha 0.65 to 0.05, brand ambient shadow alpha 0.25, brand spot shadow alpha 0.50, and no inner wash. Appearance follows the applied color scheme's background luminance, including explicit theme overrides.
 - **Drawing Order**: Draw shadows outside rounded clipping, wash behind content, and rim over content so images cannot conceal the illuminated edge.
 - **Navigation Debounce Guard**: Incorporates single-click throttle protection (800ms debounce interval + `Lifecycle.State.RESUMED` navigation gate in `TidiloNavGraph`) preventing duplicate detail screens on rapid consecutive taps.
+- **Engagement**: List and grid cards place the external browser action above a 20dp read-only Like indicator. The indicator does not navigate or toggle Like.
 - **Hierarchy**:
   1. Title (with keyword highlighting when searching) + external browser icon button.
   2. URL (1 line, ellipsis).
@@ -186,14 +187,14 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 - **Layout**: 14dp Vector icon + 6dp spacer + label text (single line) with 10dp horizontal padding.
 - **Hit Highlighting**: When matching active search queries, container and content transition to high-contrast tonal colors.
 
-### 6.4 `BookmarkDetailScreen` & Material 3 Expressive FAB Menu
+### 6.4 `BookmarkDetailScreen` & Material 3 Toolbar
 - **Layout Hierarchy**:
-  - Root `TidiloScreenScaffold`: Hosts the full-screen scrollable body, fixed frosted header, scrim overlay, and bottom-anchored FAB menu.
-  - **Scroll Separation**: The FAB menu and backdrop scrim are placed **outside** the scrollable `Column`. Expanding the menu triggers zero unintended scroll jumps, and the toggle button never clips off-screen.
+  - Root `TidiloScreenScaffold`: Hosts the full-screen scrollable body, fixed frosted header, and bottom-anchored toolbar.
+  - **Scroll Separation**: The toolbar is placed outside the scrollable `Column`.
   - **Edge-to-Edge Status Bar Translucency & Scrim**:
     - The scrollable `Column` extends edge-to-edge into the status bar area without root `statusBarsPadding()`.
     - The shared header owns status-bar padding and the standard font-aware 80dp row. Back and Save remain visible while the body scrolls beneath it.
-    - The shared neutral frosted background protects the status bar and title area; a separate detail-only status-bar gradient is unnecessary. Body padding uses shared top clearance, while note editing retains navigation/IME avoidance and the existing FAB clearance.
+    - The shared neutral frosted background protects the status bar and title area; a separate detail-only status-bar gradient is unnecessary. Body padding uses shared top clearance, while note editing retains navigation/IME avoidance and toolbar clearance.
 - **Top Header & `og:image` Banner with Domain Watermark Fallback**:
   - **`og:image` Banner Placement**: Positioned directly beneath the Top Header Row and above the bookmark title, with 12dp above and 16dp below. A full-width `BoxWithConstraints` supplies the available width; the image height is explicitly `min(availableWidth / imageAspectRatio, 300.dp)`. `ContentScale.Crop` preserves image proportions and center-crops artwork that exceeds this ceiling, with `RoundedCornerShape(16.dp)` clipping (`contentDescription = null`). A 16:9 image fits without cropping up to approximately 533dp content width (573dp viewport width including horizontal margins); larger viewports and tall images retain intentional center cropping. Do not combine fixed full width, a 300dp height cap, and an image `aspectRatio` modifier: conflicting constraints can produce an oversized child that paints over adjacent content.
   - **OG Radiant Lighting**: `BookmarkDetailLighting.kt` resolves the displayed bitmap's accent through `DomainIconManager.extractDominantColor` on `Dispatchers.Default`, with a 350ms `EaseOutCubic` color transition. `OgImageManager` retains at most 128 colors keyed by exact/fallback image source and bitmap content generation; color entries do not retain bitmaps. Image replacement/deletion and memory/full cache clearing invalidate derived colors and prevent older in-flight sampling from repopulating the cache.
@@ -205,15 +206,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
     - When `og:image` is available, the banner is rendered and the background `DomainWatermark` is suppressed to prevent visual overlap.
     - When `og:image` is absent (`ogImageUrl == null` or load fails) and image resolution has completed (`ogState.resolved`), no empty banner space is reserved; the layout seamlessly falls back to displaying `DomainWatermark` (`195dp`, 50% saturation, `0.14f` alpha, `RoundedCornerShape(20.dp)`) in the upper-right background (`Alignment.TopEnd`, `offset(x = 20.dp)`).
     - The same resolved-only fallback uses the existing domain accent (deterministic domain color when no icon is available) for upper-right shoulder lighting anchored to the scrolling watermark region. Pending resolution is neutral. Each bookmark owns its color animation and measured anchor, preventing a newly opened bookmark from inheriting the previous image's lighting.
-- **Material 3 Expressive FAB Menu (`FloatingActionButtonMenu`)**:
-  - **Parent Toggle FAB**: Conforms to the mandatory bottom-right action button standard (**86dp CircleShape container, 40dp icon, 10dp elevation, bottom = 16dp, end = 16dp margin**). Toggles between `R.drawable.ic_menu_open` and `Close`.
-  - **Menu Items (`FabMenuItem`)**: Expanded dynamically to follow the enlarged 86dp FAB scale:
-    - Shape: Single unified large pill button (`CircleShape`, `tonalElevation = 4.dp`, `shadowElevation = 6.dp`).
-    - Internal Layout: `[28dp Icon] + [14dp Spacer] + [Label (titleMedium, SemiBold)]` with `horizontal = 24.dp, vertical = 16.dp` padding.
-    - Vertical Stacking: Spaced by `14.dp`, right-aligned (`Alignment.End`) vertically with the parent FAB, expanding leftward dynamically based on label width.
-  - **Actions**:
-    - "AI Summary" (`secondaryContainer` / `onSecondaryContainer`).
-    - "Delete" (`errorContainer` / `onErrorContainer`) prompting an `AlertDialog` before soft-deleting to 30-day Trash and navigating back.
+- **Bottom toolbar**: A rounded bar contains Trash, AI Summary, an inert Collection placeholder, and Like in that order. A separate rounded-square browser action sits to the right. Trash retains its confirmation; Like persists immediately and shows filled/outlined state. Save remains in the header.
 - **Entity Tags Multi-Line Spacing**:
   - Wrapped in `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to avoid inflated chip spacing. The classification row exists only when category, subcategory or NSFW is present. Entity `FlowRow` has no additional top padding: the parent supplies 8dp between actual classification/entity rows, and wrapped entity rows retain 8dp spacing. Entity-only bookmarks have no empty classification row; the section header and edit action remain present even when all tags are empty.
 - **Integrated Category & Tag Editing Workflow (Parent Dialog + Screen-Level Bottom Sheet)**:
@@ -246,10 +239,10 @@ Whenever a button or floating menu (FAB / Speed Dial) is placed at the bottom-ri
 | State | Container Size | Icon Size | Shape | Elevation | Position / Margins |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Contracted**<br>*(When bottom navigation bar is visible)* | **`56dp`** | **`28dp`** | `CircleShape` | `6dp` | Placed adjacent to navigation pill with `14dp` clearance |
-| **Expanded / Standalone**<br>*(During scroll / on screens without bottom nav, e.g. Detail Screen)* | **`86dp`** | **`40dp`** | `CircleShape` | **`10dp`** | `.navigationBarsPadding().padding(bottom = 16.dp, end = 16.dp)` at `Alignment.BottomEnd` |
+| **Expanded / Standalone**<br>*(During scroll / on screens with a standalone FAB)* | **`86dp`** | **`40dp`** | `CircleShape` | **`10dp`** | `.navigationBarsPadding().padding(bottom = 16.dp, end = 16.dp)` at `Alignment.BottomEnd` |
 
 ### Expansion Rules for Sub-Menus (FAB Menu Items)
-When a standalone 86dp bottom-right button expands into a menu (such as `BookmarkDetailScreen`), child menu pills must scale up in proportion:
+When a standalone 86dp bottom-right button expands into a menu, child menu pills must scale up in proportion:
 - **Child Pill Container**: `CircleShape` with `horizontal = 24.dp, vertical = 16.dp` padding.
 - **Child Icon**: Enlarged to **`28dp`**.
 - **Child Typography**: Enlarged to **`titleMedium`** (16sp, SemiBold).

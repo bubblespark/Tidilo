@@ -426,13 +426,22 @@ fun SearchScreen(
                     ) { index ->
                         val item = filteredBookmarks[index] ?: return@items
                         if (showingGrid) {
-                            BookmarkGridCard(bookmark = item, onLongClick = { peekBookmark = item }, onClick = {
-                                viewModel.addSearchHistory(searchQuery)
-                                onNavigateToDetail(item.id)
-                            })
+                            BookmarkGridCard(
+                                bookmark = item,
+                                onBrowserOpened = { viewModel.recordBrowserOpen(item.id) },
+                                onLongClick = {
+                                    peekBookmark = item
+                                    viewModel.recordSummaryPeek(item.id)
+                                },
+                                onClick = {
+                                    viewModel.addSearchHistory(searchQuery)
+                                    onNavigateToDetail(item.id)
+                                }
+                            )
                         } else {
                             BookmarkItemCard(
                                 bookmark = item,
+                                onBrowserOpened = { viewModel.recordBrowserOpen(item.id) },
                                 wordKeywords = wordKeywords,
                                 tagKeywords = tagKeywords,
                                 currentLanguage = currentLanguage,

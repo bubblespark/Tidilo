@@ -1,8 +1,5 @@
 package me.bubblespark.tidilo.ui.screens.library
 
-import android.content.Intent
-import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,7 +69,8 @@ fun BookmarkItemCard(
     wordKeywords: List<String> = emptyList(),
     tagKeywords: List<String> = emptyList(),
     currentLanguage: AppLanguage = AppLanguage.ENGLISH,
-    onClick: () -> Unit = {}
+    onClick: () -> Unit = {},
+    onBrowserOpened: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val cardStyle = rememberBookmarkCardStyle(MaterialTheme.colorScheme.surfaceContainerHigh)
@@ -179,29 +177,19 @@ fun BookmarkItemCard(
                 }
 
                 val context = LocalContext.current
-                IconButton(
-                    onClick = {
-                        runCatching {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(bookmark.url)).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            }
-                            context.startActivity(intent)
-                        }.onFailure {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.bookmark_could_not_open_browser),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.OpenInBrowser,
-                        contentDescription = stringResource(R.string.bookmark_open_in_browser),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    IconButton(
+                        onClick = { openBookmarkInBrowser(context, bookmark.url, onBrowserOpened) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.OpenInBrowser,
+                            contentDescription = stringResource(R.string.bookmark_open_in_browser),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    BookmarkLikeIndicator(bookmark.isLiked)
                 }
             }
 

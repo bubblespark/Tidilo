@@ -13,6 +13,10 @@ import org.junit.Test
 class BookmarkDaoBulkTest {
 
     private class RecordingBookmarkDao : BookmarkDao {
+        override suspend fun toggleLike(id: String, now: Long) = Unit
+        override suspend fun recordBrowserOpen(id: String, now: Long) = Unit
+        override suspend fun recordDetailView(id: String, now: Long) = Unit
+        override suspend fun recordSummaryPeek(id: String, now: Long) = Unit
         val insertedRowsCalls = mutableListOf<List<BookmarkEntity>>()
         val deletedOccurrencesCalls = mutableListOf<List<String>>()
         val insertedOccurrencesCalls = mutableListOf<List<BookmarkEntityOccurrence>>()

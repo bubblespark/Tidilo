@@ -131,11 +131,17 @@ class BookmarkRepository private constructor(context: Context) {
         } else item
         val savedItem = database.withTransaction {
             val existing = bookmarkDao.getBookmarkByUrl(resolvedItem.url)
+                ?: bookmarkDao.getBookmarkById(resolvedItem.id)
             val finalItem = if (existing != null) {
                 resolvedItem.copy(
                     id = existing.id,
                     note = if (resolvedItem.note.isNotBlank()) resolvedItem.note else existing.note,
-                    createdAt = existing.createdAt
+                    createdAt = existing.createdAt,
+                    isLiked = existing.isLiked,
+                    browserOpenCount = existing.browserOpenCount,
+                    detailViewCount = existing.detailViewCount,
+                    summaryPeekCount = existing.summaryPeekCount,
+                    lastInteractedAt = existing.lastInteractedAt
                 )
             } else resolvedItem
 
@@ -171,6 +177,22 @@ class BookmarkRepository private constructor(context: Context) {
     /** Updates the durable row by ID; no loaded page is required. */
     suspend fun updateBookmarkNote(id: String, note: String) = withContext(Dispatchers.IO) {
         bookmarkDao.updateNote(id, note, System.currentTimeMillis())
+    }
+
+    suspend fun toggleLike(id: String, now: Long) = withContext(Dispatchers.IO) {
+        bookmarkDao.toggleLike(id, now)
+    }
+
+    suspend fun recordBrowserOpen(id: String, now: Long) = withContext(Dispatchers.IO) {
+        bookmarkDao.recordBrowserOpen(id, now)
+    }
+
+    suspend fun recordDetailView(id: String, now: Long) = withContext(Dispatchers.IO) {
+        bookmarkDao.recordDetailView(id, now)
+    }
+
+    suspend fun recordSummaryPeek(id: String, now: Long) = withContext(Dispatchers.IO) {
+        bookmarkDao.recordSummaryPeek(id, now)
     }
 
     /** Applies optional fields atomically against the current durable row. */

@@ -1,4 +1,9 @@
 <resources>
+    <string name="bookmark_like">Like</string>
+    <string name="bookmark_unlike">Unlike</string>
+    <string name="bookmark_liked">Liked</string>
+    <string name="bookmark_not_liked">Not liked</string>
+    <string name="bookmark_collection_placeholder">Collection</string>
     <string name="settings_notification_title">Notification</string>
     <string name="settings_notification_description">Manage notifications in system settings</string>
     <string name="notification_ready_body">There are %1$d URLs awaiting AI analysis.\nTap to open for AI analysis.</string>

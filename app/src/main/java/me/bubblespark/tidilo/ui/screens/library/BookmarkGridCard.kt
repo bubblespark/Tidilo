@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.Surface
@@ -36,6 +37,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,7 +64,8 @@ fun BookmarkGridCard(
     bookmark: BookmarkItem,
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {},
-    onLongClick: (() -> Unit)? = null
+    onLongClick: (() -> Unit)? = null,
+    onBrowserOpened: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -165,6 +169,20 @@ fun BookmarkGridCard(
                             )
                         }
                     }
+                }
+                Column(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                        .clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    IconButton(onClick = { openBookmarkInBrowser(context, bookmark.url, onBrowserOpened) },
+                        modifier = Modifier.size(32.dp)) {
+                        Icon(ImageVector.vectorResource(R.drawable.ic_open_in_browser),
+                            contentDescription = stringResource(R.string.bookmark_open_in_browser),
+                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    }
+                    BookmarkLikeIndicator(bookmark.isLiked)
+                    Spacer(Modifier.height(6.dp))
                 }
             }
 

@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import me.bubblespark.tidilo.ui.screens.library.Tag
 import org.junit.Assert.*
 import org.junit.Test
@@ -22,6 +23,41 @@ class EntityCanonicalizationRoomTest {
             }
             assertEquals(expected, values)
         }
+    }
+
+    @Test fun indexedReplacementRefreshesLiteralSearchCountsAndVisibleAggregates() = runBlocking {
+        val db = database()
+        try {
+            val dao = db.bookmarkDao()
+            dao.insertAll(listOf(row("current", "GitHub"), row("hidden", "GitHub").copy(isNsfw = true)))
+            val sql = db.openHelper.readableDatabase
+            for (query in listOf(
+                "SELECT value FROM bookmark_entities WHERE skeletonKey = 'github' ORDER BY bookmarkId, position LIMIT 1",
+                "SELECT id, entities FROM bookmarks WHERE id IN (SELECT bookmarkId FROM bookmark_entities WHERE skeletonKey = 'github') AND (NULL IS NULL OR id > NULL) ORDER BY id LIMIT 500"
+            )) {
+                val plan = sql.query("EXPLAIN QUERY PLAN $query").use { cursor ->
+                    buildList { while (cursor.moveToNext()) add(cursor.getString(3)) }.joinToString("; ")
+                }
+                assertTrue(plan, plan.contains("index_bookmark_entities_skeletonKey"))
+            }
+            assertEquals(2, dao.observeCount(BookmarkQueries.count("#GitHub", true)).first())
+            assertEquals(0, dao.observeCount(BookmarkQueries.count("#git-hub", true)).first())
+            assertEquals(listOf(TagCount("GitHub", 2)), dao.tagCounts(BookmarkQueries.tags(emptySet(), true, TagKind.ENTITY)).first())
+            db.updateBookmarkDetails("current", "", Tag("Tool", "Tech", listOf("GitHub")), false,
+                mapOf("github" to "git-hub"), 2)
+            for (showNsfw in listOf(false, true)) {
+                val expected = if (showNsfw) 2 else 1
+                for ((query, count) in listOf("#GitHub" to 0, "#git-hub" to expected)) {
+                    val results = BookmarkQueries.results(query, showNsfw)
+                    sql.query(results).use { assertEquals(count, it.count) }
+                    assertEquals(count, dao.observeCount(BookmarkQueries.count(query, showNsfw)).first())
+                }
+                val tags = dao.tagCounts(BookmarkQueries.tags(emptySet(), showNsfw, TagKind.ENTITY)).first()
+                assertEquals(listOf(TagCount("git-hub", expected)), tags)
+                assertEquals(expected, dao.tagCounts(BookmarkQueries.tags(setOf("git-hub"), showNsfw, TagKind.ENTITY)).first().sumOf { it.count })
+                assertTrue(dao.tagCounts(BookmarkQueries.tags(setOf("GitHub"), showNsfw, TagKind.ENTITY)).first().isEmpty())
+            }
+        } finally { db.close() }
     }
 
     @Test fun explicitReplacementSurvivesRemovalOfLastOccurrenceBeforeStaleDraftSave() = runBlocking {

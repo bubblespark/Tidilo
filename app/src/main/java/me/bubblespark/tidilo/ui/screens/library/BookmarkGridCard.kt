@@ -37,8 +37,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,7 +63,7 @@ fun BookmarkGridCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null,
-    onBrowserOpened: () -> Unit = {}
+    onToggleLike: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -175,14 +173,9 @@ fun BookmarkGridCard(
                         .clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    IconButton(onClick = { openBookmarkInBrowser(context, bookmark.url, onBrowserOpened) },
-                        modifier = Modifier.size(32.dp)) {
-                        Icon(ImageVector.vectorResource(R.drawable.ic_open_in_browser),
-                            contentDescription = stringResource(R.string.bookmark_open_in_browser),
-                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    IconButton(onClick = onToggleLike, modifier = Modifier.size(48.dp)) {
+                        BookmarkLikeIndicator(bookmark.isLiked)
                     }
-                    BookmarkLikeIndicator(bookmark.isLiked)
-                    Spacer(Modifier.height(6.dp))
                 }
             }
 

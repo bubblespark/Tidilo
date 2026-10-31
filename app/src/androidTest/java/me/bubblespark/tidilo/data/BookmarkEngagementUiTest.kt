@@ -32,14 +32,15 @@ class BookmarkEngagementUiTest {
         val host = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         val clicks = AtomicInteger()
+        val likes = AtomicInteger()
         try {
             val item = BookmarkItem(id = "heart-test", title = "Card", url = "https://example.com",
                 description = "Summary", tag = Tag.createEmpty())
             for (grid in listOf(false, true)) {
                 instrumentation.runOnMainSync {
                     host.setContent { MaterialTheme {
-                        if (grid) BookmarkGridCard(item, onClick = { clicks.incrementAndGet() })
-                        else BookmarkItemCard(item, onClick = { clicks.incrementAndGet() })
+                        if (grid) BookmarkGridCard(item, onClick = { clicks.incrementAndGet() }, onToggleLike = { likes.incrementAndGet() })
+                        else BookmarkItemCard(item, onClick = { clicks.incrementAndGet() }, onToggleLike = { likes.incrementAndGet() })
                     } }
                 }
                 instrumentation.waitForIdleSync()
@@ -50,7 +51,7 @@ class BookmarkEngagementUiTest {
                         instrumentation.uiAutomation.clearCache()
                         val root = instrumentation.uiAutomation.rootInActiveWindow
                         fun find(n: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-                            if (n.contentDescription?.toString() == context.getString(me.bubblespark.tidilo.R.string.bookmark_open_in_browser)) return n
+                            if (n.contentDescription?.toString() == context.getString(me.bubblespark.tidilo.R.string.bookmark_not_liked)) return n
                             repeat(n.childCount) { i -> n.getChild(i)?.let { find(it)?.let { x -> return x } } }
                             return null
                         }
@@ -64,15 +65,12 @@ class BookmarkEngagementUiTest {
                     }
                     found
                 }
-                val bounds = android.graphics.Rect().also(node::getBoundsInScreen)
-                val now = android.os.SystemClock.uptimeMillis()
-                val y = bounds.bottom + 10 * context.resources.displayMetrics.density
-                instrumentation.uiAutomation.injectInputEvent(android.view.MotionEvent.obtain(now, now,
-                    android.view.MotionEvent.ACTION_DOWN, bounds.exactCenterX(), y, 0), true)
-                instrumentation.uiAutomation.injectInputEvent(android.view.MotionEvent.obtain(now, now + 20,
-                    android.view.MotionEvent.ACTION_UP, bounds.exactCenterX(), y, 0), true)
+                var target: AccessibilityNodeInfo? = node
+                while (target != null && !target.isClickable) target = target.parent
+                assertTrue(target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true)
                 delay(300)
                 assertTrue("A heart tap must not open its card", clicks.get() == 0)
+                assertTrue("A heart tap must toggle Like", likes.get() == if (grid) 2 else 1)
             }
         } finally { instrumentation.runOnMainSync { host.finish() } }
     }

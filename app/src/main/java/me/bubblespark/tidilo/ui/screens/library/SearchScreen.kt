@@ -428,7 +428,7 @@ fun SearchScreen(
                         if (showingGrid) {
                             BookmarkGridCard(
                                 bookmark = item,
-                                onBrowserOpened = { viewModel.recordBrowserOpen(item.id) },
+                                onToggleLike = { viewModel.toggleLike(item.id) },
                                 onLongClick = {
                                     peekBookmark = item
                                     viewModel.recordSummaryPeek(item.id)
@@ -441,7 +441,7 @@ fun SearchScreen(
                         } else {
                             BookmarkItemCard(
                                 bookmark = item,
-                                onBrowserOpened = { viewModel.recordBrowserOpen(item.id) },
+                                onToggleLike = { viewModel.toggleLike(item.id) },
                                 wordKeywords = wordKeywords,
                                 tagKeywords = tagKeywords,
                                 currentLanguage = currentLanguage,

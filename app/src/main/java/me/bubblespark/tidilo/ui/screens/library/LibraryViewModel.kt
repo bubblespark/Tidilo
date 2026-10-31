@@ -323,10 +323,25 @@ class LibraryViewModel : ViewModel() {
     val initializationFailure = bookmarkRepository.initializationFailure
     fun retryInitialization() = bookmarkRepository.retryInitialization()
 
-    fun toggleLike(id: String) { viewModelScope.launch(Dispatchers.IO) { bookmarkRepository.toggleLike(id, System.currentTimeMillis()) } }
-    fun recordBrowserOpen(id: String) { viewModelScope.launch(Dispatchers.IO) { bookmarkRepository.recordBrowserOpen(id, System.currentTimeMillis()) } }
-    fun recordDetailView(id: String) { viewModelScope.launch(Dispatchers.IO) { bookmarkRepository.recordDetailView(id, System.currentTimeMillis()) } }
-    fun recordSummaryPeek(id: String) { viewModelScope.launch(Dispatchers.IO) { bookmarkRepository.recordSummaryPeek(id, System.currentTimeMillis()) } }
+    private fun recordEngagement(showFailure: Boolean = false, action: suspend () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                action()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                android.util.Log.e("LibraryViewModel", "Failed to record bookmark interaction", error)
+                if (showFailure) kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(TidiloApplication.instance, me.bubblespark.tidilo.R.string.common_save_failed, android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun toggleLike(id: String) = recordEngagement(showFailure = true) { bookmarkRepository.toggleLike(id, System.currentTimeMillis()) }
+    fun recordBrowserOpen(id: String) = recordEngagement { bookmarkRepository.recordBrowserOpen(id, System.currentTimeMillis()) }
+    fun recordDetailView(id: String) = recordEngagement { bookmarkRepository.recordDetailView(id, System.currentTimeMillis()) }
+    fun recordSummaryPeek(id: String) = recordEngagement { bookmarkRepository.recordSummaryPeek(id, System.currentTimeMillis()) }
 
     fun bookmarkDetails(id: String): Flow<BookmarkDetailState> = bookmarkRepository.observeBookmark(id)
         .map { BookmarkDetailState(it, false) }

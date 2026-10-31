@@ -173,9 +173,9 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 - **Dark Appearance**: Preserve list `surfaceContainerHigh` and grid `surfaceContainer`, with rim alpha 0.65 to 0.05, brand ambient shadow alpha 0.25, brand spot shadow alpha 0.50, and no inner wash. Appearance follows the applied color scheme's background luminance, including explicit theme overrides.
 - **Drawing Order**: Draw shadows outside rounded clipping, wash behind content, and rim over content so images cannot conceal the illuminated edge.
 - **Navigation Debounce Guard**: Incorporates single-click throttle protection (800ms debounce interval + `Lifecycle.State.RESUMED` navigation gate in `TidiloNavGraph`) preventing duplicate detail screens on rapid consecutive taps.
-- **Engagement**: List and grid cards place the external browser action above a 20dp read-only Like indicator. The indicator does not navigate or toggle Like.
+- **Engagement**: List and grid cards expose a 20dp Like icon inside a 48dp action target. Like toggles immediately without navigating to detail.
 - **Hierarchy**:
-  1. Title (with keyword highlighting when searching) + external browser icon button.
+  1. Title (with keyword highlighting when searching) + Like button.
   2. URL (1 line, ellipsis).
   3. Description (AI-synthesized one- or two-sentence summary).
   4. Tag row: `[Category] > [Subcategory]`.

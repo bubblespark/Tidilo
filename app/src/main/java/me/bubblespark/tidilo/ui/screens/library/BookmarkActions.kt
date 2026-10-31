@@ -16,8 +16,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectTapGestures
 
 @Composable
 internal fun BookmarkLikeIndicator(liked: Boolean) {
@@ -25,7 +23,7 @@ internal fun BookmarkLikeIndicator(liked: Boolean) {
         imageVector = if (liked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
         contentDescription = stringResource(if (liked) R.string.bookmark_liked else R.string.bookmark_not_liked),
         tint = if (liked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.size(20.dp).pointerInput(Unit) { detectTapGestures(onTap = {}) }
+        modifier = Modifier.size(20.dp)
     )
 }
 

@@ -29,7 +29,6 @@ import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material.icons.outlined.OpenInBrowser
 import androidx.compose.material.icons.outlined.Warning
 import me.bubblespark.tidilo.ui.theme.WarningColor
 import androidx.compose.material3.Card
@@ -70,7 +69,7 @@ fun BookmarkItemCard(
     tagKeywords: List<String> = emptyList(),
     currentLanguage: AppLanguage = AppLanguage.ENGLISH,
     onClick: () -> Unit = {},
-    onBrowserOpened: () -> Unit = {}
+    onToggleLike: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val cardStyle = rememberBookmarkCardStyle(MaterialTheme.colorScheme.surfaceContainerHigh)
@@ -177,18 +176,7 @@ fun BookmarkItemCard(
                 }
 
                 val context = LocalContext.current
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IconButton(
-                        onClick = { openBookmarkInBrowser(context, bookmark.url, onBrowserOpened) },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.OpenInBrowser,
-                            contentDescription = stringResource(R.string.bookmark_open_in_browser),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                IconButton(onClick = onToggleLike, modifier = Modifier.size(48.dp)) {
                     BookmarkLikeIndicator(bookmark.isLiked)
                 }
             }

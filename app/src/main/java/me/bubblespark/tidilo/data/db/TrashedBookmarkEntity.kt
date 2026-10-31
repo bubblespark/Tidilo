@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.data.db
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
@@ -30,6 +31,11 @@ data class TrashedBookmarkEntity(
     val note: String,
     val isNsfw: Boolean,
     val isAiSkipped: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val isLiked: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val browserOpenCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val detailViewCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val summaryPeekCount: Int = 0,
+    val lastInteractedAt: Long? = null,
     val ogImageUrl: String? = null,
     val trashedAt: Long,
     val rssFeedId: String? = null,
@@ -48,6 +54,11 @@ data class TrashedBookmarkEntity(
             note = note,
             isNsfw = isNsfw,
             isAiSkipped = isAiSkipped,
+            isLiked = isLiked,
+            browserOpenCount = browserOpenCount,
+            detailViewCount = detailViewCount,
+            summaryPeekCount = summaryPeekCount,
+            lastInteractedAt = lastInteractedAt,
             rssFeedId = rssFeedId,
             rssPublishedAt = rssPublishedAt,
             ogImageUrl = ogImageUrl
@@ -74,6 +85,11 @@ data class TrashedBookmarkEntity(
                 note = b.note,
                 isNsfw = b.isNsfw,
                 isAiSkipped = b.isAiSkipped,
+                isLiked = b.isLiked,
+                browserOpenCount = b.browserOpenCount,
+                detailViewCount = b.detailViewCount,
+                summaryPeekCount = b.summaryPeekCount,
+                lastInteractedAt = b.lastInteractedAt,
                 rssFeedId = b.rssFeedId,
                 rssPublishedAt = b.rssPublishedAt,
                 ogImageUrl = b.ogImageUrl,

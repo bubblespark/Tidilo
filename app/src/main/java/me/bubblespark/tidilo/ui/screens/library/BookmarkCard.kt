@@ -1,9 +1,9 @@
 package me.bubblespark.tidilo.ui.screens.library
 
-import android.content.Intent
-import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,7 +32,6 @@ import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material.icons.outlined.OpenInBrowser
 import androidx.compose.material.icons.outlined.Warning
 import me.bubblespark.tidilo.ui.theme.WarningColor
 import androidx.compose.material3.Card
@@ -72,7 +71,8 @@ fun BookmarkItemCard(
     wordKeywords: List<String> = emptyList(),
     tagKeywords: List<String> = emptyList(),
     currentLanguage: AppLanguage = AppLanguage.ENGLISH,
-    onClick: () -> Unit = {}
+    onClick: () -> Unit = {},
+    onToggleLike: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val cardStyle = rememberBookmarkCardStyle(MaterialTheme.colorScheme.surfaceContainerHigh)
@@ -178,30 +178,11 @@ fun BookmarkItemCard(
                     )
                 }
 
-                val context = LocalContext.current
-                IconButton(
-                    onClick = {
-                        runCatching {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(bookmark.url)).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            }
-                            context.startActivity(intent)
-                        }.onFailure {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.bookmark_could_not_open_browser),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.OpenInBrowser,
-                        contentDescription = stringResource(R.string.bookmark_open_in_browser),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                Box(modifier = Modifier.offset(x = 14.dp, y = (-12).dp).size(48.dp).clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null, role = Role.Button, onClick = onToggleLike
+                ), contentAlignment = Alignment.Center) {
+                    BookmarkLikeIndicator(bookmark.isLiked)
                 }
             }
 

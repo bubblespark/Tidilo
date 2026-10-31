@@ -69,14 +69,19 @@ class NotificationRoomTest {
             android.database.sqlite.SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, 0).use { sql ->
                 sql.execSQL("DROP TABLE rss_notification_items")
                 sql.execSQL("DROP TABLE rss_notification_runs")
+                for (table in listOf("bookmarks", "trashed_bookmarks")) {
+                    for (column in listOf("isLiked", "browserOpenCount", "detailViewCount", "summaryPeekCount", "lastInteractedAt")) {
+                        sql.execSQL("ALTER TABLE $table DROP COLUMN $column")
+                    }
+                }
                 sql.execSQL("DELETE FROM room_master_table")
                 sql.execSQL("DROP INDEX index_bookmark_entities_skeletonKey")
                 sql.execSQL("ALTER TABLE bookmark_entities DROP COLUMN skeletonKey")
                 sql.version = 12
             }
-            db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14).build()
+            db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15).build()
             assertEquals("Description", db.bookmarkDao().getBookmarkById("kept")!!.description)
-            assertEquals(14, db.openHelper.readableDatabase.version)
+            assertEquals(15, db.openHelper.readableDatabase.version)
             db.rssNotificationDao().putRun(RssNotificationRunEntity("run", "work", 100, true))
             assertEquals("run", db.rssNotificationDao().unfinishedRun("work")?.id)
         } finally { db.close(); context.deleteDatabase(name) }

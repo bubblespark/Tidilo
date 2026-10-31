@@ -16,6 +16,29 @@ class RoomEntityMappingTest {
     private val converters = Converters()
 
     @Test
+    fun engagementValuesSurviveActiveAndTrashMappings() {
+        val original = BookmarkItem(
+            id = "engagement", title = "Saved", url = "https://example.com",
+            description = "Summary", tag = Tag.createEmpty()
+        )
+        val values = mapOf("isLiked" to true, "browserOpenCount" to 2,
+            "detailViewCount" to 3, "summaryPeekCount" to 4, "lastInteractedAt" to 1234L)
+        fun write(target: Any) = values.forEach { (name, value) ->
+            target.javaClass.getDeclaredField(name).apply { isAccessible = true }.set(target, value)
+        }
+        fun verify(target: Any) = values.forEach { (name, value) ->
+            assertEquals(name, value, target.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(target))
+        }
+        write(original)
+        val active = BookmarkEntity.fromBookmarkItem(original)
+        verify(active)
+        verify(active.toBookmarkItem())
+        val trash = TrashedBookmarkEntity.fromTrashedBookmarkItem(TrashedBookmarkItem(original, 5L))
+        verify(trash)
+        verify(trash.toTrashedBookmarkItem().bookmark)
+    }
+
+    @Test
     fun testConvertersStringListRoundtrip() {
         val originalList = listOf("Android", "Kotlin", "Room", "Jetpack Compose")
         val json = converters.fromStringList(originalList)

@@ -3,6 +3,9 @@ package me.bubblespark.tidilo.ui.screens.library
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,10 +15,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.Surface
@@ -61,7 +66,8 @@ fun BookmarkGridCard(
     bookmark: BookmarkItem,
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {},
-    onLongClick: (() -> Unit)? = null
+    onLongClick: (() -> Unit)? = null,
+    onToggleLike: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -164,6 +170,20 @@ fun BookmarkGridCard(
                                 modifier = Modifier.size(24.dp)
                             )
                         }
+                    }
+                }
+                Box(
+                    modifier = Modifier.align(Alignment.TopEnd).size(48.dp).clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null, role = Role.Button, onClick = onToggleLike
+                    ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier.offset(x = 4.dp, y = (-4).dp).size(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        BookmarkLikeIndicator(bookmark.isLiked)
                     }
                 }
             }

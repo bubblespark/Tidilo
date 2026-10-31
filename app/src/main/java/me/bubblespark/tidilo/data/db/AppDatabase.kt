@@ -24,7 +24,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RssNotificationRunEntity::class,
         RssNotificationItemEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -41,6 +41,23 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         val MIGRATION_13_14 = entityTagMigration13To14
 
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val occurrenceColumns = db.query("PRAGMA table_info(bookmark_entities)").use { cursor ->
+                    buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) }
+                }
+                if ("skeletonKey" !in occurrenceColumns) entityTagMigration13To14.migrate(db)
+                for (table in listOf("bookmarks", "trashed_bookmarks")) {
+                    val columns = db.query("PRAGMA table_info($table)").use { cursor ->
+                        buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) }
+                    }
+                    for (column in listOf("isLiked", "browserOpenCount", "detailViewCount", "summaryPeekCount")) {
+                        if (column !in columns) db.execSQL("ALTER TABLE $table ADD COLUMN $column INTEGER NOT NULL DEFAULT 0")
+                    }
+                    if ("lastInteractedAt" !in columns) db.execSQL("ALTER TABLE $table ADD COLUMN lastInteractedAt INTEGER")
+                }
+            }
+        }
         val MIGRATION_12_13 = object : Migration(12, 13) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS rss_notification_runs (id TEXT NOT NULL PRIMARY KEY, workId TEXT NOT NULL, requestedAt INTEGER NOT NULL, showSummary INTEGER NOT NULL, completed INTEGER NOT NULL, published INTEGER NOT NULL, pendingAi INTEGER NOT NULL)")
@@ -185,7 +202,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                     .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }

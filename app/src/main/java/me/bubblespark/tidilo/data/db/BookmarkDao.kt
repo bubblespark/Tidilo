@@ -19,6 +19,17 @@ import me.bubblespark.tidilo.data.entitySkeletonKey
  */
 @Dao
 abstract class BookmarkDao {
+    @Query("UPDATE bookmarks SET isLiked = NOT isLiked, lastInteractedAt = CASE WHEN isLiked = 0 THEN :now ELSE lastInteractedAt END WHERE id = :id")
+    abstract suspend fun toggleLike(id: String, now: Long)
+
+    @Query("UPDATE bookmarks SET browserOpenCount = browserOpenCount + 1, lastInteractedAt = :now WHERE id = :id")
+    abstract suspend fun recordBrowserOpen(id: String, now: Long)
+
+    @Query("UPDATE bookmarks SET detailViewCount = detailViewCount + 1, lastInteractedAt = :now WHERE id = :id")
+    abstract suspend fun recordDetailView(id: String, now: Long)
+
+    @Query("UPDATE bookmarks SET summaryPeekCount = summaryPeekCount + 1, lastInteractedAt = :now WHERE id = :id")
+    abstract suspend fun recordSummaryPeek(id: String, now: Long)
 
     @Query("SELECT (SELECT COUNT(*) FROM bookmarks) AS active, (SELECT COUNT(*) FROM trashed_bookmarks) AS trash")
     abstract fun observeCollectionCounts(): Flow<me.bubblespark.tidilo.data.CollectionCounts>

@@ -617,6 +617,7 @@ fun LibraryScreen(
                                                     ) { index ->
                                                         val item = domainBookmarks[index] ?: return@items
                                                             BookmarkItemCard(
+                                                                onToggleLike = { viewModel.toggleLike(item.id) },
                                                                 bookmark = item,
                                                                 wordKeywords = emptyList(),
                                                                 tagKeywords = emptyList(),
@@ -642,9 +643,10 @@ fun LibraryScreen(
                                                     ) { index ->
                                                         val item = domainBookmarks[index] ?: return@items
                                                             BookmarkGridCard(
+                                                                onToggleLike = { viewModel.toggleLike(item.id) },
                                                                 bookmark = item,
                                                                 onClick = { onNavigateToDetail(item.id) },
-                                                                onLongClick = { peekBookmark = item }
+                                                                onLongClick = { peekBookmark = item; viewModel.recordSummaryPeek(item.id) }
                                                             )
                                                         }
                                                     }
@@ -688,6 +690,7 @@ fun LibraryScreen(
                                                 ) { index ->
                                                     val item = bookmarks[index] ?: return@items
                                                     BookmarkItemCard(
+                                                                onToggleLike = { viewModel.toggleLike(item.id) },
                                                         bookmark = item,
                                                         wordKeywords = emptyList(),
                                                         tagKeywords = emptyList(),
@@ -713,9 +716,10 @@ fun LibraryScreen(
                                                 ) { index ->
                                                     val item = bookmarks[index] ?: return@items
                                                     BookmarkGridCard(
+                                                                onToggleLike = { viewModel.toggleLike(item.id) },
                                                         bookmark = item,
                                                         onClick = { onNavigateToDetail(item.id) },
-                                                        onLongClick = { peekBookmark = item }
+                                                        onLongClick = { peekBookmark = item; viewModel.recordSummaryPeek(item.id) }
                                                     )
                                                 }
                                             }

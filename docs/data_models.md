@@ -4,6 +4,8 @@ Room 13 adds local RSS notification run/item accounting, including atomic articl
 
 Room 14 adds the non-null `bookmark_entities.skeletonKey` and its index. Occurrence constructors derive this identity from display spelling; substring search still uses the separate `searchValue`. `MIGRATION_13_14` elects canonical spellings across all active bookmarks, including hidden NSFW rows, by distinct-bookmark frequency, earliest containing bookmark creation time, then SQLite binary spelling order. It reads raw stored entity lists before deduplication or truncation, resolves representatives in original entity order, removes duplicate keys, and retains at most ten entities. Only active entity JSON and derived fields change; classification, timestamps, notes, flags, URLs, images, RSS metadata, and trash are preserved. Reads use bounded scalar batches, with votes aggregated in a temporary SQLite table. Election runs only during migration. Elected spellings are already cleaned: key-based deduplication and derived repair preserve remaining leading hash characters (for example, raw `##C` becomes canonical `#C`, distinct from `C`) without stripping another prefix. Version 14 derived repair trusts canonical entity JSON; historical occurrence schemas still clean raw legacy values. The existing derived-format repair rebuilds keys without electing spellings on open, and retains compatibility with the historical four-column occurrence schema used by migration 6 to 7.
 
+Room 15 adds local engagement state to active and trashed bookmarks without replacing existing tables. `MIGRATION_14_15` initializes Like and counts to zero and the last interaction timestamp to null. Atomic updates record successful browser opens, detail entries, and grid summary peeks; liking updates the timestamp, while unliking preserves it. Edits, replacement, RSS promotion, and trash transfer preserve these fields.
+
 This document specifies all core domain models, state transition machines, serialization schemas, and reactive data streams used throughout Tidilo.
 
 ---
@@ -28,6 +30,11 @@ data class BookmarkItem(
     val note: String = "",
     val isNsfw: Boolean = false,
     val isAiSkipped: Boolean = false,
+    val isLiked: Boolean = false,
+    val browserOpenCount: Int = 0,
+    val detailViewCount: Int = 0,
+    val summaryPeekCount: Int = 0,
+    val lastInteractedAt: Long? = null,
     val ogImageUrl: String? = null,
     val rssFeedId: String? = null,
     val rssPublishedAt: Long? = null,

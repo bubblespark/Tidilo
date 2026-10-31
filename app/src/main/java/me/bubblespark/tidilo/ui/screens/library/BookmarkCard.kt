@@ -1,6 +1,9 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -175,7 +178,10 @@ fun BookmarkItemCard(
                     )
                 }
 
-                IconButton(onClick = onToggleLike, modifier = Modifier.size(48.dp)) {
+                Box(modifier = Modifier.size(48.dp).clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null, role = Role.Button, onClick = onToggleLike
+                ), contentAlignment = Alignment.Center) {
                     BookmarkLikeIndicator(bookmark.isLiked)
                 }
             }

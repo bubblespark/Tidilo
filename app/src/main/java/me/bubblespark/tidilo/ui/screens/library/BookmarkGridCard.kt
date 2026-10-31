@@ -168,12 +168,15 @@ fun BookmarkGridCard(
                         }
                     }
                 }
-                Column(
-                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
-                        .clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                IconButton(
+                    onClick = onToggleLike,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(48.dp)
                 ) {
-                    IconButton(onClick = onToggleLike, modifier = Modifier.size(48.dp)) {
+                    Box(
+                        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
+                        contentAlignment = Alignment.Center
+                    ) {
                         BookmarkLikeIndicator(bookmark.isLiked)
                     }
                 }

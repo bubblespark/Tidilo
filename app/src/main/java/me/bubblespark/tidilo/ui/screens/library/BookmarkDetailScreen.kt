@@ -334,10 +334,12 @@ fun BookmarkDetailScreen(
             )
         },
         overlay = {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val toolbarOffset = if (maxWidth >= 368.dp) 32.dp else 0.dp
             Row(
                 modifier = Modifier.fillMaxSize().navigationBarsPadding()
                     .padding(start = 12.dp, end = 12.dp, bottom = 31.dp)
-                    .offset(x = 32.dp),
+                    .offset(x = toolbarOffset),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.Bottom
             ) {
@@ -388,6 +390,7 @@ fun BookmarkDetailScreen(
                             modifier = Modifier.size(22.dp))
                     }
                 }
+            }
             }
 
             // Discard changes confirmation dialog

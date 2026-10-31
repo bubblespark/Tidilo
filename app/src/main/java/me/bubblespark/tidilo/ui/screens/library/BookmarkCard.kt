@@ -175,7 +175,6 @@ fun BookmarkItemCard(
                     )
                 }
 
-                val context = LocalContext.current
                 IconButton(onClick = onToggleLike, modifier = Modifier.size(48.dp)) {
                     BookmarkLikeIndicator(bookmark.isLiked)
                 }

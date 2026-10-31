@@ -178,7 +178,7 @@ fun BookmarkItemCard(
                     )
                 }
 
-                Box(modifier = Modifier.size(48.dp).clickable(
+                Box(modifier = Modifier.offset(x = 14.dp, y = (-12).dp).size(48.dp).clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null, role = Role.Button, onClick = onToggleLike
                 ), contentAlignment = Alignment.Center) {

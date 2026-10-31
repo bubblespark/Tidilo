@@ -180,8 +180,7 @@ fun BookmarkGridCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
-                        modifier = Modifier.offset(x = 4.dp, y = (-4).dp).size(32.dp).clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
+                        modifier = Modifier.offset(x = 4.dp, y = (-4).dp).size(32.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         BookmarkLikeIndicator(bookmark.isLiked)

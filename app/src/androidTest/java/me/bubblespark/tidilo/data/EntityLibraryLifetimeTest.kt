@@ -6,6 +6,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flow
@@ -30,6 +31,7 @@ class EntityLibraryLifetimeTest {
         val stops = AtomicInteger()
         val snapshots = Channel<EntityLibraryState>(Channel.UNLIMITED)
         val rendered = AtomicReference<Pair<Boolean, EntityLibraryState>>()
+        var originalFailure: Throwable? = null
         try {
             host.main { activity.setContent {
                 val source = remember(retry.value) {
@@ -82,12 +84,80 @@ class EntityLibraryLifetimeTest {
             await { rendered.get()?.second?.spellings?.get("tag") == "Recovered tag" }
             host.main { needed.value = false }
             await { stops.get() == 4 }
+        } catch (failure: Throwable) {
+            originalFailure = failure
+            throw failure
         } finally {
-            host.main { activity.setContent {} }
-            await { stops.get() == starts.get() }
-            host.main { activity.finish() }
-            snapshots.close()
+            tearDownLookup(originalFailure,
+                disposeContent = { host.main { activity.setContent {} } },
+                confirmCancellation = { await { stops.get() == starts.get() } },
+                finishActivity = { host.main { activity.finish() } },
+                closeSnapshots = { snapshots.close() })
         }
+    }
+
+    @Test fun teardownPreservesBodyFailureAndAttemptsEveryCleanup(): Unit = runBlocking {
+        val bodyFailure = AssertionError("Body failure")
+        val disposalFailure = IllegalStateException("Disposal failure")
+        val finishFailure = IllegalStateException("Finish failure")
+        val closeFailure = IllegalStateException("Close failure")
+        val attempted = mutableListOf<String>()
+        val snapshots = Channel<Unit>()
+        var caught: Throwable? = null
+        try {
+            try { throw bodyFailure } finally {
+                tearDownLookup(bodyFailure,
+                    disposeContent = { attempted += "dispose"; throw disposalFailure },
+                    confirmCancellation = { attempted += "cancel"; withTimeout(1) { awaitCancellation() } },
+                    finishActivity = { attempted += "finish"; throw finishFailure },
+                    closeSnapshots = { attempted += "close"; snapshots.close(); throw closeFailure })
+            }
+        } catch (failure: Throwable) { caught = failure }
+        assertEquals(listOf("dispose", "cancel", "finish", "close"), attempted)
+        assertSame(bodyFailure, caught)
+        assertEquals(4, bodyFailure.suppressed.size)
+        assertSame(disposalFailure, bodyFailure.suppressed[0])
+        assertTrue(bodyFailure.suppressed[1] is TimeoutCancellationException)
+        assertSame(finishFailure, bodyFailure.suppressed[2])
+        assertSame(closeFailure, bodyFailure.suppressed[3])
+        assertTrue(snapshots.receiveCatching().isClosed)
+    }
+
+    @Test fun teardownPropagatesCancellationTimeoutAfterFinishingAndClosing(): Unit = runBlocking {
+        val attempted = mutableListOf<String>()
+        val closeFailure = IllegalStateException("Close failure")
+        var caught: Throwable? = null
+        try {
+            tearDownLookup(null,
+                disposeContent = { attempted += "dispose" },
+                confirmCancellation = { attempted += "cancel"; withTimeout(1) { awaitCancellation() } },
+                finishActivity = { attempted += "finish" },
+                closeSnapshots = { attempted += "close"; throw closeFailure })
+        } catch (failure: Throwable) { caught = failure }
+        assertEquals(listOf("dispose", "cancel", "finish", "close"), attempted)
+        assertTrue(caught is TimeoutCancellationException)
+        assertArrayEquals(arrayOf(closeFailure), requireNotNull(caught).suppressed)
+    }
+
+    private suspend fun tearDownLookup(
+        originalFailure: Throwable?,
+        disposeContent: () -> Unit,
+        confirmCancellation: suspend () -> Unit,
+        finishActivity: () -> Unit,
+        closeSnapshots: () -> Unit
+    ) {
+        var cleanupFailure: Throwable? = null
+        suspend fun attempt(action: suspend () -> Unit) {
+            try { action() } catch (failure: Throwable) {
+                val primary = originalFailure ?: cleanupFailure
+                if (primary != null) primary.addSuppressed(failure) else cleanupFailure = failure
+            }
+        }
+        attempt { disposeContent() }
+        attempt { confirmCancellation() }
+        attempt { finishActivity() }
+        attempt { closeSnapshots() }
+        if (originalFailure == null) cleanupFailure?.let { throw it }
     }
 
     private suspend fun await(predicate: () -> Boolean) = withTimeout(8000) {

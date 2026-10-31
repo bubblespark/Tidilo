@@ -59,7 +59,10 @@ internal fun rebuildBookmarkDerivedData(db: SupportSQLiteDatabase) {
             if (rows.isEmpty()) break
             for (row in rows) {
                 val id = requireNotNull(row[0])
-                val tag = logicalBookmarkTag(row[4], row[5], Converters().toStringList(row[6]), row[7] == "1")
+                val storedEntities = Converters().toStringList(row[6])
+                val tag = logicalBookmarkTag(row[4], row[5], storedEntities, row[7] == "1")
+                // v14 JSON already contains canonical spelling; only historical schemas need cleaning.
+                val entities = if (hasSkeletonKey) storedEntities else tag.entities
                 val values = listOf(DomainIconManager.extractDomain(row[1].orEmpty()),
                     bookmarkSearchKey(row[2].orEmpty()), bookmarkSearchKey(row[3].orEmpty()),
                     bookmarkSearchKey(row[1].orEmpty()), tag.category?.let(::bookmarkSearchKey),
@@ -69,7 +72,7 @@ internal fun rebuildBookmarkDerivedData(db: SupportSQLiteDatabase) {
                     if (value == null) update.bindNull(index + 1) else update.bindString(index + 1, value)
                 }
                 update.executeUpdateDelete()
-                tag.entities.forEachIndexed { index, value ->
+                entities.forEachIndexed { index, value ->
                     occurrence.clearBindings()
                     occurrence.bindString(1, id)
                     occurrence.bindLong(2, index.toLong())

@@ -44,6 +44,7 @@ class BookmarkDatabaseTest {
             seed("old", 1, listOf("Git Hub", "C D"))
             seed("new", 2, listOf("GitHub", "CD"))
             seed("tie", 1, listOf("C_D"))
+            seed("prefix", 1, listOf("##C", "C"))
             if (version == 13) {
                 old.execSQL("INSERT INTO rss_feeds(id,url,title,mode,retentionLimit,deleted,revision) VALUES('feed','https://example.com/feed','Saved feed','DIRECT',100,0,1)")
                 old.execSQL("UPDATE bookmarks SET rssFeedId='feed',rssPublishedAt=123,ogImageKey='saved-image-key' WHERE id='a'")
@@ -69,7 +70,7 @@ class BookmarkDatabaseTest {
                     "a" to (listOf("First", "Open AI") + (1..8).map { "Key$it" }),
                     "hidden" to (1..10).map { "Other$it" },
                     "repeat" to listOf("Open AI", "Last"), "old" to listOf("Git Hub", "C D"),
-                    "new" to listOf("Git Hub", "C D"), "tie" to listOf("C D")
+                    "new" to listOf("Git Hub", "C D"), "tie" to listOf("C D"), "prefix" to listOf("#C", "C")
                 )
                 for ((id, values) in expected) {
                     assertEquals(values, db.bookmarkDao().getBookmarkById(id)?.entities)
@@ -92,6 +93,12 @@ class BookmarkDatabaseTest {
                     db.close()
                     db = database(name)
                     assertEquals(listOf("Open_AI"), db.bookmarkDao().getBookmarkById("repeat")?.entities)
+                    assertEquals(listOf("#C", "C"), db.bookmarkDao().getBookmarkById("prefix")?.entities)
+                    db.openHelper.readableDatabase.query("SELECT value,skeletonKey FROM bookmark_entities WHERE bookmarkId='prefix' ORDER BY position").use {
+                        assertTrue(it.moveToNext()); assertEquals("#C", it.getString(0)); assertEquals("#c", it.getString(1))
+                        assertTrue(it.moveToNext()); assertEquals("C", it.getString(0)); assertEquals("c", it.getString(1))
+                        assertFalse(it.moveToNext())
+                    }
                     db.openHelper.readableDatabase.query("SELECT value,skeletonKey FROM bookmark_entities WHERE bookmarkId='repeat'").use {
                         assertTrue(it.moveToFirst()); assertEquals("Open_AI", it.getString(0)); assertEquals("openai", it.getString(1))
                     }
@@ -290,7 +297,7 @@ class BookmarkDatabaseTest {
         var db = database(name)
         try {
             db.bookmarkDao().insertOrUpdate(BookmarkEntity("raw", "Kept", "https://example.com", "",
-                " #Article ", " #Tech ", listOf(" #Kotlin ", " ", "Kotlin"), 1, 1, note = "preserved"))
+                " #Article ", " #Tech ", listOf("Kotlin", "Kotlin"), 1, 1, note = "preserved"))
             val sql = db.openHelper.writableDatabase
             val originalColumns = columns(sql, "bookmarks").filterNot { it == "domain" || it.startsWith("search") }
             val before = fingerprint(sql, "bookmarks", originalColumns)

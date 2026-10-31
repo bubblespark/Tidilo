@@ -4,6 +4,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class LegacyEntitySpellingsTest {
+    @Test fun singlePrefixCleaningPreservesSeparateHashSkeleton() {
+        assertEquals(mapOf("#c" to "#C", "c" to "C"), selectLegacyEntitySpellings(listOf(
+            LegacyEntitySpelling("a", 1, "##C"), LegacyEntitySpelling("a", 1, "C")
+        )))
+    }
+
     @Test fun binaryLexicalTieUsesUtf8OrderForSupplementarySpellings() {
         assertEquals(mapOf("a" to "\uFF21"), selectLegacyEntitySpellings(listOf(
             LegacyEntitySpelling("a", 1, "\uD835\uDC00"), LegacyEntitySpelling("b", 1, "\uFF21")

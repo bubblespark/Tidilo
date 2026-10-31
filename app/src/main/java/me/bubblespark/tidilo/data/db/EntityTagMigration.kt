@@ -82,7 +82,8 @@ internal val entityTagMigration13To14 = object : Migration(13, 14) {
                         val canonical = Converters().toStringList(row.entities).mapNotNull { raw ->
                             EntityTagPolicy.clean(raw)?.let { spellings[entitySkeletonKey(it)] }
                         }
-                        val entities = EntityTagPolicy.normalizeEntities(canonical)
+                        // Representatives are already cleaned; another clean would strip a meaningful '#'.
+                        val entities = canonical.distinctBy(::entitySkeletonKey).take(EntityTagPolicy.MAX_ENTITIES)
                         update.clearBindings()
                         update.bindString(1, Converters().fromStringList(entities))
                         update.bindString(2, row.id)

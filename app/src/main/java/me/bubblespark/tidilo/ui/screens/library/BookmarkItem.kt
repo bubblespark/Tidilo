@@ -31,6 +31,10 @@ data class Tag(
             return Tag(category = cat, subcategory = sub, entities = cleanEntities)
         }
 
+        /** Builds a tag from stored or previously cleaned display values without cleaning twice. */
+        fun fromDisplayValues(category: String?, subcategory: String?, entities: List<String> = emptyList()): Tag =
+            create(category, subcategory).copy(entities = entities)
+
         fun createEmpty(): Tag = Tag(category = null, subcategory = null, entities = emptyList())
 
         /**

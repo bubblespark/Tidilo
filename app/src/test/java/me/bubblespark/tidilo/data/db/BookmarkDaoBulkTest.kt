@@ -12,7 +12,8 @@ import org.junit.Test
 
 class BookmarkDaoBulkTest {
 
-    private class RecordingBookmarkDao : BookmarkDao {
+    private class RecordingBookmarkDao : BookmarkDao() {
+        val existingSpellings = mutableMapOf<String, String>()
         val insertedRowsCalls = mutableListOf<List<BookmarkEntity>>()
         val deletedOccurrencesCalls = mutableListOf<List<String>>()
         val insertedOccurrencesCalls = mutableListOf<List<BookmarkEntityOccurrence>>()
@@ -28,6 +29,10 @@ class BookmarkDaoBulkTest {
         override suspend fun insertOccurrences(rows: List<BookmarkEntityOccurrence>) {
             insertedOccurrencesCalls.add(rows)
         }
+
+        override suspend fun entityRowsForReplacement(skeletonKey: String, afterId: String?): List<me.bubblespark.tidilo.data.db.BookmarkEntityTags> = emptyList()
+        override suspend fun updateEntityRows(rows: List<me.bubblespark.tidilo.data.db.BookmarkEntityTagUpdate>) {}
+        override suspend fun canonicalEntityValue(skeletonKey: String): String? = existingSpellings[skeletonKey]
 
         override suspend fun insertRow(bookmark: BookmarkEntity) {}
         override suspend fun deleteOccurrences(id: String) {}
@@ -50,6 +55,36 @@ class BookmarkDaoBulkTest {
         override fun observeDistinctDomains(): Flow<List<String>> = emptyFlow()
         override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) {}
         override suspend fun clearRssFeedId(id: String) {}
+    }
+
+    @Test
+    fun canonicalizationReusesActiveSpellingAndRetainsEncounterOrderBeforeLimit() = runBlocking {
+        val dao = RecordingBookmarkDao()
+        dao.existingSpellings["github"] = "GitHub"
+        assertEquals(listOf("Before", "GitHub", "#C", "C", "After"),
+            dao.canonicalizeEntities(listOf("Before", "git-hub", "GIT_HUB", "#C", "C", "After")))
+    }
+
+    @Test
+    fun canonicalBatchKeepsFirstSpellingAcrossChunkAndDeduplicatesBeforeLimit() = runBlocking {
+        val dao = RecordingBookmarkDao()
+        val first = BookmarkEntity("first", "First", "https://example.com/first", "", entities = listOf("GitHub"), createdAt = 1, updatedAt = 1)
+        val variants = first.copy(id = "last", entities = List(12) { "git-hub" } + (1..10).map { "Entity $it" })
+        dao.insertAll(listOf(first) + (1..499).map { first.copy(id = "row-$it") } + variants)
+        val saved = dao.insertedRowsCalls.last().last()
+        assertEquals(listOf("GitHub") + (1..9).map { "Entity $it" }, saved.entities)
+        assertEquals(saved.entities, dao.insertedOccurrencesCalls.last().map { it.value })
+    }
+
+    @Test
+    fun mappingAndResavingPreserveCanonicalLeadingHash() = runBlocking {
+        val dao = RecordingBookmarkDao()
+        val canonical = BookmarkEntity("hash", "Hash", "https://example.com/hash", "", entities = listOf("#C", "C"), createdAt = 1, updatedAt = 1)
+        val mapped = canonical.toBookmarkItem()
+        assertEquals(listOf("#C", "C"), mapped.tag.entities)
+        dao.insertAll(listOf(BookmarkEntity.fromBookmarkItem(mapped.copy(note = "changed"))))
+        assertEquals(listOf("#C", "C"), dao.insertedRowsCalls.single().single().entities)
+        assertEquals(listOf("#C", "C"), dao.insertedOccurrencesCalls.single().map { it.value })
     }
 
     @Test

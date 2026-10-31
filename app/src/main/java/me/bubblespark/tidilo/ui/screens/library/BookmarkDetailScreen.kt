@@ -107,8 +107,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -175,34 +177,36 @@ fun BookmarkDetailScreen(
         return
     }
 
-    var noteText by remember(bookmark.id, bookmark.note) {
-        mutableStateOf(bookmark.note)
+    val edit = rememberSaveable(bookmark.id, saver = BookmarkDetailEditState.Saver) {
+        BookmarkDetailEditState(bookmark.note, bookmark.tag, bookmark.isNsfw)
     }
-    var editedTag by remember(bookmark.id, bookmark.tag) {
-        mutableStateOf(bookmark.tag)
-    }
-    var editedIsNsfw by remember(bookmark.id, bookmark.isNsfw) {
-        mutableStateOf(bookmark.isNsfw)
-    }
+    var noteText by edit.noteText
+    var editedTag by edit.editedTag
+    var editedIsNsfw by edit.editedIsNsfw
+    var pendingReplacements by edit.pendingReplacements
+    var showTagEditDialog by edit.showTagEditDialog
+    var showAddEntityDialog by edit.showAddEntityDialog
+    var showEntityBottomSheet by edit.showEntityBottomSheet
+    var draftCategory by edit.draftCategory
+    var draftSubcategory by edit.draftSubcategory
+    var draftEntities by edit.draftEntities
+    var draftIsNsfw by edit.draftIsNsfw
+    var draftReplacements by edit.draftReplacements
+    var entityInput by edit.entityInput
+    var conflictInput by edit.conflictInput
+    var conflictExisting by edit.conflictExisting
     var showDiscardConfirmDialog by remember { mutableStateOf(false) }
     var isFabMenuExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-
-    var showTagEditDialog by remember { mutableStateOf(false) }
-    var showAddEntityDialog by remember { mutableStateOf(false) }
-    var showEntityBottomSheet by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
-
-    var draftCategory by remember { mutableStateOf<String?>(null) }
-    var draftSubcategory by remember { mutableStateOf<String?>(null) }
-    var draftEntities by remember { mutableStateOf<List<String>>(emptyList()) }
-    var draftIsNsfw by remember { mutableStateOf(false) }
+    var entityLibraryRetry by remember { mutableStateOf(0) }
+    val libraryFlow = remember(viewModel, entityLibraryRetry) { viewModel.entityLibrary() }
+    val libraryState = rememberEntityLibraryState(showAddEntityDialog || showEntityBottomSheet, libraryFlow)
 
     val isNsfwContentVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
 
-    val hasChanges = remember(noteText, bookmark.note, editedTag, bookmark.tag, editedIsNsfw, bookmark.isNsfw) {
-        (noteText != bookmark.note) || (editedTag != bookmark.tag) || (editedIsNsfw != bookmark.isNsfw)
-    }
+    val hasChanges = noteText != edit.originalNote || editedTag != edit.originalTag ||
+        editedIsNsfw != edit.originalNsfw || pendingReplacements.isNotEmpty()
 
     // Intercept swipe-back (system gesture back)
     BackHandler(enabled = isSaving || hasChanges) {
@@ -301,7 +305,7 @@ fun BookmarkDetailScreen(
                                 isSaving = true
                                 coroutineScope.launch {
                                     try {
-                                        viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsNsfw)
+                                        viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsNsfw, pendingReplacements)
                                         onNavigateBack()
                                     } catch (e: Exception) {
                                         kotlinx.coroutines.currentCoroutineContext().ensureActive()
@@ -529,11 +533,12 @@ fun BookmarkDetailScreen(
                     onCategoryChanged = { draftCategory = it },
                     onSubcategoryChanged = { draftSubcategory = it },
                     onNsfwChanged = { draftIsNsfw = it },
-                    onAddEntityClick = { showAddEntityDialog = true },
+                    onAddEntityClick = { entityInput = ""; showAddEntityDialog = true },
                     onOpenEntityPickerClick = { showEntityBottomSheet = true },
                     onConfirm = {
-                        editedTag = Tag.create(draftCategory, draftSubcategory, draftEntities)
+                        editedTag = Tag.fromDisplayValues(draftCategory, draftSubcategory, draftEntities)
                         editedIsNsfw = draftIsNsfw
+                        pendingReplacements = draftReplacements
                         showTagEditDialog = false
                     },
                     onDismiss = { showTagEditDialog = false }
@@ -543,22 +548,51 @@ fun BookmarkDetailScreen(
             if (showAddEntityDialog) {
                 AddEntityDialog(
                     onDismiss = { showAddEntityDialog = false },
-                    onConfirm = { newEntity ->
-                        draftEntities = Tag.addEntity(draftEntities, newEntity)
+                    text = entityInput,
+                    onTextChange = { entityInput = it },
+                    libraryState = libraryState,
+                    onRetry = { entityLibraryRetry++ },
+                    onConfirm = { rawInput ->
+                        val draft = EntityTagDraft(draftEntities, draftReplacements)
+                        val conflict = entityTagConflict(rawInput, draft, libraryState.spellings)
+                        if (conflict != null) {
+                            conflictInput = rawInput
+                            conflictExisting = conflict.existing
+                        } else {
+                            val next = applyEntityTagChoice(draft, rawInput, null, false)
+                            draftEntities = next.entities
+                        }
+                    }
+                )
+            }
+            val rawConflictInput = conflictInput
+            val existingConflict = conflictExisting
+            if (rawConflictInput != null && existingConflict != null) {
+                EntityTagConflictDialog(
+                    entered = me.bubblespark.tidilo.data.EntityTagPolicy.clean(rawConflictInput).orEmpty(),
+                    existing = existingConflict,
+                    onDismiss = { conflictInput = null; conflictExisting = null },
+                    onChoice = { replace ->
+                        val next = applyEntityTagChoice(EntityTagDraft(draftEntities, draftReplacements), rawConflictInput, existingConflict, replace)
+                        draftEntities = next.entities
+                        draftReplacements = next.replacements
+                        conflictInput = null
+                        conflictExisting = null
                     }
                 )
             }
 
             if (showEntityBottomSheet) {
-                val allLibraryEntities by viewModel.entityNames.collectAsStateWithLifecycle()
+                val allLibraryEntities = libraryState.spellings.map { (key, value) -> draftReplacements[key] ?: value }
                 EntityTagPickerBottomSheet(
                     selectedEntities = draftEntities,
-                    allEntities = (allLibraryEntities + draftEntities).distinct(),
+                    allEntities = (draftEntities + allLibraryEntities).distinctBy { me.bubblespark.tidilo.data.entitySkeletonKey(it) },
                     onToggleEntity = { entity ->
-                        draftEntities = Tag.toggleEntity(draftEntities, entity)
+                        draftEntities = me.bubblespark.tidilo.data.EntityTagPolicy.toggleDisplayEntity(draftEntities, entity)
                     },
                     onRemoveEntity = { entity ->
-                        draftEntities = draftEntities.filterNot { it.equals(entity, ignoreCase = true) }
+                        val targetKey = me.bubblespark.tidilo.data.entitySkeletonKey(entity)
+                        draftEntities = draftEntities.filterNot { me.bubblespark.tidilo.data.entitySkeletonKey(it) == targetKey }
                     },
                     onDismiss = { showEntityBottomSheet = false }
                 )
@@ -755,6 +789,7 @@ fun BookmarkDetailScreen(
                                 draftSubcategory = editedTag.subcategory
                                 draftEntities = editedTag.entities
                                 draftIsNsfw = editedIsNsfw
+                                draftReplacements = pendingReplacements
                                 showTagEditDialog = true
                             },
                             modifier = Modifier.size(24.dp)
@@ -899,7 +934,7 @@ fun BookmarkDetailScreen(
                                 editedTag.entities.forEach { entity ->
                                     AssistChip(
                                         onClick = {},
-                                        label = { Text(entity.removePrefix("#")) },
+                                        label = { Text(entity) },
                                         leadingIcon = {
                                             Icon(
                                                 imageVector = Icons.Default.Tag,
@@ -1097,5 +1132,18 @@ private fun FabMenuItem(
                 color = contentColor
             )
         }
+    }
+}
+
+/** Disposes the lookup with its editors and resets the snapshot on reopen or retry. */
+@Composable
+internal fun rememberEntityLibraryState(
+    needed: Boolean,
+    source: kotlinx.coroutines.flow.Flow<EntityLibraryState>
+): EntityLibraryState {
+    if (!needed) return EntityLibraryState()
+    return key(source) {
+        val state by source.collectAsStateWithLifecycle(initialValue = EntityLibraryState())
+        state
     }
 }

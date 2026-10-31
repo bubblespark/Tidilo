@@ -2,6 +2,8 @@
 
 Room 13 adds local RSS notification run/item accounting, including atomic article outcomes and completion-time Ready snapshots. `MIGRATION_12_13` preserves all existing bookmark, subscription, queue, and in-app notification tables. See [Android OS Notifications](notifications.md).
 
+Room 14 adds the non-null `bookmark_entities.skeletonKey` and its index. Occurrence constructors derive this identity from display spelling; substring search still uses the separate `searchValue`. `MIGRATION_13_14` elects canonical spellings across all active bookmarks, including hidden NSFW rows, by distinct-bookmark frequency, earliest containing bookmark creation time, then SQLite binary spelling order. It reads raw stored entity lists before deduplication or truncation, resolves representatives in original entity order, removes duplicate keys, and retains at most ten entities. Only active entity JSON and derived fields change; classification, timestamps, notes, flags, URLs, images, RSS metadata, and trash are preserved. Reads use bounded scalar batches, with votes aggregated in a temporary SQLite table. Election runs only during migration. Elected spellings are already cleaned: key-based deduplication and derived repair preserve remaining leading hash characters (for example, raw `##C` becomes canonical `#C`, distinct from `C`) without stripping another prefix. Version 14 derived repair trusts canonical entity JSON; historical occurrence schemas still clean raw legacy values. The existing derived-format repair rebuilds keys without electing spellings on open, and retains compatibility with the historical four-column occurrence schema used by migration 6 to 7.
+
 This document specifies all core domain models, state transition machines, serialization schemas, and reactive data streams used throughout Tidilo.
 
 ---
@@ -59,9 +61,21 @@ Managed in `data/EntityTagPolicy.kt`:
 Shared non-UI policy for normalizing, deduplicating, and bounding entity tags across parser, ingestion, and UI layers:
 - Trims whitespace and strips a single leading `#` prefix.
 - Ignores blank entries.
-- Deduplicates tags case-insensitively while preserving insertion order and the original casing of the first encountered occurrence.
+- Uses `entitySkeletonKey`: NFKC normalization, the existing Unicode case key, then removal of whitespace, dot, underscore, and hyphen. Meaningful punctuation such as `+` and `#` remains significant; no semantic aliases are inferred. Deduplication retains the first display spelling and insertion order.
 - Caps the maximum number of tags at `MAX_ENTITIES` (10).
 - `Tag.addEntity`, `Tag.toggleEntity`, and `Tag.MAX_ENTITIES` delegate directly to `EntityTagPolicy`.
+- Raw input is cleaned once. `Tag.create` cleans raw entities without prematurely deduplicating or truncating; persistence resolves canonical spellings and distinct keys before applying the ten-entity limit.
+- Stored/display values use `Tag.fromDisplayValues`, entity mappings, and `toggleDisplayEntity` without stripping a second hash. Raw `##C` becomes display `#C`, which remains distinct from `C` on reading, editing, serialization, and saving.
+
+### Active entity identity and write contract (Room 14)
+
+All active occurrences of one skeleton use one display spelling, including hidden NSFW bookmarks. Migration elects that spelling once using the rules above. Future saves reuse the current indexed occurrence spelling; a new key establishes its first saved spelling. Election is never repeated on open.
+
+`BookmarkDao` is the canonicalizing boundary for single writes, URL replacement, bulk insertion, field updates, AI review, RSS Direct ingestion, initial import, and restored bookmarks. Raw row and occurrence writes are protected. Bulk resolution retains a transaction-local key map across 500-row chunks; URL replacement resolves before deleting the previous owner. JSON and ordered occurrence rows are refreshed in the same transaction. Note-only, NSFW-only, and RSS ownership updates preserve entity values.
+
+Detail Save accepts already-cleaned display values and a replacement map keyed by skeleton. Each replacement must be trimmed, have a nonempty matching key, and retain meaningful punctuation. Save verifies the target still exists, applies replacements to every matching active bookmark through the skeleton index in bounded batches, overlays explicit spellings onto the draft, then saves note, classification, entities, and NSFW atomically. The overlay preserves an explicit choice even if the last occurrence disappeared while the editor was open. Only entity JSON and `updatedAt` change on other affected bookmarks; unrelated fields and trash remain untouched. Any failure rolls back the entire operation. A stale draft without a replacement resolves the latest spelling; serialized concurrent saves/imports share that spelling, with the last explicit replacement taking effect.
+
+`bookmark_entities.skeletonKey` supports identity lookup and bulk replacement only. Literal tag selection, substring search, and counts continue to use `searchValue` and canonical display values; global text search does not adopt skeleton matching. Room invalidation refreshes results and aggregates after a rename. The conflict lookup independently observes all active entities, regardless of Library source, query, or NSFW visibility.
 
 
 ### 1.3 `TrashedBookmarkItem`
@@ -204,7 +218,7 @@ Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt
 
 ## 6. Persistence & Serialization Schemas
 
-All persistence is managed via **Room Database** (`AppDatabase` v12) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
+All persistence is managed via **Room Database** (`AppDatabase` v14) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
 
 1. **Room Database (`AppDatabase`)**:
    - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, `domain`, and `ogImageUrl` / `ogImageKey` linking to specific cached OG image assets. Bulk writes (`insertAll`) execute in chunked batches of 500 with per-chunk ID deduplication.
@@ -292,7 +306,10 @@ data class DomainGroupItem(
 - **Sorting Rule**: Sorted by `displayName` (fallback to `domain` if empty). ASCII alphanumeric (A–Z, 0–9) characters are ordered first, followed by Japanese kana/kanji ordered via `Collator.getInstance(Locale.JAPANESE)`.
 
 
-## Database v7 derived bookmark data
+## Historical database v7 derived bookmark data
+
+Version 7 introduced the following derived-data contract; Room 14 supersedes its
+raw occurrence and duplicate behavior with the canonical entity contract above.
 
 Active bookmarks carry nullable `domain` plus Unicode comparison keys for title,
 description, URL, category, and subcategory. `BookmarkEntity.fromBookmarkItem`

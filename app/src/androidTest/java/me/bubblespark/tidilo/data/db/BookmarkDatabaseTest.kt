@@ -26,6 +26,87 @@ import java.util.UUID
 import java.security.MessageDigest
 
 class BookmarkDatabaseTest {
+    @Test fun legacyEntitySpellingsUpgradeOnceWithIndexedOccurrenceParity() = runBlocking {
+        for (version in listOf(6, 13)) {
+            val name = "issue164-v$version-${UUID.randomUUID()}.db"
+            val helper = legacy(name, version)
+            val old = helper.writableDatabase
+            val converter = Converters()
+            fun seed(id: String, createdAt: Long, values: List<String>, hidden: Boolean = false) {
+                old.execSQL("INSERT INTO bookmarks(id,title,url,description,category,subcategory,entities,createdAt,updatedAt,note,isNsfw,isAiSkipped,ogImageUrl) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    arrayOf<Any>(id, "Title $id", "https://example.com/$id", "Description", "Article", "Tech",
+                        converter.fromStringList(values), createdAt, 99L, "Saved note", if (hidden) 1 else 0, 0, "https://example.com/image.png"))
+            }
+            // All raw entries count, even those beyond the eventual ten-key limit.
+            seed("a", 20, listOf("First", "Open AI", "Open AI") + (1..12).map { "Key$it" })
+            seed("hidden", 30, (1..11).map { "Other$it" } + "Open AI", hidden = true)
+            seed("repeat", 1, List(10) { "OpenAI" } + listOf("Last", " -_. "))
+            seed("old", 1, listOf("Git Hub", "C D"))
+            seed("new", 2, listOf("GitHub", "CD"))
+            seed("tie", 1, listOf("C_D"))
+            seed("prefix", 1, listOf("##C", "C"))
+            if (version == 13) {
+                old.execSQL("INSERT INTO rss_feeds(id,url,title,mode,retentionLimit,deleted,revision) VALUES('feed','https://example.com/feed','Saved feed','DIRECT',100,0,1)")
+                old.execSQL("UPDATE bookmarks SET rssFeedId='feed',rssPublishedAt=123,ogImageKey='saved-image-key' WHERE id='a'")
+            }
+            old.execSQL("INSERT INTO trashed_bookmarks(id,title,url,description,entities,createdAt,updatedAt,note,isNsfw,isAiSkipped,trashedAt) VALUES('trash','Trash','https://example.com/trash','Description','[\"OpenAI\",\"Open AI\"]',1,2,'Trash note',1,0,3)")
+            val keptColumns = columns(old, "bookmarks").filterNot { it == "entities" || it == "domain" || it.startsWith("search") }
+            val before = fingerprint(old, "bookmarks", keptColumns)
+            val trashColumns = columns(old, "trashed_bookmarks")
+            val trashBefore = fingerprint(old, "trashed_bookmarks", trashColumns)
+            helper.close()
+            var db = database(name)
+            try {
+                val sql = db.openHelper.writableDatabase
+                assertEquals(14, sql.version)
+                assertTrue(columns(sql, "bookmark_entities").contains("skeletonKey"))
+                sql.query("PRAGMA index_list(bookmark_entities)").use { cursor ->
+                    val names = buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
+                    assertTrue(names.contains("index_bookmark_entities_skeletonKey"))
+                }
+                assertEquals(before, fingerprint(sql, "bookmarks", keptColumns))
+                assertEquals(trashBefore, fingerprint(sql, "trashed_bookmarks", trashColumns))
+                val expected = mapOf(
+                    "a" to (listOf("First", "Open AI") + (1..8).map { "Key$it" }),
+                    "hidden" to (1..10).map { "Other$it" },
+                    "repeat" to listOf("Open AI", "Last"), "old" to listOf("Git Hub", "C D"),
+                    "new" to listOf("Git Hub", "C D"), "tie" to listOf("C D"), "prefix" to listOf("#C", "C")
+                )
+                for ((id, values) in expected) {
+                    assertEquals(values, db.bookmarkDao().getBookmarkById(id)?.entities)
+                    sql.query("SELECT position,value,searchValue,skeletonKey FROM bookmark_entities WHERE bookmarkId=? ORDER BY position", arrayOf(id)).use { cursor ->
+                        var index = 0
+                        while (cursor.moveToNext()) {
+                            assertEquals(index, cursor.getInt(0))
+                            assertEquals(values[index], cursor.getString(1))
+                            assertEquals(bookmarkSearchKey(values[index]), cursor.getString(2))
+                            assertEquals(me.bubblespark.tidilo.data.entitySkeletonKey(values[index]), cursor.getString(3))
+                            index++
+                        }
+                        assertEquals(values.size, index)
+                    }
+                }
+                // A later manual spelling must survive onOpen, including a derived-format repair.
+                sql.execSQL("UPDATE bookmarks SET entities='[\"Open_AI\"]' WHERE id='repeat'")
+                sql.execSQL("PRAGMA application_id=0")
+                repeat(2) {
+                    db.close()
+                    db = database(name)
+                    assertEquals(listOf("Open_AI"), db.bookmarkDao().getBookmarkById("repeat")?.entities)
+                    assertEquals(listOf("#C", "C"), db.bookmarkDao().getBookmarkById("prefix")?.entities)
+                    db.openHelper.readableDatabase.query("SELECT value,skeletonKey FROM bookmark_entities WHERE bookmarkId='prefix' ORDER BY position").use {
+                        assertTrue(it.moveToNext()); assertEquals("#C", it.getString(0)); assertEquals("#c", it.getString(1))
+                        assertTrue(it.moveToNext()); assertEquals("C", it.getString(0)); assertEquals("c", it.getString(1))
+                        assertFalse(it.moveToNext())
+                    }
+                    db.openHelper.readableDatabase.query("SELECT value,skeletonKey FROM bookmark_entities WHERE bookmarkId='repeat'").use {
+                        assertTrue(it.moveToFirst()); assertEquals("Open_AI", it.getString(0)); assertEquals("openai", it.getString(1))
+                    }
+                }
+            } finally { db.close(); context.deleteDatabase(name) }
+        }
+    }
+
     @Test fun bothVersionElevenSchemasUpgradeWithoutLosingSavedData() = runBlocking {
         for (feedMetadataVariant in listOf(false, true)) {
             val name = "issue108-v11-${UUID.randomUUID()}.db"
@@ -43,7 +124,7 @@ class BookmarkDatabaseTest {
             helper.close()
             val db = database(name)
             try {
-                assertEquals(13, db.openHelper.readableDatabase.version)
+                assertEquals(14, db.openHelper.readableDatabase.version)
                 val feed = db.rssDao().feed("feed")!!
                 assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
                 assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)
@@ -104,7 +185,7 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showNsfw: Boolean = true): List<BookmarkEntity> {
@@ -183,7 +264,7 @@ class BookmarkDatabaseTest {
     }
 
     @Test
-    fun rawLegacyTagsMatchRenderedCardsWithoutChangingOriginalValues() = runBlocking {
+    fun cleanedActiveTagsMatchRenderedCardsAndCanonicalizeDuplicates() = runBlocking {
         val name = "issue81-raw-tags-${UUID.randomUUID()}.db"
         val db = database(name)
         try {
@@ -191,7 +272,7 @@ class BookmarkDatabaseTest {
                 BookmarkEntity("none", "No tags", "https://example.com/n", "", createdAt = 1, updatedAt = 1),
                 BookmarkEntity("skipped", "Skipped", "https://example.com/s", "", createdAt = 2, updatedAt = 2, isAiSkipped = true),
                 BookmarkEntity("raw", "Raw tags", "https://example.com/r", "", " #Article ", " #Tech ",
-                    listOf(" #Kotlin ", " ", "Kotlin"), 3, 3),
+                    me.bubblespark.tidilo.data.EntityTagPolicy.normalizeEntities(listOf(" #Kotlin ", " ", "Kotlin")), 3, 3),
                 BookmarkEntity("clean", "Clean tags", "https://example.com/c", "", "Article", "Life", createdAt = 4, updatedAt = 4),
                 BookmarkEntity("blank", "Blank tags", "https://example.com/b", "", " # ", " ", createdAt = 5, updatedAt = 5)
             )
@@ -201,12 +282,12 @@ class BookmarkDatabaseTest {
                     results(db, query).map { it.id }.toSet())
             }
             val counts = db.bookmarkDao().tagCounts(BookmarkQueries.tags(setOf("Tech"), true, TagKind.ENTITY)).first()
-            assertEquals(listOf(TagCount("Kotlin", 2)), counts)
+            assertEquals(listOf(TagCount("Kotlin", 1)), counts)
             val categoryCounts = normalizeTagCounts(db.bookmarkDao().tagCounts(
                 BookmarkQueries.tags(emptySet(), true, TagKind.CATEGORY)).first(), TagKind.CATEGORY)
             assertEquals(mapOf("None" to 2, "Article" to 2), categoryCounts.associate { it.value to it.count })
             assertEquals(" #Article ", db.bookmarkDao().getBookmarkById("raw")?.category)
-            assertEquals(listOf(" #Kotlin ", " ", "Kotlin"), db.bookmarkDao().getBookmarkById("raw")?.entities)
+            assertEquals(listOf("Kotlin"), db.bookmarkDao().getBookmarkById("raw")?.entities)
         } finally { db.close(); context.deleteDatabase(name) }
     }
 
@@ -216,7 +297,7 @@ class BookmarkDatabaseTest {
         var db = database(name)
         try {
             db.bookmarkDao().insertOrUpdate(BookmarkEntity("raw", "Kept", "https://example.com", "",
-                " #Article ", " #Tech ", listOf(" #Kotlin ", " ", "Kotlin"), 1, 1, note = "preserved"))
+                " #Article ", " #Tech ", listOf("Kotlin", "Kotlin"), 1, 1, note = "preserved"))
             val sql = db.openHelper.writableDatabase
             val originalColumns = columns(sql, "bookmarks").filterNot { it == "domain" || it.startsWith("search") }
             val before = fingerprint(sql, "bookmarks", originalColumns)
@@ -226,7 +307,7 @@ class BookmarkDatabaseTest {
             db.close()
             db = database(name)
             assertEquals(listOf("raw"), results(db, "#記事 #技術 #Kotlin").map { it.id })
-            assertEquals(listOf(TagCount("Kotlin", 2)), db.bookmarkDao().tagCounts(
+            assertEquals(listOf(TagCount("Kotlin", 1)), db.bookmarkDao().tagCounts(
                 BookmarkQueries.tags(setOf("Tech"), true, TagKind.ENTITY)).first())
             assertEquals(before, fingerprint(db.openHelper.readableDatabase, "bookmarks", originalColumns))
             db.openHelper.readableDatabase.query("PRAGMA application_id").use {
@@ -288,7 +369,7 @@ class BookmarkDatabaseTest {
             }
             assertEquals(listOf("c", "b", "a"), results(db, "").map { it.id })
             val counts = db.bookmarkDao().tagCounts(BookmarkQueries.tags(setOf("Tech"), false, TagKind.ENTITY)).first()
-            assertEquals(2, counts.single { it.value == "Kotlin" }.count)
+            assertEquals(1, counts.single { it.value == "Kotlin" }.count)
             assertEquals(listOf("example.com"), db.bookmarkDao().distinctDomains())
             db.bookmarkDao().updateFields("a", "New description", "Tool", "Life", listOf("Updated"), 3)
             assertTrue(results(db, "#Kotlin", false).isEmpty())
@@ -341,6 +422,8 @@ class BookmarkDatabaseTest {
                             db.execSQL("ALTER TABLE rss_feeds ADD COLUMN siteUrl TEXT")
                         } else AppDatabase.MIGRATION_10_11.migrate(db)
                     }
+                    if (version >= 12) AppDatabase.MIGRATION_11_12.migrate(db)
+                    if (version >= 13) AppDatabase.MIGRATION_12_13.migrate(db)
                     if (version in 4..5) db.execSQL("CREATE TABLE og_images (id TEXT PRIMARY KEY)")
                 }
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = error("Unexpected legacy upgrade")
@@ -486,7 +569,7 @@ class BookmarkDatabaseTest {
                 if (version >= 7) rebuildBookmarkDerivedData(old)
                 if (version == 8) old.execSQL("INSERT INTO rss_feeds(id,url,title,mode,retentionLimit,deleted,revision) VALUES('existing','https://example.com/feed','Existing','DIRECT',100,0,4)")
                 for (table in listOf("bookmarks", "trashed_bookmarks", "import_tasks")) {
-                    val names = columns(old, table)
+                    val names = columns(old, table).filterNot { table == "bookmarks" && it == "entities" }
                     snapshots[table] = names to fingerprint(old, table, names)
                 }
                 old.setTransactionSuccessful()
@@ -509,7 +592,13 @@ class BookmarkDatabaseTest {
                         fingerprint(sql, table, snapshot.first))
                 }
                 sql.query("SELECT COUNT(*) FROM bookmarks WHERE note='preserved' AND searchTitle<>''").use { assertTrue(it.moveToFirst()); assertEquals(count, it.getInt(0)) }
-                sql.query("SELECT COUNT(*) FROM bookmark_entities").use { it.moveToFirst(); assertEquals(count * 2, it.getInt(0)) }
+                sql.query("SELECT COUNT(*) FROM bookmark_entities").use { it.moveToFirst(); assertEquals(count, it.getInt(0)) }
+                sql.query("SELECT COUNT(*) FROM bookmarks WHERE entities='[\"Kotlin\"]'").use {
+                    assertTrue(it.moveToFirst()); assertEquals(count, it.getInt(0))
+                }
+                sql.query("SELECT COUNT(*) FROM bookmark_entities WHERE value='Kotlin' AND searchValue='kotlin' AND skeletonKey='kotlin' AND position=0").use {
+                    assertTrue(it.moveToFirst()); assertEquals(count, it.getInt(0))
+                }
                 assertNull(db.bookmarkDao().getBookmarkById("00000000")!!.domain)
                 val row = db.bookmarkDao().getBookmarkById("00000001")!!
                 assertEquals(DomainIconManager.extractDomain(row.url), row.domain)

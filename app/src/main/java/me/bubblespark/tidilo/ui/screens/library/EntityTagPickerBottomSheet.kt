@@ -269,7 +269,7 @@ private fun SelectedEntityChip(
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = name.removePrefix("#"),
+                text = name,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onPrimary
@@ -340,7 +340,7 @@ private fun AllEntityToggleChip(
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = name.removePrefix("#"),
+                text = name,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                 color = contentColor

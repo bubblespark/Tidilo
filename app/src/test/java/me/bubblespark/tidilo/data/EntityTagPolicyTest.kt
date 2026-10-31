@@ -6,6 +6,13 @@ import org.junit.Test
 class EntityTagPolicyTest {
 
     @Test
+    fun togglingDisplayValuePreservesHashIdentityInsteadOfTogglingPlainC() {
+        assertEquals(listOf("C"), EntityTagPolicy.toggleDisplayEntity(listOf("#C", "C"), "#C"))
+        assertEquals(listOf("C", "#C"), EntityTagPolicy.toggleDisplayEntity(listOf("C"), "#C"))
+        assertEquals(listOf("#C"), EntityTagPolicy.toggleDisplayEntity(listOf("#C", "C"), "c"))
+    }
+
+    @Test
     fun maxEntitiesConstantIsTen() {
         assertEquals(10, EntityTagPolicy.MAX_ENTITIES)
     }
@@ -118,5 +125,36 @@ class EntityTagPolicyTest {
         val expected = listOf("Kotlin", "Compose", "Android") + (1..7).map { "Topic$it" }
         assertEquals(10, normalized.size)
         assertEquals(expected, normalized)
+    }
+
+    @Test
+    fun separatorOnlyEntitiesAreIgnored() {
+        for (value in listOf("._-", " # . _ - ", "．＿－")) {
+            assertNull(EntityTagPolicy.clean(value))
+            assertEquals("", EntityTagPolicy.normalize(value))
+            assertEquals(emptyList<String>(), EntityTagPolicy.normalizeEntities(listOf(value)))
+            assertEquals(listOf("Kotlin"), EntityTagPolicy.addEntity(listOf("Kotlin"), value))
+            assertEquals(listOf("Kotlin"), EntityTagPolicy.toggleEntity(listOf("Kotlin"), value))
+        }
+    }
+
+    @Test
+    fun skeletonVariantsKeepFirstSpellingAndPosition() {
+        assertEquals(
+            listOf("Jetpack Compose", "Node.js", "C++", "C#"),
+            EntityTagPolicy.normalizeEntities(listOf(" #Jetpack Compose ", "Node.js", "JETPACK_COMPOSE", "NodeJS", "C++", "C#", "Ｊｅｔｐａｃｋ－Ｃｏｍｐｏｓｅ"))
+        )
+        assertEquals(listOf("Jetpack Compose", "Node.js"), EntityTagPolicy.addEntity(listOf("Jetpack Compose", "Node.js"), "jetpack-compose"))
+    }
+
+    @Test
+    fun duplicatesDoNotConsumeDistinctEntityCapacity() {
+        val raw = listOf("Jetpack Compose", "jetpack-compose", "JETPACK_COMPOSE") + (1..10).map { "Tag$it" }
+        assertEquals(listOf("Jetpack Compose") + (1..9).map { "Tag$it" }, EntityTagPolicy.normalizeEntities(raw))
+    }
+
+    @Test
+    fun togglingVariantRemovesEveryMatchingSkeleton() {
+        assertEquals(listOf("Kotlin"), EntityTagPolicy.toggleEntity(listOf("Node.js", "Kotlin", "NODE_JS"), "ＮｏｄｅＪＳ"))
     }
 }

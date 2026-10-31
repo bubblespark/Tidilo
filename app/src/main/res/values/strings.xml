@@ -375,4 +375,10 @@
         <item quantity="one">%1$d bookmark</item>
         <item quantity="other">%1$d bookmarks</item>
     </plurals>
+    <string name="entity_conflict_title">Tag spelling already exists</string>
+    <string name="entity_conflict_spellings">Entered: %1$s\nExisting: %2$s</string>
+    <string name="entity_conflict_save_notice">Replace across all bookmarks applies only after you tap Save on the detail screen.</string>
+    <string name="entity_conflict_use_existing">Use existing tag</string>
+    <string name="entity_conflict_replace">Replace across all bookmarks</string>
+    <string name="entity_library_failed">Could not load existing tags. Retry before adding a tag.</string>
 </resources>

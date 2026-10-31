@@ -367,12 +367,8 @@ fun BookmarkTagEditDialog(
                             // "Add" icon button without background
                             IconButton(
                                 onClick = {
-                                    if (selectedEntities.size >= Tag.MAX_ENTITIES) {
-                                        showInlineLimitError = true
-                                    } else {
-                                        showInlineLimitError = false
-                                        onAddEntityClick()
-                                    }
+                                    showInlineLimitError = selectedEntities.size >= Tag.MAX_ENTITIES
+                                    onAddEntityClick()
                                 },
                                 modifier = Modifier.size(36.dp)
                             ) {
@@ -468,7 +464,7 @@ fun BookmarkTagEditDialog(
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = entity.removePrefix("#"),
+                                            text = entity,
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Medium
                                         )
@@ -505,12 +501,16 @@ fun BookmarkTagEditDialog(
 @Composable
 fun AddEntityDialog(
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
+    onConfirm: (String) -> Unit,
+    text: String,
+    onTextChange: (String) -> Unit,
+    libraryState: EntityLibraryState,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    var text by remember { mutableStateOf("") }
-
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = modifier,
         title = {
             Text(
                 text = stringResource(R.string.detail_add_entity_title),
@@ -520,31 +520,38 @@ fun AddEntityDialog(
             )
         },
         text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                placeholder = {
-                    Text(stringResource(R.string.detail_add_entity_placeholder))
-                },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = onTextChange,
+                    placeholder = {
+                        Text(stringResource(R.string.detail_add_entity_placeholder))
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
                 )
-            )
+                when {
+                    libraryState.loading -> androidx.compose.material3.CircularProgressIndicator()
+                    libraryState.error != null -> Column {
+                        Text(stringResource(R.string.entity_library_failed), color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = onRetry) { Text(stringResource(R.string.common_retry)) }
+                    }
+                }
+            }
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    val trimmed = text.trim().removePrefix("#")
-                    if (trimmed.isNotBlank()) {
-                        onConfirm(trimmed)
-                    }
+                    onConfirm(text)
                     onDismiss()
                 },
-                enabled = text.isNotBlank()
+                enabled = !libraryState.loading && libraryState.error == null &&
+                    me.bubblespark.tidilo.data.EntityTagPolicy.clean(text) != null
             ) {
                 Text(
                     text = stringResource(R.string.common_ok),
@@ -612,4 +619,36 @@ private fun Modifier.verticalScrollbar(
             )
         }
     }
+}
+
+/** Replacement choices are staged locally until the detail screen is saved. */
+@Composable
+fun EntityTagConflictDialog(
+    entered: String,
+    existing: String,
+    onDismiss: () -> Unit,
+    onChoice: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = modifier,
+        title = { Text(stringResource(R.string.entity_conflict_title)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.entity_conflict_spellings, entered, existing))
+                Text(stringResource(R.string.entity_conflict_save_notice))
+            }
+        },
+        confirmButton = {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                TextButton(onClick = { onChoice(false) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(stringResource(R.string.entity_conflict_use_existing))
+                }
+                TextButton(onClick = { onChoice(true) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(stringResource(R.string.entity_conflict_replace))
+                }
+            }
+        }
+    )
 }

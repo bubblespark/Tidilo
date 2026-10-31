@@ -234,6 +234,9 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
   - **Two-Stage Persistence & In-Memory Preview**:
     - Confirming the parent dialog updates `editedTag` and `editedIsNsfw` in memory, immediately previewing the changes on the Detail screen and activating the top-right "Save" button.
     - Changes are atomically persisted to Room database and repository only when the user taps "Save".
+    - Manual variant entry compares skeleton identity against all active library tags, including hidden content, independently of Library filters. Lookup loading or failure blocks confirmation; failure offers Retry.
+    - A spelling conflict offers **Use existing tag** or **Replace across all bookmarks**, displays both spellings, and explains that replacement applies only after the detail screen Save. Dismissing the conflict changes nothing. Replacement choices remain in the parent editor until its confirmation; canceling that editor or discarding the screen never renames library tags.
+    - The complete note, classification, entity, NSFW, replacement, and nested-dialog draft is saved together across recreation. Incoming Room updates preserve edits. Pending replacements alone enable Save, and failed Save retains all choices for retry. Stored display spelling (including meaningful leading hashes) is rendered unchanged; the picker overlays pending spellings and shows each skeleton once.
 - **URL Interactive Row**:
   - Bound via `combinedClickable`. Single tap launches external browser with fallback toast; long press performs haptic feedback (`HapticFeedbackType.LongPress`), copies the full URL to the clipboard via `LocalClipboardManager.setText`, and displays an immediate confirmation toast.
 

@@ -333,6 +333,11 @@ class LibraryViewModel : ViewModel() {
             bookmarkRepository.observeTagCounts(selected, visible, kind)
         }.map { rows -> rows.associate { it.value to it.count } }
 
+    fun entityLibrary(): Flow<EntityLibraryState> = bookmarkRepository.observeEntityLibrary()
+        .map { EntityLibraryState(it, loading = false) }
+        .catch { emit(EntityLibraryState(loading = false, error = it)) }
+        .onStart { emit(EntityLibraryState()) }
+
     val entityNames = tagCounts(emptySet(), TagKind.ENTITY).map { it.keys.toList() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -530,3 +535,6 @@ class LibraryViewModel : ViewModel() {
 }
 
 data class BookmarkDetailState(val bookmark: BookmarkItem? = null, val loading: Boolean = true, val error: Throwable? = null)
+
+/** A missing lookup is distinct from a successfully loaded empty library. */
+data class EntityLibraryState(val spellings: Map<String, String> = emptyMap(), val loading: Boolean = true, val error: Throwable? = null)

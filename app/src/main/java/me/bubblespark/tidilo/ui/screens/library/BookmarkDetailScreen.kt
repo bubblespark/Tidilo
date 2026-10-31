@@ -333,45 +333,46 @@ fun BookmarkDetailScreen(
         overlay = {
             Row(
                 modifier = Modifier.fillMaxSize().navigationBarsPadding()
-                    .padding(start = 12.dp, end = 12.dp, bottom = 34.dp),
+                    .padding(start = 12.dp, end = 12.dp, bottom = 31.6.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.Bottom
             ) {
                 Surface(
                     shape = RoundedCornerShape(32.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shadowElevation = 4.dp
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    tonalElevation = 6.dp,
+                    shadowElevation = 10.dp
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { showDeleteConfirmDialog = true }) {
+                        IconButton(onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(52.8.dp)) {
                             Icon(ImageVector.vectorResource(R.drawable.ic_delete),
                                 contentDescription = stringResource(R.string.detail_action_delete),
-                                tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
                         }
-                        IconButton(onClick = { onNavigateToAiReview(bookmark.id) }) {
+                        IconButton(onClick = { onNavigateToAiReview(bookmark.id) }, modifier = Modifier.size(52.8.dp)) {
                             Icon(Icons.Default.AutoAwesome,
                                 contentDescription = stringResource(R.string.detail_action_ai_summary),
-                                modifier = Modifier.size(20.dp))
+                                modifier = Modifier.size(22.dp))
                         }
-                        IconButton(onClick = {}) {
+                        IconButton(onClick = {}, modifier = Modifier.size(52.8.dp)) {
                             Icon(ImageVector.vectorResource(R.drawable.ic_star),
                                 contentDescription = stringResource(R.string.bookmark_collection_placeholder),
-                                modifier = Modifier.size(20.dp))
+                                modifier = Modifier.size(22.dp))
                         }
-                        IconButton(onClick = { viewModel.toggleLike(bookmark.id) }) {
+                        IconButton(onClick = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(52.8.dp)) {
                             Icon(
                                 imageVector = if (bookmark.isLiked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
                                 contentDescription = stringResource(if (bookmark.isLiked) R.string.bookmark_unlike else R.string.bookmark_like),
                                 tint = if (bookmark.isLiked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(8.8.dp))
                 Surface(
                     onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(52.8.dp),
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.primaryContainer,
                     shadowElevation = 4.dp
@@ -380,7 +381,7 @@ fun BookmarkDetailScreen(
                         Icon(ImageVector.vectorResource(R.drawable.ic_open_in_browser),
                             contentDescription = stringResource(R.string.bookmark_open_in_browser),
                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(20.dp))
+                            modifier = Modifier.size(22.dp))
                     }
                 }
             }

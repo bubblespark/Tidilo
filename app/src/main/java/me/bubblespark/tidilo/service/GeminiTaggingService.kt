@@ -157,7 +157,7 @@ object GeminiTaggingService {
                 title = result.title,
                 url = realUrl,
                 description = result.summary,
-                tag = Tag.create(
+                tag = Tag.fromDisplayValues(
                     category = result.category,
                     subcategory = result.subcategory,
                     entities = result.entities
@@ -405,7 +405,8 @@ object GeminiTaggingService {
                 }
 
                 // Adjust entities list to a bounded range (maximum 10)
-                val safeEntities = entitiesList.distinct().take(10)
+                val safeEntities = entitiesList.filter { me.bubblespark.tidilo.data.entitySkeletonKey(it).isNotEmpty() }
+                    .distinctBy { me.bubblespark.tidilo.data.entitySkeletonKey(it) }.take(Tag.MAX_ENTITIES)
 
                 return TaggingResult(
                     title = fallbackTitle,
@@ -431,7 +432,7 @@ object GeminiTaggingService {
             summary = fallbackSummary,
             category = Category.entries.first().id,
             subcategory = Subcategory.entries.first().id,
-            entities = listOfNotNull(parsedWebPage?.ogpTags?.get("og:site_name")?.takeIf { it.isNotBlank() }),
+            entities = listOfNotNull(me.bubblespark.tidilo.data.EntityTagPolicy.clean(parsedWebPage?.ogpTags?.get("og:site_name"))),
             rawAiOutput = rawOutput
         )
     }

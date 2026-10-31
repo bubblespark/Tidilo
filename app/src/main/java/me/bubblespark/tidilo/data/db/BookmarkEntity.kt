@@ -124,7 +124,7 @@ data class BookmarkEntity(
     }
 }
 
-/** Mirrors the tags shown on cards while leaving the stored legacy values intact. */
+/** Maps canonical stored display values without applying raw-input cleaning again. */
 internal fun logicalBookmarkTag(category: String?, subcategory: String?, entities: List<String>, isAiSkipped: Boolean): Tag =
-    if (isAiSkipped && category == null && subcategory == null) Tag.create(null, null, entities).copy(category = null, subcategory = null)
-    else Tag.create(category, subcategory, entities)
+    if (isAiSkipped && category == null && subcategory == null) Tag.fromDisplayValues(null, null, entities).copy(category = null, subcategory = null)
+    else Tag.fromDisplayValues(category, subcategory, entities)

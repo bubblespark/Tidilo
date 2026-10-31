@@ -6,8 +6,8 @@ package me.bubblespark.tidilo.data
  * Entity tags adhere to the following rules:
  * - Leading and trailing whitespace is trimmed.
  * - A single leading '#' prefix is removed, followed by trimming again.
- * - Blank entries are ignored.
- * - Deduplication is case-insensitive, preserving insertion order and the original casing
+ * - Entries with empty skeleton keys are ignored.
+ * - Deduplication uses skeleton identity, preserving insertion order and the original spelling
  *   of the first encountered occurrence.
  * - The list size is capped at [MAX_ENTITIES].
  */
@@ -16,12 +16,12 @@ object EntityTagPolicy {
 
     /**
      * Cleans an entity tag by trimming whitespace and removing one leading '#' prefix.
-     * Returns null if the resulting string is blank or if the input is null.
+     * Returns null if the skeleton key is empty or if the input is null.
      */
     fun clean(entity: String?): String? {
         if (entity == null) return null
         val normalized = entity.trim().removePrefix("#").trim()
-        return normalized.takeIf { it.isNotBlank() }
+        return normalized.takeIf { entitySkeletonKey(it).isNotEmpty() }
     }
 
     /**
@@ -31,27 +31,35 @@ object EntityTagPolicy {
         clean(entity).orEmpty()
 
     /**
-     * Adds an entity tag to the current list if non-blank, not already present (case-insensitive),
+     * Adds an entity tag to the current list if non-blank, not already present by skeleton identity,
      * and the list size is strictly below [MAX_ENTITIES].
      * Preserves insertion order and the original casing of the first added occurrence.
      */
     fun addEntity(current: List<String>, newEntity: String): List<String> {
         val clean = clean(newEntity) ?: return current
         if (current.size >= MAX_ENTITIES) return current
-        if (current.any { it.equals(clean, ignoreCase = true) }) return current
+        val key = entitySkeletonKey(clean)
+        if (current.any { entitySkeletonKey(it) == key }) return current
         return current + clean
     }
 
     /**
-     * Toggles an entity tag in the current list: removes if present (case-insensitive),
+     * Toggles an entity tag in the current list: removes if present by skeleton identity,
      * or adds if absent and list size is below [MAX_ENTITIES].
      */
     fun toggleEntity(current: List<String>, entity: String): List<String> {
         val clean = clean(entity) ?: return current
-        return if (current.any { it.equals(clean, ignoreCase = true) }) {
-            current.filterNot { it.equals(clean, ignoreCase = true) }
+        return toggleDisplayEntity(current, clean)
+    }
+
+    /** Toggles a stored/display value by key without reinterpreting a leading hash as raw input. */
+    fun toggleDisplayEntity(current: List<String>, entity: String): List<String> {
+        val key = entitySkeletonKey(entity)
+        if (key.isEmpty()) return current
+        return if (current.any { entitySkeletonKey(it) == key }) {
+            current.filterNot { entitySkeletonKey(it) == key }
         } else if (current.size < MAX_ENTITIES) {
-            current + clean
+            current + entity
         } else {
             current
         }
@@ -59,15 +67,16 @@ object EntityTagPolicy {
 
     /**
      * Normalizes an iterable of raw entity strings:
-     * trims whitespace, strips leading '#', filters out blanks, deduplicates case-insensitively
+     * trims whitespace, strips leading '#', filters out blanks, deduplicates by skeleton identity
      * keeping the first encountered casing and order, capped at [limit] (default [MAX_ENTITIES]).
      */
     fun normalizeEntities(rawEntities: Iterable<String>, limit: Int = MAX_ENTITIES): List<String> {
         val result = mutableListOf<String>()
+        val keys = mutableSetOf<String>()
         for (raw in rawEntities) {
             val clean = clean(raw) ?: continue
             if (result.size >= limit) break
-            if (result.none { it.equals(clean, ignoreCase = true) }) {
+            if (keys.add(entitySkeletonKey(clean))) {
                 result.add(clean)
             }
         }

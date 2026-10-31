@@ -338,6 +338,11 @@ class LibraryViewModel : ViewModel() {
             bookmarkRepository.observeTagCounts(selected, visible, kind)
         }.map { rows -> rows.associate { it.value to it.count } }
 
+    fun entityLibrary(): Flow<EntityLibraryState> = bookmarkRepository.observeEntityLibrary()
+        .map { EntityLibraryState(it, loading = false) }
+        .catch { emit(EntityLibraryState(loading = false, error = it)) }
+        .onStart { emit(EntityLibraryState()) }
+
     val entityNames = tagCounts(emptySet(), TagKind.ENTITY).map { it.keys.toList() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -346,8 +351,8 @@ class LibraryViewModel : ViewModel() {
     suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) =
         bookmarkRepository.updateBookmarkFields(id, description, tag)
 
-    suspend fun updateBookmarkDetails(id: String, note: String, tag: Tag, isNsfw: Boolean) =
-        bookmarkRepository.updateBookmarkDetails(id, note, tag, isNsfw)
+    suspend fun updateBookmarkDetails(id: String, note: String, tag: Tag, isNsfw: Boolean, replacements: Map<String, String> = emptyMap()) =
+        bookmarkRepository.updateBookmarkDetails(id, note, tag, isNsfw, replacements)
 
     suspend fun deleteBookmark(id: String): Boolean = bookmarkRepository.moveToTrash(id)
 
@@ -535,3 +540,6 @@ class LibraryViewModel : ViewModel() {
 }
 
 data class BookmarkDetailState(val bookmark: BookmarkItem? = null, val loading: Boolean = true, val error: Throwable? = null)
+
+/** A missing lookup is distinct from a successfully loaded empty library. */
+data class EntityLibraryState(val spellings: Map<String, String> = emptyMap(), val loading: Boolean = true, val error: Throwable? = null)

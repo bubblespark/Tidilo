@@ -1,5 +1,12 @@
 package me.bubblespark.tidilo.data
 
+import androidx.paging.PagingSource
+import androidx.sqlite.db.SupportSQLiteQuery
+import kotlinx.coroutines.flow.Flow
+import me.bubblespark.tidilo.data.db.BookmarkEntityOccurrence
+import me.bubblespark.tidilo.data.db.BookmarkEntityTags
+import me.bubblespark.tidilo.data.db.TagCount
+import me.bubblespark.tidilo.data.db.DomainCount
 import androidx.room.Room
 import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
@@ -198,13 +205,42 @@ class ImportDuplicateRoomTest {
         }
     }
 
-    private class HookableBookmarkDao(private val delegate: BookmarkDao) : BookmarkDao by delegate {
+    private class HookableBookmarkDao(private val delegate: BookmarkDao) : BookmarkDao() {
+        override suspend fun toggleLike(id: String, now: Long) = delegate.toggleLike(id, now)
+        override suspend fun recordBrowserOpen(id: String, now: Long) = delegate.recordBrowserOpen(id, now)
+        override suspend fun recordDetailView(id: String, now: Long) = delegate.recordDetailView(id, now)
+        override suspend fun recordSummaryPeek(id: String, now: Long) = delegate.recordSummaryPeek(id, now)
         var onGetBookmarkByUrl: ((String) -> Unit)? = null
-
         override suspend fun getBookmarkByUrl(url: String): BookmarkEntity? {
             onGetBookmarkByUrl?.invoke(url)
             return delegate.getBookmarkByUrl(url)
         }
+        override fun observeCollectionCounts(): Flow<me.bubblespark.tidilo.data.CollectionCounts> = delegate.observeCollectionCounts()
+        override fun observeCount(query: SupportSQLiteQuery): Flow<Int> = delegate.observeCount(query)
+        override suspend fun getBookmarkById(id: String): BookmarkEntity? = delegate.getBookmarkById(id)
+        override suspend fun clearRssFeedId(id: String) = delegate.clearRssFeedId(id)
+        override suspend fun insertRow(bookmark: BookmarkEntity) = error("Unused primitive")
+        override suspend fun insertRows(bookmarks: List<BookmarkEntity>) = error("Unused primitive")
+        override suspend fun insertOccurrences(rows: List<BookmarkEntityOccurrence>) = error("Unused primitive")
+        override suspend fun deleteOccurrences(id: String) = error("Unused primitive")
+        override suspend fun deleteOccurrencesForBookmarks(bookmarkIds: List<String>) = error("Unused primitive")
+        override suspend fun canonicalEntityValue(skeletonKey: String): String? = delegate.canonicalEntityValue(skeletonKey)
+        override suspend fun entityRowsForReplacement(skeletonKey: String, afterId: String?): List<BookmarkEntityTags> = error("Unused primitive")
+        override suspend fun updateEntityRows(rows: List<me.bubblespark.tidilo.data.db.BookmarkEntityTagUpdate>) = error("Unused primitive")
+        override suspend fun updateNote(id: String, note: String, updatedAt: Long) = delegate.updateNote(id, note, updatedAt)
+        override suspend fun deleteById(id: String) = delegate.deleteById(id)
+        override suspend fun deleteByIdOrUrl(id: String, url: String) = delegate.deleteByIdOrUrl(id, url)
+        override suspend fun getCount(): Int = delegate.getCount()
+        override suspend fun deleteAll() = delegate.deleteAll()
+        override fun timeline(showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = delegate.timeline(showNsfw)
+        override fun byDomain(domain: String, showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = delegate.byDomain(domain, showNsfw)
+        override fun search(query: SupportSQLiteQuery): PagingSource<Int, BookmarkEntity> = delegate.search(query)
+        override fun tagCounts(query: SupportSQLiteQuery): Flow<List<TagCount>> = delegate.tagCounts(query)
+        override fun observeById(id: String): Flow<BookmarkEntity?> = delegate.observeById(id)
+        override fun domainCounts(showNsfw: Boolean, source: Int): Flow<List<DomainCount>> = delegate.domainCounts(showNsfw, source)
+        override suspend fun distinctDomains(): List<String> = delegate.distinctDomains()
+        override fun observeDistinctDomains(): Flow<List<String>> = delegate.observeDistinctDomains()
+        override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) = delegate.updateDomainNsfw(domain, isNsfw)
     }
 
     @Test
@@ -223,7 +259,7 @@ class ImportDuplicateRoomTest {
             createdAt = 1000L,
             updatedAt = 1000L
         )
-        database.bookmarkDao().insertRow(existing)
+        database.bookmarkDao().insertOrUpdate(existing)
 
         val redirectInFlightGate = CompletableDeferred<Unit>()
         val allowRedirectGate = CompletableDeferred<Unit>()

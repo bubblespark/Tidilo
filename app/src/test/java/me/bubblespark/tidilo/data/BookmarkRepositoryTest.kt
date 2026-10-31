@@ -15,6 +15,35 @@ class BookmarkRepositoryTest {
     private val defaultTag = Tag.create("Article", "Tech", listOf("Test"))
 
     @Test
+    fun legacyListParserPreservesSerializedCanonicalHash() {
+        val original = BookmarkItem("legacy-hash", "Hash", "https://example.com/hash", "", Tag("Tool", "Tech", listOf("#C", "C")))
+        val restored = BookmarkRepository.parseBookmarks(BookmarkRepository.serializeBookmarks(listOf(original))).single()
+        assertEquals(listOf("#C", "C"), restored.tag.entities)
+    }
+
+    @Test
+    fun fallbackSiteNameIsCleanedExactlyOnceBeforeDisplayTagConstruction() {
+        val parsed = me.bubblespark.tidilo.parser.WebPageParser.parseHtml("https://example.com", """<html><head><meta property="og:site_name" content=" ##C "></head><body>Body</body></html>""")
+        val result = GeminiTaggingService.parseAiResponse("Invalid JSON", "Title", parsed)
+        assertEquals(listOf("#C"), Tag.fromDisplayValues(result.category, result.subcategory, result.entities).entities)
+    }
+
+    @Test
+    fun serializedCanonicalHashAndPlainCRemainDistinct() {
+        val original = BookmarkItem("hash", "Hash", "https://example.com/hash", "", Tag("Tool", "Tech", listOf("#C", "C")))
+        val restored = BookmarkRepository.parseBookmarkFromObj(BookmarkRepository.serializeBookmarkToObj(original))
+        assertEquals(listOf("#C", "C"), restored.tag.entities)
+    }
+
+    @Test
+    fun aiParserDeduplicatesKeysBeforeTenEntityLimit() {
+        val result = GeminiTaggingService.parseAiResponse(
+            rawOutput = """{"summary":"Summary","category":"Tool","subcategory":"Tech","entities":["GitHub","git-hub","git_hub","git.hub","Git Hub","A","B","C","D","E","F","G","H","I"]}""",
+            fallbackTitle = "Title", parsedWebPage = null)
+        assertEquals(listOf("GitHub", "A", "B", "C", "D", "E", "F", "G", "H", "I"), result.entities)
+    }
+
+    @Test
     fun testTrashRetentionAndCapacityConstants() {
         assertEquals(30L, BookmarkRepository.TRASH_RETENTION_DAYS)
         assertEquals(30L * 24 * 60 * 60 * 1000L, BookmarkRepository.TRASH_RETENTION_MS)

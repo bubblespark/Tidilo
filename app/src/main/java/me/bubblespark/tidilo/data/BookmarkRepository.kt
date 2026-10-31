@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.room.withTransaction
+import me.bubblespark.tidilo.data.db.updateBookmarkDetails
 import me.bubblespark.tidilo.data.db.moveBookmarkToTrash
 import me.bubblespark.tidilo.data.db.updateDomainNsfwWithPolicy
 import androidx.paging.Pager
@@ -10,6 +11,7 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.map
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
 import me.bubblespark.tidilo.data.db.BookmarkQueries
 import me.bubblespark.tidilo.data.db.TagKind
 import me.bubblespark.tidilo.data.db.normalizeTagCounts
@@ -153,8 +155,7 @@ class BookmarkRepository private constructor(context: Context) {
                     throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
                 }
             }
-            bookmarkDao.deleteByIdOrUrl(finalItem.id, finalItem.url)
-            bookmarkDao.insertOrUpdate(BookmarkEntity.fromBookmarkItem(finalItem))
+            bookmarkDao.insertReplacingUrl(BookmarkEntity.fromBookmarkItem(finalItem))
             finalItem
         }
         // Room publishes the committed bookmark; auxiliary cache work cannot fail the save.
@@ -214,19 +215,12 @@ class BookmarkRepository private constructor(context: Context) {
         id: String,
         note: String,
         tag: Tag,
-        isNsfw: Boolean
+        isNsfw: Boolean,
+        replacements: Map<String, String> = emptyMap()
     ) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
 
-        bookmarkDao.updateNoteAndTag(
-            id = id,
-            note = note,
-            category = tag.category,
-            subcategory = tag.subcategory,
-            entities = tag.entities,
-            isNsfw = isNsfw,
-            updatedAt = now
-        )
+        database.updateBookmarkDetails(id, note, tag, isNsfw, replacements, now)
     }
 
     /**
@@ -298,6 +292,13 @@ class BookmarkRepository private constructor(context: Context) {
         observeSafely { bookmarkDao.tagCounts(BookmarkQueries.tags(selected, showNsfw, kind)) }
             .map { normalizeTagCounts(it, kind) }
 
+    /** Unfiltered active entities; failures propagate so manual entry cannot silently bypass lookup. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    internal fun observeEntityLibrary(): Flow<Map<String, String>> = isInitialized.flatMapLatest { ready ->
+        if (!ready) kotlinx.coroutines.flow.emptyFlow() else bookmarkDao.tagCounts(BookmarkQueries.tags(emptySet(), true, TagKind.ENTITY))
+            .map { rows -> rows.associate { entitySkeletonKey(it.value) to it.value } }
+    }
+
     private fun <T> observeSafely(query: () -> Flow<T>): Flow<T> =
         recoverableBookmarkQuery(isInitialized, queryRetry, { _initializationFailure.value = it }, query)
 
@@ -351,7 +352,7 @@ class BookmarkRepository private constructor(context: Context) {
             val tag = if (isAiSkipped && (tagObj == null || (tagObj.optString("category").isBlank() && tagObj.optString("subcategory").isBlank() && entitiesList.isEmpty()))) {
                 Tag.createEmpty()
             } else {
-                Tag.create(
+                Tag.fromDisplayValues(
                     category = tagObj?.optString("category", Tag.DEFAULT_TAG),
                     subcategory = tagObj?.optString("subcategory", Tag.DEFAULT_TAG),
                     entities = entitiesList
@@ -433,7 +434,7 @@ class BookmarkRepository private constructor(context: Context) {
                             entitiesList.add(ea.getString(j))
                         }
                     }
-                    var tag = Tag.create(
+                    var tag = Tag.fromDisplayValues(
                         category = tagObj?.optString("category", Tag.DEFAULT_TAG),
                         subcategory = tagObj?.optString("subcategory", Tag.DEFAULT_TAG),
                         entities = entitiesList

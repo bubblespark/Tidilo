@@ -3,6 +3,8 @@ package me.bubblespark.tidilo.data.db
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import me.bubblespark.tidilo.data.DomainIconManager
+import me.bubblespark.tidilo.data.EntityTagPolicy
+import me.bubblespark.tidilo.data.entitySkeletonKey
 
 /** Completes all derived-data backfill before Room exposes the upgraded database. */
 internal val bookmarkMigration6To7 = object : Migration(6, 7) {
@@ -30,7 +32,16 @@ internal fun rebuildBookmarkDerivedData(db: SupportSQLiteDatabase) {
     db.execSQL("DELETE FROM bookmark_entities")
     val update = db.compileStatement("""UPDATE bookmarks SET domain=?, searchTitle=?,
         searchDescription=?, searchUrl=?, searchCategory=?, searchSubcategory=? WHERE id=?""")
-    val occurrence = db.compileStatement("INSERT INTO bookmark_entities VALUES (?, ?, ?, ?)")
+    val hasSkeletonKey = db.query("PRAGMA table_info(bookmark_entities)").use { cursor ->
+        var found = false
+        while (cursor.moveToNext()) if (cursor.getString(1) == "skeletonKey") found = true
+        found
+    }
+    val occurrence = db.compileStatement(if (hasSkeletonKey) {
+        "INSERT INTO bookmark_entities (bookmarkId,position,value,searchValue,skeletonKey) VALUES (?, ?, ?, ?, ?)"
+    } else {
+        "INSERT INTO bookmark_entities (bookmarkId,position,value,searchValue) VALUES (?, ?, ?, ?)"
+    })
     try {
         var lastId: String? = null
         while (true) {
@@ -49,7 +60,10 @@ internal fun rebuildBookmarkDerivedData(db: SupportSQLiteDatabase) {
             if (rows.isEmpty()) break
             for (row in rows) {
                 val id = requireNotNull(row[0])
-                val tag = logicalBookmarkTag(row[4], row[5], Converters().toStringList(row[6]), row[7] == "1")
+                val storedEntities = Converters().toStringList(row[6])
+                val tag = logicalBookmarkTag(row[4], row[5], storedEntities, row[7] == "1")
+                // v14 JSON already contains canonical spelling; only historical schemas need cleaning.
+                val entities = if (hasSkeletonKey) storedEntities else storedEntities.mapNotNull(EntityTagPolicy::clean)
                 val values = listOf(DomainIconManager.extractDomain(row[1].orEmpty()),
                     bookmarkSearchKey(row[2].orEmpty()), bookmarkSearchKey(row[3].orEmpty()),
                     bookmarkSearchKey(row[1].orEmpty()), tag.category?.let(::bookmarkSearchKey),
@@ -59,12 +73,13 @@ internal fun rebuildBookmarkDerivedData(db: SupportSQLiteDatabase) {
                     if (value == null) update.bindNull(index + 1) else update.bindString(index + 1, value)
                 }
                 update.executeUpdateDelete()
-                tag.entities.forEachIndexed { index, value ->
+                entities.forEachIndexed { index, value ->
                     occurrence.clearBindings()
                     occurrence.bindString(1, id)
                     occurrence.bindLong(2, index.toLong())
                     occurrence.bindString(3, value)
                     occurrence.bindString(4, bookmarkSearchKey(value))
+                    if (hasSkeletonKey) occurrence.bindString(5, entitySkeletonKey(value))
                     occurrence.executeInsert()
                 }
                 lastId = id

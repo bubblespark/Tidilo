@@ -17,6 +17,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssIngestionStoreTest {
+    @Test fun directRawCategoriesCleanOnceAndResolveBeforeLimit() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
+        try {
+            val dao = db.bookmarkDao()
+            dao.insertOrUpdate(me.bubblespark.tidilo.data.db.BookmarkEntity("existing", "Existing", "https://example.com/existing", "", entities = listOf("GitHub"), createdAt = 1, updatedAt = 1))
+            val feed = RssFeedEntity("feed", "https://example.com/feed", "Feed", mode = "DIRECT")
+            db.rssDao().putFeed(feed)
+            val store = RssIngestionStore(db)
+            val rawCategories = (List(12) { " #git-hub " } + listOf("##C", "C", "New"))
+                .joinToString("") { "<category>$it</category>" }
+            val entry = RssFeedParser.parse("<rss><channel><item><link>https://example.com/post</link>$rawCategories</item></channel></rss>", feed.url).entries.single()
+            assertTrue(store.stage(feed, listOf(entry), 100))
+            val task = db.importTaskDao().getAllTasks().single()
+            assertTrue(store.complete(feed, task, article(task.url)))
+            assertEquals(listOf("GitHub", "#C", "C", "New"), dao.getBookmarkById(task.id)?.entities)
+            db.openHelper.readableDatabase.query("SELECT value FROM bookmark_entities WHERE bookmarkId = ? ORDER BY position", arrayOf(task.id)).use { cursor ->
+                val values = mutableListOf<String>()
+                while (cursor.moveToNext()) values += cursor.getString(0)
+                assertEquals(listOf("GitHub", "#C", "C", "New"), values)
+            }
+        } finally { db.close() }
+    }
+
     @Test fun directFeedCategoriesRemainSearchableAfterTaskCompletion() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
         try {

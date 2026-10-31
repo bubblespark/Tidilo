@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -170,10 +171,10 @@ fun BookmarkGridCard(
                 }
                 IconButton(
                     onClick = onToggleLike,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(48.dp)
+                    modifier = Modifier.align(Alignment.TopEnd).size(48.dp)
                 ) {
                     Box(
-                        modifier = Modifier.size(32.dp).clip(RoundedCornerShape(16.dp))
+                        modifier = Modifier.offset(x = 4.dp, y = (-4).dp).size(32.dp).clip(RoundedCornerShape(16.dp))
                             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)),
                         contentAlignment = Alignment.Center
                     ) {

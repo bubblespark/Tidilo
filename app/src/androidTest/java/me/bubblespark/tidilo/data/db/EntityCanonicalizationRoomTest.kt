@@ -24,6 +24,24 @@ class EntityCanonicalizationRoomTest {
         }
     }
 
+    @Test fun explicitReplacementSurvivesRemovalOfLastOccurrenceBeforeStaleDraftSave() = runBlocking {
+        val db = database()
+        try {
+            val dao = db.bookmarkDao()
+            dao.insertOrUpdate(row("current", "Before", "GitHub", "# C", "C", "After"))
+            val draft = requireNotNull(dao.getBookmarkById("current")).toBookmarkItem().tag
+            dao.updateNoteAndTag("current", "Concurrent edit", draft.category, draft.subcategory, emptyList(), false, 2)
+            assertNull(dao.canonicalEntityValue("github"))
+            assertNull(dao.canonicalEntityValue("#c"))
+
+            db.updateBookmarkDetails("current", "Saved draft", draft, false,
+                mapOf("github" to "git-hub", "#c" to "#C"), 3)
+
+            assertStored(db, "current", listOf("Before", "git-hub", "#C", "C", "After"))
+            assertEquals("Saved draft", dao.getBookmarkById("current")?.note)
+        } finally { db.close() }
+    }
+
     @Test fun historicalFourColumnRebuildStillCleansRawValuesExactlyOnce() = runBlocking {
         val db = database()
         try {

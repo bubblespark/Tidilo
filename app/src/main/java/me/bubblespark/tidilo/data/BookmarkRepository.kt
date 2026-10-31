@@ -271,6 +271,7 @@ class BookmarkRepository private constructor(context: Context) {
             .map { normalizeTagCounts(it, kind) }
 
     /** Unfiltered active entities; failures propagate so manual entry cannot silently bypass lookup. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     internal fun observeEntityLibrary(): Flow<Map<String, String>> = isInitialized.flatMapLatest { ready ->
         if (!ready) kotlinx.coroutines.flow.emptyFlow() else bookmarkDao.tagCounts(BookmarkQueries.tags(emptySet(), true, TagKind.ENTITY))
             .map { rows -> rows.associate { entitySkeletonKey(it.value) to it.value } }

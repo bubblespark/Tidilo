@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -19,6 +20,7 @@ import me.bubblespark.tidilo.ui.screens.library.EntityTagConflictDialog
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicInteger
 
 class EntityTagConflictLayoutTest {
     private val host = HeaderTestHost()
@@ -62,18 +64,23 @@ class EntityTagConflictLayoutTest {
     }
     @Test fun longSpellingsAndBothChoicesFitAt360dpAndDoubleFontInBothThemes(): Unit = runBlocking {
         val activity = host.launch()
+        val measuredGeneration = AtomicInteger(-1)
         try {
             for (dark in listOf(false, true)) for (scale in listOf(1f, 2f)) {
+                val generation = (if (dark) 2 else 0) + (if (scale == 2f) 1 else 0)
                 var choice: Boolean? = null
                 host.main { activity.setContent { TidiloTheme(darkTheme = dark, dynamicColor = false) {
                     val density = LocalDensity.current.density
                     CompositionLocalProvider(LocalDensity provides Density(density, scale)) {
                         EntityTagConflictDialog("A very long manually entered spelling ".repeat(6),
-                            "A very long existing canonical spelling ".repeat(6), {}, { choice = it }, Modifier.width(312.dp))
+                            "A very long existing canonical spelling ".repeat(6), {}, { choice = it },
+                            Modifier.width(312.dp).onGloballyPositioned {
+                                if (it.size.width > 0 && it.size.height > 0) measuredGeneration.set(generation)
+                            })
                     }
                 } } }
+                withTimeout(8000) { while (measuredGeneration.get() != generation) delay(30) }
                 host.instrumentation.waitForIdleSync()
-                delay(250)
                 for ((label, expected) in listOf("Use existing tag" to false, "Replace across all bookmarks" to true)) {
                     val target = button(label)
                     val bounds = Rect().also(target::getBoundsInScreen)

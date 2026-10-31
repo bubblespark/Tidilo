@@ -107,6 +107,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -200,7 +201,7 @@ fun BookmarkDetailScreen(
     var isSaving by remember { mutableStateOf(false) }
     var entityLibraryRetry by remember { mutableStateOf(0) }
     val libraryFlow = remember(viewModel, entityLibraryRetry) { viewModel.entityLibrary() }
-    val libraryState by libraryFlow.collectAsStateWithLifecycle(initialValue = EntityLibraryState())
+    val libraryState = rememberEntityLibraryState(showAddEntityDialog || showEntityBottomSheet, libraryFlow)
 
     val isNsfwContentVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
 
@@ -590,7 +591,8 @@ fun BookmarkDetailScreen(
                         draftEntities = me.bubblespark.tidilo.data.EntityTagPolicy.toggleDisplayEntity(draftEntities, entity)
                     },
                     onRemoveEntity = { entity ->
-                        draftEntities = draftEntities.filterNot { it.equals(entity, ignoreCase = true) }
+                        val targetKey = me.bubblespark.tidilo.data.entitySkeletonKey(entity)
+                        draftEntities = draftEntities.filterNot { me.bubblespark.tidilo.data.entitySkeletonKey(it) == targetKey }
                     },
                     onDismiss = { showEntityBottomSheet = false }
                 )
@@ -1130,5 +1132,18 @@ private fun FabMenuItem(
                 color = contentColor
             )
         }
+    }
+}
+
+/** Disposes the lookup with its editors and resets the snapshot on reopen or retry. */
+@Composable
+internal fun rememberEntityLibraryState(
+    needed: Boolean,
+    source: kotlinx.coroutines.flow.Flow<EntityLibraryState>
+): EntityLibraryState {
+    if (!needed) return EntityLibraryState()
+    return key(source) {
+        val state by source.collectAsStateWithLifecycle(initialValue = EntityLibraryState())
+        state
     }
 }

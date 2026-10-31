@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.data
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.compose.setContent
+import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -66,16 +67,18 @@ class EntityTagConflictTest {
         val other = "hidden-$token"
         val canonical = "Conflict$token"
         val variant = canonical.uppercase()
-        db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Editor", "https://$id.invalid", "Summary",
-            category = if (classified) "Tool" else null, subcategory = if (classified) "Tech" else null,
-            entities = if (currentHasEntity) listOf(canonical) else emptyList(), createdAt = 1, updatedAt = 1, isAiSkipped = true))
-        db.bookmarkDao().insertOrUpdate(BookmarkEntity(other, "Hidden", "https://$other.invalid", "Summary",
-            entities = listOf(canonical), isNsfw = true, createdAt = 2, updatedAt = 2, isAiSkipped = true))
-        val activity = host.launch()
+        var launchedActivity: ComponentActivity? = null
+        var originalFailure: Throwable? = null
         val mounted = mutableStateOf(true)
         val registry = mutableStateOf(SaveableStateRegistry(null) { true })
         var navigations = 0
         try {
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Editor", "https://$id.invalid", "Summary",
+                category = if (classified) "Tool" else null, subcategory = if (classified) "Tech" else null,
+                entities = if (currentHasEntity) listOf(canonical) else emptyList(), createdAt = 1, updatedAt = 1, isAiSkipped = true))
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity(other, "Hidden", "https://$other.invalid", "Summary",
+                entities = listOf(canonical), isNsfw = true, createdAt = 2, updatedAt = 2, isAiSkipped = true))
+            val activity = host.launch().also { launchedActivity = it }
             host.main {
                 val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
                 activity.setContent { MaterialTheme {
@@ -92,13 +95,23 @@ class EntityTagConflictTest {
                 host.main { registry.value = SaveableStateRegistry(saved) { true }; mounted.value = true }
             })
             fixture.action()
-        } catch (failure: Exception) {
-            throw AssertionError("Editor stage: $stage", failure)
+        } catch (failure: Throwable) {
+            val reported = AssertionError("Editor stage: $stage", failure)
+            originalFailure = reported
+            throw reported
         } finally {
-            db.openHelper.writableDatabase.execSQL("DROP TRIGGER IF EXISTS entity_conflict_failure")
-            host.main { activity.finish() }
-            db.bookmarkDao().deleteById(id)
-            db.bookmarkDao().deleteById(other)
+            var cleanupFailure: Throwable? = null
+            suspend fun cleanup(action: suspend () -> Unit) {
+                try { action() } catch (failure: Throwable) {
+                    val primary = originalFailure ?: cleanupFailure
+                    if (primary != null) primary.addSuppressed(failure) else cleanupFailure = failure
+                }
+            }
+            cleanup { db.openHelper.writableDatabase.execSQL("DROP TRIGGER IF EXISTS entity_conflict_failure") }
+            cleanup { launchedActivity?.let { activity -> host.main { activity.finish() } } }
+            cleanup { db.bookmarkDao().deleteById(id) }
+            cleanup { db.bookmarkDao().deleteById(other) }
+            if (originalFailure == null) cleanupFailure?.let { throw it }
         }
     }
     private inner class Fixture(val db: AppDatabase, val id: String, val other: String,

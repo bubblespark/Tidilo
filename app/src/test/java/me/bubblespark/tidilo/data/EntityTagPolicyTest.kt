@@ -6,6 +6,13 @@ import org.junit.Test
 class EntityTagPolicyTest {
 
     @Test
+    fun togglingDisplayValuePreservesHashIdentityInsteadOfTogglingPlainC() {
+        assertEquals(listOf("C"), EntityTagPolicy.toggleDisplayEntity(listOf("#C", "C"), "#C"))
+        assertEquals(listOf("C", "#C"), EntityTagPolicy.toggleDisplayEntity(listOf("C"), "#C"))
+        assertEquals(listOf("#C"), EntityTagPolicy.toggleDisplayEntity(listOf("#C", "C"), "c"))
+    }
+
+    @Test
     fun maxEntitiesConstantIsTen() {
         assertEquals(10, EntityTagPolicy.MAX_ENTITIES)
     }

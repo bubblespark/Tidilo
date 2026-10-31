@@ -49,11 +49,17 @@ object EntityTagPolicy {
      */
     fun toggleEntity(current: List<String>, entity: String): List<String> {
         val clean = clean(entity) ?: return current
-        val key = entitySkeletonKey(clean)
+        return toggleDisplayEntity(current, clean)
+    }
+
+    /** Toggles a stored/display value by key without reinterpreting a leading hash as raw input. */
+    fun toggleDisplayEntity(current: List<String>, entity: String): List<String> {
+        val key = entitySkeletonKey(entity)
+        if (key.isEmpty()) return current
         return if (current.any { entitySkeletonKey(it) == key }) {
             current.filterNot { entitySkeletonKey(it) == key }
         } else if (current.size < MAX_ENTITIES) {
-            current + clean
+            current + entity
         } else {
             current
         }

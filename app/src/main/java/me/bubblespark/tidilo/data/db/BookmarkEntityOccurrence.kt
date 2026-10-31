@@ -6,7 +6,7 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import me.bubblespark.tidilo.data.entitySkeletonKey
 
-/** Keeps original occurrence counts, including duplicate values within one bookmark. */
+/** Stores ordered canonical display values and indexed identity for active bookmarks. */
 @Entity(
     tableName = "bookmark_entities",
     primaryKeys = ["bookmarkId", "position"],

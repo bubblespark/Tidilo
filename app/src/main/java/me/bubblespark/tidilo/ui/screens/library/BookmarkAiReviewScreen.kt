@@ -209,7 +209,7 @@ fun BookmarkAiReviewScreen(
                             }
 
                             val finalTag = if (selectedTagSource == ProposalSource.PROPOSAL) {
-                                me.bubblespark.tidilo.ui.screens.library.Tag.create(
+                                me.bubblespark.tidilo.ui.screens.library.Tag.fromDisplayValues(
                                     category = proposal.category,
                                     subcategory = proposal.subcategory,
                                     entities = proposal.entities

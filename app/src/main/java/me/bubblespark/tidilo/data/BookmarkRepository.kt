@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.room.withTransaction
+import me.bubblespark.tidilo.data.db.updateBookmarkDetails
 import me.bubblespark.tidilo.data.db.moveBookmarkToTrash
 import me.bubblespark.tidilo.data.db.updateDomainNsfwWithPolicy
 import androidx.paging.Pager
@@ -147,8 +148,7 @@ class BookmarkRepository private constructor(context: Context) {
                     throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
                 }
             }
-            bookmarkDao.deleteByIdOrUrl(finalItem.id, finalItem.url)
-            bookmarkDao.insertOrUpdate(BookmarkEntity.fromBookmarkItem(finalItem))
+            bookmarkDao.insertReplacingUrl(BookmarkEntity.fromBookmarkItem(finalItem))
             finalItem
         }
         // Room publishes the committed bookmark; auxiliary cache work cannot fail the save.
@@ -192,19 +192,12 @@ class BookmarkRepository private constructor(context: Context) {
         id: String,
         note: String,
         tag: Tag,
-        isNsfw: Boolean
+        isNsfw: Boolean,
+        replacements: Map<String, String> = emptyMap()
     ) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
 
-        bookmarkDao.updateNoteAndTag(
-            id = id,
-            note = note,
-            category = tag.category,
-            subcategory = tag.subcategory,
-            entities = tag.entities,
-            isNsfw = isNsfw,
-            updatedAt = now
-        )
+        database.updateBookmarkDetails(id, note, tag, isNsfw, replacements, now)
     }
 
     /**
@@ -329,7 +322,7 @@ class BookmarkRepository private constructor(context: Context) {
             val tag = if (isAiSkipped && (tagObj == null || (tagObj.optString("category").isBlank() && tagObj.optString("subcategory").isBlank() && entitiesList.isEmpty()))) {
                 Tag.createEmpty()
             } else {
-                Tag.create(
+                Tag.fromDisplayValues(
                     category = tagObj?.optString("category", Tag.DEFAULT_TAG),
                     subcategory = tagObj?.optString("subcategory", Tag.DEFAULT_TAG),
                     entities = entitiesList
@@ -411,7 +404,7 @@ class BookmarkRepository private constructor(context: Context) {
                             entitiesList.add(ea.getString(j))
                         }
                     }
-                    var tag = Tag.create(
+                    var tag = Tag.fromDisplayValues(
                         category = tagObj?.optString("category", Tag.DEFAULT_TAG),
                         subcategory = tagObj?.optString("subcategory", Tag.DEFAULT_TAG),
                         entities = entitiesList

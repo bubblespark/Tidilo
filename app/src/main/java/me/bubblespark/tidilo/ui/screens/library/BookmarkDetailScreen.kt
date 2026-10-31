@@ -532,7 +532,7 @@ fun BookmarkDetailScreen(
                     onAddEntityClick = { showAddEntityDialog = true },
                     onOpenEntityPickerClick = { showEntityBottomSheet = true },
                     onConfirm = {
-                        editedTag = Tag.create(draftCategory, draftSubcategory, draftEntities)
+                        editedTag = Tag.fromDisplayValues(draftCategory, draftSubcategory, draftEntities)
                         editedIsNsfw = draftIsNsfw
                         showTagEditDialog = false
                     },
@@ -555,7 +555,7 @@ fun BookmarkDetailScreen(
                     selectedEntities = draftEntities,
                     allEntities = (allLibraryEntities + draftEntities).distinct(),
                     onToggleEntity = { entity ->
-                        draftEntities = Tag.toggleEntity(draftEntities, entity)
+                        draftEntities = me.bubblespark.tidilo.data.EntityTagPolicy.toggleDisplayEntity(draftEntities, entity)
                     },
                     onRemoveEntity = { entity ->
                         draftEntities = draftEntities.filterNot { it.equals(entity, ignoreCase = true) }

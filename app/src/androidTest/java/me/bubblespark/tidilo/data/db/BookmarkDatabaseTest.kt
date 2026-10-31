@@ -264,7 +264,7 @@ class BookmarkDatabaseTest {
     }
 
     @Test
-    fun rawLegacyTagsMatchRenderedCardsWithoutChangingOriginalValues() = runBlocking {
+    fun cleanedActiveTagsMatchRenderedCardsAndCanonicalizeDuplicates() = runBlocking {
         val name = "issue81-raw-tags-${UUID.randomUUID()}.db"
         val db = database(name)
         try {
@@ -272,7 +272,7 @@ class BookmarkDatabaseTest {
                 BookmarkEntity("none", "No tags", "https://example.com/n", "", createdAt = 1, updatedAt = 1),
                 BookmarkEntity("skipped", "Skipped", "https://example.com/s", "", createdAt = 2, updatedAt = 2, isAiSkipped = true),
                 BookmarkEntity("raw", "Raw tags", "https://example.com/r", "", " #Article ", " #Tech ",
-                    listOf(" #Kotlin ", " ", "Kotlin"), 3, 3),
+                    me.bubblespark.tidilo.data.EntityTagPolicy.normalizeEntities(listOf(" #Kotlin ", " ", "Kotlin")), 3, 3),
                 BookmarkEntity("clean", "Clean tags", "https://example.com/c", "", "Article", "Life", createdAt = 4, updatedAt = 4),
                 BookmarkEntity("blank", "Blank tags", "https://example.com/b", "", " # ", " ", createdAt = 5, updatedAt = 5)
             )
@@ -282,12 +282,12 @@ class BookmarkDatabaseTest {
                     results(db, query).map { it.id }.toSet())
             }
             val counts = db.bookmarkDao().tagCounts(BookmarkQueries.tags(setOf("Tech"), true, TagKind.ENTITY)).first()
-            assertEquals(listOf(TagCount("Kotlin", 2)), counts)
+            assertEquals(listOf(TagCount("Kotlin", 1)), counts)
             val categoryCounts = normalizeTagCounts(db.bookmarkDao().tagCounts(
                 BookmarkQueries.tags(emptySet(), true, TagKind.CATEGORY)).first(), TagKind.CATEGORY)
             assertEquals(mapOf("None" to 2, "Article" to 2), categoryCounts.associate { it.value to it.count })
             assertEquals(" #Article ", db.bookmarkDao().getBookmarkById("raw")?.category)
-            assertEquals(listOf(" #Kotlin ", " ", "Kotlin"), db.bookmarkDao().getBookmarkById("raw")?.entities)
+            assertEquals(listOf("Kotlin"), db.bookmarkDao().getBookmarkById("raw")?.entities)
         } finally { db.close(); context.deleteDatabase(name) }
     }
 
@@ -307,7 +307,7 @@ class BookmarkDatabaseTest {
             db.close()
             db = database(name)
             assertEquals(listOf("raw"), results(db, "#記事 #技術 #Kotlin").map { it.id })
-            assertEquals(listOf(TagCount("Kotlin", 2)), db.bookmarkDao().tagCounts(
+            assertEquals(listOf(TagCount("Kotlin", 1)), db.bookmarkDao().tagCounts(
                 BookmarkQueries.tags(setOf("Tech"), true, TagKind.ENTITY)).first())
             assertEquals(before, fingerprint(db.openHelper.readableDatabase, "bookmarks", originalColumns))
             db.openHelper.readableDatabase.query("PRAGMA application_id").use {
@@ -369,7 +369,7 @@ class BookmarkDatabaseTest {
             }
             assertEquals(listOf("c", "b", "a"), results(db, "").map { it.id })
             val counts = db.bookmarkDao().tagCounts(BookmarkQueries.tags(setOf("Tech"), false, TagKind.ENTITY)).first()
-            assertEquals(2, counts.single { it.value == "Kotlin" }.count)
+            assertEquals(1, counts.single { it.value == "Kotlin" }.count)
             assertEquals(listOf("example.com"), db.bookmarkDao().distinctDomains())
             db.bookmarkDao().updateFields("a", "New description", "Tool", "Life", listOf("Updated"), 3)
             assertTrue(results(db, "#Kotlin", false).isEmpty())

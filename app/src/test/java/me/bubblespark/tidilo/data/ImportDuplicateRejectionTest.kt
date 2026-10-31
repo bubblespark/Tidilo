@@ -117,7 +117,7 @@ class ImportDuplicateRejectionTest {
         } finally { job.cancel(); job.join() }
     }
 
-    private class TestBookmarkDao : BookmarkDao {
+    private class TestBookmarkDao : BookmarkDao() {
         val bookmarks = mutableMapOf<String, BookmarkEntity>()
 
         override suspend fun getBookmarkByUrl(url: String): BookmarkEntity? =
@@ -130,7 +130,12 @@ class ImportDuplicateRejectionTest {
             bookmarks[id] = existing.copy(rssFeedId = null)
         }
 
-        override suspend fun insertRow(bookmark: BookmarkEntity) {
+        override suspend fun entityRowsForReplacement(skeletonKey: String, afterId: String?): List<me.bubblespark.tidilo.data.db.BookmarkEntityTags> = emptyList()
+        override suspend fun updateEntityRows(rows: List<me.bubblespark.tidilo.data.db.BookmarkEntityTagUpdate>) {}
+        override suspend fun canonicalEntityValue(skeletonKey: String): String? =
+            bookmarks.values.flatMap { it.entities }.firstOrNull { entitySkeletonKey(it) == skeletonKey }
+
+        public override suspend fun insertRow(bookmark: BookmarkEntity) {
             bookmarks[bookmark.id] = bookmark
         }
 

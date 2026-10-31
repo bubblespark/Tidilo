@@ -341,8 +341,8 @@ class LibraryViewModel : ViewModel() {
     suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) =
         bookmarkRepository.updateBookmarkFields(id, description, tag)
 
-    suspend fun updateBookmarkDetails(id: String, note: String, tag: Tag, isNsfw: Boolean) =
-        bookmarkRepository.updateBookmarkDetails(id, note, tag, isNsfw)
+    suspend fun updateBookmarkDetails(id: String, note: String, tag: Tag, isNsfw: Boolean, replacements: Map<String, String> = emptyMap()) =
+        bookmarkRepository.updateBookmarkDetails(id, note, tag, isNsfw, replacements)
 
     suspend fun deleteBookmark(id: String): Boolean = bookmarkRepository.moveToTrash(id)
 

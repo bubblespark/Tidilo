@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.data.db
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import me.bubblespark.tidilo.data.DomainIconManager
+import me.bubblespark.tidilo.data.EntityTagPolicy
 import me.bubblespark.tidilo.data.entitySkeletonKey
 
 /** Completes all derived-data backfill before Room exposes the upgraded database. */
@@ -62,7 +63,7 @@ internal fun rebuildBookmarkDerivedData(db: SupportSQLiteDatabase) {
                 val storedEntities = Converters().toStringList(row[6])
                 val tag = logicalBookmarkTag(row[4], row[5], storedEntities, row[7] == "1")
                 // v14 JSON already contains canonical spelling; only historical schemas need cleaning.
-                val entities = if (hasSkeletonKey) storedEntities else tag.entities
+                val entities = if (hasSkeletonKey) storedEntities else storedEntities.mapNotNull(EntityTagPolicy::clean)
                 val values = listOf(DomainIconManager.extractDomain(row[1].orEmpty()),
                     bookmarkSearchKey(row[2].orEmpty()), bookmarkSearchKey(row[3].orEmpty()),
                     bookmarkSearchKey(row[1].orEmpty()), tag.category?.let(::bookmarkSearchKey),

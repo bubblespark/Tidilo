@@ -10,6 +10,7 @@ import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
 import me.bubblespark.tidilo.data.EntityTagPolicy
 
+/** Categories are cleaned display values; consumers must not strip a leading hash again. */
 data class RssEntry(val key: String, val url: String, val title: String, val description: String,
     val bodySnippet: String, val imageUrl: String?, val publishedAt: Long?, val categories: List<String> = emptyList())
 data class RssFeedDocument(val title: String, val entries: List<RssEntry>,

@@ -4,6 +4,13 @@ import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
 
+internal fun latestDueRssBoundary(now: Long, pending: List<Long>, claimed: List<Long>): Long? =
+    (pending + claimed).filter { it <= now }.maxOrNull()
+
+internal fun effectiveRssBoundary(requestedAt: Long, time: LocalTime, now: Instant, zone: ZoneId): Long =
+    if (requestedAt > now.toEpochMilli()) requestedAt
+    else maxOf(requestedAt, rssTriggerBoundary(now, time, zone).toEpochMilli())
+
 internal fun decodeRssTriggerTimes(encoded: String?): List<LocalTime> = encoded.orEmpty().split(',')
     .mapNotNull { it.toIntOrNull()?.takeIf { minute -> minute in 0..1439 } }
     .distinct().sorted().take(3).map { LocalTime.of(it / 60, it % 60) }

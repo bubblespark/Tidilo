@@ -12,6 +12,7 @@ import java.time.LocalTime
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
 import me.bubblespark.tidilo.data.rss.RssFetchWorker
 import me.bubblespark.tidilo.data.rss.RssScheduler
 import me.bubblespark.tidilo.data.rss.RssSettings
@@ -23,6 +24,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import me.bubblespark.tidilo.data.rss.startRssFetchRun
+import me.bubblespark.tidilo.data.rss.startScheduledRssFetchRun
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import org.junit.Test
 
@@ -32,6 +34,65 @@ class RssDailySchedulingTest {
         LocalTime.now().plusHours(3).plusMinutes(1).withSecond(0).withNano(0),
         LocalTime.now().plusHours(6).withSecond(0).withNano(0)).sorted(), dailyEnabled = true)
     private fun active(manager: WorkManager, name: String) = manager.getWorkInfosByTag("$name:triggers").get().filter { !it.state.isFinished }
+
+    @Test fun overdueWorkManagerRequestsCoalesceInEitherOrderAndConcurrently() = runBlocking {
+        val manager = WorkManager.getInstance(context)
+        val zone = java.time.ZoneId.systemDefault()
+        val date = java.time.LocalDate.now(zone).minusDays(2)
+        val now = date.plusDays(1).atTime(13, 0).atZone(zone).toInstant()
+        val times = listOf(LocalTime.of(9, 0), LocalTime.NOON)
+        val settings = RssSettings(times, dailyEnabled = true)
+        for (order in 0..2) {
+            val family = "rss-test-coalesce-${UUID.randomUUID()}"
+            val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+            try {
+                db.rssDao().putFeed(RssFeedEntity("fixture", "https://fixture.invalid/feed", "Fixture"))
+                val inputs = times.map { time ->
+                    val minute = time.hour * 60 + time.minute
+                    val boundary = date.atTime(time).atZone(zone).toInstant().toEpochMilli()
+                    val input = workDataOf("triggerMinuteOfDay" to minute, "requestedAt" to boundary)
+                    val request = androidx.work.PeriodicWorkRequestBuilder<RssFetchWorker>(24, TimeUnit.HOURS)
+                        .setInitialDelay(1, TimeUnit.DAYS).setInputData(input)
+                        .addTag("$family:triggers").addTag("$family:minute:$minute").addTag("$family:at:$boundary").build()
+                    manager.enqueueUniquePeriodicWork("$family-$minute", androidx.work.ExistingPeriodicWorkPolicy.KEEP, request).result.get()
+                    request.id to input
+                }
+                suspend fun start(index: Int) = RssScheduler.withRunStartLock {
+                    startScheduledRssFetchRun(db, manager, family, inputs[index].first, inputs[index].second,
+                        emptySet(), 0, settings, now)
+                }
+                val results = when (order) {
+                    0 -> listOf(start(0), start(1))
+                    1 -> listOf(start(1), start(0))
+                    else -> kotlinx.coroutines.coroutineScope {
+                        val a = async(kotlinx.coroutines.Dispatchers.IO) { start(0) }
+                        val b = async(kotlinx.coroutines.Dispatchers.IO) { start(1) }
+                        listOf(a.await(), b.await())
+                    }
+                }
+                assertEquals(1, results.count { it != null })
+                assertEquals(date.plusDays(1).atTime(12, 0).atZone(zone).toInstant().toEpochMilli(),
+                    requireNotNull(results.filterNotNull().single()).requestedAt)
+            } finally { manager.cancelAllWorkByTag("$family:triggers").result.get(); db.close() }
+        }
+    }
+
+    @Test fun olderPendingRunIsSkippedButUnfinishedRunResumes() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            db.rssDao().putFeed(RssFeedEntity("fixture", "https://fixture.invalid/feed", "Fixture"))
+            val settings = RssSettings(listOf(LocalTime.of(9, 0), LocalTime.NOON), dailyEnabled = true)
+            val oldId = UUID.randomUUID()
+            val old = workDataOf("triggerMinuteOfDay" to 540, "requestedAt" to 90L)
+            val newer = workDataOf("triggerMinuteOfDay" to 720, "requestedAt" to 120L)
+            val now = java.time.Instant.ofEpochMilli(130L)
+            assertNull(startRssFetchRun(db, oldId, old, emptySet(), 0, settings, now, 120L))
+            val newRun = startRssFetchRun(db, UUID.randomUUID(), newer, emptySet(), 0, settings, now, 120L)
+            assertEquals(120L, requireNotNull(newRun).requestedAt)
+            db.rssNotificationDao().putRun(RssNotificationRunEntity("unfinished", oldId.toString(), 90L, true))
+            assertEquals("unfinished", startRssFetchRun(db, oldId, old, emptySet(), 1, settings, latestDue = 120L)?.id)
+        } finally { db.close() }
+    }
 
     @Test fun threeTimesCreateIndependentRequestsAndDeletingPreservesSiblings() = runBlocking {
         val manager = WorkManager.getInstance(context)

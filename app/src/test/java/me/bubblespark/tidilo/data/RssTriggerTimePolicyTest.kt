@@ -7,10 +7,26 @@ import me.bubblespark.tidilo.data.rss.decodeRssTriggerTimes
 import me.bubblespark.tidilo.data.rss.encodeRssTriggerTimes
 import me.bubblespark.tidilo.data.rss.replaceRssTriggerTime
 import me.bubblespark.tidilo.data.rss.rssTriggerBoundary
+import me.bubblespark.tidilo.data.rss.latestDueRssBoundary
+import me.bubblespark.tidilo.data.rss.effectiveRssBoundary
 import org.junit.Assert.*
 import org.junit.Test
 
 class RssTriggerTimePolicyTest {
+    @Test fun latestDueBoundaryIgnoresFutureAndKeepsLatestClaim() {
+        assertEquals(120L, latestDueRssBoundary(130L, listOf(90L, 120L, 150L), listOf(120L)))
+        assertEquals(120L, latestDueRssBoundary(130L, listOf(90L, 150L), listOf(120L)))
+        assertNull(latestDueRssBoundary(80L, listOf(90L), emptyList()))
+    }
+
+    @Test fun overdueBoundaryAdvancesAcrossDaysWithoutMovingFutureRequest() {
+        val zone = ZoneId.of("Asia/Tokyo")
+        val now = Instant.parse("2026-11-03T01:00:00Z")
+        assertEquals(Instant.parse("2026-11-03T00:00:00Z").toEpochMilli(), effectiveRssBoundary(
+            Instant.parse("2026-11-02T00:00:00Z").toEpochMilli(), LocalTime.of(9, 0), now, zone))
+        assertEquals(Instant.parse("2026-11-03T03:00:00Z").toEpochMilli(), effectiveRssBoundary(
+            Instant.parse("2026-11-03T03:00:00Z").toEpochMilli(), LocalTime.NOON, now, zone))
+    }
     private fun times(vararg values: String) = values.map(LocalTime::parse)
 
     @Test fun codecRoundTripsThreeTimes() {

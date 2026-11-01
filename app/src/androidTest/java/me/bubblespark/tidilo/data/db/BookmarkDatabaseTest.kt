@@ -131,7 +131,7 @@ class BookmarkDatabaseTest {
             var db = database(name)
             try {
                 val sql = db.openHelper.writableDatabase
-                assertEquals(15, sql.version)
+                assertEquals(16, sql.version)
                 assertTrue(columns(sql, "bookmark_entities").contains("skeletonKey"))
                 sql.query("PRAGMA index_list(bookmark_entities)").use { cursor ->
                     val names = buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
@@ -197,7 +197,7 @@ class BookmarkDatabaseTest {
             helper.close()
             val db = database(name)
             try {
-                assertEquals(15, db.openHelper.readableDatabase.version)
+                assertEquals(16, db.openHelper.readableDatabase.version)
                 val feed = db.rssDao().feed("feed")!!
                 assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
                 assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)

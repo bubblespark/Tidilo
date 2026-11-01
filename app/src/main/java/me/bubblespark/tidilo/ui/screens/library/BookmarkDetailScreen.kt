@@ -132,7 +132,8 @@ fun BookmarkDetailScreen(
     viewModel: LibraryViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToAiReview: (String) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenCollections: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
@@ -188,6 +189,10 @@ fun BookmarkDetailScreen(
     var conflictExisting by edit.conflictExisting
     var showDiscardConfirmDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showCollectionMembership by rememberSaveable(bookmark.id) { mutableStateOf(false) }
+    if (showCollectionMembership) CollectionMembershipBottomSheet(bookmark.id,
+        onDismiss = { showCollectionMembership = false },
+        onOpenCollections = { showCollectionMembership = false; onOpenCollections() })
     var isSaving by remember { mutableStateOf(false) }
     var entityLibraryRetry by remember { mutableStateOf(0) }
     val libraryFlow = remember(viewModel, entityLibraryRetry) { viewModel.entityLibrary() }
@@ -360,9 +365,9 @@ fun BookmarkDetailScreen(
                                 contentDescription = stringResource(R.string.detail_action_ai_summary),
                                 modifier = Modifier.size(22.dp))
                         }
-                        IconButton(onClick = {}, modifier = Modifier.size(54.dp)) {
+                        IconButton(onClick = { showCollectionMembership = true }, modifier = Modifier.size(54.dp)) {
                             Icon(ImageVector.vectorResource(R.drawable.ic_star),
-                                contentDescription = stringResource(R.string.bookmark_collection_placeholder),
+                                contentDescription = stringResource(R.string.bookmark_collection_action),
                                 modifier = Modifier.size(22.dp))
                         }
                         IconButton(onClick = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(54.dp)) {

@@ -74,7 +74,7 @@ class BookmarkEngagementUiTest {
             }
         } finally { instrumentation.runOnMainSync { host.finish() } }
     }
-    @Test fun toolbarLikeChangesImmediatelyAndCollectionDoesNothing(): Unit = runBlocking {
+    @Test fun toolbarLikeChangesImmediatelyAndCollectionDoesNotChangeLike(): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val db = AppDatabase.getInstance(context)
@@ -90,7 +90,7 @@ class BookmarkEngagementUiTest {
                 host.setContent { MaterialTheme { BookmarkDetailScreen(id, vm, {}) } }
             }
             fun find(node: AccessibilityNodeInfo, description: String): AccessibilityNodeInfo? {
-                if (node.contentDescription?.toString() == description) return node
+                if (node.contentDescription?.toString() == description || node.text?.toString() == description) return node
                 repeat(node.childCount) { i -> node.getChild(i)?.let { find(it, description)?.let { result -> return result } } }
                 return null
             }
@@ -118,7 +118,8 @@ class BookmarkEngagementUiTest {
                 }
                 return false
             }
-            click(node("Collection"))
+            assertTrue(click(node("Choose collections")))
+            assertTrue(click(node("Cancel")))
             assertFalse(db.bookmarkDao().getBookmarkById(id)!!.isLiked)
             assertTrue(click(node("Like")))
             withTimeout(10000) { while (!db.bookmarkDao().getBookmarkById(id)!!.isLiked) delay(30) }

@@ -1,7 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -13,7 +12,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -21,10 +19,6 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.createSavedStateHandle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.CollectionDraft
 import me.bubblespark.tidilo.data.CollectionRepository
@@ -36,9 +30,9 @@ import java.util.UUID
 fun CollectionEditorBottomSheet(collectionId: String?, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val session = rememberSaveable(collectionId) { UUID.randomUUID().toString() }
-    val model: CollectionEditorViewModel = viewModel(key = "collection-editor-$session", factory = viewModelFactory {
-        initializer { CollectionEditorViewModel(createSavedStateHandle(), CollectionRepository(AppDatabase.getInstance(context)), collectionId) }
-    })
+    val model = collectionSheetModel("collection-editor-$session") { saved ->
+        CollectionEditorViewModel(saved, CollectionRepository(AppDatabase.getInstance(context)), collectionId)
+    }
     val state by model.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.done) { if (state.done) onDismiss() }
     CollectionEditorContent(state, collectionId != null, model::edit, model::save,
@@ -53,9 +47,11 @@ internal fun CollectionEditorContent(
     onDismiss: () -> Unit, modifier: Modifier = Modifier
 ) {
     val draft = state.draft
+    val pending by rememberUpdatedState(state.pending)
     val accent = CollectionColorPalette.getOrElse(draft.colorIndex) { CollectionColorPalette.first() }
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = modifier,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ModalBottomSheet(onDismissRequest = { if (!pending) onDismiss() }, modifier = modifier,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
+            confirmValueChange = { it != SheetValue.Hidden || !pending }),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp).navigationBarsPadding().padding(bottom = 24.dp),

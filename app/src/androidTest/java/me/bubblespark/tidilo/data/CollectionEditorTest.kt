@@ -17,6 +17,32 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CollectionEditorTest {
+    @Test fun confirmationSurvivesRecreationAndDeleteKeepsBookmarks() = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
+        val store = ViewModelStore()
+        val handle = SavedStateHandle()
+        lateinit var vm: CollectionEditorViewModel
+        try {
+            db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "Alpha", "", "folder", null, 0, 1, 1))
+            db.bookmarkDao().insertOrUpdate(me.bubblespark.tidilo.data.db.BookmarkEntity("one", "One", "https://example.com/one", "", createdAt = 1, updatedAt = 1))
+            db.collectionDao().insertMembership(me.bubblespark.tidilo.data.db.BookmarkCollectionCrossRef("one", "a"))
+            fun create(saved: SavedStateHandle) { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(saved, CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java] }
+            host.runOnMainSync { create(handle) }
+            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            host.runOnMainSync { vm.confirmDelete(true) }
+            assertNotNull(db.collectionDao().getById("a"))
+            val snapshot = handle.keys().associateWith { handle.get<Any?>(it) }
+            host.runOnMainSync { store.clear(); create(SavedStateHandle(snapshot)) }
+            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            assertTrue(vm.state.value.confirmDelete)
+            host.runOnMainSync { vm.delete() }
+            withTimeout(5000) { while (!vm.state.value.done) delay(20) }
+            assertNull(db.collectionDao().getById("a"))
+            assertNotNull(db.bookmarkDao().getBookmarkById("one"))
+            assertTrue(db.collectionDao().observeMembershipIds("one").first().isEmpty())
+        } finally { host.runOnMainSync { store.clear() }; db.close() }
+    }
     @Test fun draftsSurviveRecreationAndRepeatedCreateSavesOnlyOnce() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(instrumentation.targetContext, AppDatabase::class.java).build()

@@ -1,0 +1,128 @@
+package me.bubblespark.tidilo.ui.screens.library
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.data.CollectionDraft
+import me.bubblespark.tidilo.data.CollectionRepository
+import me.bubblespark.tidilo.data.db.AppDatabase
+import me.bubblespark.tidilo.ui.theme.CollectionColorPalette
+import java.util.UUID
+
+@Composable
+fun CollectionEditorBottomSheet(collectionId: String?, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val session = rememberSaveable(collectionId) { UUID.randomUUID().toString() }
+    val model: CollectionEditorViewModel = viewModel(key = "collection-editor-$session", factory = viewModelFactory {
+        initializer { CollectionEditorViewModel(createSavedStateHandle(), CollectionRepository(AppDatabase.getInstance(context)), collectionId) }
+    })
+    val state by model.state.collectAsStateWithLifecycle()
+    LaunchedEffect(state.done) { if (state.done) onDismiss() }
+    CollectionEditorContent(state, collectionId != null, model::edit, model::save,
+        model::confirmDelete, model::delete, { if (!state.pending) onDismiss() }, modifier)
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+internal fun CollectionEditorContent(
+    state: CollectionEditorState, editing: Boolean, onEdit: (CollectionDraft) -> Unit,
+    onSave: () -> Unit, onConfirmDelete: (Boolean) -> Unit, onDelete: () -> Unit,
+    onDismiss: () -> Unit, modifier: Modifier = Modifier
+) {
+    val draft = state.draft
+    val accent = CollectionColorPalette.getOrElse(draft.colorIndex) { CollectionColorPalette.first() }
+    ModalBottomSheet(onDismissRequest = onDismiss, modifier = modifier,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp).navigationBarsPadding().padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(stringResource(if (editing) R.string.collection_edit_title else R.string.collection_create_title),
+                style = MaterialTheme.typography.titleLarge)
+            if (state.loading) CircularProgressIndicator()
+            if (state.missing) Text(stringResource(R.string.collection_missing))
+            OutlinedTextField(draft.title, { onEdit(draft.copy(title = it)) },
+                label = { Text(stringResource(R.string.collection_name_label)) }, singleLine = true,
+                enabled = !state.pending && !state.loading && !state.missing, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(draft.description, { onEdit(draft.copy(description = it)) },
+                label = { Text(stringResource(R.string.collection_desc_label)) }, minLines = 2, maxLines = 2,
+                enabled = !state.pending && !state.loading && !state.missing, modifier = Modifier.fillMaxWidth())
+            Text(stringResource(R.string.collection_icon_label), style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CollectionPresetIcon.entries.forEach { preset ->
+                    val chosen = draft.customSymbol.isNullOrBlank() && preset.id == draft.presetIconId
+                    val label = stringResource(when (preset) {
+                        CollectionPresetIcon.FOLDER -> R.string.collection_icon_folder
+                        CollectionPresetIcon.SCHEDULE -> R.string.collection_icon_schedule
+                        CollectionPresetIcon.STAR -> R.string.collection_icon_star
+                        CollectionPresetIcon.WORK -> R.string.collection_icon_work
+                        CollectionPresetIcon.CODE -> R.string.collection_icon_code
+                        CollectionPresetIcon.LIGHTBULB -> R.string.collection_icon_lightbulb
+                        CollectionPresetIcon.PALETTE -> R.string.collection_icon_palette
+                        CollectionPresetIcon.FAVORITE -> R.string.collection_icon_favorite
+                    })
+                    Surface(onClick = { onEdit(draft.copy(presetIconId = preset.id, customSymbol = null)) },
+                        enabled = !state.pending, modifier = Modifier.size(48.dp).semantics { selected = chosen },
+                        shape = MaterialTheme.shapes.medium,
+                        color = if (chosen) accent.copy(alpha = 0.24f) else MaterialTheme.colorScheme.surfaceContainerHighest,
+                        border = BorderStroke(if (chosen) 2.dp else 1.dp, if (chosen) accent else MaterialTheme.colorScheme.outlineVariant)) {
+                        Box(contentAlignment = Alignment.Center) { Icon(preset.icon, label, Modifier.size(22.dp)) }
+                    }
+                }
+            }
+            OutlinedTextField(draft.customSymbol.orEmpty(), { onEdit(draft.copy(customSymbol = it)) },
+                label = { Text(stringResource(R.string.collection_custom_char_placeholder)) }, singleLine = true,
+                enabled = !state.pending, modifier = Modifier.fillMaxWidth())
+            Text(stringResource(R.string.collection_color_label), style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CollectionColorPalette.forEachIndexed { index, color ->
+                    val label = stringResource(R.string.collection_color_option, index + 1)
+                    Surface(onClick = { onEdit(draft.copy(colorIndex = index)) }, enabled = !state.pending,
+                        modifier = Modifier.size(48.dp).semantics { contentDescription = label; selected = draft.colorIndex == index },
+                        shape = CircleShape, color = color) {
+                        Box(contentAlignment = Alignment.Center) {
+                            if (draft.colorIndex == index) Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.scrim)
+                        }
+                    }
+                }
+            }
+            state.error?.let { Text(stringResource(R.string.collection_save_failed), color = MaterialTheme.colorScheme.error) }
+            Button(onClick = onSave, enabled = draft.title.isNotBlank() && !state.pending && !state.loading && !state.missing,
+                modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = MaterialTheme.colorScheme.scrim)) {
+                Text(stringResource(if (editing) R.string.collection_edit_action else R.string.collection_create_action))
+            }
+            TextButton(onClick = onDismiss, enabled = !state.pending, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_cancel)) }
+            if (editing && !state.missing) TextButton(onClick = { onConfirmDelete(true) }, enabled = !state.pending, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+    if (state.confirmDelete) AlertDialog(onDismissRequest = { onConfirmDelete(false) },
+        title = { Text(stringResource(R.string.collection_delete_title)) },
+        text = { Text(stringResource(R.string.collection_delete_message, draft.title)) },
+        confirmButton = { TextButton(onClick = onDelete, enabled = !state.pending) { Text(stringResource(R.string.common_delete)) } },
+        dismissButton = { TextButton(onClick = { onConfirmDelete(false) }, enabled = !state.pending) { Text(stringResource(R.string.common_cancel)) } })
+}

@@ -39,7 +39,7 @@ AI tagging is optional. Everything below works without it.
 
 ### Find and organize
 - **Library**: Browse by tag or by domain, and group cards by site.
-- **Search**: Look up bookmarks by title, summary, tag or domain.
+- **Search**: Find bookmarks with free-text search or by tag.
 - **Tags**: Organize with tags that you add or edit yourself.
 - **Trash and undo**: Undo an accidental deletion with one tap.
 - **Content safety**: Sensitive content can be hidden or blurred.

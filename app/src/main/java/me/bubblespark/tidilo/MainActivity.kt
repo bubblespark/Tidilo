@@ -61,6 +61,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.ui.components.TidiloBackground
 import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
 import me.bubblespark.tidilo.ui.navigation.Screen
 import me.bubblespark.tidilo.ui.navigation.TidiloBottomBar
@@ -181,6 +182,7 @@ fun TidiloApp(
     val aiProcessingProgress by importViewModel.aiProcessingProgress.collectAsStateWithLifecycle()
     val quotaExceededDialogVisible by importViewModel.quotaExceededDialogVisible.collectAsStateWithLifecycle()
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
+    val currentTheme by AppConfig.currentTheme.collectAsStateWithLifecycle()
 
     LaunchedEffect(notificationRoute) {
         if (notificationRoute != null) {
@@ -276,6 +278,7 @@ fun TidiloApp(
     CompositionLocalProvider(LocalBarsVisible provides isBarsVisible) {
         Scaffold(
             modifier = modifier.fillMaxSize(),
+            containerColor = Color.Transparent,
             contentWindowInsets = WindowInsets(0, 0, 0, 0)
         ) { _ ->
             Box(
@@ -283,6 +286,12 @@ fun TidiloApp(
                     .fillMaxSize()
                     .nestedScroll(nestedScrollConnection)
             ) {
+                // Stationary centralized background layer
+                TidiloBackground(
+                    currentTheme = currentTheme,
+                    modifier = Modifier.fillMaxSize()
+                )
+
                 // Full-screen content layer extending edge-to-edge
                 TidiloNavGraph(
                     navController = navController,

@@ -47,22 +47,22 @@ class RssFetchWorker(context: Context, parameters: WorkerParameters) : Coroutine
 internal suspend fun startScheduledRssFetchRun(db: AppDatabase, manager: WorkManager, family: String,
     id: UUID, input: Data, tags: Set<String>, attempt: Int, settings: RssSettings,
     now: Instant): RssNotificationRunEntity? {
-            val works = manager.getWorkInfosByTag("$family:triggers").get()
-                .filter { !it.state.isFinished && it.tags.any { tag ->
-                    settings.triggerTimes.any { "$family:minute:${it.hour * 60 + it.minute}" == tag }
-                } }
-            val zone = ZoneId.systemDefault()
-            val pending = works.mapNotNull { work ->
-                val minute = work.tags.firstOrNull { it.startsWith("$family:minute:") }
-                    ?.substringAfterLast(':')?.toIntOrNull() ?: return@mapNotNull null
-                val at = work.tags.firstOrNull {
-                    it.startsWith("$family:at:")
-                }?.substringAfterLast(':')?.toLongOrNull() ?: return@mapNotNull null
-                effectiveRssBoundary(at, LocalTime.of(minute / 60, minute % 60), now, zone)
-            }
-            val claimed = works.mapNotNull { db.rssNotificationDao().latestRun(it.id.toString())?.requestedAt }
-            val latest = latestDueRssBoundary(now.toEpochMilli(), pending, claimed)
-            return startRssFetchRun(db, id, input, tags, attempt, settings, now, latest)
+    val works = manager.getWorkInfosByTag("$family:triggers").get()
+        .filter { !it.state.isFinished && it.tags.any { tag ->
+            settings.triggerTimes.any { "$family:minute:${it.hour * 60 + it.minute}" == tag }
+        } }
+    val zone = ZoneId.systemDefault()
+    val pending = works.mapNotNull { work ->
+        val minute = work.tags.firstOrNull { it.startsWith("$family:minute:") }
+            ?.substringAfterLast(':')?.toIntOrNull() ?: return@mapNotNull null
+        val at = work.tags.firstOrNull {
+            it.startsWith("$family:at:")
+        }?.substringAfterLast(':')?.toLongOrNull() ?: return@mapNotNull null
+        effectiveRssBoundary(at, LocalTime.of(minute / 60, minute % 60), now, zone)
+    }
+    val claimed = works.mapNotNull { db.rssNotificationDao().latestRun(it.id.toString())?.requestedAt }
+    val latest = latestDueRssBoundary(now.toEpochMilli(), pending, claimed)
+    return startRssFetchRun(db, id, input, tags, attempt, settings, now, latest)
 }
 
 /** Called under the scheduler lock; stale periodic work may only resume an existing logical run. */

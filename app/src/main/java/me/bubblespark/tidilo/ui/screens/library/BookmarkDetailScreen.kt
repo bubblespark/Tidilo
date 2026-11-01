@@ -5,6 +5,10 @@ import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import kotlinx.coroutines.ensureActive
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import me.bubblespark.tidilo.ui.theme.collectionMembershipColor
 
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -172,6 +176,8 @@ fun BookmarkDetailScreen(
     val edit = rememberSaveable(bookmark.id, saver = BookmarkDetailEditState.Saver) {
         BookmarkDetailEditState(bookmark.note, bookmark.tag, bookmark.isNsfw)
     }
+    val hasCollection by remember(viewModel, bookmark.id) { viewModel.bookmarkHasCollections(bookmark.id) }
+        .collectAsStateWithLifecycle(initialValue = false)
     var noteText by edit.noteText
     var editedTag by edit.editedTag
     var editedIsNsfw by edit.editedIsNsfw
@@ -365,9 +371,12 @@ fun BookmarkDetailScreen(
                                 contentDescription = stringResource(R.string.detail_action_ai_summary),
                                 modifier = Modifier.size(22.dp))
                         }
-                        IconButton(onClick = { showCollectionMembership = true }, modifier = Modifier.size(54.dp)) {
-                            Icon(ImageVector.vectorResource(R.drawable.ic_star),
+                        IconButton(onClick = { showCollectionMembership = true },
+                            modifier = Modifier.size(54.dp).semantics { selected = hasCollection }) {
+                            Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
                                 contentDescription = stringResource(R.string.bookmark_collection_action),
+                                tint = if (hasCollection) collectionMembershipColor(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(22.dp))
                         }
                         IconButton(onClick = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(54.dp)) {

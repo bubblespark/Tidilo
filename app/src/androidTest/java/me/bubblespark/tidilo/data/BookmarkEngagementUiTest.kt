@@ -119,7 +119,7 @@ class BookmarkEngagementUiTest {
                 return false
             }
             assertTrue(click(node("Choose collections")))
-            assertTrue(click(node("Cancel")))
+            assertTrue(instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK))
             assertFalse(db.bookmarkDao().getBookmarkById(id)!!.isLiked)
             assertTrue(click(node("Like")))
             withTimeout(10000) { while (!db.bookmarkDao().getBookmarkById(id)!!.isLiked) delay(30) }

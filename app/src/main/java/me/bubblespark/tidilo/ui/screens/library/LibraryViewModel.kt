@@ -389,6 +389,9 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
 
     suspend fun deleteBookmark(id: String): Boolean = bookmarkRepository.moveToTrash(id)
 
+    fun bookmarkHasCollections(id: String): Flow<Boolean> = collections.observeMembershipIds(id)
+        .map { it.isNotEmpty() }.catch { emit(false) }
+
     init {
         // Load search history on background IO
         viewModelScope.launch(Dispatchers.IO) {

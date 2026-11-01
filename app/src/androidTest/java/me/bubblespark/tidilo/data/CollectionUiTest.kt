@@ -66,6 +66,96 @@ class CollectionUiTest {
         finally { bitmap.recycle() }
     }
 
+    private suspend fun dismissSheet() {
+        val node = await { it.config.getOrNull(SemanticsActions.Dismiss) != null }
+        host.main { check(node.config[SemanticsActions.Dismiss].action?.invoke() == true) }
+        delay(300)
+    }
+
+    @Test fun sheetActionsStayBesideTitleWithoutCancel(): Unit = runBlocking {
+        val activity = host.launch()
+        val variant = mutableIntStateOf(0)
+        val scale = mutableFloatStateOf(1f)
+        val dark = mutableStateOf(false)
+        val rows = (1..20).map { CollectionWithCount(CollectionEntity("$it", "Collection $it", "", "folder", null, 0, 1, 1), 0) }
+        try {
+            host.main { activity.setContent {
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, scale.floatValue)) {
+                    MaterialTheme(colorScheme = if (dark.value) darkColorScheme() else lightColorScheme()) {
+                        key(variant.intValue) {
+                            if (variant.intValue == 0) CollectionEditorContent(
+                                CollectionEditorState(draft = CollectionDraft("Draft")), true, {}, {}, {}, {}, {})
+                            else CollectionMembershipContent(CollectionMembershipState(rows = rows, loading = false), {}, {}, {}, {}, {})
+                        }
+                    }
+                }
+            } }
+            for (sheet in 0..1) for (night in listOf(false, true)) for (font in listOf(1f, 2f)) {
+                host.main { variant.intValue = sheet; scale.floatValue = font; dark.value = night }
+                val title = await { host.text(it, if (sheet == 0) "Edit Collection" else "Choose collections") }
+                val save = await { host.text(it, "Save") }
+                // Settle the sheet's entrance and anchor changes before measuring scroll stability.
+                delay(700)
+                var beside = false
+                var hasCancel = false
+                var before = 0f
+                host.main {
+                    beside = save.boundsInWindow.left >= title.boundsInWindow.right &&
+                        kotlin.math.abs(save.boundsInWindow.center.y - title.boundsInWindow.center.y) < 3f
+                    hasCancel = allNodes().any { host.text(it, "Cancel") }
+                    before = save.boundsInWindow.top
+                }
+                assertTrue("Save must be on the title's right", beside)
+                assertFalse("Sheet must not contain Cancel", hasCancel)
+                val scroll = await { it.config.getOrNull(SemanticsActions.ScrollBy) != null }
+                host.main { scroll.config[SemanticsActions.ScrollBy].action?.invoke(0f, 2000f) }
+                delay(400)
+                var after = 0f
+                host.main { after = save.boundsInWindow.top }
+                assertEquals("Header action must remain reachable while scrolling", before, after, 1f)
+                capture("sheet-header-$sheet-${if (night) "dark" else "light"}-${font.toInt()}")
+            }
+        } finally { host.main { activity.finish() } }
+    }
+
+    @Test fun toolbarCollectionSelectionTracksStoredMembership(): Unit = runBlocking {
+        val db = AppDatabase.getInstance(host.context)
+        val id = UUID.randomUUID().toString()
+        val activity = host.launch()
+        val dark = mutableStateOf(false)
+        try {
+            db.collectionDao().insert(CollectionEntity(id, "Membership", "", "folder", null, 0, 1, 1))
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Membership toolbar", "https://example.com/$id", "", createdAt = 1, updatedAt = 1))
+            host.main {
+                val model = androidx.lifecycle.ViewModelProvider(activity)[LibraryViewModel::class.java]
+                activity.setContent { MaterialTheme(colorScheme = if (dark.value) darkColorScheme() else lightColorScheme()) {
+                    BookmarkDetailScreen(id, model, {})
+                } }
+            }
+            val star = await { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Choose collections") == true }
+            fun selected(): Boolean {
+                var result = false
+                host.main {
+                    var node: SemanticsNode? = star
+                    while (node != null) {
+                        val value = node.config.getOrNull(SemanticsProperties.Selected)
+                        if (value != null) { result = value; break }
+                        node = node.parent
+                    }
+                }
+                return result
+            }
+            assertFalse(selected())
+            db.collectionDao().insertMembership(BookmarkCollectionCrossRef(id, id))
+            withTimeout(5000) { while (!selected()) delay(30) }
+            capture("toolbar-selected-light")
+            host.main { dark.value = true }
+            capture("toolbar-selected-dark")
+            db.collectionDao().delete(id)
+            withTimeout(5000) { while (selected()) delay(30) }
+        } finally { host.main { activity.finish() }; db.collectionDao().delete(id); db.bookmarkDao().deleteById(id) }
+    }
+
     @Test fun actualLibraryEditorRestoresAfterActivityRecreation(): Unit = runBlocking {
         val activity = host.launch()
         var current: androidx.activity.ComponentActivity = activity
@@ -95,7 +185,7 @@ class CollectionUiTest {
             }
             delay(300)
             await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == draft }
-            action(await { host.text(it, "Cancel") })
+            dismissSheet()
             assertTrue(AppDatabase.getInstance(host.context).collectionDao().observeCollections(true).first().none { it.collection.title == draft })
         } finally {
             host.main { oldMode?.let { androidx.lifecycle.ViewModelProvider(current)[LibraryViewModel::class.java].setFilterMode(it) }; current.finish() }

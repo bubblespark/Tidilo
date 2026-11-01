@@ -107,6 +107,7 @@ fun BookmarkGridCard(
         modifier = modifier
             .fillMaxWidth()
             .bookmarkCardLighting(cardStyle, cardShape)
+            .bookmarkCardSurfaceBlur(cardStyle)
             .clip(cardShape)
             .combinedClickable(
                 onClick = onClick,

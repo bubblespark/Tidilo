@@ -123,7 +123,10 @@ fun BookmarkItemCard(
 
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().bookmarkCardLighting(cardStyle, cardShape),
+        modifier = Modifier
+            .fillMaxWidth()
+            .bookmarkCardLighting(cardStyle, cardShape)
+            .bookmarkCardSurfaceBlur(cardStyle),
         shape = cardShape, // M3 Expressive Large Rounding
         colors = CardDefaults.cardColors(
             containerColor = cardStyle.containerColor

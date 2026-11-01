@@ -7,12 +7,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** Scoped to each animated library destination; unspecified colors use the theme primary. */
@@ -23,7 +25,8 @@ internal data class BookmarkCardStyle(
     val rim: Brush,
     val surfaceWash: Brush?,
     val ambientShadowColor: Color,
-    val spotShadowColor: Color
+    val spotShadowColor: Color,
+    val blurRadius: Dp = 0.dp
 )
 
 @Composable
@@ -49,7 +52,8 @@ internal fun rememberBookmarkCardStyle(darkContainerColor: Color): BookmarkCardS
                 end = Offset(0f, Float.POSITIVE_INFINITY)
             ),
             ambientShadowColor = accent.copy(alpha = 0.25f),
-            spotShadowColor = if (dark) accent.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.10f)
+            spotShadowColor = if (dark) accent.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.10f),
+            blurRadius = 0.dp
         )
     }
 }
@@ -65,3 +69,14 @@ internal fun Modifier.bookmarkCardLighting(style: BookmarkCardStyle, shape: Shap
 
 internal fun Modifier.bookmarkCardSurfaceWash(style: BookmarkCardStyle): Modifier =
     style.surfaceWash?.let { background(it) } ?: this
+
+/**
+ * Applies surface blur conditionally if [style.blurRadius] is greater than 0.dp.
+ * Completely bypassed when blurRadius is 0.dp to ensure zero performance overhead for DEFAULT theme.
+ */
+internal fun Modifier.bookmarkCardSurfaceBlur(style: BookmarkCardStyle): Modifier =
+    if (style.blurRadius > 0.dp) {
+        blur(style.blurRadius)
+    } else {
+        this
+    }

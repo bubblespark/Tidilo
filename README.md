@@ -41,6 +41,7 @@ AI tagging is optional. Everything below works without it.
 - **Library**: Browse by tag or by domain, and group cards by site.
 - **Search**: Find bookmarks with free-text search or by tag.
 - **Tags**: Organize with tags that you add or edit yourself.
+- **Collections**: Group bookmarks, including RSS articles, into your own collections with a title, description, icon and color. A bookmark can belong to several collections.
 - **Trash and undo**: Undo an accidental deletion with one tap.
 - **Content safety**: Sensitive content can be hidden or blurred.
 - **Storage dashboard**: See and manage the cached images and icons.

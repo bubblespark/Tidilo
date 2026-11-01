@@ -38,6 +38,7 @@ cd Tidilo
 | Document | Contents |
 | :--- | :--- |
 | [rss.md](rss.md) | RSS/Atom subscriptions, scheduled fetching, Wi-Fi policy, Direct/AI modes, deduplication, retention. |
+| [collections.md](collections.md) | Manual bookmark collections: persistence, Library and editor UI, bookmark assignment. |
 | [aicore.md](aicore.md) | Optional AI Analysis: AICore integration, prompt design, output parsing, quota handling, fallback. |
 | [notifications.md](notifications.md) | Android notification channels and import/RSS result reporting. |
 | [og_image_cache.md](og_image_cache.md) | Preview image cache and card image priority. |
@@ -58,6 +59,7 @@ cd Tidilo
 | A new screen or component | `structure.md`, `ui_design.md` |
 | Saving, parsing or the import queue | `overview.md`, `data_models.md` |
 | RSS | `rss.md` |
+| Collections | `collections.md` |
 | AI Analysis | `aicore.md` |
 | Database changes | `data_models.md` |
 

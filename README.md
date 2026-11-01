@@ -100,4 +100,4 @@ Architecture, conventions and specifications are in [docs/README.md](docs/README
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+Apache License 2.0. See [LICENSE.md](LICENSE.md).

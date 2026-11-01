@@ -71,6 +71,3 @@ cd Tidilo
 4. **Material 3 Expressive UI**: Expressive shapes, spring motion, tonal surfaces, dynamic color and full edge-to-edge layout.
 5. **Lifecycle-aware state**: Collect flows with `collectAsStateWithLifecycle()`.
 6. **Non-blocking I/O**: Run heavy work (DOM parsing, serialization, disk I/O) on `Dispatchers.IO`.
-
-> [!NOTE]
-> Some documents in this folder still describe AI Analysis as the primary flow. They are being updated to match the principles above. Where they disagree, the principles above apply.

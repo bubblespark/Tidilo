@@ -9,6 +9,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 import me.bubblespark.tidilo.data.EntityTagPolicy
 import me.bubblespark.tidilo.data.entitySkeletonKey
@@ -46,10 +47,10 @@ abstract class BookmarkDao {
     @Query("UPDATE bookmarks SET rssFeedId = NULL WHERE id = :id")
     abstract suspend fun clearRssFeedId(id: String)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     protected abstract suspend fun insertRow(bookmark: BookmarkEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     protected abstract suspend fun insertRows(bookmarks: List<BookmarkEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -113,9 +114,17 @@ abstract class BookmarkDao {
     @Transaction
     open suspend fun insertReplacingUrl(bookmark: BookmarkEntity) {
         val canonical = bookmark.copy(entities = canonicalizeEntities(bookmark.entities))
+        val collections = collectionsForReplacement(bookmark.id, bookmark.url)
         deleteByIdOrUrl(bookmark.id, bookmark.url)
         insertOrUpdate(canonical)
+        collections.forEach { insertCollectionMembership(BookmarkCollectionCrossRef(bookmark.id, it)) }
     }
+
+    @Query("SELECT DISTINCT r.collectionId FROM bookmark_collection_cross_ref r JOIN bookmarks b ON b.id = r.bookmarkId WHERE b.id = :id OR b.url = :url")
+    protected abstract suspend fun collectionsForReplacement(id: String, url: String): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun insertCollectionMembership(row: BookmarkCollectionCrossRef)
 
     @Query("SELECT id, entities FROM bookmarks WHERE id IN (SELECT bookmarkId FROM bookmark_entities WHERE skeletonKey = :skeletonKey) AND (:afterId IS NULL OR id > :afterId) ORDER BY id LIMIT 500")
     protected abstract suspend fun entityRowsForReplacement(skeletonKey: String, afterId: String?): List<BookmarkEntityTags>

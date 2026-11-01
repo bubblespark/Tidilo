@@ -118,6 +118,8 @@ class ImportDuplicateRejectionTest {
     }
 
     private class TestBookmarkDao : BookmarkDao() {
+        override suspend fun collectionsForReplacement(id: String, url: String): List<String> = emptyList()
+        override suspend fun insertCollectionMembership(row: me.bubblespark.tidilo.data.db.BookmarkCollectionCrossRef) = Unit
         override suspend fun toggleLike(id: String, now: Long) = Unit
         override suspend fun recordBrowserOpen(id: String, now: Long) = Unit
         override suspend fun recordDetailView(id: String, now: Long) = Unit

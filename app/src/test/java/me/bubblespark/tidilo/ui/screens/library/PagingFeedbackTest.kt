@@ -7,6 +7,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PagingFeedbackTest {
+    @Test fun collectionIdentityAndVisibilitySelectDistinctPagingSessions() {
+        val a = buildLibraryFilterKey(LibraryFilterMode.COLLECTION, null, null, false, "a")
+        assertTrue(a != buildLibraryFilterKey(LibraryFilterMode.COLLECTION, null, null, false, "b"))
+        assertTrue(a != buildLibraryFilterKey(LibraryFilterMode.COLLECTION, null, null, true, "a"))
+        assertTrue(a != buildLibraryFilterKey(LibraryFilterMode.NEWEST_FIRST, null, null, false))
+    }
     @Test
     fun domainGridIgnoresEveryBookmarkPagingDirection() {
         for (state in listOf(LoadState.Loading, LoadState.Error(IllegalStateException("Timeline failed")))) {

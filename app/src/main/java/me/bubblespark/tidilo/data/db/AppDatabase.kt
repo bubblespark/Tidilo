@@ -14,6 +14,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 @Database(
     entities = [
         BookmarkEntity::class,
+        CollectionEntity::class,
+        BookmarkCollectionCrossRef::class,
         BookmarkEntityOccurrence::class,
         TrashedBookmarkEntity::class,
         RssFeedEntity::class,
@@ -24,11 +26,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RssNotificationRunEntity::class,
         RssNotificationItemEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun collectionDao(): CollectionDao
 
     abstract fun rssDao(): RssDao
 
@@ -39,6 +42,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun rssNotificationDao(): RssNotificationDao
 
     companion object {
+        val MIGRATION_15_16 = collectionMigration15To16
         val MIGRATION_13_14 = entityTagMigration13To14
 
         val MIGRATION_14_15 = object : Migration(14, 15) {
@@ -202,7 +206,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                     .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }

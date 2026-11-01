@@ -13,6 +13,8 @@ import org.junit.Test
 class BookmarkDaoBulkTest {
 
     private class RecordingBookmarkDao : BookmarkDao() {
+        override suspend fun collectionsForReplacement(id: String, url: String): List<String> = emptyList()
+        override suspend fun insertCollectionMembership(row: BookmarkCollectionCrossRef) = Unit
         val existingSpellings = mutableMapOf<String, String>()
         override suspend fun toggleLike(id: String, now: Long) = Unit
         override suspend fun recordBrowserOpen(id: String, now: Long) = Unit

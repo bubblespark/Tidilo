@@ -7,6 +7,7 @@ import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
 import androidx.work.Data
+import androidx.work.WorkManager
 import kotlinx.coroutines.CancellationException
 import androidx.room.withTransaction
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -23,7 +24,9 @@ class RssFetchWorker(context: Context, parameters: WorkerParameters) : Coroutine
         val preferences = RssPreferences.getInstance(applicationContext)
         preferences.initialize()
         val run = RssScheduler.withRunStartLock {
-            startRssFetchRun(db, id, inputData, tags, runAttemptCount, preferences.state.value)
+            val settings = preferences.state.value
+            startScheduledRssFetchRun(db, WorkManager.getInstance(applicationContext), RssScheduler.DAILY,
+                id, inputData, tags, runAttemptCount, settings, Instant.now())
         }
         if (run == null) {
             RssScheduler.reschedule(applicationContext, finishingWorkId = id)
@@ -40,9 +43,31 @@ class RssFetchWorker(context: Context, parameters: WorkerParameters) : Coroutine
     }
 }
 
+/** Call under the scheduler lock to serialize selection and logical-run creation. */
+internal suspend fun startScheduledRssFetchRun(db: AppDatabase, manager: WorkManager, family: String,
+    id: UUID, input: Data, tags: Set<String>, attempt: Int, settings: RssSettings,
+    now: Instant): RssNotificationRunEntity? {
+    val works = manager.getWorkInfosByTag("$family:triggers").get()
+        .filter { !it.state.isFinished && it.tags.any { tag ->
+            settings.triggerTimes.any { "$family:minute:${it.hour * 60 + it.minute}" == tag }
+        } }
+    val zone = ZoneId.systemDefault()
+    val pending = works.mapNotNull { work ->
+        val minute = work.tags.firstOrNull { it.startsWith("$family:minute:") }
+            ?.substringAfterLast(':')?.toIntOrNull() ?: return@mapNotNull null
+        val at = work.tags.firstOrNull {
+            it.startsWith("$family:at:")
+        }?.substringAfterLast(':')?.toLongOrNull() ?: return@mapNotNull null
+        effectiveRssBoundary(at, LocalTime.of(minute / 60, minute % 60), now, zone)
+    }
+    val claimed = works.mapNotNull { db.rssNotificationDao().latestRun(it.id.toString())?.requestedAt }
+    val latest = latestDueRssBoundary(now.toEpochMilli(), pending, claimed)
+    return startRssFetchRun(db, id, input, tags, attempt, settings, now, latest)
+}
+
 /** Called under the scheduler lock; stale periodic work may only resume an existing logical run. */
 internal suspend fun startRssFetchRun(db: AppDatabase, workId: UUID, input: Data, tags: Set<String>,
-    attempt: Int, settings: RssSettings, now: Instant = Instant.now()): RssNotificationRunEntity? = db.withTransaction {
+    attempt: Int, settings: RssSettings, now: Instant = Instant.now(), latestDue: Long? = null): RssNotificationRunEntity? = db.withTransaction {
     val notifications = db.rssNotificationDao()
     notifications.unfinishedRun(workId.toString())?.let { return@withTransaction it }
     val minute = input.getInt("triggerMinuteOfDay", -1)
@@ -51,7 +76,10 @@ internal suspend fun startRssFetchRun(db: AppDatabase, workId: UUID, input: Data
             settings.triggerTimes.none { it.hour * 60 + it.minute == minute } || db.rssDao().enabledFeeds().isEmpty()))
         return@withTransaction null
     val boundary = if (minute in 0..1439) rssTriggerBoundary(now, LocalTime.of(minute / 60, minute % 60), ZoneId.systemDefault()) else now
-    val requestedAt = input.getLong("requestedAt", boundary.toEpochMilli())
+    val originalAt = input.getLong("requestedAt", boundary.toEpochMilli())
+    val requestedAt = if (scheduled && latestDue != null) effectiveRssBoundary(originalAt,
+        LocalTime.of(minute / 60, minute % 60), now, ZoneId.systemDefault()) else originalAt
+    if (scheduled && latestDue != null && requestedAt < latestDue) return@withTransaction null
     // Periodic IDs repeat; retries keep the original logical run and its item ownership.
     selectRssNotificationRun(null, notifications.runFor(workId.toString(), requestedAt),
         notifications.latestRun(workId.toString()), attempt, input.keyValueMap.containsKey("requestedAt"))

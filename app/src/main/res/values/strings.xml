@@ -386,4 +386,41 @@
     <string name="entity_conflict_use_existing">Use existing tag</string>
     <string name="entity_conflict_replace">Replace across all bookmarks</string>
     <string name="entity_library_failed">Could not load existing tags. Retry before adding a tag.</string>
+    <string name="collection_title">Collection</string>
+    <plurals name="collection_card_item_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <plurals name="collection_subtitle_count">
+        <item quantity="one">%1$d collection</item>
+        <item quantity="other">%1$d collections</item>
+    </plurals>
+    <string name="collection_back_to_collections">Back to collections</string>
+    <string name="collection_create_title">New Collection</string>
+    <string name="collection_edit_title">Edit Collection</string>
+    <string name="collection_name_label">Title</string>
+    <string name="collection_desc_label">Description (up to 2 lines)</string>
+    <string name="collection_icon_label">Icon or 1 Character / Emoji</string>
+    <string name="collection_custom_char_placeholder">Emoji / 1 char</string>
+    <string name="collection_color_label">Color Palette</string>
+    <string name="collection_create_action">Create</string>
+    <string name="collection_edit_action">Save</string>
+    <string name="collection_missing">This collection is no longer available.</string>
+    <string name="collection_save_failed">Could not save your changes. Please try again.</string>
+    <string name="collection_load_failed">Could not load this collection. Please try again.</string>
+    <string name="collection_delete_title">Delete collection?</string>
+    <string name="collection_delete_message">Delete “%1$s”? Your bookmarks will be kept.</string>
+    <string name="collection_color_option">Color %1$d</string>
+    <string name="collection_icon_folder">Folder</string>
+    <string name="collection_icon_schedule">Schedule</string>
+    <string name="collection_icon_star">Star</string>
+    <string name="collection_icon_work">Work</string>
+    <string name="collection_icon_code">Code</string>
+    <string name="collection_icon_lightbulb">Lightbulb</string>
+    <string name="collection_icon_palette">Palette</string>
+    <string name="collection_icon_favorite">Favorite</string>
+    <string name="collection_assign_title">Choose collections</string>
+    <string name="collection_assign_empty">Create a collection to organize this bookmark.</string>
+    <string name="collection_open_library">Open collections</string>
+    <string name="bookmark_collection_action">Choose collections</string>
 </resources>

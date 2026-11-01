@@ -69,8 +69,9 @@ internal fun buildLibraryFilterKey(
     filterMode: LibraryFilterMode,
     selectedDomainFilter: String?,
     selectedFeedId: String?,
-    isNsfwVisible: Boolean
-): String = "$filterMode/${selectedDomainFilter.orEmpty()}/${selectedFeedId.orEmpty()}/$isNsfwVisible"
+    isNsfwVisible: Boolean,
+    collectionId: String? = null
+): String = "$filterMode/${selectedDomainFilter.orEmpty()}/${selectedFeedId.orEmpty()}/$isNsfwVisible/${collectionId.orEmpty()}"
 
 /**
  * Builds the unique tracking key for a search query generation, incorporating normalized query

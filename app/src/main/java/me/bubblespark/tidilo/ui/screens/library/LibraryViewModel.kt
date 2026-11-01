@@ -50,6 +50,7 @@ import kotlinx.coroutines.launch
 enum class LibraryFilterMode {
     DOMAIN,
     NEWEST_FIRST,
+    COLLECTION,
     RSS
 }
 
@@ -62,7 +63,7 @@ internal class LibraryPagingSession(
 }
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, FlowPreview::class)
-class LibraryViewModel : ViewModel() {
+class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle()) : ViewModel() {
 
     private val prefs by lazy {
         TidiloApplication.instance.getSharedPreferences("tidilo_library_prefs", Context.MODE_PRIVATE)
@@ -123,6 +124,18 @@ class LibraryViewModel : ViewModel() {
     private val _filterMode = MutableStateFlow(loadFilterMode())
     val filterMode: StateFlow<LibraryFilterMode> = _filterMode.asStateFlow()
 
+    private val collections = me.bubblespark.tidilo.data.CollectionRepository(me.bubblespark.tidilo.data.db.AppDatabase.getInstance(TidiloApplication.instance))
+    val selectedCollectionId = savedState.getStateFlow<String?>("selectedCollectionId", null)
+    fun selectCollectionFilter(id: String?) { savedState["selectedCollectionId"] = id }
+    private val collectionReload = MutableStateFlow(0)
+    fun retryCollections() { collectionReload.value++ }
+    val collectionState = combine(AppConfig.isNsfwContentVisible, collectionReload) { visible, _ -> visible }
+        .flatMapLatest { visible -> collections.observeCollections(visible)
+            .map { CollectionLibraryState(rows = it, loading = false) }
+            .onStart { emit(CollectionLibraryState()) }
+            .catch { failure -> emit(CollectionLibraryState(loading = false, error = failure)) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CollectionLibraryState())
+
     private val _selectedDomainFilter = MutableStateFlow<String?>(null)
     val selectedDomainFilter: StateFlow<String?> = _selectedDomainFilter.asStateFlow()
 
@@ -139,6 +152,7 @@ class LibraryViewModel : ViewModel() {
             saveFilterMode(mode)
             _selectedDomainFilter.value = null
             _selectedRssFeedFilter.value = null
+            selectCollectionFilter(null)
         }
     }
 
@@ -222,14 +236,16 @@ class LibraryViewModel : ViewModel() {
         mode: LibraryFilterMode,
         domain: String?,
         feedId: String?,
-        visible: Boolean
+        visible: Boolean,
+        collectionId: String? = null
     ): LibraryPagingSession {
-        val key = buildLibraryFilterKey(mode, domain, feedId, visible)
+        val key = buildLibraryFilterKey(mode, domain, feedId, visible, collectionId)
         currentLibrarySession?.takeIf { it.key == key }?.let { return it }
         currentLibrarySession?.takeIf { it.users == 0 }?.cacheScope?.cancel()
         val scope = CoroutineScope(viewModelScope.coroutineContext + Job(viewModelScope.coroutineContext[Job]))
         val pages = bookmarkRepository.isInitialized.flatMapLatest { ready ->
-            if (ready) bookmarkRepository.pagedBookmarks(
+            if (ready && mode == LibraryFilterMode.COLLECTION && collectionId != null) collections.pagedBookmarks(collectionId, visible)
+            else if (ready) bookmarkRepository.pagedBookmarks(
                 "", domain, visible,
                 if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL,
                 rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS }
@@ -244,7 +260,8 @@ class LibraryViewModel : ViewModel() {
         val selectedKey = buildLibraryFilterKey(mode,
             _selectedDomainFilter.value.takeIf { mode == LibraryFilterMode.DOMAIN },
             _selectedRssFeedFilter.value?.id.takeIf { mode == LibraryFilterMode.RSS },
-            AppConfig.isNsfwContentVisible.value)
+            AppConfig.isNsfwContentVisible.value,
+            selectedCollectionId.value.takeIf { mode == LibraryFilterMode.COLLECTION })
         if (session.users == 0 && session.key != selectedKey) {
             session.cacheScope.cancel()
             if (currentLibrarySession === session) currentLibrarySession = null
@@ -310,8 +327,9 @@ class LibraryViewModel : ViewModel() {
         }
     )
 
-    internal fun libraryCount(mode: LibraryFilterMode, domain: String?, feedId: String?, visible: Boolean): Flow<Int?> =
-        bookmarkRepository.observeCount("", domain, visible,
+    internal fun libraryCount(mode: LibraryFilterMode, domain: String?, feedId: String?, visible: Boolean, collectionId: String? = null): Flow<Int?> =
+        if (mode == LibraryFilterMode.COLLECTION && collectionId != null) collections.observeCount(collectionId, visible)
+        else bookmarkRepository.observeCount("", domain, visible,
             if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL,
             rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS })
 
@@ -370,6 +388,9 @@ class LibraryViewModel : ViewModel() {
         bookmarkRepository.updateBookmarkDetails(id, note, tag, isNsfw, replacements)
 
     suspend fun deleteBookmark(id: String): Boolean = bookmarkRepository.moveToTrash(id)
+
+    fun bookmarkHasCollections(id: String): Flow<Boolean> = collections.observeMembershipIds(id)
+        .map { it.isNotEmpty() }.catch { emit(false) }
 
     init {
         // Load search history on background IO
@@ -558,3 +579,5 @@ data class BookmarkDetailState(val bookmark: BookmarkItem? = null, val loading: 
 
 /** A missing lookup is distinct from a successfully loaded empty library. */
 data class EntityLibraryState(val spellings: Map<String, String> = emptyMap(), val loading: Boolean = true, val error: Throwable? = null)
+
+data class CollectionLibraryState(val rows: List<me.bubblespark.tidilo.data.db.CollectionWithCount> = emptyList(), val loading: Boolean = true, val error: Throwable? = null)

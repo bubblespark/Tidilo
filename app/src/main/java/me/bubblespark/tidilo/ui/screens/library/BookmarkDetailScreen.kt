@@ -5,6 +5,10 @@ import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import kotlinx.coroutines.ensureActive
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import me.bubblespark.tidilo.ui.theme.collectionMembershipColor
 
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -132,7 +136,8 @@ fun BookmarkDetailScreen(
     viewModel: LibraryViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToAiReview: (String) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenCollections: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
@@ -171,6 +176,8 @@ fun BookmarkDetailScreen(
     val edit = rememberSaveable(bookmark.id, saver = BookmarkDetailEditState.Saver) {
         BookmarkDetailEditState(bookmark.note, bookmark.tag, bookmark.isNsfw)
     }
+    val hasCollection by remember(viewModel, bookmark.id) { viewModel.bookmarkHasCollections(bookmark.id) }
+        .collectAsStateWithLifecycle(initialValue = false)
     var noteText by edit.noteText
     var editedTag by edit.editedTag
     var editedIsNsfw by edit.editedIsNsfw
@@ -186,8 +193,10 @@ fun BookmarkDetailScreen(
     var entityInput by edit.entityInput
     var conflictInput by edit.conflictInput
     var conflictExisting by edit.conflictExisting
-    var showDiscardConfirmDialog by remember { mutableStateOf(false) }
+    var showDiscardConfirmDialog by rememberSaveable(bookmark.id) { mutableStateOf(false) }
+    var discardToCollections by rememberSaveable(bookmark.id) { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showCollectionMembership by rememberSaveable(bookmark.id) { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var entityLibraryRetry by remember { mutableStateOf(0) }
     val libraryFlow = remember(viewModel, entityLibraryRetry) { viewModel.entityLibrary() }
@@ -198,11 +207,19 @@ fun BookmarkDetailScreen(
     val hasChanges = noteText != edit.originalNote || editedTag != edit.originalTag ||
         editedIsNsfw != edit.originalNsfw || pendingReplacements.isNotEmpty()
 
+    fun requestExit(toCollections: Boolean = false) {
+        if (isSaving) return
+        discardToCollections = toCollections
+        if (hasChanges) showDiscardConfirmDialog = true
+        else if (toCollections) onOpenCollections() else onNavigateBack()
+    }
+    if (showCollectionMembership) CollectionMembershipBottomSheet(bookmark.id,
+        onDismiss = { showCollectionMembership = false },
+        onOpenCollections = { showCollectionMembership = false; requestExit(toCollections = true) })
+
     // Intercept swipe-back (system gesture back)
     BackHandler(enabled = isSaving || hasChanges) {
-        if (!isSaving) {
-            showDiscardConfirmDialog = true
-        }
+        requestExit()
     }
 
     val localizedCategory = remember(editedTag.category, context) {
@@ -268,13 +285,7 @@ fun BookmarkDetailScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = {
-                            if (!isSaving) {
-                                if (hasChanges) {
-                                    showDiscardConfirmDialog = true
-                                } else {
-                                    onNavigateBack()
-                                }
-                            }
+                            requestExit()
                         },
                         enabled = !isSaving,
                         modifier = Modifier
@@ -360,9 +371,12 @@ fun BookmarkDetailScreen(
                                 contentDescription = stringResource(R.string.detail_action_ai_summary),
                                 modifier = Modifier.size(22.dp))
                         }
-                        IconButton(onClick = {}, modifier = Modifier.size(54.dp)) {
-                            Icon(ImageVector.vectorResource(R.drawable.ic_star),
-                                contentDescription = stringResource(R.string.bookmark_collection_placeholder),
+                        IconButton(onClick = { showCollectionMembership = true },
+                            modifier = Modifier.size(54.dp).semantics { selected = hasCollection }) {
+                            Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
+                                contentDescription = stringResource(R.string.bookmark_collection_action),
+                                tint = if (hasCollection) collectionMembershipColor(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(22.dp))
                         }
                         IconButton(onClick = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(54.dp)) {
@@ -396,7 +410,7 @@ fun BookmarkDetailScreen(
             // Discard changes confirmation dialog
             if (showDiscardConfirmDialog) {
                 AlertDialog(
-                    onDismissRequest = { showDiscardConfirmDialog = false },
+                    onDismissRequest = { showDiscardConfirmDialog = false; discardToCollections = false },
                     title = {
                         Text(
                             text = stringResource(R.string.detail_dialog_discard_title),
@@ -412,7 +426,9 @@ fun BookmarkDetailScreen(
                         TextButton(
                             onClick = {
                                 showDiscardConfirmDialog = false
-                                onNavigateBack()
+                                val toCollections = discardToCollections
+                                discardToCollections = false
+                                if (toCollections) onOpenCollections() else onNavigateBack()
                             }
                         ) {
                             Text(
@@ -424,7 +440,7 @@ fun BookmarkDetailScreen(
                     },
                     dismissButton = {
                         TextButton(
-                            onClick = { showDiscardConfirmDialog = false }
+                            onClick = { showDiscardConfirmDialog = false; discardToCollections = false }
                         ) {
                             Text(
                                 text = stringResource(R.string.common_cancel)

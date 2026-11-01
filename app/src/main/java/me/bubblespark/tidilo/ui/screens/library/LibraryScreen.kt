@@ -116,6 +116,8 @@ private sealed interface LibraryDisplayState {
     data class DomainDrillDown(val domain: String) : LibraryDisplayState
     data object RssFeedGrid : LibraryDisplayState
     data class RssFeedDrillDown(val feed: RssFeedEntity) : LibraryDisplayState
+    data object CollectionList : LibraryDisplayState
+    data class CollectionDrillDown(val collectionId: String) : LibraryDisplayState
 }
 
 @Composable
@@ -129,6 +131,18 @@ fun LibraryScreen(
     val filterMode by viewModel.filterMode.collectAsStateWithLifecycle()
     val selectedDomainFilter by viewModel.selectedDomainFilter.collectAsStateWithLifecycle()
     val selectedRssFeedFilter by viewModel.selectedRssFeedFilter.collectAsStateWithLifecycle()
+    val collectionState by viewModel.collectionState.collectAsStateWithLifecycle()
+    val collectionRows = collectionState.rows
+    val collectionGroups = remember(collectionRows) { collectionRows.map { it.cardItem() } }
+    val selectedCollectionId by viewModel.selectedCollectionId.collectAsStateWithLifecycle()
+    val collectionLoading = collectionState.loading
+    val collectionError = collectionState.error
+    val selectedCollection = collectionGroups.firstOrNull { it.id == selectedCollectionId }
+    var editingCollectionId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showCollectionEditorSheet by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(collectionRows, collectionLoading, collectionError, selectedCollectionId) {
+        if (!collectionLoading && collectionError == null && selectedCollectionId != null && selectedCollection == null) viewModel.selectCollectionFilter(null)
+    }
     val rssFeedGroups by viewModel.rssFeedGroups.collectAsStateWithLifecycle()
     val rssFeedGroupsLoading by viewModel.rssFeedGroupsLoading.collectAsStateWithLifecycle()
     val selectedFeed = rssFeedGroups.firstOrNull { it.feed.id == selectedRssFeedFilter?.id }?.feed ?: selectedRssFeedFilter
@@ -140,7 +154,8 @@ fun LibraryScreen(
     val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
     val isLoading = !initialized ||
         (filterMode == LibraryFilterMode.DOMAIN && domainGroupsLoading) ||
-        (filterMode == LibraryFilterMode.RSS && rssFeedGroupsLoading)
+        (filterMode == LibraryFilterMode.RSS && rssFeedGroupsLoading) ||
+        (filterMode == LibraryFilterMode.COLLECTION && collectionLoading)
     val context = LocalContext.current
     val localConfig = LocalConfiguration.current
     val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
@@ -155,6 +170,18 @@ fun LibraryScreen(
     val rssFeedGridState = rememberLazyGridState()
     val rssDetailListState = rememberLazyListState()
     val rssDetailGridState = rememberLazyGridState()
+    val collectionListState = rememberLazyListState()
+    val collectionDetailListState = rememberLazyListState()
+    val collectionDetailGridState = rememberLazyGridState()
+
+    var lastScrollCollection by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(selectedCollectionId) {
+        if (selectedCollectionId != lastScrollCollection) {
+            collectionDetailListState.requestScrollToItem(0)
+            collectionDetailGridState.requestScrollToItem(0)
+        }
+        lastScrollCollection = selectedCollectionId
+    }
 
     LaunchedEffect(filterMode) {
         newestFirstListState.requestScrollToItem(0)
@@ -180,8 +207,12 @@ fun LibraryScreen(
         lastScrollDomain = selectedDomainFilter
     }
 
-    val displayState = remember(filterMode, selectedDomainFilter, selectedFeed?.id) {
+    val displayState = remember(filterMode, selectedDomainFilter, selectedFeed?.id, selectedCollection?.id) {
         when {
+            filterMode == LibraryFilterMode.COLLECTION && selectedCollection != null ->
+                LibraryDisplayState.CollectionDrillDown(selectedCollection.id)
+            filterMode == LibraryFilterMode.COLLECTION ->
+                LibraryDisplayState.CollectionList
             filterMode == LibraryFilterMode.RSS && selectedFeed != null ->
                 LibraryDisplayState.RssFeedDrillDown(selectedFeed)
             filterMode == LibraryFilterMode.RSS -> LibraryDisplayState.RssFeedGrid
@@ -200,18 +231,22 @@ fun LibraryScreen(
         is LibraryDisplayState.DomainDrillDown -> if (viewMode == LibraryViewMode.LIST) domainDetailListState else domainDetailGridState
         LibraryDisplayState.RssFeedGrid -> rssFeedGridState
         is LibraryDisplayState.RssFeedDrillDown -> if (viewMode == LibraryViewMode.LIST) rssDetailListState else rssDetailGridState
+        LibraryDisplayState.CollectionList -> collectionListState
+        is LibraryDisplayState.CollectionDrillDown -> if (viewMode == LibraryViewMode.LIST) collectionDetailListState else collectionDetailGridState
     }
     val headerScope = key(activeScrollState) { rememberCoroutineScope() }
 
     val observedCount = key(displayState, isNsfwVisible) {
         val initialCount = when (displayState) {
-            LibraryDisplayState.DomainGrid, LibraryDisplayState.RssFeedGrid -> 0
+            LibraryDisplayState.DomainGrid, LibraryDisplayState.RssFeedGrid, LibraryDisplayState.CollectionList -> 0
+            is LibraryDisplayState.CollectionDrillDown -> selectedCollection?.count ?: 0
             is LibraryDisplayState.DomainDrillDown -> domainGroups.firstOrNull { it.domain == selectedDomainFilter }?.count
             is LibraryDisplayState.RssFeedDrillDown -> rssFeedGroups.firstOrNull { it.feed.id == selectedFeed?.id }?.count
             LibraryDisplayState.NewestFirst -> null
         }
         val count by remember(displayState) {
-            if (displayState == LibraryDisplayState.DomainGrid || displayState == LibraryDisplayState.RssFeedGrid) flowOf(0)
+            if (displayState == LibraryDisplayState.DomainGrid || displayState == LibraryDisplayState.RssFeedGrid || displayState == LibraryDisplayState.CollectionList) flowOf(0)
+            else if (displayState is LibraryDisplayState.CollectionDrillDown) viewModel.libraryCount(LibraryFilterMode.COLLECTION, null, null, isNsfwVisible, displayState.collectionId)
             else viewModel.libraryCount(
                 filterMode, selectedDomainFilter.takeIf { filterMode == LibraryFilterMode.DOMAIN },
                 selectedFeed?.id, isNsfwVisible
@@ -233,9 +268,14 @@ fun LibraryScreen(
 
     // Restore to domain grid from domain drilldown on system back gesture (disabled during peek)
     val isDrillDown = (filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null) ||
-        (filterMode == LibraryFilterMode.RSS && selectedFeed != null)
+        (filterMode == LibraryFilterMode.RSS && selectedFeed != null) ||
+        (filterMode == LibraryFilterMode.COLLECTION && selectedCollection != null)
     fun clearCollectionFilter() {
-        if (filterMode == LibraryFilterMode.RSS) viewModel.selectRssFeedFilter(null) else viewModel.clearDomainFilter()
+        when (filterMode) {
+            LibraryFilterMode.RSS -> viewModel.selectRssFeedFilter(null)
+            LibraryFilterMode.COLLECTION -> viewModel.selectCollectionFilter(null)
+            else -> viewModel.clearDomainFilter()
+        }
     }
     if (isDrillDown) {
         BackHandler(enabled = peekBookmark == null) {
@@ -248,7 +288,18 @@ fun LibraryScreen(
         hideHeaderOnScroll = true,
         bottomContentPadding = HeaderDefaults.BottomNavigationPadding,
         headerVisible = peekBookmark == null,
-        overlay = { BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null } },
+        overlay = {
+            BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null }
+            if (showCollectionEditorSheet) {
+                CollectionEditorBottomSheet(
+                    collectionId = editingCollectionId,
+                    onDismiss = {
+                        showCollectionEditorSheet = false
+                        editingCollectionId = null
+                    }
+                )
+            }
+        },
         // Expressive Header (slides out/in from top screen edge linked with scrolling, hidden during peek)
         header = {
             TidiloFrostedHeader(
@@ -268,6 +319,7 @@ fun LibraryScreen(
                 title = {
                     val defaultTitle = stringResource(R.string.library_header_title)
                     val headerTitle = when {
+                        filterMode == LibraryFilterMode.COLLECTION -> selectedCollection?.title ?: stringResource(R.string.collection_title)
                         filterMode == LibraryFilterMode.RSS -> selectedFeed?.title ?: stringResource(R.string.rss_title)
                         filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
                             DomainPolicyManager.getDisplayName(selectedDomainFilter)
@@ -276,7 +328,11 @@ fun LibraryScreen(
                     val headerSubtitle = when {
                         isLoading || observedCount == null ->
                             stringResource(R.string.library_subtitle_loading)
-                        filterMode == LibraryFilterMode.RSS && selectedFeed != null ->
+                        filterMode == LibraryFilterMode.COLLECTION && selectedCollection != null ->
+                            pluralStringResource(R.plurals.rss_subtitle_bookmarks, libraryCount, libraryCount)
+                        filterMode == LibraryFilterMode.COLLECTION ->
+                            pluralStringResource(R.plurals.collection_subtitle_count, collectionGroups.size, collectionGroups.size)
+            filterMode == LibraryFilterMode.RSS && selectedFeed != null ->
                             pluralStringResource(R.plurals.rss_subtitle_bookmarks, libraryCount, libraryCount)
                         filterMode == LibraryFilterMode.RSS ->
                             pluralStringResource(R.plurals.rss_subtitle_feeds, rssFeedGroups.size, rssFeedGroups.size)
@@ -320,7 +376,7 @@ fun LibraryScreen(
                     }
                     val subtitlePresentation = LibrarySubtitle(
                         headerSubtitle,
-                        selectedFeedIcon?.color ?: selectedDomainColor ?: MaterialTheme.colorScheme.primary
+                        selectedCollection?.accentColor ?: selectedFeedIcon?.color ?: selectedDomainColor ?: MaterialTheme.colorScheme.primary
                     )
                     AnimatedContent(
                         targetState = subtitlePresentation,
@@ -352,7 +408,7 @@ fun LibraryScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(if (filterMode == LibraryFilterMode.RSS) R.string.rss_back_to_feeds else R.string.library_back_to_domains),
+                                contentDescription = stringResource(when (filterMode) { LibraryFilterMode.COLLECTION -> R.string.collection_back_to_collections; LibraryFilterMode.RSS -> R.string.rss_back_to_feeds; else -> R.string.library_back_to_domains }),
                                 tint = MaterialTheme.colorScheme.onBackground
                             )
                         }
@@ -463,18 +519,20 @@ fun LibraryScreen(
                     modifier = Modifier.fillMaxSize()
                 ) { state ->
                     // Keep the selected window across details and release outgoing windows after exit.
-                    val collectionGrid = state == LibraryDisplayState.DomainGrid || state == LibraryDisplayState.RssFeedGrid
+                    val collectionGrid = state == LibraryDisplayState.DomainGrid || state == LibraryDisplayState.RssFeedGrid || state == LibraryDisplayState.CollectionList
                     val session = remember(state) {
                         if (collectionGrid) null
                         else viewModel.libraryPages(
                             when (state) {
                                 is LibraryDisplayState.RssFeedDrillDown -> LibraryFilterMode.RSS
+                                is LibraryDisplayState.CollectionDrillDown -> LibraryFilterMode.COLLECTION
                                 LibraryDisplayState.NewestFirst -> LibraryFilterMode.NEWEST_FIRST
                                 else -> LibraryFilterMode.DOMAIN
                             },
                             (state as? LibraryDisplayState.DomainDrillDown)?.domain,
                             (state as? LibraryDisplayState.RssFeedDrillDown)?.feed?.id,
-                            isNsfwVisible
+                            isNsfwVisible,
+                            (state as? LibraryDisplayState.CollectionDrillDown)?.collectionId
                         )
                     }
                     DisposableEffect(session) {
@@ -489,14 +547,50 @@ fun LibraryScreen(
                     val refreshState = bookmarkLoadState(bookmarks.loadState.refresh, collectionGrid)
                     val loading = !initialized || isBookmarkLoading(refreshState, bookmarks.itemCount) ||
                         (state == LibraryDisplayState.DomainGrid && domainGroupsLoading) ||
-                        (state == LibraryDisplayState.RssFeedGrid && rssFeedGroupsLoading)
+                        (state == LibraryDisplayState.RssFeedGrid && rssFeedGroupsLoading) ||
+                        (state == LibraryDisplayState.CollectionList && collectionLoading)
                     if (loading) {
                         SkeletonBookmarkList(Modifier.fillMaxSize().padding(top = headerHeight, start = 20.dp, end = 20.dp))
+                    } else if (state == LibraryDisplayState.CollectionList && collectionError != null) {
+                        Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
+                            PagingFeedback(LoadState.Error(requireNotNull(collectionError)), viewModel::retryCollections)
+                        }
                     } else if (refreshState is LoadState.Error) {
                         Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
                             PagingFeedback(refreshState, bookmarks::retry)
                         }
                     } else when (state) {
+                        is LibraryDisplayState.CollectionList -> {
+                            LazyColumn(
+                                state = collectionListState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = contentPadding,
+                                verticalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                items(
+                                    items = collectionGroups,
+                                    key = { it.id },
+                                    contentType = { "collection_card" }
+                                ) { group ->
+                                    CollectionCard(
+                                        item = collectionRows.first { it.collection.id == group.id },
+                                        onClick = { viewModel.selectCollectionFilter(group.id) },
+                                        onLongClick = {
+                                            editingCollectionId = group.id
+                                            showCollectionEditorSheet = true
+                                        }
+                                    )
+                                }
+                                item(key = "add_collection_dummy_card", contentType = "add_collection_dummy") {
+                                    AddCollectionDummyCard(
+                                        onClick = {
+                                            editingCollectionId = null
+                                            showCollectionEditorSheet = true
+                                        }
+                                    )
+                                }
+                            }
+                        }
                         is LibraryDisplayState.DomainGrid, is LibraryDisplayState.RssFeedGrid -> {
                             val rss = state is LibraryDisplayState.RssFeedGrid
                             if (if (rss) rssFeedGroups.isEmpty() else domainGroups.isEmpty()) {
@@ -535,14 +629,17 @@ fun LibraryScreen(
                                 }
                             }
                         }
-                        is LibraryDisplayState.DomainDrillDown, is LibraryDisplayState.RssFeedDrillDown -> {
+                        is LibraryDisplayState.DomainDrillDown, is LibraryDisplayState.RssFeedDrillDown, is LibraryDisplayState.CollectionDrillDown -> {
+                            val collectionItem = (state as? LibraryDisplayState.CollectionDrillDown)?.collectionId?.let { id ->
+                                collectionGroups.firstOrNull { it.id == id }
+                            }
                             val feed = (state as? LibraryDisplayState.RssFeedDrillDown)?.feed?.let { snapshot ->
                                 rssFeedGroups.firstOrNull { it.feed.id == snapshot.id }?.feed ?: snapshot
                             }
                             val feedIcon = if (feed != null) rememberFeedIcon(feed).value else null
                             val currentDomain = (state as? LibraryDisplayState.DomainDrillDown)?.domain
                                 ?: feed?.let(DomainIconManager::feedPublisherDomain).orEmpty()
-                            val domainColor = feedIcon?.color ?: rememberDomainAccentColor(currentDomain)
+                            val domainColor = collectionItem?.accentColor ?: feedIcon?.color ?: rememberDomainAccentColor(currentDomain)
                                 ?: DomainIconManager.getCachedDominantColor(currentDomain)
                                 ?: DomainIconManager.generateDomainAccentColor(currentDomain)
 
@@ -605,7 +702,7 @@ fun LibraryScreen(
                                             when (mode) {
                                                 LibraryViewMode.LIST -> {
                                                     LazyColumn(
-                                                        state = if (feed != null) rssDetailListState else domainDetailListState,
+                                                        state = if (collectionItem != null) collectionDetailListState else if (feed != null) rssDetailListState else domainDetailListState,
                                                         modifier = Modifier.fillMaxSize(),
                                                         contentPadding = contentPadding,
                                                         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -629,7 +726,7 @@ fun LibraryScreen(
                                                 }
                                                 LibraryViewMode.GRID -> {
                                                     LazyVerticalGrid(
-                                                        state = if (feed != null) rssDetailGridState else domainDetailGridState,
+                                                        state = if (collectionItem != null) collectionDetailGridState else if (feed != null) rssDetailGridState else domainDetailGridState,
                                                         columns = GridCells.Fixed(2),
                                                         modifier = Modifier.fillMaxSize(),
                                                         contentPadding = contentPadding,

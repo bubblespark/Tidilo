@@ -12,7 +12,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BookmarkEngagementPersistenceTest {
-    @Test fun editsPromotionReplacementAndTrashPreserveEngagement(): Unit = runBlocking {
+    @Test fun editsPreserveEngagementAndTrashClearsLike(): Unit = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = AppDatabase.getInstance(context)
         val repository = BookmarkRepository.getInstance(context)
@@ -40,7 +40,9 @@ class BookmarkEngagementPersistenceTest {
                 description = "Replaced", tag = Tag.createEmpty()))
             check(db.bookmarkDao().getBookmarkById(id)!!.toBookmarkItem())
             assertTrue(repository.moveToTrash(id))
-            check(db.trashDao().getAllTrash().single { it.id == id }.toTrashedBookmarkItem().bookmark)
+            val trash = db.trashDao().getAllTrash().single { it.id == id }
+            assertTrue(!trash.isLiked)
+            check(trash.toTrashedBookmarkItem().bookmark.copy(isLiked = true))
         } finally {
             db.bookmarkDao().deleteById(id)
             db.trashDao().deleteById(id)

@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.FolderSpecial
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -56,6 +57,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -423,6 +427,46 @@ fun TidiloBottomBar(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         horizontalAlignment = Alignment.End
                     ) {
+                        // Collection filter
+                        val isCollectionActive = currentFilterMode == LibraryFilterMode.COLLECTION
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isCollectionActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = if (isCollectionActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+                            shadowElevation = 6.dp,
+                            tonalElevation = 4.dp,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .semantics { selected = isCollectionActive }
+                                .clickable(
+                                    role = Role.Button,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = ripple()
+                                ) {
+                                    onSelectFilterMode(LibraryFilterMode.COLLECTION)
+                                    onToggleFilterMenu()
+                                }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FolderSpecial,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(28.dp),
+                                    tint = if (isCollectionActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Text(
+                                    text = stringResource(R.string.collection_title),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isCollectionActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+
                         // RSS source filter
                         val isRssActive = currentFilterMode == LibraryFilterMode.RSS
                         Surface(

@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -284,7 +285,7 @@ private fun CollectionCardVisual(
                                 modifier = Modifier.size(11.dp)
                             )
                             Text(
-                                text = stringResource(R.string.domain_card_item_count, item.count),
+                                text = pluralStringResource(R.plurals.collection_card_item_count, item.count, item.count),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold
                             )

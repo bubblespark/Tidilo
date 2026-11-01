@@ -387,6 +387,10 @@
     <string name="entity_conflict_replace">Replace across all bookmarks</string>
     <string name="entity_library_failed">Could not load existing tags. Retry before adding a tag.</string>
     <string name="collection_title">Collection</string>
+    <plurals name="collection_card_item_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
     <plurals name="collection_subtitle_count">
         <item quantity="one">%1$d collection</item>
         <item quantity="other">%1$d collections</item>

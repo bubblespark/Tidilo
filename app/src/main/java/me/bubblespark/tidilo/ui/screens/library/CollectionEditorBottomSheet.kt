@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.ui.screens.library
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -15,7 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -71,7 +73,7 @@ internal fun CollectionEditorContent(
                     label = { Text(stringResource(R.string.collection_desc_label)) }, minLines = 2, maxLines = 2,
                     enabled = canEdit, modifier = Modifier.fillMaxWidth())
                 Text(stringResource(R.string.collection_icon_label), style = MaterialTheme.typography.labelLarge)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     CollectionPresetIcon.entries.forEach { preset ->
                         val chosen = draft.customSymbol.isNullOrBlank() && preset.id == draft.presetIconId
                         val label = stringResource(when (preset) {
@@ -84,8 +86,8 @@ internal fun CollectionEditorContent(
                             CollectionPresetIcon.PALETTE -> R.string.collection_icon_palette
                             CollectionPresetIcon.FAVORITE -> R.string.collection_icon_favorite
                         })
-                        Surface(onClick = { onEdit(draft.copy(presetIconId = preset.id, customSymbol = null)) },
-                            enabled = canEdit, modifier = Modifier.size(48.dp).semantics { selected = chosen },
+                        Surface(selected = chosen, onClick = { onEdit(draft.copy(presetIconId = preset.id, customSymbol = null)) },
+                            enabled = canEdit, modifier = Modifier.size(48.dp).semantics { role = Role.RadioButton },
                             shape = MaterialTheme.shapes.medium,
                             color = if (chosen) accent.copy(alpha = 0.24f) else MaterialTheme.colorScheme.surfaceContainerHighest,
                             border = BorderStroke(if (chosen) 2.dp else 1.dp, if (chosen) accent else MaterialTheme.colorScheme.outlineVariant)) {
@@ -97,11 +99,11 @@ internal fun CollectionEditorContent(
                     label = { Text(stringResource(R.string.collection_custom_char_placeholder)) }, singleLine = true,
                     enabled = canEdit, modifier = Modifier.fillMaxWidth())
                 Text(stringResource(R.string.collection_color_label), style = MaterialTheme.typography.labelLarge)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     CollectionColorPalette.forEachIndexed { index, color ->
                         val label = stringResource(R.string.collection_color_option, index + 1)
-                        Surface(onClick = { onEdit(draft.copy(colorIndex = index)) }, enabled = canEdit,
-                            modifier = Modifier.size(48.dp).semantics { contentDescription = label; selected = draft.colorIndex == index },
+                        Surface(selected = draft.colorIndex == index, onClick = { onEdit(draft.copy(colorIndex = index)) }, enabled = canEdit,
+                            modifier = Modifier.size(48.dp).semantics { contentDescription = label; role = Role.RadioButton },
                             shape = CircleShape, color = color) {
                             Box(contentAlignment = Alignment.Center) {
                                 if (draft.colorIndex == index) Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.scrim)

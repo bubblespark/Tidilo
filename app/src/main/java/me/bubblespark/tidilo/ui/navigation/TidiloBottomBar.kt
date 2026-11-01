@@ -57,6 +57,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -434,7 +437,9 @@ fun TidiloBottomBar(
                             tonalElevation = 4.dp,
                             modifier = Modifier
                                 .clip(CircleShape)
+                                .semantics { selected = isCollectionActive }
                                 .clickable(
+                                    role = Role.Button,
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple()
                                 ) {

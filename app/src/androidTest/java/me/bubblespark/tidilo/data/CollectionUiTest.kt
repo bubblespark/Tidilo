@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.navigation.compose.composable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -30,6 +31,128 @@ import org.junit.Test
 import java.util.UUID
 
 class CollectionUiTest {
+    @Test fun failedInitialMembershipLoadCanCloseWithoutSaving() = verifyFailedLoadDismissal(false)
+
+    @Test fun closeDuringMembershipLoadStillExitsIfLoadFails() = verifyFailedLoadDismissal(true)
+
+    private fun verifyFailedLoadDismissal(initiallyLoading: Boolean): Unit = runBlocking {
+        val activity = host.launch()
+        val shown = mutableStateOf(true)
+        val state = mutableStateOf(CollectionMembershipState(loading = initiallyLoading,
+            error = if (initiallyLoading) null else "load"))
+        val saves = java.util.concurrent.atomic.AtomicInteger()
+        val closes = java.util.concurrent.atomic.AtomicInteger()
+        try {
+            host.main { activity.setContent { MaterialTheme {
+                if (shown.value) CollectionMembershipSheet("failed-load", state.value, {},
+                    { saves.incrementAndGet() }, {}, { closes.incrementAndGet(); shown.value = false }, {})
+            } } }
+            phase = "failed-load heading ($initiallyLoading)"
+            await { host.text(it, "Choose collections") }
+            delay(700)
+            phase = "failed-load dismiss ($initiallyLoading)"
+            val dismiss = await { it.config.getOrNull(SemanticsActions.Dismiss) != null }
+            host.main { dismiss.config[SemanticsActions.Dismiss].action?.invoke() }
+            if (initiallyLoading) {
+                delay(100)
+                assertTrue(shown.value)
+                host.main { state.value = state.value.copy(loading = false, error = "load") }
+            }
+            withTimeout(5000) { while (shown.value) delay(20) }
+            assertEquals("Unknown memberships must never be overwritten", 0, saves.get())
+            assertEquals(1, closes.get())
+        } finally { host.main { activity.finish() } }
+    }
+
+    @Test fun editorChoicesExposeExclusiveRolesAndSelection(): Unit = runBlocking {
+        val activity = host.launch()
+        val state = mutableStateOf(CollectionEditorState(draft = CollectionDraft("Choices")))
+        fun option(label: String): SemanticsNode {
+            var node = allNodes().first { host.description(it, label) }
+            while (node.config.getOrNull(SemanticsActions.OnClick) == null) node = requireNotNull(node.parent)
+            return node
+        }
+        try {
+            host.main { activity.setContent { MaterialTheme {
+                CollectionEditorContent(state.value, false, { state.value = state.value.copy(draft = it) }, {}, {}, {}, {})
+            } } }
+            await { host.description(it, "Folder") }
+            host.main {
+                assertEquals(Role.RadioButton, option("Folder").config.getOrNull(SemanticsProperties.Role))
+                assertEquals(true, option("Folder").config.getOrNull(SemanticsProperties.Selected))
+                assertEquals(Role.RadioButton, option("Color 1").config.getOrNull(SemanticsProperties.Role))
+                assertEquals(2, allNodes().count { it.config.getOrNull(SemanticsProperties.SelectableGroup) == Unit })
+            }
+            action(await { host.description(it, "Work") })
+            withTimeout(5000) {
+                var selected = false
+                while (!selected) {
+                    host.main { selected = option("Work").config.getOrNull(SemanticsProperties.Selected) == true }
+                    if (!selected) delay(20)
+                }
+            }
+            action(await { host.description(it, "Color 8") })
+            await { host.description(it, "Color 8") && it.config.getOrNull(SemanticsProperties.Selected) == true }
+            host.main {
+                assertEquals(false, option("Folder").config.getOrNull(SemanticsProperties.Selected))
+                assertEquals(false, option("Color 1").config.getOrNull(SemanticsProperties.Selected))
+                state.value = state.value.copy(loading = true)
+            }
+            await { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton &&
+                host.description(it, "Color 1") && it.config.contains(SemanticsProperties.Disabled) }
+        } finally { host.main { activity.finish() } }
+    }
+
+    @Test fun collectionFilterExposesRoleAndActiveState(): Unit = runBlocking {
+        val activity = host.launch()
+        val mode = mutableStateOf(LibraryFilterMode.NEWEST_FIRST)
+        try {
+            host.main { activity.setContent { MaterialTheme {
+                val controller = androidx.navigation.compose.rememberNavController()
+                androidx.compose.foundation.layout.Box {
+                    androidx.navigation.compose.NavHost(controller, me.bubblespark.tidilo.ui.navigation.Screen.Library.route) {
+                        composable(me.bubblespark.tidilo.ui.navigation.Screen.Library.route) {}
+                    }
+                    me.bubblespark.tidilo.ui.navigation.TidiloBottomBar(controller, isFilterMenuExpanded = true,
+                        currentFilterMode = mode.value, onSelectFilterMode = { mode.value = it })
+                }
+            } } }
+            val button = await { it.config.getOrNull(SemanticsProperties.Selected) == false &&
+                it.config.getOrNull(SemanticsProperties.Role) == Role.Button }
+            host.main {
+                assertTrue(button.children.any { host.text(it, "Collection") } || host.text(button, "Collection"))
+            }
+            action(button)
+            await { it.config.getOrNull(SemanticsProperties.Selected) == true && it.config.getOrNull(SemanticsProperties.Role) == Role.Button }
+            assertEquals(LibraryFilterMode.COLLECTION, mode.value)
+        } finally { host.main { activity.finish() } }
+    }
+
+    @Test fun collectionCountPillHandlesEnglishAndRetainsJapanese(): Unit = runBlocking {
+        val activity = host.launch()
+        val count = mutableIntStateOf(1)
+        val japanese = mutableStateOf(false)
+        try {
+            host.main { activity.setContent {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val localized = context.createConfigurationContext(android.content.res.Configuration(context.resources.configuration).apply {
+                    setLocale(if (japanese.value) java.util.Locale.JAPANESE else java.util.Locale.ENGLISH)
+                })
+                CompositionLocalProvider(androidx.compose.ui.platform.LocalContext provides localized,
+                    androidx.compose.ui.platform.LocalResources provides localized.resources) {
+                    MaterialTheme { CollectionCard(CollectionWithCount(CollectionEntity("count", "Count", "", "folder", null, 0, 1, 1), count.intValue), {}) }
+                }
+            } }
+            await { host.text(it, "1 item") }
+            host.main { count.intValue = 2 }
+            await { host.text(it, "2 items") }
+            host.main { japanese.value = true; count.intValue = 1 }
+            await { host.text(it, "1件") }
+            host.main { count.intValue = 0 }
+            await { host.text(it, "0件") }
+        } finally { host.main { activity.finish() } }
+    }
+
     @Test fun countBadgesRemainReadableAcrossPaletteAndThemes(): Unit = runBlocking {
         val activity = host.launch()
         val paletteIndex = mutableIntStateOf(0)
@@ -171,6 +294,7 @@ class CollectionUiTest {
         val title = "Animate ${id.take(8)}"
         val shown = mutableStateOf(true)
         val activity = host.launch()
+        var sampler: android.view.Choreographer.FrameCallback? = null
         try {
             db.collectionDao().insert(CollectionEntity(id, title, "", "folder", null, 0, System.currentTimeMillis(), 1))
             db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Animate selector", "https://example.com/$id", "", createdAt = 1, updatedAt = 1))
@@ -182,20 +306,26 @@ class CollectionUiTest {
             val positions = mutableListOf<Float>()
             host.main { positions += allNodes().first { host.text(it, "Choose collections") }.boundsInWindow.top }
             val dismiss = await { it.config.getOrNull(SemanticsActions.Dismiss) != null }
-            host.main { dismiss.config[SemanticsActions.Dismiss].action?.invoke() }
-            withTimeout(5000) {
-                while (shown.value) {
-                    host.main {
+            host.main {
+                sampler = object : android.view.Choreographer.FrameCallback {
+                    override fun doFrame(frameTimeNanos: Long) {
                         allNodes().firstOrNull { host.text(it, "Choose collections") && it.boundsInWindow.height > 0f }
                             ?.let { positions += it.boundsInWindow.top }
+                        if (shown.value) android.view.Choreographer.getInstance().postFrameCallback(this)
                     }
-                    delay(8)
                 }
+                android.view.Choreographer.getInstance().postFrameCallback(requireNotNull(sampler))
+                dismiss.config[SemanticsActions.Dismiss].action?.invoke()
             }
+            withTimeout(5000) { while (shown.value) delay(20) }
+            host.main { sampler?.let { android.view.Choreographer.getInstance().removeFrameCallback(it) } }
             assertTrue("Sheet must render intermediate downward positions before removal: $positions",
                 positions.any { it > positions.first() + 8f })
             assertEquals(listOf(id), db.collectionDao().observeMembershipIds(id).first())
-        } finally { host.main { activity.finish() }; db.collectionDao().delete(id); db.bookmarkDao().deleteById(id) }
+        } finally {
+            host.main { sampler?.let { android.view.Choreographer.getInstance().removeFrameCallback(it) }; activity.finish() }
+            db.collectionDao().delete(id); db.bookmarkDao().deleteById(id)
+        }
     }
 
     @Test fun dismissingMembershipSheetCommitsSelectionAndRemoval(): Unit = runBlocking {

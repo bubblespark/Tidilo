@@ -72,6 +72,39 @@ class CollectionUiTest {
         delay(300)
     }
 
+    @Test fun membershipSheetSlidesDownBeforeRemoval(): Unit = runBlocking {
+        val db = AppDatabase.getInstance(host.context)
+        val id = UUID.randomUUID().toString()
+        val title = "Animate ${id.take(8)}"
+        val shown = mutableStateOf(true)
+        val activity = host.launch()
+        try {
+            db.collectionDao().insert(CollectionEntity(id, title, "", "folder", null, 0, System.currentTimeMillis(), 1))
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Animate selector", "https://example.com/$id", "", createdAt = 1, updatedAt = 1))
+            host.main { activity.setContent { MaterialTheme {
+                if (shown.value) CollectionMembershipBottomSheet(id, { shown.value = false }, {})
+            } } }
+            action(await { host.text(it, title) })
+            delay(700)
+            val positions = mutableListOf<Float>()
+            host.main { positions += allNodes().first { host.text(it, "Choose collections") }.boundsInWindow.top }
+            val dismiss = await { it.config.getOrNull(SemanticsActions.Dismiss) != null }
+            host.main { dismiss.config[SemanticsActions.Dismiss].action?.invoke() }
+            withTimeout(5000) {
+                while (shown.value) {
+                    host.main {
+                        allNodes().firstOrNull { host.text(it, "Choose collections") && it.boundsInWindow.height > 0f }
+                            ?.let { positions += it.boundsInWindow.top }
+                    }
+                    delay(8)
+                }
+            }
+            assertTrue("Sheet must render intermediate downward positions before removal: $positions",
+                positions.any { it > positions.first() + 8f })
+            assertEquals(listOf(id), db.collectionDao().observeMembershipIds(id).first())
+        } finally { host.main { activity.finish() }; db.collectionDao().delete(id); db.bookmarkDao().deleteById(id) }
+    }
+
     @Test fun dismissingMembershipSheetCommitsSelectionAndRemoval(): Unit = runBlocking {
         val db = AppDatabase.getInstance(host.context)
         val id = UUID.randomUUID().toString()
@@ -134,7 +167,7 @@ class CollectionUiTest {
         try {
             host.main { activity.setContent { MaterialTheme {
                 CollectionMembershipContent(CollectionMembershipState(loading = false, error = "save"), {},
-                    { retries.incrementAndGet() }, { dismissals.incrementAndGet() }, {})
+                    { retries.incrementAndGet() }, { dismissals.incrementAndGet() }, {}, onClosed = {})
             } } }
             action(await { host.text(it, "Retry") })
             assertEquals(1, retries.get())
@@ -155,7 +188,7 @@ class CollectionUiTest {
                         key(variant.intValue) {
                             if (variant.intValue == 0) CollectionEditorContent(
                                 CollectionEditorState(draft = CollectionDraft("Draft")), true, {}, {}, {}, {}, {})
-                            else CollectionMembershipContent(CollectionMembershipState(rows = rows, loading = false), {}, {}, {}, {})
+                            else CollectionMembershipContent(CollectionMembershipState(rows = rows, loading = false), {}, {}, {}, {}, onClosed = {})
                         }
                     }
                 }

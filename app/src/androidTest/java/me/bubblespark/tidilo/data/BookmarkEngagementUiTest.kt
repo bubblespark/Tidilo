@@ -89,16 +89,16 @@ class BookmarkEngagementUiTest {
                 val vm = ViewModelProvider(host)[LibraryViewModel::class.java]
                 host.setContent { MaterialTheme { BookmarkDetailScreen(id, vm, {}) } }
             }
-            fun find(node: AccessibilityNodeInfo, description: String): AccessibilityNodeInfo? {
-                if (node.contentDescription?.toString() == description || node.text?.toString() == description) return node
-                repeat(node.childCount) { i -> node.getChild(i)?.let { find(it, description)?.let { result -> return result } } }
+            fun find(node: AccessibilityNodeInfo, description: String, textOnly: Boolean = false): AccessibilityNodeInfo? {
+                if ((!textOnly && node.contentDescription?.toString() == description) || node.text?.toString() == description) return node
+                repeat(node.childCount) { i -> node.getChild(i)?.let { find(it, description, textOnly)?.let { result -> return result } } }
                 return null
             }
-            suspend fun node(description: String): AccessibilityNodeInfo = withTimeout(10000) {
+            suspend fun node(description: String, textOnly: Boolean = false): AccessibilityNodeInfo = try { withTimeout(10000) {
                 var result: AccessibilityNodeInfo? = null
                 while (result == null) {
                     instrumentation.uiAutomation.clearCache()
-                    result = instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, description) }
+                    result = instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, description, textOnly) }
                     if (result == null) {
                         if (instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString() ==
                             "com.google.android.permissioncontroller") {
@@ -108,7 +108,7 @@ class BookmarkEngagementUiTest {
                     }
                 }
                 result
-            }
+            } } catch (e: kotlinx.coroutines.TimeoutCancellationException) { throw AssertionError("Missing toolbar control: $description", e) }
             assertFalse(db.bookmarkDao().getBookmarkById(id)!!.isLiked)
             fun click(n: AccessibilityNodeInfo): Boolean {
                 var current: AccessibilityNodeInfo? = n
@@ -119,6 +119,7 @@ class BookmarkEngagementUiTest {
                 return false
             }
             assertTrue(click(node("Choose collections")))
+            node("Choose collections", textOnly = true)
             assertTrue(instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK))
             assertFalse(db.bookmarkDao().getBookmarkById(id)!!.isLiked)
             assertTrue(click(node("Like")))

@@ -40,33 +40,47 @@ fun CollectionMembershipBottomSheet(bookmarkId: String, onDismiss: () -> Unit, o
             model.save()
         }
     }
-    LaunchedEffect(state.done) {
-        if (state.done) {
-            if (openCollectionsAfterSave) onOpenCollections() else onDismiss()
-        }
-    }
     CollectionMembershipContent(state, model::toggle,
         { if (model.state.value.error == "load") model.retry() else requestClose() },
-        { requestClose() }, { requestClose(openCollections = true) }, modifier)
+        { requestClose() }, { requestClose(openCollections = true) },
+        onClosed = {
+            if (openCollectionsAfterSave) onOpenCollections() else onDismiss()
+        }, modifier = modifier)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun CollectionMembershipContent(
     state: CollectionMembershipState, onToggle: (String) -> Unit,
-    onRetry: () -> Unit, onDismiss: () -> Unit, onOpenCollections: () -> Unit, modifier: Modifier = Modifier
+    onRetry: () -> Unit, onDismiss: () -> Unit, onOpenCollections: () -> Unit,
+    onClosed: () -> Unit, modifier: Modifier = Modifier
 ) {
     val pending by rememberUpdatedState(state.pending)
     val done by rememberUpdatedState(state.done)
     val requestClose by rememberUpdatedState(onDismiss)
-    ModalBottomSheet(onDismissRequest = { if (!pending) onDismiss() }, modifier = modifier,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
-            confirmValueChange = { target ->
-                if (target == SheetValue.Hidden && !done) {
-                    if (!pending) requestClose()
-                    false
-                } else true
-            })) {
+    val currentOnClosed by rememberUpdatedState(onClosed)
+    var closeNotified by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
+        confirmValueChange = { target ->
+            if (target == SheetValue.Hidden && !done) {
+                if (!pending) requestClose()
+                false
+            } else true
+        })
+    fun notifyClosed() {
+        if (!sheetState.isVisible && !closeNotified) {
+            closeNotified = true
+            currentOnClosed()
+        }
+    }
+    LaunchedEffect(state.done, sheetState) {
+        if (state.done) {
+            sheetState.hide()
+            notifyClosed()
+        }
+    }
+    ModalBottomSheet(onDismissRequest = { if (done) notifyClosed() else if (!pending) onDismiss() },
+        modifier = modifier, sheetState = sheetState, sheetGesturesEnabled = !pending && !done) {
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             Text(stringResource(R.string.collection_assign_title),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
@@ -76,14 +90,14 @@ internal fun CollectionMembershipContent(
                 if (state.loading) CircularProgressIndicator()
                 else if (state.rows.isEmpty() && state.error == null) {
                     Text(stringResource(R.string.collection_assign_empty))
-                    Button(onClick = onOpenCollections, enabled = !state.pending, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = onOpenCollections, enabled = !state.pending && !state.done, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.collection_open_library))
                     }
                 }
                 state.rows.forEach { row ->
                     key(row.collection.id) {
                         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
-                            .toggleable(value = row.collection.id in state.selectedIds, enabled = !state.pending,
+                            .toggleable(value = row.collection.id in state.selectedIds, enabled = !state.pending && !state.done,
                                 role = Role.Checkbox, onValueChange = { onToggle(row.collection.id) }).padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = row.collection.id in state.selectedIds, onCheckedChange = null)

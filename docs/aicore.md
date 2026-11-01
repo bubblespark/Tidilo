@@ -2,7 +2,7 @@
 
 Actionable quota/terminal failures also use the independent AICore Errors OS channel; retries, fallback, and existing dialogs retain their behavior. See [Android OS Notifications](notifications.md).
 
-This document details the on-device AI integration, prompt engineering architecture, generation configuration parameters, and output parsing pipeline for Tidilo.
+This document details the optional on-device AI integration (AI Analysis can be disabled; see below), prompt engineering architecture, generation configuration parameters, and output parsing pipeline for Tidilo.
 
 ---
 
@@ -24,7 +24,7 @@ RSS feeds configured for AI Analyze fall back to effective Direct acquisition wh
 
 Import completion distinguishes a committed bookmark from an AI-queued task. Shared direct saves notify **Bookmark added** only after the save/promotion transaction commits. If a nested persistence transaction fails, Error recovery occurs after the failed outer transaction rolls back.
 
-Tidilo processes and categorizes web bookmarks locally on-device without transmitting user browsing data, URLs, or page contents to external cloud servers.
+When AI Analysis is enabled, Tidilo processes and categorizes web bookmarks locally on-device without transmitting user browsing data, URLs, or page contents to external cloud servers.
 
 ```
 +-------------------------------------------------------------------------------+

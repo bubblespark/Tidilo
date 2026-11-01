@@ -115,9 +115,9 @@ This document defines the strict engineering standards, naming conventions, Comp
 - **Shared Thread-Safe Date Formatters**: Never instantiate `SimpleDateFormat` or `DateTimeFormatter.ofPattern(...)` inside `@Composable` loops or per-call utility functions. Hoist `java.time.format.DateTimeFormatter` instances to static constants and resolve dynamic `ZoneId.systemDefault()` and active `Locale` at format time.
 - **Constant-Time Enum Resolution**: Use pre-built case-insensitive lookup `Map`s in enum `companion object`s (`Category.fromId`, `Subcategory.fromId` with `.trim().lowercase()`) instead of linear `entries.firstOrNull` scans.
 
-### 4.3 Release Build Shrinking & Offline-First Backup Policy
+### 4.3 Release Build Shrinking & Local-First Backup Policy
 - **R8 Minification & Resource Shrinking**: Keep `isMinifyEnabled = true` and `isShrinkResources = true` enabled in `buildTypes.release` (`app/build.gradle.kts`). In `proguard-rules.pro`, avoid broad package-wide `-keep class org.jsoup.** { *; }` rules on non-reflective libraries so R8 tree-shaking can strip unused classes and `material-icons-extended` vectors.
-- **Strict Offline-First Backup Hardening**: Keep `android:allowBackup="false"` in `AndroidManifest.xml` so private local SQLite databases (`bookmarks`, `import_tasks`, `rss_feeds`) and NSFW policies are never uploaded to unencrypted cloud backups.
+- **Strict Local-First Backup Hardening**: Keep `android:allowBackup="false"` in `AndroidManifest.xml` so private local SQLite databases (`bookmarks`, `import_tasks`, `rss_feeds`) and NSFW policies are never uploaded to unencrypted cloud backups.
 
 ---
 

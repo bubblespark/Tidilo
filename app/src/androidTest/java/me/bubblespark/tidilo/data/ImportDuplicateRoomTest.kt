@@ -206,6 +206,8 @@ class ImportDuplicateRoomTest {
     }
 
     private class HookableBookmarkDao(private val delegate: BookmarkDao) : BookmarkDao() {
+        override suspend fun collectionsForReplacement(id: String, url: String): List<String> = error("Unused primitive")
+        override suspend fun insertCollectionMembership(row: me.bubblespark.tidilo.data.db.BookmarkCollectionCrossRef): Unit = error("Unused primitive")
         override suspend fun toggleLike(id: String, now: Long) = delegate.toggleLike(id, now)
         override suspend fun recordBrowserOpen(id: String, now: Long) = delegate.recordBrowserOpen(id, now)
         override suspend fun recordDetailView(id: String, now: Long) = delegate.recordDetailView(id, now)

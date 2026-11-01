@@ -47,7 +47,7 @@ AI tagging is optional. Everything below works without it.
 - **Storage dashboard**: See and manage the cached images and icons.
 
 ### Material 3 Expressive design
-- Edge-to-edge layout, dynamic color and fluid motion.
+- **Modern UI**: Full edge-to-edge layout, dynamic color theming, and fluid spring motion.
 
 ---
 
@@ -72,7 +72,7 @@ Your library is yours. Tidilo is local-first:
 
 - **Data stays on your device.** Bookmarks, tags, summaries and your reading activity are stored locally.
 - **No analytics or tracking SDKs.** Tidilo has no account and no sync server.
-- **AI runs on-device by default.** Gemini Nano does the analysis, so page text is not sent to a cloud service.
+- **AI runs on-device.** Gemini Nano does the analysis locally, so page text is not sent to a cloud service.
 - **Network use is limited to what you ask for.** Tidilo connects only to the pages you save and the feeds you subscribe to. Browsing your saved library works without a connection.
 
 ---

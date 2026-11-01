@@ -72,7 +72,77 @@ class CollectionUiTest {
         delay(300)
     }
 
-    @Test fun sheetActionsStayBesideTitleWithoutCancel(): Unit = runBlocking {
+    @Test fun dismissingMembershipSheetCommitsSelectionAndRemoval(): Unit = runBlocking {
+        val db = AppDatabase.getInstance(host.context)
+        val id = UUID.randomUUID().toString()
+        val title = "Auto ${id.take(8)}"
+        val shown = mutableStateOf(true)
+        val activity = host.launch()
+        try {
+            db.collectionDao().insert(CollectionEntity(id, title, "", "folder", null, 0, System.currentTimeMillis(), 1))
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Auto assignment", "https://example.com/$id", "", createdAt = 1, updatedAt = 1, isLiked = true))
+            host.main { activity.setContent { MaterialTheme {
+                if (shown.value) CollectionMembershipBottomSheet(id, { shown.value = false }, {})
+            } } }
+            action(await { host.text(it, title) })
+            assertTrue(db.collectionDao().observeMembershipIds(id).first().isEmpty())
+            dismissSheet()
+            withTimeout(5000) { while (shown.value) delay(20) }
+            assertEquals(listOf(id), db.collectionDao().observeMembershipIds(id).first())
+            host.main { shown.value = true }
+            action(await { host.text(it, title) })
+            host.instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            withTimeout(5000) { while (shown.value) delay(20) }
+            assertTrue(db.collectionDao().observeMembershipIds(id).first().isEmpty())
+            assertTrue(requireNotNull(db.bookmarkDao().getBookmarkById(id)).isLiked)
+        } finally { host.main { activity.finish() }; db.collectionDao().delete(id); db.bookmarkDao().deleteById(id) }
+    }
+
+    @Test fun failedDismissKeepsMembershipSheetOpenForRetry(): Unit = runBlocking {
+        val db = AppDatabase.getInstance(host.context)
+        val id = UUID.randomUUID().toString()
+        val trigger = "fail_collection_close_${id.replace("-", "")}"
+        val title = "Retry ${id.take(8)}"
+        val shown = mutableStateOf(true)
+        val activity = host.launch()
+        try {
+            db.collectionDao().insert(CollectionEntity(id, title, "", "folder", null, 0, System.currentTimeMillis(), 1))
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Retry assignment", "https://example.com/$id", "", createdAt = 1, updatedAt = 1))
+            host.main { activity.setContent { MaterialTheme {
+                if (shown.value) CollectionMembershipBottomSheet(id, { shown.value = false }, {})
+            } } }
+            action(await { host.text(it, title) })
+            db.openHelper.writableDatabase.execSQL("CREATE TRIGGER $trigger BEFORE INSERT ON bookmark_collection_cross_ref WHEN NEW.bookmarkId = '$id' BEGIN SELECT RAISE(ABORT,'injected close failure'); END")
+            dismissSheet()
+            assertTrue("Failed commit must keep the sheet visible", shown.value)
+            await { host.text(it, "Could not save your changes. Please try again.") }
+            assertTrue(db.collectionDao().observeMembershipIds(id).first().isEmpty())
+            db.openHelper.writableDatabase.execSQL("DROP TRIGGER $trigger")
+            action(await { host.text(it, "Retry") })
+            withTimeout(5000) { while (shown.value) delay(20) }
+            assertEquals(listOf(id), db.collectionDao().observeMembershipIds(id).first())
+        } finally {
+            db.openHelper.writableDatabase.execSQL("DROP TRIGGER IF EXISTS $trigger")
+            host.main { activity.finish() }; db.collectionDao().delete(id); db.bookmarkDao().deleteById(id)
+        }
+    }
+
+    @Test fun saveFailureRetryUsesTheRetryPath(): Unit = runBlocking {
+        val activity = host.launch()
+        val retries = java.util.concurrent.atomic.AtomicInteger()
+        val dismissals = java.util.concurrent.atomic.AtomicInteger()
+        try {
+            host.main { activity.setContent { MaterialTheme {
+                CollectionMembershipContent(CollectionMembershipState(loading = false, error = "save"), {},
+                    { retries.incrementAndGet() }, { dismissals.incrementAndGet() }, {})
+            } } }
+            action(await { host.text(it, "Retry") })
+            assertEquals(1, retries.get())
+            assertEquals(0, dismissals.get())
+        } finally { host.main { activity.finish() } }
+    }
+
+    @Test fun onlyEditorHasSaveAndSheetHeadersStayFixed(): Unit = runBlocking {
         val activity = host.launch()
         val variant = mutableIntStateOf(0)
         val scale = mutableFloatStateOf(1f)
@@ -85,7 +155,7 @@ class CollectionUiTest {
                         key(variant.intValue) {
                             if (variant.intValue == 0) CollectionEditorContent(
                                 CollectionEditorState(draft = CollectionDraft("Draft")), true, {}, {}, {}, {}, {})
-                            else CollectionMembershipContent(CollectionMembershipState(rows = rows, loading = false), {}, {}, {}, {}, {})
+                            else CollectionMembershipContent(CollectionMembershipState(rows = rows, loading = false), {}, {}, {}, {})
                         }
                     }
                 }
@@ -93,25 +163,26 @@ class CollectionUiTest {
             for (sheet in 0..1) for (night in listOf(false, true)) for (font in listOf(1f, 2f)) {
                 host.main { variant.intValue = sheet; scale.floatValue = font; dark.value = night }
                 val title = await { host.text(it, if (sheet == 0) "Edit Collection" else "Choose collections") }
-                val save = await { host.text(it, "Save") }
+                val save = if (sheet == 0) await { host.text(it, "Save") } else null
                 // Settle the sheet's entrance and anchor changes before measuring scroll stability.
                 delay(700)
                 var beside = false
                 var hasCancel = false
                 var before = 0f
                 host.main {
-                    beside = save.boundsInWindow.left >= title.boundsInWindow.right &&
+                    beside = if (save != null) save.boundsInWindow.left >= title.boundsInWindow.right &&
                         kotlin.math.abs(save.boundsInWindow.center.y - title.boundsInWindow.center.y) < 3f
+                        else allNodes().none { host.text(it, "Save") }
                     hasCancel = allNodes().any { host.text(it, "Cancel") }
-                    before = save.boundsInWindow.top
+                    before = (save ?: title).boundsInWindow.top
                 }
-                assertTrue("Save must be on the title's right", beside)
+                assertTrue("Only editor has a title-right Save action", beside)
                 assertFalse("Sheet must not contain Cancel", hasCancel)
                 val scroll = await { it.config.getOrNull(SemanticsActions.ScrollBy) != null }
                 host.main { scroll.config[SemanticsActions.ScrollBy].action?.invoke(0f, 2000f) }
                 delay(400)
                 var after = 0f
-                host.main { after = save.boundsInWindow.top }
+                host.main { after = (save ?: title).boundsInWindow.top }
                 assertEquals("Header action must remain reachable while scrolling", before, after, 1f)
                 capture("sheet-header-$sheet-${if (night) "dark" else "light"}-${font.toInt()}")
             }

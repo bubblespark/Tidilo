@@ -52,7 +52,7 @@ class CollectionMembershipViewModel(
     }
 
     fun save() {
-        if (state.value.loading || state.value.pending || state.value.done) return
+        if (state.value.loading || state.value.pending || state.value.done || state.value.error == "load") return
         val selection = state.value.selectedIds
         mutable.value = state.value.copy(pending = true, error = null)
         viewModelScope.launch {

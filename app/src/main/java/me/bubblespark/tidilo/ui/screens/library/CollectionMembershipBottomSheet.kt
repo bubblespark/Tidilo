@@ -27,25 +27,50 @@ fun CollectionMembershipBottomSheet(bookmarkId: String, onDismiss: () -> Unit, o
         CollectionMembershipViewModel(saved, CollectionRepository(AppDatabase.getInstance(context)), bookmarkId)
     }
     val state by model.state.collectAsStateWithLifecycle()
-    LaunchedEffect(state.done) { if (state.done) onDismiss() }
-    CollectionMembershipContent(state, model::toggle, model::save, model::retry,
-        { if (!state.pending) onDismiss() }, onOpenCollections, modifier)
+    var closeRequested by rememberSaveable(bookmarkId) { mutableStateOf(false) }
+    var openCollectionsAfterSave by rememberSaveable(bookmarkId) { mutableStateOf(false) }
+    fun requestClose(openCollections: Boolean = false) {
+        if (model.state.value.pending || model.state.value.done || closeRequested) return
+        openCollectionsAfterSave = openCollectionsAfterSave || openCollections
+        closeRequested = true
+    }
+    LaunchedEffect(closeRequested, state.loading, state.error) {
+        if (closeRequested && !state.loading && state.error != "load") {
+            closeRequested = false
+            model.save()
+        }
+    }
+    LaunchedEffect(state.done) {
+        if (state.done) {
+            if (openCollectionsAfterSave) onOpenCollections() else onDismiss()
+        }
+    }
+    CollectionMembershipContent(state, model::toggle,
+        { if (model.state.value.error == "load") model.retry() else requestClose() },
+        { requestClose() }, { requestClose(openCollections = true) }, modifier)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun CollectionMembershipContent(
-    state: CollectionMembershipState, onToggle: (String) -> Unit, onSave: () -> Unit,
+    state: CollectionMembershipState, onToggle: (String) -> Unit,
     onRetry: () -> Unit, onDismiss: () -> Unit, onOpenCollections: () -> Unit, modifier: Modifier = Modifier
 ) {
     val pending by rememberUpdatedState(state.pending)
+    val done by rememberUpdatedState(state.done)
+    val requestClose by rememberUpdatedState(onDismiss)
     ModalBottomSheet(onDismissRequest = { if (!pending) onDismiss() }, modifier = modifier,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
-            confirmValueChange = { it != SheetValue.Hidden || !pending })) {
+            confirmValueChange = { target ->
+                if (target == SheetValue.Hidden && !done) {
+                    if (!pending) requestClose()
+                    false
+                } else true
+            })) {
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
-            CollectionSheetHeader(stringResource(R.string.collection_assign_title), stringResource(R.string.common_save),
-                enabled = !state.loading && !state.pending && state.error != "load", onSave = onSave,
-                colors = ButtonDefaults.buttonColors())
+            Text(stringResource(R.string.collection_assign_title),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.titleLarge)
             Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (state.loading) CircularProgressIndicator()
@@ -68,7 +93,9 @@ internal fun CollectionMembershipContent(
                 }
                 if (state.error != null) {
                     Text(stringResource(R.string.collection_save_failed), color = MaterialTheme.colorScheme.error)
-                    if (state.error == "load") TextButton(onClick = onRetry) { Text(stringResource(R.string.common_retry)) }
+                    TextButton(onClick = onRetry, enabled = !state.pending) {
+                        Text(stringResource(R.string.common_retry))
+                    }
                 }
             }
         }

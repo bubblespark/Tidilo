@@ -280,6 +280,8 @@ fun TidiloApp(
     }
 
     val ambientLightingState = remember { AmbientLightingState() }
+    val isAmbientRoute = currentRoute == Screen.Library.route || currentRoute?.startsWith(Screen.BookmarkDetail.route) == true
+    ambientLightingState.isDestinationAllowed = isAmbientRoute
 
     CompositionLocalProvider(
         LocalBarsVisible provides isBarsVisible,

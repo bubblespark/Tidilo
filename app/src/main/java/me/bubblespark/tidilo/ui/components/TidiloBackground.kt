@@ -31,7 +31,7 @@ fun TidiloBackground(
 ) {
     val themeStyle = LocalAppThemeStyle.current
     val lightingState = LocalAmbientLighting.current
-    val rawColor = lightingState.activeColor.value
+    val rawColor = lightingState.effectiveActiveColor
     val targetColor = if (rawColor != null && rawColor != Color.Transparent) {
         themeStyle.resolveColor(MaterialTheme.colorScheme, rawColor)
     } else {
@@ -79,7 +79,7 @@ fun TidiloBackground(
                                 drawRect(brush = cornerGlow)
                             }
                         } else {
-                            onDrawBehind { }
+                            onDrawBehind {}
                         }
                     }
             )

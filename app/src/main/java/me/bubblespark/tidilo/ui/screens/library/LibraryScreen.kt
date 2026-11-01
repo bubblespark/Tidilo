@@ -644,7 +644,7 @@ fun LibraryScreen(
                                 ?: DomainIconManager.getCachedDominantColor(currentDomain)
                                 ?: DomainIconManager.generateDomainAccentColor(currentDomain)
 
-                            RememberAmbientLighting(domainColor)
+                            RememberAmbientLighting(domainColor, ownerId = "library_drilldown")
 
                             val domainBookmarks = bookmarks
 

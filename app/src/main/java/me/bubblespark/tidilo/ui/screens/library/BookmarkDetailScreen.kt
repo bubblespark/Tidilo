@@ -263,7 +263,7 @@ fun BookmarkDetailScreen(
     val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
     val ogBitmap = ogState.bitmap
     val detailAccent = rememberDetailAccent(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
-    RememberAmbientLighting(detailAccent.value)
+    RememberAmbientLighting(detailAccent.value, ownerId = "bookmark_detail")
     val bannerBounds = remember(bookmark.id, ogBitmap) { mutableStateOf<Rect?>(null) }
 
     TidiloScreenScaffold(

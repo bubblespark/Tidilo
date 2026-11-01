@@ -101,6 +101,7 @@ import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
+import me.bubblespark.tidilo.ui.components.RememberAmbientLighting
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.rememberFeedIcon
@@ -643,44 +644,13 @@ fun LibraryScreen(
                                 ?: DomainIconManager.getCachedDominantColor(currentDomain)
                                 ?: DomainIconManager.generateDomainAccentColor(currentDomain)
 
+                            RememberAmbientLighting(domainColor)
+
                             val domainBookmarks = bookmarks
 
                             CompositionLocalProvider(LocalCardAccentColor provides domainColor) {
                                 Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .drawWithCache {
-                                            // Radiant ambient beam from top-right corner spreading across ~2/3 of the screen towards bottom-left
-                                            val ambientBeam = Brush.linearGradient(
-                                                colorStops = arrayOf(
-                                                    0.00f to domainColor.copy(alpha = 0.32f),
-                                                    0.22f to domainColor.copy(alpha = 0.22f),
-                                                    0.45f to domainColor.copy(alpha = 0.13f),
-                                                    0.68f to domainColor.copy(alpha = 0.05f),
-                                                    0.84f to domainColor.copy(alpha = 0.015f),
-                                                    1.00f to Color.Transparent
-                                                ),
-                                                start = Offset(size.width * 1.05f, -size.height * 0.02f),
-                                                end = Offset(-size.width * 0.15f, size.height * 0.90f)
-                                            )
-
-                                            // Deep spherical glow in top-right shoulder spreading across ~2/3 of screen
-                                            val cornerGlow = Brush.radialGradient(
-                                                colorStops = arrayOf(
-                                                    0.00f to domainColor.copy(alpha = 0.22f),
-                                                    0.30f to domainColor.copy(alpha = 0.13f),
-                                                    0.60f to domainColor.copy(alpha = 0.05f),
-                                                    0.82f to domainColor.copy(alpha = 0.012f),
-                                                    1.00f to Color.Transparent
-                                                ),
-                                                center = Offset(size.width, 0f),
-                                                radius = size.height * 0.72f
-                                            )
-                                            onDrawBehind {
-                                                drawRect(brush = ambientBeam)
-                                                drawRect(brush = cornerGlow)
-                                            }
-                                        }
+                                    modifier = Modifier.fillMaxSize()
                                 ) {
                                     if (domainBookmarks.itemCount == 0) {
                                         Box(

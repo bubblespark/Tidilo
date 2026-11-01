@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.components.RememberAmbientLighting
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
@@ -262,14 +263,11 @@ fun BookmarkDetailScreen(
     val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
     val ogBitmap = ogState.bitmap
     val detailAccent = rememberDetailAccent(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
+    RememberAmbientLighting(detailAccent.value)
     val bannerBounds = remember(bookmark.id, ogBitmap) { mutableStateOf<Rect?>(null) }
-    val lightingHostOrigin = remember { mutableStateOf(Offset.Zero) }
-    val darkLighting = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
     TidiloScreenScaffold(
-        modifier = modifier
-            .onGloballyPositioned { lightingHostOrigin.value = it.positionInRoot() }
-            .detailAmbientLight(detailAccent, bannerBounds, lightingHostOrigin, darkLighting, ogState.shouldShowFallback),
+        modifier = modifier,
         hideHeaderOnScroll = false,
         header = {
             TidiloFrostedHeader(

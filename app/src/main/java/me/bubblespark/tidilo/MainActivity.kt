@@ -61,6 +61,8 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.ui.components.AmbientLightingState
+import me.bubblespark.tidilo.ui.components.LocalAmbientLighting
 import me.bubblespark.tidilo.ui.components.TidiloBackground
 import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
 import me.bubblespark.tidilo.ui.navigation.Screen
@@ -277,9 +279,12 @@ fun TidiloApp(
         }
     }
 
+    val ambientLightingState = remember { AmbientLightingState() }
+
     CompositionLocalProvider(
         LocalBarsVisible provides isBarsVisible,
-        LocalAppThemeStyle provides remember(currentTheme) { AppThemeStyle.forTheme(currentTheme) }
+        LocalAppThemeStyle provides remember(currentTheme) { AppThemeStyle.forTheme(currentTheme) },
+        LocalAmbientLighting provides ambientLightingState
     ) {
         Scaffold(
             modifier = modifier.fillMaxSize(),

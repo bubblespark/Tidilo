@@ -90,6 +90,7 @@ class LibraryScrollToTopTest {
                     LibraryFilterMode.NEWEST_FIRST -> host.context.getString(R.string.library_header_title)
                     LibraryFilterMode.DOMAIN -> if (detail) "$id-0.invalid" else host.context.getString(R.string.library_header_title)
                     LibraryFilterMode.RSS -> if (detail) feeds.first().title else host.context.getString(R.string.rss_title)
+                    LibraryFilterMode.COLLECTION -> host.context.getString(R.string.collection_title)
                 }
                 val text = host.await(activity) { node ->
                     host.text(node, title) && generateSequence(node.parent) { it.parent }.none {

@@ -62,6 +62,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 import me.bubblespark.tidilo.data.AiProcessingProgress
 
 /**
@@ -279,6 +281,7 @@ fun AiProcessingSpeechBubble(
             ),
             modifier = Modifier
                 .fillMaxWidth()
+                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius)
                 .clip(RoundedCornerShape(16.dp))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },

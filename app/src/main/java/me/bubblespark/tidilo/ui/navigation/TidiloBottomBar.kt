@@ -76,6 +76,8 @@ import me.bubblespark.tidilo.data.AiProcessingProgress
 import me.bubblespark.tidilo.ui.components.AiProcessingIndicatorButton
 import me.bubblespark.tidilo.ui.components.AiProcessingSpeechBubble
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 /**
  * M3 Expressive Floating Navigation Bar with Separated Action Button
@@ -201,7 +203,8 @@ fun TidiloBottomBar(
                 modifier = Modifier
                     .width(barWidth)
                     .height(barHeight)
-                    .shadow(elevation = 10.dp, shape = CircleShape),
+                    .shadow(elevation = 10.dp, shape = CircleShape)
+                    .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius),
                 shape = CircleShape,
                 color = containerBgColor,
                 tonalElevation = 6.dp
@@ -437,6 +440,7 @@ fun TidiloBottomBar(
                             tonalElevation = 4.dp,
                             modifier = Modifier
                                 .clip(CircleShape)
+                                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius)
                                 .semantics { selected = isCollectionActive }
                                 .clickable(
                                     role = Role.Button,
@@ -477,6 +481,7 @@ fun TidiloBottomBar(
                             tonalElevation = 4.dp,
                             modifier = Modifier
                                 .clip(CircleShape)
+                                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple()
@@ -515,6 +520,7 @@ fun TidiloBottomBar(
                             tonalElevation = 4.dp,
                             modifier = Modifier
                                 .clip(CircleShape)
+                                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple()
@@ -553,6 +559,7 @@ fun TidiloBottomBar(
                             tonalElevation = 4.dp,
                             modifier = Modifier
                                 .clip(CircleShape)
+                                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple()
@@ -585,7 +592,9 @@ fun TidiloBottomBar(
 
                 // Action button surface (palette: primaryContainer / onPrimaryContainer)
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius),
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,

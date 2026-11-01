@@ -1,6 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.ui.theme.CollectionColorPalette
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -179,6 +181,7 @@ private fun CollectionCardVisual(
                 .padding(end = stackOffset * 2)
                 .height(cardHeight)
                 .align(Alignment.BottomStart)
+                .themeSurfaceBlur(LocalAppThemeStyle.current.cardBlurRadius)
                 .clip(cardShape)
                 .combinedClickable(
                     role = Role.Button,

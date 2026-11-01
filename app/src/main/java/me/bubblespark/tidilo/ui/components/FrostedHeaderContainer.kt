@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 // 14-stop fine-grained Hermite / Smootherstep (6t^5 - 15t^4 + 10t^3) decay curve
 // Both first and second derivatives are zero at start and end to eliminate Mach bands
@@ -67,6 +69,7 @@ fun FrostedHeaderContainer(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .themeSurfaceBlur(LocalAppThemeStyle.current.headerBlurRadius)
             .drawWithCache {
                 val totalHeight = size.height
                 if (totalHeight <= 0f) {

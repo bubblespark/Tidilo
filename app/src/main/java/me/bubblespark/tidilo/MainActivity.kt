@@ -68,6 +68,8 @@ import me.bubblespark.tidilo.ui.navigation.TidiloBottomBar
 import me.bubblespark.tidilo.ui.navigation.TidiloNavGraph
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
 import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
+import me.bubblespark.tidilo.ui.theme.AppThemeStyle
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 
 import android.content.res.Configuration
@@ -275,7 +277,10 @@ fun TidiloApp(
         }
     }
 
-    CompositionLocalProvider(LocalBarsVisible provides isBarsVisible) {
+    CompositionLocalProvider(
+        LocalBarsVisible provides isBarsVisible,
+        LocalAppThemeStyle provides remember(currentTheme) { AppThemeStyle.forTheme(currentTheme) }
+    ) {
         Scaffold(
             modifier = modifier.fillMaxSize(),
             containerColor = Color.Transparent,

@@ -9,6 +9,8 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import me.bubblespark.tidilo.ui.theme.collectionMembershipColor
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -358,7 +360,8 @@ fun BookmarkDetailScreen(
                     shape = RoundedCornerShape(32.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     tonalElevation = 6.dp,
-                    shadowElevation = 10.dp
+                    shadowElevation = 10.dp,
+                    modifier = Modifier.themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
@@ -392,7 +395,9 @@ fun BookmarkDetailScreen(
                 Spacer(Modifier.width(10.dp))
                 Surface(
                     onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
-                    modifier = Modifier.size(54.dp),
+                    modifier = Modifier
+                        .size(54.dp)
+                        .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius),
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.primaryContainer,
                     shadowElevation = 4.dp

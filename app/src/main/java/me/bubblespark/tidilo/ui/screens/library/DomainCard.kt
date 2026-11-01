@@ -44,6 +44,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.ui.components.DomainWatermark
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -161,7 +163,8 @@ internal fun LibraryDeckCard(
                 .fillMaxWidth()
                 .padding(end = stackOffset * 2)
                 .height(cardHeight)
-                .align(Alignment.BottomStart),
+                .align(Alignment.BottomStart)
+                .themeSurfaceBlur(LocalAppThemeStyle.current.cardBlurRadius),
             shape = cardShape,
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh

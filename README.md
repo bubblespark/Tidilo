@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Android%2014%2B-brightgreen?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/License-Apache%202.0-lightgrey?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square" alt="License">
 </p>
 
 <p align="center">
@@ -100,4 +100,4 @@ Architecture, conventions and specifications are in [docs/README.md](docs/README
 
 ## License
 
-Apache License 2.0. See [LICENSE.md](LICENSE.md).
+MIT License. See [LICENSE.md](LICENSE.md).

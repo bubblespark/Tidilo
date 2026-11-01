@@ -68,6 +68,7 @@ enum class AiCoreFallbackMode(
 object AppConfig {
     private const val PREFS_NAME = "tidilo_app_config_prefs"
     private const val KEY_LANGUAGE = "app_language"
+    private const val KEY_APP_THEME = "app_theme"
     private const val KEY_NSFW_CONTENT_VISIBLE = "nsfw_content_visible"
     private const val KEY_NSFW_CONTENT_BOOKMARKABLE = "nsfw_content_bookmarkable"
     private const val KEY_AUTO_RUN_AI_ON_ACTIVE = "auto_run_ai_on_active"
@@ -92,6 +93,22 @@ object AppConfig {
         _currentLanguage.value = language
         runCatching {
             prefs.edit().putString(KEY_LANGUAGE, language.code).apply()
+        }
+    }
+
+    // Theme setting (Default: DEFAULT)
+    private val _currentTheme = MutableStateFlow(
+        AppTheme.fromCode(
+            runCatching { prefs.getString(KEY_APP_THEME, AppTheme.DEFAULT.code) }
+                .getOrNull() ?: AppTheme.DEFAULT.code
+        )
+    )
+    val currentTheme: StateFlow<AppTheme> = _currentTheme.asStateFlow()
+
+    fun setTheme(theme: AppTheme) {
+        _currentTheme.value = theme
+        runCatching {
+            prefs.edit().putString(KEY_APP_THEME, theme.code).apply()
         }
     }
 

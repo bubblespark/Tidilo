@@ -12,4 +12,3 @@ val CollectionColorPalette: List<Color> = listOf(
     Color(0xFFFFD54F), // Luminous Amber / Gold
     Color(0xFF81C784)  // Mint / Emerald Green
 )
-

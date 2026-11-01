@@ -17,6 +17,31 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CollectionEditorTest {
+    @Test fun decorationInputDuringInitialLoadCannotReplacePrefill() = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val delayed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java)
+            .setQueryExecutor { task -> executor.execute { if (delayed.get()) gate.await(); task.run() } }.build()
+        val store = ViewModelStore()
+        lateinit var vm: CollectionEditorViewModel
+        try {
+            db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "Alpha", "Original description", "work", null, 2, 1, 1))
+            delayed.set(true)
+            host.runOnMainSync {
+                vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java]
+                vm.edit(vm.state.value.draft.copy(colorIndex = 7, customSymbol = "x"))
+            }
+            assertTrue(vm.state.value.loading)
+            gate.countDown()
+            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            assertEquals("Alpha", vm.state.value.draft.title)
+            assertEquals("Original description", vm.state.value.draft.description)
+            assertEquals("work", vm.state.value.draft.presetIconId)
+            assertEquals(2, vm.state.value.draft.colorIndex)
+        } finally { gate.countDown(); host.runOnMainSync { store.clear() }; db.close(); executor.shutdownNow() }
+    }
     @Test fun confirmationSurvivesRecreationAndDeleteKeepsBookmarks() = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()

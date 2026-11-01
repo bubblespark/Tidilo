@@ -43,7 +43,7 @@ class CollectionEditorViewModel(
                         if (row == null) mutable.value = mutable.value.copy(loading = false, missing = true)
                         else {
                             if (saved.get<Boolean>("loaded") != true) {
-                                edit(CollectionDraft(row.title, row.description, row.presetIconId, row.customSymbol, row.colorIndex))
+                                applyDraft(CollectionDraft(row.title, row.description, row.presetIconId, row.customSymbol, row.colorIndex))
                             }
                             mutable.value = mutable.value.copy(loading = false, missing = false)
                         }
@@ -55,7 +55,11 @@ class CollectionEditorViewModel(
     }
 
     fun edit(draft: CollectionDraft) {
-        if (state.value.pending) return
+        if (state.value.pending || state.value.loading || state.value.missing || state.value.error == "load") return
+        applyDraft(draft)
+    }
+
+    private fun applyDraft(draft: CollectionDraft) {
         val bounded = draft.copy(title = CollectionPolicy.limitGraphemes(draft.title, 40),
             description = CollectionPolicy.limitGraphemes(CollectionPolicy.twoLines(draft.description), 100),
             customSymbol = CollectionPolicy.lastSymbol(draft.customSymbol.orEmpty()).ifBlank { null })
@@ -71,7 +75,7 @@ class CollectionEditorViewModel(
     }
 
     fun save() {
-        if (state.value.pending || state.value.loading || state.value.missing || state.value.done || state.value.draft.title.isBlank()) return
+        if (state.value.pending || state.value.loading || state.value.missing || state.value.error == "load" || state.value.done || state.value.draft.title.isBlank()) return
         val draft = state.value.draft
         write {
             if (collectionId == null) { repository.create(createId, draft, System.currentTimeMillis()); true }
@@ -81,7 +85,7 @@ class CollectionEditorViewModel(
 
     fun delete() {
         val id = collectionId ?: return
-        if (state.value.pending) return
+        if (state.value.pending || state.value.loading || state.value.missing || state.value.error == "load") return
         write { repository.delete(id) }
     }
 

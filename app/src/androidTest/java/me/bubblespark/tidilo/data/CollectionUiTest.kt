@@ -66,6 +66,74 @@ class CollectionUiTest {
         finally { bitmap.recycle() }
     }
 
+    @Test fun actualLibraryEditorRestoresAfterActivityRecreation(): Unit = runBlocking {
+        val activity = host.launch()
+        var current: androidx.activity.ComponentActivity = activity
+        val draft = "Restored ${UUID.randomUUID().toString().take(8)}"
+        var oldMode: LibraryFilterMode? = null
+        try {
+            host.main {
+                val model = androidx.lifecycle.ViewModelProvider(activity)[LibraryViewModel::class.java]
+                oldMode = model.filterMode.value
+                model.setFilterMode(LibraryFilterMode.COLLECTION)
+                model.selectCollectionFilter(null)
+            }
+            action(await { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("New Collection") == true })
+            val field = await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == "" && it.config.getOrNull(SemanticsActions.SetText) != null }
+            host.main { check(field.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(draft)) == true) }
+            await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == draft }
+            host.main { activity.recreate() }
+            withTimeout(8000) {
+                while (current === activity) {
+                    host.main {
+                        current = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                            .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                            .filterIsInstance<me.bubblespark.tidilo.MainActivity>().firstOrNull { it !== activity } ?: activity
+                    }
+                    if (current === activity) delay(30)
+                }
+            }
+            delay(300)
+            await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == draft }
+            action(await { host.text(it, "Cancel") })
+            assertTrue(AppDatabase.getInstance(host.context).collectionDao().observeCollections(true).first().none { it.collection.title == draft })
+        } finally {
+            host.main { oldMode?.let { androidx.lifecycle.ViewModelProvider(current)[LibraryViewModel::class.java].setFilterMode(it) }; current.finish() }
+        }
+    }
+
+    @Test fun openCollectionsProtectsUnsavedDetailDraft(): Unit = runBlocking {
+        val db = AppDatabase.getInstance(host.context)
+        org.junit.Assume.assumeTrue(db.collectionDao().observeCollections(true).first().isEmpty())
+        val id = UUID.randomUUID().toString()
+        db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Draft navigation", "https://example.com/$id", "", createdAt = 1, updatedAt = 1, note = "Initial note"))
+        val activity = host.launch()
+        val collections = java.util.concurrent.atomic.AtomicInteger()
+        val backs = java.util.concurrent.atomic.AtomicInteger()
+        try {
+            host.main {
+                val model = androidx.lifecycle.ViewModelProvider(activity)[LibraryViewModel::class.java]
+                activity.setContent { MaterialTheme { BookmarkDetailScreen(id, model,
+                    onNavigateBack = { backs.incrementAndGet() }, onOpenCollections = { collections.incrementAndGet() }) } }
+            }
+            val note = await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == "Initial note" }
+            host.main { check(note.config[SemanticsActions.SetText].action?.invoke(AnnotatedString("Unsaved note")) == true) }
+            action(await { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Choose collections") == true })
+            action(await { host.text(it, "Open collections") })
+            delay(400)
+            assertEquals("Navigation must wait for discard approval", 0, collections.get())
+            await { host.text(it, "Discard changes?") }
+            action(await { host.text(it, "Cancel") })
+            await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == "Unsaved note" }
+            assertEquals("Initial note", requireNotNull(db.bookmarkDao().getBookmarkById(id)).note)
+            action(await { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Choose collections") == true })
+            action(await { host.text(it, "Open collections") })
+            action(await { host.text(it, "OK") })
+            withTimeout(5000) { while (collections.get() != 1) delay(20) }
+            assertEquals(0, backs.get())
+        } finally { host.main { activity.finish() }; db.bookmarkDao().deleteById(id) }
+    }
+
     @Test fun pendingEditorCannotBeDismissed(): Unit = runBlocking {
         val activity = host.launch()
         val dismissals = java.util.concurrent.atomic.AtomicInteger()

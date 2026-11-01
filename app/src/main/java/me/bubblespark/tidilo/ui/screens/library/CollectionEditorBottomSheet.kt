@@ -48,6 +48,7 @@ internal fun CollectionEditorContent(
 ) {
     val draft = state.draft
     val pending by rememberUpdatedState(state.pending)
+    val canEdit = !state.pending && !state.loading && !state.missing && state.error != "load"
     val accent = CollectionColorPalette.getOrElse(draft.colorIndex) { CollectionColorPalette.first() }
     ModalBottomSheet(onDismissRequest = { if (!pending) onDismiss() }, modifier = modifier,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
@@ -62,10 +63,10 @@ internal fun CollectionEditorContent(
             if (state.missing) Text(stringResource(R.string.collection_missing))
             OutlinedTextField(draft.title, { onEdit(draft.copy(title = it)) },
                 label = { Text(stringResource(R.string.collection_name_label)) }, singleLine = true,
-                enabled = !state.pending && !state.loading && !state.missing, modifier = Modifier.fillMaxWidth())
+                enabled = canEdit, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(draft.description, { onEdit(draft.copy(description = it)) },
                 label = { Text(stringResource(R.string.collection_desc_label)) }, minLines = 2, maxLines = 2,
-                enabled = !state.pending && !state.loading && !state.missing, modifier = Modifier.fillMaxWidth())
+                enabled = canEdit, modifier = Modifier.fillMaxWidth())
             Text(stringResource(R.string.collection_icon_label), style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CollectionPresetIcon.entries.forEach { preset ->
@@ -81,7 +82,7 @@ internal fun CollectionEditorContent(
                         CollectionPresetIcon.FAVORITE -> R.string.collection_icon_favorite
                     })
                     Surface(onClick = { onEdit(draft.copy(presetIconId = preset.id, customSymbol = null)) },
-                        enabled = !state.pending, modifier = Modifier.size(48.dp).semantics { selected = chosen },
+                        enabled = canEdit, modifier = Modifier.size(48.dp).semantics { selected = chosen },
                         shape = MaterialTheme.shapes.medium,
                         color = if (chosen) accent.copy(alpha = 0.24f) else MaterialTheme.colorScheme.surfaceContainerHighest,
                         border = BorderStroke(if (chosen) 2.dp else 1.dp, if (chosen) accent else MaterialTheme.colorScheme.outlineVariant)) {
@@ -91,12 +92,12 @@ internal fun CollectionEditorContent(
             }
             OutlinedTextField(draft.customSymbol.orEmpty(), { onEdit(draft.copy(customSymbol = it)) },
                 label = { Text(stringResource(R.string.collection_custom_char_placeholder)) }, singleLine = true,
-                enabled = !state.pending, modifier = Modifier.fillMaxWidth())
+                enabled = canEdit, modifier = Modifier.fillMaxWidth())
             Text(stringResource(R.string.collection_color_label), style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CollectionColorPalette.forEachIndexed { index, color ->
                     val label = stringResource(R.string.collection_color_option, index + 1)
-                    Surface(onClick = { onEdit(draft.copy(colorIndex = index)) }, enabled = !state.pending,
+                    Surface(onClick = { onEdit(draft.copy(colorIndex = index)) }, enabled = canEdit,
                         modifier = Modifier.size(48.dp).semantics { contentDescription = label; selected = draft.colorIndex == index },
                         shape = CircleShape, color = color) {
                         Box(contentAlignment = Alignment.Center) {
@@ -106,12 +107,12 @@ internal fun CollectionEditorContent(
                 }
             }
             state.error?.let { Text(stringResource(R.string.collection_save_failed), color = MaterialTheme.colorScheme.error) }
-            Button(onClick = onSave, enabled = draft.title.isNotBlank() && !state.pending && !state.loading && !state.missing,
+            Button(onClick = onSave, enabled = draft.title.isNotBlank() && canEdit,
                 modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = MaterialTheme.colorScheme.scrim)) {
                 Text(stringResource(if (editing) R.string.collection_edit_action else R.string.collection_create_action))
             }
             TextButton(onClick = onDismiss, enabled = !state.pending, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_cancel)) }
-            if (editing && !state.missing) TextButton(onClick = { onConfirmDelete(true) }, enabled = !state.pending, modifier = Modifier.fillMaxWidth()) {
+            if (editing && !state.missing) TextButton(onClick = { onConfirmDelete(true) }, enabled = canEdit, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
             }
         }

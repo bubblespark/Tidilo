@@ -18,9 +18,13 @@ Deleting a collection removes its memberships and keeps every bookmark. Moving a
 
 The Library filter menu includes Collection. Its single-column list uses the `prototype/collection-library` design: two background card layers, bold ellipsized heading, two description lines, count pill, gradient, and unframed icon/symbol watermark. Empty collections still have cards. The footer's dashed add card opens New Collection. Long press gives haptic feedback and opens Edit Collection. Tap opens the collection's paged bookmark list, with the existing list/grid switch and back behavior.
 
+Collection cards and the add card expose button roles to accessibility services. Count pills use an opaque accent-tinted surface with `onSurface` content for legibility across all eight accents in light, dark, and dynamic themes. The list subtitle uses quantity-aware singular/plural collection counts. Card gradients and dashed-border drawing objects are cached.
+
 The selected collection ID is saved separately from its latest Room metadata. Editing a title or color updates presentation without changing identity. Collection ID and NSFW visibility participate in the Paging session key; outgoing sessions retain their existing leases, and same-key database invalidation keeps loaded bookmarks mounted. Deleting the selected collection returns to the collection list.
 
 The editor uses a scrollable Material 3 modal bottom sheet with IME and navigation-bar padding. A fixed header places Save to the right of the title (Create for a new collection), keeping it reachable while the form scrolls. There is no sheet-level Cancel button; back, scrim, or swipe dismissal abandons the draft. Draft fields and delete confirmation survive state restoration. All editing controls wait for the initial row to load, so early decoration input cannot replace existing fields. Save is guarded while pending, failures retain the draft, and confirmed deletion leaves bookmarks intact. Sheet observers are scoped to the sheet lifetime.
+
+Editor load failures show a load-specific message and Retry. Retrying restarts the row observer, preserves any restored draft, and keeps editing and writes disabled until the read succeeds. Repeated retry requests cannot start overlapping observers.
 
 Titles are trimmed, required, and limited to 40 extended grapheme clusters. Descriptions are optional, limited to 100 clusters and two logical lines; additional line breaks become spaces. Android ICU BreakIterator preserves compound emoji, flags, skin tones, and combining marks. Custom symbol input keeps the last trimmed grapheme cluster and overrides the preset icon while present. Duplicate titles are allowed.
 

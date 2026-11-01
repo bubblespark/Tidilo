@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -30,14 +31,22 @@ class CollectionEditorViewModel(
     private val mutable = MutableStateFlow(CollectionEditorState(restored(), loading = collectionId != null,
         confirmDelete = saved["confirmDelete"] ?: false))
     val state = mutable.asStateFlow()
+    private var loadJob: Job? = null
 
     init {
-        viewModelScope.launch {
+        load()
+    }
+
+    private fun load() {
+        loadJob?.cancel()
+        mutable.value = state.value.copy(loading = true, missing = false, error = null)
+        loadJob = viewModelScope.launch {
             try {
                 if (collectionId == null) {
                     if (saved.get<Boolean>("submitting") == true && repository.observeCollection(createId).first() != null) {
                         mutable.value = mutable.value.copy(done = true)
                     }
+                    mutable.value = mutable.value.copy(loading = false)
                 } else {
                     repository.observeCollection(collectionId).collect { row ->
                         if (row == null) mutable.value = mutable.value.copy(loading = false, missing = true)
@@ -52,6 +61,11 @@ class CollectionEditorViewModel(
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { mutable.value = mutable.value.copy(loading = false, error = "load") }
         }
+    }
+
+    fun retryLoad() {
+        if (state.value.error != "load" || state.value.pending || state.value.done) return
+        load()
     }
 
     fun edit(draft: CollectionDraft) {

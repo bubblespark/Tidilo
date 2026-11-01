@@ -17,6 +17,42 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CollectionEditorTest {
+    @Test fun retryAfterInitialLoadFailurePrefillsStoredCollection() = verifyLoadRetry(false)
+
+    @Test fun retryAfterLoadFailurePreservesRestoredDraft() = verifyLoadRetry(true)
+
+    private fun verifyLoadRetry(restored: Boolean) = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
+        val store = ViewModelStore()
+        val saved = if (restored) SavedStateHandle(mapOf("loaded" to true, "title" to "Unsaved draft",
+            "description" to "Draft description", "icon" to "code", "color" to 7)) else SavedStateHandle()
+        lateinit var vm: CollectionEditorViewModel
+        try {
+            db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "Stored", "Stored description", "work", null, 2, 1, 1))
+            // Make the real Room query fail, then restore the table before retrying.
+            db.openHelper.writableDatabase.execSQL("ALTER TABLE collections RENAME TO unavailable_collections")
+            host.runOnMainSync {
+                vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(saved, CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java]
+            }
+            withTimeout(5000) { while (vm.state.value.error != "load") delay(20) }
+            host.runOnMainSync { vm.edit(CollectionDraft("Blocked")); vm.save(); vm.delete() }
+            assertFalse(vm.state.value.pending)
+            assertFalse(vm.state.value.done)
+            db.openHelper.writableDatabase.execSQL("ALTER TABLE unavailable_collections RENAME TO collections")
+            host.runOnMainSync { vm.retryLoad(); vm.retryLoad() }
+            withTimeout(5000) { while (vm.state.value.error != null || vm.state.value.loading) delay(20) }
+            assertFalse(vm.state.value.missing)
+            assertEquals(if (restored) "Unsaved draft" else "Stored", vm.state.value.draft.title)
+            assertEquals(if (restored) "Draft description" else "Stored description", vm.state.value.draft.description)
+            assertEquals(if (restored) "code" else "work", vm.state.value.draft.presetIconId)
+            assertEquals(if (restored) 7 else 2, vm.state.value.draft.colorIndex)
+            host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "Saved after retry")); vm.save() }
+            withTimeout(5000) { while (!vm.state.value.done) delay(20) }
+            assertEquals("Saved after retry", db.collectionDao().getById("a")?.title)
+        } finally { host.runOnMainSync { store.clear() }; db.close() }
+    }
+
     @Test fun decorationInputDuringInitialLoadCannotReplacePrefill() = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val gate = java.util.concurrent.CountDownLatch(1)

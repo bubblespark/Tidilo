@@ -11,6 +11,8 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.*
@@ -28,6 +30,97 @@ import org.junit.Test
 import java.util.UUID
 
 class CollectionUiTest {
+    @Test fun countBadgesRemainReadableAcrossPaletteAndThemes(): Unit = runBlocking {
+        val activity = host.launch()
+        val paletteIndex = mutableIntStateOf(0)
+        val dark = mutableStateOf(false)
+        val dynamic = mutableStateOf(false)
+        try {
+            host.main { activity.setContent {
+                me.bubblespark.tidilo.ui.theme.TidiloTheme(darkTheme = dark.value, dynamicColor = dynamic.value) {
+                    CollectionCard(CollectionWithCount(CollectionEntity("contrast",
+                        "Badge ${paletteIndex.intValue} ${dark.value} ${dynamic.value}", "", "folder", null,
+                        paletteIndex.intValue, 1, 1), 12), {}, Modifier.padding(20.dp))
+                }
+            } }
+            // Screen captures include the Activity launch transition; let it finish first.
+            delay(600)
+            for (dynamicColor in listOf(false, true)) for (night in listOf(false, true)) for (index in 0..7) {
+                host.main { paletteIndex.intValue = index; dark.value = night; dynamic.value = dynamicColor }
+                await { host.text(it, "Badge $index $night $dynamicColor") }
+                val count = await { host.text(it, "12 items") }
+                var bounds = androidx.compose.ui.geometry.Rect.Zero
+                host.main { bounds = count.boundsInWindow }
+                host.instrumentation.waitForIdleSync()
+                // Semantics can update before the compositor presents the new palette.
+                delay(80)
+                val bitmap = host.instrumentation.uiAutomation.takeScreenshot()
+                try {
+                    val background = Color(bitmap.getPixel(bounds.right.toInt() + 2, bounds.center.y.toInt())).luminance()
+                    var maximumContrast = 1f
+                    for (y in bounds.top.toInt() until bounds.bottom.toInt()) for (x in bounds.left.toInt() until bounds.right.toInt()) {
+                        val foreground = Color(bitmap.getPixel(x, y)).luminance()
+                        maximumContrast = maxOf(maximumContrast,
+                            (maxOf(foreground, background) + 0.05f) / (minOf(foreground, background) + 0.05f))
+                    }
+                    if (maximumContrast < 4.5f) {
+                        java.io.File(host.context.cacheDir, "badge-contrast-failure.png").outputStream().use {
+                            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                        }
+                    }
+                    assertTrue("Badge $index dark=$night dynamic=$dynamicColor bounds=$bounds background=$background has contrast $maximumContrast", maximumContrast >= 4.5f)
+                } finally { bitmap.recycle() }
+            }
+        } finally { host.main { activity.finish() } }
+    }
+
+    @Test fun loadFailureOffersRetryAndKeepsSaveDisabled(): Unit = runBlocking {
+        val activity = host.launch()
+        val retries = java.util.concurrent.atomic.AtomicInteger()
+        try {
+            host.main { activity.setContent { MaterialTheme {
+                CollectionEditorContent(CollectionEditorState(draft = CollectionDraft("Draft"), error = "load"),
+                    true, {}, {}, {}, {}, {}, onRetry = { retries.incrementAndGet() })
+            } } }
+            val save = await { host.text(it, "Save") }
+            host.main {
+                var button = save
+                while (button.config.getOrNull(SemanticsActions.OnClick) == null) button = requireNotNull(button.parent)
+                assertTrue(button.config.contains(SemanticsProperties.Disabled))
+            }
+            action(await { host.text(it, "Retry") })
+            assertEquals(1, retries.get())
+        } finally { host.main { activity.finish() } }
+    }
+
+    @Test fun collectionCardsExposeButtonRoles(): Unit = runBlocking {
+        val activity = host.launch()
+        try {
+            host.main { activity.setContent { MaterialTheme { Column {
+                CollectionCard(CollectionWithCount(CollectionEntity("role", "Role card", "", "folder", null, 0, 1, 1), 0), {})
+                AddCollectionDummyCard({})
+            } } } }
+            for (node in listOf(await { host.text(it, "Role card") },
+                await { host.description(it, "New Collection") })) {
+                host.main {
+                    var button = node
+                    while (button.config.getOrNull(SemanticsActions.OnClick) == null) button = requireNotNull(button.parent)
+                    assertEquals(Role.Button, button.config.getOrNull(SemanticsProperties.Role))
+                }
+            }
+        } finally { host.main { activity.finish() } }
+    }
+
+    @Test fun collectionSubtitleUsesSingularAndPluralForms() {
+        val resources = host.context.createConfigurationContext(android.content.res.Configuration(host.context.resources.configuration).apply {
+            setLocale(java.util.Locale.ENGLISH)
+        }).resources
+        val id = me.bubblespark.tidilo.R.plurals.collection_subtitle_count
+        assertEquals("0 collections", resources.getQuantityString(id, 0, 0))
+        assertEquals("1 collection", resources.getQuantityString(id, 1, 1))
+        assertEquals("2 collections", resources.getQuantityString(id, 2, 2))
+    }
+
     private val host = HeaderTestHost()
     private var phase = "cards"
     private fun allNodes(): List<SemanticsNode> {

@@ -331,7 +331,7 @@ fun LibraryScreen(
                         filterMode == LibraryFilterMode.COLLECTION && selectedCollection != null ->
                             pluralStringResource(R.plurals.rss_subtitle_bookmarks, libraryCount, libraryCount)
                         filterMode == LibraryFilterMode.COLLECTION ->
-                            stringResource(R.string.collection_subtitle_count, collectionGroups.size)
+                            pluralStringResource(R.plurals.collection_subtitle_count, collectionGroups.size, collectionGroups.size)
             filterMode == LibraryFilterMode.RSS && selectedFeed != null ->
                             pluralStringResource(R.plurals.rss_subtitle_bookmarks, libraryCount, libraryCount)
                         filterMode == LibraryFilterMode.RSS ->

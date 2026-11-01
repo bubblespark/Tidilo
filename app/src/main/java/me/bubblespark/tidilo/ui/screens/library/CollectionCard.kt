@@ -45,17 +45,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,8 +78,10 @@ enum class CollectionPresetIcon(val id: String, val icon: ImageVector) {
     FAVORITE("favorite", Icons.Default.Favorite);
 
     companion object {
+        private val byId = entries.associateBy { it.id }
+
         fun fromId(id: String?): CollectionPresetIcon =
-            entries.firstOrNull { it.id == id } ?: FOLDER
+            byId[id?.trim()?.lowercase(java.util.Locale.ROOT)] ?: FOLDER
     }
 }
 
@@ -112,6 +118,12 @@ private fun CollectionCardVisual(
     val stackOffset = 6.dp
     val cardHeight = (132 * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)).dp
     val dominantColor = item.accentColor
+    val gradient = remember(dominantColor) {
+        Brush.linearGradient(
+            colors = listOf(dominantColor.copy(alpha = 0.30f), dominantColor.copy(alpha = 0.10f), Color.Transparent),
+            start = Offset(900f, 0f), end = Offset(150f, 380f)
+        )
+    }
     val symbol = item.customSymbol?.takeIf { it.isNotBlank() }
     val presetIcon = remember(item.presetIconId) { CollectionPresetIcon.fromId(item.presetIconId).icon }
 
@@ -168,6 +180,7 @@ private fun CollectionCardVisual(
                 .align(Alignment.BottomStart)
                 .clip(cardShape)
                 .combinedClickable(
+                    role = Role.Button,
                     onClick = onClick,
                     onLongClick = onLongClick?.let { callback ->
                         {
@@ -184,17 +197,7 @@ private fun CollectionCardVisual(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                dominantColor.copy(alpha = 0.30f),
-                                dominantColor.copy(alpha = 0.10f),
-                                Color.Transparent
-                            ),
-                            start = Offset(900f, 0f),
-                            end = Offset(150f, 380f)
-                        )
-                    )
+                    .background(gradient)
             ) {
                 // Large background watermark in top-right shoulder
                 Box(
@@ -267,8 +270,8 @@ private fun CollectionCardVisual(
                     // Bottom-left: Bookmark count pill badge
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = dominantColor.copy(alpha = 0.20f),
-                        contentColor = dominantColor
+                        color = dominantColor.copy(alpha = 0.20f).compositeOver(MaterialTheme.colorScheme.surfaceContainerHigh),
+                        contentColor = MaterialTheme.colorScheme.onSurface
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -311,15 +314,16 @@ fun AddCollectionDummyCard(
             .fillMaxWidth()
             .padding(end = 12.dp)
             .height(124.dp)
-            .drawBehind {
-                drawRoundRect(
-                    color = outlineColor,
-                    style = Stroke(
-                        width = 1.5.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f), 0f)
-                    ),
-                    cornerRadius = CornerRadius(22.dp.toPx())
+            .semantics { role = Role.Button }
+            .drawWithCache {
+                val stroke = Stroke(
+                    width = 1.5.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f), 0f)
                 )
+                val radius = CornerRadius(22.dp.toPx())
+                onDrawBehind {
+                    drawRoundRect(color = outlineColor, style = stroke, cornerRadius = radius)
+                }
             },
         shape = RoundedCornerShape(22.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.55f)

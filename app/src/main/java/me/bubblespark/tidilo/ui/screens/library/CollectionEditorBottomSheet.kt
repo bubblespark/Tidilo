@@ -36,7 +36,7 @@ fun CollectionEditorBottomSheet(collectionId: String?, onDismiss: () -> Unit, mo
     val state by model.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.done) { if (state.done) onDismiss() }
     CollectionEditorContent(state, collectionId != null, model::edit, model::save,
-        model::confirmDelete, model::delete, { if (!state.pending) onDismiss() }, modifier)
+        model::confirmDelete, model::delete, { if (!state.pending) onDismiss() }, modifier, onRetry = model::retryLoad)
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -44,7 +44,7 @@ fun CollectionEditorBottomSheet(collectionId: String?, onDismiss: () -> Unit, mo
 internal fun CollectionEditorContent(
     state: CollectionEditorState, editing: Boolean, onEdit: (CollectionDraft) -> Unit,
     onSave: () -> Unit, onConfirmDelete: (Boolean) -> Unit, onDelete: () -> Unit,
-    onDismiss: () -> Unit, modifier: Modifier = Modifier
+    onDismiss: () -> Unit, modifier: Modifier = Modifier, onRetry: () -> Unit = {}
 ) {
     val draft = state.draft
     val pending by rememberUpdatedState(state.pending)
@@ -109,7 +109,13 @@ internal fun CollectionEditorContent(
                         }
                     }
                 }
-                state.error?.let { Text(stringResource(R.string.collection_save_failed), color = MaterialTheme.colorScheme.error) }
+                state.error?.let { error ->
+                    Text(stringResource(if (error == "load") R.string.collection_load_failed else R.string.collection_save_failed),
+                        color = MaterialTheme.colorScheme.error)
+                    if (error == "load") TextButton(onClick = onRetry, enabled = !state.loading && !state.pending) {
+                        Text(stringResource(R.string.common_retry))
+                    }
+                }
                 if (editing && !state.missing) TextButton(onClick = { onConfirmDelete(true) }, enabled = canEdit, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error)
                 }

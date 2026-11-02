@@ -131,13 +131,17 @@ internal class RssIngestionStore(
     }
 
     /** XML failure disables only the still-current subscription; article failures do not use this path. */
-    suspend fun disableAfterXmlFailure(feed: RssFeedEntity, runId: String? = null): Boolean = database.withTransaction {
+    suspend fun disableAfterXmlFailure(
+        feed: RssFeedEntity,
+        runId: String? = null,
+        errorDetail: String = "XML_FETCH_FAILED"
+    ): Boolean = database.withTransaction {
         val current = rss.feed(feed.id) ?: return@withTransaction false
         if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
         rss.putFeed(current.copy(enabled = false, revision = current.revision + 1,
-            lastAttemptAt = System.currentTimeMillis(), error = "XML_FETCH_FAILED",
+            lastAttemptAt = System.currentTimeMillis(), error = errorDetail,
             acquisitionId = null, acquisitionMobileOverride = false, acquisitionXmlDone = false))
-        recordOutcome(runId, "feed:${feed.id}", "RSS_ERROR")
+        recordOutcome(runId, "feed:${feed.id}", "RSS_ERROR", errorDetail)
         true
     }
 

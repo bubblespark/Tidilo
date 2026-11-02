@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 // 14-stop fine-grained Hermite / Smootherstep (6t^5 - 15t^4 + 10t^3) decay curve
 // Both first and second derivatives are zero at start and end to eliminate Mach bands
@@ -55,7 +57,7 @@ private val SMOOTHERSTEP_CURVE = listOf(
 @Composable
 fun FrostedHeaderContainer(
     modifier: Modifier = Modifier,
-    contentAlpha: Float = 0.85f,
+    contentAlpha: Float = LocalAppThemeStyle.current.headerAlpha,
     fadeHeight: Dp = HeaderDefaults.FadeHeight,
     decayOverlap: Dp = HeaderDefaults.DecayOverlap,
     scrollState: ScrollableState? = null,
@@ -64,64 +66,75 @@ fun FrostedHeaderContainer(
     val bgColor = MaterialTheme.colorScheme.background
     val headerScrollState = scrollState?.let { remember(it) { HeaderScrollState(it) } }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .drawWithCache {
-                val totalHeight = size.height
-                if (totalHeight <= 0f) {
-                    onDrawBehind {}
-                } else {
-                    val fadeHeightPx = fadeHeight.toPx()
-                    val decayOverlapPx = decayOverlap.toPx()
-                    val contentHeight = totalHeight - fadeHeightPx
-
-                    // Point where attenuation begins (grazing / touching the header text)
-                    val decayStartY = (contentHeight - decayOverlapPx).coerceAtLeast(0f)
-                    val decayDistance = totalHeight - decayStartY
-
-                    if (decayDistance > 0f) {
-                        val startProgress = (decayStartY / totalHeight).coerceIn(0f, 1f)
-                        val remainingProgress = 1f - startProgress
-
-                        val bgStops = ArrayList<Pair<Float, Color>>(SMOOTHERSTEP_CURVE.size + 1)
-                        if (startProgress > 0.001f) {
-                            bgStops.add(0.0f to bgColor.copy(alpha = contentAlpha))
-                        }
-
-                        for ((t, factor) in SMOOTHERSTEP_CURVE) {
-                            val p = (startProgress + t * remainingProgress).coerceIn(0f, 1f)
-                            bgStops.add(p to bgColor.copy(alpha = contentAlpha * factor))
-                        }
-
-                        // Theme background frost with fine-grained smootherstep decay
-                        val bgBrush = Brush.verticalGradient(
-                            colorStops = bgStops.toTypedArray(),
-                            startY = 0f,
-                            endY = totalHeight
-                        )
-                        onDrawBehind {
-                            drawRect(brush = bgBrush)
-                        }
-                    } else {
+    Box(
+        modifier = modifier.fillMaxWidth()
+    ) {
+        // Isolated background frosted layer with smootherstep attenuation and theme surface blur
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .themeSurfaceBlur(LocalAppThemeStyle.current.headerBlurRadius)
+                .drawWithCache {
+                    val totalHeight = size.height
+                    if (totalHeight <= 0f) {
                         onDrawBehind {}
+                    } else {
+                        val fadeHeightPx = fadeHeight.toPx()
+                        val decayOverlapPx = decayOverlap.toPx()
+                        val contentHeight = totalHeight - fadeHeightPx
+
+                        // Point where attenuation begins (grazing / touching the header text)
+                        val decayStartY = (contentHeight - decayOverlapPx).coerceAtLeast(0f)
+                        val decayDistance = totalHeight - decayStartY
+
+                        if (decayDistance > 0f) {
+                            val startProgress = (decayStartY / totalHeight).coerceIn(0f, 1f)
+                            val remainingProgress = 1f - startProgress
+
+                            val bgStops = ArrayList<Pair<Float, Color>>(SMOOTHERSTEP_CURVE.size + 1)
+                            if (startProgress > 0.001f) {
+                                bgStops.add(0.0f to bgColor.copy(alpha = contentAlpha))
+                            }
+
+                            for ((t, factor) in SMOOTHERSTEP_CURVE) {
+                                val p = (startProgress + t * remainingProgress).coerceIn(0f, 1f)
+                                bgStops.add(p to bgColor.copy(alpha = contentAlpha * factor))
+                            }
+
+                            // Theme background frost with fine-grained smootherstep decay
+                            val bgBrush = Brush.verticalGradient(
+                                colorStops = bgStops.toTypedArray(),
+                                startY = 0f,
+                                endY = totalHeight
+                            )
+                            onDrawBehind {
+                                drawRect(brush = bgBrush)
+                            }
+                        } else {
+                            onDrawBehind {}
+                        }
                     }
                 }
-            }
-    ) {
-        // The overlay owns the hit path. Reuse the body's state for header-origin drags.
-        Box(modifier = Modifier.fillMaxWidth()
-            .then(if (headerScrollState != null) Modifier.scrollable(
-                state = headerScrollState,
-                orientation = Orientation.Vertical,
-                reverseDirection = true
-            ) else Modifier)
-            .pointerInput(Unit) { detectTapGestures {} }) {
-            content()
-        }
+        )
 
-        // Dissolve zone spacer allowing smooth attenuation without intercepting touches
-        Spacer(modifier = Modifier.height(fadeHeight))
+        // Foreground content Column kept completely unblurred
+        Column(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // The overlay owns the hit path. Reuse the body's state for header-origin drags.
+            Box(modifier = Modifier.fillMaxWidth()
+                .then(if (headerScrollState != null) Modifier.scrollable(
+                    state = headerScrollState,
+                    orientation = Orientation.Vertical,
+                    reverseDirection = true
+                ) else Modifier)
+                .pointerInput(Unit) { detectTapGestures {} }) {
+                content()
+            }
+
+            // Dissolve zone spacer allowing smooth attenuation without intercepting touches
+            Spacer(modifier = Modifier.height(fadeHeight))
+        }
     }
 }
 

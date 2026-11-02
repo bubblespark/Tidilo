@@ -1,6 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.ui.theme.CollectionColorPalette
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -191,15 +193,20 @@ private fun CollectionCardVisual(
                     }
                 ),
             shape = cardShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = LocalAppThemeStyle.current.cardAlpha),
             border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.45f)),
             shadowElevation = 2.dp
         ) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(gradient)
+                modifier = Modifier.fillMaxSize()
             ) {
+                // Background surface blur + gradient wash layer behind content
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .themeSurfaceBlur(LocalAppThemeStyle.current.cardBlurRadius, cardShape)
+                        .background(gradient)
+                )
                 // Large background watermark in top-right shoulder
                 Box(
                     modifier = Modifier

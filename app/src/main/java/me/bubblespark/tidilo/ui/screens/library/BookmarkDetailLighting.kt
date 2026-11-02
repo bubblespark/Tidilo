@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -28,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.OgImageManager
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import kotlin.math.ceil
 
 /** The bookmark key owns animation state so a new detail never inherits its predecessor's hue. */
@@ -40,18 +42,27 @@ internal fun rememberDetailAccent(
     showFallback: Boolean
 ): State<Color> = key(bookmarkId, domain) {
     val context = LocalContext.current
+    val themeStyle = LocalAppThemeStyle.current
+    val colorScheme = MaterialTheme.colorScheme
     val iconRevision by androidx.compose.runtime.remember(domain) { DomainIconManager.observeIconUpdates(domain) }
         .collectAsStateWithLifecycle(initialValue = 0L)
-    val color by produceState(Color.Transparent, bitmap, imageKey, showFallback, iconRevision) {
+    val rawColor by produceState(Color.Transparent, bitmap, imageKey, showFallback, iconRevision) {
         value = when {
             bitmap != null && domain != null -> OgImageManager.getDominantColor(domain, imageKey, bitmap) ?: Color.Transparent
-            showFallback && domain != null -> withContext(Dispatchers.IO) {
-                DomainIconManager.getDominantColor(context, domain)
+            showFallback && domain != null -> {
+                DomainIconManager.getCachedDominantColor(domain) ?: withContext(Dispatchers.IO) {
+                    DomainIconManager.getDominantColor(context, domain)
+                }
             }
             else -> Color.Transparent
         }
     }
-    animateColorAsState(color, tween(350, easing = EaseOutCubic), label = "detailAccent")
+    val targetColor = if (rawColor != Color.Transparent) {
+        themeStyle.resolveColor(colorScheme, rawColor)
+    } else {
+        Color.Transparent
+    }
+    animateColorAsState(targetColor, tween(350, easing = EaseOutCubic), label = "detailAccent")
 }
 
 /** Bounds are measured in the same root coordinate space; scrolling only invalidates drawing. */

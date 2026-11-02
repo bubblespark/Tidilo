@@ -76,6 +76,8 @@ import me.bubblespark.tidilo.data.AiProcessingProgress
 import me.bubblespark.tidilo.ui.components.AiProcessingIndicatorButton
 import me.bubblespark.tidilo.ui.components.AiProcessingSpeechBubble
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 /**
  * M3 Expressive Floating Navigation Bar with Separated Action Button
@@ -117,7 +119,7 @@ fun TidiloBottomBar(
     )
 
     val barHeight = 68.dp
-    val containerBgColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val containerBgColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha)
     val isActionButtonVisible = currentRoute in listOf(
         Screen.Library.route,
         Screen.Search.route,
@@ -206,13 +208,20 @@ fun TidiloBottomBar(
                 color = containerBgColor,
                 tonalElevation = 6.dp
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, CircleShape)
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
                     items.forEach { screen ->
                         val isSelected = currentRoute == screen.route
 
@@ -338,6 +347,7 @@ fun TidiloBottomBar(
                             }
                         }
                     }
+                    }
                 }
             }
         }
@@ -431,7 +441,7 @@ fun TidiloBottomBar(
                         val isCollectionActive = currentFilterMode == LibraryFilterMode.COLLECTION
                         Surface(
                             shape = CircleShape,
-                            color = if (isCollectionActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                            color = (if (isCollectionActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer).copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
                             contentColor = if (isCollectionActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
                             shadowElevation = 6.dp,
                             tonalElevation = 4.dp,
@@ -447,10 +457,12 @@ fun TidiloBottomBar(
                                     onToggleFilterMenu()
                                 }
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-                            ) {
+                            Box {
+                                Box(modifier = Modifier.matchParentSize().themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, CircleShape))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                                ) {
                                 Icon(
                                     imageVector = Icons.Default.FolderSpecial,
                                     contentDescription = null,
@@ -465,13 +477,14 @@ fun TidiloBottomBar(
                                     color = if (isCollectionActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                             }
+                            }
                         }
 
                         // RSS source filter
                         val isRssActive = currentFilterMode == LibraryFilterMode.RSS
                         Surface(
                             shape = CircleShape,
-                            color = if (isRssActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                            color = (if (isRssActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer).copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
                             contentColor = if (isRssActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
                             shadowElevation = 6.dp,
                             tonalElevation = 4.dp,
@@ -485,10 +498,12 @@ fun TidiloBottomBar(
                                     onToggleFilterMenu()
                                 }
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-                            ) {
+                            Box {
+                                Box(modifier = Modifier.matchParentSize().themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, CircleShape))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                                ) {
                                 Icon(
                                     imageVector = Icons.Default.RssFeed,
                                     contentDescription = null,
@@ -503,13 +518,14 @@ fun TidiloBottomBar(
                                     color = if (isRssActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                             }
+                            }
                         }
 
                         // 1. Top pill: "Domain"
                         val isDomainActive = currentFilterMode == LibraryFilterMode.DOMAIN
                         Surface(
                             shape = CircleShape,
-                            color = if (isDomainActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                            color = (if (isDomainActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer).copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
                             contentColor = if (isDomainActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
                             shadowElevation = 6.dp,
                             tonalElevation = 4.dp,
@@ -523,10 +539,12 @@ fun TidiloBottomBar(
                                     onToggleFilterMenu()
                                 }
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-                            ) {
+                            Box {
+                                Box(modifier = Modifier.matchParentSize().themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, CircleShape))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                                ) {
                                 Icon(
                                     imageVector = ImageVector.vectorResource(R.drawable.ic_domain),
                                     contentDescription = null,
@@ -541,13 +559,14 @@ fun TidiloBottomBar(
                                     color = if (isDomainActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                             }
+                            }
                         }
 
                         // 2. Bottom pill: "Newest first"
                         val isNewestActive = currentFilterMode == LibraryFilterMode.NEWEST_FIRST
                         Surface(
                             shape = CircleShape,
-                            color = if (isNewestActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                            color = (if (isNewestActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer).copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
                             contentColor = if (isNewestActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
                             shadowElevation = 6.dp,
                             tonalElevation = 4.dp,
@@ -561,10 +580,12 @@ fun TidiloBottomBar(
                                     onToggleFilterMenu()
                                 }
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-                            ) {
+                            Box {
+                                Box(modifier = Modifier.matchParentSize().themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, CircleShape))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                                ) {
                                 Icon(
                                     imageVector = ImageVector.vectorResource(R.drawable.ic_arrow_downward),
                                     contentDescription = null,
@@ -579,6 +600,7 @@ fun TidiloBottomBar(
                                     color = if (isNewestActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                             }
+                            }
                         }
                     }
                 }
@@ -587,15 +609,21 @@ fun TidiloBottomBar(
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     shadowElevation = buttonElevation
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                            .clickable(
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, CircleShape)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape)
+                                .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = ripple(color = MaterialTheme.colorScheme.onPrimaryContainer, bounded = true)
                             ) {
@@ -658,6 +686,7 @@ fun TidiloBottomBar(
                                 }
                             }
                         }
+                    }
                     }
                 }
             }

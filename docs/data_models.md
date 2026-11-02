@@ -261,6 +261,13 @@ sequenceDiagram
     DB-->>UI: Invalidation refreshes affected queries
 ```
 
+### 7.1 Application Theme State (`AppTheme`)
+Located in `config/AppTheme.kt`:
+- **Enum Values**: `DEFAULT("default", R.string.settings_theme_default)`
+- **Safe Parsing**: `AppTheme.fromCode(code: String?)` provides case-insensitive resolution with fallback to `AppTheme.DEFAULT`.
+- **Persistence**: Managed via `AppConfig.KEY_APP_THEME` in SharedPreferences.
+- **Reactive Flow**: Exposed as `AppConfig.currentTheme: StateFlow<AppTheme>` with unidirectional data flow into the UI composition tree.
+
 ---
 
 ## 8. Domain Policy & NSFW Architecture

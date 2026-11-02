@@ -82,10 +82,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.foundation.layout.width
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -101,6 +97,7 @@ import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
+import me.bubblespark.tidilo.ui.components.RememberAmbientLighting
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.rememberFeedIcon
@@ -270,6 +267,20 @@ fun LibraryScreen(
     val isDrillDown = (filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null) ||
         (filterMode == LibraryFilterMode.RSS && selectedFeed != null) ||
         (filterMode == LibraryFilterMode.COLLECTION && selectedCollection != null)
+    val activeDrillDownColor = when {
+        filterMode == LibraryFilterMode.COLLECTION && selectedCollection != null -> selectedCollection.accentColor
+        filterMode == LibraryFilterMode.RSS && selectedFeed != null -> {
+            val publisherDomain = DomainIconManager.feedPublisherDomain(selectedFeed).orEmpty()
+            selectedFeedIcon?.color ?: DomainIconManager.getCachedDominantColor(publisherDomain)
+                ?: DomainIconManager.generateDomainAccentColor(publisherDomain)
+        }
+        filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null -> {
+            selectedDomainColor ?: DomainIconManager.getCachedDominantColor(selectedDomainFilter!!)
+                ?: DomainIconManager.generateDomainAccentColor(selectedDomainFilter!!)
+        }
+        else -> null
+    }
+    RememberAmbientLighting(activeDrillDownColor, ownerId = "library_drilldown")
     fun clearCollectionFilter() {
         when (filterMode) {
             LibraryFilterMode.RSS -> viewModel.selectRssFeedFilter(null)
@@ -647,40 +658,7 @@ fun LibraryScreen(
 
                             CompositionLocalProvider(LocalCardAccentColor provides domainColor) {
                                 Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .drawWithCache {
-                                            // Radiant ambient beam from top-right corner spreading across ~2/3 of the screen towards bottom-left
-                                            val ambientBeam = Brush.linearGradient(
-                                                colorStops = arrayOf(
-                                                    0.00f to domainColor.copy(alpha = 0.32f),
-                                                    0.22f to domainColor.copy(alpha = 0.22f),
-                                                    0.45f to domainColor.copy(alpha = 0.13f),
-                                                    0.68f to domainColor.copy(alpha = 0.05f),
-                                                    0.84f to domainColor.copy(alpha = 0.015f),
-                                                    1.00f to Color.Transparent
-                                                ),
-                                                start = Offset(size.width * 1.05f, -size.height * 0.02f),
-                                                end = Offset(-size.width * 0.15f, size.height * 0.90f)
-                                            )
-
-                                            // Deep spherical glow in top-right shoulder spreading across ~2/3 of screen
-                                            val cornerGlow = Brush.radialGradient(
-                                                colorStops = arrayOf(
-                                                    0.00f to domainColor.copy(alpha = 0.22f),
-                                                    0.30f to domainColor.copy(alpha = 0.13f),
-                                                    0.60f to domainColor.copy(alpha = 0.05f),
-                                                    0.82f to domainColor.copy(alpha = 0.012f),
-                                                    1.00f to Color.Transparent
-                                                ),
-                                                center = Offset(size.width, 0f),
-                                                radius = size.height * 0.72f
-                                            )
-                                            onDrawBehind {
-                                                drawRect(brush = ambientBeam)
-                                                drawRect(brush = cornerGlow)
-                                            }
-                                        }
+                                    modifier = Modifier.fillMaxSize()
                                 ) {
                                     if (domainBookmarks.itemCount == 0) {
                                         Box(

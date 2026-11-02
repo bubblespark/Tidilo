@@ -423,4 +423,7 @@
     <string name="collection_assign_empty">Create a collection to organize this bookmark.</string>
     <string name="collection_open_library">Open collections</string>
     <string name="bookmark_collection_action">Choose collections</string>
+
+    <!-- Theme Settings -->
+    <string name="settings_theme_default">Default</string>
 </resources>

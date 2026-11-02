@@ -253,6 +253,15 @@
     <string name="debug_mlkit_genai_title">ML Kit GenAI Prompt API テスト</string>
     <string name="debug_parser_prompt">プロンプト</string>
     <string name="debug_parser_prompt_description">広告除外後の本文 • 800文字制限前</string>
+    <string name="debug_crash_logs_title">クラッシュログ</string>
+    <string name="debug_crash_logs_empty">クラッシュログはありません</string>
+    <string name="debug_crash_logs_clear">クリア</string>
+    <string name="debug_crash_logs_clear_confirm_title">クラッシュログの消去</string>
+    <string name="debug_crash_logs_clear_confirm_message">記録されたすべてのクラッシュログを削除しますか？</string>
+    <string name="debug_crash_logs_copy">ログをコピー</string>
+    <string name="debug_crash_logs_copied">クリップボードにコピーしました</string>
+    <string name="debug_crash_logs_close">閉じる</string>
+    <string name="debug_crash_logs_thread">スレッド: %1$s</string>
 
     <!-- Notifications -->
     <string name="notification_channel_name">インポート通知</string>
@@ -368,7 +377,7 @@
     <string name="rss_initial_offline">今すぐ取得するにはインターネット接続が必要です。</string>
     <string name="rss_later">あとで</string>
     <string name="rss_xml_fetch_failed">フィードの取得に失敗したため、自動的に無効化されました。</string>
-    <string name="rss_enable_to_retry">次回の取得時に再試行するにはこのフィードを有効にしてください。</string>
+
     <string name="rss_back_to_feeds">フィード一覧に戻る</string>
     <plurals name="rss_subtitle_feeds">
         <item quantity="other">%1$d件のフィード</item>

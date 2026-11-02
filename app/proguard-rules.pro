@@ -20,3 +20,9 @@
 -keep class com.google.mlkit.common.internal.CommonComponentRegistrar {
     public <init>();
 }
+
+# ViewModels & SavedState Factories
+-keepclassmembers class * extends androidx.lifecycle.ViewModel {
+    <init>(...);
+}
+-keep class * extends androidx.lifecycle.ViewModel

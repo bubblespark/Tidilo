@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.data.rss
 
 import android.content.Context
+import android.util.Log
 import androidx.room.withTransaction
 import java.io.IOException
 import java.util.UUID
@@ -191,10 +192,24 @@ internal class RssRepository internal constructor(private val context: Context,
                     val fetched = try { fetcher(override = mobileOperation != null).fetch(feed.url, feed.etag, feed.lastModified) }
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (waiting: RssWifiUnavailable) { throw waiting }
-                    catch (_: Exception) {
-                        store.disableAfterXmlFailure(feed, notificationRunId)
-                        // The worker realigns scheduling after it publishes the aggregated result.
-                        continue
+                    catch (e: Exception) {
+                        val readableError = rssErrorDetail(e)
+                        if (isTransientRssError(e)) {
+                            Log.w("RssRepository", "Transient RSS fetch error for ${feed.url}: $readableError", e)
+                            val now = System.currentTimeMillis()
+                            db.withTransaction {
+                                dao.feed(feed.id)?.takeIf { !it.deleted && it.enabled && it.revision == feed.revision }?.let { current ->
+                                    dao.putFeed(applyRssFetchFailure(current, e, now))
+                                }
+                            }
+                            incomplete = true
+                            continue
+                        } else {
+                            Log.e("RssRepository", "Fatal RSS fetch error for ${feed.url}: $readableError", e)
+                            store.disableAfterXmlFailure(feed, notificationRunId, readableError)
+                            // The worker realigns scheduling after it publishes the aggregated result.
+                            continue
+                        }
                     }
                     val now = System.currentTimeMillis()
                     val committed = db.withTransaction {

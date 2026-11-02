@@ -255,6 +255,15 @@
     <string name="debug_mlkit_genai_title">ML Kit GenAI Prompt API Test</string>
     <string name="debug_parser_prompt">Prompt</string>
     <string name="debug_parser_prompt_description">Ad-filtered body • before the 800-character limit</string>
+    <string name="debug_crash_logs_title">Crash Logs</string>
+    <string name="debug_crash_logs_empty">No crash logs recorded</string>
+    <string name="debug_crash_logs_clear">Clear</string>
+    <string name="debug_crash_logs_clear_confirm_title">Clear Crash Logs</string>
+    <string name="debug_crash_logs_clear_confirm_message">Are you sure you want to delete all recorded crash logs?</string>
+    <string name="debug_crash_logs_copy">Copy Log</string>
+    <string name="debug_crash_logs_copied">Copied to clipboard</string>
+    <string name="debug_crash_logs_close">Close</string>
+    <string name="debug_crash_logs_thread">Thread: %1$s</string>
 
     <!-- Notifications -->
     <string name="notification_channel_name">Import Notifications</string>
@@ -370,7 +379,7 @@
     <string name="rss_initial_offline">A validated Internet connection is required to fetch now.</string>
     <string name="rss_later">Later</string>
     <string name="rss_xml_fetch_failed">Could not fetch feed XML. This feed was automatically disabled.</string>
-    <string name="rss_enable_to_retry">Enable this feed to try again on the next fetch.</string>
+
     <string name="rss_back_to_feeds">Back to feeds</string>
     <plurals name="rss_subtitle_feeds">
         <item quantity="one">%1$d feed</item>

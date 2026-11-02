@@ -3,7 +3,11 @@ package me.bubblespark.tidilo.ui.screens.settings
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.Build
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,10 +24,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -35,7 +41,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,12 +55,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.data.debug.CrashLogEntry
+import me.bubblespark.tidilo.data.debug.CrashLogManager
 import me.bubblespark.tidilo.ui.screens.debug.DebugPromptTester
 import me.bubblespark.tidilo.ui.screens.debug.GenAiTestState
 import me.bubblespark.tidilo.ui.screens.debug.WebParserTestSection
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun SettingsDebugScreen(
@@ -62,6 +79,12 @@ fun SettingsDebugScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var genAiState by remember { mutableStateOf<GenAiTestState>(GenAiTestState.Idle) }
+    var crashLogs by remember { mutableStateOf<List<CrashLogEntry>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        crashLogs = withContext(Dispatchers.IO) { CrashLogManager.getCrashLogs(context) }
+    }
+    var selectedLog by remember { mutableStateOf<CrashLogEntry?>(null) }
+    var showClearConfirmDialog by remember { mutableStateOf(false) }
 
     TidiloScreenScaffold(
         modifier = modifier,
@@ -95,7 +118,8 @@ fun SettingsDebugScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 )
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
@@ -109,7 +133,8 @@ fun SettingsDebugScreen(
                         Text(
                             text = stringResource(R.string.debug_device_sdk_title),
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
@@ -130,7 +155,8 @@ fun SettingsDebugScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 )
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
@@ -144,7 +170,8 @@ fun SettingsDebugScreen(
                         Text(
                             text = stringResource(R.string.debug_aicore_status_title),
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
@@ -164,7 +191,8 @@ fun SettingsDebugScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 )
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
@@ -178,7 +206,8 @@ fun SettingsDebugScreen(
                         Text(
                             text = stringResource(R.string.debug_mlkit_genai_title),
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
@@ -359,7 +388,339 @@ fun SettingsDebugScreen(
             // URL Web Parser & Inspector Section
             WebParserTestSection()
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Crash Logs Section
+            CrashLogsSection(
+                crashLogs = crashLogs,
+                onLogClick = { selectedLog = it },
+                onClearClick = { showClearConfirmDialog = true }
+            )
+
             Spacer(modifier = Modifier.height(40.dp))
+        }
+    }
+
+    if (showClearConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmDialog = false },
+            title = {
+                Text(
+                    text = stringResource(R.string.debug_crash_logs_clear_confirm_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.debug_crash_logs_clear_confirm_message),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        coroutineScope.launch(Dispatchers.IO) {
+                            CrashLogManager.clearLogs(context)
+                            val updated = CrashLogManager.getCrashLogs(context)
+                            withContext(Dispatchers.Main) {
+                                crashLogs = updated
+                                showClearConfirmDialog = false
+                            }
+                        }
+                    }
+                ) {
+                    Text(
+                        text = stringResource(R.string.debug_crash_logs_clear),
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showClearConfirmDialog = false }
+                ) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
+    selectedLog?.let { entry ->
+        CrashLogDetailsDialog(
+            entry = entry,
+            onDismiss = { selectedLog = null },
+            onCopy = {
+                val formatted = CrashLogUiFormatter.formatForClipboard(entry)
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                val clip = ClipData.newPlainText("Crash Log", formatted)
+                clipboard?.setPrimaryClip(clip)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.debug_crash_logs_copied),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        )
+    }
+}
+
+@Composable
+internal fun CrashLogDetailsDialog(
+    entry: CrashLogEntry,
+    onDismiss: () -> Unit,
+    onCopy: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = modifier,
+        title = {
+            Text(
+                text = entry.exceptionClass.substringAfterLast('.'),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            CrashLogDetailsContent(entry)
+        },
+        confirmButton = {
+            TextButton(onClick = onCopy) {
+                Text(stringResource(R.string.debug_crash_logs_copy))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.debug_crash_logs_close))
+            }
+        }
+    )
+}
+
+@Composable
+internal fun CrashLogDetailsContent(
+    entry: CrashLogEntry,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+    ) {
+        Text(
+            text = entry.exceptionClass,
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.outline
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "App: ${entry.appVersion} | ${entry.deviceModel} (${entry.osVersion})",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = CrashLogUiFormatter.formatTimestamp(entry.timestamp),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = stringResource(R.string.debug_crash_logs_thread, entry.threadName),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.secondary
+        )
+        if (!entry.message.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = entry.message,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = entry.stackTrace,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(10.dp)
+            )
+        }
+    }
+}
+
+@Composable
+internal fun CrashLogsSection(
+    crashLogs: List<CrashLogEntry>,
+    onLogClick: (CrashLogEntry) -> Unit,
+    onClearClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            contentColor = MaterialTheme.colorScheme.onSurface
+        )
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.BugReport,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.debug_crash_logs_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                if (crashLogs.isNotEmpty()) {
+                    TextButton(onClick = onClearClick) {
+                        Text(
+                            text = stringResource(R.string.debug_crash_logs_clear),
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (crashLogs.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = stringResource(R.string.debug_crash_logs_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            } else {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    crashLogs.forEach { entry ->
+                        CrashLogItemCard(
+                            entry = entry,
+                            onClick = { onLogClick(entry) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CrashLogItemCard(
+    entry: CrashLogEntry,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+        tonalElevation = 1.dp,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = CrashLogUiFormatter.formatTimestamp(entry.timestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = stringResource(R.string.debug_crash_logs_thread, entry.threadName),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = entry.exceptionClass.substringAfterLast('.'),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            if (!entry.message.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = entry.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+object CrashLogUiFormatter {
+    private val TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+
+    fun formatTimestamp(
+        timestamp: Long,
+        locale: Locale = Locale.getDefault(),
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): String {
+        return TIMESTAMP_FORMATTER.withLocale(locale)
+            .format(Instant.ofEpochMilli(timestamp).atZone(zoneId))
+    }
+
+    fun formatForClipboard(
+        entry: CrashLogEntry,
+        locale: Locale = Locale.getDefault(),
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): String {
+        val dateStr = formatTimestamp(entry.timestamp, locale, zoneId)
+        return buildString {
+            appendLine("Timestamp: $dateStr")
+            appendLine("App Version: ${entry.appVersion}")
+            appendLine("Device: ${entry.deviceModel}")
+            appendLine("OS: ${entry.osVersion}")
+            appendLine("Thread: ${entry.threadName}")
+            appendLine("Exception: ${entry.exceptionClass}")
+            appendLine("Message: ${entry.message ?: "None"}")
+            appendLine("Stack Trace:")
+            append(entry.stackTrace)
         }
     }
 }

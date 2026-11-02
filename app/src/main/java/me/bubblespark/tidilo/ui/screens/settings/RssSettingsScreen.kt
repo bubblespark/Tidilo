@@ -375,8 +375,6 @@ private fun RssFeedCard(feed: RssFeedEntity, busy: Boolean, onEdit: () -> Unit,
             feed.error?.let {
                 Text(if (it == "XML_FETCH_FAILED") stringResource(R.string.rss_xml_fetch_failed) else it,
                     color = MaterialTheme.colorScheme.error)
-                if (it == "XML_FETCH_FAILED" && !feed.enabled) Text(stringResource(R.string.rss_enable_to_retry),
-                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {

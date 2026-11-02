@@ -129,7 +129,8 @@ fun WebParserTestSection(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            contentColor = MaterialTheme.colorScheme.onSurface
         )
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -145,7 +146,8 @@ fun WebParserTestSection(
                     Text(
                         text = "URL Web Parser & Inspector",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "Extract title, lang, meta, OGP, JSON-LD & body for AI tagging",
@@ -562,7 +564,8 @@ private fun JsonLdTab(
         Text(
             text = "Detected JSON-LD (schema.org) Scripts: ${page.jsonLdList.size}",
             style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
         )
 
         if (page.jsonLdList.isEmpty()) {

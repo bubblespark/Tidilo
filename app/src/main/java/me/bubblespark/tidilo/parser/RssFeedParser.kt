@@ -20,13 +20,11 @@ internal object RssFeedParser {
     /** Parses feed metadata only; article HTML and AI execution are outside this boundary. */
     fun parse(xml: String, responseUrl: String): RssFeedDocument {
         require(httpUrl(responseUrl, responseUrl) != null) { "Invalid feed URL" }
-        require(!xml.contains("<!DOCTYPE", ignoreCase = true)) { "Feed document types are not supported" }
-        val parser = Parser.xmlParser().setTrackErrors(32)
-        val document = Jsoup.parse(xml, responseUrl, parser)
+        val document = Jsoup.parse(xml, responseUrl, Parser.xmlParser())
         val root = document.children().firstOrNull() ?: throw IllegalArgumentException("Missing feed document")
         val kind = root.localName()
         require(kind in setOf("rss", "feed", "rdf")) { "Expected RSS, Atom, or RDF XML" }
-        require(parser.errors.isEmpty() && Regex("</${Regex.escape(root.tagName())}\\s*>").containsMatchIn(xml)) {
+        require(Regex("</${Regex.escape(root.tagName())}\\s*>", RegexOption.IGNORE_CASE).containsMatchIn(xml)) {
             "Incomplete feed XML"
         }
         val channel = if (kind == "feed") root else root.child("channel")

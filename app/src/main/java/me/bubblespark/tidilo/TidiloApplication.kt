@@ -13,6 +13,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.detectFreshInstallation
+import me.bubblespark.tidilo.data.debug.CrashLogManager
 import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
 
 class TidiloApplication : Application() {
@@ -35,6 +36,7 @@ class TidiloApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLogManager.initialize(this)
         instance = this
         aiAnalysisInitialization = applicationScope.async {
             val isFreshInstallation = detectFreshInstallation {

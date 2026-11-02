@@ -267,6 +267,20 @@ fun LibraryScreen(
     val isDrillDown = (filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null) ||
         (filterMode == LibraryFilterMode.RSS && selectedFeed != null) ||
         (filterMode == LibraryFilterMode.COLLECTION && selectedCollection != null)
+    val activeDrillDownColor = when {
+        filterMode == LibraryFilterMode.COLLECTION && selectedCollection != null -> selectedCollection.accentColor
+        filterMode == LibraryFilterMode.RSS && selectedFeed != null -> {
+            val publisherDomain = DomainIconManager.feedPublisherDomain(selectedFeed).orEmpty()
+            selectedFeedIcon?.color ?: DomainIconManager.getCachedDominantColor(publisherDomain)
+                ?: DomainIconManager.generateDomainAccentColor(publisherDomain)
+        }
+        filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null -> {
+            selectedDomainColor ?: DomainIconManager.getCachedDominantColor(selectedDomainFilter!!)
+                ?: DomainIconManager.generateDomainAccentColor(selectedDomainFilter!!)
+        }
+        else -> null
+    }
+    RememberAmbientLighting(activeDrillDownColor, ownerId = "library_drilldown")
     fun clearCollectionFilter() {
         when (filterMode) {
             LibraryFilterMode.RSS -> viewModel.selectRssFeedFilter(null)
@@ -639,8 +653,6 @@ fun LibraryScreen(
                             val domainColor = collectionItem?.accentColor ?: feedIcon?.color ?: rememberDomainAccentColor(currentDomain)
                                 ?: DomainIconManager.getCachedDominantColor(currentDomain)
                                 ?: DomainIconManager.generateDomainAccentColor(currentDomain)
-
-                            RememberAmbientLighting(domainColor, ownerId = "library_drilldown")
 
                             val domainBookmarks = bookmarks
 

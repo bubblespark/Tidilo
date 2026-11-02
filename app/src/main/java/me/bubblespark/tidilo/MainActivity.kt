@@ -287,17 +287,9 @@ fun TidiloApp(
         me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.DOMAIN -> selectedDomainFilter != null
         me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.NEWEST_FIRST -> false
     }
-    val isAmbientRoute = when {
-        currentRoute == Screen.BookmarkDetail.route || currentRoute?.startsWith("bookmark_detail") == true -> true
-        currentRoute == Screen.Library.route -> isLibraryDrillDown
-        else -> false
-    }
-    val isDetailRoute = currentRoute == Screen.BookmarkDetail.route || currentRoute?.startsWith("bookmark_detail") == true
+    val isAmbientRoute = currentRoute == Screen.Library.route && isLibraryDrillDown
     SideEffect {
         ambientLightingState.isDestinationAllowed = isAmbientRoute
-        if (!isDetailRoute) {
-            ambientLightingState.removeAmbientColor("bookmark_detail")
-        }
     }
 
     CompositionLocalProvider(

@@ -4,6 +4,9 @@ import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
+import javax.net.ssl.SSLException
 import kotlinx.coroutines.CancellationException
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import org.junit.Assert.assertEquals
@@ -43,6 +46,18 @@ class RssRepositoryErrorDetailTest {
     }
 
     @Test
+    fun rssErrorDetailFormatsSslExceptionsCorrectly() {
+        assertEquals("SSL connection error", rssErrorDetail(SSLException("")))
+        assertEquals("Connection closed during TLS", rssErrorDetail(SSLException("Connection closed during TLS")))
+        assertEquals("SSL handshake failed", rssErrorDetail(SSLHandshakeException("")))
+        assertEquals("Cert path validator failed", rssErrorDetail(SSLHandshakeException("Cert path validator failed")))
+        assertEquals("SSL certificate verification failed", rssErrorDetail(SSLPeerUnverifiedException("")))
+        assertEquals("Hostname mismatch", rssErrorDetail(SSLPeerUnverifiedException("Hostname mismatch")))
+        assertEquals("Cert path validator failed", rssErrorDetail(SSLException("Handshake error", SSLHandshakeException("Cert path validator failed"))))
+        assertEquals("SSL handshake failed", rssErrorDetail(SSLException("Handshake error", SSLHandshakeException(""))))
+    }
+
+    @Test
     fun rssErrorDetailFormatsGenericExceptionsAndTruncates() {
         assertEquals("Custom message", rssErrorDetail(IOException("Custom message")))
         assertEquals("IllegalStateException", rssErrorDetail(IllegalStateException()))
@@ -66,10 +81,15 @@ class RssRepositoryErrorDetailTest {
         assertTrue(isTransientRssError(RssHttpFailure(503)))
         assertTrue(isTransientRssError(IOException("Network error", SocketTimeoutException())))
         assertTrue(isTransientRssError(IOException("Connection error", java.net.SocketException("Broken pipe"))))
+        assertTrue(isTransientRssError(IOException("SSL error", SSLException("Connection reset"))))
     }
 
     @Test
     fun isTransientRssErrorIdentifiesFatalErrors() {
+        assertFalse(isTransientRssError(SSLHandshakeException("Cert expired")))
+        assertFalse(isTransientRssError(SSLPeerUnverifiedException("Hostname mismatch")))
+        assertFalse(isTransientRssError(IOException("SSL error", SSLHandshakeException("Untrusted root"))))
+        assertFalse(isTransientRssError(SSLException("Wrapped", SSLPeerUnverifiedException("No peer cert"))))
         assertFalse(isTransientRssError(RssHttpFailure(400)))
         assertFalse(isTransientRssError(RssHttpFailure(401)))
         assertFalse(isTransientRssError(RssHttpFailure(403)))
@@ -112,5 +132,16 @@ class RssRepositoryErrorDetailTest {
         assertFalse(updated.enabled)
         assertEquals("Expected RSS, Atom, or RDF XML", updated.error)
         assertEquals(6L, updated.revision)
+    }
+
+    @Test
+    fun sslCertificateErrorDisablesFeedAndRecordsErrorMessage() {
+        val feed = RssFeedEntity("feed-1", "https://example.com/rss", "Sample Feed", revision = 3, enabled = true)
+        val now = 4000L
+        val updated = applyRssFetchFailure(feed, SSLHandshakeException("Cert expired"), now)
+        assertFalse(updated.enabled)
+        assertEquals("Cert expired", updated.error)
+        assertEquals(4L, updated.revision)
+        assertFalse(updated.acquisitionXmlDone)
     }
 }

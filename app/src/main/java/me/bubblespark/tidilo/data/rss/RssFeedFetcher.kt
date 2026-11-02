@@ -31,14 +31,18 @@ internal fun rssErrorDetail(error: Throwable): String {
         it is RssHttpFailure ||
         it is java.net.SocketTimeoutException ||
         it is java.net.ConnectException ||
-        it is java.net.UnknownHostException
+        it is java.net.SocketException ||
+        it is java.net.UnknownHostException ||
+        it is javax.net.ssl.SSLException
     } ?: error
 
     val detail = when (unwrapped) {
         is RssHttpFailure -> "HTTP ${unwrapped.code}"
         is java.net.SocketTimeoutException -> unwrapped.message?.takeIf { it.isNotBlank() } ?: "Connection timed out"
         is java.net.ConnectException -> unwrapped.message?.takeIf { it.isNotBlank() } ?: "Connection failed"
+        is java.net.SocketException -> unwrapped.message?.takeIf { it.isNotBlank() } ?: "Connection error"
         is java.net.UnknownHostException -> unwrapped.message?.takeIf { it.isNotBlank() }?.let { "Unable to resolve host: $it" } ?: "Unable to resolve host"
+        is javax.net.ssl.SSLException -> unwrapped.message?.takeIf { it.isNotBlank() } ?: "SSL connection error"
         else -> unwrapped.message?.takeIf { it.isNotBlank() } ?: (unwrapped::class.java.simpleName.takeIf { it.isNotBlank() } ?: "Error")
     }
     return detail.take(200)
@@ -48,13 +52,17 @@ internal fun isTransientRssError(error: Throwable): Boolean {
     val target = generateSequence(error) { it.cause }.firstOrNull {
         it is java.net.SocketTimeoutException ||
         it is java.net.ConnectException ||
+        it is java.net.SocketException ||
         it is java.net.UnknownHostException ||
+        it is javax.net.ssl.SSLException ||
         it is RssHttpFailure
     } ?: error
     return when (target) {
         is java.net.SocketTimeoutException,
         is java.net.ConnectException,
-        is java.net.UnknownHostException -> true
+        is java.net.SocketException,
+        is java.net.UnknownHostException,
+        is javax.net.ssl.SSLException -> true
         is RssHttpFailure -> target.retryable
         else -> false
     }

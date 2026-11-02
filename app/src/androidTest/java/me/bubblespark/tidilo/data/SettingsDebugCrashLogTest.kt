@@ -65,7 +65,10 @@ class SettingsDebugCrashLogTest {
             assertNotNull("Empty state text must be displayed when no crash logs exist", emptyNode)
 
             val clearText = host.context.getString(R.string.debug_crash_logs_clear)
-            val clearNodeWhenEmpty = host.nodes(activity).firstOrNull { host.text(it, clearText) }
+            var clearNodeWhenEmpty: SemanticsNode? = null
+            host.main {
+                clearNodeWhenEmpty = host.nodes(activity).firstOrNull { host.text(it, clearText) }
+            }
             assertNull("Clear button must not be present when log list is empty", clearNodeWhenEmpty)
 
             // =========================================================================
@@ -201,7 +204,12 @@ class SettingsDebugCrashLogTest {
 
             // Wait until dialog dismisses
             withTimeout(4000) {
-                while (host.nodes(activity).any { host.text(it, dialogCloseText) }) {
+                while (true) {
+                    var dialogVisible = false
+                    host.main {
+                        dialogVisible = host.nodes(activity).any { host.text(it, dialogCloseText) }
+                    }
+                    if (!dialogVisible) break
                     delay(50)
                 }
             }
@@ -216,12 +224,20 @@ class SettingsDebugCrashLogTest {
             assertNotNull("Clear confirmation dialog title must appear", confirmDialogTitle)
 
             // In confirmation dialog, confirm button has text clearText and is located in the dialog window
-            val confirmButtonInDialog = host.nodes(activity).filter { host.text(it, clearText) }.last()
-            invokeClick(confirmButtonInDialog)
+            var confirmButtonInDialog: SemanticsNode? = null
+            host.main {
+                confirmButtonInDialog = host.nodes(activity).filter { host.text(it, clearText) }.lastOrNull()
+            }
+            invokeClick(requireNotNull(confirmButtonInDialog))
 
             // Wait until confirmation dialog dismisses
             withTimeout(4000) {
-                while (host.nodes(activity).any { host.text(it, confirmTitle) }) {
+                while (true) {
+                    var confirmDialogVisible = false
+                    host.main {
+                        confirmDialogVisible = host.nodes(activity).any { host.text(it, confirmTitle) }
+                    }
+                    if (!confirmDialogVisible) break
                     delay(50)
                 }
             }

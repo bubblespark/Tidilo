@@ -43,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,9 +63,12 @@ import me.bubblespark.tidilo.data.debug.CrashLogManager
 import me.bubblespark.tidilo.ui.screens.debug.DebugPromptTester
 import me.bubblespark.tidilo.ui.screens.debug.GenAiTestState
 import me.bubblespark.tidilo.ui.screens.debug.WebParserTestSection
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
+import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
@@ -75,7 +79,10 @@ fun SettingsDebugScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var genAiState by remember { mutableStateOf<GenAiTestState>(GenAiTestState.Idle) }
-    var crashLogs by remember { mutableStateOf(CrashLogManager.getCrashLogs(context)) }
+    var crashLogs by remember { mutableStateOf<List<CrashLogEntry>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        crashLogs = withContext(Dispatchers.IO) { CrashLogManager.getCrashLogs(context) }
+    }
     var selectedLog by remember { mutableStateOf<CrashLogEntry?>(null) }
     var showClearConfirmDialog by remember { mutableStateOf(false) }
 
@@ -413,9 +420,14 @@ fun SettingsDebugScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        CrashLogManager.clearLogs(context)
-                        crashLogs = CrashLogManager.getCrashLogs(context)
-                        showClearConfirmDialog = false
+                        coroutineScope.launch(Dispatchers.IO) {
+                            CrashLogManager.clearLogs(context)
+                            val updated = CrashLogManager.getCrashLogs(context)
+                            withContext(Dispatchers.Main) {
+                                crashLogs = updated
+                                showClearConfirmDialog = false
+                            }
+                        }
                     }
                 ) {
                     Text(
@@ -682,13 +694,23 @@ private fun CrashLogItemCard(
 }
 
 object CrashLogUiFormatter {
-    fun formatTimestamp(timestamp: Long, locale: Locale = Locale.getDefault()): String {
-        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", locale)
-        return sdf.format(Date(timestamp))
+    private val TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+
+    fun formatTimestamp(
+        timestamp: Long,
+        locale: Locale = Locale.getDefault(),
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): String {
+        return TIMESTAMP_FORMATTER.withLocale(locale)
+            .format(Instant.ofEpochMilli(timestamp).atZone(zoneId))
     }
 
-    fun formatForClipboard(entry: CrashLogEntry, locale: Locale = Locale.getDefault()): String {
-        val dateStr = formatTimestamp(entry.timestamp, locale)
+    fun formatForClipboard(
+        entry: CrashLogEntry,
+        locale: Locale = Locale.getDefault(),
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): String {
+        val dateStr = formatTimestamp(entry.timestamp, locale, zoneId)
         return buildString {
             appendLine("Timestamp: $dateStr")
             appendLine("App Version: ${entry.appVersion}")

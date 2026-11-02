@@ -56,6 +56,8 @@ class RssRepositoryErrorDetailTest {
     fun isTransientRssErrorIdentifiesTransientErrors() {
         assertTrue(isTransientRssError(SocketTimeoutException()))
         assertTrue(isTransientRssError(ConnectException()))
+        assertTrue(isTransientRssError(java.net.SocketException("Connection reset")))
+        assertTrue(isTransientRssError(javax.net.ssl.SSLException("Connection closed by peer")))
         assertTrue(isTransientRssError(UnknownHostException("feed.example.com")))
         assertTrue(isTransientRssError(RssHttpFailure(408)))
         assertTrue(isTransientRssError(RssHttpFailure(429)))
@@ -63,6 +65,7 @@ class RssRepositoryErrorDetailTest {
         assertTrue(isTransientRssError(RssHttpFailure(502)))
         assertTrue(isTransientRssError(RssHttpFailure(503)))
         assertTrue(isTransientRssError(IOException("Network error", SocketTimeoutException())))
+        assertTrue(isTransientRssError(IOException("Connection error", java.net.SocketException("Broken pipe"))))
     }
 
     @Test

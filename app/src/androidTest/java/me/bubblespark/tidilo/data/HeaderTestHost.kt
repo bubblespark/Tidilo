@@ -35,10 +35,13 @@ internal class HeaderTestHost {
             @Suppress("UNCHECKED_CAST")
             val views = (mViews.get(instance) as? List<View>)?.let { ArrayList(it) } ?: emptyList()
             views.flatMap { roots(it) }
-        }.getOrDefault(emptyList())
+        }.onFailure { android.util.Log.w("HeaderTestHost", "WindowManagerGlobal root lookup failed", it) }
+            .getOrDefault(emptyList())
         val allRoots = (activityRoots + windowRoots).distinct()
         return allRoots.flatMap { root ->
-            runCatching { visit(root.semanticsOwner.unmergedRootSemanticsNode) }.getOrDefault(emptyList())
+            runCatching { visit(root.semanticsOwner.unmergedRootSemanticsNode) }
+                .onFailure { android.util.Log.w("HeaderTestHost", "Semantics traversal failed", it) }
+                .getOrDefault(emptyList())
         }
     }
     suspend fun await(activity: ComponentActivity, predicate: (SemanticsNode) -> Boolean): SemanticsNode = withTimeout(8000) {

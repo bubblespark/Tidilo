@@ -1,9 +1,12 @@
 package me.bubblespark.tidilo.data.debug
 
 import android.content.Context
+import android.os.Build
+import me.bubblespark.tidilo.BuildConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.util.UUID
 
 data class CrashLogEntry(
@@ -12,7 +15,10 @@ data class CrashLogEntry(
     val exceptionClass: String,
     val message: String?,
     val stackTrace: String,
-    val threadName: String
+    val threadName: String,
+    val appVersion: String = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+    val osVersion: String = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+    val deviceModel: String = "${Build.MANUFACTURER} ${Build.MODEL}"
 )
 
 object CrashLogManager {
@@ -46,7 +52,10 @@ object CrashLogManager {
             exceptionClass = throwable.javaClass.name,
             message = throwable.message,
             stackTrace = throwable.stackTraceToString(),
-            threadName = thread.name
+            threadName = thread.name,
+            appVersion = resolveAppVersion(context),
+            osVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+            deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}"
         )
         recordCrash(context, entry)
     }
@@ -69,6 +78,15 @@ object CrashLogManager {
                     file.delete()
                 }
             }
+        }
+    }
+
+    private fun resolveAppVersion(context: Context): String {
+        return runCatching {
+            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            "${packageInfo.versionName} (${packageInfo.longVersionCode})"
+        }.getOrElse {
+            "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
         }
     }
 
@@ -96,7 +114,10 @@ object CrashLogManager {
                         exceptionClass = obj.optString("exceptionClass", "UnknownException"),
                         message = if (obj.isNull("message")) null else obj.optString("message"),
                         stackTrace = obj.optString("stackTrace", ""),
-                        threadName = obj.optString("threadName", "unknown")
+                        threadName = obj.optString("threadName", "unknown"),
+                        appVersion = obj.optString("appVersion", "Unknown"),
+                        osVersion = obj.optString("osVersion", "Unknown"),
+                        deviceModel = obj.optString("deviceModel", "Unknown")
                     )
                 )
             }
@@ -121,14 +142,40 @@ object CrashLogManager {
             }
             obj.put("stackTrace", entry.stackTrace)
             obj.put("threadName", entry.threadName)
+            obj.put("appVersion", entry.appVersion)
+            obj.put("osVersion", entry.osVersion)
+            obj.put("deviceModel", entry.deviceModel)
             jsonArray.put(obj)
         }
 
+        val jsonBytes = jsonArray.toString(2).toByteArray(Charsets.UTF_8)
         val tempFile = File(file.parentFile, "${file.name}.tmp")
-        tempFile.writeText(jsonArray.toString(2))
-        if (!tempFile.renameTo(file)) {
-            file.writeText(jsonArray.toString(2))
-            tempFile.delete()
+
+        try {
+            // Write to temporary file with forced disk sync (fsync)
+            FileOutputStream(tempFile).use { fos ->
+                fos.write(jsonBytes)
+                fos.flush()
+                fos.fd.sync()
+            }
+            if (!tempFile.renameTo(file)) {
+                // If atomic rename fails, write directly and sync
+                FileOutputStream(file).use { fos ->
+                    fos.write(jsonBytes)
+                    fos.flush()
+                    fos.fd.sync()
+                }
+                tempFile.delete()
+            }
+        } catch (_: Exception) {
+            // Last resort: attempt direct write to ensure logs are never lost on crash
+            runCatching {
+                FileOutputStream(file).use { fos ->
+                    fos.write(jsonBytes)
+                    fos.flush()
+                    fos.fd.sync()
+                }
+            }
         }
     }
 

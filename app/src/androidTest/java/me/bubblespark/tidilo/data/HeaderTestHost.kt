@@ -27,7 +27,19 @@ internal class HeaderTestHost {
     }
     fun nodes(activity: ComponentActivity): List<SemanticsNode> {
         fun visit(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::visit)
-        return roots(activity.window.decorView).flatMap { visit(it.semanticsOwner.unmergedRootSemanticsNode) }
+        val activityRoots = roots(activity.window.decorView)
+        val windowRoots = runCatching {
+            val wmg = Class.forName("android.view.WindowManagerGlobal")
+            val instance = wmg.getMethod("getInstance").invoke(null)
+            val mViews = wmg.getDeclaredField("mViews").apply { isAccessible = true }
+            @Suppress("UNCHECKED_CAST")
+            val views = (mViews.get(instance) as? List<View>)?.let { ArrayList(it) } ?: emptyList()
+            views.flatMap { roots(it) }
+        }.getOrDefault(emptyList())
+        val allRoots = (activityRoots + windowRoots).distinct()
+        return allRoots.flatMap { root ->
+            runCatching { visit(root.semanticsOwner.unmergedRootSemanticsNode) }.getOrDefault(emptyList())
+        }
     }
     suspend fun await(activity: ComponentActivity, predicate: (SemanticsNode) -> Boolean): SemanticsNode = withTimeout(8000) {
         var found: SemanticsNode? = null

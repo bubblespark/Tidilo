@@ -50,6 +50,9 @@ class CrashLogManagerTest {
         assertEquals("Test crash message", entry.message)
         assertTrue(entry.stackTrace.contains("IllegalArgumentException: Test crash message"))
         assertEquals(thread.name, entry.threadName)
+        assertNotNull(entry.appVersion)
+        assertNotNull(entry.osVersion)
+        assertNotNull(entry.deviceModel)
 
         val logFile = File(fakeContext.filesDir, CrashLogManager.FILE_NAME)
         assertTrue(logFile.exists())
@@ -137,5 +140,34 @@ class CrashLogManagerTest {
 
         // Verify previous handler was invoked
         assertTrue(previousHandlerInvoked)
+    }
+
+    @Test
+    fun testLegacyJsonCompatibilityHandlesMissingMetadataFieldsGracefully() {
+        val legacyJson = """
+            [
+              {
+                "id": "legacy-id-1",
+                "timestamp": 1700000000000,
+                "exceptionClass": "java.lang.NullPointerException",
+                "message": "Legacy crash without device info",
+                "stackTrace": "java.lang.NullPointerException\n\tat me.test.run(Test.kt:1)",
+                "threadName": "main"
+              }
+            ]
+        """.trimIndent()
+
+        val logFile = File(fakeContext.filesDir, CrashLogManager.FILE_NAME)
+        logFile.parentFile?.mkdirs()
+        logFile.writeText(legacyJson)
+
+        val logs = CrashLogManager.getCrashLogs(fakeContext)
+        assertEquals(1, logs.size)
+        val entry = logs[0]
+        assertEquals("legacy-id-1", entry.id)
+        assertEquals("Legacy crash without device info", entry.message)
+        assertEquals("Unknown", entry.appVersion)
+        assertEquals("Unknown", entry.osVersion)
+        assertEquals("Unknown", entry.deviceModel)
     }
 }

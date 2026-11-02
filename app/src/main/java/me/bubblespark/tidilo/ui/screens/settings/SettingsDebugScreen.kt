@@ -436,94 +436,119 @@ fun SettingsDebugScreen(
     }
 
     selectedLog?.let { entry ->
-        AlertDialog(
-            onDismissRequest = { selectedLog = null },
-            title = {
-                Text(
-                    text = entry.exceptionClass.substringAfterLast('.'),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Text(
-                        text = entry.exceptionClass,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = CrashLogUiFormatter.formatTimestamp(entry.timestamp),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = stringResource(R.string.debug_crash_logs_thread, entry.threadName),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                    if (!entry.message.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = entry.message,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = entry.stackTrace,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val formatted = CrashLogUiFormatter.formatForClipboard(entry)
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        val clip = ClipData.newPlainText("Crash Log", formatted)
-                        clipboard?.setPrimaryClip(clip)
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.debug_crash_logs_copied),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                ) {
-                    Text(stringResource(R.string.debug_crash_logs_copy))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { selectedLog = null }
-                ) {
-                    Text(stringResource(R.string.debug_crash_logs_close))
-                }
+        CrashLogDetailsDialog(
+            entry = entry,
+            onDismiss = { selectedLog = null },
+            onCopy = {
+                val formatted = CrashLogUiFormatter.formatForClipboard(entry)
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                val clip = ClipData.newPlainText("Crash Log", formatted)
+                clipboard?.setPrimaryClip(clip)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.debug_crash_logs_copied),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         )
     }
 }
 
 @Composable
-private fun CrashLogsSection(
+internal fun CrashLogDetailsDialog(
+    entry: CrashLogEntry,
+    onDismiss: () -> Unit,
+    onCopy: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = modifier,
+        title = {
+            Text(
+                text = entry.exceptionClass.substringAfterLast('.'),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            CrashLogDetailsContent(entry)
+        },
+        confirmButton = {
+            TextButton(onClick = onCopy) {
+                Text(stringResource(R.string.debug_crash_logs_copy))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.debug_crash_logs_close))
+            }
+        }
+    )
+}
+
+@Composable
+internal fun CrashLogDetailsContent(
+    entry: CrashLogEntry,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+    ) {
+        Text(
+            text = entry.exceptionClass,
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.outline
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "App: ${entry.appVersion} | ${entry.deviceModel} (${entry.osVersion})",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = CrashLogUiFormatter.formatTimestamp(entry.timestamp),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = stringResource(R.string.debug_crash_logs_thread, entry.threadName),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.secondary
+        )
+        if (!entry.message.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = entry.message,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = entry.stackTrace,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(10.dp)
+            )
+        }
+    }
+}
+
+@Composable
+internal fun CrashLogsSection(
     crashLogs: List<CrashLogEntry>,
     onLogClick: (CrashLogEntry) -> Unit,
     onClearClick: () -> Unit,
@@ -666,6 +691,9 @@ object CrashLogUiFormatter {
         val dateStr = formatTimestamp(entry.timestamp, locale)
         return buildString {
             appendLine("Timestamp: $dateStr")
+            appendLine("App Version: ${entry.appVersion}")
+            appendLine("Device: ${entry.deviceModel}")
+            appendLine("OS: ${entry.osVersion}")
             appendLine("Thread: ${entry.threadName}")
             appendLine("Exception: ${entry.exceptionClass}")
             appendLine("Message: ${entry.message ?: "None"}")

@@ -39,6 +39,9 @@ class SettingsDebugScreenTest {
             val formatted = CrashLogUiFormatter.formatForClipboard(entry, Locale.US)
 
             assertTrue(formatted.contains("Timestamp: 2023-11-14 22:13:20"))
+            assertTrue(formatted.contains("App Version: ${entry.appVersion}"))
+            assertTrue(formatted.contains("Device: ${entry.deviceModel}"))
+            assertTrue(formatted.contains("OS: ${entry.osVersion}"))
             assertTrue(formatted.contains("Thread: main"))
             assertTrue(formatted.contains("Exception: java.lang.NullPointerException"))
             assertTrue(formatted.contains("Message: Test null pointer"))
@@ -66,6 +69,9 @@ class SettingsDebugScreenTest {
             val formatted = CrashLogUiFormatter.formatForClipboard(entry, Locale.US)
 
             assertTrue(formatted.contains("Timestamp: 2023-11-14 22:13:20"))
+            assertTrue(formatted.contains("App Version: ${entry.appVersion}"))
+            assertTrue(formatted.contains("Device: ${entry.deviceModel}"))
+            assertTrue(formatted.contains("OS: ${entry.osVersion}"))
             assertTrue(formatted.contains("Thread: bg-worker"))
             assertTrue(formatted.contains("Exception: java.lang.IllegalStateException"))
             assertTrue(formatted.contains("Message: None"))

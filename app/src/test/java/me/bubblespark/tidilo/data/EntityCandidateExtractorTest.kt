@@ -59,12 +59,12 @@ class EntityCandidateExtractorTest {
     @Test
     fun capsTokensPerSection() {
         // When specialtoken is at index 299 (the 300th token), it is within the 300-token limit.
-        val titleWithinCap = "same ".repeat(299) + "specialtoken"
+        val titleWithinCap = "a ".repeat(299) + "specialtoken"
         val candidatesWithinCap = extractor.extractCandidateKeys(titleWithinCap, null)
         assertTrue(candidatesWithinCap.contains("specialtoken"))
 
         // When specialtoken is at index 300 (the 301st token), it exceeds the 300-token limit and is dropped.
-        val titleExceedingCap = "same ".repeat(300) + "specialtoken"
+        val titleExceedingCap = "a ".repeat(300) + "specialtoken"
         val candidatesExceedingCap = extractor.extractCandidateKeys(titleExceedingCap, null)
         assertFalse(candidatesExceedingCap.contains("specialtoken"))
     }
@@ -91,6 +91,14 @@ class EntityCandidateExtractorTest {
         assertTrue(candidates.contains("onetwothreefourfivesix"))
         assertTrue(candidates.contains("twothreefourfivesixseven"))
         assertFalse(candidates.contains("onetwothreefourfivesixseven"))
+    }
+
+    @Test
+    fun capsTitleLength() {
+        val longPrefix = "a".repeat(1000)
+        val title = longPrefix + "Target"
+        val candidates = extractor.extractCandidateKeys(title, null)
+        assertFalse(candidates.contains("target"))
     }
 
     @Test

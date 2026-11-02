@@ -16,7 +16,7 @@ class EntityCandidateExtractor(
     /**
      * Extracts an ordered, de-duplicated list of candidate skeleton keys from [title] and [description].
      *
-     * Title tokens are processed first, followed by description tokens (up to [MAX_DESCRIPTION_CHARS]).
+     * Title (up to [MAX_DESCRIPTION_CHARS]) is processed first, followed by description tokens (up to [MAX_DESCRIPTION_CHARS]).
      * Each section is capped at [MAX_TOKENS_PER_SECTION] tokens.
      * Sliding windows of size 1..6 are formed in descending window size order per start index.
      * Output is capped at [MAX_CANDIDATE_KEYS].
@@ -40,7 +40,7 @@ class EntityCandidateExtractor(
             }
         }
 
-        processSection(title)
+        processSection(title.take(MAX_DESCRIPTION_CHARS))
         description?.take(MAX_DESCRIPTION_CHARS)?.let { processSection(it) }
 
         return keys.toList()

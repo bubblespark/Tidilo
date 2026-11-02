@@ -1069,19 +1069,19 @@ class ImportRepository internal constructor(
 
     private suspend fun resolveSkippedTag(target: ImportTask): Tag {
         val dao = bookmarkDao ?: return Tag.createEmpty()
-        val candidateKeys = candidateExtractor.extractCandidateKeys(target.title, target.description)
-        if (candidateKeys.isEmpty()) return Tag.createEmpty()
-        val matched = try {
-            dao.findCanonicalEntitySpellings(candidateKeys)
+        return try {
+            val candidateKeys = candidateExtractor.extractCandidateKeys(target.title, target.description)
+            if (candidateKeys.isEmpty()) return Tag.createEmpty()
+            val matched = dao.findCanonicalEntitySpellings(candidateKeys)
+            if (matched.isEmpty()) return Tag.createEmpty()
+            val entities = EntityTagPolicy.normalizeEntities(candidateKeys.mapNotNull { matched[it] })
+            Tag.createEmpty().copy(entities = entities)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             runCatching { Log.w("ImportRepository", "Entity matching failed; saving without entities", e) }
-            return Tag.createEmpty()
+            Tag.createEmpty()
         }
-        if (matched.isEmpty()) return Tag.createEmpty()
-        val entities = EntityTagPolicy.normalizeEntities(candidateKeys.mapNotNull { matched[it] })
-        return Tag.createEmpty().copy(entities = entities)
     }
 
     private suspend fun skippedBookmark(target: ImportTask): BookmarkItem = BookmarkItem(

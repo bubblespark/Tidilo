@@ -473,6 +473,39 @@ class ImportRepositoryEntityMatchingTest {
     }
 
     @Test
+    fun candidateExtractorFailureFallsBackToEmptyTag() = runBlocking {
+        val bookmarks = TestBookmarkDao()
+        val tasks = TestImportTaskDao()
+        bookmarks.insertRow(createBookmarkEntity(id = "existing", entities = listOf("Kotlin")))
+
+        val throwingSegmenter = object : TextSegmenter {
+            override fun segment(text: String): List<String> = throw RuntimeException("Segmentation crashed")
+        }
+
+        val savedItems = mutableListOf<BookmarkItem>()
+        val repository = ImportRepository(
+            taskDao = tasks,
+            bookmarkDao = bookmarks,
+            repositoryScope = CoroutineScope(Dispatchers.Unconfined),
+            aiAnalysisMode = { AiAnalysisMode.DISABLE },
+            articleAcquirer = { createFakeParsedPage(it, title = "Learn Kotlin") },
+            persistFallback = {
+                savedItems.add(it)
+                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
+            },
+            candidateExtractor = EntityCandidateExtractor(throwingSegmenter)
+        )
+
+        val outcomeDeferred = CompletableDeferred<Result<ImportOutcome>>()
+        repository.importUrl("https://example.com/extractor-failure") { outcomeDeferred.complete(it) }
+
+        val outcome = withTimeout(5000) { outcomeDeferred.await() }.getOrThrow()
+        assertTrue(outcome is ImportOutcome.BookmarkSaved)
+        assertEquals(1, savedItems.size)
+        assertTrue(savedItems.first().tag.entities.isEmpty())
+    }
+
+    @Test
     fun cancellationIsRethrown() = runBlocking {
         val bookmarks = TestBookmarkDao()
         val tasks = TestImportTaskDao()

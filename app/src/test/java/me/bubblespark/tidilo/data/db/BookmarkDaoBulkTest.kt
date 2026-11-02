@@ -23,6 +23,13 @@ class BookmarkDaoBulkTest {
         val insertedRowsCalls = mutableListOf<List<BookmarkEntity>>()
         val deletedOccurrencesCalls = mutableListOf<List<String>>()
         val insertedOccurrencesCalls = mutableListOf<List<BookmarkEntityOccurrence>>()
+        val spellingsForKeysCalls = mutableListOf<List<String>>()
+        var spellingsToReturn: (List<String>) -> List<BookmarkEntitySpelling> = { emptyList() }
+
+        override suspend fun findSpellingsForKeys(keys: List<String>): List<BookmarkEntitySpelling> {
+            spellingsForKeysCalls.add(keys)
+            return spellingsToReturn(keys)
+        }
 
         override suspend fun insertRows(bookmarks: List<BookmarkEntity>) {
             insertedRowsCalls.add(bookmarks)
@@ -178,5 +185,60 @@ class BookmarkDaoBulkTest {
         assertEquals(1, persistedOccurrences.size)
         assertEquals(0, persistedOccurrences[0].position)
         assertEquals("TagC", persistedOccurrences[0].value)
+    }
+
+    @Test
+    fun findCanonicalEntitySpellingsEmpty() = runBlocking {
+        val dao = RecordingBookmarkDao()
+        val result = dao.findCanonicalEntitySpellings(emptyList())
+        assertTrue(result.isEmpty())
+        assertTrue(dao.spellingsForKeysCalls.isEmpty())
+    }
+
+    @Test
+    fun findCanonicalEntitySpellingsMatches() = runBlocking {
+        val dao = RecordingBookmarkDao()
+        dao.spellingsToReturn = { keys ->
+            keys.mapNotNull { key ->
+                when (key) {
+                    "github" -> BookmarkEntitySpelling("github", "GitHub")
+                    "android" -> BookmarkEntitySpelling("android", "Android")
+                    else -> null
+                }
+            }
+        }
+        val result = dao.findCanonicalEntitySpellings(listOf("github", "missing", "android"))
+        assertEquals(mapOf("github" to "GitHub", "android" to "Android"), result)
+        assertEquals(listOf(listOf("github", "missing", "android")), dao.spellingsForKeysCalls)
+    }
+
+    @Test
+    fun findCanonicalEntitySpellingsChunked() = runBlocking {
+        val dao = RecordingBookmarkDao()
+        val keys = (1..1200).map { "key$it" }
+        dao.spellingsToReturn = { chunk ->
+            chunk.map { BookmarkEntitySpelling(it, "Value-$it") }
+        }
+        val result = dao.findCanonicalEntitySpellings(keys)
+        assertEquals(3, dao.spellingsForKeysCalls.size)
+        assertEquals(500, dao.spellingsForKeysCalls[0].size)
+        assertEquals(500, dao.spellingsForKeysCalls[1].size)
+        assertEquals(200, dao.spellingsForKeysCalls[2].size)
+        assertEquals(1200, result.size)
+        assertEquals("Value-key1", result["key1"])
+        assertEquals("Value-key1200", result["key1200"])
+    }
+
+    @Test
+    fun findCanonicalEntitySpellingsFirstRowWins() = runBlocking {
+        val dao = RecordingBookmarkDao()
+        dao.spellingsToReturn = {
+            listOf(
+                BookmarkEntitySpelling("github", "GitHub"),
+                BookmarkEntitySpelling("github", "git-hub")
+            )
+        }
+        val result = dao.findCanonicalEntitySpellings(listOf("github"))
+        assertEquals(mapOf("github" to "GitHub"), result)
     }
 }

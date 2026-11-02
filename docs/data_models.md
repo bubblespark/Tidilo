@@ -262,7 +262,7 @@ sequenceDiagram
 ```
 
 ### 7.1 Application Theme State (`AppTheme`)
-Located in `data/model/AppTheme.kt`:
+Located in `config/AppTheme.kt`:
 - **Enum Values**: `DEFAULT("default", R.string.settings_theme_default)`
 - **Safe Parsing**: `AppTheme.fromCode(code: String?)` provides case-insensitive resolution with fallback to `AppTheme.DEFAULT`.
 - **Persistence**: Managed via `AppConfig.KEY_APP_THEME` in SharedPreferences.

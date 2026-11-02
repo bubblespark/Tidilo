@@ -544,23 +544,22 @@ In RSS feed add/edit dialogs, both mode radio choices remain enabled when global
 Settings > Data Management > RSS uses the shared header and a Daily fetch time policy card with a daily master switch, Wi-Fi-only switch and full-width manual fetch button. Immediately below it, a separate Trigger time heading has a count and transparent + action; up to three chronological time cards show a minus action on the left and editable HH:mm time on the right. Empty schedules show Not set. Add/edit reuses the Material time picker and works while automatic fetching is OFF. Cards retain the existing 20dp rounded surfaceContainerHigh style; action touch targets are at least 48dp. The 20dp deletion circle uses the theme's DestructiveActionColors semantic pair (Material light error/onError in both themes) to preserve a saturated red background and white minus. The + action dims when disabled at the limit. The minus action opens a confirmation naming its time; Cancel or dismissal retains the schedule. The RSS section starts with one compact queue-count card below its heading: a centered single line, highlighted with the error color above 20 possible tasks. No queue-note, warning paragraph, or trigger-limit description is shown. Manual fetch displays a waiting label while its WorkManager request is queued and progress while it is running; the button remains disabled until the request finishes. An add FAB opens a bottom sheet with URL, import mode and retention sections. Feed cards show artwork or a monogram, publisher domain, marquee title, mode and retention chips, errors and a separate enable switch. Tapping a card edits it; a labeled long-press action and the editor's delete action open confirmation. Selection rows combine labels and controls for accessibility. Import has independent Ready and Ready - RSS sections; Library adds an RSS source filter. See [RSS and Atom Subscriptions](rss.md) for defaults, limits, and user-visible lifecycle behavior.
 
 Library RSS mode uses the same `LibraryDeckCard` as Domain mode: a two-column grid, three stacked layers, identical spacing/typography/count badge, and a 96dp, alpha-0.20 icon watermark. RSS supplies feed title, publisher domain, visible saved count, and feed-specific artwork/color. Selecting a feed uses the shared Domain drill-down list/grid and ambient beam/radial-glow rendering, with a feed title/count header and Back to feeds action. Both back mechanisms return to the feed grid, after dismissing a summary peek if present. Crossfade timings match Domain mode (220ms in, 180ms out), and metadata-only refreshes do not restart that transition. Feed grids and detail layouts retain separate scroll positions. New RSS navigation/count strings are English only; subtitle counters use quantity resources for singular and plural feed/bookmark labels.
-
-
-## 8. Multi-Theme Infrastructure & Centralized Stationary Background
-
-### 8.1 Centralized Background Architecture (`TidiloBackground`)
-Located in `ui/components/TidiloBackground.kt`:
-- **Slot Placement**: Root `Box` of `MainActivity.kt` beneath `TidiloNavGraph`. Root `Scaffold` uses `containerColor = Color.Transparent` so the stationary background remains visible throughout the application.
-- **Zero Route Sliding**: Route transitions slide only foreground UI content (cards, headers, list items); the root background remains anchored and stationary, eliminating visual cut-off seams (`背景の切れ目`).
-
-### 8.2 Ambient Lighting Architecture (`LocalAmbientLighting` & `RememberAmbientLighting`)
-Located in `ui/components/AmbientLighting.kt`:
-- **Decoupled Ambient Rendering**: Drill-down screens (`DomainDrillDown`, `RssFeedDrillDown`, `CollectionDrillDown`) and `BookmarkDetailScreen` do not draw full-screen ambient lighting boxes. Instead, they publish their active color via `RememberAmbientLighting(color)` to `LocalAmbientLighting`.
-- **Smooth In-Place Morphing**: `TidiloBackground` observes `LocalAmbientLighting.current.activeColor.value`, resolves it through `LocalAppThemeStyle.current.resolveColor(...)`, and animates color transitions in-place with `animateColorAsState(tween(350, easing = EaseInOutCubic))`.
-- **Automatic Lifecycle Cleanup**: When a drill-down or detail screen leaves composition, `RememberAmbientLighting` resets the active color on disposal via `DisposableEffect`.
-
-### 8.3 Unified Theme Style Contract (`AppThemeStyle` & `ThemeColorRole`)
-Located in `ui/theme/AppThemeStyle.kt`:
-- **Theme Specification**: `AppThemeStyle` specifies `theme: AppTheme`, `colorRole: ThemeColorRole` (`ACCENT`, `PRIMARY`, `SECONDARY`, `TERTIARY`), and surface blur radii: `cardBlurRadius`, `floatingBarBlurRadius`, `headerBlurRadius`, and `overlayBlurRadius`.
-- **Zero-Cost Blur Bypass**: `Modifier.themeSurfaceBlur(blurRadius: Dp)` directly returns `this` when `blurRadius <= 0.dp`, ensuring `AppTheme.DEFAULT` introduces zero offscreen render passes or graphics layers.
-- **Comprehensive Pre-Wiring**: Applied across all surface types (`FrostedHeaderContainer`, `TidiloBottomBar`, `AiProcessingIndicator`, `BookmarkDetailScreen` floating toolbar, `BookmarkCard`, `BookmarkGridCard`, `CollectionCard`, `DomainCard`). Adding future themes requires zero layout adjustments.
+
+## 8. Multi-Theme Infrastructure & Centralized Stationary Background
+
+### 8.1 Centralized Background Architecture (`TidiloBackground`)
+Located in `ui/components/TidiloBackground.kt`:
+- **Slot Placement**: Root `Box` of `MainActivity.kt` beneath `TidiloNavGraph`. Root `Scaffold` uses `containerColor = Color.Transparent` so the stationary background remains visible throughout the application.
+- **Zero Route Sliding**: Route transitions slide only foreground UI content (cards, headers, list items); the root background remains anchored and stationary, eliminating visual cut-off seams.
+
+### 8.2 Ambient Lighting Architecture (`LocalAmbientLighting` & `RememberAmbientLighting`)
+Located in `ui/components/AmbientLighting.kt`:
+- **Decoupled Ambient Rendering**: Drill-down screens (`DomainDrillDown`, `RssFeedDrillDown`, `CollectionDrillDown`) and `BookmarkDetailScreen` do not draw full-screen ambient lighting boxes. Instead, they publish their active color via `RememberAmbientLighting(color)` to `LocalAmbientLighting`.
+- **Smooth In-Place Morphing**: `TidiloBackground` observes `LocalAmbientLighting.current.effectiveActiveColor`, resolves it through `LocalAppThemeStyle.current.resolveColor(...)`, and animates color transitions in-place with `animateColorAsState(tween(350, easing = EaseInOutCubic))`.
+- **Automatic Lifecycle Cleanup**: When a drill-down or detail screen leaves composition, `RememberAmbientLighting` resets the active color on disposal via `DisposableEffect`.
+
+### 8.3 Unified Theme Style Contract (`AppThemeStyle` & `ThemeColorRole`)
+Located in `ui/theme/AppThemeStyle.kt`:
+- **Theme Specification**: `AppThemeStyle` specifies `theme: AppTheme`, `colorRole: ThemeColorRole` (`ACCENT`, `PRIMARY`, `SECONDARY`, `TERTIARY`), and surface blur radii: `cardBlurRadius`, `floatingBarBlurRadius`, and `headerBlurRadius`.
+- **Zero-Cost Blur Bypass**: `Modifier.themeSurfaceBlur(blurRadius: Dp)` directly returns `this` when `blurRadius <= 0.dp`, ensuring `AppTheme.DEFAULT` introduces zero offscreen render passes or graphics layers.
+- **Comprehensive Pre-Wiring**: Applied across all surface types (`FrostedHeaderContainer`, `TidiloBottomBar`, `AiProcessingIndicator`, `BookmarkDetailScreen` floating toolbar, `BookmarkCard`, `BookmarkGridCard`, `CollectionCard`, `DomainCard`). Adding future themes requires zero layout adjustments.

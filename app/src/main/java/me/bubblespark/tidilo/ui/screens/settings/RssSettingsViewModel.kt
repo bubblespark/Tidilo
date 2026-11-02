@@ -41,7 +41,10 @@ internal fun manualFetchStatus(states: List<WorkInfo.State>): ManualFetchStatus 
     else -> ManualFetchStatus.Idle
 }
 
-class RssSettingsViewModel(application: Application, private val savedState: androidx.lifecycle.SavedStateHandle) : AndroidViewModel(application) {
+class RssSettingsViewModel(
+    application: Application,
+    private val savedState: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle()
+) : AndroidViewModel(application) {
     private val repository = RssRepository.getInstance(application)
     private val preferences = RssPreferences.getInstance(application)
     val settings = preferences.state

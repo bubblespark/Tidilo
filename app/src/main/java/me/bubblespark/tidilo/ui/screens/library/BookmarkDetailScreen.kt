@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.components.LocalAmbientLighting
 import me.bubblespark.tidilo.ui.components.RememberAmbientLighting
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
@@ -210,11 +211,16 @@ fun BookmarkDetailScreen(
     val hasChanges = noteText != edit.originalNote || editedTag != edit.originalTag ||
         editedIsNsfw != edit.originalNsfw || pendingReplacements.isNotEmpty()
 
+    val ambientLighting = LocalAmbientLighting.current
     fun requestExit(toCollections: Boolean = false) {
         if (isSaving) return
         discardToCollections = toCollections
-        if (hasChanges) showDiscardConfirmDialog = true
-        else if (toCollections) onOpenCollections() else onNavigateBack()
+        if (hasChanges) {
+            showDiscardConfirmDialog = true
+        } else {
+            ambientLighting.removeAmbientColor("bookmark_detail")
+            if (toCollections) onOpenCollections() else onNavigateBack()
+        }
     }
     if (showCollectionMembership) CollectionMembershipBottomSheet(bookmark.id,
         onDismiss = { showCollectionMembership = false },
@@ -431,6 +437,7 @@ fun BookmarkDetailScreen(
                                 showDiscardConfirmDialog = false
                                 val toCollections = discardToCollections
                                 discardToCollections = false
+                                ambientLighting.removeAmbientColor("bookmark_detail")
                                 if (toCollections) onOpenCollections() else onNavigateBack()
                             }
                         ) {

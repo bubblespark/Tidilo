@@ -215,6 +215,7 @@ fun TidiloApp(
     val filterMode by libraryViewModel.filterMode.collectAsStateWithLifecycle()
     val selectedDomainFilter by libraryViewModel.selectedDomainFilter.collectAsStateWithLifecycle()
     val selectedRssFeedFilter by libraryViewModel.selectedRssFeedFilter.collectAsStateWithLifecycle()
+    val selectedCollectionId by libraryViewModel.selectedCollectionId.collectAsStateWithLifecycle()
 
     // Header and navigation bar visibility state
     var isBarsVisible by remember { mutableStateOf(true) }
@@ -280,7 +281,17 @@ fun TidiloApp(
     }
 
     val ambientLightingState = remember { AmbientLightingState() }
-    val isAmbientRoute = currentRoute == Screen.Library.route || currentRoute?.startsWith(Screen.BookmarkDetail.route) == true
+    val isLibraryDrillDown = when (filterMode) {
+        me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.COLLECTION -> selectedCollectionId != null
+        me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.RSS -> selectedRssFeedFilter != null
+        me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.DOMAIN -> selectedDomainFilter != null
+        me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.NEWEST_FIRST -> false
+    }
+    val isAmbientRoute = when {
+        currentRoute?.startsWith(Screen.BookmarkDetail.route) == true -> true
+        currentRoute == Screen.Library.route -> isLibraryDrillDown
+        else -> false
+    }
     ambientLightingState.isDestinationAllowed = isAmbientRoute
 
     CompositionLocalProvider(

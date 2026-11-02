@@ -1,7 +1,9 @@
 package me.bubblespark.tidilo.data.rss
 
+import java.io.EOFException
 import java.io.IOException
 import java.net.ConnectException
+import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import javax.net.ssl.SSLHandshakeException
@@ -15,6 +17,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RssRepositoryErrorDetailTest {
+
+    private fun handshakeException(message: String, cause: Throwable? = null): SSLHandshakeException {
+        return SSLHandshakeException(message).apply { cause?.let { initCause(it) } }
+    }
 
     @Test
     fun rssErrorDetailFormatsHttpFailuresCorrectly() {
@@ -55,6 +61,9 @@ class RssRepositoryErrorDetailTest {
         assertEquals("Hostname mismatch", rssErrorDetail(SSLPeerUnverifiedException("Hostname mismatch")))
         assertEquals("Cert path validator failed", rssErrorDetail(SSLException("Handshake error", SSLHandshakeException("Cert path validator failed"))))
         assertEquals("SSL handshake failed", rssErrorDetail(SSLException("Handshake error", SSLHandshakeException(""))))
+        assertEquals("Handshake failed due to EOF", rssErrorDetail(handshakeException("Handshake failed due to EOF", EOFException())))
+        assertEquals("Connection closed unexpectedly", rssErrorDetail(EOFException()))
+        assertEquals("Handshake failed", rssErrorDetail(handshakeException("Handshake failed", SocketException("Connection reset by peer"))))
     }
 
     @Test
@@ -82,6 +91,10 @@ class RssRepositoryErrorDetailTest {
         assertTrue(isTransientRssError(IOException("Network error", SocketTimeoutException())))
         assertTrue(isTransientRssError(IOException("Connection error", java.net.SocketException("Broken pipe"))))
         assertTrue(isTransientRssError(IOException("SSL error", SSLException("Connection reset"))))
+        assertTrue(isTransientRssError(handshakeException("Handshake failed due to EOF", EOFException())))
+        assertTrue(isTransientRssError(handshakeException("Handshake failed due to EOF", EOFException("Connection closed"))))
+        assertTrue(isTransientRssError(handshakeException("Handshake failed", SocketException("Connection reset by peer"))))
+        assertTrue(isTransientRssError(IOException("Network error", handshakeException("Handshake failed", EOFException()))))
     }
 
     @Test
@@ -142,6 +155,18 @@ class RssRepositoryErrorDetailTest {
         assertFalse(updated.enabled)
         assertEquals("Cert expired", updated.error)
         assertEquals(4L, updated.revision)
+        assertFalse(updated.acquisitionXmlDone)
+    }
+
+    @Test
+    fun sslHandshakeInterruptionPreservesFeedEnabledStatus() {
+        val feed = RssFeedEntity("feed-1", "https://example.com/rss", "Sample Feed", revision = 3, enabled = true)
+        val now = 5000L
+        val updated = applyRssFetchFailure(feed, handshakeException("Handshake failed due to EOF", EOFException()), now)
+        assertTrue(updated.enabled)
+        assertEquals("Handshake failed due to EOF", updated.error)
+        assertEquals(now, updated.lastAttemptAt)
+        assertEquals(3L, updated.revision)
         assertFalse(updated.acquisitionXmlDone)
     }
 }

@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.data.rss
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import me.bubblespark.tidilo.parser.RssFeedDocument
 import me.bubblespark.tidilo.parser.RssFeedParser
+import java.io.EOFException
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
 import javax.net.ssl.SSLException
@@ -31,8 +32,11 @@ internal class RssHttpFailure(val code: Int) : java.io.IOException("HTTP $code")
 
 internal fun rssErrorDetail(error: Throwable): String {
     val chain = generateSequence(error) { it.cause }
-    val certFailure = chain.firstOrNull {
-        it is SSLPeerUnverifiedException || it is SSLHandshakeException
+    val isInterrupted = chain.any { it is EOFException || it is java.net.SocketException || it is java.net.SocketTimeoutException }
+    val certFailure = if (!isInterrupted) {
+        chain.firstOrNull { it is SSLPeerUnverifiedException || it is SSLHandshakeException }
+    } else {
+        chain.firstOrNull { it is SSLPeerUnverifiedException }
     }
     val unwrapped = certFailure ?: chain.firstOrNull {
         it is RssHttpFailure ||
@@ -40,6 +44,7 @@ internal fun rssErrorDetail(error: Throwable): String {
         it is java.net.ConnectException ||
         it is java.net.SocketException ||
         it is java.net.UnknownHostException ||
+        it is EOFException ||
         it is SSLException
     } ?: error
 
@@ -51,6 +56,7 @@ internal fun rssErrorDetail(error: Throwable): String {
         is java.net.UnknownHostException -> unwrapped.message?.takeIf { it.isNotBlank() }?.let { "Unable to resolve host: $it" } ?: "Unable to resolve host"
         is SSLPeerUnverifiedException -> unwrapped.message?.takeIf { it.isNotBlank() } ?: "SSL certificate verification failed"
         is SSLHandshakeException -> unwrapped.message?.takeIf { it.isNotBlank() } ?: "SSL handshake failed"
+        is EOFException -> unwrapped.message?.takeIf { it.isNotBlank() } ?: "Connection closed unexpectedly"
         is SSLException -> unwrapped.message?.takeIf { it.isNotBlank() } ?: "SSL connection error"
         else -> unwrapped.message?.takeIf { it.isNotBlank() } ?: (unwrapped::class.java.simpleName.takeIf { it.isNotBlank() } ?: "Error")
     }
@@ -59,21 +65,23 @@ internal fun rssErrorDetail(error: Throwable): String {
 
 internal fun isTransientRssError(error: Throwable): Boolean {
     val chain = generateSequence(error) { it.cause }
-    if (chain.any { it is SSLHandshakeException || it is SSLPeerUnverifiedException }) {
+    if (chain.any { it is SSLPeerUnverifiedException }) {
+        return false
+    }
+    if (chain.any { it is EOFException || it is java.net.SocketException || it is java.net.SocketTimeoutException }) {
+        return true
+    }
+    if (chain.any { it is SSLHandshakeException }) {
         return false
     }
     val target = chain.firstOrNull {
-        it is java.net.SocketTimeoutException ||
         it is java.net.ConnectException ||
-        it is java.net.SocketException ||
         it is java.net.UnknownHostException ||
         it is SSLException ||
         it is RssHttpFailure
     } ?: error
     return when (target) {
-        is java.net.SocketTimeoutException,
         is java.net.ConnectException,
-        is java.net.SocketException,
         is java.net.UnknownHostException,
         is SSLException -> true
         is RssHttpFailure -> target.retryable

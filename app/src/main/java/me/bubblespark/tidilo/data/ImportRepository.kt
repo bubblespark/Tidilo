@@ -62,6 +62,16 @@ private val ACTIVE_QUEUE_STATUSES = setOf("READY", "WAITING_AI", "PROCESSING_AI"
 
 private class DirectBookmarkSaveFailure(val target: ImportTask, cause: Exception) : Exception(cause)
 
+private fun defaultCandidateExtractor(): EntityCandidateExtractor {
+    return runCatching {
+        val segmenter = IcuTextSegmenter()
+        segmenter.segment("test")
+        EntityCandidateExtractor(segmenter)
+    }.getOrElse {
+        EntityCandidateExtractor(StandardTextSegmenter())
+    }
+}
+
 class ImportRepository internal constructor(
     context: Context? = null,
     private val taskDao: ImportTaskDao = context?.let { AppDatabase.getInstance(it).importTaskDao() }
@@ -85,7 +95,8 @@ class ImportRepository internal constructor(
     } },
     private val reportAiCoreError: (Throwable, Int?) -> Unit = { error, code -> context?.let {
         me.bubblespark.tidilo.data.notifications.NotificationCoordinator.getInstance(it).aiCoreError(error, code)
-    } }
+    } },
+    private val candidateExtractor: EntityCandidateExtractor = defaultCandidateExtractor()
 ) {
 
     private val appContext: Context? = context?.applicationContext
@@ -316,7 +327,7 @@ class ImportRepository internal constructor(
                     val target = preparedImport?.copy(id = result.task.id, createdAt = result.task.createdAt)
                         ?: result.task.copy(rssFeedId = null).toImportTask()
                     val bookmark = skippedBookmark(target)
-                    persistDirectBookmark(target)
+                    persistDirectBookmark(target, bookmark)
                     taskDao.deleteById(target.id)
                     notificationDao?.insert(ImportNotificationEntity(type = NotificationType.INFO.name, domain = domain,
                         url = url, message = "Promoted from RSS to Library", existingBookmarkId = bookmark.id))
@@ -561,7 +572,7 @@ class ImportRepository internal constructor(
                     } else {
                         if (aiAnalysisMode() == AiAnalysisMode.DISABLE) {
                             val bookmark = skippedBookmark(newItem)
-                            persistDirectBookmark(newItem)
+                            persistDirectBookmark(newItem, bookmark)
                             outcome = ImportOutcome.BookmarkSaved(bookmark.id, bookmark.url)
                         } else {
                             taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
@@ -1056,18 +1067,36 @@ class ImportRepository internal constructor(
         return Companion.isFallbackApplicable(fallbackMode(), errorCode, throwable)
     }
 
-    private fun skippedBookmark(target: ImportTask): BookmarkItem = BookmarkItem(
-            id = target.id,
-            title = target.title,
-            url = target.url,
-            description = target.description,
-            tag = Tag.createEmpty(),
-            isNsfw = target.isNsfw,
-            isAiSkipped = true,
-            ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() },
-            createdAt = if (target.rssFeedId != null) target.createdAt else System.currentTimeMillis(),
-            rssFeedId = target.rssFeedId, rssPublishedAt = target.rssPublishedAt
-        )
+    private suspend fun resolveSkippedTag(target: ImportTask): Tag {
+        val dao = bookmarkDao ?: return Tag.createEmpty()
+        val candidateKeys = candidateExtractor.extractCandidateKeys(target.title, target.description)
+        if (candidateKeys.isEmpty()) return Tag.createEmpty()
+        val matched = try {
+            dao.findCanonicalEntitySpellings(candidateKeys)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            runCatching { Log.w("ImportRepository", "Entity matching failed; saving without entities", e) }
+            return Tag.createEmpty()
+        }
+        if (matched.isEmpty()) return Tag.createEmpty()
+        val entities = EntityTagPolicy.normalizeEntities(candidateKeys.mapNotNull { matched[it] })
+        return Tag.createEmpty().copy(entities = entities)
+    }
+
+    private suspend fun skippedBookmark(target: ImportTask): BookmarkItem = BookmarkItem(
+        id = target.id,
+        title = target.title,
+        url = target.url,
+        description = target.description,
+        tag = resolveSkippedTag(target),
+        isNsfw = target.isNsfw,
+        isAiSkipped = true,
+        ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() },
+        createdAt = if (target.rssFeedId != null) target.createdAt else System.currentTimeMillis(),
+        rssFeedId = target.rssFeedId,
+        rssPublishedAt = target.rssPublishedAt
+    )
 
     private fun cacheDirectOgImage(target: ImportTask) {
         val context = appContext ?: return
@@ -1081,9 +1110,9 @@ class ImportRepository internal constructor(
         }
     }
 
-    private suspend fun persistDirectBookmark(target: ImportTask) {
+    private suspend fun persistDirectBookmark(target: ImportTask, bookmark: BookmarkItem) {
         try {
-            persistFallback(skippedBookmark(target))
+            persistFallback(bookmark)
         } catch (e: CancellationException) { throw e }
         catch (e: me.bubblespark.tidilo.data.rss.RssImportSkipped) { throw e }
         catch (e: Exception) { throw DirectBookmarkSaveFailure(target, e) }
@@ -1145,7 +1174,7 @@ class ImportRepository internal constructor(
                 if (existing != null) {
                     if (target.rssFeedId == null && existing.rssFeedId != null) bookmarkDao.clearRssFeedId(existing.id)
                 } else {
-                    persistDirectBookmark(target)
+                    persistDirectBookmark(target, skippedBookmark(target))
                 }
                 taskDao.deleteById(target.id)
             }

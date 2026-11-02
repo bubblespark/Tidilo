@@ -353,57 +353,70 @@ fun BookmarkDetailScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.Bottom
             ) {
+                val toolbarShape = RoundedCornerShape(32.dp)
                 Surface(
-                    shape = RoundedCornerShape(32.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    shape = toolbarShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
                     tonalElevation = 6.dp,
-                    shadowElevation = 10.dp,
-                    modifier = Modifier.themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius)
+                    shadowElevation = 10.dp
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
-                            Icon(ImageVector.vectorResource(R.drawable.ic_delete),
-                                contentDescription = stringResource(R.string.detail_action_delete),
-                                tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
-                        }
-                        IconButton(onClick = { onNavigateToAiReview(bookmark.id) }, modifier = Modifier.size(54.dp)) {
-                            Icon(Icons.Default.AutoAwesome,
-                                contentDescription = stringResource(R.string.detail_action_ai_summary),
-                                modifier = Modifier.size(22.dp))
-                        }
-                        IconButton(onClick = { showCollectionMembership = true },
-                            modifier = Modifier.size(54.dp).semantics { selected = hasCollection }) {
-                            Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
-                                contentDescription = stringResource(R.string.bookmark_collection_action),
-                                tint = if (hasCollection) collectionMembershipColor(MaterialTheme.colorScheme.surfaceContainerHighest)
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(22.dp))
-                        }
-                        IconButton(onClick = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(54.dp)) {
-                            Icon(
-                                imageVector = if (bookmark.isLiked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
-                                contentDescription = stringResource(if (bookmark.isLiked) R.string.bookmark_unlike else R.string.bookmark_like),
-                                tint = if (bookmark.isLiked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(22.dp)
-                            )
+                    Box {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, toolbarShape)
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
+                                Icon(ImageVector.vectorResource(R.drawable.ic_delete),
+                                    contentDescription = stringResource(R.string.detail_action_delete),
+                                    tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
+                            }
+                            IconButton(onClick = { onNavigateToAiReview(bookmark.id) }, modifier = Modifier.size(54.dp)) {
+                                Icon(Icons.Default.AutoAwesome,
+                                    contentDescription = stringResource(R.string.detail_action_ai_summary),
+                                    modifier = Modifier.size(22.dp))
+                            }
+                            IconButton(onClick = { showCollectionMembership = true },
+                                modifier = Modifier.size(54.dp).semantics { selected = hasCollection }) {
+                                Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
+                                    contentDescription = stringResource(R.string.bookmark_collection_action),
+                                    tint = if (hasCollection) collectionMembershipColor(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(22.dp))
+                            }
+                            IconButton(onClick = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(54.dp)) {
+                                Icon(
+                                    imageVector = if (bookmark.isLiked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
+                                    contentDescription = stringResource(if (bookmark.isLiked) R.string.bookmark_unlike else R.string.bookmark_like),
+                                    tint = if (bookmark.isLiked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
                         }
                     }
                 }
                 Spacer(Modifier.width(10.dp))
+                val openButtonShape = RoundedCornerShape(16.dp)
                 Surface(
                     onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
-                    modifier = Modifier
-                        .size(54.dp)
-                        .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius),
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(54.dp),
+                    shape = openButtonShape,
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
                     shadowElevation = 4.dp
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(ImageVector.vectorResource(R.drawable.ic_open_in_browser),
-                            contentDescription = stringResource(R.string.bookmark_open_in_browser),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(22.dp))
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, openButtonShape)
+                        )
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(ImageVector.vectorResource(R.drawable.ic_open_in_browser),
+                                contentDescription = stringResource(R.string.bookmark_open_in_browser),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(22.dp))
+                        }
                     }
                 }
             }

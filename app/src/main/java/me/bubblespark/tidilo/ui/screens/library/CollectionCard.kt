@@ -181,7 +181,6 @@ private fun CollectionCardVisual(
                 .padding(end = stackOffset * 2)
                 .height(cardHeight)
                 .align(Alignment.BottomStart)
-                .themeSurfaceBlur(LocalAppThemeStyle.current.cardBlurRadius)
                 .clip(cardShape)
                 .combinedClickable(
                     role = Role.Button,
@@ -194,15 +193,20 @@ private fun CollectionCardVisual(
                     }
                 ),
             shape = cardShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = LocalAppThemeStyle.current.cardAlpha),
             border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.45f)),
             shadowElevation = 2.dp
         ) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(gradient)
+                modifier = Modifier.fillMaxSize()
             ) {
+                // Background surface blur + gradient wash layer behind content
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .themeSurfaceBlur(LocalAppThemeStyle.current.cardBlurRadius, cardShape)
+                        .background(gradient)
+                )
                 // Large background watermark in top-right shoulder
                 Box(
                     modifier = Modifier

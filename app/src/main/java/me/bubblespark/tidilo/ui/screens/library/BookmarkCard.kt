@@ -125,8 +125,7 @@ fun BookmarkItemCard(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .bookmarkCardLighting(cardStyle, cardShape)
-            .bookmarkCardSurfaceBlur(cardStyle),
+            .bookmarkCardLighting(cardStyle, cardShape),
         shape = cardShape, // M3 Expressive Large Rounding
         colors = CardDefaults.cardColors(
             containerColor = cardStyle.containerColor
@@ -139,8 +138,14 @@ fun BookmarkItemCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(cardShape)
-                .bookmarkCardSurfaceWash(cardStyle)
         ) {
+            // Background surface layer: isolated blur and surface wash behind content
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .bookmarkCardSurfaceBlur(cardStyle, cardShape)
+                    .bookmarkCardSurfaceWash(cardStyle)
+            )
             // Background watermark layer: domain icon (lightly displayed clipped in top-right)
             DomainWatermark(
                 domain = domain,

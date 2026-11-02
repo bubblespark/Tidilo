@@ -65,4 +65,33 @@ class BookmarkCardBlurStyleTest {
         val resultModifier = initialModifier.bookmarkCardSurfaceBlur(style)
         assertNotSame(initialModifier, resultModifier)
     }
+    @Test
+    fun bookmarkCardSurfaceBlur_withShape_positiveBlur_appliesModifier() {
+        val style = BookmarkCardStyle(
+            containerColor = Color.White,
+            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
+            surfaceWash = null,
+            ambientShadowColor = Color.Transparent,
+            spotShadowColor = Color.Transparent,
+            blurRadius = 16.dp
+        )
+        val initialModifier = Modifier
+        val resultModifier = initialModifier.bookmarkCardSurfaceBlur(style, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+        assertNotSame(initialModifier, resultModifier)
+    }
+
+    @Test
+    fun bookmarkCardSurfaceBlur_withShape_zeroBlur_returnsSameModifier() {
+        val style = BookmarkCardStyle(
+            containerColor = Color.White,
+            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
+            surfaceWash = null,
+            ambientShadowColor = Color.Transparent,
+            spotShadowColor = Color.Transparent,
+            blurRadius = 0.dp
+        )
+        val initialModifier = Modifier
+        val resultModifier = initialModifier.bookmarkCardSurfaceBlur(style, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+        assertSame(initialModifier, resultModifier)
+    }
 }

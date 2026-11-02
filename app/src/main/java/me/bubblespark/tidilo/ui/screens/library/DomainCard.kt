@@ -163,11 +163,10 @@ internal fun LibraryDeckCard(
                 .fillMaxWidth()
                 .padding(end = stackOffset * 2)
                 .height(cardHeight)
-                .align(Alignment.BottomStart)
-                .themeSurfaceBlur(LocalAppThemeStyle.current.cardBlurRadius),
+                .align(Alignment.BottomStart),
             shape = cardShape,
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = LocalAppThemeStyle.current.cardAlpha)
             ),
             border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.42f)),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -176,18 +175,24 @@ internal fun LibraryDeckCard(
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(cardShape)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                dominantColor.copy(alpha = 0.32f),
-                                dominantColor.copy(alpha = 0.10f),
-                                Color.Transparent
-                            ),
-                            start = Offset(450f, 0f),
-                            end = Offset(0f, 350f)
-                        )
-                    )
             ) {
+                // Background surface blur + gradient wash layer behind content
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .themeSurfaceBlur(LocalAppThemeStyle.current.cardBlurRadius, cardShape)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    dominantColor.copy(alpha = 0.32f),
+                                    dominantColor.copy(alpha = 0.10f),
+                                    Color.Transparent
+                                ),
+                                start = Offset(450f, 0f),
+                                end = Offset(0f, 350f)
+                            )
+                        )
+                )
                 // Background watermark layer: domain icon nestled in the glowing top-right shoulder
                 watermark(
                     Modifier

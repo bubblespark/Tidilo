@@ -3,6 +3,8 @@ package me.bubblespark.tidilo.ui.theme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
@@ -68,5 +70,13 @@ val LocalAppThemeStyle = staticCompositionLocalOf { AppThemeStyle.Default }
  * When [blurRadius] is 0.dp (as in AppTheme.DEFAULT), returns `this` directly
  * with zero allocation, no modifier nodes, and no GPU offscreen passes.
  */
-fun Modifier.themeSurfaceBlur(blurRadius: Dp): Modifier =
-    if (blurRadius > 0.dp) blur(blurRadius) else this
+fun Modifier.themeSurfaceBlur(blurRadius: Dp, shape: Shape? = null): Modifier =
+    if (blurRadius > 0.dp) {
+        if (shape != null) {
+            blur(blurRadius, edgeTreatment = BlurredEdgeTreatment(shape))
+        } else {
+            blur(blurRadius)
+        }
+    } else {
+        this
+    }

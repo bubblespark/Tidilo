@@ -82,4 +82,17 @@ class AppThemeStyleTest {
         val style = AppThemeStyle(AppTheme.DEFAULT, colorRole = ThemeColorRole.TERTIARY)
         assertEquals(Color.Blue, style.resolveColor(scheme, Color.Magenta))
     }
+    @Test
+    fun themeSurfaceBlur_withShape_positiveBlur_appliesModifier() {
+        val initialModifier = Modifier
+        val resultModifier = initialModifier.themeSurfaceBlur(16.dp, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+        assertNotSame(initialModifier, resultModifier)
+    }
+
+    @Test
+    fun themeSurfaceBlur_withShape_zeroBlur_returnsSameModifier() {
+        val initialModifier = Modifier
+        val resultModifier = initialModifier.themeSurfaceBlur(0.dp, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+        assertSame(initialModifier, resultModifier)
+    }
 }

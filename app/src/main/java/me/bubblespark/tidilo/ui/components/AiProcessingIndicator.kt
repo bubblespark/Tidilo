@@ -270,9 +270,10 @@ fun AiProcessingSpeechBubble(
         modifier = modifier.width(bubbleWidth)
     ) {
         // Main bubble card body
+        val bubbleShape = RoundedCornerShape(16.dp)
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = surfaceColor,
+            shape = bubbleShape,
+            color = surfaceColor.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
             tonalElevation = 6.dp,
             shadowElevation = 10.dp,
             border = BorderStroke(
@@ -281,8 +282,7 @@ fun AiProcessingSpeechBubble(
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(bubbleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = ripple(color = MaterialTheme.colorScheme.primary),
@@ -292,11 +292,17 @@ fun AiProcessingSpeechBubble(
                     }
                 )
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp)
-            ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, bubbleShape)
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                ) {
                 // Title row with AI sparkling icon and Cancel '×' button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -419,6 +425,7 @@ fun AiProcessingSpeechBubble(
                         modifier = Modifier.size(13.dp)
                     )
                 }
+            }
             }
         }
 

@@ -1,5 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.material3.MaterialTheme
@@ -31,15 +34,16 @@ internal data class BookmarkCardStyle(
 
 @Composable
 internal fun rememberBookmarkCardStyle(darkContainerColor: Color): BookmarkCardStyle {
+    val themeStyle = LocalAppThemeStyle.current
     val providedAccent = LocalCardAccentColor.current
     val accent = if (providedAccent == Color.Unspecified) MaterialTheme.colorScheme.primary else providedAccent
     // Follow the applied color scheme, including explicit preview/test theme overrides.
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    return remember(accent, dark, darkContainerColor) {
+    return remember(accent, dark, darkContainerColor, themeStyle.cardBlurRadius, themeStyle.cardAlpha) {
         BookmarkCardStyle(
             // Intentional exceptions per docs/ui_design.md: white surfaces and black contact shadows
             // preserve crisp contrast without muddy coloration under tinted ambient beams.
-            containerColor = if (dark) darkContainerColor else Color.White,
+            containerColor = (if (dark) darkContainerColor else Color.White).copy(alpha = themeStyle.cardAlpha),
             rim = Brush.linearGradient(
                 colors = listOf(accent.copy(alpha = if (dark) 0.65f else 0.38f),
                     accent.copy(alpha = if (dark) 0.05f else 0.04f)),
@@ -53,7 +57,7 @@ internal fun rememberBookmarkCardStyle(darkContainerColor: Color): BookmarkCardS
             ),
             ambientShadowColor = accent.copy(alpha = 0.25f),
             spotShadowColor = if (dark) accent.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.10f),
-            blurRadius = 0.dp
+            blurRadius = themeStyle.cardBlurRadius
         )
     }
 }
@@ -74,9 +78,5 @@ internal fun Modifier.bookmarkCardSurfaceWash(style: BookmarkCardStyle): Modifie
  * Applies surface blur conditionally if [style.blurRadius] is greater than 0.dp.
  * Completely bypassed when blurRadius is 0.dp to ensure zero performance overhead for DEFAULT theme.
  */
-internal fun Modifier.bookmarkCardSurfaceBlur(style: BookmarkCardStyle): Modifier =
-    if (style.blurRadius > 0.dp) {
-        blur(style.blurRadius)
-    } else {
-        this
-    }
+internal fun Modifier.bookmarkCardSurfaceBlur(style: BookmarkCardStyle, shape: Shape? = null): Modifier =
+    themeSurfaceBlur(style.blurRadius, shape)

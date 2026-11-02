@@ -107,7 +107,6 @@ fun BookmarkGridCard(
         modifier = modifier
             .fillMaxWidth()
             .bookmarkCardLighting(cardStyle, cardShape)
-            .bookmarkCardSurfaceBlur(cardStyle)
             .clip(cardShape)
             .combinedClickable(
                 onClick = onClick,
@@ -119,7 +118,16 @@ fun BookmarkGridCard(
         color = cardStyle.containerColor,
         tonalElevation = 0.dp
     ) {
-        Column(modifier = Modifier.fillMaxWidth().bookmarkCardSurfaceWash(cardStyle)) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // Background surface layer: isolated blur and surface wash behind content
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .bookmarkCardSurfaceBlur(cardStyle, cardShape)
+                    .bookmarkCardSurfaceWash(cardStyle)
+            )
+
+            Column(modifier = Modifier.fillMaxWidth()) {
             // 1. Top Image Area (Aspect Ratio 16:9)
             Box(
                 modifier = Modifier
@@ -235,6 +243,7 @@ fun BookmarkGridCard(
                     maxLines = 1
                 )
             }
+        }
         }
     }
 }

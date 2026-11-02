@@ -16,6 +16,7 @@ import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.db.BookmarkDao
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.BookmarkEntityOccurrence
+import me.bubblespark.tidilo.data.db.BookmarkEntitySpelling
 import me.bubblespark.tidilo.data.db.DomainCount
 import me.bubblespark.tidilo.data.db.ImportNotificationDao
 import me.bubblespark.tidilo.data.db.ImportNotificationEntity
@@ -140,6 +141,16 @@ class ImportDuplicateRejectionTest {
         override suspend fun updateEntityRows(rows: List<me.bubblespark.tidilo.data.db.BookmarkEntityTagUpdate>) {}
         override suspend fun canonicalEntityValue(skeletonKey: String): String? =
             bookmarks.values.flatMap { it.entities }.firstOrNull { entitySkeletonKey(it) == skeletonKey }
+
+        override suspend fun findSpellingsForKeys(keys: List<String>): List<BookmarkEntitySpelling> {
+            val keySet = keys.toSet()
+            return bookmarks.values.flatMap { bookmark ->
+                bookmark.entities.mapNotNull { entity ->
+                    val key = entitySkeletonKey(entity)
+                    if (key in keySet) BookmarkEntitySpelling(key, entity) else null
+                }
+            }
+        }
 
         public override suspend fun insertRow(bookmark: BookmarkEntity) {
             bookmarks[bookmark.id] = bookmark

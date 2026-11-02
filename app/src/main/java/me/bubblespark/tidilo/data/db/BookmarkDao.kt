@@ -65,6 +65,19 @@ abstract class BookmarkDao {
     @Query("SELECT value FROM bookmark_entities WHERE skeletonKey = :skeletonKey ORDER BY bookmarkId, position LIMIT 1")
     abstract suspend fun canonicalEntityValue(skeletonKey: String): String?
 
+    @Query("SELECT skeletonKey, value FROM bookmark_entities WHERE skeletonKey IN (:keys) ORDER BY bookmarkId, position")
+    abstract suspend fun findSpellingsForKeys(keys: List<String>): List<BookmarkEntitySpelling>
+
+    /** Returns skeletonKey -> canonical display value; first row per key wins, like [canonicalEntityValue]. */
+    open suspend fun findCanonicalEntitySpellings(keys: Collection<String>): Map<String, String> {
+        if (keys.isEmpty()) return emptyMap()
+        val result = mutableMapOf<String, String>()
+        keys.chunked(500).forEach { chunk ->
+            for (row in findSpellingsForKeys(chunk)) result.putIfAbsent(row.skeletonKey, row.value)
+        }
+        return result
+    }
+
     /** Resolves already-cleaned display values; never strip a canonical leading hash again. */
     @Transaction
     open suspend fun canonicalizeEntities(entities: List<String>): List<String> =
@@ -236,6 +249,9 @@ abstract class BookmarkDao {
 
 /** Narrow projection for targeted entity rewrites; no bookmark content is loaded. */
 data class BookmarkEntityTags(val id: String, val entities: List<String>)
+
+/** Narrow projection for bulk entity spelling lookup; no bookmark content is loaded. */
+data class BookmarkEntitySpelling(val skeletonKey: String, val value: String)
 
 /** Partial Room update preserves every column unrelated to entity spelling. */
 data class BookmarkEntityTagUpdate(val id: String, val entities: List<String>, val updatedAt: Long)

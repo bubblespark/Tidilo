@@ -86,6 +86,17 @@ Detail Save accepts already-cleaned display values and a replacement map keyed b
 
 `bookmark_entities.skeletonKey` supports identity lookup and bulk replacement only. Literal tag selection, substring search, and counts continue to use `searchValue` and canonical display values; global text search does not adopt skeleton matching. Room invalidation refreshes results and aggregates after a rename. The conflict lookup independently observes all active entities, regardless of Library source, query, or NSFW visibility.
 
+### Non-AI save entity matching via skeleton keys
+
+When a bookmark is saved without AI classification (AI disabled in settings, AICore error fallback, direct save from share/queue, or RSS item promotion), existing entity tags already present in the library are automatically attached based on exact skeleton-key matching against the bookmark's title and description:
+
+- **Candidate extraction**: Uses ICU `BreakIterator` (word instance with `ULocale.ROOT`, falling back to Java `BreakIterator` in non-Android JVM test environments) via `TextSegmenter`. Whitespace and punctuation tokens are dropped, retaining only tokens containing letters or digits. Sliding windows spanning 1 to 6 tokens (`MAX_WINDOW = 6`) are concatenated without delimiters (`joinToString("")`) and mapped to skeleton keys via `entitySkeletonKey`.
+- **Extraction bounds**: Title and description text are truncated to the first 1,000 characters (`MAX_DESCRIPTION_CHARS = 1000`). Tokenization is bounded to at most 300 tokens per section (`MAX_TOKENS_PER_SECTION = 300`) for title and description. Candidate key generation terminates as soon as 500 distinct candidate keys (`MAX_CANDIDATE_KEYS = 500`) are collected.
+- **Chunked indexed lookup**: Candidate skeleton keys are queried against the indexed `bookmark_entities.skeletonKey` table using `BookmarkDao.findCanonicalEntitySpellings` in chunks of 500 keys, avoiding SQLite parameter limits.
+- **Determinism & ordering**: Candidates are evaluated in deterministic priority order: title tokens are processed before description tokens; at each token start position, longer windows (6 down to 1) take precedence over shorter windows. For each matching skeleton key, the canonical display spelling is resolved from the earliest occurrence in the library (`ORDER BY bookmarkId, position`, first row wins). Matched tags are deduplicated and bounded to at most 10 entities via `EntityTagPolicy.normalizeEntities`. Category and subcategory remain `null` (AI skipped).
+- **Graceful degradation**: If candidate extraction or database lookup encounters an exception, the error is logged and the bookmark is safely saved without entities (`Tag.createEmpty()`).
+- **Known limitation**: Symbol-bearing tags (such as `C++`, `C#`, or `.NET`) are not matched by their full text. ICU `BreakIterator` discards their symbol tokens before sliding-window concatenation, so text such as `C++` can instead match an existing `C` tag.
+
 
 ### 1.3 `TrashedBookmarkItem`
 Located in `ui/screens/library/BookmarkItem.kt`:

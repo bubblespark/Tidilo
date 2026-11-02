@@ -238,4 +238,26 @@ class EntityCanonicalizationRoomTest {
             assertStored(db, "last", listOf("GitHub") + (1..9).map { "Entity $it" })
         } finally { db.close() }
     }
+
+    @Test fun bulkSkeletonKeyLookupUsesIndexAndPicksFirstRowSpelling() = runBlocking {
+        val db = database()
+        try {
+            val dao = db.bookmarkDao()
+            dao.insertAll(listOf(
+                row("bm1", "Kotlin", "Room"),
+                row("bm2", "kot-lin", "Android")
+            ))
+            val sql = db.openHelper.readableDatabase
+            val plan = sql.query("EXPLAIN QUERY PLAN SELECT skeletonKey, value FROM bookmark_entities WHERE skeletonKey IN ('kotlin', 'room') ORDER BY bookmarkId, position").use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.getString(3)) }.joinToString("; ")
+            }
+            assertTrue(plan, plan.contains("index_bookmark_entities_skeletonKey"))
+
+            val spellings = dao.findCanonicalEntitySpellings(listOf("kotlin", "room", "missing"))
+            assertEquals(2, spellings.size)
+            assertEquals("Kotlin", spellings["kotlin"])
+            assertEquals("Room", spellings["room"])
+            assertNull(spellings["missing"])
+        } finally { db.close() }
+    }
 }

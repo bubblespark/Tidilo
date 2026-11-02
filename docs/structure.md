@@ -27,9 +27,11 @@ app/src/main/java/com/ykgudev/tidilo/
 │   ├── BookmarkRepository.kt            # Bookmark CRUD, Trash lifecycle (30-day, 100-cap), JSON serialization
 │   ├── DomainIconManager.kt             # Shared on-demand domain icon recovery, caching, color, and transparency
 │   ├── DomainIconResolver.kt            # Prioritized HTML discovery and short-circuit icon selection
+│   ├── EntityCandidateExtractor.kt      # Sliding-window candidate key extraction from title and description
 │   ├── EntityTagPolicy.kt               # Shared entity-tag normalization, deduplication, and bounds policy
 │   ├── QueueRepository.kt               # Queue state machine (Running, Queuing, Error, Completed), Mutex
-│   └── Taxonomy.kt                      # 7 Top-Level Categories & 11 Subcategories definition and i18n
+│   ├── Taxonomy.kt                      # 7 Top-Level Categories & 11 Subcategories definition and i18n
+│   └── TextSegmenter.kt                 # ICU/standard BreakIterator word token segmenter for entity matching
 │
 ├── parser/                              # Web extraction and DOM analysis engine
 │   ├── WebPageData.kt                   # Data models: ParsedWebPage, WebMetaTag, JsonLdItem, ExtractedArticle
@@ -104,6 +106,7 @@ app/src/main/java/com/ykgudev/tidilo/
 - Single source of truth for all business entities (`BookmarkItem`, `QueueItem`).
 - Owns persistent storage operations, in-memory caching via `StateFlow`, concurrency synchronization (`Mutex`), and schema migrations.
 - `AiProcessingWorker.kt` owns the persistent sequential import worker, retained wake-up signals, and session resource lifecycle; `ImportRepository` supplies Room task selection, inference, and error recovery.
+- `TextSegmenter.kt` and `EntityCandidateExtractor.kt` extract candidate skeleton keys from title and description via ICU `BreakIterator` sliding windows to match existing library entity tags on non-AI saves.
 - **Rule**: Repositories must never reference Compose APIs or Android Activities.
 
 ### `me.bubblespark.tidilo.parser`

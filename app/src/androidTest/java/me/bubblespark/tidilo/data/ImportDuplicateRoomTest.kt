@@ -227,6 +227,7 @@ class ImportDuplicateRoomTest {
         override suspend fun deleteOccurrences(id: String) = error("Unused primitive")
         override suspend fun deleteOccurrencesForBookmarks(bookmarkIds: List<String>) = error("Unused primitive")
         override suspend fun canonicalEntityValue(skeletonKey: String): String? = delegate.canonicalEntityValue(skeletonKey)
+        override suspend fun findSpellingsForKeys(keys: List<String>): List<me.bubblespark.tidilo.data.db.BookmarkEntitySpelling> = delegate.findSpellingsForKeys(keys)
         override suspend fun entityRowsForReplacement(skeletonKey: String, afterId: String?): List<BookmarkEntityTags> = error("Unused primitive")
         override suspend fun updateEntityRows(rows: List<me.bubblespark.tidilo.data.db.BookmarkEntityTagUpdate>) = error("Unused primitive")
         override suspend fun updateNote(id: String, note: String, updatedAt: Long) = delegate.updateNote(id, note, updatedAt)

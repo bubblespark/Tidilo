@@ -2,11 +2,14 @@ package me.bubblespark.tidilo.ui.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.Color
 
 /**
@@ -115,15 +118,57 @@ val LocalAmbientLighting = compositionLocalOf { AmbientLightingState() }
  * and safely removes only this owner's request upon leaving composition.
  */
 @Composable
-fun RememberAmbientLighting(
+fun AmbientLightingEffect(
     color: Color?,
     ownerId: String = AmbientLightingState.DEFAULT_OWNER
 ) {
     val lightingState = LocalAmbientLighting.current
-    DisposableEffect(ownerId, color) {
+    DisposableEffect(lightingState, ownerId, color) {
         lightingState.setAmbientColor(ownerId, color)
         onDispose {
             lightingState.removeAmbientColor(ownerId)
         }
     }
 }
+
+/**
+ * Publishes an ambient lighting [colorState] for [ownerId] to [LocalAmbientLighting] without reading
+ * the animated value in composition. Updates are collected via [snapshotFlow] to prevent recompositions,
+ * while disposal is keyed strictly on [ownerId] to prevent animation frame unregistration churn.
+ */
+@Composable
+fun AmbientLightingEffect(
+    colorState: State<Color>,
+    ownerId: String = AmbientLightingState.DEFAULT_OWNER
+) {
+    val lightingState = LocalAmbientLighting.current
+    DisposableEffect(lightingState, ownerId) {
+        onDispose {
+            lightingState.removeAmbientColor(ownerId)
+        }
+    }
+    LaunchedEffect(lightingState, ownerId, colorState) {
+        snapshotFlow { colorState.value }.collect { color ->
+            lightingState.setAmbientColor(ownerId, color)
+        }
+    }
+}
+
+/**
+ * Backward compatibility alias for [AmbientLightingEffect].
+ */
+@Composable
+fun RememberAmbientLighting(
+    color: Color?,
+    ownerId: String = AmbientLightingState.DEFAULT_OWNER
+) = AmbientLightingEffect(color, ownerId)
+
+/**
+ * Backward compatibility alias for [AmbientLightingEffect].
+ */
+@Composable
+fun RememberAmbientLighting(
+    colorState: State<Color>,
+    ownerId: String = AmbientLightingState.DEFAULT_OWNER
+) = AmbientLightingEffect(colorState, ownerId)
+

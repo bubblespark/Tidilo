@@ -27,6 +27,12 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import me.bubblespark.tidilo.config.AppTheme
+import me.bubblespark.tidilo.ui.components.AmbientLightingState
+import me.bubblespark.tidilo.ui.components.LocalAmbientLighting
+import me.bubblespark.tidilo.ui.components.TidiloBackground
+import me.bubblespark.tidilo.ui.theme.AppThemeStyle
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.MainActivity
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -71,13 +77,20 @@ class BookmarkDetailLightingTest {
             instrumentation.runOnMainSync {
                 val vm = ViewModelProvider(host)[LibraryViewModel::class.java]
                 host.setContent {
-                    CompositionLocalProvider(LocalDensity provides Density(context.resources.displayMetrics.density, fontScale)) {
-                    MaterialTheme(colorScheme = if (dark) darkColorScheme(background = Color(0xFF141414))
-                        else lightColorScheme(background = Color(0xFFF4F4F4))) {
-                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                            BookmarkDetailScreen(selected.value, vm, {})
+                    CompositionLocalProvider(
+                        LocalDensity provides Density(context.resources.displayMetrics.density, fontScale),
+                        LocalAmbientLighting provides remember { AmbientLightingState() },
+                        LocalAppThemeStyle provides AppThemeStyle.forTheme(AppTheme.DEFAULT)
+                    ) {
+                        MaterialTheme(
+                            colorScheme = if (dark) darkColorScheme(background = Color(0xFF141414))
+                            else lightColorScheme(background = Color(0xFFF4F4F4))
+                        ) {
+                            Box(Modifier.fillMaxSize()) {
+                                TidiloBackground(currentTheme = AppTheme.DEFAULT, modifier = Modifier.fillMaxSize())
+                                BookmarkDetailScreen(selected.value, vm, {})
+                            }
                         }
-                    }
                     }
                 }
             }

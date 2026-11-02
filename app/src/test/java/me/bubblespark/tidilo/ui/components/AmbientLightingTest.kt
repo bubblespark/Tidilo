@@ -99,4 +99,20 @@ class AmbientLightingTest {
         state.clear()
         assertNull(state.activeColor)
     }
+
+    @Test
+    fun removeAmbientColor_detailExitRestoresDrillDownColorImmediately() {
+        val state = AmbientLightingState()
+        // Library drilldown registers purple
+        state.setAmbientColor("library_drilldown", Color(0xFF8800FF))
+        assertEquals(Color(0xFF8800FF), state.effectiveActiveColor)
+
+        // Detail screen registers gold on top
+        state.setAmbientColor("bookmark_detail", Color(0xFFFFCC00))
+        assertEquals(Color(0xFFFFCC00), state.effectiveActiveColor)
+
+        // On exit, detail owner is removed immediately
+        state.removeAmbientColor("bookmark_detail")
+        assertEquals(Color(0xFF8800FF), state.effectiveActiveColor)
+    }
 }

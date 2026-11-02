@@ -1,7 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.ui.components.LocalAmbientLighting
-import me.bubblespark.tidilo.ui.components.RememberAmbientLighting
+import me.bubblespark.tidilo.ui.components.AmbientLightingEffect
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
@@ -59,15 +59,8 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.vector.ImageVector
 import me.bubblespark.tidilo.data.DomainIconManager
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.layout.ContentScale
 import me.bubblespark.tidilo.ui.components.DomainWatermark
 import me.bubblespark.tidilo.ui.components.calculateOgAspectRatio
@@ -269,8 +262,7 @@ fun BookmarkDetailScreen(
     val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
     val ogBitmap = ogState.bitmap
     val detailAccent = rememberDetailAccent(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
-    RememberAmbientLighting(detailAccent.value, ownerId = "bookmark_detail")
-    val bannerBounds = remember(bookmark.id, ogBitmap) { mutableStateOf<Rect?>(null) }
+    AmbientLightingEffect(detailAccent, ownerId = "bookmark_detail")
 
     TidiloScreenScaffold(
         modifier = modifier,
@@ -313,6 +305,7 @@ fun BookmarkDetailScreen(
                                 coroutineScope.launch {
                                     try {
                                         viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsNsfw, pendingReplacements)
+                                        ambientLighting.removeAmbientColor("bookmark_detail")
                                         onNavigateBack()
                                     } catch (e: Exception) {
                                         kotlinx.coroutines.currentCoroutineContext().ensureActive()
@@ -481,7 +474,10 @@ fun BookmarkDetailScreen(
                                 showDeleteConfirmDialog = false
                                 coroutineScope.launch {
                                     try {
-                                        if (viewModel.deleteBookmark(bookmark.id)) onNavigateBack()
+                                        if (viewModel.deleteBookmark(bookmark.id)) {
+                                            ambientLighting.removeAmbientColor("bookmark_detail")
+                                            onNavigateBack()
+                                        }
                                     } catch (e: Exception) {
                                         kotlinx.coroutines.currentCoroutineContext().ensureActive()
                                         Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
@@ -596,11 +592,7 @@ fun BookmarkDetailScreen(
         ) {
                 // Content container directly beneath HEADER (places DomainWatermark or og:image banner)
                 Box(
-                    modifier = Modifier.fillMaxWidth().onGloballyPositioned {
-                        if (ogBitmap == null) {
-                            bannerBounds.value = Rect(it.positionInRoot() + Offset(it.size.width.toFloat(), 0f), Size.Zero)
-                        }
-                    }
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     // Upper right domain watermark (rendered only when og:image is unavailable and resolution completed)
                     if (ogState.shouldShowDomainWatermarkFallback) {
@@ -629,9 +621,6 @@ fun BookmarkDetailScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(bannerHeight)
-                                        .onGloballyPositioned {
-                                            bannerBounds.value = Rect(it.positionInRoot(), Size(it.size.width.toFloat(), it.size.height.toFloat()))
-                                        }
                                         .detailBannerLight(detailAccent)
                                         .clip(RoundedCornerShape(16.dp))
                                 )

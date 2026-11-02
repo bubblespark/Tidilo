@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
@@ -32,11 +35,14 @@ fun TidiloBackground(
 ) {
     val themeStyle = LocalAppThemeStyle.current
     val lightingState = LocalAmbientLighting.current
+    var lastActiveColor by remember { mutableStateOf(Color.Transparent) }
     val rawColor = if (isDestinationAllowed) lightingState.effectiveActiveColor else null
     val targetColor = if (rawColor != null && rawColor != Color.Transparent) {
-        themeStyle.resolveColor(MaterialTheme.colorScheme, rawColor)
+        val resolved = themeStyle.resolveColor(MaterialTheme.colorScheme, rawColor)
+        lastActiveColor = resolved
+        resolved
     } else {
-        Color.Transparent
+        lastActiveColor.copy(alpha = 0f)
     }
     val animatedColor = animateColorAsState(
         targetValue = targetColor,

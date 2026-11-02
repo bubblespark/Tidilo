@@ -292,8 +292,12 @@ fun TidiloApp(
         currentRoute == Screen.Library.route -> isLibraryDrillDown
         else -> false
     }
+    val isDetailRoute = currentRoute == Screen.BookmarkDetail.route || currentRoute?.startsWith("bookmark_detail") == true
     SideEffect {
         ambientLightingState.isDestinationAllowed = isAmbientRoute
+        if (!isDetailRoute) {
+            ambientLightingState.removeAmbientColor("bookmark_detail")
+        }
     }
 
     CompositionLocalProvider(

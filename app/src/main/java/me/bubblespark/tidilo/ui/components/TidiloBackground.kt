@@ -27,17 +27,18 @@ import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 @Composable
 fun TidiloBackground(
     currentTheme: AppTheme,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isDestinationAllowed: Boolean = true
 ) {
     val themeStyle = LocalAppThemeStyle.current
     val lightingState = LocalAmbientLighting.current
-    val rawColor = lightingState.effectiveActiveColor
+    val rawColor = if (isDestinationAllowed) lightingState.effectiveActiveColor else null
     val targetColor = if (rawColor != null && rawColor != Color.Transparent) {
         themeStyle.resolveColor(MaterialTheme.colorScheme, rawColor)
     } else {
         Color.Transparent
     }
-    val animatedColor by animateColorAsState(
+    val animatedColor = animateColorAsState(
         targetValue = targetColor,
         animationSpec = tween(350, easing = EaseInOutCubic),
         label = "ambientLightingColor"
@@ -50,14 +51,15 @@ fun TidiloBackground(
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background)
                     .drawWithCache {
-                        if (animatedColor.alpha > 0.001f) {
+                        val currentColor = animatedColor.value
+                        if (currentColor.alpha > 0.001f) {
                             val ambientBeam = Brush.linearGradient(
                                 colorStops = arrayOf(
-                                    0.00f to animatedColor.copy(alpha = animatedColor.alpha * 0.32f),
-                                    0.22f to animatedColor.copy(alpha = animatedColor.alpha * 0.22f),
-                                    0.45f to animatedColor.copy(alpha = animatedColor.alpha * 0.13f),
-                                    0.68f to animatedColor.copy(alpha = animatedColor.alpha * 0.05f),
-                                    0.84f to animatedColor.copy(alpha = animatedColor.alpha * 0.015f),
+                                    0.00f to currentColor.copy(alpha = currentColor.alpha * 0.32f),
+                                    0.22f to currentColor.copy(alpha = currentColor.alpha * 0.22f),
+                                    0.45f to currentColor.copy(alpha = currentColor.alpha * 0.13f),
+                                    0.68f to currentColor.copy(alpha = currentColor.alpha * 0.05f),
+                                    0.84f to currentColor.copy(alpha = currentColor.alpha * 0.015f),
                                     1.00f to Color.Transparent
                                 ),
                                 start = Offset(size.width * 1.05f, -size.height * 0.02f),
@@ -65,10 +67,10 @@ fun TidiloBackground(
                             )
                             val cornerGlow = Brush.radialGradient(
                                 colorStops = arrayOf(
-                                    0.00f to animatedColor.copy(alpha = animatedColor.alpha * 0.22f),
-                                    0.30f to animatedColor.copy(alpha = animatedColor.alpha * 0.13f),
-                                    0.60f to animatedColor.copy(alpha = animatedColor.alpha * 0.05f),
-                                    0.82f to animatedColor.copy(alpha = animatedColor.alpha * 0.012f),
+                                    0.00f to currentColor.copy(alpha = currentColor.alpha * 0.22f),
+                                    0.30f to currentColor.copy(alpha = currentColor.alpha * 0.13f),
+                                    0.60f to currentColor.copy(alpha = currentColor.alpha * 0.05f),
+                                    0.82f to currentColor.copy(alpha = currentColor.alpha * 0.012f),
                                     1.00f to Color.Transparent
                                 ),
                                 center = Offset(size.width, 0f),

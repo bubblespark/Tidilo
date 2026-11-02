@@ -11,11 +11,9 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -60,41 +58,6 @@ internal fun rememberDetailAccent(
         }
     }
     animateColorAsState(color, tween(350, easing = EaseOutCubic), label = "detailAccent")
-}
-
-/** Bounds are measured in the same root coordinate space; scrolling only invalidates drawing. */
-internal fun Modifier.detailAmbientLight(
-    color: State<Color>,
-    bannerBounds: State<Rect?>,
-    hostOrigin: State<Offset>,
-    dark: Boolean,
-    showFallback: Boolean
-): Modifier = drawBehind {
-    val accent = color.value
-    val banner = bannerBounds.value
-    val center = if (banner != null) banner.center - hostOrigin.value else {
-        if (!showFallback) return@drawBehind
-        Offset(size.width, 0f)
-    }
-    val strength = if (showFallback) {
-        if (dark) 0.28f else 0.13f
-    } else {
-        if (dark) 0.16f else 0.07f
-    }
-    val downwashStrength = if (showFallback) 0.65f else 0.40f
-    drawRect(Brush.radialGradient(
-        0f to accent.copy(alpha = accent.alpha * strength),
-        0.55f to accent.copy(alpha = accent.alpha * strength * 0.45f),
-        1f to Color.Transparent,
-        center = center,
-        radius = size.height * 0.95f
-    ))
-    drawRect(Brush.linearGradient(
-        0f to accent.copy(alpha = accent.alpha * strength * downwashStrength),
-        0.55f to Color.Transparent,
-        start = center,
-        end = Offset(center.x, size.height * 0.90f)
-    ))
 }
 
 /**

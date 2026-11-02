@@ -288,11 +288,13 @@ fun TidiloApp(
         me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.NEWEST_FIRST -> false
     }
     val isAmbientRoute = when {
-        currentRoute?.startsWith(Screen.BookmarkDetail.route) == true -> true
+        currentRoute == Screen.BookmarkDetail.route || currentRoute?.startsWith("bookmark_detail") == true -> true
         currentRoute == Screen.Library.route -> isLibraryDrillDown
         else -> false
     }
-    ambientLightingState.isDestinationAllowed = isAmbientRoute
+    SideEffect {
+        ambientLightingState.isDestinationAllowed = isAmbientRoute
+    }
 
     CompositionLocalProvider(
         LocalBarsVisible provides isBarsVisible,
@@ -312,7 +314,8 @@ fun TidiloApp(
                 // Stationary centralized background layer
                 TidiloBackground(
                     currentTheme = currentTheme,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    isDestinationAllowed = isAmbientRoute
                 )
 
                 // Full-screen content layer extending edge-to-edge

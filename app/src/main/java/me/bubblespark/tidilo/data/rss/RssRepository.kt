@@ -198,8 +198,8 @@ internal class RssRepository internal constructor(private val context: Context,
                             Log.w("RssRepository", "Transient RSS fetch error for ${feed.url}: $readableError", e)
                             val now = System.currentTimeMillis()
                             db.withTransaction {
-                                dao.feed(feed.id)?.takeIf { !it.deleted && it.enabled && it.revision == feed.revision }?.let {
-                                    dao.putFeed(it.copy(lastAttemptAt = now, error = readableError, acquisitionXmlDone = false))
+                                dao.feed(feed.id)?.takeIf { !it.deleted && it.enabled && it.revision == feed.revision }?.let { current ->
+                                    dao.putFeed(applyRssFetchFailure(current, e, now))
                                 }
                             }
                             incomplete = true

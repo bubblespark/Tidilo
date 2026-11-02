@@ -379,7 +379,7 @@
     <string name="rss_initial_offline">A validated Internet connection is required to fetch now.</string>
     <string name="rss_later">Later</string>
     <string name="rss_xml_fetch_failed">Could not fetch feed XML. This feed was automatically disabled.</string>
-    <string name="rss_enable_to_retry">Enable this feed to try again on the next fetch.</string>
+
     <string name="rss_back_to_feeds">Back to feeds</string>
     <plurals name="rss_subtitle_feeds">
         <item quantity="one">%1$d feed</item>

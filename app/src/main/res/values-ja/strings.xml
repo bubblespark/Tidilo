@@ -377,7 +377,7 @@
     <string name="rss_initial_offline">今すぐ取得するにはインターネット接続が必要です。</string>
     <string name="rss_later">あとで</string>
     <string name="rss_xml_fetch_failed">フィードの取得に失敗したため、自動的に無効化されました。</string>
-    <string name="rss_enable_to_retry">次回の取得時に再試行するにはこのフィードを有効にしてください。</string>
+
     <string name="rss_back_to_feeds">フィード一覧に戻る</string>
     <plurals name="rss_subtitle_feeds">
         <item quantity="other">%1$d件のフィード</item>

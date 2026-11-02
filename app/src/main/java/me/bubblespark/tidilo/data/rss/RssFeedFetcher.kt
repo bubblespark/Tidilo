@@ -30,12 +30,14 @@ internal fun rssErrorDetail(error: Throwable): String {
     val unwrapped = generateSequence(error) { it.cause }.firstOrNull {
         it is RssHttpFailure ||
         it is java.net.SocketTimeoutException ||
+        it is java.net.ConnectException ||
         it is java.net.UnknownHostException
     } ?: error
 
     val detail = when (unwrapped) {
         is RssHttpFailure -> "HTTP ${unwrapped.code}"
         is java.net.SocketTimeoutException -> unwrapped.message?.takeIf { it.isNotBlank() } ?: "Connection timed out"
+        is java.net.ConnectException -> unwrapped.message?.takeIf { it.isNotBlank() } ?: "Connection failed"
         is java.net.UnknownHostException -> unwrapped.message?.takeIf { it.isNotBlank() }?.let { "Unable to resolve host: $it" } ?: "Unable to resolve host"
         else -> unwrapped.message?.takeIf { it.isNotBlank() } ?: (unwrapped::class.java.simpleName.takeIf { it.isNotBlank() } ?: "Error")
     }

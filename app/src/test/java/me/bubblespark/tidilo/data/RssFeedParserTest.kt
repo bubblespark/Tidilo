@@ -117,4 +117,49 @@ class RssFeedParserTest {
             catch (_: IllegalArgumentException) { }
         }
     }
+
+    @Test fun parsesFeedWithDocTypeSuccessfully() {
+        val xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE rss PUBLIC "-//Netscape Communications//DTD RSS 0.91//EN" "http://my.netscape.com/publish/formats/rss-0.91.dtd">
+            <rss version="0.91">
+              <channel>
+                <title>Netscape RSS</title>
+                <link>https://example.com/</link>
+                <item>
+                  <title>DocType Item</title>
+                  <link>https://example.com/item-doctype</link>
+                  <description>Description with DOCTYPE</description>
+                </item>
+              </channel>
+            </rss>
+        """.trimIndent()
+        val doc = RssFeedParser.parse(xml, "https://example.com/rss")
+        assertEquals("Netscape RSS", doc.title)
+        assertEquals(1, doc.entries.size)
+        assertEquals("DocType Item", doc.entries.first().title)
+        assertEquals("https://example.com/item-doctype", doc.entries.first().url)
+    }
+
+    @Test fun parsesFeedWithUnescapedAmpersandAndMinorXmlWarnings() {
+        val xml = """
+            <rss version="2.0">
+              <channel>
+                <title>AT&T News & Updates</title>
+                <link>https://example.com</link>
+                <item>
+                  <title>Q&A with CEO & Founders</title>
+                  <link>https://example.com/qa?a=1&b=2</link>
+                  <description>Unescaped & ampersands and <b>unclosed tag</description>
+                </item>
+              </channel>
+            </rss>
+        """.trimIndent()
+        val doc = RssFeedParser.parse(xml, "https://example.com/feed")
+        assertEquals("AT&T News & Updates", doc.title)
+        assertEquals(1, doc.entries.size)
+        val entry = doc.entries.first()
+        assertEquals("Q&A with CEO & Founders", entry.title)
+        assertEquals("https://example.com/qa?a=1&b=2", entry.url)
+    }
 }

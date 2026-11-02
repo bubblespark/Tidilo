@@ -385,7 +385,7 @@ class RssSettingsScreenTest {
                 }
             }
             node("Persistent XML failure") { it.text?.toString()?.contains("Could not fetch feed XML. This feed was automatically disabled.") == true }
-            node("Recovery instruction") { it.text?.toString()?.contains("Enable this feed to try again") == true }
+            assertNull(find { it.text?.toString()?.contains("Enable this feed to try again") == true })
             var enabled: AccessibilityNodeInfo? = node("Enabled switch") { it.contentDescription?.toString() == "Enabled" }
             while (enabled != null && !enabled.isCheckable) enabled = enabled.parent
             assertNotNull(enabled)

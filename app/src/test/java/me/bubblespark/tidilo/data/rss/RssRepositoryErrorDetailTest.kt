@@ -28,6 +28,14 @@ class RssRepositoryErrorDetailTest {
     }
 
     @Test
+    fun rssErrorDetailFormatsConnectExceptionCorrectly() {
+        assertEquals("Connection failed", rssErrorDetail(ConnectException()))
+        assertEquals("Connection failed", rssErrorDetail(ConnectException("")))
+        assertEquals("Connection refused", rssErrorDetail(ConnectException("Connection refused")))
+        assertEquals("Connection failed", rssErrorDetail(IOException("Wrapped", ConnectException())))
+    }
+
+    @Test
     fun rssErrorDetailFormatsUnknownHostExceptionCorrectly() {
         assertEquals("Unable to resolve host: example.com", rssErrorDetail(UnknownHostException("example.com")))
         assertEquals("Unable to resolve host", rssErrorDetail(UnknownHostException()))

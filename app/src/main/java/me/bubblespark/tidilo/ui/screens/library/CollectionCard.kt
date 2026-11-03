@@ -3,6 +3,8 @@ package me.bubblespark.tidilo.ui.screens.library
 import me.bubblespark.tidilo.ui.theme.CollectionColorPalette
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
+import androidx.compose.ui.graphics.luminance
+import me.bubblespark.tidilo.ui.theme.themeCardSurface
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -117,7 +119,10 @@ private fun CollectionCardVisual(
     onLongClick: (() -> Unit)? = null
 ) {
     val haptic = LocalHapticFeedback.current
+    val themeStyle = LocalAppThemeStyle.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val cardShape = remember { RoundedCornerShape(22.dp) }
+    val effectiveShape = themeStyle.cardStyle.shape ?: cardShape
     val stackOffset = 6.dp
     val cardHeight = (132 * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)).dp
     val dominantColor = item.accentColor
@@ -181,7 +186,8 @@ private fun CollectionCardVisual(
                 .padding(end = stackOffset * 2)
                 .height(cardHeight)
                 .align(Alignment.BottomStart)
-                .clip(cardShape)
+                .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, cardShape, MaterialTheme.colorScheme.surfaceContainerHigh)
+                .clip(effectiveShape)
                 .combinedClickable(
                     role = Role.Button,
                     onClick = onClick,
@@ -192,8 +198,8 @@ private fun CollectionCardVisual(
                         }
                     }
                 ),
-            shape = cardShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = LocalAppThemeStyle.current.cardAlpha),
+            shape = effectiveShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = themeStyle.cardAlpha),
             border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.45f)),
             shadowElevation = 2.dp
         ) {
@@ -204,7 +210,7 @@ private fun CollectionCardVisual(
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .themeSurfaceBlur(LocalAppThemeStyle.current.cardBlurRadius, cardShape)
+                        .themeSurfaceBlur(themeStyle.cardBlurRadius, effectiveShape)
                         .background(gradient)
                 )
                 // Large background watermark in top-right shoulder

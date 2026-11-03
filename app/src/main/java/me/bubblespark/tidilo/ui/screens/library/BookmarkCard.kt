@@ -46,6 +46,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeCardSurface
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -75,8 +78,11 @@ fun BookmarkItemCard(
     onToggleLike: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val themeStyle = LocalAppThemeStyle.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val cardStyle = rememberBookmarkCardStyle(MaterialTheme.colorScheme.surfaceContainerHigh)
     val cardShape = RoundedCornerShape(24.dp)
+    val effectiveShape = themeStyle.cardStyle.shape ?: cardShape
     // Localized category and subcategory labels
     val localizedCategory = remember(bookmark.tag.category, context) {
         bookmark.tag.category?.let { Category.toLocalized(it, context) } ?: ""
@@ -125,8 +131,9 @@ fun BookmarkItemCard(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .bookmarkCardLighting(cardStyle, cardShape),
-        shape = cardShape, // M3 Expressive Large Rounding
+            .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, cardShape, cardStyle.containerColor)
+            .bookmarkCardLighting(cardStyle, effectiveShape, themeStyle.cardStyle.showAccentRim),
+        shape = effectiveShape, // M3 Expressive Large Rounding
         colors = CardDefaults.cardColors(
             containerColor = cardStyle.containerColor
         ),
@@ -137,13 +144,13 @@ fun BookmarkItemCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(cardShape)
+                .clip(effectiveShape)
         ) {
             // Background surface layer: isolated blur and surface wash behind content
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .bookmarkCardSurfaceBlur(cardStyle, cardShape)
+                    .bookmarkCardSurfaceBlur(cardStyle, effectiveShape)
                     .bookmarkCardSurfaceWash(cardStyle)
             )
             // Background watermark layer: domain icon (lightly displayed clipped in top-right)

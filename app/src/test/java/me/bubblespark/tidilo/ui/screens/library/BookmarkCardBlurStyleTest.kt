@@ -94,4 +94,57 @@ class BookmarkCardBlurStyleTest {
         val resultModifier = initialModifier.bookmarkCardSurfaceBlur(style, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
         assertSame(initialModifier, resultModifier)
     }
+
+    @Test
+    fun bookmarkCardLighting_showAccentRimFalse_returnsSameModifier() {
+        val style = BookmarkCardStyle(
+            containerColor = Color.White,
+            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
+            surfaceWash = null,
+            ambientShadowColor = Color.Transparent,
+            spotShadowColor = Color.Transparent
+        )
+        val initialModifier = Modifier
+        val resultModifier = initialModifier.bookmarkCardLighting(
+            style = style,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+            showAccentRim = false
+        )
+        assertSame(initialModifier, resultModifier)
+    }
+
+    @Test
+    fun bookmarkCardLighting_showAccentRimTrue_appliesModifier() {
+        val style = BookmarkCardStyle(
+            containerColor = Color.White,
+            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
+            surfaceWash = null,
+            ambientShadowColor = Color.Transparent,
+            spotShadowColor = Color.Transparent
+        )
+        val initialModifier = Modifier
+        val resultModifier = initialModifier.bookmarkCardLighting(
+            style = style,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+            showAccentRim = true
+        )
+        assertNotSame(initialModifier, resultModifier)
+    }
+
+    @Test
+    fun bookmarkCardLighting_defaultShowAccentRim_appliesModifier() {
+        val style = BookmarkCardStyle(
+            containerColor = Color.White,
+            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
+            surfaceWash = null,
+            ambientShadowColor = Color.Transparent,
+            spotShadowColor = Color.Transparent
+        )
+        val initialModifier = Modifier
+        val resultModifier = initialModifier.bookmarkCardLighting(
+            style = style,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+        )
+        assertNotSame(initialModifier, resultModifier)
+    }
 }

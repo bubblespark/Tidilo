@@ -46,6 +46,8 @@ import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.ui.components.DomainWatermark
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
+import androidx.compose.ui.graphics.luminance
+import me.bubblespark.tidilo.ui.theme.themeCardSurface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -103,7 +105,10 @@ internal fun LibraryDeckCard(
     modifier: Modifier = Modifier,
     watermark: @Composable (Modifier) -> Unit
 ) {
+    val themeStyle = LocalAppThemeStyle.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val cardShape = remember { RoundedCornerShape(20.dp) }
+    val effectiveShape = themeStyle.cardStyle.shape ?: cardShape
     val stackOffset = 7.dp
     val cardHeight = 154.dp
 
@@ -163,10 +168,11 @@ internal fun LibraryDeckCard(
                 .fillMaxWidth()
                 .padding(end = stackOffset * 2)
                 .height(cardHeight)
-                .align(Alignment.BottomStart),
-            shape = cardShape,
+                .align(Alignment.BottomStart)
+                .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, cardShape, MaterialTheme.colorScheme.surfaceContainerHigh),
+            shape = effectiveShape,
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = LocalAppThemeStyle.current.cardAlpha)
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = themeStyle.cardAlpha)
             ),
             border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.42f)),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -174,13 +180,13 @@ internal fun LibraryDeckCard(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(cardShape)
+                    .clip(effectiveShape)
             ) {
                 // Background surface blur + gradient wash layer behind content
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .themeSurfaceBlur(LocalAppThemeStyle.current.cardBlurRadius, cardShape)
+                        .themeSurfaceBlur(themeStyle.cardBlurRadius, effectiveShape)
                         .background(
                             Brush.linearGradient(
                                 colors = listOf(

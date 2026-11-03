@@ -39,11 +39,13 @@ internal fun rememberBookmarkCardStyle(darkContainerColor: Color): BookmarkCardS
     val accent = if (providedAccent == Color.Unspecified) MaterialTheme.colorScheme.primary else providedAccent
     // Follow the applied color scheme, including explicit preview/test theme overrides.
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    return remember(accent, dark, darkContainerColor, themeStyle.cardBlurRadius, themeStyle.cardAlpha) {
+    return remember(accent, dark, darkContainerColor, themeStyle.cardBlurRadius, themeStyle.cardAlpha, themeStyle.surfacePalette) {
+        val fallbackColor = if (dark) darkContainerColor else Color.White
+        val resolvedContainer = themeStyle.surfacePalette.container(dark, fallbackColor)
         BookmarkCardStyle(
             // Intentional exceptions per docs/ui_design.md: white surfaces and black contact shadows
             // preserve crisp contrast without muddy coloration under tinted ambient beams.
-            containerColor = (if (dark) darkContainerColor else Color.White).copy(alpha = themeStyle.cardAlpha),
+            containerColor = resolvedContainer.copy(alpha = themeStyle.cardAlpha),
             rim = Brush.linearGradient(
                 colors = listOf(accent.copy(alpha = if (dark) 0.65f else 0.38f),
                     accent.copy(alpha = if (dark) 0.05f else 0.04f)),
@@ -62,14 +64,20 @@ internal fun rememberBookmarkCardStyle(darkContainerColor: Color): BookmarkCardS
     }
 }
 
-internal fun Modifier.bookmarkCardLighting(style: BookmarkCardStyle, shape: Shape): Modifier =
-    shadow(
+internal fun Modifier.bookmarkCardLighting(
+    style: BookmarkCardStyle,
+    shape: Shape,
+    showAccentRim: Boolean = true
+): Modifier {
+    if (!showAccentRim) return this
+    return shadow(
         elevation = 4.dp,
         shape = shape,
         clip = false,
         ambientColor = style.ambientShadowColor,
         spotColor = style.spotShadowColor
     ).border(1.dp, style.rim, shape)
+}
 
 internal fun Modifier.bookmarkCardSurfaceWash(style: BookmarkCardStyle): Modifier =
     style.surfaceWash?.let { background(it) } ?: this

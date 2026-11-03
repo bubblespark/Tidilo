@@ -37,6 +37,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.luminance
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeCardSurface
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -99,22 +102,26 @@ fun BookmarkGridCard(
         } ?: primaryColor
     }
 
+    val themeStyle = LocalAppThemeStyle.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val hasSummary = bookmark.description.isNotBlank()
     val cardStyle = rememberBookmarkCardStyle(MaterialTheme.colorScheme.surfaceContainer)
     val cardShape = RoundedCornerShape(16.dp)
+    val effectiveShape = themeStyle.cardStyle.shape ?: cardShape
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .bookmarkCardLighting(cardStyle, cardShape)
-            .clip(cardShape)
+            .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, cardShape, cardStyle.containerColor)
+            .bookmarkCardLighting(cardStyle, effectiveShape, themeStyle.cardStyle.showAccentRim)
+            .clip(effectiveShape)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = if (hasSummary && onLongClick != null) {
                     { onLongClick() }
                 } else null
             ),
-        shape = cardShape,
+        shape = effectiveShape,
         color = cardStyle.containerColor,
         tonalElevation = 0.dp
     ) {
@@ -123,7 +130,7 @@ fun BookmarkGridCard(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .bookmarkCardSurfaceBlur(cardStyle, cardShape)
+                    .bookmarkCardSurfaceBlur(cardStyle, effectiveShape)
                     .bookmarkCardSurfaceWash(cardStyle)
             )
 

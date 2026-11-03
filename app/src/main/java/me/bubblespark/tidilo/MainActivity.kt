@@ -309,7 +309,6 @@ fun TidiloApp(
             ) {
                 // Stationary centralized background layer
                 TidiloBackground(
-                    currentTheme = currentTheme,
                     modifier = Modifier.fillMaxSize(),
                     isDestinationAllowed = isAmbientRoute
                 )

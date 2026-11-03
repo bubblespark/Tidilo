@@ -10,6 +10,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import me.bubblespark.tidilo.ui.theme.collectionMembershipColor
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.resolveChipColors
+import me.bubblespark.tidilo.ui.theme.themeChipSurface
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 import android.widget.Toast
@@ -787,6 +789,40 @@ fun BookmarkDetailScreen(
                 CompositionLocalProvider(
                     LocalMinimumInteractiveComponentSize provides Dp.Unspecified
                 ) {
+                    val themeStyle = LocalAppThemeStyle.current
+                    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                    val detailChipShape = themeStyle.chipStyle.shape ?: RoundedCornerShape(10.dp)
+
+                    val categoryChipColors = resolveChipColors(
+                        style = themeStyle.chipStyle,
+                        isSubcategory = false,
+                        isEntity = false,
+                        categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                        categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        fallbackContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
+                        fallbackContentColor = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    val subcategoryChipColors = resolveChipColors(
+                        style = themeStyle.chipStyle,
+                        isSubcategory = true,
+                        isEntity = false,
+                        categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                        categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        fallbackContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
+                        fallbackContentColor = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    val entityChipColors = resolveChipColors(
+                        style = themeStyle.chipStyle,
+                        isSubcategory = false,
+                        isEntity = true,
+                        categoryContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
+                        categoryContentColor = MaterialTheme.colorScheme.onSurface,
+                        fallbackContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
+                        fallbackContentColor = MaterialTheme.colorScheme.onSurface
+                    )
+
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -810,12 +846,19 @@ fun BookmarkDetailScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                 },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                modifier = Modifier.themeChipSurface(
+                                    style = themeStyle.chipStyle,
+                                    palette = themeStyle.surfacePalette,
+                                    isDark = isDark,
+                                    fallbackShape = RoundedCornerShape(10.dp),
+                                    fallbackContainerColor = categoryChipColors.containerColor
                                 ),
-                                shape = RoundedCornerShape(10.dp)
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = categoryChipColors.containerColor,
+                                    labelColor = categoryChipColors.contentColor,
+                                    leadingIconContentColor = categoryChipColors.contentColor
+                                ),
+                                shape = detailChipShape
                             )
 
                             Text(
@@ -836,12 +879,19 @@ fun BookmarkDetailScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                 },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                modifier = Modifier.themeChipSurface(
+                                    style = themeStyle.chipStyle,
+                                    palette = themeStyle.surfacePalette,
+                                    isDark = isDark,
+                                    fallbackShape = RoundedCornerShape(10.dp),
+                                    fallbackContainerColor = subcategoryChipColors.containerColor
                                 ),
-                                shape = RoundedCornerShape(10.dp)
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = subcategoryChipColors.containerColor,
+                                    labelColor = subcategoryChipColors.contentColor,
+                                    leadingIconContentColor = subcategoryChipColors.contentColor
+                                ),
+                                shape = detailChipShape
                             )
                         } else if (localizedCategory.isNotBlank()) {
                             AssistChip(
@@ -854,12 +904,19 @@ fun BookmarkDetailScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                 },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                modifier = Modifier.themeChipSurface(
+                                    style = themeStyle.chipStyle,
+                                    palette = themeStyle.surfacePalette,
+                                    isDark = isDark,
+                                    fallbackShape = RoundedCornerShape(10.dp),
+                                    fallbackContainerColor = categoryChipColors.containerColor
                                 ),
-                                shape = RoundedCornerShape(10.dp)
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = categoryChipColors.containerColor,
+                                    labelColor = categoryChipColors.contentColor,
+                                    leadingIconContentColor = categoryChipColors.contentColor
+                                ),
+                                shape = detailChipShape
                             )
                         } else if (localizedSubcategory.isNotBlank()) {
                             AssistChip(
@@ -872,12 +929,19 @@ fun BookmarkDetailScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                 },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                modifier = Modifier.themeChipSurface(
+                                    style = themeStyle.chipStyle,
+                                    palette = themeStyle.surfacePalette,
+                                    isDark = isDark,
+                                    fallbackShape = RoundedCornerShape(10.dp),
+                                    fallbackContainerColor = subcategoryChipColors.containerColor
                                 ),
-                                shape = RoundedCornerShape(10.dp)
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = subcategoryChipColors.containerColor,
+                                    labelColor = subcategoryChipColors.contentColor,
+                                    leadingIconContentColor = subcategoryChipColors.contentColor
+                                ),
+                                shape = detailChipShape
                             )
                         }
 
@@ -886,11 +950,18 @@ fun BookmarkDetailScreen(
                             AssistChip(
                                 onClick = {},
                                 label = { Text("NSFW", fontWeight = FontWeight.Bold) },
+                                modifier = Modifier.themeChipSurface(
+                                    style = themeStyle.chipStyle,
+                                    palette = themeStyle.surfacePalette,
+                                    isDark = isDark,
+                                    fallbackShape = RoundedCornerShape(10.dp),
+                                    fallbackContainerColor = MaterialTheme.colorScheme.errorContainer
+                                ),
                                 colors = AssistChipDefaults.assistChipColors(
                                     containerColor = MaterialTheme.colorScheme.errorContainer,
                                     labelColor = MaterialTheme.colorScheme.onErrorContainer
                                 ),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = detailChipShape
                             )
                         }
                     }
@@ -919,11 +990,19 @@ fun BookmarkDetailScreen(
                                                 modifier = Modifier.size(14.dp)
                                             )
                                         },
-                                        colors = AssistChipDefaults.assistChipColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
-                                            labelColor = MaterialTheme.colorScheme.onSurface
+                                        modifier = Modifier.themeChipSurface(
+                                            style = themeStyle.chipStyle,
+                                            palette = themeStyle.surfacePalette,
+                                            isDark = isDark,
+                                            fallbackShape = RoundedCornerShape(10.dp),
+                                            fallbackContainerColor = entityChipColors.containerColor
                                         ),
-                                        shape = RoundedCornerShape(10.dp)
+                                        colors = AssistChipDefaults.assistChipColors(
+                                            containerColor = entityChipColors.containerColor,
+                                            labelColor = entityChipColors.contentColor,
+                                            leadingIconContentColor = entityChipColors.contentColor
+                                        ),
+                                        shape = detailChipShape
                                     )
                                 }
                             }

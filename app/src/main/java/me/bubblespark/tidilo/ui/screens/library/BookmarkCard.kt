@@ -49,6 +49,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeCardSurface
+import me.bubblespark.tidilo.ui.theme.themeChipSurface
+import me.bubblespark.tidilo.ui.theme.resolveChipColors
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -277,15 +279,52 @@ fun BookmarkItemCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    val categoryColors = resolveChipColors(
+                        style = themeStyle.chipStyle,
+                        isSubcategory = false,
+                        isEntity = false,
+                        categoryContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                        categoryContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fallbackContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
+                        fallbackContentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                    val matchedCategoryColors = resolveChipColors(
+                        style = themeStyle.chipStyle,
+                        isSubcategory = false,
+                        isEntity = false,
+                        categoryContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        categoryContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fallbackContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        fallbackContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    val subcategoryColors = resolveChipColors(
+                        style = themeStyle.chipStyle,
+                        isSubcategory = true,
+                        isEntity = false,
+                        categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
+                        categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        fallbackContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
+                        fallbackContentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                    val matchedSubcategoryColors = resolveChipColors(
+                        style = themeStyle.chipStyle,
+                        isSubcategory = true,
+                        isEntity = false,
+                        categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        fallbackContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        fallbackContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+
                     if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
                         CompactTagBadge(
                             icon = Icons.Default.Folder,
                             text = localizedCategory,
                             isMatched = isCategoryMatched,
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            matchedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            matchedContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            containerColor = categoryColors.containerColor,
+                            contentColor = categoryColors.contentColor,
+                            matchedContainerColor = matchedCategoryColors.containerColor,
+                            matchedContentColor = matchedCategoryColors.contentColor
                         )
 
                         Text(
@@ -299,33 +338,32 @@ fun BookmarkItemCard(
                             icon = Icons.AutoMirrored.Filled.Label,
                             text = localizedSubcategory,
                             isMatched = isSubcategoryMatched,
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            matchedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            matchedContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            containerColor = subcategoryColors.containerColor,
+                            contentColor = subcategoryColors.contentColor,
+                            matchedContainerColor = matchedSubcategoryColors.containerColor,
+                            matchedContentColor = matchedSubcategoryColors.contentColor
                         )
                     } else if (localizedCategory.isNotBlank()) {
                         CompactTagBadge(
                             icon = Icons.Default.Folder,
                             text = localizedCategory,
                             isMatched = isCategoryMatched,
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            matchedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            matchedContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            containerColor = categoryColors.containerColor,
+                            contentColor = categoryColors.contentColor,
+                            matchedContainerColor = matchedCategoryColors.containerColor,
+                            matchedContentColor = matchedCategoryColors.contentColor
                         )
                     } else if (localizedSubcategory.isNotBlank()) {
                         CompactTagBadge(
                             icon = Icons.AutoMirrored.Filled.Label,
                             text = localizedSubcategory,
                             isMatched = isSubcategoryMatched,
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            matchedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            matchedContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            containerColor = subcategoryColors.containerColor,
+                            contentColor = subcategoryColors.contentColor,
+                            matchedContainerColor = matchedSubcategoryColors.containerColor,
+                            matchedContentColor = matchedSubcategoryColors.contentColor
                         )
                     }
-
 
                     if (bookmark.isNsfw) {
                         CompactTagBadge(
@@ -342,6 +380,25 @@ fun BookmarkItemCard(
 
                 // Line 2: [entities] (leading '#' removed as icon is present; 8.dp uniform vertical spacing)
                 if (bookmark.tag.entities.isNotEmpty()) {
+                    val entityColors = resolveChipColors(
+                        style = themeStyle.chipStyle,
+                        isSubcategory = false,
+                        isEntity = true,
+                        categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f),
+                        categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                        fallbackContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
+                        fallbackContentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                    val matchedEntityColors = resolveChipColors(
+                        style = themeStyle.chipStyle,
+                        isSubcategory = false,
+                        isEntity = true,
+                        categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                        fallbackContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        fallbackContentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -354,10 +411,10 @@ fun BookmarkItemCard(
                                 icon = Icons.Default.Tag,
                                 text = cleanEntity,
                                 isMatched = isEntityMatched,
-                                containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f),
-                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                                matchedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                matchedContentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                containerColor = entityColors.containerColor,
+                                contentColor = entityColors.contentColor,
+                                matchedContainerColor = matchedEntityColors.containerColor,
+                                matchedContentColor = matchedEntityColors.contentColor
                             )
                         }
                     }
@@ -382,14 +439,32 @@ fun CompactTagBadge(
     matchedContentColor: Color,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
+    val themeStyle = LocalAppThemeStyle.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val badgeShape = themeStyle.chipStyle.shape ?: RoundedCornerShape(12.dp)
+    val effectiveContainerColor = if (isMatched) matchedContainerColor else containerColor
+
+    val surfaceModifier = if (themeStyle.chipStyle.depth > 0.dp) {
+        modifier
+            .height(26.dp)
+            .themeChipSurface(
+                style = themeStyle.chipStyle,
+                palette = themeStyle.surfacePalette,
+                isDark = isDark,
+                fallbackShape = RoundedCornerShape(12.dp),
+                fallbackContainerColor = effectiveContainerColor
+            )
+    } else {
+        modifier
             .height(26.dp)
             .background(
-                color = if (isMatched) matchedContainerColor else containerColor,
-                shape = RoundedCornerShape(12.dp)
+                color = effectiveContainerColor,
+                shape = badgeShape
             )
-            .padding(horizontal = 10.dp),
+    }
+
+    Box(
+        modifier = surfaceModifier.padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(

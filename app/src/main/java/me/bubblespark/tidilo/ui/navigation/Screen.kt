@@ -127,6 +127,6 @@ sealed class Screen(
     }
 
     companion object {
-        val allTabs = listOf(Library, Search, Import)
+        val allTabs: List<Screen> by lazy { listOf(Library, Search, Import) }
     }
 }

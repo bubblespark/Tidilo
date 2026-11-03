@@ -389,4 +389,5 @@
     <string name="settings_theme_title">テーマ</string>
     <string name="settings_theme_dialog_title">テーマの選択</string>
     <string name="settings_theme_default">デフォルト</string>
+    <string name="settings_theme_modern">モダン</string>
 </resources>

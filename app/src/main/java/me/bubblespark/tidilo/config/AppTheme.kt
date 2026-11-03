@@ -13,6 +13,10 @@ enum class AppTheme(
     DEFAULT(
         code = "default",
         labelRes = R.string.settings_theme_default
+    ),
+    MODERN(
+        code = "modern",
+        labelRes = R.string.settings_theme_modern
     );
 
     companion object {

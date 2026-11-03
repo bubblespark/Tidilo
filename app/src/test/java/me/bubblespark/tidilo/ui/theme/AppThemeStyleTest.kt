@@ -142,6 +142,50 @@ class AppThemeStyleTest {
     }
 
     @Test
+    fun forTheme_returnsModern_forModernTheme() {
+        val style = AppThemeStyle.forTheme(AppTheme.MODERN)
+        assertEquals(AppThemeStyle.Modern, style)
+    }
+
+    @Test
+    fun modernStyle_propertiesMatchSpec() {
+        val style = AppThemeStyle.Modern
+        assertEquals(AppTheme.MODERN, style.theme)
+        assertEquals(ThemeColorRole.ACCENT, style.colorRole)
+
+        // surfacePalette
+        assertEquals(Color(0xFF181A1E), style.surfacePalette.darkCanvasColor)
+        assertEquals(Color(0xFFE8EEF2), style.surfacePalette.lightCanvasColor)
+        assertEquals(Color(0xFF22262B), style.surfacePalette.darkContainerColor)
+        assertEquals(Color(0xFFFFFFFF), style.surfacePalette.lightContainerColor)
+
+        // cardStyle
+        assertEquals(3.dp, style.cardStyle.depth)
+        assertEquals(RoundedCornerShape(26.dp), style.cardStyle.shape)
+        assertTrue(style.cardStyle.useGradientFill)
+        assertFalse(style.cardStyle.showAccentRim)
+
+        // chipStyle
+        assertEquals(3.dp, style.chipStyle.depth)
+        assertEquals(RoundedCornerShape(12.dp), style.chipStyle.shape)
+        assertTrue(style.chipStyle.useGradientFill)
+        assertEquals(ChipColorMode.UNIFIED, style.chipStyle.colorMode)
+        assertTrue(style.chipStyle.emphasizeEntityChips)
+
+        // floatingBarStyle
+        assertEquals(3.dp, style.floatingBarStyle.depth)
+        assertEquals(ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE, style.floatingBarStyle.activeTabStyle)
+        assertTrue(style.floatingBarStyle.useGradientFill)
+
+        // iconButtonStyle
+        assertEquals(IconButtonPlateStyle.TACTILE_CIRCULAR_3D, style.iconButtonStyle.actionButtonPlate)
+        assertEquals(IconButtonPlateStyle.PLAIN_ICON, style.iconButtonStyle.likeButtonPlate)
+        assertEquals(IconButtonPlateStyle.PLAIN_ICON, style.iconButtonStyle.toolbarActionPlate)
+        assertEquals(3.dp, style.iconButtonStyle.depth)
+        assertTrue(style.iconButtonStyle.useGradientFill)
+    }
+
+    @Test
     fun themeSurfaceBlur_zeroBlur_returnsSameModifier() {
         val initialModifier = Modifier
         val resultModifier = initialModifier.themeSurfaceBlur(0.dp)

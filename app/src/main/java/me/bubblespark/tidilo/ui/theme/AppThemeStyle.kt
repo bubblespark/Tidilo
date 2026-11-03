@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.ui.theme
 
 import androidx.compose.foundation.shape.CornerBasedShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -164,8 +165,44 @@ data class AppThemeStyle(
     companion object {
         val Default = AppThemeStyle(AppTheme.DEFAULT)
 
+        val Modern = AppThemeStyle(
+            theme = AppTheme.MODERN,
+            surfacePalette = ThemeSurfacePalette(
+                darkCanvasColor = Color(0xFF181A1E),
+                lightCanvasColor = Color(0xFFE8EEF2),
+                darkContainerColor = Color(0xFF22262B),
+                lightContainerColor = Color(0xFFFFFFFF)
+            ),
+            cardStyle = ThemeCardStyle(
+                depth = 3.dp,
+                shape = RoundedCornerShape(26.dp),
+                useGradientFill = true,
+                showAccentRim = false
+            ),
+            chipStyle = ThemeChipStyle(
+                depth = 3.dp,
+                shape = RoundedCornerShape(12.dp),
+                useGradientFill = true,
+                colorMode = ChipColorMode.UNIFIED,
+                emphasizeEntityChips = true
+            ),
+            floatingBarStyle = ThemeFloatingBarStyle(
+                depth = 3.dp,
+                activeTabStyle = ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE,
+                useGradientFill = true
+            ),
+            iconButtonStyle = ThemeIconButtonStyle(
+                actionButtonPlate = IconButtonPlateStyle.TACTILE_CIRCULAR_3D,
+                likeButtonPlate = IconButtonPlateStyle.PLAIN_ICON,
+                toolbarActionPlate = IconButtonPlateStyle.PLAIN_ICON,
+                depth = 3.dp,
+                useGradientFill = true
+            )
+        )
+
         fun forTheme(theme: AppTheme): AppThemeStyle = when (theme) {
             AppTheme.DEFAULT -> Default
+            AppTheme.MODERN -> Modern
         }
     }
 }

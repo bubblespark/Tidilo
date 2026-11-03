@@ -12,6 +12,8 @@ import me.bubblespark.tidilo.ui.theme.collectionMembershipColor
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.resolveChipColors
 import me.bubblespark.tidilo.ui.theme.themeChipSurface
+import me.bubblespark.tidilo.ui.theme.themeFloatingBarSurface
+import me.bubblespark.tidilo.ui.theme.themeIconButtonSurface
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 import android.widget.Toast
@@ -348,6 +350,8 @@ fun BookmarkDetailScreen(
             )
         },
         overlay = {
+            val themeStyle = LocalAppThemeStyle.current
+            val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val toolbarOffset = if (maxWidth >= 368.dp) 32.dp else 0.dp
             Row(
@@ -358,17 +362,26 @@ fun BookmarkDetailScreen(
                 verticalAlignment = Alignment.Bottom
             ) {
                 val toolbarShape = RoundedCornerShape(32.dp)
+                val toolbarShadowElevation = if (themeStyle.floatingBarStyle.depth > 0.dp) 0.dp else 10.dp
+                val toolbarTonalElevation = if (themeStyle.floatingBarStyle.depth > 0.dp) 0.dp else 6.dp
                 Surface(
+                    modifier = Modifier.themeFloatingBarSurface(
+                        style = themeStyle.floatingBarStyle,
+                        palette = themeStyle.surfacePalette,
+                        isDark = isDark,
+                        fallbackShape = toolbarShape,
+                        fallbackContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                    ),
                     shape = toolbarShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
-                    tonalElevation = 6.dp,
-                    shadowElevation = 10.dp
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = themeStyle.floatingBarAlpha),
+                    tonalElevation = toolbarTonalElevation,
+                    shadowElevation = toolbarShadowElevation
                 ) {
                     Box {
                         Box(
                             modifier = Modifier
                                 .matchParentSize()
-                                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, toolbarShape)
+                                .themeSurfaceBlur(themeStyle.floatingBarBlurRadius, toolbarShape)
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
@@ -402,12 +415,22 @@ fun BookmarkDetailScreen(
                 }
                 Spacer(Modifier.width(10.dp))
                 val openButtonShape = RoundedCornerShape(16.dp)
+                val openButtonShadowElevation = if (themeStyle.iconButtonStyle.depth > 0.dp) 0.dp else 4.dp
                 Surface(
                     onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
-                    modifier = Modifier.size(54.dp),
+                    modifier = Modifier
+                        .size(54.dp)
+                        .themeIconButtonSurface(
+                            plate = themeStyle.iconButtonStyle.actionButtonPlate,
+                            style = themeStyle.iconButtonStyle,
+                            palette = themeStyle.surfacePalette,
+                            isDark = isDark,
+                            shape = openButtonShape,
+                            fallbackContainerColor = MaterialTheme.colorScheme.primaryContainer
+                        ),
                     shape = openButtonShape,
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
-                    shadowElevation = 4.dp
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = themeStyle.floatingBarAlpha),
+                    shadowElevation = openButtonShadowElevation
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Box(

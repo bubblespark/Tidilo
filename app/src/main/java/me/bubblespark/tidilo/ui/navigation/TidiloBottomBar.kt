@@ -76,7 +76,13 @@ import me.bubblespark.tidilo.data.AiProcessingProgress
 import me.bubblespark.tidilo.ui.components.AiProcessingIndicatorButton
 import me.bubblespark.tidilo.ui.components.AiProcessingSpeechBubble
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.luminance
+import me.bubblespark.tidilo.ui.theme.ActiveTabIndicatorStyle
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeChipSurface
+import me.bubblespark.tidilo.ui.theme.themeFloatingBarSurface
+import me.bubblespark.tidilo.ui.theme.themeIconButtonSurface
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 /**
@@ -118,8 +124,11 @@ fun TidiloBottomBar(
         Screen.Import
     )
 
+    val themeStyle = LocalAppThemeStyle.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
     val barHeight = 68.dp
-    val containerBgColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha)
+    val containerBgColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = themeStyle.floatingBarAlpha)
     val isActionButtonVisible = currentRoute in listOf(
         Screen.Library.route,
         Screen.Search.route,
@@ -199,14 +208,28 @@ fun TidiloBottomBar(
             ) + fadeOut(animationSpec = tween(150)),
             modifier = Modifier.align(Alignment.Center)
         ) {
+            val floatingBarDepth = themeStyle.floatingBarStyle.depth
+            val floatingBarShadow = if (floatingBarDepth > 0.dp) 0.dp else 10.dp
+            val floatingBarTonal = if (floatingBarDepth > 0.dp) 0.dp else 6.dp
+
             Surface(
                 modifier = Modifier
                     .width(barWidth)
                     .height(barHeight)
-                    .shadow(elevation = 10.dp, shape = CircleShape),
+                    .then(
+                        if (floatingBarShadow > 0.dp) Modifier.shadow(elevation = floatingBarShadow, shape = CircleShape)
+                        else Modifier
+                    )
+                    .themeFloatingBarSurface(
+                        style = themeStyle.floatingBarStyle,
+                        palette = themeStyle.surfacePalette,
+                        isDark = isDark,
+                        fallbackShape = CircleShape,
+                        fallbackContainerColor = containerBgColor
+                    ),
                 shape = CircleShape,
                 color = containerBgColor,
-                tonalElevation = 6.dp
+                tonalElevation = floatingBarTonal
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     Box(
@@ -254,12 +277,27 @@ fun TidiloBottomBar(
                             label = "tabIconSize_${screen.route}"
                         )
 
+                        val isTactileIndicator = themeStyle.floatingBarStyle.activeTabStyle == ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE
+                        val tabShape = if (isTactileIndicator) RoundedCornerShape(14.dp) else CircleShape
+
                         Box(
                             modifier = Modifier
                                 .weight(tabWeight)
                                 .fillMaxHeight()
-                                .clip(CircleShape)
-                                .background(itemBgColor, shape = CircleShape)
+                                .then(
+                                    if (isSelected && isTactileIndicator) {
+                                        Modifier.themeChipSurface(
+                                            style = themeStyle.chipStyle.copy(shape = tabShape),
+                                            palette = themeStyle.surfacePalette,
+                                            isDark = isDark,
+                                            fallbackShape = tabShape,
+                                            fallbackContainerColor = activeContainerColor
+                                        )
+                                    } else {
+                                        Modifier.background(itemBgColor, shape = tabShape)
+                                    }
+                                )
+                                .clip(tabShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple(bounded = true)
@@ -606,12 +644,22 @@ fun TidiloBottomBar(
                 }
 
                 // Action button surface (palette: primaryContainer / onPrimaryContainer)
+                val actionButtonElevation = if (themeStyle.iconButtonStyle.depth > 0.dp) 0.dp else buttonElevation
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .themeIconButtonSurface(
+                            plate = themeStyle.iconButtonStyle.actionButtonPlate,
+                            style = themeStyle.iconButtonStyle,
+                            palette = themeStyle.surfacePalette,
+                            isDark = isDark,
+                            shape = CircleShape,
+                            fallbackContainerColor = MaterialTheme.colorScheme.primaryContainer
+                        ),
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = themeStyle.floatingBarAlpha),
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    shadowElevation = buttonElevation
+                    shadowElevation = actionButtonElevation
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Box(

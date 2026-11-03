@@ -385,4 +385,8 @@
     <plurals name="rss_subtitle_bookmarks">
         <item quantity="other">%1$d件のブックマーク</item>
     </plurals>
+    <!-- Theme Settings -->
+    <string name="settings_theme_title">テーマ</string>
+    <string name="settings_theme_dialog_title">テーマの選択</string>
+    <string name="settings_theme_default">デフォルト</string>
 </resources>

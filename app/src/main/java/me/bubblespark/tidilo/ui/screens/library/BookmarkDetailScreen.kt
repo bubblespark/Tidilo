@@ -816,14 +816,18 @@ fun BookmarkDetailScreen(
                     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
                     val detailChipShape = themeStyle.chipStyle.shape ?: RoundedCornerShape(10.dp)
 
+                    val chipNeutralContainer = if (isDark) Color(0xFF161920) else Color(0xFFFFFFFF)
+                    val chipCategoryContent = if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B)
+                    val chipEntityContent = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+
                     val categoryChipColors = resolveChipColors(
                         style = themeStyle.chipStyle,
                         isSubcategory = false,
                         isEntity = false,
                         categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
                         categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        fallbackContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
-                        fallbackContentColor = MaterialTheme.colorScheme.onSurface
+                        fallbackContainerColor = chipNeutralContainer,
+                        fallbackContentColor = chipCategoryContent
                     )
 
                     val subcategoryChipColors = resolveChipColors(
@@ -832,8 +836,8 @@ fun BookmarkDetailScreen(
                         isEntity = false,
                         categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
                         categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        fallbackContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
-                        fallbackContentColor = MaterialTheme.colorScheme.onSurface
+                        fallbackContainerColor = chipNeutralContainer,
+                        fallbackContentColor = chipCategoryContent
                     )
 
                     val entityChipColors = resolveChipColors(
@@ -842,8 +846,8 @@ fun BookmarkDetailScreen(
                         isEntity = true,
                         categoryContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
                         categoryContentColor = MaterialTheme.colorScheme.onSurface,
-                        fallbackContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
-                        fallbackContentColor = MaterialTheme.colorScheme.onSurface
+                        fallbackContainerColor = chipNeutralContainer,
+                        fallbackContentColor = chipEntityContent
                     )
 
                     Column(

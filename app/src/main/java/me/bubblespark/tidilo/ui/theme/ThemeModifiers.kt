@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.ui.theme
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -59,32 +60,33 @@ fun Modifier.themeCardSurface(
     if (style.depth <= 0.dp) return this
     val resolvedShape = style.shape ?: fallbackShape
     val containerColor = palette.container(isDark, fallbackContainerColor)
-    val spotColor = if (isDark) Color.Black.copy(alpha = 0.65f) else Color.Black.copy(alpha = 0.45f)
+
+    // Soft expanded ambient shadow for floating card elevation
+    val spotColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.08f)
+    val ambientColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.04f)
 
     val shadowModifier = this.shadow(
-        elevation = style.depth,
+        elevation = style.depth * 2,
         shape = resolvedShape,
         clip = false,
-        ambientColor = Color.Transparent,
+        ambientColor = ambientColor,
         spotColor = spotColor
     )
 
-    return if (style.useGradientFill && containerColor != Color.Unspecified) {
+    val bgModifier = if (style.useGradientFill && containerColor != Color.Unspecified) {
         val lightened = containerColor.copy(
-            red = (containerColor.red * 1.12f).coerceAtMost(1f),
-            green = (containerColor.green * 1.12f).coerceAtMost(1f),
-            blue = (containerColor.blue * 1.12f).coerceAtMost(1f)
+            red = (containerColor.red * 1.05f).coerceAtMost(1f),
+            green = (containerColor.green * 1.05f).coerceAtMost(1f),
+            blue = (containerColor.blue * 1.05f).coerceAtMost(1f)
         )
         val darkened = containerColor.copy(
-            red = containerColor.red * 0.92f,
-            green = containerColor.green * 0.92f,
-            blue = containerColor.blue * 0.92f
+            red = containerColor.red * 0.96f,
+            green = containerColor.green * 0.96f,
+            blue = containerColor.blue * 0.96f
         )
         shadowModifier.background(
-            brush = Brush.linearGradient(
-                colors = listOf(lightened, containerColor, darkened),
-                start = Offset.Zero,
-                end = Offset.Infinite
+            brush = Brush.verticalGradient(
+                colors = listOf(lightened, containerColor, darkened)
             ),
             shape = resolvedShape
         )
@@ -93,10 +95,20 @@ fun Modifier.themeCardSurface(
     } else {
         shadowModifier
     }
+
+    return if (isDark) {
+        val cardBevelBorder = Brush.verticalGradient(
+            0.0f to Color.White.copy(alpha = 0.10f),
+            1.0f to Color.Black.copy(alpha = 0.25f)
+        )
+        bgModifier.border(width = 1.dp, brush = cardBevelBorder, shape = resolvedShape)
+    } else {
+        bgModifier
+    }
 }
 
 /**
- * Applies chip shadow and background based on [style].
+ * Applies chip shadow, matte background, and tactile extruded bevel border based on [style].
  * Returns `this` directly when [style.depth] <= 0.dp.
  */
 fun Modifier.themeChipSurface(
@@ -108,33 +120,39 @@ fun Modifier.themeChipSurface(
 ): Modifier {
     if (style.depth <= 0.dp) return this
     val resolvedShape = style.shape ?: fallbackShape
-    val containerColor = palette.container(isDark, fallbackContainerColor)
-    val spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.35f)
+    val rawContainerColor = palette.container(isDark, fallbackContainerColor)
+    // Tactile tile plate color: dark slate under dark mode, crisp clean surface under light mode
+    val containerColor = if (rawContainerColor != Color.Unspecified) {
+        rawContainerColor
+    } else {
+        if (isDark) Color(0xFF161920) else Color(0xFFFFFFFF)
+    }
+
+    val spotColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.12f)
+    val ambientColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.05f)
 
     val shadowModifier = this.shadow(
         elevation = style.depth,
         shape = resolvedShape,
         clip = false,
-        ambientColor = Color.Transparent,
+        ambientColor = ambientColor,
         spotColor = spotColor
     )
 
-    return if (style.useGradientFill && containerColor != Color.Unspecified) {
+    val bgModifier = if (style.useGradientFill && containerColor != Color.Unspecified) {
         val lightened = containerColor.copy(
-            red = (containerColor.red * 1.10f).coerceAtMost(1f),
-            green = (containerColor.green * 1.10f).coerceAtMost(1f),
-            blue = (containerColor.blue * 1.10f).coerceAtMost(1f)
+            red = (containerColor.red * 1.08f).coerceAtMost(1f),
+            green = (containerColor.green * 1.08f).coerceAtMost(1f),
+            blue = (containerColor.blue * 1.08f).coerceAtMost(1f)
         )
         val darkened = containerColor.copy(
-            red = containerColor.red * 0.93f,
-            green = containerColor.green * 0.93f,
-            blue = containerColor.blue * 0.93f
+            red = containerColor.red * 0.94f,
+            green = containerColor.green * 0.94f,
+            blue = containerColor.blue * 0.94f
         )
         shadowModifier.background(
-            brush = Brush.linearGradient(
-                colors = listOf(lightened, containerColor, darkened),
-                start = Offset.Zero,
-                end = Offset.Infinite
+            brush = Brush.verticalGradient(
+                colors = listOf(lightened, containerColor, darkened)
             ),
             shape = resolvedShape
         )
@@ -143,10 +161,18 @@ fun Modifier.themeChipSurface(
     } else {
         shadowModifier
     }
+
+    // Top highlight and bottom shade bevel border creating extruded keycap / tactile tile appearance
+    val bevelBorder = Brush.verticalGradient(
+        0.0f to (if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.90f)),
+        1.0f to (if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.08f))
+    )
+
+    return bgModifier.border(width = 1.dp, brush = bevelBorder, shape = resolvedShape)
 }
 
 /**
- * Applies floating bar shadow and background based on [style].
+ * Applies floating bar shadow, background, and subtle bevel based on [style].
  * Returns `this` directly when [style.depth] <= 0.dp.
  */
 fun Modifier.themeFloatingBarSurface(
@@ -159,32 +185,31 @@ fun Modifier.themeFloatingBarSurface(
     if (style.depth <= 0.dp) return this
     val resolvedShape = fallbackShape
     val containerColor = palette.container(isDark, fallbackContainerColor)
-    val spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.40f)
+    val spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.10f)
+    val ambientColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.05f)
 
     val shadowModifier = this.shadow(
-        elevation = style.depth,
+        elevation = style.depth * 2,
         shape = resolvedShape,
         clip = false,
-        ambientColor = Color.Transparent,
+        ambientColor = ambientColor,
         spotColor = spotColor
     )
 
-    return if (style.useGradientFill && containerColor != Color.Unspecified) {
+    val bgModifier = if (style.useGradientFill && containerColor != Color.Unspecified) {
         val lightened = containerColor.copy(
-            red = (containerColor.red * 1.08f).coerceAtMost(1f),
-            green = (containerColor.green * 1.08f).coerceAtMost(1f),
-            blue = (containerColor.blue * 1.08f).coerceAtMost(1f)
+            red = (containerColor.red * 1.06f).coerceAtMost(1f),
+            green = (containerColor.green * 1.06f).coerceAtMost(1f),
+            blue = (containerColor.blue * 1.06f).coerceAtMost(1f)
         )
         val darkened = containerColor.copy(
-            red = containerColor.red * 0.94f,
-            green = containerColor.green * 0.94f,
-            blue = containerColor.blue * 0.94f
+            red = containerColor.red * 0.95f,
+            green = containerColor.green * 0.95f,
+            blue = containerColor.blue * 0.95f
         )
         shadowModifier.background(
-            brush = Brush.linearGradient(
-                colors = listOf(lightened, containerColor, darkened),
-                start = Offset.Zero,
-                end = Offset.Infinite
+            brush = Brush.verticalGradient(
+                colors = listOf(lightened, containerColor, darkened)
             ),
             shape = resolvedShape
         )
@@ -193,6 +218,13 @@ fun Modifier.themeFloatingBarSurface(
     } else {
         shadowModifier
     }
+
+    val barBevelBorder = Brush.verticalGradient(
+        0.0f to (if (isDark) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.85f)),
+        1.0f to (if (isDark) Color.Black.copy(alpha = 0.30f) else Color.Black.copy(alpha = 0.06f))
+    )
+
+    return bgModifier.border(width = 1.dp, brush = barBevelBorder, shape = resolvedShape)
 }
 
 /**
@@ -209,32 +241,31 @@ fun Modifier.themeIconButtonSurface(
 ): Modifier {
     if (style.depth <= 0.dp || plate != IconButtonPlateStyle.TACTILE_CIRCULAR_3D) return this
     val containerColor = palette.container(isDark, fallbackContainerColor)
-    val spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.40f)
+    val spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.12f)
+    val ambientColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.05f)
 
     val shadowModifier = this.shadow(
         elevation = style.depth,
         shape = shape,
         clip = false,
-        ambientColor = Color.Transparent,
+        ambientColor = ambientColor,
         spotColor = spotColor
     )
 
-    return if (style.useGradientFill && containerColor != Color.Unspecified) {
+    val bgModifier = if (style.useGradientFill && containerColor != Color.Unspecified) {
         val lightened = containerColor.copy(
-            red = (containerColor.red * 1.15f).coerceAtMost(1f),
-            green = (containerColor.green * 1.15f).coerceAtMost(1f),
-            blue = (containerColor.blue * 1.15f).coerceAtMost(1f)
+            red = (containerColor.red * 1.10f).coerceAtMost(1f),
+            green = (containerColor.green * 1.10f).coerceAtMost(1f),
+            blue = (containerColor.blue * 1.10f).coerceAtMost(1f)
         )
         val darkened = containerColor.copy(
-            red = containerColor.red * 0.90f,
-            green = containerColor.green * 0.90f,
-            blue = containerColor.blue * 0.90f
+            red = containerColor.red * 0.92f,
+            green = containerColor.green * 0.92f,
+            blue = containerColor.blue * 0.92f
         )
         shadowModifier.background(
-            brush = Brush.linearGradient(
-                colors = listOf(lightened, containerColor, darkened),
-                start = Offset.Zero,
-                end = Offset.Infinite
+            brush = Brush.verticalGradient(
+                colors = listOf(lightened, containerColor, darkened)
             ),
             shape = shape
         )
@@ -243,4 +274,11 @@ fun Modifier.themeIconButtonSurface(
     } else {
         shadowModifier
     }
+
+    val plateBevelBorder = Brush.verticalGradient(
+        0.0f to (if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.90f)),
+        1.0f to (if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.08f))
+    )
+
+    return bgModifier.border(width = 1.dp, brush = plateBevelBorder, shape = shape)
 }

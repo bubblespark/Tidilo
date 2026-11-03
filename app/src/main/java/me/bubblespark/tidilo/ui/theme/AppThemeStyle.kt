@@ -168,15 +168,15 @@ data class AppThemeStyle(
         val Modern = AppThemeStyle(
             theme = AppTheme.MODERN,
             surfacePalette = ThemeSurfacePalette(
-                darkCanvasColor = Color(0xFF181A1E),
-                lightCanvasColor = Color(0xFFE8EEF2),
-                darkContainerColor = Color(0xFF22262B),
+                darkCanvasColor = Color(0xFF111317),
+                lightCanvasColor = Color(0xFFF0F4F8),
+                darkContainerColor = Color(0xFF1E2228),
                 lightContainerColor = Color(0xFFFFFFFF)
             ),
             cardStyle = ThemeCardStyle(
-                depth = 3.dp,
+                depth = 4.dp,
                 shape = RoundedCornerShape(26.dp),
-                useGradientFill = true,
+                useGradientFill = false,
                 showAccentRim = false
             ),
             chipStyle = ThemeChipStyle(
@@ -187,7 +187,7 @@ data class AppThemeStyle(
                 emphasizeEntityChips = true
             ),
             floatingBarStyle = ThemeFloatingBarStyle(
-                depth = 3.dp,
+                depth = 4.dp,
                 activeTabStyle = ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE,
                 useGradientFill = true
             ),

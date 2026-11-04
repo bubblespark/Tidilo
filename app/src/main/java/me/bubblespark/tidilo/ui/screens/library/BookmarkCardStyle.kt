@@ -29,17 +29,19 @@ internal data class BookmarkCardStyle(
     val surfaceWash: Brush?,
     val ambientShadowColor: Color,
     val spotShadowColor: Color,
-    val blurRadius: Dp = 0.dp
+    val blurRadius: Dp = 0.dp,
+    val hasAmbientAccent: Boolean = false
 )
 
 @Composable
 internal fun rememberBookmarkCardStyle(darkContainerColor: Color): BookmarkCardStyle {
     val themeStyle = LocalAppThemeStyle.current
     val providedAccent = LocalCardAccentColor.current
-    val accent = if (providedAccent == Color.Unspecified) MaterialTheme.colorScheme.primary else providedAccent
+    val hasAmbientAccent = providedAccent != Color.Unspecified
+    val accent = if (hasAmbientAccent) providedAccent else MaterialTheme.colorScheme.primary
     // Follow the applied color scheme, including explicit preview/test theme overrides.
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    return remember(accent, dark, darkContainerColor, themeStyle.cardBlurRadius, themeStyle.cardAlpha, themeStyle.surfacePalette, themeStyle.cardStyle) {
+    return remember(accent, dark, darkContainerColor, themeStyle.cardBlurRadius, themeStyle.cardAlpha, themeStyle.surfacePalette, themeStyle.cardStyle, hasAmbientAccent) {
         val fallbackColor = if (dark) darkContainerColor else Color.White
         val resolvedContainer = themeStyle.surfacePalette.container(dark, fallbackColor)
         val hasCardGradient = themeStyle.cardStyle.depth > 0.dp && themeStyle.cardStyle.useGradientFill
@@ -53,19 +55,30 @@ internal fun rememberBookmarkCardStyle(darkContainerColor: Color): BookmarkCardS
             // preserve crisp contrast without muddy coloration under tinted ambient beams.
             containerColor = effectiveContainer,
             rim = Brush.linearGradient(
-                colors = listOf(accent.copy(alpha = if (dark) 0.65f else 0.38f),
-                    accent.copy(alpha = if (dark) 0.05f else 0.04f)),
+                colors = listOf(accent.copy(alpha = if (dark) 0.70f else 0.45f),
+                    accent.copy(alpha = if (dark) 0.08f else 0.04f)),
                 start = Offset(Float.POSITIVE_INFINITY, 0f),
                 end = Offset(0f, Float.POSITIVE_INFINITY)
             ),
-            surfaceWash = if (dark) null else Brush.linearGradient(
-                colors = listOf(accent.copy(alpha = 0.045f), accent.copy(alpha = 0f)),
-                start = Offset(Float.POSITIVE_INFINITY, 0f),
-                end = Offset(0f, Float.POSITIVE_INFINITY)
-            ),
-            ambientShadowColor = accent.copy(alpha = 0.25f),
+            surfaceWash = if (hasAmbientAccent) {
+                Brush.linearGradient(
+                    colors = listOf(accent.copy(alpha = if (dark) 0.12f else 0.05f), accent.copy(alpha = 0f)),
+                    start = Offset(Float.POSITIVE_INFINITY, 0f),
+                    end = Offset(0f, Float.POSITIVE_INFINITY)
+                )
+            } else if (dark) {
+                null
+            } else {
+                Brush.linearGradient(
+                    colors = listOf(accent.copy(alpha = 0.045f), accent.copy(alpha = 0f)),
+                    start = Offset(Float.POSITIVE_INFINITY, 0f),
+                    end = Offset(0f, Float.POSITIVE_INFINITY)
+                )
+            },
+            ambientShadowColor = accent.copy(alpha = if (dark) 0.35f else 0.25f),
             spotShadowColor = if (dark) accent.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.10f),
-            blurRadius = themeStyle.cardBlurRadius
+            blurRadius = themeStyle.cardBlurRadius,
+            hasAmbientAccent = hasAmbientAccent
         )
     }
 }
@@ -75,7 +88,7 @@ internal fun Modifier.bookmarkCardLighting(
     shape: Shape,
     showAccentRim: Boolean = true
 ): Modifier {
-    if (!showAccentRim) return this
+    if (!showAccentRim && !style.hasAmbientAccent) return this
     return shadow(
         elevation = 4.dp,
         shape = shape,

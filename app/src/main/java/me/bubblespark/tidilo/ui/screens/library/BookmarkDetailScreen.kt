@@ -48,6 +48,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
@@ -809,234 +810,144 @@ fun BookmarkDetailScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // [category] > [subcategory] newline [entities] (uniform 8.dp line spacing)
-                CompositionLocalProvider(
-                    LocalMinimumInteractiveComponentSize provides Dp.Unspecified
+                val themeStyle = LocalAppThemeStyle.current
+                val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+                val chipNeutralContainer = if (isDark) Color(0xFF161920) else Color(0xFFFFFFFF)
+                val chipCategoryContent = if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B)
+                val chipEntityContent = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+                val folderIconTint = if (themeStyle.chipStyle.depth > 0.dp) Color(0xFFF59E0B) else null
+                val subcategoryIconTint = if (themeStyle.chipStyle.depth > 0.dp) Color(0xFFF97316) else null
+
+                val categoryColors = resolveChipColors(
+                    style = themeStyle.chipStyle,
+                    isSubcategory = false,
+                    isEntity = false,
+                    categoryContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                    categoryContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fallbackContainerColor = chipNeutralContainer,
+                    fallbackContentColor = chipCategoryContent
+                )
+                val subcategoryColors = resolveChipColors(
+                    style = themeStyle.chipStyle,
+                    isSubcategory = true,
+                    isEntity = false,
+                    categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
+                    categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    fallbackContainerColor = chipNeutralContainer,
+                    fallbackContentColor = chipCategoryContent
+                )
+                val entityColors = resolveChipColors(
+                    style = themeStyle.chipStyle,
+                    isSubcategory = false,
+                    isEntity = true,
+                    categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f),
+                    categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    fallbackContainerColor = chipNeutralContainer,
+                    fallbackContentColor = chipEntityContent
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val themeStyle = LocalAppThemeStyle.current
-                    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-                    val detailChipShape = themeStyle.chipStyle.shape ?: RoundedCornerShape(10.dp)
-
-                    val chipNeutralContainer = if (isDark) Color(0xFF161920) else Color(0xFFFFFFFF)
-                    val chipCategoryContent = if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B)
-                    val chipEntityContent = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
-
-                    val categoryChipColors = resolveChipColors(
-                        style = themeStyle.chipStyle,
-                        isSubcategory = false,
-                        isEntity = false,
-                        categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                        categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        fallbackContainerColor = chipNeutralContainer,
-                        fallbackContentColor = chipCategoryContent
-                    )
-
-                    val subcategoryChipColors = resolveChipColors(
-                        style = themeStyle.chipStyle,
-                        isSubcategory = true,
-                        isEntity = false,
-                        categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                        categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        fallbackContainerColor = chipNeutralContainer,
-                        fallbackContentColor = chipCategoryContent
-                    )
-
-                    val entityChipColors = resolveChipColors(
-                        style = themeStyle.chipStyle,
-                        isSubcategory = false,
-                        isEntity = true,
-                        categoryContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
-                        categoryContentColor = MaterialTheme.colorScheme.onSurface,
-                        fallbackContainerColor = chipNeutralContainer,
-                        fallbackContentColor = chipEntityContent
-                    )
-
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Line 1: [category] > [subcategory] (+ [NSFW])
-                        val hasCategoryLine = localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() || editedIsNsfw
-                        if (hasCategoryLine) {
+                    // Line 1: [category] > [subcategory] (+ [NSFW])
+                    val hasCategoryLine = localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() || editedIsNsfw
+                    if (hasCategoryLine) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                        if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
-                            // Category
-                            AssistChip(
-                                onClick = {},
-                                label = { Text(localizedCategory) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                modifier = Modifier.themeChipSurface(
-                                    style = themeStyle.chipStyle,
-                                    palette = themeStyle.surfacePalette,
-                                    isDark = isDark,
-                                    fallbackShape = RoundedCornerShape(10.dp),
-                                    fallbackContainerColor = categoryChipColors.containerColor
-                                ),
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = categoryChipColors.containerColor,
-                                    labelColor = categoryChipColors.contentColor,
-                                    leadingIconContentColor = categoryChipColors.contentColor
-                                ),
-                                shape = detailChipShape
-                            )
+                            if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
+                                CompactTagBadge(
+                                    icon = Icons.Default.Folder,
+                                    text = localizedCategory,
+                                    iconTint = folderIconTint,
+                                    isMatched = false,
+                                    containerColor = categoryColors.containerColor,
+                                    contentColor = categoryColors.contentColor,
+                                    matchedContainerColor = categoryColors.containerColor,
+                                    matchedContentColor = categoryColors.contentColor
+                                )
 
-                            Text(
-                                text = ">",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.outline
-                            )
+                                Text(
+                                    text = ">",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
 
-                            // Subcategory
-                            AssistChip(
-                                onClick = {},
-                                label = { Text(localizedSubcategory) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                modifier = Modifier.themeChipSurface(
-                                    style = themeStyle.chipStyle,
-                                    palette = themeStyle.surfacePalette,
-                                    isDark = isDark,
-                                    fallbackShape = RoundedCornerShape(10.dp),
-                                    fallbackContainerColor = subcategoryChipColors.containerColor
-                                ),
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = subcategoryChipColors.containerColor,
-                                    labelColor = subcategoryChipColors.contentColor,
-                                    leadingIconContentColor = subcategoryChipColors.contentColor
-                                ),
-                                shape = detailChipShape
-                            )
-                        } else if (localizedCategory.isNotBlank()) {
-                            AssistChip(
-                                onClick = {},
-                                label = { Text(localizedCategory) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                modifier = Modifier.themeChipSurface(
-                                    style = themeStyle.chipStyle,
-                                    palette = themeStyle.surfacePalette,
-                                    isDark = isDark,
-                                    fallbackShape = RoundedCornerShape(10.dp),
-                                    fallbackContainerColor = categoryChipColors.containerColor
-                                ),
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = categoryChipColors.containerColor,
-                                    labelColor = categoryChipColors.contentColor,
-                                    leadingIconContentColor = categoryChipColors.contentColor
-                                ),
-                                shape = detailChipShape
-                            )
-                        } else if (localizedSubcategory.isNotBlank()) {
-                            AssistChip(
-                                onClick = {},
-                                label = { Text(localizedSubcategory) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                modifier = Modifier.themeChipSurface(
-                                    style = themeStyle.chipStyle,
-                                    palette = themeStyle.surfacePalette,
-                                    isDark = isDark,
-                                    fallbackShape = RoundedCornerShape(10.dp),
-                                    fallbackContainerColor = subcategoryChipColors.containerColor
-                                ),
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = subcategoryChipColors.containerColor,
-                                    labelColor = subcategoryChipColors.contentColor,
-                                    leadingIconContentColor = subcategoryChipColors.contentColor
-                                ),
-                                shape = detailChipShape
-                            )
-                        }
+                                CompactTagBadge(
+                                    icon = Icons.AutoMirrored.Filled.Label,
+                                    text = localizedSubcategory,
+                                    iconTint = subcategoryIconTint,
+                                    isMatched = false,
+                                    containerColor = subcategoryColors.containerColor,
+                                    contentColor = subcategoryColors.contentColor,
+                                    matchedContainerColor = subcategoryColors.containerColor,
+                                    matchedContentColor = subcategoryColors.contentColor
+                                )
+                            } else if (localizedCategory.isNotBlank()) {
+                                CompactTagBadge(
+                                    icon = Icons.Default.Folder,
+                                    text = localizedCategory,
+                                    iconTint = folderIconTint,
+                                    isMatched = false,
+                                    containerColor = categoryColors.containerColor,
+                                    contentColor = categoryColors.contentColor,
+                                    matchedContainerColor = categoryColors.containerColor,
+                                    matchedContentColor = categoryColors.contentColor
+                                )
+                            } else if (localizedSubcategory.isNotBlank()) {
+                                CompactTagBadge(
+                                    icon = Icons.AutoMirrored.Filled.Label,
+                                    text = localizedSubcategory,
+                                    iconTint = subcategoryIconTint,
+                                    isMatched = false,
+                                    containerColor = subcategoryColors.containerColor,
+                                    contentColor = subcategoryColors.contentColor,
+                                    matchedContainerColor = subcategoryColors.containerColor,
+                                    matchedContentColor = subcategoryColors.contentColor
+                                )
+                            }
 
-
-                        if (editedIsNsfw) {
-                            AssistChip(
-                                onClick = {},
-                                label = { Text("NSFW", fontWeight = FontWeight.Bold) },
-                                modifier = Modifier.themeChipSurface(
-                                    style = themeStyle.chipStyle,
-                                    palette = themeStyle.surfacePalette,
-                                    isDark = isDark,
-                                    fallbackShape = RoundedCornerShape(10.dp),
-                                    fallbackContainerColor = MaterialTheme.colorScheme.errorContainer
-                                ),
-                                colors = AssistChipDefaults.assistChipColors(
+                            if (editedIsNsfw) {
+                                CompactTagBadge(
+                                    icon = null,
+                                    text = "NSFW",
+                                    isMatched = false,
                                     containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    labelColor = MaterialTheme.colorScheme.onErrorContainer
-                                ),
-                                shape = detailChipShape
-                            )
+                                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                                    matchedContainerColor = MaterialTheme.colorScheme.errorContainer,
+                                    matchedContentColor = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
                         }
                     }
 
-                        }
-
-                    // Line 2: [entities] (disables LocalMinimumInteractiveComponentSize to compact multi-line height)
+                    // Line 2: [entities]
                     if (editedTag.entities.isNotEmpty()) {
-                        CompositionLocalProvider(
-                            LocalMinimumInteractiveComponentSize provides Dp.Unspecified
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            FlowRow(
-                                modifier = Modifier
-                                    .fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                editedTag.entities.forEach { entity ->
-                                    AssistChip(
-                                        onClick = {},
-                                        label = { Text(entity) },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = Icons.Default.Tag,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                        },
-                                        modifier = Modifier.themeChipSurface(
-                                            style = themeStyle.chipStyle,
-                                            palette = themeStyle.surfacePalette,
-                                            isDark = isDark,
-                                            fallbackShape = RoundedCornerShape(10.dp),
-                                            fallbackContainerColor = entityChipColors.containerColor
-                                        ),
-                                        colors = AssistChipDefaults.assistChipColors(
-                                            containerColor = entityChipColors.containerColor,
-                                            labelColor = entityChipColors.contentColor,
-                                            leadingIconContentColor = entityChipColors.contentColor
-                                        ),
-                                        shape = detailChipShape
-                                    )
-                                }
+                            editedTag.entities.forEach { entity ->
+                                val cleanEntity = entity.removePrefix("#")
+                                CompactTagBadge(
+                                    icon = Icons.Default.Tag,
+                                    text = cleanEntity,
+                                    iconTint = if (themeStyle.chipStyle.depth > 0.dp) chipEntityContent else null,
+                                    isMatched = false,
+                                    containerColor = entityColors.containerColor,
+                                    contentColor = entityColors.contentColor,
+                                    matchedContainerColor = entityColors.containerColor,
+                                    matchedContentColor = entityColors.contentColor
+                                )
                             }
                         }
                     }
                 }
-            }
 
                 Spacer(modifier = Modifier.height(24.dp))
 

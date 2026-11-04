@@ -126,6 +126,12 @@ fun TidiloBottomBar(
 
     val themeStyle = LocalAppThemeStyle.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val isTactileIndicator = themeStyle.floatingBarStyle.activeTabStyle == ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE
+    val barRippleColor = if (isTactileIndicator) {
+        if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+    } else {
+        Color.Unspecified
+    }
 
     val barHeight = 68.dp
     val containerBgColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = themeStyle.floatingBarAlpha)
@@ -245,12 +251,21 @@ fun TidiloBottomBar(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
+                    val activeContainerColor = if (isTactileIndicator) {
+                        themeStyle.surfacePalette.container(isDark, fallback = if (isDark) Color(0xFF22262B) else Color.White)
+                    } else {
+                        MaterialTheme.colorScheme.primaryContainer
+                    }
+                    val inactiveTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    val activeContentColor = if (isTactileIndicator) {
+                        if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B)
+                    } else {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    }
+                    val tabShape = CircleShape
+
                     items.forEach { screen ->
                         val isSelected = currentRoute == screen.route
-
-                        val activeContainerColor = MaterialTheme.colorScheme.primaryContainer
-                        val inactiveTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        val activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
                         val itemBgColor by animateColorAsState(
                             targetValue = if (isSelected) activeContainerColor else Color.Transparent,
@@ -277,9 +292,6 @@ fun TidiloBottomBar(
                             label = "tabIconSize_${screen.route}"
                         )
 
-                        val isTactileIndicator = themeStyle.floatingBarStyle.activeTabStyle == ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE
-                        val tabShape = CircleShape
-
                         Box(
                             modifier = Modifier
                                 .weight(tabWeight)
@@ -300,7 +312,7 @@ fun TidiloBottomBar(
                                 .clip(tabShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple(bounded = true)
+                                    indication = ripple(bounded = true, color = barRippleColor)
                                 ) {
                                     if (currentRoute != screen.route) {
                                         navController.navigate(screen.route) {
@@ -489,7 +501,7 @@ fun TidiloBottomBar(
                                 .clickable(
                                     role = Role.Button,
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple()
+                                    indication = ripple(color = barRippleColor)
                                 ) {
                                     onSelectFilterMode(LibraryFilterMode.COLLECTION)
                                     onToggleFilterMenu()
@@ -530,7 +542,7 @@ fun TidiloBottomBar(
                                 .clip(CircleShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple()
+                                    indication = ripple(color = barRippleColor)
                                 ) {
                                     onSelectFilterMode(LibraryFilterMode.RSS)
                                     onToggleFilterMenu()
@@ -571,7 +583,7 @@ fun TidiloBottomBar(
                                 .clip(CircleShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple()
+                                    indication = ripple(color = barRippleColor)
                                 ) {
                                     onSelectFilterMode(LibraryFilterMode.DOMAIN)
                                     onToggleFilterMenu()
@@ -612,7 +624,7 @@ fun TidiloBottomBar(
                                 .clip(CircleShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple()
+                                    indication = ripple(color = barRippleColor)
                                 ) {
                                     onSelectFilterMode(LibraryFilterMode.NEWEST_FIRST)
                                     onToggleFilterMenu()

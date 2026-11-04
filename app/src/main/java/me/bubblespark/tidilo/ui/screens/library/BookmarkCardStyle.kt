@@ -55,21 +55,7 @@ internal fun rememberBookmarkCardStyle(darkContainerColor: Color): BookmarkCardS
                 start = Offset(Float.POSITIVE_INFINITY, 0f),
                 end = Offset(0f, Float.POSITIVE_INFINITY)
             ),
-            surfaceWash = if (hasAmbientAccent) {
-                Brush.linearGradient(
-                    colors = listOf(accent.copy(alpha = if (dark) 0.12f else 0.05f), accent.copy(alpha = 0f)),
-                    start = Offset(Float.POSITIVE_INFINITY, 0f),
-                    end = Offset(0f, Float.POSITIVE_INFINITY)
-                )
-            } else if (dark) {
-                null
-            } else {
-                Brush.linearGradient(
-                    colors = listOf(accent.copy(alpha = 0.045f), accent.copy(alpha = 0f)),
-                    start = Offset(Float.POSITIVE_INFINITY, 0f),
-                    end = Offset(0f, Float.POSITIVE_INFINITY)
-                )
-            },
+            surfaceWash = null,
             ambientShadowColor = accent.copy(alpha = if (dark) 0.35f else 0.25f),
             spotShadowColor = if (dark) accent.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.10f),
             blurRadius = themeStyle.cardBlurRadius,

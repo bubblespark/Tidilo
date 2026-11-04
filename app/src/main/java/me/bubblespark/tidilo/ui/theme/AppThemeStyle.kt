@@ -168,15 +168,15 @@ data class AppThemeStyle(
         val Modern = AppThemeStyle(
             theme = AppTheme.MODERN,
             surfacePalette = ThemeSurfacePalette(
-                darkCanvasColor = Color(0xFF111317),
-                lightCanvasColor = Color(0xFFF0F4F8),
-                darkContainerColor = Color(0xFF1E2228),
+                darkCanvasColor = Color(0xFF181A1E),
+                lightCanvasColor = Color(0xFFE8EEF2),
+                darkContainerColor = Color(0xFF22262B),
                 lightContainerColor = Color(0xFFFFFFFF)
             ),
             cardStyle = ThemeCardStyle(
                 depth = 4.dp,
                 shape = RoundedCornerShape(26.dp),
-                useGradientFill = false,
+                useGradientFill = true,
                 showAccentRim = false
             ),
             chipStyle = ThemeChipStyle(

@@ -180,6 +180,12 @@ private fun CollectionCardVisual(
         }
 
         // Front interactive main horizontal card
+        val frontCardColor = if (themeStyle.cardStyle.depth > 0.dp && themeStyle.cardStyle.useGradientFill) {
+            Color.Transparent
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = themeStyle.cardAlpha)
+        }
+
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -199,7 +205,7 @@ private fun CollectionCardVisual(
                     }
                 ),
             shape = effectiveShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = themeStyle.cardAlpha),
+            color = frontCardColor,
             border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.45f)),
             shadowElevation = 2.dp
         ) {

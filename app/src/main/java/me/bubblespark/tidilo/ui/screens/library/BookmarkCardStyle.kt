@@ -39,13 +39,19 @@ internal fun rememberBookmarkCardStyle(darkContainerColor: Color): BookmarkCardS
     val accent = if (providedAccent == Color.Unspecified) MaterialTheme.colorScheme.primary else providedAccent
     // Follow the applied color scheme, including explicit preview/test theme overrides.
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    return remember(accent, dark, darkContainerColor, themeStyle.cardBlurRadius, themeStyle.cardAlpha, themeStyle.surfacePalette) {
+    return remember(accent, dark, darkContainerColor, themeStyle.cardBlurRadius, themeStyle.cardAlpha, themeStyle.surfacePalette, themeStyle.cardStyle) {
         val fallbackColor = if (dark) darkContainerColor else Color.White
         val resolvedContainer = themeStyle.surfacePalette.container(dark, fallbackColor)
+        val hasCardGradient = themeStyle.cardStyle.depth > 0.dp && themeStyle.cardStyle.useGradientFill
+        val effectiveContainer = if (hasCardGradient) {
+            Color.Transparent
+        } else {
+            resolvedContainer.copy(alpha = themeStyle.cardAlpha)
+        }
         BookmarkCardStyle(
             // Intentional exceptions per docs/ui_design.md: white surfaces and black contact shadows
             // preserve crisp contrast without muddy coloration under tinted ambient beams.
-            containerColor = resolvedContainer.copy(alpha = themeStyle.cardAlpha),
+            containerColor = effectiveContainer,
             rim = Brush.linearGradient(
                 colors = listOf(accent.copy(alpha = if (dark) 0.65f else 0.38f),
                     accent.copy(alpha = if (dark) 0.05f else 0.04f)),

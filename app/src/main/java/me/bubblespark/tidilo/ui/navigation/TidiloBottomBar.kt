@@ -278,7 +278,7 @@ fun TidiloBottomBar(
                         )
 
                         val isTactileIndicator = themeStyle.floatingBarStyle.activeTabStyle == ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE
-                        val tabShape = if (isTactileIndicator) RoundedCornerShape(14.dp) else CircleShape
+                        val tabShape = CircleShape
 
                         Box(
                             modifier = Modifier

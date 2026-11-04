@@ -162,6 +162,12 @@ internal fun LibraryDeckCard(
         }
 
         // Front interactive main card (bottom-left)
+        val frontCardColor = if (themeStyle.cardStyle.depth > 0.dp && themeStyle.cardStyle.useGradientFill) {
+            Color.Transparent
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = themeStyle.cardAlpha)
+        }
+
         Card(
             onClick = onClick,
             modifier = Modifier
@@ -172,7 +178,7 @@ internal fun LibraryDeckCard(
                 .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, cardShape, MaterialTheme.colorScheme.surfaceContainerHigh),
             shape = effectiveShape,
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = themeStyle.cardAlpha)
+                containerColor = frontCardColor
             ),
             border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.42f)),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)

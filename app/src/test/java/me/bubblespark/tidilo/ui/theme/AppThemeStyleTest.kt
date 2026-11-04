@@ -154,15 +154,15 @@ class AppThemeStyleTest {
         assertEquals(ThemeColorRole.ACCENT, style.colorRole)
 
         // surfacePalette
-        assertEquals(Color(0xFF111317), style.surfacePalette.darkCanvasColor)
-        assertEquals(Color(0xFFF0F4F8), style.surfacePalette.lightCanvasColor)
-        assertEquals(Color(0xFF1E2228), style.surfacePalette.darkContainerColor)
+        assertEquals(Color(0xFF181A1E), style.surfacePalette.darkCanvasColor)
+        assertEquals(Color(0xFFE8EEF2), style.surfacePalette.lightCanvasColor)
+        assertEquals(Color(0xFF22262B), style.surfacePalette.darkContainerColor)
         assertEquals(Color(0xFFFFFFFF), style.surfacePalette.lightContainerColor)
 
         // cardStyle
         assertEquals(4.dp, style.cardStyle.depth)
         assertEquals(RoundedCornerShape(26.dp), style.cardStyle.shape)
-        assertFalse(style.cardStyle.useGradientFill)
+        assertTrue(style.cardStyle.useGradientFill)
         assertFalse(style.cardStyle.showAccentRim)
 
         // chipStyle

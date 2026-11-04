@@ -62,8 +62,8 @@ fun Modifier.themeCardSurface(
     val containerColor = palette.container(isDark, fallbackContainerColor)
 
     // Soft expanded ambient shadow for floating card elevation
-    val spotColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.08f)
-    val ambientColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.04f)
+    val spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.10f)
+    val ambientColor = if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.05f)
 
     val shadowModifier = this.shadow(
         elevation = style.depth * 2,
@@ -74,16 +74,28 @@ fun Modifier.themeCardSurface(
     )
 
     val bgModifier = if (style.useGradientFill && containerColor != Color.Unspecified) {
-        val lightened = containerColor.copy(
-            red = (containerColor.red * 1.05f).coerceAtMost(1f),
-            green = (containerColor.green * 1.05f).coerceAtMost(1f),
-            blue = (containerColor.blue * 1.05f).coerceAtMost(1f)
-        )
-        val darkened = containerColor.copy(
-            red = containerColor.red * 0.96f,
-            green = containerColor.green * 0.96f,
-            blue = containerColor.blue * 0.96f
-        )
+        val lightened = if (isDark) {
+            containerColor.copy(
+                red = (containerColor.red * 1.18f).coerceAtMost(1f),
+                green = (containerColor.green * 1.18f).coerceAtMost(1f),
+                blue = (containerColor.blue * 1.18f).coerceAtMost(1f)
+            )
+        } else {
+            Color.White
+        }
+        val darkened = if (isDark) {
+            containerColor.copy(
+                red = containerColor.red * 0.85f,
+                green = containerColor.green * 0.85f,
+                blue = containerColor.blue * 0.85f
+            )
+        } else {
+            containerColor.copy(
+                red = (containerColor.red * 0.93f),
+                green = (containerColor.green * 0.94f),
+                blue = (containerColor.blue * 0.95f)
+            )
+        }
         shadowModifier.background(
             brush = Brush.verticalGradient(
                 colors = listOf(lightened, containerColor, darkened)
@@ -96,15 +108,19 @@ fun Modifier.themeCardSurface(
         shadowModifier
     }
 
-    return if (isDark) {
-        val cardBevelBorder = Brush.verticalGradient(
-            0.0f to Color.White.copy(alpha = 0.10f),
-            1.0f to Color.Black.copy(alpha = 0.25f)
+    val cardBevelBorder = if (isDark) {
+        Brush.verticalGradient(
+            0.0f to Color.White.copy(alpha = 0.15f),
+            1.0f to Color.Black.copy(alpha = 0.35f)
         )
-        bgModifier.border(width = 1.dp, brush = cardBevelBorder, shape = resolvedShape)
     } else {
-        bgModifier
+        Brush.verticalGradient(
+            0.0f to Color.White.copy(alpha = 0.90f),
+            1.0f to Color.Black.copy(alpha = 0.08f)
+        )
     }
+
+    return bgModifier.border(width = 1.dp, brush = cardBevelBorder, shape = resolvedShape)
 }
 
 /**

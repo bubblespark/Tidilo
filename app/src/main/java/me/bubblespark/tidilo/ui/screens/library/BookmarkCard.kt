@@ -133,7 +133,7 @@ fun BookmarkItemCard(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, cardShape, cardStyle.containerColor)
+            .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, effectiveShape, cardStyle.containerColor)
             .bookmarkCardLighting(cardStyle, effectiveShape, themeStyle.cardStyle.showAccentRim),
         shape = effectiveShape, // M3 Expressive Large Rounding
         colors = CardDefaults.cardColors(

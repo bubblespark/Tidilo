@@ -112,7 +112,7 @@ fun BookmarkGridCard(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, cardShape, cardStyle.containerColor)
+            .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, effectiveShape, cardStyle.containerColor)
             .bookmarkCardLighting(cardStyle, effectiveShape, themeStyle.cardStyle.showAccentRim)
             .clip(effectiveShape)
             .combinedClickable(

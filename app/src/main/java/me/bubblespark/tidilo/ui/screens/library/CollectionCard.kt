@@ -180,11 +180,10 @@ private fun CollectionCardVisual(
         }
 
         // Front interactive main horizontal card
-        val frontCardColor = if (themeStyle.cardStyle.depth > 0.dp && themeStyle.cardStyle.useGradientFill) {
-            Color.Transparent
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = themeStyle.cardAlpha)
-        }
+        val frontCardColor = themeStyle.surfacePalette.container(
+            isDark = isDark,
+            fallback = MaterialTheme.colorScheme.surfaceContainerHigh
+        ).copy(alpha = themeStyle.cardAlpha)
 
         Surface(
             modifier = Modifier
@@ -192,7 +191,7 @@ private fun CollectionCardVisual(
                 .padding(end = stackOffset * 2)
                 .height(cardHeight)
                 .align(Alignment.BottomStart)
-                .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, cardShape, MaterialTheme.colorScheme.surfaceContainerHigh)
+                .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, effectiveShape, frontCardColor)
                 .clip(effectiveShape)
                 .combinedClickable(
                     role = Role.Button,

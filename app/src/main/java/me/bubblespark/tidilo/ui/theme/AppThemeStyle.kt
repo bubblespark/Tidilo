@@ -187,7 +187,10 @@ data class AppThemeStyle(
     val floatingBarAlpha: Float = 1.0f,
     val cardBlurRadius: Dp = 0.dp,
     val cardAlpha: Float = 1.0f,
-    val surfaceOverrides: Map<SurfaceRole, SurfaceStyleOverride> = emptyMap()
+    val surfaceOverrides: Map<SurfaceRole, SurfaceStyleOverride> = emptyMap(),
+    val shapeScale: ThemeShapeScale = ThemeShapeScale(),
+    val lightMaterialColors: ColorScheme? = null,
+    val darkMaterialColors: ColorScheme? = null
 ) {
     fun resolveColor(colorScheme: ColorScheme, dynamicAccent: Color? = null): Color =
         colorRole.resolve(colorScheme, dynamicAccent)

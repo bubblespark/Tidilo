@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.material3.MaterialTheme
@@ -40,12 +41,12 @@ internal data class BookmarkCardStyle(
 
 @Composable
 internal fun rememberBookmarkCardStyle(darkContainerColor: Color): BookmarkCardStyle {
-    val themeStyle = LocalAppThemeStyle.current
+    val themeStyle = currentThemeSurfaces().preset
     val providedAccent = LocalCardAccentColor.current
     val hasAmbientAccent = providedAccent != Color.Unspecified
     val accent = if (hasAmbientAccent) providedAccent else MaterialTheme.colorScheme.primary
     // Follow the applied color scheme, including explicit preview/test theme overrides.
-    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val dark = currentThemeSurfaces().isDark
     val isTactile = themeStyle.cardStyle.depth > 0.dp
     return remember(accent, dark, darkContainerColor, themeStyle.cardBlurRadius, themeStyle.cardAlpha, themeStyle.surfacePalette, themeStyle.cardStyle, hasAmbientAccent) {
         val fallbackColor = if (dark) darkContainerColor else Color.White

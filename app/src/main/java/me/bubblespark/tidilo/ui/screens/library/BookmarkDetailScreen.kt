@@ -1,5 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
@@ -272,7 +275,7 @@ fun BookmarkDetailScreen(
     val detailAccent = rememberDetailAccent(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
     val bannerBounds = remember(bookmark.id, ogBitmap) { mutableStateOf<Rect?>(null) }
     val lightingHostOrigin = remember { mutableStateOf(Offset.Zero) }
-    val darkLighting = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val darkLighting = currentThemeSurfaces().isDark
 
     TidiloScreenScaffold(
         modifier = modifier
@@ -355,8 +358,8 @@ fun BookmarkDetailScreen(
             )
         },
         overlay = {
-            val themeStyle = LocalAppThemeStyle.current
-            val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+            val themeStyle = currentThemeSurfaces().preset
+            val isDark = currentThemeSurfaces().isDark
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val toolbarOffset = if (maxWidth >= 368.dp) 32.dp else 0.dp
             Row(
@@ -420,6 +423,8 @@ fun BookmarkDetailScreen(
             // Discard changes confirmation dialog
             if (showDiscardConfirmDialog) {
                 AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
                     onDismissRequest = { showDiscardConfirmDialog = false; discardToCollections = false },
                     title = {
                         Text(
@@ -463,6 +468,7 @@ fun BookmarkDetailScreen(
             // Delete confirmation dialog
             if (showDeleteConfirmDialog) {
                 AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
                     onDismissRequest = { showDeleteConfirmDialog = false },
                     title = {
                         Text(
@@ -501,7 +507,7 @@ fun BookmarkDetailScreen(
                             Text(stringResource(R.string.common_cancel))
                         }
                     },
-                    shape = RoundedCornerShape(24.dp)
+                    shape = themeCorner(ThemeCorner.PROMINENT_CARD)
                 )
             }
 
@@ -633,7 +639,7 @@ fun BookmarkDetailScreen(
                                             bannerBounds.value = Rect(it.positionInRoot(), Size(it.size.width.toFloat(), it.size.height.toFloat()))
                                         }
                                         .detailBannerLight(detailAccent)
-                                        .clip(RoundedCornerShape(16.dp))
+                                        .clip(themeCorner(ThemeCorner.IMAGE))
                                 )
                             }
                             Spacer(modifier = Modifier.height(16.dp))
@@ -658,7 +664,7 @@ fun BookmarkDetailScreen(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(themeCorner(ThemeCorner.FIELD))
                         .combinedClickable(
                             onClick = {
                                 openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) }
@@ -678,7 +684,7 @@ fun BookmarkDetailScreen(
                                     .show()
                             }
                         ),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = themeCorner(ThemeCorner.FIELD),
                     color = Color.Transparent
                 ) {
                     Row(
@@ -816,7 +822,7 @@ fun BookmarkDetailScreen(
                                         labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                         leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                     ),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = themeCorner(ThemeCorner.CONTROL)
                                 )
 
                                 Text(
@@ -842,7 +848,7 @@ fun BookmarkDetailScreen(
                                         labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                         leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                     ),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = themeCorner(ThemeCorner.CONTROL)
                                 )
                             } else if (localizedCategory.isNotBlank()) {
                                 AssistChip(
@@ -860,7 +866,7 @@ fun BookmarkDetailScreen(
                                         labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                         leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                     ),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = themeCorner(ThemeCorner.CONTROL)
                                 )
                             } else if (localizedSubcategory.isNotBlank()) {
                                 AssistChip(
@@ -878,7 +884,7 @@ fun BookmarkDetailScreen(
                                         labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                         leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                     ),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = themeCorner(ThemeCorner.CONTROL)
                                 )
                             }
 
@@ -891,7 +897,7 @@ fun BookmarkDetailScreen(
                                         containerColor = MaterialTheme.colorScheme.errorContainer,
                                         labelColor = MaterialTheme.colorScheme.onErrorContainer
                                     ),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = themeCorner(ThemeCorner.CONTROL)
                                 )
                             }
                         }
@@ -924,7 +930,7 @@ fun BookmarkDetailScreen(
                                                 containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
                                                 labelColor = MaterialTheme.colorScheme.onSurface
                                             ),
-                                            shape = RoundedCornerShape(10.dp)
+                                            shape = themeCorner(ThemeCorner.CONTROL)
                                         )
                                     }
                                 }
@@ -959,7 +965,7 @@ fun BookmarkDetailScreen(
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = themeCorner(ThemeCorner.FIELD),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                     ),
@@ -1030,7 +1036,7 @@ fun BookmarkDetailScreen(
                             .onFocusChanged { focusState ->
                                 isNoteFocused = focusState.isFocused
                             },
-                        shape = RoundedCornerShape(12.dp),
+                        shape = themeCorner(ThemeCorner.FIELD),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = MaterialTheme.colorScheme.primary,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,

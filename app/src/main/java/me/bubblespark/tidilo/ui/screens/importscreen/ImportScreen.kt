@@ -1,5 +1,12 @@
 package me.bubblespark.tidilo.ui.screens.importscreen
 
+import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.theme.ThemeSurfaceState
+import me.bubblespark.tidilo.ui.theme.SurfaceTone
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.animation.core.Animatable
@@ -190,6 +197,8 @@ fun ImportScreen(
     val quotaDialogVisible by viewModel.quotaExceededDialogVisible.collectAsStateWithLifecycle()
     if (quotaDialogVisible) {
         AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
             onDismissRequest = { viewModel.dismissQuotaExceededDialog() },
             title = {
                 Text(
@@ -608,7 +617,7 @@ private fun CollapsibleGroupHeader(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(themeCorner(ThemeCorner.IMAGE))
             .clickable { onToggle() },
         color = Color.Transparent
     ) {
@@ -674,7 +683,7 @@ private fun MoreItemsButton(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(14.dp)
+        shape = themeCorner(ThemeCorner.CHIP)
     ) {
         Icon(
             imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -702,12 +711,9 @@ private fun EmptyGroupCard(
     message: String,
     hint: String
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
-        )
+    TidiloSurface(
+        role = SurfaceRole.STATUS_CARD,
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
@@ -784,7 +790,7 @@ private fun SwipeableTaskCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(themeCorner(ThemeCorner.CARD))
     ) {
         if (swipeDirection != TaskSwipeDirection.Settled) {
             SwipeBackground(
@@ -907,17 +913,11 @@ private fun TaskCard(
     modifier: Modifier = Modifier
 ) {
     val isError = item.status == TaskStatus.ERROR
-    val containerColor = if (isError) {
-        MaterialTheme.colorScheme.errorContainer
-    } else {
-        MaterialTheme.colorScheme.surfaceContainer
-    }
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    TidiloSurface(
+        role = SurfaceRole.STATUS_CARD,
+        state = ThemeSurfaceState(tone = if (isError) SurfaceTone.ERROR else SurfaceTone.NORMAL),
+        modifier = modifier.fillMaxWidth()
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             val domain = remember(item.url) { DomainIconManager.extractDomain(item.url) }
@@ -953,7 +953,7 @@ private fun TaskCard(
                         modifier = Modifier.padding(bottom = 6.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = themeCorner(ThemeCorner.LINE),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                         ) {
                             Text(
@@ -1000,7 +1000,7 @@ private fun TaskCard(
                     ) {
                         item.assignedTags.forEach { tag ->
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
+                                shape = themeCorner(ThemeCorner.SMALL),
                                 color = MaterialTheme.colorScheme.primaryContainer
                             ) {
                                 Text(
@@ -1063,11 +1063,9 @@ private fun ImportingTaskCard(
     item: ImportingTask,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    TidiloSurface(
+        role = SurfaceRole.STATUS_CARD,
+        modifier = modifier.fillMaxWidth()
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             val domain = remember(item.url) { DomainIconManager.extractDomain(item.url) }
@@ -1097,7 +1095,7 @@ private fun ImportingTaskCard(
                         modifier = Modifier.padding(bottom = 6.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = themeCorner(ThemeCorner.LINE),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                         ) {
                             Text(
@@ -1234,8 +1232,9 @@ private fun ImportUrlDialog(
     val isDirty = urlText.isNotBlank()
 
     AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(28.dp),
+        shape = themeCorner(ThemeCorner.SHEET),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(

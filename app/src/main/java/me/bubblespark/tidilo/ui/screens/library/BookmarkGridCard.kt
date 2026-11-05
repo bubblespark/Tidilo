@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -106,8 +108,8 @@ fun BookmarkGridCard(
         } ?: primaryColor
     }
 
-    val themeStyle = LocalAppThemeStyle.current
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val themeStyle = currentThemeSurfaces().preset
+    val isDark = currentThemeSurfaces().isDark
     val hasSummary = bookmark.description.isNotBlank()
     val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.BOOKMARK_CARD, SurfaceVariant.COMPACT).shape
     val topImageShape = if (effectiveShape is RoundedCornerShape) {
@@ -168,14 +170,14 @@ fun BookmarkGridCard(
                             contentDescription = domainDisplayName,
                             modifier = Modifier
                                 .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(themeCorner(ThemeCorner.SMALL))
                         )
                     } else {
                         // A bundled link icon is always available, including offline.
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(themeCorner(ThemeCorner.SMALL))
                                 .background(domainAccentColor.copy(alpha = 0.30f)),
                             contentAlignment = Alignment.Center
                         ) {

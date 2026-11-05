@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.theme.CollectionColorPalette
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
@@ -122,9 +124,9 @@ private fun CollectionCardVisual(
     onLongClick: (() -> Unit)? = null
 ) {
     val haptic = LocalHapticFeedback.current
-    val themeStyle = LocalAppThemeStyle.current
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val cardShape = remember { RoundedCornerShape(22.dp) }
+    val themeStyle = currentThemeSurfaces().preset
+    val isDark = currentThemeSurfaces().isDark
+    val cardShape = themeCorner(ThemeCorner.DECK)
     val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.DECK_FRONT, SurfaceVariant.STANDARD).shape
     val stackOffset = 6.dp
     val cardHeight = (132 * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)).dp
@@ -282,7 +284,7 @@ private fun CollectionCardVisual(
 
                     // Bottom-left: Bookmark count pill badge
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = themeCorner(ThemeCorner.CONTROL),
                         color = dominantColor.copy(alpha = 0.20f).compositeOver(MaterialTheme.colorScheme.surfaceContainerHigh),
                         contentColor = MaterialTheme.colorScheme.onSurface
                     ) {
@@ -338,7 +340,7 @@ fun AddCollectionDummyCard(
                     drawRoundRect(color = outlineColor, style = stroke, cornerRadius = radius)
                 }
             },
-        shape = RoundedCornerShape(22.dp),
+        shape = themeCorner(ThemeCorner.DECK),
         color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.55f)
     ) {
         Box(

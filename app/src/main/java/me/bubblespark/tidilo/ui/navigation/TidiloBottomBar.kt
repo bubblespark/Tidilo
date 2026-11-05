@@ -129,7 +129,7 @@ fun TidiloBottomBar(
         Screen.Import
     )
 
-    val themeStyle = LocalAppThemeStyle.current
+    val themeStyle = currentThemeSurfaces().preset
     val surfaces = currentThemeSurfaces()
     val barRippleColor = surfaces.navigationRippleColor
 

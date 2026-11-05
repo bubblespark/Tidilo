@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -108,9 +110,9 @@ internal fun LibraryDeckCard(
     modifier: Modifier = Modifier,
     watermark: @Composable (Modifier) -> Unit
 ) {
-    val themeStyle = LocalAppThemeStyle.current
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val cardShape = remember { RoundedCornerShape(20.dp) }
+    val themeStyle = currentThemeSurfaces().preset
+    val isDark = currentThemeSurfaces().isDark
+    val cardShape = themeCorner(ThemeCorner.CARD)
     val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.DECK_FRONT, SurfaceVariant.COMPACT).shape
     val stackOffset = 7.dp
     val cardHeight = 154.dp
@@ -243,7 +245,7 @@ internal fun LibraryDeckCard(
 
                     // Total bookmark count pill badge
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = themeCorner(ThemeCorner.CONTROL),
                         color = dominantColor.copy(alpha = 0.20f),
                         contentColor = dominantColor
                     ) {

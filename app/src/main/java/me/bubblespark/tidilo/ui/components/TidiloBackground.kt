@@ -33,7 +33,7 @@ fun TidiloBackground(
     modifier: Modifier = Modifier,
     isDestinationAllowed: Boolean = true
 ) {
-    val themeStyle = LocalAppThemeStyle.current
+    val themeStyle = currentThemeSurfaces().preset
     val lightingState = LocalAmbientLighting.current
     var lastActiveColor by remember { mutableStateOf(Color.Transparent) }
     val rawColor = if (isDestinationAllowed) lightingState.effectiveActiveColor else null

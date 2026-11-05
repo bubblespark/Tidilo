@@ -1,5 +1,9 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
@@ -332,7 +336,7 @@ fun BookmarkAiReviewScreen(
                         Spacer(modifier = Modifier.height(24.dp))
                         Button(
                             onClick = { retryCount++ },
-                            shape = RoundedCornerShape(12.dp)
+                            shape = themeCorner(ThemeCorner.FIELD)
                         ) {
                             Text(stringResource(R.string.common_retry))
                         }
@@ -355,7 +359,7 @@ fun BookmarkAiReviewScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 8.dp),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = themeCorner(ThemeCorner.FIELD),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                         ),
@@ -513,6 +517,8 @@ fun BookmarkAiReviewScreen(
     // Discard confirmation dialog
     if (showDiscardConfirmDialog) {
         AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
             onDismissRequest = { showDiscardConfirmDialog = false },
             title = {
                 Text(
@@ -575,7 +581,7 @@ private fun SummaryComparisonCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = themeCorner(ThemeCorner.FIELD),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor)
     ) {
@@ -586,7 +592,7 @@ private fun SummaryComparisonCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    shape = RoundedCornerShape(6.dp),
+                    shape = themeCorner(ThemeCorner.LINE),
                     color = if (isAi) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceContainerHighest,
                     contentColor = if (isAi) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
@@ -647,7 +653,7 @@ private fun TagComparisonCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = themeCorner(ThemeCorner.FIELD),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor)
     ) {
@@ -658,7 +664,7 @@ private fun TagComparisonCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    shape = RoundedCornerShape(6.dp),
+                    shape = themeCorner(ThemeCorner.LINE),
                     color = if (isAi) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceContainerHighest,
                     contentColor = if (isAi) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
@@ -686,7 +692,7 @@ private fun TagComparisonCard(
             ) {
                 if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = themeCorner(ThemeCorner.SMALL),
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                     ) {
@@ -699,7 +705,7 @@ private fun TagComparisonCard(
                     }
                 } else {
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = themeCorner(ThemeCorner.SMALL),
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ) {
@@ -740,7 +746,7 @@ private fun TagComparisonCard(
                                     containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
                                     labelColor = MaterialTheme.colorScheme.onSurface
                                 ),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = themeCorner(ThemeCorner.SMALL)
                             )
                         }
                     }

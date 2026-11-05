@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.debug
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -127,7 +129,7 @@ fun WebParserTestSection(
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = themeCorner(ThemeCorner.PROMINENT_CARD),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
             contentColor = MaterialTheme.colorScheme.onSurface
@@ -209,7 +211,7 @@ fun WebParserTestSection(
                         }
                     }
                 },
-                shape = RoundedCornerShape(14.dp),
+                shape = themeCorner(ThemeCorner.CHIP),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                     unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
@@ -238,7 +240,7 @@ fun WebParserTestSection(
                             focusManager.clearFocus()
                         },
                         label = { Text(label, style = MaterialTheme.typography.labelSmall) },
-                        shape = RoundedCornerShape(10.dp),
+                        shape = themeCorner(ThemeCorner.CONTROL),
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
                         )
@@ -264,7 +266,7 @@ fun WebParserTestSection(
                     }
                 },
                 enabled = inputUrl.isNotBlank() && parserState !is WebParserUiState.Loading,
-                shape = RoundedCornerShape(12.dp),
+                shape = themeCorner(ThemeCorner.FIELD),
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
@@ -305,7 +307,7 @@ fun WebParserTestSection(
                 }
                 is WebParserUiState.Error -> {
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = themeCorner(ThemeCorner.FIELD),
                         color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -392,7 +394,7 @@ fun WebParserTestSection(
 @Composable
 private fun QuickStatsBar(page: ParsedWebPage) {
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = themeCorner(ThemeCorner.CHIP),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -577,7 +579,7 @@ private fun JsonLdTab(
         } else {
             page.jsonLdList.forEachIndexed { index, item ->
                 OutlinedCard(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = themeCorner(ThemeCorner.CHIP),
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.outlinedCardColors(
                         containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
@@ -591,7 +593,7 @@ private fun JsonLdTab(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Surface(
-                                    shape = RoundedCornerShape(8.dp),
+                                    shape = themeCorner(ThemeCorner.SMALL),
                                     color = MaterialTheme.colorScheme.primaryContainer,
                                     modifier = Modifier.padding(end = 8.dp)
                                 ) {
@@ -646,7 +648,7 @@ private fun JsonLdTab(
 
                         // Raw Formatted JSON Display
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = themeCorner(ThemeCorner.SMALL),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -696,7 +698,7 @@ private fun AllMetaTagsTab(
                     }
                 }
             },
-            shape = RoundedCornerShape(12.dp)
+            shape = themeCorner(ThemeCorner.FIELD)
         )
 
         val filteredList = remember(page.metaTags, searchQuery) {
@@ -719,7 +721,7 @@ private fun AllMetaTagsTab(
 
         filteredList.forEach { tag ->
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = themeCorner(ThemeCorner.FIELD),
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -733,7 +735,7 @@ private fun AllMetaTagsTab(
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
-                                shape = RoundedCornerShape(6.dp),
+                                shape = themeCorner(ThemeCorner.LINE),
                                 color = when (tag.keyType) {
                                     "property" -> MaterialTheme.colorScheme.primaryContainer
                                     "name" -> MaterialTheme.colorScheme.secondaryContainer
@@ -801,7 +803,7 @@ internal fun BodyTextTab(
                 label = {
                     Text("Readability4J (${page.readabilityArticle?.charCount ?: 0} chars)")
                 },
-                shape = RoundedCornerShape(10.dp),
+                shape = themeCorner(ThemeCorner.CONTROL),
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
                 )
@@ -813,7 +815,7 @@ internal fun BodyTextTab(
                 label = {
                     Text("Jsoup Clean (${page.jsoupBodyCharCount} chars)")
                 },
-                shape = RoundedCornerShape(10.dp),
+                shape = themeCorner(ThemeCorner.CONTROL),
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer
                 )
@@ -823,7 +825,7 @@ internal fun BodyTextTab(
                 selected = mode == 2,
                 onClick = { onModeChange(2) },
                 label = { Text(stringResource(R.string.debug_parser_prompt)) },
-                shape = RoundedCornerShape(10.dp)
+                shape = themeCorner(ThemeCorner.CONTROL)
             )
         }
 
@@ -864,7 +866,7 @@ internal fun BodyTextTab(
             Button(
                 onClick = { onCopy(activeText) },
                 modifier = Modifier.align(Alignment.End),
-                shape = RoundedCornerShape(10.dp),
+                shape = themeCorner(ThemeCorner.CONTROL),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -882,7 +884,7 @@ internal fun BodyTextTab(
 
         if (mode == 0 && page.readabilityArticle?.excerpt?.isNotBlank() == true) {
             Surface(
-                shape = RoundedCornerShape(10.dp),
+                shape = themeCorner(ThemeCorner.CONTROL),
                 color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -905,7 +907,7 @@ internal fun BodyTextTab(
 
         // Extracted Text Content Box
         Surface(
-            shape = RoundedCornerShape(12.dp),
+            shape = themeCorner(ThemeCorner.FIELD),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -938,7 +940,7 @@ private fun DetailItemCard(
     onCopy: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = themeCorner(ThemeCorner.FIELD),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -981,7 +983,7 @@ private fun KeyValueRow(
     onCopy: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
+        shape = themeCorner(ThemeCorner.CONTROL),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
         modifier = Modifier.fillMaxWidth()
     ) {

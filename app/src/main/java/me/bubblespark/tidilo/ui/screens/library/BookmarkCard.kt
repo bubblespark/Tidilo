@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -83,8 +85,8 @@ fun BookmarkItemCard(
     onToggleLike: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val themeStyle = LocalAppThemeStyle.current
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val themeStyle = currentThemeSurfaces().preset
+    val isDark = currentThemeSurfaces().isDark
     val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.BOOKMARK_CARD).shape
     // Localized category and subcategory labels
     val localizedCategory = remember(bookmark.tag.category, context) {
@@ -285,8 +287,8 @@ fun BookmarkTagSection(
     tagKeywords: List<String> = emptyList(),
     modifier: Modifier = Modifier
 ) {
-    val themeStyle = LocalAppThemeStyle.current
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val themeStyle = currentThemeSurfaces().preset
+    val isDark = currentThemeSurfaces().isDark
 
     val chipNeutralContainer = themeStyle.chipStyle.neutralContainer(
         isDark,
@@ -549,7 +551,7 @@ fun SkeletonBookmarkList(
         repeat(3) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
+                shape = themeCorner(ThemeCorner.PROMINENT_CARD),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                 )
@@ -559,7 +561,7 @@ fun SkeletonBookmarkList(
                         modifier = Modifier
                             .fillMaxWidth(0.7f)
                             .height(18.dp),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = themeCorner(ThemeCorner.SMALL),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f)
                     ) {}
                     Spacer(modifier = Modifier.height(10.dp))
@@ -567,7 +569,7 @@ fun SkeletonBookmarkList(
                         modifier = Modifier
                             .fillMaxWidth(0.9f)
                             .height(14.dp),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = themeCorner(ThemeCorner.LINE),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f)
                     ) {}
                     Spacer(modifier = Modifier.height(8.dp))
@@ -575,7 +577,7 @@ fun SkeletonBookmarkList(
                         modifier = Modifier
                             .fillMaxWidth(0.5f)
                             .height(14.dp),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = themeCorner(ThemeCorner.LINE),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f)
                     ) {}
                     Spacer(modifier = Modifier.height(14.dp))
@@ -584,14 +586,14 @@ fun SkeletonBookmarkList(
                             modifier = Modifier
                                 .width(70.dp)
                                 .height(26.dp),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = themeCorner(ThemeCorner.CONTROL),
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f)
                         ) {}
                         Surface(
                             modifier = Modifier
                                 .width(90.dp)
                                 .height(26.dp),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = themeCorner(ThemeCorner.CONTROL),
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f)
                         ) {}
                     }
@@ -611,7 +613,7 @@ fun EmptySearchResult(query: String) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 24.dp),
-        shape = RoundedCornerShape(20.dp),
+        shape = themeCorner(ThemeCorner.CARD),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
         )

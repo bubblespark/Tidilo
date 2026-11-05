@@ -64,7 +64,8 @@ fun TidiloTheme(
     theme: AppTheme = AppTheme.DEFAULT,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
+    val style = remember(theme) { AppThemeStyle.forTheme(theme) }
+    val baseColorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -73,7 +74,7 @@ fun TidiloTheme(
         else -> LightColorScheme
     }
 
-    val style = remember(theme) { AppThemeStyle.forTheme(theme) }
+    val colorScheme = resolveMaterialColors(baseColorScheme, darkTheme, style)
     val surfaces = remember(theme, darkTheme, colorScheme, style) {
         resolveThemeSurfaces(theme, darkTheme, colorScheme, style)
     }
@@ -81,8 +82,12 @@ fun TidiloTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
-            shapes = Shapes,
+            shapes = remember(style.shapeScale) { resolveMaterialShapes(style.shapeScale) },
             content = content
         )
     }
 }
+
+/** An explicit preset palette overrides the system palette; absent values retain Dynamic Color. */
+fun resolveMaterialColors(base: androidx.compose.material3.ColorScheme, darkTheme: Boolean, style: AppThemeStyle): androidx.compose.material3.ColorScheme =
+    (if (darkTheme) style.darkMaterialColors else style.lightMaterialColors) ?: base

@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
@@ -98,7 +100,7 @@ fun NsfwSettingsScreen(
             // 1. Option: Show NSFW content (Default ON)
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = themeCorner(ThemeCorner.CARD),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 )
@@ -153,7 +155,7 @@ fun NsfwSettingsScreen(
             // 2. Option: Bookmark NSFW content (Default ON)
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = themeCorner(ThemeCorner.CARD),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 )
@@ -224,7 +226,7 @@ fun NsfwSettingsScreen(
             if (policies.isEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = themeCorner(ThemeCorner.IMAGE),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                     )
@@ -245,7 +247,7 @@ fun NsfwSettingsScreen(
             } else {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
+                    shape = themeCorner(ThemeCorner.CARD),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     )

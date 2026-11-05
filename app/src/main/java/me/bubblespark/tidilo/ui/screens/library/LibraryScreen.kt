@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import androidx.paging.PagingData
@@ -444,7 +446,7 @@ fun LibraryScreen(
                             expanded = isViewModeMenuExpanded,
                             onDismissRequest = { isViewModeMenuExpanded = false },
                             offset = DpOffset(x = 96.dp - menuWidth, y = 0.dp),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = themeCorner(ThemeCorner.IMAGE),
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             tonalElevation = 6.dp,
                             modifier = Modifier.width(menuWidth)
@@ -825,7 +827,7 @@ private fun EmptyLibraryMessage() {
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 24.dp),
-        shape = RoundedCornerShape(20.dp),
+        shape = themeCorner(ThemeCorner.CARD),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
         )

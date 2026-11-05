@@ -99,4 +99,34 @@ class ThemeSurfaceResolverTest {
         assertEquals(SurfaceTreatment.DECORATED, theme.resolve(SurfaceRole.LIKE_ACTION).treatment)
         assertEquals(colors.primaryContainer, theme.resolve(SurfaceRole.TOOLBAR_ACTION).containerColor)
     }
+
+    @Test fun shapeScaleChangesRoleAndNativeCorners() {
+        val scale = ThemeShapeScale(card = 23.dp, prominentCard = 27.dp)
+        val preset = AppThemeStyle.Default.copy(shapeScale = scale)
+        val theme = resolveThemeSurfaces(AppTheme.DEFAULT, false, colors, preset)
+        assertEquals(androidx.compose.foundation.shape.RoundedCornerShape(23.dp),
+            theme.resolve(SurfaceRole.SETTINGS_GROUP).shape)
+        assertEquals(27.dp, scale.radius(ThemeCorner.PROMINENT_CARD))
+    }
+
+    @Test fun settingsPresetChangeReachesGroupedAndRssCards() {
+        val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
+            SurfaceRole.SETTINGS_GROUP to SurfaceStyleOverride(containerColor = Color.Cyan)))
+        val theme = resolveThemeSurfaces(AppTheme.MODERN, false, colors, preset)
+        assertEquals(Color.Cyan, theme.resolve(SurfaceRole.SETTINGS_GROUP).containerColor)
+        assertEquals(SurfaceTreatment.MATERIAL, theme.resolve(SurfaceRole.SETTINGS_GROUP).treatment)
+    }
+
+    @Test fun presetMaterialColorsRetainDynamicWhenUnspecified() {
+        assertSame(colors, resolveMaterialColors(colors, false, AppThemeStyle.Default))
+        val replacement = colors.copy(surfaceContainerHigh = Color.Cyan)
+        val preset = AppThemeStyle.Modern.copy(lightMaterialColors = replacement)
+        assertSame(replacement, resolveMaterialColors(colors, false, preset))
+        assertSame(colors, resolveMaterialColors(colors, true, preset))
+    }
+
+    @Test fun materialShapeScaleMatchesNativeRoles() {
+        val scale = ThemeShapeScale(card = 23.dp)
+        assertEquals(scale.shape(ThemeCorner.CARD), resolveMaterialShapes(scale).medium)
+    }
 }

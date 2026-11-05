@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -132,7 +134,7 @@ fun EntityTagPickerBottomSheet(
 
             if (selectedEntities.isEmpty()) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = themeCorner(ThemeCorner.FIELD),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -164,7 +166,7 @@ fun EntityTagPickerBottomSheet(
             if (showLimitWarning && selectedEntities.size >= Tag.MAX_ENTITIES) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = themeCorner(ThemeCorner.CONTROL),
                     color = MaterialTheme.colorScheme.errorContainer,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -203,7 +205,7 @@ fun EntityTagPickerBottomSheet(
 
             if (sortedAllEntities.isEmpty()) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = themeCorner(ThemeCorner.FIELD),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -306,7 +308,7 @@ private fun AllEntityToggleChip(
     isAtMaxLimit: Boolean = false,
     onToggle: () -> Unit
 ) {
-    val visual = currentThemeSurfaces().resolve(SurfaceRole.ENTITY_CHIP, SurfaceVariant.COMPACT,
+    val visual = currentThemeSurfaces().resolve(SurfaceRole.FILTER_CHIP, SurfaceVariant.COMPACT,
         ThemeSurfaceState(enabled = !isAtMaxLimit, selected = isSelected))
     val backgroundColor by animateColorAsState(
         targetValue = visual.containerColor,

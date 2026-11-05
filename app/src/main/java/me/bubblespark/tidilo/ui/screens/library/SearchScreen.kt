@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import androidx.paging.LoadState
@@ -239,7 +241,7 @@ fun SearchScreen(
                     focusManager.clearFocus()
                 }
             ),
-            shape = RoundedCornerShape(24.dp),
+            shape = themeCorner(ThemeCorner.PROMINENT_CARD),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                 unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
@@ -367,7 +369,7 @@ fun SearchScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(themeCorner(ThemeCorner.FIELD))
                                     .clickable {
                                         viewModel.onSearchQueryChanged(historyItem)
                                         viewModel.addSearchHistory(historyItem)

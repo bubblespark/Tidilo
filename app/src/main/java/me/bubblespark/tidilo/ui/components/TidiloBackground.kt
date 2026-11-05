@@ -18,6 +18,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 
 /**
@@ -49,11 +50,7 @@ fun TidiloBackground(
         label = "ambientLightingColor"
     )
 
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val canvasColor = themeStyle.surfacePalette.canvas(
-        isDark = isDark,
-        fallback = MaterialTheme.colorScheme.background
-    )
+    val canvasColor = currentThemeSurfaces().canvasColor
 
     Box(
         modifier = modifier

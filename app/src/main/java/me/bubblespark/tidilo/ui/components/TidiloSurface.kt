@@ -88,7 +88,7 @@ private fun Modifier.decoration(style: ResolvedSurfaceStyle): Modifier {
 
 @Composable
 private fun SurfaceContent(style: ResolvedSurfaceStyle, content: @Composable () -> Unit) {
-    Box {
+    Box(propagateMinConstraints = true) {
         if (style.treatment == SurfaceTreatment.DECORATED) {
             Box(Modifier.matchParentSize().themeSurfaceBlur(style.selfBlurRadius, style.shape).drawWithCache {
                 val fill = style.gradient
@@ -106,4 +106,31 @@ private fun SurfaceContent(style: ResolvedSurfaceStyle, content: @Composable () 
         }
         content()
     }
+}
+
+@Composable
+fun Modifier.themeNavigationIndicator(selected: Boolean, animatedColor: Color): Modifier {
+    val theme = currentThemeSurfaces()
+    val visual = theme.resolve(SurfaceRole.NAVIGATION_INDICATOR)
+    if (!selected || visual.treatment == SurfaceTreatment.MATERIAL) return background(animatedColor, visual.shape)
+    val style = visual.copy(containerColor = animatedColor).decorate(theme.isDark,
+        theme.preset.chipStyle.useGradientFill, DecorationFamily.CHIP)
+    return decoration(style).drawWithCache {
+        val fill = style.gradient
+        val brush = if (fill == null) null else Brush.verticalGradient(listOf(fill.top, style.containerColor, fill.bottom))
+        val outline = style.shape.createOutline(size, layoutDirection, this)
+        onDrawBehind {
+            if (brush == null) drawOutline(outline, style.containerColor) else drawOutline(outline, brush)
+        }
+    }
+}
+
+@Composable
+fun TidiloPrimaryActionSurface(expanded: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val style = currentThemeSurfaces().resolve(SurfaceRole.PRIMARY_ACTION,
+        if (expanded) SurfaceVariant.EMPHASIZED else SurfaceVariant.STANDARD)
+    val elevation = androidx.compose.animation.core.animateDpAsState(style.elevation,
+        androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow), label = "actionSurfaceElevation")
+    ResolvedTidiloSurface(style.copy(elevation = elevation.value), modifier, content)
 }

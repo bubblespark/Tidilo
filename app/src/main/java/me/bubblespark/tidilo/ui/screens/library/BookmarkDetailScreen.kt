@@ -10,6 +10,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import me.bubblespark.tidilo.ui.theme.collectionMembershipColor
 import me.bubblespark.tidilo.ui.components.TidiloClassificationContent
+import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.components.TidiloIconButton
+import me.bubblespark.tidilo.ui.components.TidiloIconToggleButton
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.SurfaceVariant
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeFloatingBarSurface
 import me.bubblespark.tidilo.ui.theme.themeIconButtonSurface
@@ -361,39 +366,20 @@ fun BookmarkDetailScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.Bottom
             ) {
-                val toolbarShape = RoundedCornerShape(32.dp)
-                val toolbarShadowElevation = if (themeStyle.floatingBarStyle.depth > 0.dp) 0.dp else 10.dp
-                val toolbarTonalElevation = if (themeStyle.floatingBarStyle.depth > 0.dp) 0.dp else 6.dp
-                Surface(
-                    modifier = Modifier.themeFloatingBarSurface(
-                        style = themeStyle.floatingBarStyle,
-                        palette = themeStyle.surfacePalette,
-                        isDark = isDark,
-                        fallbackShape = toolbarShape
-                    ),
-                    shape = toolbarShape,
-                    color = if (themeStyle.floatingBarStyle.depth > 0.dp) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = themeStyle.floatingBarAlpha),
-                    tonalElevation = toolbarTonalElevation,
-                    shadowElevation = toolbarShadowElevation
-                ) {
+                TidiloSurface(role = SurfaceRole.TOOLBAR) {
                     Box {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .themeSurfaceBlur(themeStyle.floatingBarBlurRadius, toolbarShape)
-                        )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
+                            TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
                                 Icon(ImageVector.vectorResource(R.drawable.ic_delete),
                                     contentDescription = stringResource(R.string.detail_action_delete),
                                     tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
                             }
-                            IconButton(onClick = { onNavigateToAiReview(bookmark.id) }, modifier = Modifier.size(54.dp)) {
+                            TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { onNavigateToAiReview(bookmark.id) }, modifier = Modifier.size(54.dp)) {
                                 Icon(Icons.Default.AutoAwesome,
                                     contentDescription = stringResource(R.string.detail_action_ai_summary),
                                     modifier = Modifier.size(22.dp))
                             }
-                            IconButton(onClick = { showCollectionMembership = true },
+                            TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showCollectionMembership = true },
                                 modifier = Modifier.size(54.dp).semantics { selected = hasCollection }) {
                                 Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
                                     contentDescription = stringResource(R.string.bookmark_collection_action),
@@ -401,7 +387,7 @@ fun BookmarkDetailScreen(
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(22.dp))
                             }
-                            IconButton(onClick = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(54.dp)) {
+                            TidiloIconToggleButton(role = SurfaceRole.LIKE_ACTION, checked = bookmark.isLiked, onCheckedChange = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(54.dp)) {
                                 Icon(
                                     imageVector = if (bookmark.isLiked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
                                     contentDescription = stringResource(if (bookmark.isLiked) R.string.bookmark_unlike else R.string.bookmark_like),
@@ -413,30 +399,13 @@ fun BookmarkDetailScreen(
                     }
                 }
                 Spacer(Modifier.width(10.dp))
-                val openButtonShape = RoundedCornerShape(16.dp)
-                val openButtonShadowElevation = if (themeStyle.iconButtonStyle.depth > 0.dp) 0.dp else 4.dp
-                Surface(
+                TidiloSurface(
                     onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
-                    modifier = Modifier
-                        .size(54.dp)
-                        .themeIconButtonSurface(
-                            plate = themeStyle.iconButtonStyle.actionButtonPlate,
-                            style = themeStyle.iconButtonStyle,
-                            palette = themeStyle.surfacePalette,
-                            isDark = isDark,
-                            shape = openButtonShape,
-                            fallbackContainerColor = MaterialTheme.colorScheme.primaryContainer
-                        ),
-                    shape = openButtonShape,
-                    color = if (themeStyle.iconButtonStyle.depth > 0.dp) Color.Transparent else MaterialTheme.colorScheme.primaryContainer.copy(alpha = themeStyle.floatingBarAlpha),
-                    shadowElevation = openButtonShadowElevation
+                    role = SurfaceRole.PRIMARY_ACTION,
+                    variant = SurfaceVariant.COMPACT,
+                    modifier = Modifier.size(54.dp)
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, openButtonShape)
-                        )
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Icon(ImageVector.vectorResource(R.drawable.ic_open_in_browser),
                                 contentDescription = stringResource(R.string.bookmark_open_in_browser),

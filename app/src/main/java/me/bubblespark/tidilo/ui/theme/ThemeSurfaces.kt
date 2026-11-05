@@ -19,7 +19,7 @@ enum class SurfaceRole {
     BOOKMARK_CARD, DECK_FRONT, DECK_BACK, SETTINGS_GROUP, STATUS_CARD,
     CLASSIFICATION_CHIP, ENTITY_CHIP, FILTER_CHIP, STATUS_BADGE,
     HEADER, FLOATING_BAR, TOOLBAR, AI_BUBBLE, PRIMARY_ACTION, TOOLBAR_ACTION,
-    LIKE_ACTION, DESTRUCTIVE_ACTION, NAVIGATION_INDICATOR, DIALOG, SHEET, MENU, INPUT, ICON_PLATE
+    LIKE_ACTION, FILTER_ACTION, DESTRUCTIVE_ACTION, NAVIGATION_INDICATOR, DIALOG, SHEET, MENU, INPUT, ICON_PLATE
 }
 enum class SurfaceVariant { STANDARD, COMPACT, SUBTLE, EMPHASIZED }
 enum class SurfaceTone { NORMAL, ERROR, CAUTION }
@@ -81,6 +81,10 @@ data class ResolvedThemeSurfaces(
     val preset: AppThemeStyle
 ) {
     val canvasColor: Color get() = preset.surfacePalette.canvas(isDark, colorScheme.background)
+    val navigationRippleColor: Color get() =
+        if (preset.floatingBarStyle.activeTabStyle == ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE) {
+            if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+        } else Color.Unspecified
 
     fun resolve(
         role: SurfaceRole,
@@ -130,13 +134,15 @@ data class ResolvedThemeSurfaces(
             SurfaceRole.STATUS_BADGE -> base.copy(containerColor = c.surfaceContainerHighest, shape = RoundedCornerShape(8.dp))
             SurfaceRole.HEADER -> base.copy(containerColor = c.background, opacity = preset.headerAlpha, selfBlurRadius = preset.headerBlurRadius)
             SurfaceRole.FLOATING_BAR, SurfaceRole.TOOLBAR -> base.copy(
-                containerColor = preset.surfacePalette.container(isDark, c.surfaceContainerHighest), shape = CircleShape,
+                containerColor = preset.surfacePalette.container(isDark, c.surfaceContainerHighest),
+                shape = if (role == SurfaceRole.TOOLBAR) RoundedCornerShape(32.dp) else CircleShape,
                 opacity = preset.floatingBarAlpha, selfBlurRadius = preset.floatingBarBlurRadius,
                 treatment = bar.treatment,
                 elevation = if (bar.treatment == SurfaceTreatment.DECORATED) bar.depth * 2 else 10.dp,
                 tonalElevation = if (bar.treatment == SurfaceTreatment.DECORATED) 0.dp else 6.dp
             ).decorate(isDark, bar.useGradientFill, DecorationFamily.BAR)
-            SurfaceRole.AI_BUBBLE -> base.copy(opacity = preset.floatingBarAlpha, selfBlurRadius = preset.floatingBarBlurRadius)
+            SurfaceRole.AI_BUBBLE -> base.copy(containerColor = c.surfaceContainerHighest, shape = RoundedCornerShape(16.dp), elevation = 10.dp, tonalElevation = 6.dp, opacity = preset.floatingBarAlpha, selfBlurRadius = preset.floatingBarBlurRadius)
+            SurfaceRole.FILTER_ACTION -> base.copy(containerColor = if (state.selected) c.primaryContainer else c.secondaryContainer, contentColor = if (state.selected) c.onPrimaryContainer else c.onSecondaryContainer, shape = CircleShape, elevation = 6.dp, tonalElevation = 4.dp, opacity = preset.floatingBarAlpha)
             SurfaceRole.PRIMARY_ACTION, SurfaceRole.LIKE_ACTION, SurfaceRole.TOOLBAR_ACTION -> {
                 val plate = when (role) {
                     SurfaceRole.LIKE_ACTION -> icons.likeButtonPlate
@@ -144,17 +150,19 @@ data class ResolvedThemeSurfaces(
                     else -> icons.actionButtonPlate
                 }
                 base.copy(
-                    shape = CircleShape,
+                    shape = if (role == SurfaceRole.PRIMARY_ACTION && variant == SurfaceVariant.COMPACT) RoundedCornerShape(16.dp) else CircleShape,
                     containerColor = if (plate == IconButtonPlateStyle.PLAIN_ICON) Color.Transparent else c.primaryContainer,
                     contentColor = if (role == SurfaceRole.PRIMARY_ACTION) c.onPrimaryContainer else c.onSurface,
                     treatment = if (plate == IconButtonPlateStyle.TACTILE_CIRCULAR_3D) SurfaceTreatment.DECORATED else SurfaceTreatment.MATERIAL,
-                    elevation = if (plate == IconButtonPlateStyle.TACTILE_CIRCULAR_3D) icons.depth else 0.dp
+                    elevation = if (plate == IconButtonPlateStyle.TACTILE_CIRCULAR_3D) icons.depth else if (role == SurfaceRole.PRIMARY_ACTION) (when (variant) { SurfaceVariant.COMPACT -> 4.dp; SurfaceVariant.EMPHASIZED -> 10.dp; else -> 6.dp }) else 0.dp,
+                    opacity = preset.floatingBarAlpha,
+                    selfBlurRadius = preset.floatingBarBlurRadius
                 ).decorate(isDark, icons.useGradientFill, DecorationFamily.PLATE)
             }
             SurfaceRole.DESTRUCTIVE_ACTION -> base.copy(containerColor = Color(0xFFBA1A1A), contentColor = Color.White, shape = CircleShape)
             SurfaceRole.NAVIGATION_INDICATOR -> base.copy(
-                containerColor = bar.activeContainer(isDark, c.secondaryContainer),
-                contentColor = bar.activeContent(isDark, c.onSecondaryContainer), shape = CircleShape,
+                containerColor = bar.activeContainer(isDark, c.primaryContainer),
+                contentColor = bar.activeContent(isDark, c.onPrimaryContainer), shape = CircleShape,
                 treatment = if (bar.activeTabStyle == ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE) SurfaceTreatment.DECORATED else SurfaceTreatment.MATERIAL,
                 elevation = chip.depth
             ).decorate(isDark, chip.useGradientFill, DecorationFamily.CHIP)
@@ -214,7 +222,12 @@ internal enum class DecorationFamily { CARD, CHIP, BAR, PLATE }
 internal fun ResolvedSurfaceStyle.decorate(dark: Boolean, gradientFill: Boolean, family: DecorationFamily): ResolvedSurfaceStyle {
     if (treatment != SurfaceTreatment.DECORATED) return this
     val topFactor = when (family) { DecorationFamily.CARD -> 1.18f; DecorationFamily.CHIP -> 1.08f; DecorationFamily.BAR -> 1.06f; DecorationFamily.PLATE -> 1.10f }
-    val bottomFactor = if (family == DecorationFamily.CARD && dark) 0.85f else 0.94f
+    val bottomFactor = when (family) {
+        DecorationFamily.CARD -> if (dark) 0.85f else 0.94f
+        DecorationFamily.CHIP -> 0.94f
+        DecorationFamily.BAR -> 0.95f
+        DecorationFamily.PLATE -> 0.92f
+    }
     fun Color.scaled(factor: Float) = copy(red = (red * factor).coerceIn(0f, 1f), green = (green * factor).coerceIn(0f, 1f), blue = (blue * factor).coerceIn(0f, 1f))
     val top = if (family == DecorationFamily.CARD && !dark) Color.White else containerColor.scaled(topFactor)
     val bottom = if (family == DecorationFamily.CARD && !dark) containerColor.copy(red = containerColor.red * 0.93f, green = containerColor.green * 0.94f, blue = containerColor.blue * 0.95f) else containerColor.scaled(bottomFactor)

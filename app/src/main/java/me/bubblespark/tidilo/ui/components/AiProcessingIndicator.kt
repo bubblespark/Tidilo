@@ -62,6 +62,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 import me.bubblespark.tidilo.data.AiProcessingProgress
@@ -263,19 +265,20 @@ fun AiProcessingSpeechBubble(
     modifier: Modifier = Modifier
 ) {
     val bubbleWidth = 270.dp
-    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val bubbleStyle = currentThemeSurfaces().resolve(SurfaceRole.AI_BUBBLE)
+    val surfaceColor = bubbleStyle.containerColor
     val borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
 
     Column(
         modifier = modifier.width(bubbleWidth)
     ) {
         // Main bubble card body
-        val bubbleShape = RoundedCornerShape(16.dp)
+        val bubbleShape = bubbleStyle.shape
         Surface(
             shape = bubbleShape,
-            color = surfaceColor.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
-            tonalElevation = 6.dp,
-            shadowElevation = 10.dp,
+            color = surfaceColor.copy(alpha = bubbleStyle.opacity),
+            tonalElevation = bubbleStyle.tonalElevation,
+            shadowElevation = bubbleStyle.elevation,
             border = BorderStroke(
                 width = 1.2.dp,
                 brush = Brush.horizontalGradient(AiRainbowColors.map { it.copy(alpha = 0.55f) })
@@ -296,7 +299,7 @@ fun AiProcessingSpeechBubble(
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, bubbleShape)
+                        .themeSurfaceBlur(bubbleStyle.selfBlurRadius, bubbleShape)
                 )
                 Column(
                     modifier = Modifier

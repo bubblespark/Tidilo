@@ -80,4 +80,23 @@ class ThemeSurfaceResolverTest {
         assertEquals(0.dp, theme.resolve(SurfaceRole.DECK_BACK, SurfaceVariant.COMPACT).elevation)
         assertEquals(1.dp, theme.resolve(SurfaceRole.DECK_BACK).elevation)
     }
+
+    @Test fun decorationGradientsMatchCurrentFamilies() {
+        val theme = resolveThemeSurfaces(AppTheme.MODERN, true, darkColorScheme())
+        val bar = theme.resolve(SurfaceRole.FLOATING_BAR)
+        assertEquals(bar.containerColor.copy(red = bar.containerColor.red * 0.95f,
+            green = bar.containerColor.green * 0.95f, blue = bar.containerColor.blue * 0.95f), bar.gradient!!.bottom)
+        val action = theme.resolve(SurfaceRole.PRIMARY_ACTION)
+        assertEquals(action.containerColor.copy(red = action.containerColor.red * 0.92f,
+            green = action.containerColor.green * 0.92f, blue = action.containerColor.blue * 0.92f), action.gradient!!.bottom)
+    }
+
+    @Test fun likeAndToolbarTokensAffectTheirConsumers() {
+        val preset = AppThemeStyle.Modern.copy(iconButtonStyle = AppThemeStyle.Modern.iconButtonStyle.copy(
+            likeButtonPlate = IconButtonPlateStyle.TACTILE_CIRCULAR_3D,
+            toolbarActionPlate = IconButtonPlateStyle.M3_FILLED_TONAL))
+        val theme = resolveThemeSurfaces(AppTheme.MODERN, false, colors, preset)
+        assertEquals(SurfaceTreatment.DECORATED, theme.resolve(SurfaceRole.LIKE_ACTION).treatment)
+        assertEquals(colors.primaryContainer, theme.resolve(SurfaceRole.TOOLBAR_ACTION).containerColor)
+    }
 }

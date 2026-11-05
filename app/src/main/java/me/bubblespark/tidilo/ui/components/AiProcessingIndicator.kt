@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -64,7 +63,6 @@ import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 import me.bubblespark.tidilo.data.AiProcessingProgress
 
@@ -277,6 +275,7 @@ fun AiProcessingSpeechBubble(
         Surface(
             shape = bubbleShape,
             color = surfaceColor.copy(alpha = bubbleStyle.opacity),
+            contentColor = bubbleStyle.contentColor,
             tonalElevation = bubbleStyle.tonalElevation,
             shadowElevation = bubbleStyle.elevation,
             border = BorderStroke(

@@ -17,12 +17,12 @@ fun TidiloDisplayChip(
 fun TidiloBadgeSurface(
     colors: ChipResolvedColors,
     modifier: Modifier = Modifier,
+    role: SurfaceRole = SurfaceRole.CLASSIFICATION_CHIP,
+    state: ThemeSurfaceState = ThemeSurfaceState(),
     content: @Composable () -> Unit
 ) {
     val theme = currentThemeSurfaces()
-    val style = theme.resolve(SurfaceRole.CLASSIFICATION_CHIP).copy(
-        containerColor = colors.containerColor, contentColor = colors.contentColor
-    ).decorate(theme.isDark, theme.preset.chipStyle.useGradientFill, DecorationFamily.CHIP)
+    val style = theme.resolveBadge(role, colors, state)
     ResolvedTidiloSurface(style, modifier, content)
 }
 

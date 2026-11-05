@@ -129,4 +129,31 @@ class ThemeSurfaceResolverTest {
         val scale = ThemeShapeScale(card = 23.dp)
         assertEquals(scale.shape(ThemeCorner.CARD), resolveMaterialShapes(scale).medium)
     }
+
+    @Test fun badgeOverrideKeepsSelectedAndErrorSemantics() {
+        val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
+            SurfaceRole.ENTITY_CHIP to SurfaceStyleOverride(containerColor = Color.Cyan, contentColor = Color.Black)))
+        val theme = resolveThemeSurfaces(AppTheme.MODERN, false, colors, preset)
+        val semantic = ChipResolvedColors(colors.primaryContainer, colors.onPrimaryContainer)
+        assertEquals(Color.Cyan, theme.resolveBadge(SurfaceRole.ENTITY_CHIP, semantic).containerColor)
+        assertEquals(colors.primaryContainer, theme.resolveBadge(SurfaceRole.ENTITY_CHIP, semantic,
+            ThemeSurfaceState(selected = true)).containerColor)
+        val error = theme.resolveBadge(SurfaceRole.ENTITY_CHIP,
+            ChipResolvedColors(colors.errorContainer, colors.onErrorContainer), ThemeSurfaceState(tone = SurfaceTone.ERROR))
+        assertEquals(colors.errorContainer, error.containerColor)
+        assertEquals(colors.onErrorContainer, error.contentColor)
+    }
+
+    @Test fun customDecorationTokensDrivePaintingInputs() {
+        val fill = SurfaceGradient(Color.Green, Color.Blue)
+        val edge = SurfaceGradient(Color.White, Color.Red)
+        val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
+            SurfaceRole.BOOKMARK_CARD to SurfaceStyleOverride(gradient = fill, bevel = edge,
+                borderWidth = 2.dp, ambientShadow = Color.Magenta, spotShadow = Color.Blue)))
+        val style = resolveThemeSurfaces(AppTheme.MODERN, false, colors, preset).resolve(SurfaceRole.BOOKMARK_CARD)
+        assertEquals(fill, style.gradient)
+        assertEquals(edge, style.bevel)
+        assertEquals(2.dp, style.borderWidth)
+        assertEquals(Color.Magenta, style.ambientShadow)
+    }
 }

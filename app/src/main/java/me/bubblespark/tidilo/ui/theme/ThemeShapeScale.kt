@@ -7,7 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-enum class ThemeCorner { LINE, SMALL, CONTROL, FIELD, CHIP, IMAGE, CARD, DECK, PROMINENT_CARD, TACTILE_CARD, SHEET, TOOLBAR, PROMINENT }
+enum class ThemeCorner { LINE, SMALL, CONTROL, FIELD, CHIP, IMAGE, CARD, DECK, PROMINENT_CARD, SHEET, TOOLBAR, PROMINENT }
 
 /** Existing corner sizes, named by purpose; presets may tune the scale without editing consumers. */
 @Immutable
@@ -21,7 +21,6 @@ data class ThemeShapeScale(
     val card: Dp = 20.dp,
     val deck: Dp = 22.dp,
     val prominentCard: Dp = 24.dp,
-    val tactileCard: Dp = 26.dp,
     val sheet: Dp = 28.dp,
     val toolbar: Dp = 32.dp,
     val prominent: Dp = 36.dp
@@ -39,7 +38,6 @@ data class ThemeShapeScale(
         ThemeCorner.CARD -> card
         ThemeCorner.DECK -> deck
         ThemeCorner.PROMINENT_CARD -> prominentCard
-        ThemeCorner.TACTILE_CARD -> tactileCard
         ThemeCorner.SHEET -> sheet
         ThemeCorner.TOOLBAR -> toolbar
         ThemeCorner.PROMINENT -> prominent

@@ -3,9 +3,7 @@ package me.bubblespark.tidilo.ui.screens.library
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.theme.CollectionColorPalette
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
-import androidx.compose.ui.graphics.luminance
 import me.bubblespark.tidilo.ui.components.TidiloSurface
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.SurfaceVariant
@@ -29,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
@@ -125,8 +122,6 @@ private fun CollectionCardVisual(
 ) {
     val haptic = LocalHapticFeedback.current
     val themeStyle = currentThemeSurfaces().preset
-    val isDark = currentThemeSurfaces().isDark
-    val cardShape = themeCorner(ThemeCorner.DECK)
     val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.DECK_FRONT, SurfaceVariant.STANDARD).shape
     val stackOffset = 6.dp
     val cardHeight = (132 * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)).dp

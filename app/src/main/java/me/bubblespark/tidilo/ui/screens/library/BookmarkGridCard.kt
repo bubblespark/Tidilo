@@ -25,7 +25,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Link
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,8 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.components.TidiloSurface
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.SurfaceVariant
@@ -108,8 +105,6 @@ fun BookmarkGridCard(
         } ?: primaryColor
     }
 
-    val themeStyle = currentThemeSurfaces().preset
-    val isDark = currentThemeSurfaces().isDark
     val hasSummary = bookmark.description.isNotBlank()
     val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.BOOKMARK_CARD, SurfaceVariant.COMPACT).shape
     val topImageShape = if (effectiveShape is RoundedCornerShape) {

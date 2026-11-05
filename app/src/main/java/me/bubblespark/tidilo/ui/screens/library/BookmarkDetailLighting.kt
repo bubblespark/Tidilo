@@ -30,7 +30,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.OgImageManager
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import kotlin.math.ceil
 
 /** The bookmark key owns animation state so a new detail never inherits its predecessor's hue. */

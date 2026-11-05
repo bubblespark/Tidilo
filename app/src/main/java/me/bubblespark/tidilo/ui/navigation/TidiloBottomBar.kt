@@ -47,7 +47,6 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.ui.res.stringResource
@@ -76,19 +75,12 @@ import me.bubblespark.tidilo.data.AiProcessingProgress
 import me.bubblespark.tidilo.ui.components.AiProcessingIndicatorButton
 import me.bubblespark.tidilo.ui.components.AiProcessingSpeechBubble
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
-import androidx.compose.ui.graphics.luminance
-import me.bubblespark.tidilo.ui.theme.ActiveTabIndicatorStyle
 import me.bubblespark.tidilo.ui.components.TidiloSurface
 import me.bubblespark.tidilo.ui.components.TidiloPrimaryActionSurface
 import me.bubblespark.tidilo.ui.components.themeNavigationIndicator
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.ThemeSurfaceState
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
-import me.bubblespark.tidilo.ui.theme.themeChipSurface
-import me.bubblespark.tidilo.ui.theme.themeFloatingBarSurface
-import me.bubblespark.tidilo.ui.theme.themeIconButtonSurface
-import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 /**
  * M3 Expressive Floating Navigation Bar with Separated Action Button
@@ -129,12 +121,10 @@ fun TidiloBottomBar(
         Screen.Import
     )
 
-    val themeStyle = currentThemeSurfaces().preset
     val surfaces = currentThemeSurfaces()
     val barRippleColor = surfaces.navigationRippleColor
 
     val barHeight = 68.dp
-    val containerBgColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = themeStyle.floatingBarAlpha)
     val isActionButtonVisible = currentRoute in listOf(
         Screen.Library.route,
         Screen.Search.route,

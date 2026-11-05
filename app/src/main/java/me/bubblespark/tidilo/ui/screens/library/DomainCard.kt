@@ -17,11 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -46,9 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.ui.components.DomainWatermark
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
-import androidx.compose.ui.graphics.luminance
 import me.bubblespark.tidilo.ui.components.TidiloSurface
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.SurfaceVariant
@@ -111,8 +106,6 @@ internal fun LibraryDeckCard(
     watermark: @Composable (Modifier) -> Unit
 ) {
     val themeStyle = currentThemeSurfaces().preset
-    val isDark = currentThemeSurfaces().isDark
-    val cardShape = themeCorner(ThemeCorner.CARD)
     val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.DECK_FRONT, SurfaceVariant.COMPACT).shape
     val stackOffset = 7.dp
     val cardHeight = 154.dp

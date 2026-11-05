@@ -18,10 +18,6 @@ import me.bubblespark.tidilo.ui.components.TidiloIconButton
 import me.bubblespark.tidilo.ui.components.TidiloIconToggleButton
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.SurfaceVariant
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
-import me.bubblespark.tidilo.ui.theme.themeFloatingBarSurface
-import me.bubblespark.tidilo.ui.theme.themeIconButtonSurface
-import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -47,7 +43,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.material.icons.Icons
@@ -69,7 +64,6 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -358,9 +352,7 @@ fun BookmarkDetailScreen(
             )
         },
         overlay = {
-            val themeStyle = currentThemeSurfaces().preset
-            val isDark = currentThemeSurfaces().isDark
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val toolbarOffset = if (maxWidth >= 368.dp) 32.dp else 0.dp
             Row(
                 modifier = Modifier.fillMaxSize().navigationBarsPadding()

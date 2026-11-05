@@ -556,24 +556,45 @@ Located in `ui/components/TidiloBackground.kt`:
 ### 8.2 Ambient Lighting Architecture (`LocalAmbientLighting` & `RememberAmbientLighting`)
 Located in `ui/components/AmbientLighting.kt`:
 - **Decoupled Ambient Rendering**: Library drill-down views (`DomainDrillDown`, `RssFeedDrillDown`, `CollectionDrillDown`) do not draw full-screen ambient lighting boxes inside scrolling content. Instead, `LibraryScreen` publishes the active drill-down color via `RememberAmbientLighting(color, ownerId = "library_drilldown")` to `LocalAmbientLighting`, while `BookmarkDetailScreen` retains its dedicated card-emanating `detailAmbientLight` and `detailBannerLight` modifiers.
-- **Smooth In-Place Morphing**: `TidiloBackground` observes `LocalAmbientLighting.current.effectiveActiveColor`, resolves it through `LocalAppThemeStyle.current.resolveColor(...)`, and animates color transitions in-place with `animateColorAsState(tween(350, easing = EaseInOutCubic))`.
+- **Smooth In-Place Morphing**: `TidiloBackground` observes `LocalAmbientLighting.current.effectiveActiveColor`, resolves it through the active preset's `resolveColor(...)`, and animates color transitions in-place with `animateColorAsState(tween(350, easing = EaseInOutCubic))`.
 - **Automatic Lifecycle Cleanup**: When `LibraryScreen` leaves drill-down mode or leaves composition, `RememberAmbientLighting` resets the active color on disposal via `DisposableEffect`.
 
-### 8.3 Unified Theme Style Contract (`AppThemeStyle` & `ThemeColorRole`)
-Located in `ui/theme/AppThemeStyle.kt`:
-- **Theme Specification**: `AppThemeStyle` specifies `theme: AppTheme`, `colorRole: ThemeColorRole` (`ACCENT`, `PRIMARY`, `SECONDARY`, `TERTIARY`), `surfacePalette: ThemeSurfacePalette`, `cardStyle: ThemeCardStyle`, `chipStyle: ThemeChipStyle`, `floatingBarStyle: ThemeFloatingBarStyle`, `iconButtonStyle: ThemeIconButtonStyle`, and surface blur radii: `cardBlurRadius`, `floatingBarBlurRadius`, and `headerBlurRadius`.
-- **Zero-Cost Blur Bypass**: `Modifier.themeSurfaceBlur(blurRadius: Dp)` directly returns `this` when `blurRadius <= 0.dp`, ensuring `AppTheme.DEFAULT` introduces zero offscreen render passes or graphics layers.
-- **Comprehensive Pre-Wiring**: Applied across all surface types (`FrostedHeaderContainer`, `TidiloBottomBar`, `AiProcessingIndicator`, `BookmarkDetailScreen` floating toolbar, `BookmarkCard`, `BookmarkGridCard`, `CollectionCard`, `DomainCard`). Adding future themes requires zero layout adjustments.
+### 8.3 Resolved theme and shared Surface contract
 
-### 8.4 Data-Driven Tactile Theme Infrastructure & Modern Theme Specification
-Located in `ui/theme/AppThemeStyle.kt` and `ui/theme/ThemeModifiers.kt`:
-- **Theme Token Hierarchy**:
-  - `ThemeSurfacePalette`: Canvas and container fallback colors (`darkCanvasColor = #181A1E`, `lightCanvasColor = #E8EEF2`, `darkContainerColor = #22262B`, `lightContainerColor = #FFFFFF`).
-  - `ThemeCardStyle`: Extrusion depth (`3.dp` for Modern), corner shape (`RoundedCornerShape(26.dp)`), top/bottom ambient lighting bevels, and accent rim toggle.
-  - `ThemeChipStyle`: Extrusion depth (`3.dp` for Modern), corner shape (`RoundedCornerShape(12.dp)`), category token tints (`categoryIconTint = #F59E0B`, `subcategoryIconTint = #F97316`), neutral container and category/entity content colors.
-  - `ThemeFloatingBarStyle`: Navigation bar extrusion depth (`3.dp` for Modern), active tab indicator (`ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE`), and active indicator container/content tokens.
-  - `ThemeIconButtonStyle`: 3D tactile circular action button (`IconButtonPlateStyle.TACTILE_CIRCULAR_3D`), depth (`3.dp` for Modern).
-- **Zero-Overdraw Guarantee**:
-  - To prevent Compose `Card` and `Surface` components from overdrawing their default opaque `containerColor` on top of tactile gradient borders and fills, interactive cards and surfaces pass `containerColor = if (depth > 0.dp) Color.Transparent else fallbackColor`.
-- **Default Theme Visual Parity**:
-  - When `AppTheme.DEFAULT` is active (`depth == 0.dp`), surfaces render flat Material 3 elevation and tonal colors with zero offscreen layers. Detail screen classification badges preserve original `AssistChip` layouts, and bookmark cards retain their default surface wash and rim alpha values.
+`TidiloTheme` receives the selected `AppTheme` and resolves Material colors, Material shapes and `LocalThemeSurfaces` together. `AppConfig` continues to persist the existing `default` and `modern` codes locally. A theme change updates composition values without keying or recreating navigation, scrolling state or editor drafts.
+
+- `AppThemeStyle` owns preset configuration, optional light/dark Material palettes, the named `ThemeShapeScale`, and per-role `SurfaceStyleOverride` values.
+- Unspecified Material palettes preserve the existing Dynamic Color behavior. Shipped Default and Modern presets keep their previous palettes and geometry.
+- `ResolvedThemeSurfaces.resolve` supplies complete foreground/background pairs, shape, treatment, shadow/elevation, edge and fill values. Explicit applied dark mode is authoritative; isolated MaterialTheme previews use one centralized fallback.
+- `SurfaceTreatment` selects native or decorated drawing independently of elevation. A decorated surface at zero elevation retains its background, shape and edge.
+- `TidiloSurface` owns Material background suppression and custom drawing. Feature screens do not make containers transparent or disable shadows based on depth.
+- Background opacity and existing self-blur are isolated from foreground content. `Modifier.blur` remains a self-blur hook, not a backdrop effect.
+- `SurfaceStyleOverride` can tune shape, colors, opacity, elevation, border width, gradient stops, bevels and shadow colors for connected shared surfaces. Semantic error and matched/selected chip colors take priority over neutral colors.
+- `ThemeShapeScale` preserves existing 6/8/10/12/14/16/20/22/24/28/32/36dp values as named tokens. Standard Material shape defaults derive from the same scale. Specialized asymmetric image crops and feature lighting geometry remain explicit content treatments.
+
+### 8.4 Component coverage and supported parameters
+
+| Consumer family | Theme connection | Behavior retained |
+| --- | --- | --- |
+| Bookmark list/grid | BOOKMARK_CARD, compact grid variant | Scoped accent rim/wash/shadow, image crop, click/long press, paging keys |
+| Collection/domain/RSS deck | DECK_FRONT and DECK_BACK | Existing front/back corner differences, stack offsets, watermark and contextual accent wash |
+| Classification/entity display badges | Shared badge resolution and Surface | Category hierarchy, NSFW error pair and search-match colors |
+| Entity editor/toggle chips | ENTITY_CHIP/FILTER_CHIP compact native styles | Existing flat styling, selection/removal, animated colors and limit state |
+| Navigation, toolbar and actions | FLOATING_BAR, TOOLBAR, PRIMARY_ACTION, FILTER_ACTION, NAVIGATION_INDICATOR | Navigation/visibility animations, ripple and input semantics |
+| Like and toolbar icon plates | LIKE_ACTION/TOOLBAR_ACTION wrappers | Existing foreground semantic tints, native icon/toggle interaction |
+| Grouped settings/RSS/parameters | SETTINGS_GROUP and existing variants | Current flat Modern appearance, padding, disabled parameter treatment |
+| Import empty/ready/error/loading cards | STATUS_CARD and semantic error tone | Existing state/content and error meaning |
+| Header and AI bubble | Resolved header/bubble attributes | Header fade curve and drag forwarding; bubble rainbow border and tail |
+| Dialogs and bottom sheets | Resolved native container/default shape | Material focus, keyboard, scrim and dismissal; explicit component variants remain supported |
+| Sort menu, custom tag input containers, badges and settings icon plates | MENU, INPUT, STATUS_BADGE, ICON_PLATE | Native behavior and existing semantic content |
+| Remaining Material controls and diagnostic content | Preset Material palette and shared shape scale | Existing field/chip/menu defaults, error/disabled/focus behavior and specialized semantic colors |
+
+Native Material consumers inherit their palette and shape defaults rather than supporting every custom decoration. Header and AI bubble retain specialized native drawing. A role override does not imply arbitrary custom rendering or layout support for those consumers. Component-specific typography, spacing, artwork and specialized lighting remain separate from shared surface decoration.
+
+### 8.5 Modern preset and verification boundaries
+
+Modern retains its neutral canvas (#181A1E dark, #E8EEF2 light), neutral shared containers (#22262B dark, #FFFFFF light), 3dp tactile depth, 26dp card corners and 12dp badge corners. Category/subcategory icon tints remain #F59E0B/#F97316. Settings, modal and editor roles that were flat before the migration remain flat; making them tactile is a separate visual change.
+
+Unit tests cover role resolution, zero elevation, semantic precedence, preset overrides, Material palette fallback and shape-scale propagation. Instrumentation fixtures use real components, actual painted-pixel assertions and theme switching with navigation/list/draft state. Building instrumentation does not prove visual parity: before/after capture, input, recreation and frame checks require a connected device. No whole-screen zero-overdraw or zero-GPU-cost guarantee is made.
+
+Backdrop blur is future work. This migration introduces no capture host, backend interface, external dependency or speculative blur state. Required integration changes will be handled with the actual blur feature.

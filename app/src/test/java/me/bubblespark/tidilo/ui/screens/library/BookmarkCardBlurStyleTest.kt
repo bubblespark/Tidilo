@@ -1,150 +1,29 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotSame
-import org.junit.Assert.assertSame
+import me.bubblespark.tidilo.config.AppTheme
+import me.bubblespark.tidilo.ui.theme.*
+import org.junit.Assert.*
 import org.junit.Test
 
 class BookmarkCardBlurStyleTest {
-
-    @Test
-    fun bookmarkCardStyle_defaultBlurRadius_isZero() {
-        val style = BookmarkCardStyle(
-            containerColor = Color.White,
-            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
-            surfaceWash = null,
-            ambientShadowColor = Color.Transparent,
-            spotShadowColor = Color.Transparent
-        )
-        assertEquals(0.dp, style.blurRadius)
+    @Test fun resolvedCardRetainsBackgroundBlur() {
+        val preset = AppThemeStyle.Default.copy(cardBlurRadius = 20.dp)
+        val surface = resolveThemeSurfaces(AppTheme.DEFAULT, false, lightColorScheme(), preset)
+            .resolve(SurfaceRole.BOOKMARK_CARD)
+        assertEquals(20.dp, surface.selfBlurRadius)
+        assertEquals(1f, surface.opacity)
     }
 
-    @Test
-    fun bookmarkCardStyle_customBlurRadius_isRetained() {
-        val style = BookmarkCardStyle(
-            containerColor = Color.White,
-            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
-            surfaceWash = null,
-            ambientShadowColor = Color.Transparent,
-            spotShadowColor = Color.Transparent,
-            blurRadius = 20.dp
-        )
-        assertEquals(20.dp, style.blurRadius)
+    @Test fun disabledBlurReturnsSameModifier() {
+        val initial = Modifier
+        assertSame(initial, initial.themeSurfaceBlur(0.dp))
     }
 
-    @Test
-    fun bookmarkCardSurfaceBlur_zeroBlur_returnsSameModifier() {
-        val style = BookmarkCardStyle(
-            containerColor = Color.White,
-            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
-            surfaceWash = null,
-            ambientShadowColor = Color.Transparent,
-            spotShadowColor = Color.Transparent,
-            blurRadius = 0.dp
-        )
-        val initialModifier = Modifier
-        val resultModifier = initialModifier.bookmarkCardSurfaceBlur(style)
-        assertSame(initialModifier, resultModifier)
-    }
-
-    @Test
-    fun bookmarkCardSurfaceBlur_positiveBlur_appliesModifier() {
-        val style = BookmarkCardStyle(
-            containerColor = Color.White,
-            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
-            surfaceWash = null,
-            ambientShadowColor = Color.Transparent,
-            spotShadowColor = Color.Transparent,
-            blurRadius = 16.dp
-        )
-        val initialModifier = Modifier
-        val resultModifier = initialModifier.bookmarkCardSurfaceBlur(style)
-        assertNotSame(initialModifier, resultModifier)
-    }
-    @Test
-    fun bookmarkCardSurfaceBlur_withShape_positiveBlur_appliesModifier() {
-        val style = BookmarkCardStyle(
-            containerColor = Color.White,
-            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
-            surfaceWash = null,
-            ambientShadowColor = Color.Transparent,
-            spotShadowColor = Color.Transparent,
-            blurRadius = 16.dp
-        )
-        val initialModifier = Modifier
-        val resultModifier = initialModifier.bookmarkCardSurfaceBlur(style, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-        assertNotSame(initialModifier, resultModifier)
-    }
-
-    @Test
-    fun bookmarkCardSurfaceBlur_withShape_zeroBlur_returnsSameModifier() {
-        val style = BookmarkCardStyle(
-            containerColor = Color.White,
-            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
-            surfaceWash = null,
-            ambientShadowColor = Color.Transparent,
-            spotShadowColor = Color.Transparent,
-            blurRadius = 0.dp
-        )
-        val initialModifier = Modifier
-        val resultModifier = initialModifier.bookmarkCardSurfaceBlur(style, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-        assertSame(initialModifier, resultModifier)
-    }
-
-    @Test
-    fun bookmarkCardLighting_showAccentRimFalse_returnsSameModifier() {
-        val style = BookmarkCardStyle(
-            containerColor = Color.White,
-            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
-            surfaceWash = null,
-            ambientShadowColor = Color.Transparent,
-            spotShadowColor = Color.Transparent
-        )
-        val initialModifier = Modifier
-        val resultModifier = initialModifier.bookmarkCardLighting(
-            style = style,
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-            showAccentRim = false
-        )
-        assertSame(initialModifier, resultModifier)
-    }
-
-    @Test
-    fun bookmarkCardLighting_showAccentRimTrue_appliesModifier() {
-        val style = BookmarkCardStyle(
-            containerColor = Color.White,
-            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
-            surfaceWash = null,
-            ambientShadowColor = Color.Transparent,
-            spotShadowColor = Color.Transparent
-        )
-        val initialModifier = Modifier
-        val resultModifier = initialModifier.bookmarkCardLighting(
-            style = style,
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-            showAccentRim = true
-        )
-        assertNotSame(initialModifier, resultModifier)
-    }
-
-    @Test
-    fun bookmarkCardLighting_defaultShowAccentRim_appliesModifier() {
-        val style = BookmarkCardStyle(
-            containerColor = Color.White,
-            rim = Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
-            surfaceWash = null,
-            ambientShadowColor = Color.Transparent,
-            spotShadowColor = Color.Transparent
-        )
-        val initialModifier = Modifier
-        val resultModifier = initialModifier.bookmarkCardLighting(
-            style = style,
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-        )
-        assertNotSame(initialModifier, resultModifier)
+    @Test fun positiveBlurStillAppliesToTheBackgroundModifier() {
+        val initial = Modifier
+        assertNotSame(initial, initial.themeSurfaceBlur(20.dp))
     }
 }

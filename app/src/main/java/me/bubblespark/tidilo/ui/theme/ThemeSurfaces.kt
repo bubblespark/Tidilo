@@ -40,7 +40,13 @@ data class SurfaceStyleOverride(
     val treatment: SurfaceTreatment? = null,
     val elevation: Dp? = null,
     val borderWidth: Dp? = null,
-    val opacity: Float? = null
+    val opacity: Float? = null,
+    val gradient: SurfaceGradient? = null,
+    val bevel: SurfaceGradient? = null,
+    val ambientShadow: Color? = null,
+    val spotShadow: Color? = null,
+    val accentRim: SurfaceGradient? = null,
+    val accentWash: SurfaceGradient? = null
 )
 
 @Immutable
@@ -85,6 +91,18 @@ data class ResolvedThemeSurfaces(
         if (preset.floatingBarStyle.activeTabStyle == ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE) {
             if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
         } else Color.Unspecified
+    val entityChipIconTint: Color? get() =
+        if (preset.chipStyle.treatment == SurfaceTreatment.DECORATED) resolve(SurfaceRole.ENTITY_CHIP).contentColor else null
+
+    fun resolveBadge(role: SurfaceRole, colors: ChipResolvedColors, state: ThemeSurfaceState = ThemeSurfaceState()): ResolvedSurfaceStyle {
+        val overrides = preset.surfaceOverrides[role]
+        val semantic = state.selected || state.tone != SurfaceTone.NORMAL
+        return resolve(role, state = state).copy(
+            containerColor = if (semantic) colors.containerColor else overrides?.containerColor ?: colors.containerColor,
+            contentColor = if (semantic) colors.contentColor else overrides?.contentColor ?: colors.contentColor
+        ).decorate(isDark, preset.chipStyle.useGradientFill, DecorationFamily.CHIP)
+            .drawingOverrides(overrides, semantic)
+    }
 
     fun resolve(
         role: SurfaceRole,
@@ -217,8 +235,21 @@ data class ResolvedThemeSurfaces(
                 accentSpotShadow = if (isDark) highlight.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.10f)
             )
         }
-        return result
+        return result.drawingOverrides(preset.surfaceOverrides[role], state.selected || state.tone != SurfaceTone.NORMAL)
     }
+}
+
+private fun ResolvedSurfaceStyle.drawingOverrides(override: SurfaceStyleOverride?, semantic: Boolean): ResolvedSurfaceStyle {
+    if (override == null) return this
+    return copy(
+        borderWidth = override.borderWidth ?: borderWidth,
+        gradient = if (semantic) gradient else override.gradient ?: gradient,
+        bevel = override.bevel ?: bevel,
+        ambientShadow = override.ambientShadow ?: ambientShadow,
+        spotShadow = override.spotShadow ?: spotShadow,
+        accentRim = override.accentRim ?: accentRim,
+        accentWash = override.accentWash ?: accentWash
+    )
 }
 
 /** Decoration constants belong to the theme contract, not individual screens. */

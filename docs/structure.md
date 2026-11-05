@@ -152,3 +152,12 @@ app/src/main/java/com/ykgudev/tidilo/
 ## RSS Library presentation
 
 `data/db/RssFeedGroup.kt` defines the feed/count SQL projection, and `RssDao` observes visible saved groups. `LibraryViewModel` owns feed selection, ordering, and feed-scoped Paging/count queries. `ui/screens/library/RssFeedCard.kt` supplies feed content to the shared `LibraryDeckCard` in DomainCard.kt. `ui/components/FeedIconState.kt` observes on-demand feed/publisher artwork and dominant colors; DomainIconManager owns storage, processing, fallback, and cache generation. RSS and Domain drill-downs share LibraryScreen's bookmark layouts and ambient background.
+
+
+## Shared theme surface responsibilities
+
+`ui/theme/ThemeSurfaces.kt` resolves semantic roles and existing drawing defaults; `ThemeShapeScale.kt` supplies the named shape scale and Material shape mapping. `AppThemeStyle.kt` stores presets and overrides, while `Theme.kt` supplies both Material and extended values from the selected theme.
+
+`ui/components/TidiloSurface.kt` owns shared background/edge/shadow rendering and Material coordination. `TidiloChip.kt` integrates display badge semantics; `TidiloIconButton.kt` preserves native icon/toggle input behavior while sharing optional plate decoration. Existing feature components retain their content, layout and data/state ownership. `BookmarkCardStyle.kt` now contains only the scoped accent input, not a parallel rendering system.
+
+The component catalogue and rendering/lifecycle checks live in Android test sources. There is no production catalogue screen or future backdrop-blur infrastructure. See [UI design](ui_design.md#83-resolved-theme-and-shared-surface-contract) for the coverage contract and native Material inheritance limits.

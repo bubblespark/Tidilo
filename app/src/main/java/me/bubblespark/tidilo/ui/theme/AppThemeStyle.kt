@@ -167,11 +167,8 @@ enum class ThemeColorRole {
 }
 
 /**
- * Visual theme styling contract governing color role, blur, and transparency across all UI surfaces in Tidilo.
- *
- * For [AppTheme.DEFAULT], colorRole is ACCENT, all blur radii are 0.dp, and all sub-configs are Default (depth == 0.dp),
- * ensuring zero GPU overhead and 100% native M3 appearance.
- * Future themes configure their own values without touching individual component or screen files.
+ * Preset values consumed by Material theming and shared semantic surface resolution.
+ * Drawing treatment is independent of shadow depth. Existing blur values describe self-blur only.
  */
 data class AppThemeStyle(
     val theme: AppTheme,

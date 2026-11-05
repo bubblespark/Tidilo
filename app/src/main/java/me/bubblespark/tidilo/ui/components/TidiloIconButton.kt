@@ -1,6 +1,5 @@
 package me.bubblespark.tidilo.ui.components
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton

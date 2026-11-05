@@ -62,7 +62,11 @@ data class ResolvedSurfaceStyle(
     val gradient: SurfaceGradient? = null,
     val ambientShadow: Color = Color.Black,
     val spotShadow: Color = Color.Black,
-    val selfBlurRadius: Dp = 0.dp
+    val selfBlurRadius: Dp = 0.dp,
+    val accentRim: SurfaceGradient? = null,
+    val accentWash: SurfaceGradient? = null,
+    val accentAmbientShadow: Color? = null,
+    val accentSpotShadow: Color = Color.Black
 ) {
     init {
         require(opacity.isFinite() && opacity in 0f..1f)
@@ -172,6 +176,19 @@ data class ResolvedThemeSurfaces(
         if (state.tone == SurfaceTone.ERROR) result = result.copy(containerColor = c.errorContainer, contentColor = c.onErrorContainer, gradient = null)
         if (state.tone == SurfaceTone.CAUTION) result = result.copy(containerColor = c.tertiaryContainer, contentColor = c.onTertiaryContainer, gradient = null)
         if (state.selected && role == SurfaceRole.FILTER_CHIP) result = result.copy(containerColor = c.primary, contentColor = c.onPrimary, gradient = null)
+        if (role == SurfaceRole.BOOKMARK_CARD) {
+            val highlight = if (accent == Color.Unspecified) c.primary else accent
+            val tactile = result.treatment == SurfaceTreatment.DECORATED
+            result = result.copy(
+                accentRim = if (card.showAccentRim || accent != Color.Unspecified) SurfaceGradient(
+                    highlight.copy(alpha = if (isDark) (if (tactile) 0.70f else 0.65f) else (if (tactile) 0.45f else 0.38f)),
+                    highlight.copy(alpha = if (isDark) (if (tactile) 0.08f else 0.05f) else 0.04f)
+                ) else null,
+                accentWash = if (!isDark && !tactile) SurfaceGradient(highlight.copy(alpha = 0.045f), Color.Transparent) else null,
+                accentAmbientShadow = if (card.showAccentRim) highlight.copy(alpha = if (isDark && tactile) 0.35f else 0.25f) else null,
+                accentSpotShadow = if (isDark) highlight.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.10f)
+            )
+        }
         return result
     }
 }

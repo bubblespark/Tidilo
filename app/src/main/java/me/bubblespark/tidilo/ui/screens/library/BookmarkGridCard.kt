@@ -40,7 +40,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
-import me.bubblespark.tidilo.ui.theme.themeCardSurface
+import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.SurfaceVariant
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -106,9 +109,7 @@ fun BookmarkGridCard(
     val themeStyle = LocalAppThemeStyle.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val hasSummary = bookmark.description.isNotBlank()
-    val cardStyle = rememberBookmarkCardStyle(MaterialTheme.colorScheme.surfaceContainer)
-    val cardShape = RoundedCornerShape(16.dp)
-    val effectiveShape = themeStyle.cardStyle.shape ?: cardShape
+    val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.BOOKMARK_CARD, SurfaceVariant.COMPACT).shape
     val topImageShape = if (effectiveShape is RoundedCornerShape) {
         effectiveShape.copy(
             bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp),
@@ -118,31 +119,21 @@ fun BookmarkGridCard(
         RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
     }
 
-    Surface(
+    TidiloSurface(
+        role = SurfaceRole.BOOKMARK_CARD,
+        variant = SurfaceVariant.COMPACT,
+        accent = LocalCardAccentColor.current,
         modifier = modifier
             .fillMaxWidth()
-            .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, effectiveShape, cardStyle.containerColor)
-            .bookmarkCardLighting(cardStyle, effectiveShape, themeStyle.cardStyle.showAccentRim)
             .clip(effectiveShape)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = if (hasSummary && onLongClick != null) {
                     { onLongClick() }
                 } else null
-            ),
-        shape = effectiveShape,
-        color = if (themeStyle.cardStyle.depth > 0.dp) Color.Transparent else cardStyle.containerColor,
-        tonalElevation = 0.dp
+            )
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
-            // Background surface layer: isolated blur and surface wash behind content
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .bookmarkCardSurfaceBlur(cardStyle, effectiveShape)
-                    .bookmarkCardSurfaceWash(cardStyle)
-            )
-
             Column(modifier = Modifier.fillMaxWidth()) {
             // 1. Top Image Area (Aspect Ratio 16:9)
             Box(

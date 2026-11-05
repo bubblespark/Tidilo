@@ -104,6 +104,17 @@ data class ResolvedThemeSurfaces(
             .drawingOverrides(overrides, semantic)
     }
 
+    fun resolveNavigationIndicator(selected: Boolean, animatedColor: Color): ResolvedSurfaceStyle {
+        val style = resolve(SurfaceRole.NAVIGATION_INDICATOR)
+        if (!selected || style.treatment == SurfaceTreatment.MATERIAL) {
+            return style.copy(containerColor = animatedColor, treatment = SurfaceTreatment.MATERIAL,
+                elevation = 0.dp, gradient = null, bevel = null, borderWidth = 0.dp)
+        }
+        return style.copy(containerColor = animatedColor)
+            .decorate(isDark, preset.chipStyle.useGradientFill, DecorationFamily.CHIP)
+            .drawingOverrides(preset.surfaceOverrides[SurfaceRole.NAVIGATION_INDICATOR], false)
+    }
+
     fun resolve(
         role: SurfaceRole,
         variant: SurfaceVariant = SurfaceVariant.STANDARD,
@@ -116,7 +127,8 @@ data class ResolvedThemeSurfaces(
         val bar = preset.floatingBarStyle
         val icons = preset.iconButtonStyle
         val shapes = preset.shapeScale
-        val base = ResolvedSurfaceStyle(containerColor = c.surfaceContainerHigh, contentColor = c.onSurface)
+        val base = ResolvedSurfaceStyle(containerColor = c.surfaceContainerHigh, contentColor = c.onSurface,
+            shape = shapes.shape(ThemeCorner.CARD))
         var result = when (role) {
             SurfaceRole.BOOKMARK_CARD -> base.copy(
                 containerColor = preset.surfacePalette.container(isDark,
@@ -222,6 +234,9 @@ data class ResolvedThemeSurfaces(
         if (state.tone == SurfaceTone.ERROR) result = result.copy(containerColor = c.errorContainer, contentColor = c.onErrorContainer, gradient = null)
         if (state.tone == SurfaceTone.CAUTION) result = result.copy(containerColor = c.tertiaryContainer, contentColor = c.onTertiaryContainer, gradient = null)
         if (state.selected && (role == SurfaceRole.FILTER_CHIP || ((role == SurfaceRole.ENTITY_CHIP || role == SurfaceRole.FILTER_CHIP) && variant == SurfaceVariant.COMPACT))) result = result.copy(containerColor = c.primary, contentColor = c.onPrimary, gradient = null)
+        if (state.selected && role == SurfaceRole.FILTER_ACTION) {
+            result = result.copy(containerColor = c.primaryContainer, contentColor = c.onPrimaryContainer, gradient = null)
+        }
         if (role == SurfaceRole.BOOKMARK_CARD) {
             val highlight = if (accent == Color.Unspecified) c.primary else accent
             val tactile = result.treatment == SurfaceTreatment.DECORATED

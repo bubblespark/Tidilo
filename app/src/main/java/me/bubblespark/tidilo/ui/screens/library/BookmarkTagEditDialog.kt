@@ -133,11 +133,10 @@ fun BookmarkTagEditDialog(
                     Spacer(modifier = Modifier.height(6.dp))
                     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                         TidiloSurface(
+                            onClick = { isCategoryDropdownExpanded = true },
                             role = SurfaceRole.INPUT,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(currentThemeSurfaces().resolve(SurfaceRole.INPUT).shape)
-                                .clickable { isCategoryDropdownExpanded = true }
                         ) {
                             Row(
                                 modifier = Modifier
@@ -222,11 +221,10 @@ fun BookmarkTagEditDialog(
                     Spacer(modifier = Modifier.height(6.dp))
                     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                         TidiloSurface(
+                            onClick = { isSubcategoryDropdownExpanded = true },
                             role = SurfaceRole.INPUT,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(currentThemeSurfaces().resolve(SurfaceRole.INPUT).shape)
-                                .clickable { isSubcategoryDropdownExpanded = true }
                         ) {
                             Row(
                                 modifier = Modifier

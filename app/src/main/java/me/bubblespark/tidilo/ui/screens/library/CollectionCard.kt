@@ -179,6 +179,10 @@ private fun CollectionCardVisual(
 
         // Front interactive main horizontal card
         TidiloSurface(
+            onClick = onClick,
+            onLongClick = onLongClick?.let { callback ->
+                { haptic.performHapticFeedback(HapticFeedbackType.LongPress); callback() }
+            },
             role = SurfaceRole.DECK_FRONT,
             variant = SurfaceVariant.STANDARD,
             accent = dominantColor,
@@ -187,17 +191,6 @@ private fun CollectionCardVisual(
                 .padding(end = stackOffset * 2)
                 .height(cardHeight)
                 .align(Alignment.BottomStart)
-                .clip(effectiveShape)
-                .combinedClickable(
-                    role = Role.Button,
-                    onClick = onClick,
-                    onLongClick = onLongClick?.let { callback ->
-                        {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            callback()
-                        }
-                    }
-                )
         ) {
             Box(
                 modifier = Modifier.fillMaxSize()

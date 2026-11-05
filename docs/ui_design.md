@@ -566,10 +566,10 @@ Located in `ui/components/AmbientLighting.kt`:
 - `AppThemeStyle` owns preset configuration, optional light/dark Material palettes, the named `ThemeShapeScale`, and per-role `SurfaceStyleOverride` values.
 - Unspecified Material palettes preserve the existing Dynamic Color behavior. Shipped Default and Modern presets keep their previous palettes and geometry.
 - `ResolvedThemeSurfaces.resolve` supplies complete foreground/background pairs, shape, treatment, shadow/elevation, edge and fill values. Explicit applied dark mode is authoritative; isolated MaterialTheme previews use one centralized fallback.
-- `SurfaceTreatment` selects native or decorated drawing independently of elevation. A decorated surface at zero elevation retains its background, shape and edge.
+- `SurfaceTreatment` selects native or decorated drawing independently of elevation. A decorated surface at zero elevation retains its background, shape and edge. Shared click/long-click handling places shadows outside the content/ripple clip.
 - `TidiloSurface` owns Material background suppression and custom drawing. Feature screens do not make containers transparent or disable shadows based on depth.
 - Background opacity and existing self-blur are isolated from foreground content. `Modifier.blur` remains a self-blur hook, not a backdrop effect.
-- `SurfaceStyleOverride` can tune shape, colors, opacity, elevation, border width, gradient stops, bevels and shadow colors for connected shared surfaces. Semantic error and matched/selected chip colors take priority over neutral colors.
+- `SurfaceStyleOverride` can tune shape, colors, opacity, elevation, border width, gradient stops, bevels and shadow colors for connected shared surfaces. Semantic error, matched/selected chip colors and selected expanded-filter color pairs take priority over neutral colors. Navigation animation re-applies final drawing overrides and uses the resolved shape and background opacity.
 - `ThemeShapeScale` preserves existing 6/8/10/12/14/16/20/22/24/28/32/36dp values as named tokens. Standard Material shape defaults derive from the same scale. Specialized asymmetric image crops and feature lighting geometry remain explicit content treatments.
 
 ### 8.4 Component coverage and supported parameters

@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
@@ -216,8 +217,8 @@ fun TidiloBottomBar(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        val tabShape = CircleShape
                         val indicatorStyle = surfaces.resolve(SurfaceRole.NAVIGATION_INDICATOR)
+                        val tabShape = indicatorStyle.shape
                         val activeContainerColor = indicatorStyle.containerColor
                         val inactiveTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                         val activeContentColor = indicatorStyle.contentColor
@@ -460,14 +461,14 @@ fun TidiloBottomBar(
                                     imageVector = Icons.Default.FolderSpecial,
                                     contentDescription = null,
                                     modifier = Modifier.size(28.dp),
-                                    tint = if (isCollectionActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                                    tint = LocalContentColor.current
                                 )
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Text(
                                     text = stringResource(R.string.collection_title),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = if (isCollectionActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                                    color = LocalContentColor.current
                                 )
                             }
                             }
@@ -498,14 +499,14 @@ fun TidiloBottomBar(
                                     imageVector = Icons.Default.RssFeed,
                                     contentDescription = null,
                                     modifier = Modifier.size(28.dp),
-                                    tint = if (isRssActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                                    tint = LocalContentColor.current
                                 )
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Text(
                                     text = stringResource(R.string.rss_title),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = if (isRssActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                                    color = LocalContentColor.current
                                 )
                             }
                             }
@@ -536,14 +537,14 @@ fun TidiloBottomBar(
                                     imageVector = ImageVector.vectorResource(R.drawable.ic_domain),
                                     contentDescription = null,
                                     modifier = Modifier.size(28.dp),
-                                    tint = if (isDomainActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                                    tint = LocalContentColor.current
                                 )
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Text(
                                     text = stringResource(R.string.bottom_bar_domain),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = if (isDomainActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                                    color = LocalContentColor.current
                                 )
                             }
                             }
@@ -574,14 +575,14 @@ fun TidiloBottomBar(
                                     imageVector = ImageVector.vectorResource(R.drawable.ic_arrow_downward),
                                     contentDescription = null,
                                     modifier = Modifier.size(28.dp),
-                                    tint = if (isNewestActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                                    tint = LocalContentColor.current
                                 )
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Text(
                                     text = stringResource(R.string.bottom_bar_newest_first),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = if (isNewestActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                                    color = LocalContentColor.current
                                 )
                             }
                             }
@@ -598,7 +599,7 @@ fun TidiloBottomBar(
                                 .clip(CircleShape)
                                 .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(color = MaterialTheme.colorScheme.onPrimaryContainer, bounded = true)
+                                indication = ripple(color = LocalContentColor.current, bounded = true)
                             ) {
                                 when (currentRoute) {
                                     Screen.Library.route -> onToggleFilterMenu()
@@ -620,7 +621,7 @@ fun TidiloBottomBar(
                             },
                             label = "actionButtonIcon"
                         ) { targetState ->
-                            val iconColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            val iconColor = LocalContentColor.current
                             when (targetState) {
                                 "library_close" -> {
                                     Icon(

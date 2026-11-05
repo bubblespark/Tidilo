@@ -117,18 +117,13 @@ fun BookmarkGridCard(
     }
 
     TidiloSurface(
+        onClick = onClick,
+        onLongClick = if (hasSummary) onLongClick else null,
         role = SurfaceRole.BOOKMARK_CARD,
         variant = SurfaceVariant.COMPACT,
         accent = LocalCardAccentColor.current,
         modifier = modifier
             .fillMaxWidth()
-            .clip(effectiveShape)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = if (hasSummary && onLongClick != null) {
-                    { onLongClick() }
-                } else null
-            )
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth()) {

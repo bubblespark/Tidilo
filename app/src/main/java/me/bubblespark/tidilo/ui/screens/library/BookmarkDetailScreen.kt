@@ -89,6 +89,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -404,7 +405,7 @@ fun BookmarkDetailScreen(
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Icon(ImageVector.vectorResource(R.drawable.ic_open_in_browser),
                                 contentDescription = stringResource(R.string.bookmark_open_in_browser),
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                tint = LocalContentColor.current,
                                 modifier = Modifier.size(22.dp))
                         }
                     }

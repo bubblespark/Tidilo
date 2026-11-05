@@ -3,13 +3,18 @@ package me.bubblespark.tidilo.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Surface
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -31,6 +36,7 @@ fun TidiloSurface(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun TidiloSurface(
     onClick: () -> Unit,
     role: SurfaceRole,
@@ -39,9 +45,22 @@ fun TidiloSurface(
     state: ThemeSurfaceState = ThemeSurfaceState(),
     accent: Color = Color.Unspecified,
     interactionSource: MutableInteractionSource? = null,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     val style = currentThemeSurfaces().resolve(role, variant, state, accent)
+    if (onLongClick != null) {
+        Surface(
+            modifier = modifier.decoration(style).shadow(style.materialElevation(), style.shape, clip = false)
+                .clip(style.shape).combinedClickable(
+                enabled = state.enabled, role = Role.Button, onClick = onClick, onLongClick = onLongClick,
+                interactionSource = interactionSource, indication = ripple()),
+            shape = style.shape, color = style.materialColor(), contentColor = style.contentColor,
+            shadowElevation = 0.dp, tonalElevation = style.tonalElevation,
+            border = style.materialBorder()
+        ) { SurfaceContent(style, content) }
+        return
+    }
     Surface(
         onClick = onClick, modifier = modifier.decoration(style), enabled = state.enabled,
         shape = style.shape, color = style.materialColor(), contentColor = style.contentColor,
@@ -111,16 +130,17 @@ private fun SurfaceContent(style: ResolvedSurfaceStyle, content: @Composable () 
 @Composable
 fun Modifier.themeNavigationIndicator(selected: Boolean, animatedColor: Color): Modifier {
     val theme = currentThemeSurfaces()
-    val visual = theme.resolve(SurfaceRole.NAVIGATION_INDICATOR)
-    if (!selected || visual.treatment == SurfaceTreatment.MATERIAL) return background(animatedColor, visual.shape)
-    val style = visual.copy(containerColor = animatedColor).decorate(theme.isDark,
-        theme.preset.chipStyle.useGradientFill, DecorationFamily.CHIP)
+    val style = theme.resolveNavigationIndicator(selected, animatedColor)
+    if (style.treatment == SurfaceTreatment.MATERIAL) {
+        return background(style.containerColor.copy(alpha = style.containerColor.alpha * style.opacity), style.shape)
+    }
     return decoration(style).drawWithCache {
         val fill = style.gradient
         val brush = if (fill == null) null else Brush.verticalGradient(listOf(fill.top, style.containerColor, fill.bottom))
         val outline = style.shape.createOutline(size, layoutDirection, this)
         onDrawBehind {
-            if (brush == null) drawOutline(outline, style.containerColor) else drawOutline(outline, brush)
+            if (brush == null) drawOutline(outline, style.containerColor.copy(alpha = style.containerColor.alpha * style.opacity))
+            else drawOutline(outline, brush, alpha = style.opacity)
         }
     }
 }

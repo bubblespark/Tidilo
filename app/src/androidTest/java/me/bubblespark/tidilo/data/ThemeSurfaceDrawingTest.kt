@@ -48,6 +48,9 @@ class ThemeSurfaceDrawingTest {
             try {
                 val bounds = node.boundsInWindow
                 assertEquals(fill.toArgb(), bitmap.getPixel(bounds.center.x.toInt(), (bounds.bottom - 25).toInt()))
+                assertTrue((0..3).any { offset ->
+                    android.graphics.Color.red(bitmap.getPixel(bounds.center.x.toInt(), bounds.top.toInt() + offset)) < 70
+                })
                 assertTrue(host.nodes(activity).any { host.text(it, "Sharp content") })
             } finally { bitmap.recycle() }
         } finally { host.main { activity.finish() } }

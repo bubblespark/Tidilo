@@ -91,7 +91,7 @@ class ThemeSurfaceResolverTest {
             green = action.containerColor.green * 0.92f, blue = action.containerColor.blue * 0.92f), action.gradient!!.bottom)
     }
 
-    @Test fun likeAndToolbarTokensAffectTheirConsumers() {
+    @Test fun likeAndToolbarPlateRolesResolvePresetTokens() {
         val preset = AppThemeStyle.Modern.copy(iconButtonStyle = AppThemeStyle.Modern.iconButtonStyle.copy(
             likeButtonPlate = IconButtonPlateStyle.TACTILE_CIRCULAR_3D,
             toolbarActionPlate = IconButtonPlateStyle.M3_FILLED_TONAL))
@@ -109,7 +109,7 @@ class ThemeSurfaceResolverTest {
         assertEquals(27.dp, scale.radius(ThemeCorner.PROMINENT_CARD))
     }
 
-    @Test fun settingsPresetChangeReachesGroupedAndRssCards() {
+    @Test fun settingsRoleResolvesNeutralPresetOverride() {
         val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
             SurfaceRole.SETTINGS_GROUP to SurfaceStyleOverride(containerColor = Color.Cyan)))
         val theme = resolveThemeSurfaces(AppTheme.MODERN, false, colors, preset)
@@ -155,5 +155,42 @@ class ThemeSurfaceResolverTest {
         assertEquals(edge, style.bevel)
         assertEquals(2.dp, style.borderWidth)
         assertEquals(Color.Magenta, style.ambientShadow)
+    }
+
+    @Test fun neutralFilterActionOverrideCannotEraseSelectedState() {
+        val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
+            SurfaceRole.FILTER_ACTION to SurfaceStyleOverride(containerColor = Color.Gray, contentColor = Color.Black)))
+        val theme = resolveThemeSurfaces(AppTheme.MODERN, false, colors, preset)
+        assertEquals(Color.Gray, theme.resolve(SurfaceRole.FILTER_ACTION).containerColor)
+        val selected = theme.resolve(SurfaceRole.FILTER_ACTION, state = ThemeSurfaceState(selected = true))
+        assertEquals(colors.primaryContainer, selected.containerColor)
+        assertEquals(colors.onPrimaryContainer, selected.contentColor)
+    }
+
+    @Test fun statusCardsFollowTheSharedCardShapeScale() {
+        val preset = AppThemeStyle.Default.copy(shapeScale = ThemeShapeScale(card = 23.dp))
+        assertEquals(preset.shapeScale.shape(ThemeCorner.CARD),
+            resolveThemeSurfaces(AppTheme.DEFAULT, false, colors, preset).resolve(SurfaceRole.STATUS_CARD).shape)
+    }
+
+    @Test fun navigationAnimationPreservesFinalDrawingOverrides() {
+        val edge = SurfaceGradient(Color.Green, Color.Blue)
+        val fill = SurfaceGradient(Color.Red, Color.Yellow)
+        val shape = androidx.compose.foundation.shape.RoundedCornerShape(7.dp)
+        val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
+            SurfaceRole.NAVIGATION_INDICATOR to SurfaceStyleOverride(gradient = fill, bevel = edge,
+                borderWidth = 3.dp, opacity = 0.4f, shape = shape, ambientShadow = Color.Cyan)))
+        val theme = resolveThemeSurfaces(AppTheme.MODERN, false, colors, preset)
+        val rendered = theme.resolveNavigationIndicator(true, Color.Magenta)
+        assertEquals(fill, rendered.gradient)
+        assertEquals(edge, rendered.bevel)
+        assertEquals(3.dp, rendered.borderWidth)
+        assertEquals(0.4f, rendered.opacity)
+        assertEquals(Color.Cyan, rendered.ambientShadow)
+        assertEquals(shape, rendered.shape)
+        val fading = theme.resolveNavigationIndicator(false, Color.Magenta)
+        assertEquals(SurfaceTreatment.MATERIAL, fading.treatment)
+        assertEquals(Color.Magenta, fading.containerColor)
+        assertEquals(0.dp, fading.elevation)
     }
 }

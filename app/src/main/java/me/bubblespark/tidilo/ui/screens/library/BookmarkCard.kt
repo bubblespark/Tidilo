@@ -327,8 +327,6 @@ fun BookmarkTagSection(
             ) {
                 val categoryColors = resolveChipColors(
                     style = themeStyle.chipStyle,
-                    isSubcategory = false,
-                    isEntity = false,
                     categoryContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
                     categoryContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     fallbackContainerColor = chipNeutralContainer,
@@ -336,8 +334,6 @@ fun BookmarkTagSection(
                 )
                 val matchedCategoryColors = resolveChipColors(
                     style = themeStyle.chipStyle,
-                    isSubcategory = false,
-                    isEntity = false,
                     categoryContainerColor = MaterialTheme.colorScheme.primaryContainer,
                     categoryContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     fallbackContainerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -345,8 +341,6 @@ fun BookmarkTagSection(
                 )
                 val subcategoryColors = resolveChipColors(
                     style = themeStyle.chipStyle,
-                    isSubcategory = true,
-                    isEntity = false,
                     categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
                     categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     fallbackContainerColor = chipNeutralContainer,
@@ -354,8 +348,6 @@ fun BookmarkTagSection(
                 )
                 val matchedSubcategoryColors = resolveChipColors(
                     style = themeStyle.chipStyle,
-                    isSubcategory = true,
-                    isEntity = false,
                     categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer,
                     categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     fallbackContainerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -432,8 +424,6 @@ fun BookmarkTagSection(
         if (tag.entities.isNotEmpty()) {
             val entityColors = resolveChipColors(
                 style = themeStyle.chipStyle,
-                isSubcategory = false,
-                isEntity = true,
                 categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f),
                 categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                 fallbackContainerColor = chipNeutralContainer,
@@ -441,8 +431,6 @@ fun BookmarkTagSection(
             )
             val matchedEntityColors = resolveChipColors(
                 style = themeStyle.chipStyle,
-                isSubcategory = false,
-                isEntity = true,
                 categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
                 categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                 fallbackContainerColor = MaterialTheme.colorScheme.tertiaryContainer,

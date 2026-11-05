@@ -98,7 +98,6 @@ class AppThemeStyleTest {
         assertNull(chipStyle.shape)
         assertFalse(chipStyle.useGradientFill)
         assertEquals(ChipColorMode.PER_CATEGORY, chipStyle.colorMode)
-        assertFalse(chipStyle.emphasizeEntityChips)
     }
 
     @Test
@@ -170,7 +169,6 @@ class AppThemeStyleTest {
         assertEquals(RoundedCornerShape(12.dp), style.chipStyle.shape)
         assertTrue(style.chipStyle.useGradientFill)
         assertEquals(ChipColorMode.UNIFIED, style.chipStyle.colorMode)
-        assertTrue(style.chipStyle.emphasizeEntityChips)
 
         // floatingBarStyle
         assertEquals(3.dp, style.floatingBarStyle.depth)

@@ -270,8 +270,6 @@ class ThemeModifiersTest {
 
         val resolved = resolveChipColors(
             style = style,
-            isSubcategory = false,
-            isEntity = false,
             categoryContainerColor = catContainer,
             categoryContentColor = catContent,
             fallbackContainerColor = fallbackContainer,
@@ -292,8 +290,6 @@ class ThemeModifiersTest {
 
         val resolved = resolveChipColors(
             style = style,
-            isSubcategory = true,
-            isEntity = true,
             categoryContainerColor = catContainer,
             categoryContentColor = catContent,
             fallbackContainerColor = fallbackContainer,

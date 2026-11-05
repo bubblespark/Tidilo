@@ -403,7 +403,8 @@ When a standalone 86dp bottom-right button expands into a menu, child menu pills
   - Removed the `AI Skipped` assist chip from the Category & Tags section.
   - When `bookmark.isAiSkipped == true`, displays a clear warning notice below the URL surface: `[warning icon] This bookmark has not been analyzed by AICore.` using `WarningColor.textOrIcon` for both icon and text with 8dp horizontal spacing.
   - Spacing rhythm: URL to Warning notice is `6.dp`, Warning notice to Category & Tags is `14.dp` (eliminating disproportionate voids).
-  - Category & Tags edit `IconButton` and tag chips (`AssistChip`) are scoped under `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to eliminate invisible accessibility touch-target inflation (which previously caused a 32dp gap), harmonizing the header-to-content gap across Category & Tags, Summary, and Note to a consistent `10.dp`.
+  - Category & Tags edit `IconButton` and, under `AppTheme.DEFAULT`, tag chips (`AssistChip`, kept as the original layout) are scoped under `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to eliminate invisible accessibility touch-target inflation (which previously caused a 32dp gap), harmonizing the header-to-content gap across Category & Tags, Summary, and Note to a consistent `10.dp`.
+  - Under `AppTheme.MODERN` (`chipStyle.depth > 0.dp`), tags are rendered by the shared `BookmarkTagSection` composable (`CompactTagBadge`, 26dp tactile chips), identical to `BookmarkItemCard`.
   - Direct/AI-skipped bookmarks with no category or subcategory omit the classification row unless NSFW is set. Removing the entity row's redundant top padding preserves the 10dp section-header-to-content gap without a blank row; existing `None` classification labels remain unchanged.
 
 ### 6.12 Tag Edit Dialog Dropdown Menu Specification (`BookmarkTagEditDialog.kt`)

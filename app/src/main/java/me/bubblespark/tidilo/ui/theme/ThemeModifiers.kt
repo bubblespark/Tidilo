@@ -4,10 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.unit.dp
 
 // Hoisted bevel border gradient brushes for zero-allocation drawing across recompositions
@@ -48,6 +50,18 @@ private val PLATE_BEVEL_BORDER_LIGHT = Brush.verticalGradient(
 )
 
 /**
+ * Fills the modifier bounds with a three-stop vertical gradient.
+ * The [Brush] and its color list are built inside [drawWithCache] so they are only
+ * rebuilt when the size or the resolved colors change, not on every recomposition.
+ */
+private fun Modifier.verticalGradientFill(shape: Shape, top: Color, middle: Color, bottom: Color): Modifier =
+    drawWithCache {
+        val brush = Brush.verticalGradient(listOf(top, middle, bottom))
+        val outline = shape.createOutline(size, layoutDirection, this)
+        onDrawBehind { drawOutline(outline, brush) }
+    }
+
+/**
  * Resolved colors for a tag chip based on category mode and hierarchy.
  */
 data class ChipResolvedColors(
@@ -62,8 +76,6 @@ data class ChipResolvedColors(
  */
 fun resolveChipColors(
     style: ThemeChipStyle,
-    isSubcategory: Boolean = false,
-    isEntity: Boolean = false,
     categoryContainerColor: Color,
     categoryContentColor: Color,
     fallbackContainerColor: Color,
@@ -135,12 +147,7 @@ fun Modifier.themeCardSurface(
                 blue = (containerColor.blue * 0.95f)
             )
         }
-        shadowModifier.background(
-            brush = Brush.verticalGradient(
-                colors = listOf(lightened, containerColor, darkened)
-            ),
-            shape = resolvedShape
-        )
+        shadowModifier.verticalGradientFill(resolvedShape, lightened, containerColor, darkened)
     } else if (containerColor != Color.Unspecified) {
         shadowModifier.background(containerColor, shape = resolvedShape)
     } else {
@@ -192,12 +199,7 @@ fun Modifier.themeChipSurface(
             green = containerColor.green * 0.94f,
             blue = containerColor.blue * 0.94f
         )
-        shadowModifier.background(
-            brush = Brush.verticalGradient(
-                colors = listOf(lightened, containerColor, darkened)
-            ),
-            shape = resolvedShape
-        )
+        shadowModifier.verticalGradientFill(resolvedShape, lightened, containerColor, darkened)
     } else if (containerColor != Color.Unspecified) {
         shadowModifier.background(containerColor, shape = resolvedShape)
     } else {
@@ -248,12 +250,7 @@ fun Modifier.themeFloatingBarSurface(
             green = containerColor.green * 0.95f,
             blue = containerColor.blue * 0.95f
         )
-        shadowModifier.background(
-            brush = Brush.verticalGradient(
-                colors = listOf(lightened, containerColor, darkened)
-            ),
-            shape = resolvedShape
-        )
+        shadowModifier.verticalGradientFill(resolvedShape, lightened, containerColor, darkened)
     } else if (containerColor != Color.Unspecified) {
         shadowModifier.background(containerColor, shape = resolvedShape)
     } else {
@@ -304,12 +301,7 @@ fun Modifier.themeIconButtonSurface(
             green = containerColor.green * 0.92f,
             blue = containerColor.blue * 0.92f
         )
-        shadowModifier.background(
-            brush = Brush.verticalGradient(
-                colors = listOf(lightened, containerColor, darkened)
-            ),
-            shape = shape
-        )
+        shadowModifier.verticalGradientFill(shape, lightened, containerColor, darkened)
     } else if (containerColor != Color.Unspecified) {
         shadowModifier.background(containerColor, shape = shape)
     } else {

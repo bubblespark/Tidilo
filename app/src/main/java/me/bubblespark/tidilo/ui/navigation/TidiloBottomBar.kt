@@ -229,8 +229,7 @@ fun TidiloBottomBar(
                         style = themeStyle.floatingBarStyle,
                         palette = themeStyle.surfacePalette,
                         isDark = isDark,
-                        fallbackShape = CircleShape,
-                        fallbackContainerColor = containerBgColor
+                        fallbackShape = CircleShape
                     ),
                 shape = CircleShape,
                 color = if (floatingBarDepth > 0.dp) Color.Transparent else containerBgColor,

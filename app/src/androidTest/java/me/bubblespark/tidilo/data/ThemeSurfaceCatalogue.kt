@@ -36,7 +36,7 @@ internal fun ThemeSurfaceCatalogue(
         LocalDensity provides Density(density, fontScale),
         LocalAppThemeStyle provides AppThemeStyle.forTheme(theme)
     ) {
-        TidiloTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
+        TidiloTheme(darkTheme = darkTheme, dynamicColor = dynamicColor, theme = theme) {
             Column(Modifier.width(width).background(MaterialTheme.colorScheme.background).padding(16.dp)) {
                 BookmarkItemCard(
                     bookmark = BookmarkItem("theme-fixture", "Theme fixture", "", "Fixture summary",

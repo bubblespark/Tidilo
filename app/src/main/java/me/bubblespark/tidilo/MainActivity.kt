@@ -160,7 +160,8 @@ class MainActivity : ComponentActivity() {
                 LocalConfiguration provides updatedConfig,
                 LocalContext provides localizedContext
             ) {
-                TidiloTheme {
+                val selectedTheme by AppConfig.currentTheme.collectAsStateWithLifecycle()
+                TidiloTheme(theme = selectedTheme) {
                     TidiloApp(notificationRoute = notificationDestination.value, onNotificationConsumed = {
                         notificationDestination.value = null
                         intent.removeExtra(NotificationCoordinator.EXTRA_DESTINATION)
@@ -294,7 +295,6 @@ fun TidiloApp(
 
     CompositionLocalProvider(
         LocalBarsVisible provides isBarsVisible,
-        LocalAppThemeStyle provides remember(currentTheme) { AppThemeStyle.forTheme(currentTheme) },
         LocalAmbientLighting provides ambientLightingState
     ) {
         Scaffold(

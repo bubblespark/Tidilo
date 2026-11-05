@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -38,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -132,25 +135,26 @@ fun SettingsScreen(
                 },
                 text = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
-                        Column {
+                        Column(modifier = Modifier.selectableGroup()) {
                             AppLanguage.entries.forEach { lang ->
                                 val isSelected = lang == currentLanguage
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable {
-                                            AppConfig.setLanguage(lang)
-                                            showLanguageDialog = false
-                                        }
+                                        .selectable(
+                                            selected = isSelected,
+                                            role = Role.RadioButton,
+                                            onClick = {
+                                                AppConfig.setLanguage(lang)
+                                                showLanguageDialog = false
+                                            }
+                                        )
                                         .padding(vertical = 12.dp, horizontal = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     RadioButton(
                                         selected = isSelected,
-                                        onClick = {
-                                            AppConfig.setLanguage(lang)
-                                            showLanguageDialog = false
-                                        }
+                                        onClick = null
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Text(
@@ -192,25 +196,26 @@ fun SettingsScreen(
                 },
                 text = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
-                        Column {
+                        Column(modifier = Modifier.selectableGroup()) {
                             AppTheme.entries.forEach { theme ->
                                 val isSelected = theme == currentTheme
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable {
-                                            AppConfig.setTheme(theme)
-                                            showThemeDialog = false
-                                        }
+                                        .selectable(
+                                            selected = isSelected,
+                                            role = Role.RadioButton,
+                                            onClick = {
+                                                AppConfig.setTheme(theme)
+                                                showThemeDialog = false
+                                            }
+                                        )
                                         .padding(vertical = 12.dp, horizontal = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     RadioButton(
                                         selected = isSelected,
-                                        onClick = {
-                                            AppConfig.setTheme(theme)
-                                            showThemeDialog = false
-                                        }
+                                        onClick = null
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Text(

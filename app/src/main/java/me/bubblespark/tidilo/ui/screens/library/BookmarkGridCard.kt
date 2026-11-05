@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeCardSurface
@@ -108,6 +109,14 @@ fun BookmarkGridCard(
     val cardStyle = rememberBookmarkCardStyle(MaterialTheme.colorScheme.surfaceContainer)
     val cardShape = RoundedCornerShape(16.dp)
     val effectiveShape = themeStyle.cardStyle.shape ?: cardShape
+    val topImageShape = if (effectiveShape is RoundedCornerShape) {
+        effectiveShape.copy(
+            bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp),
+            bottomEnd = androidx.compose.foundation.shape.CornerSize(0.dp)
+        )
+    } else {
+        RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+    }
 
     Surface(
         modifier = modifier
@@ -122,7 +131,7 @@ fun BookmarkGridCard(
                 } else null
             ),
         shape = effectiveShape,
-        color = cardStyle.containerColor,
+        color = if (themeStyle.cardStyle.depth > 0.dp) Color.Transparent else cardStyle.containerColor,
         tonalElevation = 0.dp
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
@@ -140,7 +149,7 @@ fun BookmarkGridCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    .clip(topImageShape)
                     .background(
                         brush = Brush.verticalGradient(
                             colors = listOf(

@@ -81,8 +81,25 @@ data class ThemeChipStyle(
     val shape: CornerBasedShape? = null,
     val useGradientFill: Boolean = false,
     val colorMode: ChipColorMode = ChipColorMode.PER_CATEGORY,
-    val emphasizeEntityChips: Boolean = false
+    val emphasizeEntityChips: Boolean = false,
+    val categoryIconTint: Color? = null,
+    val subcategoryIconTint: Color? = null,
+    val darkNeutralContainer: Color? = null,
+    val lightNeutralContainer: Color? = null,
+    val darkCategoryContent: Color? = null,
+    val lightCategoryContent: Color? = null,
+    val darkEntityContent: Color? = null,
+    val lightEntityContent: Color? = null
 ) {
+    fun neutralContainer(isDark: Boolean, fallback: Color): Color =
+        (if (isDark) darkNeutralContainer else lightNeutralContainer) ?: fallback
+
+    fun categoryContent(isDark: Boolean, fallback: Color): Color =
+        (if (isDark) darkCategoryContent else lightCategoryContent) ?: fallback
+
+    fun entityContent(isDark: Boolean, fallback: Color): Color =
+        (if (isDark) darkEntityContent else lightEntityContent) ?: fallback
+
     companion object {
         val Default = ThemeChipStyle()
     }
@@ -94,8 +111,18 @@ data class ThemeChipStyle(
 data class ThemeFloatingBarStyle(
     val depth: Dp = 0.dp,
     val activeTabStyle: ActiveTabIndicatorStyle = ActiveTabIndicatorStyle.M3_TONAL_CAPSULE,
-    val useGradientFill: Boolean = false
+    val useGradientFill: Boolean = false,
+    val darkActiveContainerColor: Color? = null,
+    val lightActiveContainerColor: Color? = null,
+    val darkActiveContentColor: Color? = null,
+    val lightActiveContentColor: Color? = null
 ) {
+    fun activeContainer(isDark: Boolean, fallback: Color): Color =
+        (if (isDark) darkActiveContainerColor else lightActiveContainerColor) ?: fallback
+
+    fun activeContent(isDark: Boolean, fallback: Color): Color =
+        (if (isDark) darkActiveContentColor else lightActiveContentColor) ?: fallback
+
     companion object {
         val Default = ThemeFloatingBarStyle()
     }
@@ -174,7 +201,7 @@ data class AppThemeStyle(
                 lightContainerColor = Color(0xFFFFFFFF)
             ),
             cardStyle = ThemeCardStyle(
-                depth = 4.dp,
+                depth = 3.dp,
                 shape = RoundedCornerShape(26.dp),
                 useGradientFill = true,
                 showAccentRim = false
@@ -184,12 +211,24 @@ data class AppThemeStyle(
                 shape = RoundedCornerShape(12.dp),
                 useGradientFill = true,
                 colorMode = ChipColorMode.UNIFIED,
-                emphasizeEntityChips = true
+                emphasizeEntityChips = true,
+                categoryIconTint = Color(0xFFF59E0B),
+                subcategoryIconTint = Color(0xFFF97316),
+                darkNeutralContainer = Color(0xFF161920),
+                lightNeutralContainer = Color(0xFFFFFFFF),
+                darkCategoryContent = Color(0xFFE2E8F0),
+                lightCategoryContent = Color(0xFF1E293B),
+                darkEntityContent = Color(0xFF94A3B8),
+                lightEntityContent = Color(0xFF475569)
             ),
             floatingBarStyle = ThemeFloatingBarStyle(
-                depth = 4.dp,
+                depth = 3.dp,
                 activeTabStyle = ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE,
-                useGradientFill = true
+                useGradientFill = true,
+                darkActiveContainerColor = Color(0xFF22262B),
+                lightActiveContainerColor = Color.White,
+                darkActiveContentColor = Color(0xFFE2E8F0),
+                lightActiveContentColor = Color(0xFF1E293B)
             ),
             iconButtonStyle = ThemeIconButtonStyle(
                 actionButtonPlate = IconButtonPlateStyle.TACTILE_CIRCULAR_3D,

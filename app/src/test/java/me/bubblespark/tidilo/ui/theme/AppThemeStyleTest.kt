@@ -160,7 +160,7 @@ class AppThemeStyleTest {
         assertEquals(Color(0xFFFFFFFF), style.surfacePalette.lightContainerColor)
 
         // cardStyle
-        assertEquals(4.dp, style.cardStyle.depth)
+        assertEquals(3.dp, style.cardStyle.depth)
         assertEquals(RoundedCornerShape(26.dp), style.cardStyle.shape)
         assertTrue(style.cardStyle.useGradientFill)
         assertFalse(style.cardStyle.showAccentRim)
@@ -173,7 +173,7 @@ class AppThemeStyleTest {
         assertTrue(style.chipStyle.emphasizeEntityChips)
 
         // floatingBarStyle
-        assertEquals(4.dp, style.floatingBarStyle.depth)
+        assertEquals(3.dp, style.floatingBarStyle.depth)
         assertEquals(ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE, style.floatingBarStyle.activeTabStyle)
         assertTrue(style.floatingBarStyle.useGradientFill)
 

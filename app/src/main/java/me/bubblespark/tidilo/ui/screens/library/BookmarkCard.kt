@@ -137,7 +137,7 @@ fun BookmarkItemCard(
             .bookmarkCardLighting(cardStyle, effectiveShape, themeStyle.cardStyle.showAccentRim),
         shape = effectiveShape, // M3 Expressive Large Rounding
         colors = CardDefaults.cardColors(
-            containerColor = cardStyle.containerColor
+            containerColor = if (themeStyle.cardStyle.depth > 0.dp) Color.Transparent else cardStyle.containerColor
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
@@ -269,172 +269,208 @@ fun BookmarkItemCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Tag layout: [category] > [subcategory] newline [entities] (spaced uniformly with 8.dp)
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            BookmarkTagSection(
+                tag = bookmark.tag,
+                localizedCategory = localizedCategory,
+                localizedSubcategory = localizedSubcategory,
+                isNsfw = bookmark.isNsfw,
+                isCategoryMatched = isCategoryMatched,
+                isSubcategoryMatched = isSubcategoryMatched,
+                tagKeywords = tagKeywords
+            )
+        }
+    }
+}
+}
+
+/**
+ * Shared tag badges layout displaying [category] > [subcategory] (+ [NSFW]) and entity chips.
+ */
+@Composable
+fun BookmarkTagSection(
+    tag: Tag,
+    localizedCategory: String,
+    localizedSubcategory: String,
+    isNsfw: Boolean = false,
+    isCategoryMatched: Boolean = false,
+    isSubcategoryMatched: Boolean = false,
+    tagKeywords: List<String> = emptyList(),
+    modifier: Modifier = Modifier
+) {
+    val themeStyle = LocalAppThemeStyle.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    val chipNeutralContainer = themeStyle.chipStyle.neutralContainer(
+        isDark,
+        fallback = if (isDark) Color(0xFF161920) else Color(0xFFFFFFFF)
+    )
+    val chipCategoryContent = themeStyle.chipStyle.categoryContent(
+        isDark,
+        fallback = if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B)
+    )
+    val chipEntityContent = themeStyle.chipStyle.entityContent(
+        isDark,
+        fallback = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+    )
+    val folderIconTint = themeStyle.chipStyle.categoryIconTint
+    val subcategoryIconTint = themeStyle.chipStyle.subcategoryIconTint
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        val hasCategoryLine = localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() || isNsfw
+        if (hasCategoryLine) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                val chipNeutralContainer = if (isDark) Color(0xFF161920) else Color(0xFFFFFFFF)
-                val chipCategoryContent = if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B)
-                val chipEntityContent = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
-                val folderIconTint = if (themeStyle.chipStyle.depth > 0.dp) Color(0xFFF59E0B) else null
-                val subcategoryIconTint = if (themeStyle.chipStyle.depth > 0.dp) Color(0xFFF97316) else null
+                val categoryColors = resolveChipColors(
+                    style = themeStyle.chipStyle,
+                    isSubcategory = false,
+                    isEntity = false,
+                    categoryContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                    categoryContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fallbackContainerColor = chipNeutralContainer,
+                    fallbackContentColor = chipCategoryContent
+                )
+                val matchedCategoryColors = resolveChipColors(
+                    style = themeStyle.chipStyle,
+                    isSubcategory = false,
+                    isEntity = false,
+                    categoryContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    categoryContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fallbackContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    fallbackContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                val subcategoryColors = resolveChipColors(
+                    style = themeStyle.chipStyle,
+                    isSubcategory = true,
+                    isEntity = false,
+                    categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
+                    categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    fallbackContainerColor = chipNeutralContainer,
+                    fallbackContentColor = chipCategoryContent
+                )
+                val matchedSubcategoryColors = resolveChipColors(
+                    style = themeStyle.chipStyle,
+                    isSubcategory = true,
+                    isEntity = false,
+                    categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    fallbackContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    fallbackContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
 
-                // Line 1: [category] > [subcategory] (+ [AI Skipped]) (+ [NSFW])
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-
-                    val categoryColors = resolveChipColors(
-                        style = themeStyle.chipStyle,
-                        isSubcategory = false,
-                        isEntity = false,
-                        categoryContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                        categoryContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        fallbackContainerColor = chipNeutralContainer,
-                        fallbackContentColor = chipCategoryContent
+                if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
+                    CompactTagBadge(
+                        icon = Icons.Default.Folder,
+                        text = localizedCategory,
+                        iconTint = folderIconTint,
+                        isMatched = isCategoryMatched,
+                        containerColor = categoryColors.containerColor,
+                        contentColor = categoryColors.contentColor,
+                        matchedContainerColor = matchedCategoryColors.containerColor,
+                        matchedContentColor = matchedCategoryColors.contentColor
                     )
-                    val matchedCategoryColors = resolveChipColors(
-                        style = themeStyle.chipStyle,
-                        isSubcategory = false,
-                        isEntity = false,
-                        categoryContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        categoryContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        fallbackContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        fallbackContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    val subcategoryColors = resolveChipColors(
-                        style = themeStyle.chipStyle,
-                        isSubcategory = true,
-                        isEntity = false,
-                        categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
-                        categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        fallbackContainerColor = chipNeutralContainer,
-                        fallbackContentColor = chipCategoryContent
-                    )
-                    val matchedSubcategoryColors = resolveChipColors(
-                        style = themeStyle.chipStyle,
-                        isSubcategory = true,
-                        isEntity = false,
-                        categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        fallbackContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        fallbackContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+
+                    Text(
+                        text = ">",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.outline
                     )
 
-                    if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
-                        CompactTagBadge(
-                            icon = Icons.Default.Folder,
-                            text = localizedCategory,
-                            iconTint = folderIconTint,
-                            isMatched = isCategoryMatched,
-                            containerColor = categoryColors.containerColor,
-                            contentColor = categoryColors.contentColor,
-                            matchedContainerColor = matchedCategoryColors.containerColor,
-                            matchedContentColor = matchedCategoryColors.contentColor
-                        )
-
-                        Text(
-                            text = ">",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-
-                        CompactTagBadge(
-                            icon = Icons.AutoMirrored.Filled.Label,
-                            text = localizedSubcategory,
-                            iconTint = subcategoryIconTint,
-                            isMatched = isSubcategoryMatched,
-                            containerColor = subcategoryColors.containerColor,
-                            contentColor = subcategoryColors.contentColor,
-                            matchedContainerColor = matchedSubcategoryColors.containerColor,
-                            matchedContentColor = matchedSubcategoryColors.contentColor
-                        )
-                    } else if (localizedCategory.isNotBlank()) {
-                        CompactTagBadge(
-                            icon = Icons.Default.Folder,
-                            text = localizedCategory,
-                            iconTint = folderIconTint,
-                            isMatched = isCategoryMatched,
-                            containerColor = categoryColors.containerColor,
-                            contentColor = categoryColors.contentColor,
-                            matchedContainerColor = matchedCategoryColors.containerColor,
-                            matchedContentColor = matchedCategoryColors.contentColor
-                        )
-                    } else if (localizedSubcategory.isNotBlank()) {
-                        CompactTagBadge(
-                            icon = Icons.AutoMirrored.Filled.Label,
-                            text = localizedSubcategory,
-                            iconTint = subcategoryIconTint,
-                            isMatched = isSubcategoryMatched,
-                            containerColor = subcategoryColors.containerColor,
-                            contentColor = subcategoryColors.contentColor,
-                            matchedContainerColor = matchedSubcategoryColors.containerColor,
-                            matchedContentColor = matchedSubcategoryColors.contentColor
-                        )
-                    }
-
-                    if (bookmark.isNsfw) {
-                        CompactTagBadge(
-                            icon = null,
-                            text = "NSFW",
-                            isMatched = false,
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                            matchedContainerColor = MaterialTheme.colorScheme.errorContainer,
-                            matchedContentColor = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
+                    CompactTagBadge(
+                        icon = Icons.AutoMirrored.Filled.Label,
+                        text = localizedSubcategory,
+                        iconTint = subcategoryIconTint,
+                        isMatched = isSubcategoryMatched,
+                        containerColor = subcategoryColors.containerColor,
+                        contentColor = subcategoryColors.contentColor,
+                        matchedContainerColor = matchedSubcategoryColors.containerColor,
+                        matchedContentColor = matchedSubcategoryColors.contentColor
+                    )
+                } else if (localizedCategory.isNotBlank()) {
+                    CompactTagBadge(
+                        icon = Icons.Default.Folder,
+                        text = localizedCategory,
+                        iconTint = folderIconTint,
+                        isMatched = isCategoryMatched,
+                        containerColor = categoryColors.containerColor,
+                        contentColor = categoryColors.contentColor,
+                        matchedContainerColor = matchedCategoryColors.containerColor,
+                        matchedContentColor = matchedCategoryColors.contentColor
+                    )
+                } else if (localizedSubcategory.isNotBlank()) {
+                    CompactTagBadge(
+                        icon = Icons.AutoMirrored.Filled.Label,
+                        text = localizedSubcategory,
+                        iconTint = subcategoryIconTint,
+                        isMatched = isSubcategoryMatched,
+                        containerColor = subcategoryColors.containerColor,
+                        contentColor = subcategoryColors.contentColor,
+                        matchedContainerColor = matchedSubcategoryColors.containerColor,
+                        matchedContentColor = matchedSubcategoryColors.contentColor
+                    )
                 }
 
-                // Line 2: [entities] (leading '#' removed as icon is present; 8.dp uniform vertical spacing)
-                if (bookmark.tag.entities.isNotEmpty()) {
-                    val entityColors = resolveChipColors(
-                        style = themeStyle.chipStyle,
-                        isSubcategory = false,
-                        isEntity = true,
-                        categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f),
-                        categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                        fallbackContainerColor = chipNeutralContainer,
-                        fallbackContentColor = chipEntityContent
+                if (isNsfw) {
+                    CompactTagBadge(
+                        icon = null,
+                        text = "NSFW",
+                        isMatched = false,
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        matchedContainerColor = MaterialTheme.colorScheme.errorContainer,
+                        matchedContentColor = MaterialTheme.colorScheme.onErrorContainer
                     )
-                    val matchedEntityColors = resolveChipColors(
-                        style = themeStyle.chipStyle,
-                        isSubcategory = false,
-                        isEntity = true,
-                        categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                        fallbackContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        fallbackContentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                    )
+                }
+            }
+        }
 
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        bookmark.tag.entities.forEach { entity ->
-                            val cleanEntity = entity.removePrefix("#")
-                            val isEntityMatched = if (tagKeywords.isEmpty()) false else tagKeywords.any { it.equals(cleanEntity, ignoreCase = true) }
-                            CompactTagBadge(
-                                icon = Icons.Default.Tag,
-                                text = cleanEntity,
-                                iconTint = if (themeStyle.chipStyle.depth > 0.dp) chipEntityContent else null,
-                                isMatched = isEntityMatched,
-                                containerColor = entityColors.containerColor,
-                                contentColor = entityColors.contentColor,
-                                matchedContainerColor = matchedEntityColors.containerColor,
-                                matchedContentColor = matchedEntityColors.contentColor
-                            )
-                        }
-                    }
+        if (tag.entities.isNotEmpty()) {
+            val entityColors = resolveChipColors(
+                style = themeStyle.chipStyle,
+                isSubcategory = false,
+                isEntity = true,
+                categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f),
+                categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                fallbackContainerColor = chipNeutralContainer,
+                fallbackContentColor = chipEntityContent
+            )
+            val matchedEntityColors = resolveChipColors(
+                style = themeStyle.chipStyle,
+                isSubcategory = false,
+                isEntity = true,
+                categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                fallbackContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                fallbackContentColor = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                tag.entities.forEach { entity ->
+                    val cleanEntity = entity.removePrefix("#")
+                    val isEntityMatched = if (tagKeywords.isEmpty()) false else tagKeywords.any { it.equals(cleanEntity, ignoreCase = true) }
+                    CompactTagBadge(
+                        icon = Icons.Default.Tag,
+                        text = cleanEntity,
+                        iconTint = if (themeStyle.chipStyle.depth > 0.dp) chipEntityContent else null,
+                        isMatched = isEntityMatched,
+                        containerColor = entityColors.containerColor,
+                        contentColor = entityColors.contentColor,
+                        matchedContainerColor = matchedEntityColors.containerColor,
+                        matchedContentColor = matchedEntityColors.contentColor
+                    )
                 }
             }
         }
     }
-}
 }
 
 /**

@@ -274,7 +274,9 @@ sequenceDiagram
 
 ### 7.1 Application Theme State (`AppTheme`)
 Located in `config/AppTheme.kt`:
-- **Enum Values**: `DEFAULT("default", R.string.settings_theme_default)`
+- **Enum Values**:
+  - `DEFAULT("default", R.string.settings_theme_default)`: Stock Material 3 expressive dynamic theming.
+  - `MODERN("modern", R.string.settings_theme_modern)`: Dark-leaning tactile skeuomorphic styling with extrusion bevels and calibrated ambient surfaces.
 - **Safe Parsing**: `AppTheme.fromCode(code: String?)` provides case-insensitive resolution with fallback to `AppTheme.DEFAULT`.
 - **Persistence**: Managed via `AppConfig.KEY_APP_THEME` in SharedPreferences.
 - **Reactive Flow**: Exposed as `AppConfig.currentTheme: StateFlow<AppTheme>` with unidirectional data flow into the UI composition tree.

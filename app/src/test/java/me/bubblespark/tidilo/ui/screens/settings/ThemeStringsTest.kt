@@ -30,6 +30,10 @@ class ThemeStringsTest {
             "settings_theme_default should exist in English",
             enXml.contains("<string name=\"settings_theme_default\">Default</string>")
         )
+        assertTrue(
+            "settings_theme_modern should exist in English",
+            enXml.contains("<string name=\"settings_theme_modern\">Modern</string>")
+        )
     }
 
     @Test
@@ -54,6 +58,10 @@ class ThemeStringsTest {
             "settings_theme_default should exist in Japanese",
             jaXml.contains("<string name=\"settings_theme_default\">デフォルト</string>")
         )
+        assertTrue(
+            "settings_theme_modern should exist in Japanese",
+            jaXml.contains("<string name=\"settings_theme_modern\">モダン</string>")
+        )
     }
 
     @Test
@@ -61,5 +69,9 @@ class ThemeStringsTest {
         val defaultTheme = AppTheme.fromCode("default")
         assertEquals(AppTheme.DEFAULT, defaultTheme)
         assertEquals("default", defaultTheme.code)
+
+        val modernTheme = AppTheme.fromCode("modern")
+        assertEquals(AppTheme.MODERN, modernTheme)
+        assertEquals("modern", modernTheme.code)
     }
 }

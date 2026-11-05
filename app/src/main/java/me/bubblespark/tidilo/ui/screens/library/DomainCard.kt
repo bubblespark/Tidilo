@@ -177,10 +177,10 @@ internal fun LibraryDeckCard(
                 .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, effectiveShape, frontCardColor),
             shape = effectiveShape,
             colors = CardDefaults.cardColors(
-                containerColor = frontCardColor
+                containerColor = if (themeStyle.cardStyle.depth > 0.dp) Color.Transparent else frontCardColor
             ),
-            border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.42f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            border = if (themeStyle.cardStyle.showAccentRim) BorderStroke(1.dp, dominantColor.copy(alpha = 0.42f)) else null,
+            elevation = CardDefaults.cardElevation(defaultElevation = if (themeStyle.cardStyle.depth > 0.dp) 0.dp else 2.dp)
         ) {
             Box(
                 modifier = Modifier

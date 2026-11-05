@@ -4,7 +4,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.EaseInOutCubic
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +17,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 
 /**
@@ -49,8 +49,9 @@ fun TidiloBackground(
         label = "ambientLightingColor"
     )
 
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val canvasColor = themeStyle.surfacePalette.canvas(
-        isDark = isSystemInDarkTheme(),
+        isDark = isDark,
         fallback = MaterialTheme.colorScheme.background
     )
 

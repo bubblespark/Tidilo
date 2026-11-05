@@ -204,9 +204,9 @@ private fun CollectionCardVisual(
                     }
                 ),
             shape = effectiveShape,
-            color = frontCardColor,
-            border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.45f)),
-            shadowElevation = 2.dp
+            color = if (themeStyle.cardStyle.depth > 0.dp) Color.Transparent else frontCardColor,
+            border = if (themeStyle.cardStyle.showAccentRim) BorderStroke(1.dp, dominantColor.copy(alpha = 0.45f)) else null,
+            shadowElevation = if (themeStyle.cardStyle.depth > 0.dp) 0.dp else 2.dp
         ) {
             Box(
                 modifier = Modifier.fillMaxSize()

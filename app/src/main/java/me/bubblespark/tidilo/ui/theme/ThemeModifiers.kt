@@ -5,11 +5,47 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
+
+// Hoisted bevel border gradient brushes for zero-allocation drawing across recompositions
+private val CARD_BEVEL_BORDER_DARK = Brush.verticalGradient(
+    0.0f to Color.White.copy(alpha = 0.15f),
+    1.0f to Color.Black.copy(alpha = 0.35f)
+)
+private val CARD_BEVEL_BORDER_LIGHT = Brush.verticalGradient(
+    0.0f to Color.White.copy(alpha = 0.90f),
+    1.0f to Color.Black.copy(alpha = 0.08f)
+)
+
+private val CHIP_BEVEL_BORDER_DARK = Brush.verticalGradient(
+    0.0f to Color.White.copy(alpha = 0.16f),
+    1.0f to Color.Black.copy(alpha = 0.40f)
+)
+private val CHIP_BEVEL_BORDER_LIGHT = Brush.verticalGradient(
+    0.0f to Color.White.copy(alpha = 0.90f),
+    1.0f to Color.Black.copy(alpha = 0.08f)
+)
+
+private val BAR_BEVEL_BORDER_DARK = Brush.verticalGradient(
+    0.0f to Color.White.copy(alpha = 0.12f),
+    1.0f to Color.Black.copy(alpha = 0.30f)
+)
+private val BAR_BEVEL_BORDER_LIGHT = Brush.verticalGradient(
+    0.0f to Color.White.copy(alpha = 0.85f),
+    1.0f to Color.Black.copy(alpha = 0.06f)
+)
+
+private val PLATE_BEVEL_BORDER_DARK = Brush.verticalGradient(
+    0.0f to Color.White.copy(alpha = 0.16f),
+    1.0f to Color.Black.copy(alpha = 0.40f)
+)
+private val PLATE_BEVEL_BORDER_LIGHT = Brush.verticalGradient(
+    0.0f to Color.White.copy(alpha = 0.90f),
+    1.0f to Color.Black.copy(alpha = 0.08f)
+)
 
 /**
  * Resolved colors for a tag chip based on category mode and hierarchy.
@@ -23,12 +59,11 @@ data class ChipResolvedColors(
  * Resolves container and content colors for chips based on [style].
  * When [style.colorMode] is [ChipColorMode.PER_CATEGORY], uses [categoryContainerColor] and [categoryContentColor].
  * When [ChipColorMode.UNIFIED], uses [fallbackContainerColor] and [fallbackContentColor].
- * If [style.emphasizeEntityChips] is true and [isEntity] is true under UNIFIED mode, containerColor may use higher prominence.
  */
 fun resolveChipColors(
     style: ThemeChipStyle,
-    isSubcategory: Boolean,
-    isEntity: Boolean,
+    isSubcategory: Boolean = false,
+    isEntity: Boolean = false,
     categoryContainerColor: Color,
     categoryContentColor: Color,
     fallbackContainerColor: Color,
@@ -59,7 +94,11 @@ fun Modifier.themeCardSurface(
 ): Modifier {
     if (style.depth <= 0.dp) return this
     val resolvedShape = style.shape ?: fallbackShape
-    val containerColor = palette.container(isDark, fallbackContainerColor)
+    val containerColor = if (fallbackContainerColor != Color.Unspecified) {
+        fallbackContainerColor
+    } else {
+        palette.container(isDark, if (isDark) Color(0xFF22262B) else Color(0xFFFFFFFF))
+    }
 
     // Soft expanded ambient shadow for floating card elevation
     val spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.10f)
@@ -108,18 +147,7 @@ fun Modifier.themeCardSurface(
         shadowModifier
     }
 
-    val cardBevelBorder = if (isDark) {
-        Brush.verticalGradient(
-            0.0f to Color.White.copy(alpha = 0.15f),
-            1.0f to Color.Black.copy(alpha = 0.35f)
-        )
-    } else {
-        Brush.verticalGradient(
-            0.0f to Color.White.copy(alpha = 0.90f),
-            1.0f to Color.Black.copy(alpha = 0.08f)
-        )
-    }
-
+    val cardBevelBorder = if (isDark) CARD_BEVEL_BORDER_DARK else CARD_BEVEL_BORDER_LIGHT
     return bgModifier.border(width = 1.dp, brush = cardBevelBorder, shape = resolvedShape)
 }
 
@@ -136,12 +164,10 @@ fun Modifier.themeChipSurface(
 ): Modifier {
     if (style.depth <= 0.dp) return this
     val resolvedShape = style.shape ?: fallbackShape
-    val rawContainerColor = palette.container(isDark, fallbackContainerColor)
-    // Tactile tile plate color: dark slate under dark mode, crisp clean surface under light mode
-    val containerColor = if (rawContainerColor != Color.Unspecified) {
-        rawContainerColor
+    val containerColor = if (fallbackContainerColor != Color.Unspecified) {
+        fallbackContainerColor
     } else {
-        if (isDark) Color(0xFF161920) else Color(0xFFFFFFFF)
+        palette.container(isDark, if (isDark) Color(0xFF161920) else Color(0xFFFFFFFF))
     }
 
     val spotColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.12f)
@@ -178,13 +204,8 @@ fun Modifier.themeChipSurface(
         shadowModifier
     }
 
-    // Top highlight and bottom shade bevel border creating extruded keycap / tactile tile appearance
-    val bevelBorder = Brush.verticalGradient(
-        0.0f to (if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.90f)),
-        1.0f to (if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.08f))
-    )
-
-    return bgModifier.border(width = 1.dp, brush = bevelBorder, shape = resolvedShape)
+    val chipBevelBorder = if (isDark) CHIP_BEVEL_BORDER_DARK else CHIP_BEVEL_BORDER_LIGHT
+    return bgModifier.border(width = 1.dp, brush = chipBevelBorder, shape = resolvedShape)
 }
 
 /**
@@ -200,7 +221,11 @@ fun Modifier.themeFloatingBarSurface(
 ): Modifier {
     if (style.depth <= 0.dp) return this
     val resolvedShape = fallbackShape
-    val containerColor = palette.container(isDark, fallbackContainerColor)
+    val containerColor = if (fallbackContainerColor != Color.Unspecified) {
+        fallbackContainerColor
+    } else {
+        palette.container(isDark, if (isDark) Color(0xFF22262B) else Color(0xFFFFFFFF))
+    }
     val spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.10f)
     val ambientColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.05f)
 
@@ -235,11 +260,7 @@ fun Modifier.themeFloatingBarSurface(
         shadowModifier
     }
 
-    val barBevelBorder = Brush.verticalGradient(
-        0.0f to (if (isDark) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.85f)),
-        1.0f to (if (isDark) Color.Black.copy(alpha = 0.30f) else Color.Black.copy(alpha = 0.06f))
-    )
-
+    val barBevelBorder = if (isDark) BAR_BEVEL_BORDER_DARK else BAR_BEVEL_BORDER_LIGHT
     return bgModifier.border(width = 1.dp, brush = barBevelBorder, shape = resolvedShape)
 }
 
@@ -256,7 +277,11 @@ fun Modifier.themeIconButtonSurface(
     fallbackContainerColor: Color = Color.Unspecified
 ): Modifier {
     if (style.depth <= 0.dp || plate != IconButtonPlateStyle.TACTILE_CIRCULAR_3D) return this
-    val containerColor = palette.container(isDark, fallbackContainerColor)
+    val containerColor = if (fallbackContainerColor != Color.Unspecified) {
+        fallbackContainerColor
+    } else {
+        palette.container(isDark, if (isDark) Color(0xFF22262B) else Color(0xFFFFFFFF))
+    }
     val spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.12f)
     val ambientColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.05f)
 
@@ -291,10 +316,6 @@ fun Modifier.themeIconButtonSurface(
         shadowModifier
     }
 
-    val plateBevelBorder = Brush.verticalGradient(
-        0.0f to (if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.90f)),
-        1.0f to (if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.08f))
-    )
-
+    val plateBevelBorder = if (isDark) PLATE_BEVEL_BORDER_DARK else PLATE_BEVEL_BORDER_LIGHT
     return bgModifier.border(width = 1.dp, brush = plateBevelBorder, shape = shape)
 }

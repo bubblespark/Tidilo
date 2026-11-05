@@ -51,7 +51,8 @@ import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.components.TidiloSurface
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
-import me.bubblespark.tidilo.ui.theme.themeChipSurface
+import me.bubblespark.tidilo.ui.components.TidiloBadgeSurface
+import me.bubblespark.tidilo.ui.theme.ChipResolvedColors
 import me.bubblespark.tidilo.ui.theme.resolveChipColors
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -463,34 +464,12 @@ fun CompactTagBadge(
     modifier: Modifier = Modifier,
     iconTint: Color? = null
 ) {
-    val themeStyle = LocalAppThemeStyle.current
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val badgeShape = themeStyle.chipStyle.shape ?: RoundedCornerShape(12.dp)
-    val effectiveContainerColor = if (isMatched) matchedContainerColor else containerColor
-
-    val surfaceModifier = if (themeStyle.chipStyle.depth > 0.dp) {
-        modifier
-            .height(26.dp)
-            .themeChipSurface(
-                style = themeStyle.chipStyle,
-                palette = themeStyle.surfacePalette,
-                isDark = isDark,
-                fallbackShape = RoundedCornerShape(12.dp),
-                fallbackContainerColor = effectiveContainerColor
-            )
-    } else {
-        modifier
-            .height(26.dp)
-            .background(
-                color = effectiveContainerColor,
-                shape = badgeShape
-            )
-    }
-
-    Box(
-        modifier = surfaceModifier.padding(horizontal = 10.dp),
-        contentAlignment = Alignment.Center
+    TidiloBadgeSurface(
+        colors = ChipResolvedColors(if (isMatched) matchedContainerColor else containerColor,
+            if (isMatched) matchedContentColor else contentColor),
+        modifier = modifier.height(26.dp)
     ) {
+        Box(Modifier.padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -511,6 +490,7 @@ fun CompactTagBadge(
                 maxLines = 1
             )
         }
+    }
     }
 }
 

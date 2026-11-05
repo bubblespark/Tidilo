@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import me.bubblespark.tidilo.ui.theme.collectionMembershipColor
+import me.bubblespark.tidilo.ui.components.TidiloClassificationContent
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeFloatingBarSurface
 import me.bubblespark.tidilo.ui.theme.themeIconButtonSurface
@@ -807,15 +808,14 @@ fun BookmarkDetailScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // [category] > [subcategory] newline [entities] (uniform 8.dp line spacing)
-                val themeStyle = LocalAppThemeStyle.current
-                if (themeStyle.chipStyle.depth > 0.dp) {
+                TidiloClassificationContent(decorated = {
                     BookmarkTagSection(
                         tag = editedTag,
                         localizedCategory = localizedCategory,
                         localizedSubcategory = localizedSubcategory,
                         isNsfw = editedIsNsfw
                     )
-                } else {
+                }, material = {
                     CompositionLocalProvider(
                         LocalMinimumInteractiveComponentSize provides Dp.Unspecified
                     ) {
@@ -963,7 +963,7 @@ fun BookmarkDetailScreen(
                         }
                     }
                 }
-                }
+                })
 
                 Spacer(modifier = Modifier.height(24.dp))
 

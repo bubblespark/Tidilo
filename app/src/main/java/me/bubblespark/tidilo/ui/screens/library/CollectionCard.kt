@@ -4,7 +4,10 @@ import me.bubblespark.tidilo.ui.theme.CollectionColorPalette
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 import androidx.compose.ui.graphics.luminance
-import me.bubblespark.tidilo.ui.theme.themeCardSurface
+import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.SurfaceVariant
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -122,7 +125,7 @@ private fun CollectionCardVisual(
     val themeStyle = LocalAppThemeStyle.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val cardShape = remember { RoundedCornerShape(22.dp) }
-    val effectiveShape = themeStyle.cardStyle.shape ?: cardShape
+    val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.DECK_FRONT, SurfaceVariant.STANDARD).shape
     val stackOffset = 6.dp
     val cardHeight = (132 * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)).dp
     val dominantColor = item.accentColor
@@ -141,16 +144,15 @@ private fun CollectionCardVisual(
             .height(cardHeight + 12.dp)
     ) {
         // Deepest background stacked card (Layer 2, top-right peek)
-        Surface(
+        TidiloSurface(
+            role = SurfaceRole.DECK_BACK,
+            variant = SurfaceVariant.SUBTLE,
+            accent = dominantColor,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = stackOffset * 2)
                 .height(cardHeight)
-                .align(Alignment.TopStart),
-            shape = cardShape,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.18f)),
-            shadowElevation = 0.dp
+                .align(Alignment.TopStart)
         ) {
             Box(
                 modifier = Modifier
@@ -160,17 +162,16 @@ private fun CollectionCardVisual(
         }
 
         // Intermediate background stacked card (Layer 1, middle peek)
-        Surface(
+        TidiloSurface(
+            role = SurfaceRole.DECK_BACK,
+            variant = SurfaceVariant.STANDARD,
+            accent = dominantColor,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = stackOffset, end = stackOffset)
                 .height(cardHeight)
                 .align(Alignment.TopStart)
-                .offset(y = stackOffset),
-            shape = cardShape,
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.28f)),
-            shadowElevation = 1.dp
+                .offset(y = stackOffset)
         ) {
             Box(
                 modifier = Modifier
@@ -180,18 +181,15 @@ private fun CollectionCardVisual(
         }
 
         // Front interactive main horizontal card
-        val frontCardColor = themeStyle.surfacePalette.container(
-            isDark = isDark,
-            fallback = MaterialTheme.colorScheme.surfaceContainerHigh
-        ).copy(alpha = themeStyle.cardAlpha)
-
-        Surface(
+        TidiloSurface(
+            role = SurfaceRole.DECK_FRONT,
+            variant = SurfaceVariant.STANDARD,
+            accent = dominantColor,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(end = stackOffset * 2)
                 .height(cardHeight)
                 .align(Alignment.BottomStart)
-                .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, effectiveShape, frontCardColor)
                 .clip(effectiveShape)
                 .combinedClickable(
                     role = Role.Button,
@@ -202,11 +200,7 @@ private fun CollectionCardVisual(
                             callback()
                         }
                     }
-                ),
-            shape = effectiveShape,
-            color = if (themeStyle.cardStyle.depth > 0.dp) Color.Transparent else frontCardColor,
-            border = if (themeStyle.cardStyle.showAccentRim) BorderStroke(1.dp, dominantColor.copy(alpha = 0.45f)) else null,
-            shadowElevation = if (themeStyle.cardStyle.depth > 0.dp) 0.dp else 2.dp
+                )
         ) {
             Box(
                 modifier = Modifier.fillMaxSize()

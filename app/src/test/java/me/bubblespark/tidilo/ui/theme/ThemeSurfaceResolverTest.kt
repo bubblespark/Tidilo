@@ -64,4 +64,20 @@ class ThemeSurfaceResolverTest {
         assertThrows(IllegalArgumentException::class.java) { ResolvedSurfaceStyle(elevation = (-1).dp) }
         ResolvedSurfaceStyle(elevation = 0.dp)
     }
+
+    @Test fun presetContainerOverrideUpdatesDecoratedGradient() {
+        val base = resolveThemeSurfaces(AppTheme.MODERN, true, darkColorScheme()).resolve(SurfaceRole.BOOKMARK_CARD)
+        val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
+            SurfaceRole.BOOKMARK_CARD to SurfaceStyleOverride(containerColor = Color(0xFF553322))))
+        val changed = resolveThemeSurfaces(AppTheme.MODERN, true, darkColorScheme(), preset).resolve(SurfaceRole.BOOKMARK_CARD)
+        assertNotEquals(base.gradient, changed.gradient)
+    }
+
+    @Test fun nativeChipRolesPreserveEditorSelectionAndDisplayDifferences() {
+        val theme = resolveThemeSurfaces(AppTheme.DEFAULT, false, colors)
+        assertEquals(colors.primary, theme.resolve(SurfaceRole.FILTER_CHIP,
+            state = ThemeSurfaceState(selected = true)).containerColor)
+        assertEquals(0.dp, theme.resolve(SurfaceRole.DECK_BACK, SurfaceVariant.COMPACT).elevation)
+        assertEquals(1.dp, theme.resolve(SurfaceRole.DECK_BACK).elevation)
+    }
 }

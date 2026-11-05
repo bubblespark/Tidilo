@@ -104,17 +104,18 @@ data class ResolvedThemeSurfaces(
             ).decorate(isDark, card.useGradientFill, DecorationFamily.CARD)
             SurfaceRole.DECK_FRONT -> base.copy(
                 containerColor = preset.surfacePalette.container(isDark, c.surfaceContainerHigh),
-                shape = card.shape ?: RoundedCornerShape(22.dp), opacity = preset.cardAlpha,
+                shape = card.shape ?: RoundedCornerShape(if (variant == SurfaceVariant.COMPACT) 20.dp else 22.dp), opacity = preset.cardAlpha,
                 treatment = card.treatment, elevation = if (card.treatment == SurfaceTreatment.DECORATED) card.depth * 2 else 2.dp,
                 borderWidth = if (card.showAccentRim) 1.dp else 0.dp,
                 borderColor = if (accent != Color.Unspecified) accent.copy(alpha = if (variant == SurfaceVariant.COMPACT) 0.42f else 0.45f) else Color.Transparent,
                 selfBlurRadius = preset.cardBlurRadius
             ).decorate(isDark, card.useGradientFill, DecorationFamily.CARD)
             SurfaceRole.DECK_BACK -> base.copy(
-                containerColor = if (variant == SurfaceVariant.COMPACT) c.surfaceContainerLow else c.surfaceContainer,
-                shape = RoundedCornerShape(22.dp), elevation = if (variant == SurfaceVariant.COMPACT) 0.dp else 1.dp,
+                containerColor = if (variant == SurfaceVariant.COMPACT || variant == SurfaceVariant.SUBTLE) c.surfaceContainerLow else c.surfaceContainer,
+                shape = RoundedCornerShape(if (variant == SurfaceVariant.COMPACT || variant == SurfaceVariant.EMPHASIZED) 20.dp else 22.dp),
+                elevation = if (variant == SurfaceVariant.COMPACT || variant == SurfaceVariant.SUBTLE) 0.dp else 1.dp,
                 borderWidth = 1.dp,
-                borderColor = if (accent == Color.Unspecified) Color.Transparent else accent.copy(alpha = if (variant == SurfaceVariant.COMPACT) 0.18f else 0.28f)
+                borderColor = if (accent == Color.Unspecified) Color.Transparent else accent.copy(alpha = if (variant == SurfaceVariant.COMPACT || variant == SurfaceVariant.SUBTLE) 0.18f else 0.28f)
             )
             SurfaceRole.SETTINGS_GROUP -> base.copy(shape = RoundedCornerShape(if (variant == SurfaceVariant.EMPHASIZED) 24.dp else 20.dp))
             SurfaceRole.STATUS_CARD -> base.copy(containerColor = c.surfaceContainer)
@@ -123,7 +124,7 @@ data class ResolvedThemeSurfaces(
                 contentColor = if (chip.colorMode == ChipColorMode.UNIFIED) {
                     if (role == SurfaceRole.ENTITY_CHIP) chip.entityContent(isDark, c.onSurfaceVariant) else chip.categoryContent(isDark, c.onSurface)
                 } else c.onPrimaryContainer,
-                shape = chip.shape ?: RoundedCornerShape(8.dp), treatment = chip.treatment, elevation = chip.depth
+                shape = chip.shape ?: RoundedCornerShape(12.dp), treatment = chip.treatment, elevation = chip.depth
             ).decorate(isDark, chip.useGradientFill, DecorationFamily.CHIP)
             SurfaceRole.FILTER_CHIP -> base.copy(containerColor = c.surfaceContainerHighest, shape = RoundedCornerShape(14.dp))
             SurfaceRole.STATUS_BADGE -> base.copy(containerColor = c.surfaceContainerHighest, shape = RoundedCornerShape(8.dp))
@@ -162,6 +163,11 @@ data class ResolvedThemeSurfaces(
             SurfaceRole.INPUT -> base.copy(containerColor = c.surfaceContainerHighest, shape = RoundedCornerShape(12.dp))
             SurfaceRole.ICON_PLATE -> base.copy(containerColor = c.primaryContainer, contentColor = c.onPrimaryContainer, shape = CircleShape)
         }
+        if (role == SurfaceRole.ENTITY_CHIP && variant == SurfaceVariant.COMPACT) {
+            result = base.copy(containerColor = c.surfaceVariant.copy(alpha = if (state.enabled) 0.55f else 0.25f),
+                contentColor = c.onSurfaceVariant.copy(alpha = if (state.enabled) 1f else 0.38f),
+                shape = RoundedCornerShape(10.dp), borderWidth = 1.dp, borderColor = c.outlineVariant)
+        }
         preset.surfaceOverrides[role]?.let { override ->
             result = result.copy(
                 containerColor = override.containerColor ?: result.containerColor,
@@ -172,10 +178,19 @@ data class ResolvedThemeSurfaces(
                 borderWidth = override.borderWidth ?: result.borderWidth,
                 opacity = override.opacity ?: result.opacity
             )
+            if (result.treatment == SurfaceTreatment.DECORATED && override.containerColor != null) {
+                val family = when (role) {
+                    SurfaceRole.BOOKMARK_CARD, SurfaceRole.DECK_FRONT -> DecorationFamily.CARD
+                    SurfaceRole.CLASSIFICATION_CHIP, SurfaceRole.ENTITY_CHIP, SurfaceRole.NAVIGATION_INDICATOR -> DecorationFamily.CHIP
+                    SurfaceRole.FLOATING_BAR, SurfaceRole.TOOLBAR -> DecorationFamily.BAR
+                    else -> DecorationFamily.PLATE
+                }
+                result = result.decorate(isDark, result.gradient != null, family)
+            }
         }
         if (state.tone == SurfaceTone.ERROR) result = result.copy(containerColor = c.errorContainer, contentColor = c.onErrorContainer, gradient = null)
         if (state.tone == SurfaceTone.CAUTION) result = result.copy(containerColor = c.tertiaryContainer, contentColor = c.onTertiaryContainer, gradient = null)
-        if (state.selected && role == SurfaceRole.FILTER_CHIP) result = result.copy(containerColor = c.primary, contentColor = c.onPrimary, gradient = null)
+        if (state.selected && (role == SurfaceRole.FILTER_CHIP || (role == SurfaceRole.ENTITY_CHIP && variant == SurfaceVariant.COMPACT))) result = result.copy(containerColor = c.primary, contentColor = c.onPrimary, gradient = null)
         if (role == SurfaceRole.BOOKMARK_CARD) {
             val highlight = if (accent == Color.Unspecified) c.primary else accent
             val tactile = result.treatment == SurfaceTreatment.DECORATED
@@ -196,7 +211,7 @@ data class ResolvedThemeSurfaces(
 /** Decoration constants belong to the theme contract, not individual screens. */
 internal enum class DecorationFamily { CARD, CHIP, BAR, PLATE }
 
-private fun ResolvedSurfaceStyle.decorate(dark: Boolean, gradientFill: Boolean, family: DecorationFamily): ResolvedSurfaceStyle {
+internal fun ResolvedSurfaceStyle.decorate(dark: Boolean, gradientFill: Boolean, family: DecorationFamily): ResolvedSurfaceStyle {
     if (treatment != SurfaceTreatment.DECORATED) return this
     val topFactor = when (family) { DecorationFamily.CARD -> 1.18f; DecorationFamily.CHIP -> 1.08f; DecorationFamily.BAR -> 1.06f; DecorationFamily.PLATE -> 1.10f }
     val bottomFactor = if (family == DecorationFamily.CARD && dark) 0.85f else 0.94f

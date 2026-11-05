@@ -10,6 +10,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import me.bubblespark.tidilo.ui.theme.collectionMembershipColor
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeFloatingBarSurface
+import me.bubblespark.tidilo.ui.theme.themeIconButtonSurface
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 import android.widget.Toast
@@ -44,6 +46,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
@@ -346,6 +349,8 @@ fun BookmarkDetailScreen(
             )
         },
         overlay = {
+            val themeStyle = LocalAppThemeStyle.current
+            val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val toolbarOffset = if (maxWidth >= 368.dp) 32.dp else 0.dp
             Row(
@@ -356,17 +361,25 @@ fun BookmarkDetailScreen(
                 verticalAlignment = Alignment.Bottom
             ) {
                 val toolbarShape = RoundedCornerShape(32.dp)
+                val toolbarShadowElevation = if (themeStyle.floatingBarStyle.depth > 0.dp) 0.dp else 10.dp
+                val toolbarTonalElevation = if (themeStyle.floatingBarStyle.depth > 0.dp) 0.dp else 6.dp
                 Surface(
+                    modifier = Modifier.themeFloatingBarSurface(
+                        style = themeStyle.floatingBarStyle,
+                        palette = themeStyle.surfacePalette,
+                        isDark = isDark,
+                        fallbackShape = toolbarShape
+                    ),
                     shape = toolbarShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
-                    tonalElevation = 6.dp,
-                    shadowElevation = 10.dp
+                    color = if (themeStyle.floatingBarStyle.depth > 0.dp) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = themeStyle.floatingBarAlpha),
+                    tonalElevation = toolbarTonalElevation,
+                    shadowElevation = toolbarShadowElevation
                 ) {
                     Box {
                         Box(
                             modifier = Modifier
                                 .matchParentSize()
-                                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, toolbarShape)
+                                .themeSurfaceBlur(themeStyle.floatingBarBlurRadius, toolbarShape)
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
@@ -400,12 +413,22 @@ fun BookmarkDetailScreen(
                 }
                 Spacer(Modifier.width(10.dp))
                 val openButtonShape = RoundedCornerShape(16.dp)
+                val openButtonShadowElevation = if (themeStyle.iconButtonStyle.depth > 0.dp) 0.dp else 4.dp
                 Surface(
                     onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
-                    modifier = Modifier.size(54.dp),
+                    modifier = Modifier
+                        .size(54.dp)
+                        .themeIconButtonSurface(
+                            plate = themeStyle.iconButtonStyle.actionButtonPlate,
+                            style = themeStyle.iconButtonStyle,
+                            palette = themeStyle.surfacePalette,
+                            isDark = isDark,
+                            shape = openButtonShape,
+                            fallbackContainerColor = MaterialTheme.colorScheme.primaryContainer
+                        ),
                     shape = openButtonShape,
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
-                    shadowElevation = 4.dp
+                    color = if (themeStyle.iconButtonStyle.depth > 0.dp) Color.Transparent else MaterialTheme.colorScheme.primaryContainer.copy(alpha = themeStyle.floatingBarAlpha),
+                    shadowElevation = openButtonShadowElevation
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Box(
@@ -784,153 +807,163 @@ fun BookmarkDetailScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // [category] > [subcategory] newline [entities] (uniform 8.dp line spacing)
-                CompositionLocalProvider(
-                    LocalMinimumInteractiveComponentSize provides Dp.Unspecified
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                val themeStyle = LocalAppThemeStyle.current
+                if (themeStyle.chipStyle.depth > 0.dp) {
+                    BookmarkTagSection(
+                        tag = editedTag,
+                        localizedCategory = localizedCategory,
+                        localizedSubcategory = localizedSubcategory,
+                        isNsfw = editedIsNsfw
+                    )
+                } else {
+                    CompositionLocalProvider(
+                        LocalMinimumInteractiveComponentSize provides Dp.Unspecified
                     ) {
-                        // Line 1: [category] > [subcategory] (+ [NSFW])
-                        val hasCategoryLine = localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() || editedIsNsfw
-                        if (hasCategoryLine) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                        if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
-                            // Category
-                            AssistChip(
-                                onClick = {},
-                                label = { Text(localizedCategory) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                ),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-
-                            Text(
-                                text = ">",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-
-                            // Subcategory
-                            AssistChip(
-                                onClick = {},
-                                label = { Text(localizedSubcategory) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                ),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                        } else if (localizedCategory.isNotBlank()) {
-                            AssistChip(
-                                onClick = {},
-                                label = { Text(localizedCategory) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                ),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                        } else if (localizedSubcategory.isNotBlank()) {
-                            AssistChip(
-                                onClick = {},
-                                label = { Text(localizedSubcategory) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                ),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                        }
-
-
-                        if (editedIsNsfw) {
-                            AssistChip(
-                                onClick = {},
-                                label = { Text("NSFW", fontWeight = FontWeight.Bold) },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    labelColor = MaterialTheme.colorScheme.onErrorContainer
-                                ),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                        }
-                    }
-
-                        }
-
-                    // Line 2: [entities] (disables LocalMinimumInteractiveComponentSize to compact multi-line height)
-                    if (editedTag.entities.isNotEmpty()) {
-                        CompositionLocalProvider(
-                            LocalMinimumInteractiveComponentSize provides Dp.Unspecified
-                        ) {
-                            FlowRow(
-                                modifier = Modifier
-                                    .fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            // Line 1: [category] > [subcategory] (+ [NSFW])
+                            val hasCategoryLine = localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() || editedIsNsfw
+                            if (hasCategoryLine) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                editedTag.entities.forEach { entity ->
-                                    AssistChip(
-                                        onClick = {},
-                                        label = { Text(entity) },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = Icons.Default.Tag,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                        },
-                                        colors = AssistChipDefaults.assistChipColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
-                                            labelColor = MaterialTheme.colorScheme.onSurface
-                                        ),
-                                        shape = RoundedCornerShape(10.dp)
-                                    )
+                            if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
+                                // Category
+                                AssistChip(
+                                    onClick = {},
+                                    label = { Text(localizedCategory) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                                        labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                    ),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+
+                                Text(
+                                    text = ">",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+
+                                // Subcategory
+                                AssistChip(
+                                    onClick = {},
+                                    label = { Text(localizedSubcategory) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                                        labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                    ),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                            } else if (localizedCategory.isNotBlank()) {
+                                AssistChip(
+                                    onClick = {},
+                                    label = { Text(localizedCategory) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                                        labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                    ),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                            } else if (localizedSubcategory.isNotBlank()) {
+                                AssistChip(
+                                    onClick = {},
+                                    label = { Text(localizedSubcategory) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                                        labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                    ),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                            }
+
+
+                            if (editedIsNsfw) {
+                                AssistChip(
+                                    onClick = {},
+                                    label = { Text("NSFW", fontWeight = FontWeight.Bold) },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                                        labelColor = MaterialTheme.colorScheme.onErrorContainer
+                                    ),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                            }
+                        }
+
+                            }
+
+                        // Line 2: [entities] (disables LocalMinimumInteractiveComponentSize to compact multi-line height)
+                        if (editedTag.entities.isNotEmpty()) {
+                            CompositionLocalProvider(
+                                LocalMinimumInteractiveComponentSize provides Dp.Unspecified
+                            ) {
+                                FlowRow(
+                                    modifier = Modifier
+                                        .fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    editedTag.entities.forEach { entity ->
+                                        AssistChip(
+                                            onClick = {},
+                                            label = { Text(entity) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Default.Tag,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            },
+                                            colors = AssistChipDefaults.assistChipColors(
+                                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
+                                                labelColor = MaterialTheme.colorScheme.onSurface
+                                            ),
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
+                }
 
                 Spacer(modifier = Modifier.height(24.dp))
 

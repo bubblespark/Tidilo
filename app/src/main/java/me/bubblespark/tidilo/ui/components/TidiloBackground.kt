@@ -8,16 +8,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import me.bubblespark.tidilo.config.AppTheme
+import androidx.compose.ui.graphics.luminance
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 
 /**
@@ -29,7 +29,6 @@ import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
  */
 @Composable
 fun TidiloBackground(
-    currentTheme: AppTheme,
     modifier: Modifier = Modifier,
     isDestinationAllowed: Boolean = true
 ) {
@@ -50,47 +49,49 @@ fun TidiloBackground(
         label = "ambientLightingColor"
     )
 
-    when (currentTheme) {
-        AppTheme.DEFAULT -> {
-            Box(
-                modifier = modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .drawWithCache {
-                        val currentColor = animatedColor.value
-                        if (currentColor.alpha > 0.001f) {
-                            val ambientBeam = Brush.linearGradient(
-                                colorStops = arrayOf(
-                                    0.00f to currentColor.copy(alpha = currentColor.alpha * 0.32f),
-                                    0.22f to currentColor.copy(alpha = currentColor.alpha * 0.22f),
-                                    0.45f to currentColor.copy(alpha = currentColor.alpha * 0.13f),
-                                    0.68f to currentColor.copy(alpha = currentColor.alpha * 0.05f),
-                                    0.84f to currentColor.copy(alpha = currentColor.alpha * 0.015f),
-                                    1.00f to Color.Transparent
-                                ),
-                                start = Offset(size.width * 1.05f, -size.height * 0.02f),
-                                end = Offset(-size.width * 0.15f, size.height * 0.90f)
-                            )
-                            val cornerGlow = Brush.radialGradient(
-                                colorStops = arrayOf(
-                                    0.00f to currentColor.copy(alpha = currentColor.alpha * 0.22f),
-                                    0.30f to currentColor.copy(alpha = currentColor.alpha * 0.13f),
-                                    0.60f to currentColor.copy(alpha = currentColor.alpha * 0.05f),
-                                    0.82f to currentColor.copy(alpha = currentColor.alpha * 0.012f),
-                                    1.00f to Color.Transparent
-                                ),
-                                center = Offset(size.width, 0f),
-                                radius = size.height * 0.72f
-                            )
-                            onDrawBehind {
-                                drawRect(brush = ambientBeam)
-                                drawRect(brush = cornerGlow)
-                            }
-                        } else {
-                            onDrawBehind {}
-                        }
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val canvasColor = themeStyle.surfacePalette.canvas(
+        isDark = isDark,
+        fallback = MaterialTheme.colorScheme.background
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(canvasColor)
+            .drawWithCache {
+                val currentColor = animatedColor.value
+                if (currentColor.alpha > 0.001f) {
+                    val ambientBeam = Brush.linearGradient(
+                        colorStops = arrayOf(
+                            0.00f to currentColor.copy(alpha = currentColor.alpha * 0.32f),
+                            0.22f to currentColor.copy(alpha = currentColor.alpha * 0.22f),
+                            0.45f to currentColor.copy(alpha = currentColor.alpha * 0.13f),
+                            0.68f to currentColor.copy(alpha = currentColor.alpha * 0.05f),
+                            0.84f to currentColor.copy(alpha = currentColor.alpha * 0.015f),
+                            1.00f to Color.Transparent
+                        ),
+                        start = Offset(size.width * 1.05f, -size.height * 0.02f),
+                        end = Offset(-size.width * 0.15f, size.height * 0.90f)
+                    )
+                    val cornerGlow = Brush.radialGradient(
+                        colorStops = arrayOf(
+                            0.00f to currentColor.copy(alpha = currentColor.alpha * 0.22f),
+                            0.30f to currentColor.copy(alpha = currentColor.alpha * 0.13f),
+                            0.60f to currentColor.copy(alpha = currentColor.alpha * 0.05f),
+                            0.82f to currentColor.copy(alpha = currentColor.alpha * 0.012f),
+                            1.00f to Color.Transparent
+                        ),
+                        center = Offset(size.width, 0f),
+                        radius = size.height * 0.72f
+                    )
+                    onDrawBehind {
+                        drawRect(brush = ambientBeam)
+                        drawRect(brush = cornerGlow)
                     }
-            )
-        }
-    }
+                } else {
+                    onDrawBehind {}
+                }
+            }
+    )
 }

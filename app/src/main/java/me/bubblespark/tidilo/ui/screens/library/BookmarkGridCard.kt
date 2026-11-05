@@ -37,6 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeCardSurface
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -99,23 +103,35 @@ fun BookmarkGridCard(
         } ?: primaryColor
     }
 
+    val themeStyle = LocalAppThemeStyle.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val hasSummary = bookmark.description.isNotBlank()
     val cardStyle = rememberBookmarkCardStyle(MaterialTheme.colorScheme.surfaceContainer)
     val cardShape = RoundedCornerShape(16.dp)
+    val effectiveShape = themeStyle.cardStyle.shape ?: cardShape
+    val topImageShape = if (effectiveShape is RoundedCornerShape) {
+        effectiveShape.copy(
+            bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp),
+            bottomEnd = androidx.compose.foundation.shape.CornerSize(0.dp)
+        )
+    } else {
+        RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+    }
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .bookmarkCardLighting(cardStyle, cardShape)
-            .clip(cardShape)
+            .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, effectiveShape, cardStyle.containerColor)
+            .bookmarkCardLighting(cardStyle, effectiveShape, themeStyle.cardStyle.showAccentRim)
+            .clip(effectiveShape)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = if (hasSummary && onLongClick != null) {
                     { onLongClick() }
                 } else null
             ),
-        shape = cardShape,
-        color = cardStyle.containerColor,
+        shape = effectiveShape,
+        color = if (themeStyle.cardStyle.depth > 0.dp) Color.Transparent else cardStyle.containerColor,
         tonalElevation = 0.dp
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
@@ -123,7 +139,7 @@ fun BookmarkGridCard(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .bookmarkCardSurfaceBlur(cardStyle, cardShape)
+                    .bookmarkCardSurfaceBlur(cardStyle, effectiveShape)
                     .bookmarkCardSurfaceWash(cardStyle)
             )
 
@@ -133,7 +149,7 @@ fun BookmarkGridCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    .clip(topImageShape)
                     .background(
                         brush = Brush.verticalGradient(
                             colors = listOf(

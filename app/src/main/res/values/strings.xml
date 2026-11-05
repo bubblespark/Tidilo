@@ -434,5 +434,8 @@
     <string name="bookmark_collection_action">Choose collections</string>
 
     <!-- Theme Settings -->
+    <string name="settings_theme_title">Theme</string>
+    <string name="settings_theme_dialog_title">Select Theme</string>
     <string name="settings_theme_default">Default</string>
+    <string name="settings_theme_modern">Modern</string>
 </resources>

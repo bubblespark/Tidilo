@@ -403,7 +403,8 @@ When a standalone 86dp bottom-right button expands into a menu, child menu pills
   - Removed the `AI Skipped` assist chip from the Category & Tags section.
   - When `bookmark.isAiSkipped == true`, displays a clear warning notice below the URL surface: `[warning icon] This bookmark has not been analyzed by AICore.` using `WarningColor.textOrIcon` for both icon and text with 8dp horizontal spacing.
   - Spacing rhythm: URL to Warning notice is `6.dp`, Warning notice to Category & Tags is `14.dp` (eliminating disproportionate voids).
-  - Category & Tags edit `IconButton` and tag chips (`AssistChip`) are scoped under `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to eliminate invisible accessibility touch-target inflation (which previously caused a 32dp gap), harmonizing the header-to-content gap across Category & Tags, Summary, and Note to a consistent `10.dp`.
+  - Category & Tags edit `IconButton` and, under `AppTheme.DEFAULT`, tag chips (`AssistChip`, kept as the original layout) are scoped under `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to eliminate invisible accessibility touch-target inflation (which previously caused a 32dp gap), harmonizing the header-to-content gap across Category & Tags, Summary, and Note to a consistent `10.dp`.
+  - Under `AppTheme.MODERN` (`chipStyle.depth > 0.dp`), tags are rendered by the shared `BookmarkTagSection` composable (`CompactTagBadge`, 26dp tactile chips), identical to `BookmarkItemCard`.
   - Direct/AI-skipped bookmarks with no category or subcategory omit the classification row unless NSFW is set. Removing the entity row's redundant top padding preserves the 10dp section-header-to-content gap without a blank row; existing `None` classification labels remain unchanged.
 
 ### 6.12 Tag Edit Dialog Dropdown Menu Specification (`BookmarkTagEditDialog.kt`)
@@ -560,6 +561,19 @@ Located in `ui/components/AmbientLighting.kt`:
 
 ### 8.3 Unified Theme Style Contract (`AppThemeStyle` & `ThemeColorRole`)
 Located in `ui/theme/AppThemeStyle.kt`:
-- **Theme Specification**: `AppThemeStyle` specifies `theme: AppTheme`, `colorRole: ThemeColorRole` (`ACCENT`, `PRIMARY`, `SECONDARY`, `TERTIARY`), and surface blur radii: `cardBlurRadius`, `floatingBarBlurRadius`, and `headerBlurRadius`.
+- **Theme Specification**: `AppThemeStyle` specifies `theme: AppTheme`, `colorRole: ThemeColorRole` (`ACCENT`, `PRIMARY`, `SECONDARY`, `TERTIARY`), `surfacePalette: ThemeSurfacePalette`, `cardStyle: ThemeCardStyle`, `chipStyle: ThemeChipStyle`, `floatingBarStyle: ThemeFloatingBarStyle`, `iconButtonStyle: ThemeIconButtonStyle`, and surface blur radii: `cardBlurRadius`, `floatingBarBlurRadius`, and `headerBlurRadius`.
 - **Zero-Cost Blur Bypass**: `Modifier.themeSurfaceBlur(blurRadius: Dp)` directly returns `this` when `blurRadius <= 0.dp`, ensuring `AppTheme.DEFAULT` introduces zero offscreen render passes or graphics layers.
 - **Comprehensive Pre-Wiring**: Applied across all surface types (`FrostedHeaderContainer`, `TidiloBottomBar`, `AiProcessingIndicator`, `BookmarkDetailScreen` floating toolbar, `BookmarkCard`, `BookmarkGridCard`, `CollectionCard`, `DomainCard`). Adding future themes requires zero layout adjustments.
+
+### 8.4 Data-Driven Tactile Theme Infrastructure & Modern Theme Specification
+Located in `ui/theme/AppThemeStyle.kt` and `ui/theme/ThemeModifiers.kt`:
+- **Theme Token Hierarchy**:
+  - `ThemeSurfacePalette`: Canvas and container fallback colors (`darkCanvasColor = #181A1E`, `lightCanvasColor = #E8EEF2`, `darkContainerColor = #22262B`, `lightContainerColor = #FFFFFF`).
+  - `ThemeCardStyle`: Extrusion depth (`3.dp` for Modern), corner shape (`RoundedCornerShape(26.dp)`), top/bottom ambient lighting bevels, and accent rim toggle.
+  - `ThemeChipStyle`: Extrusion depth (`3.dp` for Modern), corner shape (`RoundedCornerShape(12.dp)`), category token tints (`categoryIconTint = #F59E0B`, `subcategoryIconTint = #F97316`), neutral container and category/entity content colors.
+  - `ThemeFloatingBarStyle`: Navigation bar extrusion depth (`3.dp` for Modern), active tab indicator (`ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE`), and active indicator container/content tokens.
+  - `ThemeIconButtonStyle`: 3D tactile circular action button (`IconButtonPlateStyle.TACTILE_CIRCULAR_3D`), depth (`3.dp` for Modern).
+- **Zero-Overdraw Guarantee**:
+  - To prevent Compose `Card` and `Surface` components from overdrawing their default opaque `containerColor` on top of tactile gradient borders and fills, interactive cards and surfaces pass `containerColor = if (depth > 0.dp) Color.Transparent else fallbackColor`.
+- **Default Theme Visual Parity**:
+  - When `AppTheme.DEFAULT` is active (`depth == 0.dp`), surfaces render flat Material 3 elevation and tonal colors with zero offscreen layers. Detail screen classification badges preserve original `AssistChip` layouts, and bookmark cards retain their default surface wash and rim alpha values.

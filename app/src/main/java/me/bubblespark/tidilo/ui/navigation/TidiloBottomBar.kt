@@ -76,7 +76,12 @@ import me.bubblespark.tidilo.data.AiProcessingProgress
 import me.bubblespark.tidilo.ui.components.AiProcessingIndicatorButton
 import me.bubblespark.tidilo.ui.components.AiProcessingSpeechBubble
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
+import androidx.compose.ui.graphics.luminance
+import me.bubblespark.tidilo.ui.theme.ActiveTabIndicatorStyle
 import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.themeChipSurface
+import me.bubblespark.tidilo.ui.theme.themeFloatingBarSurface
+import me.bubblespark.tidilo.ui.theme.themeIconButtonSurface
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 /**
@@ -118,8 +123,17 @@ fun TidiloBottomBar(
         Screen.Import
     )
 
+    val themeStyle = LocalAppThemeStyle.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val isTactileIndicator = themeStyle.floatingBarStyle.activeTabStyle == ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE
+    val barRippleColor = if (isTactileIndicator) {
+        if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+    } else {
+        Color.Unspecified
+    }
+
     val barHeight = 68.dp
-    val containerBgColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha)
+    val containerBgColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = themeStyle.floatingBarAlpha)
     val isActionButtonVisible = currentRoute in listOf(
         Screen.Library.route,
         Screen.Search.route,
@@ -199,14 +213,27 @@ fun TidiloBottomBar(
             ) + fadeOut(animationSpec = tween(150)),
             modifier = Modifier.align(Alignment.Center)
         ) {
+            val floatingBarDepth = themeStyle.floatingBarStyle.depth
+            val floatingBarShadow = if (floatingBarDepth > 0.dp) 0.dp else 10.dp
+            val floatingBarTonal = if (floatingBarDepth > 0.dp) 0.dp else 6.dp
+
             Surface(
                 modifier = Modifier
                     .width(barWidth)
                     .height(barHeight)
-                    .shadow(elevation = 10.dp, shape = CircleShape),
+                    .then(
+                        if (floatingBarShadow > 0.dp) Modifier.shadow(elevation = floatingBarShadow, shape = CircleShape)
+                        else Modifier
+                    )
+                    .themeFloatingBarSurface(
+                        style = themeStyle.floatingBarStyle,
+                        palette = themeStyle.surfacePalette,
+                        isDark = isDark,
+                        fallbackShape = CircleShape
+                    ),
                 shape = CircleShape,
-                color = containerBgColor,
-                tonalElevation = 6.dp
+                color = if (floatingBarDepth > 0.dp) Color.Transparent else containerBgColor,
+                tonalElevation = floatingBarTonal
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     Box(
@@ -222,81 +249,122 @@ fun TidiloBottomBar(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                    items.forEach { screen ->
-                        val isSelected = currentRoute == screen.route
-
-                        val activeContainerColor = MaterialTheme.colorScheme.primaryContainer
+                        val tabShape = CircleShape
+                        val tactileTabChipStyle = remember(themeStyle.chipStyle) {
+                            themeStyle.chipStyle.copy(shape = tabShape)
+                        }
+                        val activeContainerColor = if (isTactileIndicator) {
+                            themeStyle.floatingBarStyle.activeContainer(
+                                isDark = isDark,
+                                fallback = themeStyle.surfacePalette.container(
+                                    isDark,
+                                    fallback = if (isDark) Color(0xFF22262B) else Color.White
+                                )
+                            )
+                        } else {
+                            MaterialTheme.colorScheme.primaryContainer
+                        }
                         val inactiveTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        val activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        val activeContentColor = if (isTactileIndicator) {
+                            themeStyle.floatingBarStyle.activeContent(
+                                isDark = isDark,
+                                fallback = if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B)
+                            )
+                        } else {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        }
 
-                        val itemBgColor by animateColorAsState(
-                            targetValue = if (isSelected) activeContainerColor else Color.Transparent,
-                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                            label = "tabBgColor_${screen.route}"
-                        )
+                        items.forEach { screen ->
+                            val isSelected = currentRoute == screen.route
 
-                        val tabWeight by animateFloatAsState(
-                            targetValue = if (isSelected) 1.35f else 1.0f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            ),
-                            label = "tabWeight_${screen.route}"
-                        )
+                            val itemBgColor by animateColorAsState(
+                                targetValue = if (isSelected) activeContainerColor else Color.Transparent,
+                                animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                                label = "tabBgColor_${screen.route}"
+                            )
 
-                        // Selected icon is 10% smaller (28dp * 0.9 = 25.2dp -> 25dp truncated)
-                        val tabIconSize by animateDpAsState(
-                            targetValue = if (isSelected) 25.dp else 28.dp,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            ),
-                            label = "tabIconSize_${screen.route}"
-                        )
+                            val tabWeight by animateFloatAsState(
+                                targetValue = if (isSelected) 1.35f else 1.0f,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                ),
+                                label = "tabWeight_${screen.route}"
+                            )
 
-                        Box(
-                            modifier = Modifier
-                                .weight(tabWeight)
-                                .fillMaxHeight()
-                                .clip(CircleShape)
-                                .background(itemBgColor, shape = CircleShape)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple(bounded = true)
-                                ) {
-                                    if (currentRoute != screen.route) {
-                                        navController.navigate(screen.route) {
-                                            popUpTo(navController.graph.findStartDestination().id) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
+                            // Selected icon is 10% smaller (28dp * 0.9 = 25.2dp -> 25dp truncated)
+                            val tabIconSize by animateDpAsState(
+                                targetValue = if (isSelected) 25.dp else 28.dp,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                ),
+                                label = "tabIconSize_${screen.route}"
+                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(tabWeight)
+                                    .fillMaxHeight()
+                                    .then(
+                                        if (isSelected && isTactileIndicator) {
+                                            Modifier.themeChipSurface(
+                                                style = tactileTabChipStyle,
+                                                palette = themeStyle.surfacePalette,
+                                                isDark = isDark,
+                                                fallbackShape = tabShape,
+                                                fallbackContainerColor = activeContainerColor
+                                            )
+                                        } else {
+                                            Modifier.background(itemBgColor, shape = tabShape)
                                         }
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                val iconVector = if (isSelected) screen.selectedIcon else screen.unselectedIcon
-                                val iconColor = if (isSelected) activeContentColor else inactiveTextColor
-
-                                if (screen == Screen.Import && readyCount > 0) {
-                                    BadgedBox(
-                                        badge = {
-                                            Badge(
-                                                containerColor = MaterialTheme.colorScheme.error,
-                                                contentColor = MaterialTheme.colorScheme.onError
-                                             ) {
-                                                Text(
-                                                    text = if (readyCount > 99) "99+" else readyCount.toString(),
-                                                    style = MaterialTheme.typography.labelSmall
-                                                )
-                                            }
-                                        }
+                                    )
+                                    .clip(tabShape)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = ripple(bounded = true, color = barRippleColor)
                                     ) {
+                                        if (currentRoute != screen.route) {
+                                            navController.navigate(screen.route) {
+                                                popUpTo(navController.graph.findStartDestination().id) {
+                                                    saveState = true
+                                                }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    val iconVector = if (isSelected) screen.selectedIcon else screen.unselectedIcon
+                                    val iconColor = if (isSelected) activeContentColor else inactiveTextColor
+
+                                    if (screen == Screen.Import && readyCount > 0) {
+                                        BadgedBox(
+                                            badge = {
+                                                Badge(
+                                                    containerColor = MaterialTheme.colorScheme.error,
+                                                    contentColor = MaterialTheme.colorScheme.onError
+                                                 ) {
+                                                    Text(
+                                                        text = if (readyCount > 99) "99+" else readyCount.toString(),
+                                                        style = MaterialTheme.typography.labelSmall
+                                                    )
+                                                }
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = iconVector,
+                                                contentDescription = stringResource(screen.titleRes),
+                                                modifier = Modifier.size(tabIconSize),
+                                                tint = iconColor
+                                            )
+                                        }
+                                    } else {
                                         Icon(
                                             imageVector = iconVector,
                                             contentDescription = stringResource(screen.titleRes),
@@ -304,49 +372,41 @@ fun TidiloBottomBar(
                                             tint = iconColor
                                         )
                                     }
-                                } else {
-                                    Icon(
-                                        imageVector = iconVector,
-                                        contentDescription = stringResource(screen.titleRes),
-                                        modifier = Modifier.size(tabIconSize),
-                                        tint = iconColor
-                                    )
-                                }
 
-                                // Display label only for selected item (10% smaller: 12sp * 0.9 = 10.8sp -> 10sp truncated)
-                                AnimatedVisibility(
-                                    visible = isSelected,
-                                    enter = fadeIn(animationSpec = tween(150, delayMillis = 40)) + expandVertically(
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
+                                    // Display label only for selected item (10% smaller: 12sp * 0.9 = 10.8sp -> 10sp truncated)
+                                    AnimatedVisibility(
+                                        visible = isSelected,
+                                        enter = fadeIn(animationSpec = tween(150, delayMillis = 40)) + expandVertically(
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            )
+                                        ),
+                                        exit = fadeOut(animationSpec = tween(100)) + shrinkVertically(
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            )
                                         )
-                                    ),
-                                    exit = fadeOut(animationSpec = tween(100)) + shrinkVertically(
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        )
-                                    )
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = stringResource(screen.titleRes),
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                fontSize = 10.sp,
-                                                lineHeight = 14.sp
-                                            ),
-                                            fontWeight = FontWeight.Bold,
-                                            color = activeContentColor,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = stringResource(screen.titleRes),
+                                                style = MaterialTheme.typography.labelMedium.copy(
+                                                    fontSize = 10.sp,
+                                                    lineHeight = 14.sp
+                                                ),
+                                                fontWeight = FontWeight.Bold,
+                                                color = activeContentColor,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
                     }
                 }
             }
@@ -451,7 +511,7 @@ fun TidiloBottomBar(
                                 .clickable(
                                     role = Role.Button,
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple()
+                                    indication = ripple(color = barRippleColor)
                                 ) {
                                     onSelectFilterMode(LibraryFilterMode.COLLECTION)
                                     onToggleFilterMenu()
@@ -492,7 +552,7 @@ fun TidiloBottomBar(
                                 .clip(CircleShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple()
+                                    indication = ripple(color = barRippleColor)
                                 ) {
                                     onSelectFilterMode(LibraryFilterMode.RSS)
                                     onToggleFilterMenu()
@@ -533,7 +593,7 @@ fun TidiloBottomBar(
                                 .clip(CircleShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple()
+                                    indication = ripple(color = barRippleColor)
                                 ) {
                                     onSelectFilterMode(LibraryFilterMode.DOMAIN)
                                     onToggleFilterMenu()
@@ -574,7 +634,7 @@ fun TidiloBottomBar(
                                 .clip(CircleShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple()
+                                    indication = ripple(color = barRippleColor)
                                 ) {
                                     onSelectFilterMode(LibraryFilterMode.NEWEST_FIRST)
                                     onToggleFilterMenu()
@@ -606,12 +666,23 @@ fun TidiloBottomBar(
                 }
 
                 // Action button surface (palette: primaryContainer / onPrimaryContainer)
+                val actionButtonElevation = if (themeStyle.iconButtonStyle.depth > 0.dp) 0.dp else buttonElevation
+                val actionButtonFallbackColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = themeStyle.floatingBarAlpha)
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .themeIconButtonSurface(
+                            plate = themeStyle.iconButtonStyle.actionButtonPlate,
+                            style = themeStyle.iconButtonStyle,
+                            palette = themeStyle.surfacePalette,
+                            isDark = isDark,
+                            shape = CircleShape,
+                            fallbackContainerColor = MaterialTheme.colorScheme.primaryContainer
+                        ),
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = LocalAppThemeStyle.current.floatingBarAlpha),
+                    color = if (themeStyle.iconButtonStyle.depth > 0.dp) Color.Transparent else actionButtonFallbackColor,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    shadowElevation = buttonElevation
+                    shadowElevation = actionButtonElevation
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Box(

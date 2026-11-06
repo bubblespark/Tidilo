@@ -184,6 +184,7 @@
     <string name="detail_tag_select_entities">Select from existing entity tags</string>
     <string name="detail_add_entity_title">Add Entity</string>
     <string name="detail_add_entity_placeholder">Enter entity name</string>
+    <string name="detail_add_entity_suggestions_label">Suggestions</string>
     <string name="detail_entity_picker_title">Select Entity Tags</string>
     <string name="detail_entity_picker_selected">Selected</string>
     <string name="detail_entity_picker_all">All Entities</string>

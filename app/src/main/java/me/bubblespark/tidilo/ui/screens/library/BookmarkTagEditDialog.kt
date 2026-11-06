@@ -10,6 +10,9 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -36,6 +39,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -496,6 +500,7 @@ fun BookmarkTagEditDialog(
 /**
  * Child dialog for manually entering a new entity tag name.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddEntityDialog(
     onDismiss: () -> Unit,
@@ -504,7 +509,8 @@ fun AddEntityDialog(
     onTextChange: (String) -> Unit,
     libraryState: EntityLibraryState,
     onRetry: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    candidates: List<String> = emptyList()
 ) {
     AlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
@@ -526,6 +532,16 @@ fun AddEntityDialog(
                     placeholder = {
                         Text(stringResource(R.string.detail_add_entity_placeholder))
                     },
+                    trailingIcon = if (text.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { onTextChange("") }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = stringResource(R.string.common_clear)
+                                )
+                            }
+                        }
+                    } else null,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = themeCorner(ThemeCorner.FIELD),
@@ -534,6 +550,68 @@ fun AddEntityDialog(
                         unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                     )
                 )
+                if (candidates.isNotEmpty()) {
+                    val suggestionsScrollState = rememberScrollState()
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = stringResource(R.string.detail_add_entity_suggestions_label),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 220.dp)
+                                .verticalScrollbar(
+                                    scrollState = suggestionsScrollState,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                        ) {
+                            FlowRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .verticalScroll(suggestionsScrollState)
+                                    .padding(end = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val chipShape = themeCorner(ThemeCorner.CHIP)
+                                candidates.forEach { candidate ->
+                                    Surface(
+                                        shape = chipShape,
+                                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
+                                        contentColor = MaterialTheme.colorScheme.onSurface,
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                        modifier = Modifier
+                                            .minimumInteractiveComponentSize()
+                                            .clip(chipShape)
+                                            .clickable(role = androidx.compose.ui.semantics.Role.Button) {
+                                                onTextChange(appendEntitySuggestion(text, candidate))
+                                            }
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Tag,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = candidate,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 when {
                     libraryState.loading -> androidx.compose.material3.CircularProgressIndicator()
                     libraryState.error != null -> Column {

@@ -27,7 +27,7 @@ app/src/main/java/com/ykgudev/tidilo/
 │   ├── BookmarkRepository.kt            # Bookmark CRUD, Trash lifecycle (30-day, 100-cap), JSON serialization
 │   ├── DomainIconManager.kt             # Shared on-demand domain icon recovery, caching, color, and transparency
 │   ├── DomainIconResolver.kt            # Prioritized HTML discovery and short-circuit icon selection
-│   ├── EntityCandidateExtractor.kt      # Sliding-window candidate key extraction from title and description
+│   ├── EntityCandidateExtractor.kt      # Candidate key & 1-token suggestion extraction from title and description
 │   ├── EntityTagPolicy.kt               # Shared entity-tag normalization, deduplication, and bounds policy
 │   ├── QueueRepository.kt               # Queue state machine (Running, Queuing, Error, Completed), Mutex
 │   ├── Taxonomy.kt                      # 7 Top-Level Categories & 11 Subcategories definition and i18n
@@ -106,7 +106,7 @@ app/src/main/java/com/ykgudev/tidilo/
 - Single source of truth for all business entities (`BookmarkItem`, `QueueItem`).
 - Owns persistent storage operations, in-memory caching via `StateFlow`, concurrency synchronization (`Mutex`), and schema migrations.
 - `AiProcessingWorker.kt` owns the persistent sequential import worker, retained wake-up signals, and session resource lifecycle; `ImportRepository` supplies Room task selection, inference, and error recovery.
-- `TextSegmenter.kt` and `EntityCandidateExtractor.kt` extract candidate skeleton keys from title and description via ICU `BreakIterator` sliding windows to match existing library entity tags on non-AI saves.
+- `TextSegmenter.kt` and `EntityCandidateExtractor.kt` extract candidate skeleton keys via ICU `BreakIterator` sliding windows for non-AI import matching, and provide 1-token interactive word suggestions for manual entity tag entry in the Bookmark Detail screen.
 - **Rule**: Repositories must never reference Compose APIs or Android Activities.
 
 ### `me.bubblespark.tidilo.parser`

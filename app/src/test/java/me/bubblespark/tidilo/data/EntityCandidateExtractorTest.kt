@@ -109,4 +109,47 @@ class EntityCandidateExtractorTest {
         val csharp = extractor.extractCandidateKeys("C#", null)
         assertEquals(listOf("c"), csharp)
     }
+
+    @Test
+    fun extractSuggestionTokensPreservesSurfaceSpellingAndDeduplicatesBySkeletonKey() {
+        val tokens = extractor.extractSuggestionTokens(
+            title = "iPhone 16 Pro: Apple's New Flagship",
+            description = "The iphone 16 pro introduces new camera features from APPLE."
+        )
+        assertEquals(
+            listOf("iPhone", "16", "Pro", "Apple's", "New", "Flagship", "The", "introduces", "camera", "features", "from", "APPLE"),
+            tokens
+        )
+    }
+
+    @Test
+    fun extractSuggestionTokensDeduplicatesCaseVariantsKeepingFirstSeen() {
+        val tokens = extractor.extractSuggestionTokens(
+            title = "Jetpack Compose",
+            description = "jetpack COMPOSE and Kotlin"
+        )
+        assertEquals(listOf("Jetpack", "Compose", "and", "Kotlin"), tokens)
+    }
+
+    @Test
+    fun extractSuggestionTokensKeepsSingleCharAndNumericTokens() {
+        val tokens = extractor.extractSuggestionTokens(
+            title = "iPhone 16 R 1",
+            description = null
+        )
+        assertEquals(listOf("iPhone", "16", "R", "1"), tokens)
+    }
+
+    @Test
+    fun extractSuggestionTokensHandlesEmptyAndBlankInputs() {
+        assertTrue(extractor.extractSuggestionTokens("", null).isEmpty())
+        assertTrue(extractor.extractSuggestionTokens("   ... !?  ", " --- ").isEmpty())
+    }
+
+    @Test
+    fun extractSuggestionTokensRespectsSectionCaps() {
+        val longPrefix = "a".repeat(1000)
+        val tokens = extractor.extractSuggestionTokens(title = longPrefix + "Target", description = null)
+        assertFalse(tokens.contains("Target"))
+    }
 }

@@ -63,15 +63,7 @@ private val ACTIVE_QUEUE_STATUSES = setOf("READY", "WAITING_AI", "PROCESSING_AI"
 
 private class DirectBookmarkSaveFailure(val target: ImportTask, cause: Exception) : Exception(cause)
 
-private fun defaultCandidateExtractor(): EntityCandidateExtractor {
-    return runCatching {
-        val segmenter = IcuTextSegmenter()
-        segmenter.segment("test")
-        EntityCandidateExtractor(segmenter)
-    }.getOrElse {
-        EntityCandidateExtractor(StandardTextSegmenter())
-    }
-}
+private fun defaultCandidateExtractor(): EntityCandidateExtractor = EntityCandidateExtractor.default()
 
 class ImportRepository internal constructor(
     context: Context? = null,

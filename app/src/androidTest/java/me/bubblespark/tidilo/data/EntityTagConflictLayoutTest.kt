@@ -26,12 +26,27 @@ class EntityTagConflictLayoutTest {
     private val host = HeaderTestHost()
     private fun find(text: String): AccessibilityNodeInfo? {
         fun visit(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-            if (node.isVisibleToUser && node.text?.toString() == text) return node
+            if (node.isVisibleToUser && (node.text?.toString() == text || node.contentDescription?.toString() == text)) return node
             repeat(node.childCount) { node.getChild(it)?.let { child -> visit(child)?.let { return it } } }
             return null
         }
         host.instrumentation.uiAutomation.clearCache()
-        return host.instrumentation.uiAutomation.rootInActiveWindow?.let(::visit)
+        var root = host.instrumentation.uiAutomation.rootInActiveWindow
+        val allowButton = root?.let { r ->
+            fun findAllow(n: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+                if (n.isVisibleToUser && n.text?.toString() == "Allow") return n
+                repeat(n.childCount) { n.getChild(it)?.let { child -> findAllow(child)?.let { return it } } }
+                return null
+            }
+            findAllow(r)
+        }
+        if (allowButton != null) {
+            allowButton.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            host.instrumentation.waitForIdleSync()
+            host.instrumentation.uiAutomation.clearCache()
+            root = host.instrumentation.uiAutomation.rootInActiveWindow
+        }
+        return root?.let(::visit)
     }
     private suspend fun button(text: String): AccessibilityNodeInfo = withTimeout(8000) {
         var found = find(text)
@@ -113,4 +128,40 @@ class EntityTagConflictLayoutTest {
         } finally { host.main { activity.finish() } }
     }
 
+    @Test fun suggestionChipsAppendToInputAndClearResetsInput(): Unit = runBlocking {
+        val activity = host.launch()
+        val textState = mutableStateOf("")
+        var confirmed: String? = null
+        try {
+            host.main { activity.setContent { TidiloTheme(dynamicColor = false) {
+                AddEntityDialog(
+                    onDismiss = {},
+                    onConfirm = { confirmed = it },
+                    text = textState.value,
+                    onTextChange = { textState.value = it },
+                    libraryState = EntityLibraryState(loading = false),
+                    onRetry = {},
+                    candidates = listOf("iPhone", "16", "発売")
+                )
+            } } }
+            host.instrumentation.waitForIdleSync()
+            assertTrue(button("iPhone").performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            host.instrumentation.waitForIdleSync()
+            withTimeout(5000) { while (textState.value != "iPhone") delay(30) }
+            val clearBtn = button("Clear")
+            assertTrue(clearBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            host.instrumentation.waitForIdleSync()
+            withTimeout(5000) { while (textState.value.isNotEmpty()) delay(30) }
+            assertTrue(button("iPhone").performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            host.instrumentation.waitForIdleSync()
+            withTimeout(5000) { while (textState.value != "iPhone") delay(30) }
+            assertTrue(button("16").performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            host.instrumentation.waitForIdleSync()
+            withTimeout(5000) { while (textState.value != "iPhone 16") delay(30) }
+            assertTrue(button("OK").performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            host.instrumentation.waitForIdleSync()
+            withTimeout(5000) { while (confirmed == null) delay(30) }
+            assertEquals("iPhone 16", confirmed)
+        } finally { host.main { activity.finish() } }
+    }
 }

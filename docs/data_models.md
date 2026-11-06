@@ -97,6 +97,15 @@ When a bookmark is saved without AI classification (AI disabled in settings, AIC
 - **Graceful degradation**: If candidate extraction or database lookup encounters an exception, the error is logged and the bookmark is safely saved without entities (`Tag.createEmpty()`).
 - **Known limitation**: Symbol-bearing tags (such as `C++`, `C#`, or `.NET`) are not matched by their full text. ICU `BreakIterator` discards their symbol tokens before sliding-window concatenation, so text such as `C++` can instead match an existing `C` tag.
 
+#### 1.2.1 Detail Screen Entity Tag Suggestions
+
+When manually adding an entity tag on the Bookmark Detail screen (`BookmarkTagEditDialog` -> `AddEntityDialog`), `EntityCandidateExtractor.extractSuggestionTokens` extracts 1-token word candidates from `bookmark.title` and `bookmark.description` to display as interactive suggestion chips:
+
+- **1-token word extraction**: Uses `TextSegmenter` (ICU `BreakIterator` in production, falling back to Java `BreakIterator` in pure JVM tests). Whitespace and punctuation tokens are omitted, retaining only tokens containing letters or digits.
+- **Surface spelling & deduplication**: Each token is cleaned via `EntityTagPolicy.clean`. De-duplication uses `entitySkeletonKey`, keeping the original surface spelling and case from the first-seen occurrence (`title` first, then `description`).
+- **Extraction bounds**: Uses the same bounds (`MAX_DESCRIPTION_CHARS = 1000`, `MAX_TOKENS_PER_SECTION = 300`, and `MAX_CANDIDATE_KEYS = 500`).
+- **Chip input concatenation**: Tapping chips invokes `appendEntitySuggestion`, which inserts a single space only when both boundary characters are ASCII alphanumeric (`code < 128 && isLetterOrDigit()`), and concatenates directly otherwise (e.g., CJK tokens).
+
 
 ### 1.3 `TrashedBookmarkItem`
 Located in `ui/screens/library/BookmarkItem.kt`:

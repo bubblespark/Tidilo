@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.data.EntityCandidateExtractor
+
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
@@ -530,12 +532,17 @@ fun BookmarkDetailScreen(
             }
 
             if (showAddEntityDialog) {
+                val suggestionCandidates = remember(bookmark.title, bookmark.description) {
+                    EntityCandidateExtractor.default()
+                        .extractSuggestionTokens(bookmark.title, bookmark.description)
+                }
                 AddEntityDialog(
                     onDismiss = { showAddEntityDialog = false },
                     text = entityInput,
                     onTextChange = { entityInput = it },
                     libraryState = libraryState,
                     onRetry = { entityLibraryRetry++ },
+                    candidates = suggestionCandidates,
                     onConfirm = { rawInput ->
                         val draft = EntityTagDraft(draftEntities, draftReplacements)
                         val conflict = entityTagConflict(rawInput, draft, libraryState.spellings)

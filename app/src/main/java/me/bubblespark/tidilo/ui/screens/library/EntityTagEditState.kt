@@ -25,3 +25,20 @@ fun applyEntityTagChoice(draft: EntityTagDraft, input: String, existing: String?
         else draft.entities + value
     return EntityTagDraft(entities, if (replaceAcrossLibrary) draft.replacements + (key to value) else draft.replacements)
 }
+
+private fun Char.isAsciiAlphanumeric(): Boolean = code < 128 && isLetterOrDigit()
+
+/**
+ * Appends a tapped suggestion [token] to [currentInput].
+ * Inserts a single half-width space only when both the last character of [currentInput]
+ * and the first character of [token] are ASCII alphanumeric characters.
+ */
+fun appendEntitySuggestion(currentInput: String, token: String): String {
+    val cleanToken = token.trim()
+    if (cleanToken.isEmpty()) return currentInput
+    if (currentInput.isBlank()) return cleanToken
+    val lastChar = currentInput.last()
+    if (lastChar.isWhitespace()) return currentInput + cleanToken
+    val needsSpace = lastChar.isAsciiAlphanumeric() && cleanToken.first().isAsciiAlphanumeric()
+    return if (needsSpace) "$currentInput $cleanToken" else "$currentInput$cleanToken"
+}

@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.SurfaceVariant
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
@@ -54,11 +55,14 @@ internal fun CollectionEditorContent(
     val pending by rememberUpdatedState(state.pending)
     val canEdit = !state.pending && !state.loading && !state.missing && state.error != "load"
     val accent = CollectionColorPalette.getOrElse(draft.colorIndex) { CollectionColorPalette.first() }
+    val sheetStyle = currentThemeSurfaces().resolve(SurfaceRole.SHEET, SurfaceVariant.EMPHASIZED)
     ModalBottomSheet(
-            shape = currentThemeSurfaces().resolve(SurfaceRole.SHEET).shape,onDismissRequest = { if (!pending) onDismiss() }, modifier = modifier,
+        shape = sheetStyle.shape,
+        onDismissRequest = { if (!pending) onDismiss() },
+        modifier = modifier,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
             confirmValueChange = { it != SheetValue.Hidden || !pending }),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        containerColor = sheetStyle.containerColor) {
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             CollectionSheetHeader(
                 title = stringResource(if (editing) R.string.collection_edit_title else R.string.collection_create_title),

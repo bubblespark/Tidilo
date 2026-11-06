@@ -201,7 +201,10 @@ data class ResolvedThemeSurfaces(
                 elevation = chip.depth
             ).decorate(isDark, chip.useGradientFill, DecorationFamily.CHIP)
             SurfaceRole.DIALOG -> base.copy(shape = shapes.shape(ThemeCorner.PROMINENT))
-            SurfaceRole.SHEET -> base.copy(containerColor = c.surfaceContainerLow, shape = RoundedCornerShape(topStart = shapes.sheet, topEnd = shapes.sheet))
+            SurfaceRole.SHEET -> base.copy(
+                containerColor = if (variant == SurfaceVariant.EMPHASIZED) c.surfaceContainerHigh else c.surfaceContainerLow,
+                shape = RoundedCornerShape(topStart = shapes.sheet, topEnd = shapes.sheet)
+            )
             SurfaceRole.MENU -> base.copy(shape = shapes.shape(ThemeCorner.IMAGE), tonalElevation = 6.dp)
             SurfaceRole.INPUT -> base.copy(containerColor = c.surfaceVariant.copy(alpha = 0.35f), shape = shapes.shape(ThemeCorner.FIELD), borderWidth = 1.dp, borderColor = c.outlineVariant)
             SurfaceRole.ICON_PLATE -> base.copy(containerColor = c.primaryContainer, contentColor = c.onPrimaryContainer, shape = CircleShape)

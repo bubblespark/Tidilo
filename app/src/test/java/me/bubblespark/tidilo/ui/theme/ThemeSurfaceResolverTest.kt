@@ -193,4 +193,14 @@ class ThemeSurfaceResolverTest {
         assertEquals(Color.Magenta, fading.containerColor)
         assertEquals(0.dp, fading.elevation)
     }
+    @Test fun emphasizedSheetKeepsItsDefaultAndHonorsPresetColor() {
+        val theme = resolveThemeSurfaces(AppTheme.DEFAULT, false, colors)
+        assertEquals(colors.surfaceContainerLow, theme.resolve(SurfaceRole.SHEET).containerColor)
+        assertEquals(colors.surfaceContainerHigh,
+            theme.resolve(SurfaceRole.SHEET, SurfaceVariant.EMPHASIZED).containerColor)
+        val preset = AppThemeStyle.Default.copy(surfaceOverrides = mapOf(
+            SurfaceRole.SHEET to SurfaceStyleOverride(containerColor = Color.Cyan)))
+        assertEquals(Color.Cyan, resolveThemeSurfaces(AppTheme.DEFAULT, false, colors, preset)
+            .resolve(SurfaceRole.SHEET, SurfaceVariant.EMPHASIZED).containerColor)
+    }
 }

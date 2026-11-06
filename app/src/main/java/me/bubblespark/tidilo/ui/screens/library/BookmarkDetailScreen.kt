@@ -353,64 +353,64 @@ fun BookmarkDetailScreen(
             )
         },
         overlay = {
-                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val toolbarOffset = if (maxWidth >= 368.dp) 32.dp else 0.dp
-            Row(
-                modifier = Modifier.fillMaxSize().navigationBarsPadding()
-                    .padding(start = 12.dp, end = 12.dp, bottom = 31.dp)
-                    .offset(x = toolbarOffset),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                TidiloSurface(role = SurfaceRole.TOOLBAR) {
-                    Box {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
-                                Icon(ImageVector.vectorResource(R.drawable.ic_delete),
-                                    contentDescription = stringResource(R.string.detail_action_delete),
-                                    tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
-                            }
-                            TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { onNavigateToAiReview(bookmark.id) }, modifier = Modifier.size(54.dp)) {
-                                Icon(Icons.Default.AutoAwesome,
-                                    contentDescription = stringResource(R.string.detail_action_ai_summary),
-                                    modifier = Modifier.size(22.dp))
-                            }
-                            TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showCollectionMembership = true },
-                                modifier = Modifier.size(54.dp).semantics { selected = hasCollection }) {
-                                Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
-                                    contentDescription = stringResource(R.string.bookmark_collection_action),
-                                    tint = if (hasCollection) collectionMembershipColor(MaterialTheme.colorScheme.surfaceContainerHighest)
-                                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp))
-                            }
-                            TidiloIconToggleButton(role = SurfaceRole.LIKE_ACTION, checked = bookmark.isLiked, onCheckedChange = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(54.dp)) {
-                                Icon(
-                                    imageVector = if (bookmark.isLiked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
-                                    contentDescription = stringResource(if (bookmark.isLiked) R.string.bookmark_unlike else R.string.bookmark_like),
-                                    tint = if (bookmark.isLiked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.width(10.dp))
-                TidiloSurface(
-                    onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
-                    role = SurfaceRole.PRIMARY_ACTION,
-                    variant = SurfaceVariant.COMPACT,
-                    modifier = Modifier.size(54.dp)
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val toolbarOffset = if (maxWidth >= 368.dp) 32.dp else 0.dp
+                Row(
+                    modifier = Modifier.fillMaxSize().navigationBarsPadding()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 31.dp)
+                        .offset(x = toolbarOffset),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.Bottom
                 ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(ImageVector.vectorResource(R.drawable.ic_open_in_browser),
-                                contentDescription = stringResource(R.string.bookmark_open_in_browser),
-                                tint = LocalContentColor.current,
-                                modifier = Modifier.size(22.dp))
+                    TidiloSurface(role = SurfaceRole.TOOLBAR) {
+                        Box {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
+                                    Icon(ImageVector.vectorResource(R.drawable.ic_delete),
+                                        contentDescription = stringResource(R.string.detail_action_delete),
+                                        tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
+                                }
+                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { onNavigateToAiReview(bookmark.id) }, modifier = Modifier.size(54.dp)) {
+                                    Icon(Icons.Default.AutoAwesome,
+                                        contentDescription = stringResource(R.string.detail_action_ai_summary),
+                                        modifier = Modifier.size(22.dp))
+                                }
+                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showCollectionMembership = true },
+                                    modifier = Modifier.size(54.dp).semantics { selected = hasCollection }) {
+                                    Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
+                                        contentDescription = stringResource(R.string.bookmark_collection_action),
+                                        tint = if (hasCollection) collectionMembershipColor(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp))
+                                }
+                                TidiloIconToggleButton(role = SurfaceRole.LIKE_ACTION, checked = bookmark.isLiked, onCheckedChange = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(54.dp)) {
+                                    Icon(
+                                        imageVector = if (bookmark.isLiked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
+                                        contentDescription = stringResource(if (bookmark.isLiked) R.string.bookmark_unlike else R.string.bookmark_like),
+                                        tint = if (bookmark.isLiked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    TidiloSurface(
+                        onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
+                        role = SurfaceRole.PRIMARY_ACTION,
+                        variant = SurfaceVariant.COMPACT,
+                        modifier = Modifier.size(54.dp)
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Icon(ImageVector.vectorResource(R.drawable.ic_open_in_browser),
+                                    contentDescription = stringResource(R.string.bookmark_open_in_browser),
+                                    tint = LocalContentColor.current,
+                                    modifier = Modifier.size(22.dp))
+                            }
                         }
                     }
                 }
-            }
             }
 
             // Discard changes confirmation dialog

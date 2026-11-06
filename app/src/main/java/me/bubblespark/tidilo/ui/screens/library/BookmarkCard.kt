@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.ui.draw.clip
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.ui.components.DomainWatermark
 import androidx.compose.foundation.text.InlineTextContent
@@ -85,7 +84,6 @@ fun BookmarkItemCard(
     onToggleLike: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.BOOKMARK_CARD).shape
     // Localized category and subcategory labels
     val localizedCategory = remember(bookmark.tag.category, context) {
         bookmark.tag.category?.let { Category.toLocalized(it, context) } ?: ""
@@ -141,7 +139,6 @@ fun BookmarkItemCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(effectiveShape)
         ) {
             // Background watermark layer: domain icon (lightly displayed clipped in top-right)
             DomainWatermark(

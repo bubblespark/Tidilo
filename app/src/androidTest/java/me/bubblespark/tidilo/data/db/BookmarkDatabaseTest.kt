@@ -19,6 +19,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.DomainIconManager
+import me.bubblespark.tidilo.data.removeStandardClassificationColumns
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
 import org.junit.Assert.*
 import org.junit.Test
@@ -26,6 +27,26 @@ import java.util.UUID
 import java.security.MessageDigest
 
 class BookmarkDatabaseTest {
+    @Test fun versionSixteenQueuedImportSurvivesClassificationMigration() = runBlocking {
+        val name = "classification-migration-${UUID.randomUUID()}.db"
+        val before = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+        val queued = ImportTaskEntity(
+            id = "queued", url = "https://example.com/page", title = "Queued", status = "READY",
+            statusText = "Ready", assignedTags = listOf("Existing"), createdAt = 1, articlePrepared = true
+        )
+        try {
+            before.importTaskDao().insertOrUpdate(queued)
+            val sql = before.openHelper.writableDatabase
+            removeStandardClassificationColumns(sql::execSQL)
+            sql.version = 16
+        } finally { before.close() }
+        val after = database(name)
+        try {
+            assertEquals(17, after.openHelper.readableDatabase.version)
+            assertEquals(queued, after.importTaskDao().getTaskById(queued.id))
+        } finally { after.close(); context.deleteDatabase(name) }
+    }
+
     @Test fun prereleaseEngagementVersionFourteenPreservesSignalsAndBuildsEntityIndex() = runBlocking {
         val name = "issue165-prerelease-${UUID.randomUUID()}.db"
         val helper = legacy(name, 13)
@@ -131,7 +152,7 @@ class BookmarkDatabaseTest {
             var db = database(name)
             try {
                 val sql = db.openHelper.writableDatabase
-                assertEquals(16, sql.version)
+                assertEquals(17, sql.version)
                 assertTrue(columns(sql, "bookmark_entities").contains("skeletonKey"))
                 sql.query("PRAGMA index_list(bookmark_entities)").use { cursor ->
                     val names = buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
@@ -197,7 +218,7 @@ class BookmarkDatabaseTest {
             helper.close()
             val db = database(name)
             try {
-                assertEquals(16, db.openHelper.readableDatabase.version)
+                assertEquals(17, db.openHelper.readableDatabase.version)
                 val feed = db.rssDao().feed("feed")!!
                 assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
                 assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)
@@ -258,7 +279,7 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showNsfw: Boolean = true): List<BookmarkEntity> {

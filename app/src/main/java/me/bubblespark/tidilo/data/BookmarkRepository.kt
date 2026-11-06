@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.room.withTransaction
 import me.bubblespark.tidilo.data.db.updateBookmarkDetails
+import me.bubblespark.tidilo.data.db.logicalBookmarkTag
 import me.bubblespark.tidilo.data.db.moveBookmarkToTrash
 import me.bubblespark.tidilo.data.db.updateDomainNsfwWithPolicy
 import androidx.paging.Pager
@@ -137,6 +138,7 @@ class BookmarkRepository private constructor(context: Context) {
             val finalItem = if (existing != null) {
                 resolvedItem.copy(
                     id = existing.id,
+                    tag = if (resolvedItem.isAiSkipped) existing.logicalTag() else resolvedItem.tag,
                     note = if (resolvedItem.note.isNotBlank()) resolvedItem.note else existing.note,
                     createdAt = existing.createdAt,
                     isLiked = existing.isLiked,
@@ -349,15 +351,12 @@ class BookmarkRepository private constructor(context: Context) {
                     entitiesList.add(ea.getString(j))
                 }
             }
-            val tag = if (isAiSkipped && (tagObj == null || (tagObj.optString("category").isBlank() && tagObj.optString("subcategory").isBlank() && entitiesList.isEmpty()))) {
-                Tag.createEmpty()
-            } else {
-                Tag.fromDisplayValues(
-                    category = tagObj?.optString("category", Tag.DEFAULT_TAG),
-                    subcategory = tagObj?.optString("subcategory", Tag.DEFAULT_TAG),
-                    entities = entitiesList
-                )
-            }
+            val tag = logicalBookmarkTag(
+                category = (tagObj?.opt("category") as? String)?.takeIf { it.isNotBlank() },
+                subcategory = (tagObj?.opt("subcategory") as? String)?.takeIf { it.isNotBlank() },
+                entities = entitiesList,
+                isAiSkipped = isAiSkipped
+            )
             val now = System.currentTimeMillis()
             val createdAt = obj.optLong("createdAt", now)
             val updatedAt = obj.optLong("updatedAt", createdAt)

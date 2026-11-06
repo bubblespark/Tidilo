@@ -78,22 +78,33 @@ internal class RssIngestionStore(
     /** The bookmark/ready task and consumed identity become durable in the same transaction. */
     suspend fun complete(feed: RssFeedEntity, task: ImportTaskEntity,
         article: me.bubblespark.tidilo.parser.PreparedArticle, promote: Boolean = false,
-        runId: String? = null): Boolean = database.withTransaction {
+        runId: String? = null,
+        classification: me.bubblespark.tidilo.parser.StandardClassification? = null): Boolean = database.withTransaction {
         val current = rss.feed(feed.id) ?: return@withTransaction false
         if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
         val actual = database.importTaskDao().getTaskById(task.id) ?: return@withTransaction false
         if (actual.articlePrepared || actual.intendedMode != task.intendedMode) return@withTransaction false
         val effectiveMode = effectiveRssImportMode(actual.intendedMode, aiAnalysisMode())
+        val category = if (classification == null) {
+            actual.standardCategory.takeIf { actual.standardClassificationEvaluated }
+        } else classification.category?.id
+        val subcategory = if (classification == null) {
+            actual.standardSubcategory.takeIf { actual.standardClassificationEvaluated }
+        } else classification.subcategory?.id
         val nsfw = article.isNsfw || DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(article.url))
         if (effectiveMode == "AI" && article.bodySnippet.isBlank() && article.description.isBlank()) {
             throw IllegalArgumentException("Article contains no extracted content")
         }
         if ((!nsfw || AppConfig.isNsfwContentBookmarkable.value) && !rss.rssWriteConflict(article.url, task.id)) {
             if (effectiveMode == "DIRECT") {
-                database.bookmarkDao().insertOrUpdate(BookmarkEntity(task.id, article.title, article.url, article.description,
-                    entities = actual.assignedTags, createdAt = task.createdAt,
-                    updatedAt = System.currentTimeMillis(), isNsfw = nsfw, isAiSkipped = true,
-                    ogImageUrl = article.ogImageUrl, rssFeedId = feed.id, rssPublishedAt = task.rssPublishedAt))
+                val bookmarks = database.bookmarkDao()
+                if (bookmarks.getBookmarkById(task.id) == null) {
+                    bookmarks.insertOrUpdate(BookmarkEntity(task.id, article.title, article.url, article.description,
+                        category = category, subcategory = subcategory,
+                        entities = actual.assignedTags, createdAt = task.createdAt,
+                        updatedAt = System.currentTimeMillis(), isNsfw = nsfw, isAiSkipped = true,
+                        ogImageUrl = article.ogImageUrl, rssFeedId = feed.id, rssPublishedAt = task.rssPublishedAt))
+                }
                 database.importTaskDao().deleteById(task.id)
                 recordOutcome(runId, task.id, "DIRECT")
             } else {
@@ -101,6 +112,8 @@ internal class RssIngestionStore(
                     description = article.description, bodySnippet = article.bodySnippet, ogImageUrl = article.ogImageUrl,
                     ogImageKey = me.bubblespark.tidilo.data.db.bookmarkOgImageKey(article.url, article.ogImageUrl),
                     isNsfw = nsfw, articlePrepared = true, errorMessage = null,
+                    standardCategory = category, standardSubcategory = subcategory,
+                    standardClassificationEvaluated = classification != null || actual.standardClassificationEvaluated,
                     status = if (actual.status == "WAITING_AI" || (promote && actual.status == "PROCESSING_AI")) "WAITING_AI" else "READY",
                     statusText = "Ready for AI Analysis")
                 database.importTaskDao().insertOrUpdate(updated)

@@ -98,7 +98,8 @@ class ImportDuplicateRoomTest {
         val url = "https://example.com/promoted-direct"
         database.importTaskDao().insertOrUpdate(ImportTaskEntity.fromImportTask(ImportTask(id = "promoted",
             url = url, title = "Prepared", description = "Description", articlePrepared = true,
-            rssFeedId = "feed", status = TaskStatus.READY, statusText = "Ready")))
+            rssFeedId = "feed", status = TaskStatus.READY, statusText = "Ready",
+            standardCategory = "Reference", standardClassificationEvaluated = true)))
         try {
             val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
                 database = database, repositoryScope = CoroutineScope(coroutineContext + job),
@@ -109,6 +110,10 @@ class ImportDuplicateRoomTest {
             withTimeout(5000) { finished.await() }
             assertTrue("Success must be reported after the promotion transaction commits", outcome.await())
             assertEquals(0, database.importTaskDao().getCount())
+            val bookmark = requireNotNull(database.bookmarkDao().getBookmarkByUrl(url)).toBookmarkItem()
+            assertEquals("Reference", bookmark.tag.category)
+            assertNull(bookmark.tag.subcategory)
+            assertTrue(bookmark.isAiSkipped)
         } finally { job.cancel(); job.join() }
     }
 

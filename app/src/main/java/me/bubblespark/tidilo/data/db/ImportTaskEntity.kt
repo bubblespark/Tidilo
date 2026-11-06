@@ -41,7 +41,10 @@ data class ImportTaskEntity(
     @androidx.room.ColumnInfo(defaultValue = "'AI'") val intendedMode: String = "AI",
     val rssItemKey: String? = null,
     @androidx.room.ColumnInfo(defaultValue = "0") val acquisitionAttempts: Int = 0,
-    @androidx.room.ColumnInfo(defaultValue = "0") val acquisitionRetryAt: Long = 0
+    @androidx.room.ColumnInfo(defaultValue = "0") val acquisitionRetryAt: Long = 0,
+    val standardCategory: String? = null,
+    val standardSubcategory: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "0") val standardClassificationEvaluated: Boolean = false
 ) {
     fun toImportTask(): ImportTask {
         val taskStatus = runCatching {
@@ -68,7 +71,9 @@ data class ImportTaskEntity(
             rssPublishedAt = rssPublishedAt,
             ogImageUrl = ogImageUrl,
             articlePrepared = articlePrepared, intendedMode = intendedMode, rssItemKey = rssItemKey,
-            acquisitionAttempts = acquisitionAttempts, acquisitionRetryAt = acquisitionRetryAt
+            acquisitionAttempts = acquisitionAttempts, acquisitionRetryAt = acquisitionRetryAt,
+            standardCategory = standardCategory, standardSubcategory = standardSubcategory,
+            standardClassificationEvaluated = standardClassificationEvaluated
         )
     }
 
@@ -91,7 +96,9 @@ data class ImportTaskEntity(
                 rssPublishedAt = task.rssPublishedAt,
                 ogImageUrl = task.ogImageUrl,
                 articlePrepared = task.articlePrepared, intendedMode = task.intendedMode, rssItemKey = task.rssItemKey,
-                acquisitionAttempts = task.acquisitionAttempts, acquisitionRetryAt = task.acquisitionRetryAt
+                acquisitionAttempts = task.acquisitionAttempts, acquisitionRetryAt = task.acquisitionRetryAt,
+                standardCategory = task.standardCategory, standardSubcategory = task.standardSubcategory,
+                standardClassificationEvaluated = task.standardClassificationEvaluated
             )
         }
     }

@@ -297,7 +297,8 @@ internal class RssRepository internal constructor(private val context: Context,
             store.claimNotificationTask(runId, task.id)
             val parsed = me.bubblespark.tidilo.parser.ArticleAcquirer.acquire(task.url, network)
             val article = me.bubblespark.tidilo.parser.ArticlePreparation.prepare(parsed)
-            if (!store.complete(feed, task, article, promote, runId)) return
+            val classification = me.bubblespark.tidilo.parser.classifyStandardMetadata(parsed)
+            if (!store.complete(feed, task, article, promote, runId, classification)) return
             val domain = DomainIconManager.extractDomain(article.url)
             DomainPolicyManager.registerDomain(domain, false, article.siteName)
             if (article.isNsfw && !AppConfig.isNsfwContentBookmarkable.value) return

@@ -126,5 +126,4 @@ data class BookmarkEntity(
 
 /** Maps canonical stored display values without applying raw-input cleaning again. */
 internal fun logicalBookmarkTag(category: String?, subcategory: String?, entities: List<String>, isAiSkipped: Boolean): Tag =
-    if (isAiSkipped && category == null && subcategory == null) Tag.fromDisplayValues(null, null, entities).copy(category = null, subcategory = null)
-    else Tag.fromDisplayValues(category, subcategory, entities)
+    Tag.fromDisplayValues(category, subcategory, entities, preserveNullAxes = isAiSkipped)

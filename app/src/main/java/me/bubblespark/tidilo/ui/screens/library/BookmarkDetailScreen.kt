@@ -518,7 +518,9 @@ fun BookmarkDetailScreen(
                     onAddEntityClick = { entityInput = ""; showAddEntityDialog = true },
                     onOpenEntityPickerClick = { showEntityBottomSheet = true },
                     onConfirm = {
-                        editedTag = Tag.fromDisplayValues(draftCategory, draftSubcategory, draftEntities)
+                        editedTag = Tag.fromDisplayValues(
+                            draftCategory, draftSubcategory, draftEntities, preserveNullAxes = bookmark.isAiSkipped
+                        )
                         editedIsNsfw = draftIsNsfw
                         pendingReplacements = draftReplacements
                         showTagEditDialog = false

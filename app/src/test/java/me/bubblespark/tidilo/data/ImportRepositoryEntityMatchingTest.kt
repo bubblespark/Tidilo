@@ -309,7 +309,11 @@ class ImportRepositoryEntityMatchingTest {
             notificationDao = notifications,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
             aiAnalysisMode = { AiAnalysisMode.DISABLE },
-            articleAcquirer = { createFakeParsedPage(it, title = "Learn Kotlin and Android") },
+            articleAcquirer = {
+                createFakeParsedPage(it, title = "Learn Kotlin and Android").copy(
+                    jsonLdScripts = listOf("""{"@context":"https://schema.org","@type":"TechArticle","url":"$it"}""")
+                )
+            },
             persistFallback = {
                 savedItems.add(it)
                 bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
@@ -329,6 +333,8 @@ class ImportRepositoryEntityMatchingTest {
         val persisted = bookmarks.getBookmarkByUrl("https://example.com/learn")
         assertNotNull(persisted)
         assertEquals(listOf("Kotlin", "Android"), persisted!!.entities)
+        assertEquals("Article", persisted.category)
+        assertEquals("Tech", persisted.subcategory)
     }
 
     @Test
@@ -688,7 +694,9 @@ class ImportRepositoryEntityMatchingTest {
             title = "Kotlin Coroutines Deep Dive",
             status = TaskStatus.WAITING_AI,
             statusText = "Waiting",
-            articlePrepared = true
+            articlePrepared = true,
+            standardCategory = "Article",
+            standardClassificationEvaluated = true
         )
         tasks.insertOrUpdate(ImportTaskEntity.fromImportTask(task))
 
@@ -701,7 +709,9 @@ class ImportRepositoryEntityMatchingTest {
             openModel = { fakeModel() },
             aiAnalysisMode = { AiAnalysisMode.AICORE },
             fallbackMode = { AiCoreFallbackMode.ALL },
-            analyzeTask = { _: GenerativeModel, _: ImportTask ->
+            analyzeTask = { _: GenerativeModel, active: ImportTask ->
+                val row = requireNotNull(tasks.getTaskById(active.id))
+                tasks.update(row.copy(standardCategory = null, standardSubcategory = "Tech"))
                 throw AiCoreExecutionException(27, "Inference failure: quota exceeded")
             },
             persistFallback = {
@@ -721,6 +731,8 @@ class ImportRepositoryEntityMatchingTest {
 
         assertEquals(1, savedItems.size)
         assertEquals(listOf("Coroutines"), savedItems.first().tag.entities)
+        assertEquals("Tech", savedItems.first().tag.subcategory)
+        assertNull(savedItems.first().tag.category)
     }
 
     @Test

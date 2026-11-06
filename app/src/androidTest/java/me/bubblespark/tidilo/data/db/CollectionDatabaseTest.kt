@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.data.db
 
 import androidx.paging.PagingSource
 import androidx.room.Room
+import me.bubblespark.tidilo.data.removeStandardClassificationColumns
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -69,9 +70,10 @@ class CollectionDatabaseTest {
         val counts = tables.associateWith { table -> sql.query("SELECT COUNT(*) FROM `$table`").use { it.moveToFirst(); it.getInt(0) } }
         sql.execSQL("DROP TABLE bookmark_collection_cross_ref")
         sql.execSQL("DROP TABLE collections")
+        removeStandardClassificationColumns(sql::execSQL)
         sql.version = 15
         before.close()
-        val after = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_15_16).build()
+        val after = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17).build()
         try {
             assertTrue(after.bookmarkDao().getBookmarkById("kept")?.isLiked == true)
             assertTrue(after.collectionDao().observeCollections(true).first().isEmpty())

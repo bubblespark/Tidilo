@@ -27,6 +27,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImportRepositoryTest {
+    @Test fun newImportSavesDirectlyWithAiEnabled() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        val saved = mutableListOf<BookmarkItem>()
+        val completed = CompletableDeferred<Result<ImportOutcome>>()
+        try {
+            val repository = ImportRepository(
+                taskDao = dao,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.AICORE },
+                articleAcquirer = { directFixture(it) },
+                persistFallback = { saved.add(it) },
+                openModel = { error("Import must not open a model") }
+            )
+            repository.importUrl("https://direct.example/article") { completed.complete(it) }
+            val outcome = withTimeout(5000) { completed.await() }.getOrThrow()
+            assertTrue("Expected a saved bookmark, got $outcome", outcome is ImportOutcome.BookmarkSaved)
+            assertEquals("Parsed Description", saved.single().description)
+            assertTrue(saved.single().isAiSkipped)
+            assertEquals(0, dao.getCount())
+        } finally { job.cancelAndJoin() }
+    }
+
     @Test fun invalidImportReportsOneDetailedOsError() = runBlocking {
         val job = SupervisorJob()
         val reported = mutableListOf<Throwable>()
@@ -137,23 +160,6 @@ class ImportRepositoryTest {
         twitterTags = emptyMap(), standardMetaTags = emptyMap(), jsonLdList = emptyList(), h1List = emptyList(),
         h2List = emptyList(), readabilityArticle = null, jsoupBodyText = "Body is not the Description",
         jsoupBodyCharCount = 27, fetchLatencyMs = 0, parseLatencyMs = 0, rawHtmlSizeBytes = 100)
-
-    @Test fun aiCoreNewImportQueuesPreparedDescriptionWithoutSavingBookmark() = runBlocking {
-        val job = SupervisorJob()
-        val dao = FakeImportTaskDao()
-        val done = CompletableDeferred<ImportOutcome>()
-        try {
-            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.AICORE },
-                articleAcquirer = { directFixture(it) }, persistFallback = { error("Must queue for AI") })
-            repository.importUrl("https://direct.example/aicore") { done.complete(it.getOrThrow()) }
-            assertTrue(withTimeout(5000) { done.await() } is ImportOutcome.QueuedForAi)
-            val task = dao.getAllTasks().single()
-            assertEquals("READY", task.status)
-            assertEquals("Parsed Description", task.description)
-            assertTrue(task.articlePrepared)
-        } finally { job.cancelAndJoin() }
-    }
 
     @Test fun disabledAcquisitionFailuresRemainRetryableAndSaveAfterRecovery() = runBlocking {
         for (failure in listOf("offline", "404", "503", "parse")) {

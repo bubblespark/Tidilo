@@ -871,6 +871,7 @@ class ImportDuplicateRejectionTest {
             bookmarkDao = bookmarkDao,
             notificationDao = notificationDao,
             repositoryScope = CoroutineScope(Dispatchers.IO),
+            persistFallback = { bookmarkDao.insertRow(BookmarkEntity.fromBookmarkItem(it)) },
             articleAcquirer = { url ->
                 acquirerGate.await()
                 createFakeParsedPage(url = url, finalUrl = resolvedUrl)
@@ -937,6 +938,7 @@ class ImportDuplicateRejectionTest {
             bookmarkDao = bookmarkDao,
             notificationDao = notificationDao,
             repositoryScope = CoroutineScope(Dispatchers.IO),
+            persistFallback = { bookmarkDao.insertRow(BookmarkEntity.fromBookmarkItem(it)) },
             articleAcquirer = { url ->
                 acquirerGate.await()
                 createFakeParsedPage(url = url, finalUrl = resolvedUrl)
@@ -995,6 +997,7 @@ class ImportDuplicateRejectionTest {
             bookmarkDao = bookmarkDao,
             notificationDao = notificationDao,
             repositoryScope = CoroutineScope(Dispatchers.IO),
+            persistFallback = { bookmarkDao.insertRow(BookmarkEntity.fromBookmarkItem(it)) },
             articleAcquirer = { url ->
                 if (url == aliasUrl && currentTarget == canonicalUrl2) {
                     acquirerGate.await()
@@ -1086,6 +1089,7 @@ class ImportDuplicateRejectionTest {
             bookmarkDao = bookmarkDao,
             notificationDao = notificationDao,
             repositoryScope = CoroutineScope(Dispatchers.IO),
+            persistFallback = { bookmarkDao.insertRow(BookmarkEntity.fromBookmarkItem(it)) },
             articleAcquirer = { url ->
                 acquirerGate.await()
                 createFakeParsedPage(url = url, finalUrl = canonicalUrl)

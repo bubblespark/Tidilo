@@ -567,13 +567,7 @@ class ImportRepository internal constructor(
                         handleDuplicateOrConflict(realUrl, finalRecheck, importing.id, recordDuplicateOutcome, newItem)
                         false
                     } else {
-                        if (aiAnalysisMode() == AiAnalysisMode.DISABLE) {
-                            val bookmark = skippedBookmark(newItem)
-                            persistDirectBookmark(newItem, bookmark)
-                            outcome = ImportOutcome.BookmarkSaved(bookmark.id, bookmark.url)
-                        } else {
-                            taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(newItem))
-                        }
+                        persistDirectBookmark(newItem, skippedBookmark(newItem))
                         true
                     }
                 }
@@ -581,8 +575,8 @@ class ImportRepository internal constructor(
                 if (!isInserted) {
                     return@launch
                 }
-                if (outcome is ImportOutcome.BookmarkSaved) cacheDirectOgImage(newItem)
-                reportOutcome(Result.success(outcome))
+                cacheDirectOgImage(newItem)
+                reportOutcome(Result.success(ImportOutcome.BookmarkSaved(newItem.id, newItem.url)))
             } catch (e: DuplicateUrlException) {
                 // Handled in handleDuplicateOrConflict; ignore
             } catch (e: CancellationException) {

@@ -39,6 +39,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -499,6 +500,7 @@ fun BookmarkTagEditDialog(
 /**
  * Child dialog for manually entering a new entity tag name.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddEntityDialog(
     onDismiss: () -> Unit,
@@ -574,15 +576,17 @@ fun AddEntityDialog(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
+                                val chipShape = themeCorner(ThemeCorner.CHIP)
                                 candidates.forEach { candidate ->
                                     Surface(
-                                        shape = RoundedCornerShape(10.dp),
+                                        shape = chipShape,
                                         color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
                                         contentColor = MaterialTheme.colorScheme.onSurface,
                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .clickable {
+                                            .minimumInteractiveComponentSize()
+                                            .clip(chipShape)
+                                            .clickable(role = androidx.compose.ui.semantics.Role.Button) {
                                                 onTextChange(appendEntitySuggestion(text, candidate))
                                             }
                                     ) {

@@ -148,6 +148,13 @@ class EntityTagConflictLayoutTest {
             assertTrue(button("iPhone").performAction(AccessibilityNodeInfo.ACTION_CLICK))
             host.instrumentation.waitForIdleSync()
             withTimeout(5000) { while (textState.value != "iPhone") delay(30) }
+            val clearBtn = button("Clear")
+            assertTrue(clearBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            host.instrumentation.waitForIdleSync()
+            withTimeout(5000) { while (textState.value.isNotEmpty()) delay(30) }
+            assertTrue(button("iPhone").performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            host.instrumentation.waitForIdleSync()
+            withTimeout(5000) { while (textState.value != "iPhone") delay(30) }
             assertTrue(button("16").performAction(AccessibilityNodeInfo.ACTION_CLICK))
             host.instrumentation.waitForIdleSync()
             withTimeout(5000) { while (textState.value != "iPhone 16") delay(30) }

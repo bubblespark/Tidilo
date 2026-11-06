@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.data.EntityCandidateExtractor
+
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
@@ -529,7 +531,7 @@ fun BookmarkDetailScreen(
 
             if (showAddEntityDialog) {
                 val suggestionCandidates = remember(bookmark.title, bookmark.description) {
-                    me.bubblespark.tidilo.data.EntityCandidateExtractor.default()
+                    EntityCandidateExtractor.default()
                         .extractSuggestionTokens(bookmark.title, bookmark.description)
                 }
                 AddEntityDialog(

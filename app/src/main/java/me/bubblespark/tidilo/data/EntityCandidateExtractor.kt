@@ -12,8 +12,8 @@ class EntityCandidateExtractor(
         const val MAX_TOKENS_PER_SECTION = 300
         const val MAX_CANDIDATE_KEYS = 500
 
-        fun default(): EntityCandidateExtractor {
-            return runCatching {
+        private val defaultInstance: EntityCandidateExtractor by lazy {
+            runCatching {
                 val segmenter = IcuTextSegmenter()
                 segmenter.segment("test")
                 EntityCandidateExtractor(segmenter)
@@ -21,6 +21,8 @@ class EntityCandidateExtractor(
                 EntityCandidateExtractor(StandardTextSegmenter())
             }
         }
+
+        fun default(): EntityCandidateExtractor = defaultInstance
     }
 
     /**

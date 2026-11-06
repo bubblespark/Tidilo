@@ -51,6 +51,14 @@ interface ImportTaskDao {
             SELECT 1 FROM rss_feeds f WHERE f.id = rssFeedId AND f.deleted = 0)))""")
     suspend fun claimForDirectSave(id: String, statusText: String): Int
 
+    /** Reject a prepared save only while its feed is unavailable and the task is runnable. */
+    @Query("""UPDATE import_tasks SET status = 'ERROR', statusText = 'Save failed',
+        errorMessage = 'RSS feed is unavailable'
+        WHERE id = :id AND status IN ('QUEUED', 'PROCESSING')
+            AND articlePrepared = 1 AND rssFeedId IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM rss_feeds f WHERE f.id = rssFeedId AND f.deleted = 0)""")
+    suspend fun rejectUnavailablePreparedRss(id: String): Int
+
     @Query("DELETE FROM import_tasks WHERE id = :id")
     suspend fun deleteById(id: String)
 

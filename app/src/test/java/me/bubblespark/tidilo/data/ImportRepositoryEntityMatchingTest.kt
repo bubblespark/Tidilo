@@ -157,6 +157,8 @@ class ImportRepositoryEntityMatchingTest {
             tasksFlow.map { it.filter { task -> task.status in statuses } }
         override suspend fun getTasksByStatuses(statuses: List<String>): List<ImportTaskEntity> =
             tasks.values.filter { it.status in statuses }
+        override suspend fun rejectUnavailablePreparedRss(id: String): Int = 0
+
         override suspend fun claimForDirectSave(id: String, statusText: String): Int {
             val task = tasks[id] ?: return 0
             if (task.status !in listOf("QUEUED", "PROCESSING")) return 0

@@ -48,7 +48,7 @@ interface RssNotificationDao {
     @Query("""UPDATE rss_notification_runs SET completed = 1
         WHERE completed = 0 AND NOT EXISTS (SELECT 1 FROM rss_feeds WHERE enabled = 1 AND deleted = 0)""")
     suspend fun finishRunsWithoutEnabledFeeds()
-    @Query("""SELECT * FROM rss_notification_runs WHERE completed = 1 AND published = 0
+    @Query("""SELECT * FROM rss_notification_runs WHERE completed = 1 AND published = 0 AND (:id IS NULL OR id = :id)
         AND NOT EXISTS (
             SELECT 1 FROM rss_notification_items n JOIN import_tasks t ON t.id = n.itemId
             JOIN rss_feeds f ON f.id = t.rssFeedId AND f.deleted = 0
@@ -56,7 +56,7 @@ interface RssNotificationDao {
                 AND t.rssFeedId IS NOT NULL AND t.articlePrepared = 1
                 AND t.status IN ('QUEUED', 'PROCESSING')
         ) ORDER BY requestedAt""")
-    suspend fun unpublishedRuns(): List<RssNotificationRunEntity>
+    suspend fun unpublishedRuns(id: String? = null): List<RssNotificationRunEntity>
 
     @Query("""UPDATE rss_notification_items SET outcome = 'DIRECT', detail = ''
         WHERE itemId = :itemId AND outcome = 'AI'

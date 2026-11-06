@@ -36,6 +36,37 @@ import org.junit.Before
 import org.junit.Test
 
 class ImportDuplicateRoomTest {
+    @Test fun recoveryKeepsGoingAfterClaimFailureAndRejectsDeletedFeed() = runBlocking {
+        val job = kotlinx.coroutines.SupervisorJob()
+        val tasks = database.importTaskDao()
+        val failedClaim = ImportTaskEntity("claim-failure", "https://example.com/claim-failure",
+            "Claim failure", "QUEUED", "", createdAt = 3, articlePrepared = true)
+        val unavailable = failedClaim.copy(id = "deleted-feed-task", url = "https://example.com/deleted-feed",
+            createdAt = 2, rssFeedId = "deleted-feed")
+        val healthy = failedClaim.copy(id = "healthy", url = "https://example.com/healthy", createdAt = 1)
+        database.rssDao().putFeed(me.bubblespark.tidilo.data.db.RssFeedEntity(
+            "deleted-feed", "https://example.com/feed", "Deleted", deleted = true
+        ))
+        tasks.insertAll(listOf(failedClaim, unavailable, healthy))
+        val throwingDao = object : ImportTaskDao by tasks {
+            override suspend fun claimForDirectSave(id: String, statusText: String): Int {
+                if (id == failedClaim.id) throw IllegalStateException("Test claim failure")
+                return tasks.claimForDirectSave(id, statusText)
+            }
+        }
+        try {
+            val repository = ImportRepository(taskDao = throwingDao, bookmarkDao = database.bookmarkDao(),
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
+                persistFallback = { database.bookmarkDao().insertOrUpdate(BookmarkEntity.fromBookmarkItem(it)) })
+            repository.onAppBecameActive()
+            withTimeout(5000) { while (tasks.getTaskById(healthy.id) != null) delay(10) }
+            assertEquals("ERROR", tasks.getTaskById(unavailable.id)?.status)
+            assertEquals("RSS feed is unavailable", tasks.getTaskById(unavailable.id)?.errorMessage)
+            assertEquals("QUEUED", tasks.getTaskById(failedClaim.id)?.status)
+            assertNotNull(database.bookmarkDao().getBookmarkById(healthy.id))
+        } finally { job.cancel(); job.join() }
+    }
+
     @Test fun recoveredPreparedRssSaveTrimsFeedAndUpdatesUnpublishedSummary() = runBlocking {
         val job = kotlinx.coroutines.SupervisorJob()
         val feedId = "recovered-feed"
@@ -50,7 +81,9 @@ class ImportDuplicateRoomTest {
         }
         val task = ImportTaskEntity("recovered", "https://example.com/new", "New", "WAITING_AI", "",
             createdAt = 100, rssFeedId = feedId, articlePrepared = true)
-        database.importTaskDao().insertOrUpdate(task)
+        val oldest = task.copy(id = "recovered-oldest", url = "https://example.com/oldest",
+            rssPublishedAt = -1, ogImageUrl = "https://example.com/oldest.png")
+        database.importTaskDao().insertAll(listOf(task, oldest))
         val notifications = database.rssNotificationDao()
         notifications.putRun(me.bubblespark.tidilo.data.db.RssNotificationRunEntity("run", "work", 1, true, completed = true))
         notifications.putItem(me.bubblespark.tidilo.data.db.RssNotificationItemEntity("run", task.id, "AI"))
@@ -64,11 +97,13 @@ class ImportDuplicateRoomTest {
                 persistFallback = { database.bookmarkDao().insertOrUpdate(BookmarkEntity.fromBookmarkItem(it)) })
             repository.onAppBecameActive()
             withTimeout(5000) {
-                while (database.importTaskDao().getTaskById(task.id) != null) delay(10)
+                while (database.importTaskDao().getCount() != 0) delay(10)
             }
             assertEquals(10, database.bookmarkDao().getCount())
             assertNull(database.bookmarkDao().getBookmarkById("old-0"))
             assertNotNull(database.bookmarkDao().getBookmarkById(task.id))
+            assertNull(database.bookmarkDao().getBookmarkById(oldest.id))
+            assertTrue(database.rssDao().cleanupItems().any { it.imageUrl == oldest.ogImageUrl })
             assertEquals("DIRECT", notifications.items("run").single().outcome)
             assertEquals("run", notifications.unpublishedRuns().single().id)
         } finally { job.cancel(); job.join() }

@@ -562,15 +562,33 @@ class ImportRepository internal constructor(
 
     private fun resumeDirectImports() {
         repositoryScope.launch {
-            directExecutionMutex.withLock {
-                val candidates = taskDao.getTasksByStatuses(listOf("QUEUED", "PROCESSING"))
-                for (task in candidates) {
-                    if (task.rssFeedId != null && !task.articlePrepared) continue
-                    processDirectTask(task.id)
+            try {
+                directExecutionMutex.withLock {
+                    val candidates = taskDao.getTasksByStatuses(listOf("QUEUED", "PROCESSING"))
+                    for (task in candidates) {
+                        if (task.rssFeedId != null && !task.articlePrepared) continue
+                        try {
+                            processDirectTask(task.id)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            Log.w("ImportRepository", "Could not recover import ${task.id}", error)
+                        }
+                    }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w("ImportRepository", "Could not read the direct import queue", error)
             }
-            appContext?.let {
-                me.bubblespark.tidilo.data.notifications.NotificationCoordinator.getInstance(it).publishCompletedRssRuns()
+            try {
+                appContext?.let {
+                    me.bubblespark.tidilo.data.notifications.NotificationCoordinator.getInstance(it).publishCompletedRssRuns()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w("ImportRepository", "Could not publish recovered RSS notifications", error)
             }
         }
     }
@@ -638,7 +656,10 @@ class ImportRepository internal constructor(
     private suspend fun processDirectTask(taskId: String) {
         var target = taskDao.getTaskById(taskId)?.toImportTask() ?: return
         if (target.status !in listOf(TaskStatus.QUEUED, TaskStatus.PROCESSING)) return
-        if (taskDao.claimForDirectSave(target.id, "Saving bookmark...") != 1) return
+        if (taskDao.claimForDirectSave(target.id, "Saving bookmark...") != 1) {
+            taskDao.rejectUnavailablePreparedRss(target.id)
+            return
+        }
         if (!target.articlePrepared && target.rssFeedId == null) {
             val alreadySaved = runInDbOrLock(target.url) {
                 val existing = bookmarkDao?.getBookmarkByUrl(target.url) ?: return@runInDbOrLock false
@@ -711,7 +732,9 @@ class ImportRepository internal constructor(
             return
         }
         if (taskDao.getTaskById(target.id) == null) {
-            cacheDirectOgImage(target)
+            if (target.rssFeedId == null || bookmarkDao?.getBookmarkById(target.id) != null) {
+                cacheDirectOgImage(target)
+            }
             if (target.rssFeedId != null && appContext != null) {
                 me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).cleanup()
             }

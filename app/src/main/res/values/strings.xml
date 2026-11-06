@@ -77,7 +77,7 @@
     <string name="import_collapse_group">Collapse %1$s</string>
     <string name="import_expand_group">Expand %1$s</string>
     <string name="import_dialog_title">Import URL</string>
-    <string name="import_dialog_description">Enter a valid HTTP or HTTPS web address to import for Gemini Nano analysis.</string>
+    <string name="import_dialog_description">Enter a valid HTTP or HTTPS web address to import.</string>
     <string name="import_dialog_error_invalid">Must start with http:// or https:// and have a valid domain</string>
     <string name="import_dialog_supporting_text">http:// or https:// required</string>
     <string name="import_dialog_confirm">Import</string>

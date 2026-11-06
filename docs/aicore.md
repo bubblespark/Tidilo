@@ -223,7 +223,7 @@ python tools/verify_mlkit_release.py
 
 The verifier requires Android SDK Command-Line Tools (`apkanalyzer`) and uses `ANDROID_HOME` or `ANDROID_SDK_ROOT`. Override paths with `--apkanalyzer` and `--apk` if necessary. It checks that every registrar declared by the ML Kit discovery service retains its public no-argument constructor. It does not run inference or establish device/model readiness.
 
-For #113, the verifier failed on the original minified APK and passed after the targeted keep rule. A separate local instrumentation probe also changed from a client-construction `NullPointerException` to successful construction and closure without invoking AICore. Confirm `Check Status`, `Run Test`, and a normal import on a supported physical device using the signed release build; emulator initialization checks do not validate inference.
+For #113, the verifier failed on the original minified APK and passed after the targeted keep rule. A separate local instrumentation probe also changed from a client-construction `NullPointerException` to successful construction and closure without invoking AICore. Confirm `Check Status`, `Run Test`, and AI Review from a saved bookmark’s Detail screen on a supported physical device using the signed release build; emulator initialization checks do not validate inference.
 
 
 ## Local Inference Usage Accounting

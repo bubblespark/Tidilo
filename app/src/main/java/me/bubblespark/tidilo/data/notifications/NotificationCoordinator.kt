@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.data.notifications
 
 import android.Manifest
 import android.app.Notification
+import androidx.room.withTransaction
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -87,26 +88,31 @@ class NotificationCoordinator private constructor(private val context: Context) 
 
     /** Stable run tags make replay after process death replace the same notices without another alert. */
     suspend fun publishCompletedRssRuns() = publishMutex.withLock {
-        val dao = AppDatabase.getInstance(context).rssNotificationDao()
+        val database = AppDatabase.getInstance(context)
+        val dao = database.rssNotificationDao()
         // Startup scheduling can cancel a crashed worker after its last XML failure disabled all feeds.
         dao.finishRunsWithoutEnabledFeeds()
-        for (run in dao.unpublishedRuns()) {
-            val items = dao.items(run.id)
-            if (run.showSummary) {
-                post(NotificationCategory.RSS_UPDATES, context.getString(R.string.notification_rss_complete_body,
-                    items.count { it.outcome == "DIRECT" }), run.id)
+        for (candidate in dao.unpublishedRuns()) {
+            // Keep the outcome snapshot stable through posting and allow replay if posting is interrupted.
+            database.withTransaction {
+                val run = dao.unpublishedRuns(candidate.id).singleOrNull() ?: return@withTransaction
+                val items = dao.items(run.id)
+                if (run.showSummary) {
+                    post(NotificationCategory.RSS_UPDATES, context.getString(R.string.notification_rss_complete_body,
+                        items.count { it.outcome == "DIRECT" }), run.id)
+                }
+                if (items.any { it.outcome == "RSS_ERROR" }) {
+                    post(NotificationCategory.RSS_ERROR, context.getString(R.string.notification_rss_disabled_body), run.id)
+                }
+                val errors = items.filter { it.outcome == "IMPORT_ERROR" }
+                if (errors.isNotEmpty()) {
+                    val details = errors.map { it.detail }.distinct().take(3).joinToString("\n")
+                    post(NotificationCategory.IMPORT_ERROR,
+                        context.getString(R.string.notification_rss_article_errors, errors.size, details), run.id)
+                }
+                // Blocked notifications are not queued for surprise delivery after a later permission grant.
+                dao.markPublished(run.id)
             }
-            if (items.any { it.outcome == "RSS_ERROR" }) {
-                post(NotificationCategory.RSS_ERROR, context.getString(R.string.notification_rss_disabled_body), run.id)
-            }
-            val errors = items.filter { it.outcome == "IMPORT_ERROR" }
-            if (errors.isNotEmpty()) {
-                val details = errors.map { it.detail }.distinct().take(3).joinToString("\n")
-                post(NotificationCategory.IMPORT_ERROR,
-                    context.getString(R.string.notification_rss_article_errors, errors.size, details), run.id)
-            }
-            // Blocked notifications are not queued for surprise delivery after a later permission grant.
-            dao.markPublished(run.id)
         }
         val before = System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
         dao.pruneItems(before)

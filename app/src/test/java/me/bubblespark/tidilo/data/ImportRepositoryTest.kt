@@ -469,6 +469,8 @@ class ImportRepositoryTest {
             insertOrUpdate(existing.copy(status = status, statusText = statusText, errorMessage = errorMessage))
         }
 
+        override suspend fun rejectUnavailablePreparedRss(id: String): Int = 0
+
         override suspend fun claimForDirectSave(id: String, statusText: String): Int {
             beforeClaim()
             delay(1)

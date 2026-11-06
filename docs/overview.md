@@ -3,7 +3,7 @@
 ## 1. Application Overview
 
 **Tidilo** is a local-first Android bookmark and RSS manager with optional on-device AI.  
-When a user shares a URL from a web browser, enqueues a link within the app, or receives an article from an RSS/Atom subscription, Tidilo fetches the page, parses semantic metadata (OGP, meta tags, Mozilla Readability article body), resolves wrappers or shortened links, and saves the bookmark to the local library. With AI Analysis disabled (**Direct** mode), the page's own description is used as the summary. Supported Schema.org JSON-LD and Open Graph types can supply category and subcategory independently. The classifier uses page and node URLs only to associate metadata. Missing, unrelated, or conflicting evidence leaves the affected axis empty. Titles and descriptions are outside the classifier's inputs.
+When a user shares a URL from a web browser, enqueues a link within the app, or receives an article from an RSS/Atom subscription, Tidilo fetches the page, parses semantic metadata (OGP, meta tags, Mozilla Readability article body), resolves wrappers or shortened links, and saves the bookmark to the local library. With AI Analysis disabled (**Direct** mode), the page's own description is used as the summary. Supported Schema.org JSON-LD and Open Graph types can supply category and subcategory independently. See [Standards-based bookmark classification](bookmark_classification.md) for the mapping and precedence rules.
 
 When AI Analysis is enabled, Tidilo additionally leverages Google's **Gemini Nano** foundation model running locally via the Android system **AICore** service to automatically:
 1. Synthesize an objective, one- or two-sentence summary.

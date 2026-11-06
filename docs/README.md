@@ -38,6 +38,7 @@ cd Tidilo
 | Document | Contents |
 | :--- | :--- |
 | [rss.md](rss.md) | RSS/Atom subscriptions, scheduled fetching, Wi-Fi policy, Direct/AI modes, deduplication, retention. |
+| [bookmark_classification.md](bookmark_classification.md) | Standard HTML evidence, supported category mappings, and save behavior without AI. |
 | [collections.md](collections.md) | Manual bookmark collections: persistence, Library and editor UI, bookmark assignment. |
 | [aicore.md](aicore.md) | Optional AI Analysis: AICore integration, prompt design, output parsing, quota handling, fallback. |
 | [notifications.md](notifications.md) | Android notification channels and import/RSS result reporting. |

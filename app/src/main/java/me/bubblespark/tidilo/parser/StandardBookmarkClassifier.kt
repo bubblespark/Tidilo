@@ -33,7 +33,7 @@ internal fun classifyStandardMetadata(page: ParsedWebPage): StandardClassificati
     val labels = base?.let { primaryLabels(it, page.jsonLdScripts) }.orEmpty()
     val categories = labels.mapNotNull { it.category }.toSet()
     val topics = labels.mapNotNull { it.subcategory }.toSet()
-    val fallback = when (page.pageOpenGraphType) {
+    val fallback = when (page.pageOpenGraphType?.lowercase(Locale.ROOT)) {
         "article" -> Category.ARTICLE
         "video.movie", "video.episode", "video.tv_show", "video.other" -> Category.MEDIA
         else -> null

@@ -80,6 +80,18 @@ class StandardBookmarkClassifierTest {
         ))
     }
 
+    @Test
+    fun matchesSupportedOpenGraphTypesRegardlessOfCase() {
+        for (type in listOf("video.other", "VIDEO.OTHER", "Video.Other")) {
+            assertEquals(StandardClassification(Category.MEDIA), classify(
+                "{}", """<meta property="og:type" content="$type">"""
+            ))
+        }
+        assertEquals(StandardClassification(), classify(
+            "{}", """<meta property="og:type" content="Video.Unknown">"""
+        ))
+    }
+
     private fun classify(json: String, head: String = ""): StandardClassification =
         classifyStandardMetadata(WebPageParser.parseHtml(
             "https://example.com/page?item=1",

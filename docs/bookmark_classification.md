@@ -10,6 +10,8 @@ Tidilo can assign a page-kind category and a topic subcategory when saving a boo
 
 URLs identify the page and its nodes. Titles, descriptions, headings, entity tags, host names, and path keywords contribute no classification evidence. The identifier mappings are independent of the page's language.
 
+Open Graph type values are matched case-insensitively. For example, `VIDEO.OTHER` and `Video.Other` both match `video.other`.
+
 ## Supported mappings
 
 | Source | Identifier | Category | Subcategory |

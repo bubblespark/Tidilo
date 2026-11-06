@@ -481,6 +481,7 @@ fun TidiloBottomBar(
                             state = ThemeSurfaceState(selected = isRssActive),
                             modifier = Modifier
                                 .clip(CircleShape)
+                                .semantics { selected = isRssActive }
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple(color = barRippleColor)
@@ -519,6 +520,7 @@ fun TidiloBottomBar(
                             state = ThemeSurfaceState(selected = isDomainActive),
                             modifier = Modifier
                                 .clip(CircleShape)
+                                .semantics { selected = isDomainActive }
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple(color = barRippleColor)
@@ -557,6 +559,7 @@ fun TidiloBottomBar(
                             state = ThemeSurfaceState(selected = isNewestActive),
                             modifier = Modifier
                                 .clip(CircleShape)
+                                .semantics { selected = isNewestActive }
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple(color = barRippleColor)

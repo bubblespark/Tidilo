@@ -87,6 +87,8 @@ class ThemeConsumerRegressionTest {
                     }
                 }
             }
+            host.instrumentation.waitForIdleSync()
+            delay(350)
             verify(host, activity)
         } finally { host.main { activity.finish() } }
     }
@@ -142,7 +144,11 @@ class ThemeConsumerRegressionTest {
             RssRegistrationDialog(2, 3, false, onConfirm = {}, onDismiss = { dismissals.incrementAndGet() })
         }) { host, activity ->
             val title = host.await(activity) { host.text(it, "Resume this feed?") }
-            assertEquals(Color.Cyan.toArgb(), pixel(host, title.boundsInWindow.left + 10f, title.boundsInWindow.top - 6f))
+            var position = androidx.compose.ui.geometry.Offset.Zero
+            host.main {
+                position = title.layoutInfo.coordinates.localToScreen(androidx.compose.ui.geometry.Offset.Zero)
+            }
+            assertEquals(Color.Cyan.toArgb(), pixel(host, position.x + 10f, position.y - 6f))
             val cancel = host.await(activity) { host.text(it, "Cancel") }
             host.main {
                 val action = generateSequence(cancel) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }

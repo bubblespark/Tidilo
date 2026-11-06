@@ -44,6 +44,7 @@ class ThemeSurfaceDrawingTest {
             }
             val node = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "painted-surface" }
             host.instrumentation.waitForIdleSync()
+            kotlinx.coroutines.delay(350)
             val bitmap = host.instrumentation.uiAutomation.takeScreenshot()
             try {
                 val bounds = node.boundsInWindow

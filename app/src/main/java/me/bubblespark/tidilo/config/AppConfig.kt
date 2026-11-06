@@ -71,7 +71,6 @@ object AppConfig {
     private const val KEY_APP_THEME = "app_theme"
     private const val KEY_NSFW_CONTENT_VISIBLE = "nsfw_content_visible"
     private const val KEY_NSFW_CONTENT_BOOKMARKABLE = "nsfw_content_bookmarkable"
-    private const val KEY_AUTO_RUN_AI_ON_ACTIVE = "auto_run_ai_on_active"
     private const val KEY_AICORE_FALLBACK_MODE = "aicore_fallback_mode"
     private const val KEY_AI_ANALYSIS_MODE = "ai_analysis_mode"
 
@@ -140,21 +139,6 @@ object AppConfig {
         }
     }
 
-    // Auto-run AI tagging when app becomes active (default: false)
-    private val _isAutoRunAiOnActive = MutableStateFlow(
-        runCatching { prefs.getBoolean(KEY_AUTO_RUN_AI_ON_ACTIVE, false) }
-            .getOrDefault(false)
-    )
-    val isAutoRunAiOnActive: StateFlow<Boolean> = _isAutoRunAiOnActive.asStateFlow()
-
-    fun setAutoRunAiOnActive(enabled: Boolean) {
-        _isAutoRunAiOnActive.value = enabled
-        runCatching {
-            prefs.edit().putBoolean(KEY_AUTO_RUN_AI_ON_ACTIVE, enabled).apply()
-        }
-    }
-
-    // AICore error fallback mode (default: DISABLE)
     private val _aiCoreFallbackMode = MutableStateFlow(
         AiCoreFallbackMode.fromCode(
             runCatching { prefs.getString(KEY_AICORE_FALLBACK_MODE, AiCoreFallbackMode.DISABLE.code) }

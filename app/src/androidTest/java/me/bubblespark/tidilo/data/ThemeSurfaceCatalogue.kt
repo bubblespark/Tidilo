@@ -73,7 +73,7 @@ internal fun ThemeSurfaceCatalogue(
                     TidiloIconToggleButton(true, {}, SurfaceRole.LIKE_ACTION) { Text("Like") }
                 }
                 3 -> RssSettingsContent(StorageLoad.Ready(emptyList()), RssSettings(), false, null, true,
-                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _ -> },
                     onDelete = {}, onFetch = {}, onDismissError = {})
                 4 -> RssRegistrationDialog(2, 3, false, onConfirm = {}, onDismiss = {})
                 }

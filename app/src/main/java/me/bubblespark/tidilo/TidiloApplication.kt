@@ -88,7 +88,6 @@ class TidiloApplication : Application() {
     private fun onAppBecameActive() {
         applicationScope.launch {
             NotificationCoordinator.getInstance(this@TidiloApplication).refresh()
-            awaitAiAnalysisInitialization()
             if (isAppInForeground) runCatching { ImportRepository.getInstance(this@TidiloApplication).onAppBecameActive() }
         }
     }

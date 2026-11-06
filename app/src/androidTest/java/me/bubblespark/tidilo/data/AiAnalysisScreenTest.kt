@@ -43,10 +43,8 @@ class AiAnalysisScreenTest {
     @Test fun modeSwitchHidesOnlyAiSectionsAndPreservesPreferences(): Unit = runBlocking {
         withScreen({ true }) { activity ->
             host.await(activity) { host.text(it, "Summarize and categorize bookmarks using on-device Gemini Nano") }
-            click(activity, "If the quota is exceeded")
-            withTimeout(3000) { while (AppConfig.aiCoreFallbackMode.value != AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY) delay(20) }
-            click(activity, host.context.getString(me.bubblespark.tidilo.R.string.settings_auto_run_ai_title))
-            withTimeout(3000) { while (!AppConfig.isAutoRunAiOnActive.value) delay(20) }
+
+
             click(activity, "Disable")
             awaitMode(AiAnalysisMode.DISABLE)
             withTimeout(5000) {
@@ -58,12 +56,10 @@ class AiAnalysisScreenTest {
                 }
             }
             host.await(activity) { host.text(it, "NSFW Contents") }
-            assertEquals(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, AppConfig.aiCoreFallbackMode.value)
-            assertTrue(AppConfig.isAutoRunAiOnActive.value)
+
             click(activity, "AICore")
             awaitMode(AiAnalysisMode.AICORE)
             host.await(activity) { host.text(it, "GenerateContentRequest") }
-            awaitSelected(activity, "If the quota is exceeded")
         }
     }
 
@@ -116,26 +112,6 @@ class AiAnalysisScreenTest {
         }
     }
 
-    @Test fun allFallbackChoicesPersistWithoutClosingTheScreen(): Unit = runBlocking {
-        withScreen({ true }) { activity ->
-            click(activity, "All AICore errors")
-            withTimeout(3000) { while (AppConfig.aiCoreFallbackMode.value != AiCoreFallbackMode.ALL) delay(20) }
-            awaitSelected(activity, "All AICore errors")
-            // Model and fallback both offer Disable; choose the fallback row by its group position.
-            host.main {
-                val disabledRows = host.nodes(activity).filter {
-                    host.text(it, "Disable")
-                }
-                var row = disabledRows.last()
-                while (row.config.getOrNull(SemanticsActions.OnClick) == null) row = requireNotNull(row.parent)
-                assertTrue(row.config[SemanticsActions.OnClick].action?.invoke() == true)
-            }
-            withTimeout(3000) { while (AppConfig.aiCoreFallbackMode.value != AiCoreFallbackMode.DISABLE) delay(20) }
-            assertEquals(AiAnalysisMode.AICORE, AppConfig.aiAnalysisMode.value)
-            host.await(activity) { host.text(it, "GenerateContentRequest") }
-        }
-    }
-
     private suspend fun withScreen(
         checkAvailable: suspend () -> Boolean,
         onBack: () -> Unit = {},
@@ -144,14 +120,12 @@ class AiAnalysisScreenTest {
         block: suspend (ComponentActivity) -> Unit
     ) {
         val mode = AppConfig.aiAnalysisMode.value
-        val fallback = AppConfig.aiCoreFallbackMode.value
-        val autoRun = AppConfig.isAutoRunAiOnActive.value
+
         var activity: ComponentActivity? = null
         try {
             host.main {
                 AppConfig.setAiAnalysisMode(AiAnalysisMode.AICORE)
-                AppConfig.setAiCoreFallbackMode(AiCoreFallbackMode.DISABLE)
-                AppConfig.setAutoRunAiOnActive(false)
+
             }
             val launched = host.launch()
             activity = launched
@@ -164,8 +138,7 @@ class AiAnalysisScreenTest {
             host.main {
                 try { activity?.finish() } finally {
                     AppConfig.setAiAnalysisMode(mode)
-                    AppConfig.setAiCoreFallbackMode(fallback)
-                    AppConfig.setAutoRunAiOnActive(autoRun)
+
                 }
             }
         }

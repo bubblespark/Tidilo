@@ -54,7 +54,7 @@ interface RssDao {
     @Query("SELECT EXISTS(SELECT 1 FROM bookmarks WHERE url = :url AND id <> :id UNION ALL SELECT 1 FROM trashed_bookmarks WHERE url = :url)")
     suspend fun rssWriteConflict(url: String, id: String): Boolean
 
-    @Query("SELECT * FROM import_tasks WHERE rssFeedId = :feedId AND status IN ('READY', 'WAITING_AI')")
+    @Query("SELECT * FROM import_tasks WHERE rssFeedId = :feedId AND status IN ('QUEUED', 'PROCESSING')")
     suspend fun pending(feedId: String): List<ImportTaskEntity>
 
     @Query("""SELECT * FROM import_tasks WHERE rssFeedId = :feedId AND status = 'ERROR'

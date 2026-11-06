@@ -13,10 +13,7 @@ import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.data.db.RssImageCleanupEntity
 import me.bubblespark.tidilo.data.db.RssSeenItemEntity
 
-internal class RssIngestionStore(
-    private val database: AppDatabase,
-    private val aiAnalysisMode: () -> me.bubblespark.tidilo.config.AiAnalysisMode = { AppConfig.aiAnalysisMode.value }
-) {
+internal class RssIngestionStore(private val database: AppDatabase) {
     private val rss = database.rssDao()
 
     suspend fun registrationSnapshot(url: String): RssRegistrationSnapshot? = database.withTransaction {
@@ -42,7 +39,6 @@ internal class RssIngestionStore(
         val current = rss.feed(feed.id) ?: return@withTransaction false
         if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
         require(current.retentionLimit == null || current.retentionLimit in 10..500)
-        val effectiveMode = effectiveRssImportMode(current.mode, aiAnalysisMode())
         val fresh = entries.distinctBy { it.url }.filter { entry ->
             if (rss.hasSeen(feed.id, entry.key, entry.url)) false
             else if (rss.urlExists(entry.url)) {
@@ -53,38 +49,24 @@ internal class RssIngestionStore(
                 false
             } else true
         }.map { entry ->
-            ImportTaskEntity(UUID.randomUUID().toString(), entry.url, entry.title, "ERROR", "Waiting for article acquisition",
+            ImportTaskEntity(UUID.randomUUID().toString(), entry.url, entry.title, "QUEUED", "",
                 assignedTags = entry.categories, createdAt = now, rssFeedId = feed.id, rssPublishedAt = entry.publishedAt,
-                intendedMode = effectiveMode, rssItemKey = entry.key)
+                intendedMode = "DIRECT", rssItemKey = entry.key)
         }
-        if (effectiveMode == "AI") {
-            val previous = rss.pending(feed.id)
-            val staged = rss.unstartedAcquisitions(feed.id).filter { it.intendedMode == "AI" }
-            val selected = selectRssPending(previous + staged, fresh)
-            for (dropped in previous + staged + fresh) if (selected.none { it.id == dropped.id }) {
-                rss.recordSeen(RssSeenItemEntity(feed.id, dropped.rssItemKey ?: dropped.url, dropped.url))
-                database.rssNotificationDao().discardItem(dropped.id)
-                database.importTaskDao().deleteById(dropped.id)
-            }
-            database.importTaskDao().insertAll(selected)
-            for (task in selected.filter { !it.articlePrepared }) claimNotificationTask(runId, task.id)
-        } else {
-            database.importTaskDao().insertAll(fresh)
-            for (task in fresh) claimNotificationTask(runId, task.id)
-        }
+        database.importTaskDao().insertAll(fresh)
+        for (task in fresh) claimNotificationTask(runId, task.id)
         true
     }
 
-    /** The bookmark/ready task and consumed identity become durable in the same transaction. */
+    /** The bookmark and consumed identity become durable in the same transaction. */
     suspend fun complete(feed: RssFeedEntity, task: ImportTaskEntity,
-        article: me.bubblespark.tidilo.parser.PreparedArticle, promote: Boolean = false,
+        article: me.bubblespark.tidilo.parser.PreparedArticle,
         runId: String? = null,
         classification: me.bubblespark.tidilo.parser.StandardClassification? = null): Boolean = database.withTransaction {
         val current = rss.feed(feed.id) ?: return@withTransaction false
         if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
         val actual = database.importTaskDao().getTaskById(task.id) ?: return@withTransaction false
         if (actual.articlePrepared || actual.intendedMode != task.intendedMode) return@withTransaction false
-        val effectiveMode = effectiveRssImportMode(actual.intendedMode, aiAnalysisMode())
         val category = if (classification == null) {
             actual.standardCategory.takeIf { actual.standardClassificationEvaluated }
         } else classification.category?.id
@@ -92,34 +74,17 @@ internal class RssIngestionStore(
             actual.standardSubcategory.takeIf { actual.standardClassificationEvaluated }
         } else classification.subcategory?.id
         val nsfw = article.isNsfw || DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(article.url))
-        if (effectiveMode == "AI" && article.bodySnippet.isBlank() && article.description.isBlank()) {
-            throw IllegalArgumentException("Article contains no extracted content")
-        }
         if ((!nsfw || AppConfig.isNsfwContentBookmarkable.value) && !rss.rssWriteConflict(article.url, task.id)) {
-            if (effectiveMode == "DIRECT") {
-                val bookmarks = database.bookmarkDao()
-                if (bookmarks.getBookmarkById(task.id) == null) {
-                    bookmarks.insertOrUpdate(BookmarkEntity(task.id, article.title, article.url, article.description,
-                        category = category, subcategory = subcategory,
-                        entities = actual.assignedTags, createdAt = task.createdAt,
-                        updatedAt = System.currentTimeMillis(), isNsfw = nsfw, isAiSkipped = true,
-                        ogImageUrl = article.ogImageUrl, rssFeedId = feed.id, rssPublishedAt = task.rssPublishedAt))
-                }
-                database.importTaskDao().deleteById(task.id)
-                recordOutcome(runId, task.id, "DIRECT")
-            } else {
-                val updated = task.copy(url = article.url, title = article.title, siteName = article.siteName,
-                    description = article.description, bodySnippet = article.bodySnippet, ogImageUrl = article.ogImageUrl,
-                    ogImageKey = me.bubblespark.tidilo.data.db.bookmarkOgImageKey(article.url, article.ogImageUrl),
-                    isNsfw = nsfw, articlePrepared = true, errorMessage = null,
-                    standardCategory = category, standardSubcategory = subcategory,
-                    standardClassificationEvaluated = classification != null || actual.standardClassificationEvaluated,
-                    status = if (actual.status == "WAITING_AI" || (promote && actual.status == "PROCESSING_AI")) "WAITING_AI" else "READY",
-                    statusText = "Ready for AI Analysis")
-                database.importTaskDao().insertOrUpdate(updated)
-                reconcilePending()
-                recordOutcome(runId, task.id, if (database.importTaskDao().getTaskById(task.id) != null) "AI" else "SKIPPED")
+            val bookmarks = database.bookmarkDao()
+            if (bookmarks.getBookmarkById(task.id) == null) {
+                bookmarks.insertOrUpdate(BookmarkEntity(task.id, article.title, article.url, article.description,
+                    category = category, subcategory = subcategory,
+                    entities = actual.assignedTags, createdAt = task.createdAt,
+                    updatedAt = System.currentTimeMillis(), isNsfw = nsfw, isAiSkipped = true,
+                    ogImageUrl = article.ogImageUrl, rssFeedId = feed.id, rssPublishedAt = task.rssPublishedAt))
             }
+            database.importTaskDao().deleteById(task.id)
+            recordOutcome(runId, task.id, "DIRECT")
         } else {
             database.importTaskDao().deleteById(task.id)
             recordOutcome(runId, task.id, "SKIPPED")
@@ -137,7 +102,7 @@ internal class RssIngestionStore(
         if (actual.articlePrepared) return@withTransaction
         val attempts = actual.acquisitionAttempts + 1
         database.importTaskDao().insertOrUpdate(actual.copy(status = "ERROR", statusText = "Article acquisition failed",
-            intendedMode = effectiveRssImportMode(actual.intendedMode, aiAnalysisMode()),
+            intendedMode = "DIRECT",
             errorMessage = error.message ?: "Could not fetch article", acquisitionAttempts = attempts,
             acquisitionRetryAt = if (retryable && attempts < 5) System.currentTimeMillis() + 60_000L * attempts else Long.MAX_VALUE))
         recordOutcome(runId, task.id, "IMPORT_ERROR", me.bubblespark.tidilo.data.notifications.notificationErrorDetail(error))
@@ -177,10 +142,9 @@ internal class RssIngestionStore(
 
     suspend fun restoreTask(task: ImportTaskEntity) = database.withTransaction {
         val feed = task.rssFeedId?.let { rss.feed(it) } ?: return@withTransaction
-        if (task.status != "ERROR" && (feed.deleted || feed.mode != "AI")) return@withTransaction
+        if (feed.deleted) return@withTransaction
         if (rss.rssWriteConflict(task.url, task.id)) return@withTransaction
         database.importTaskDao().insertOrUpdate(task)
-        reconcilePending()
     }
 
     private suspend fun enforceRetentionLocked(feed: RssFeedEntity) {
@@ -192,16 +156,7 @@ internal class RssIngestionStore(
         }
     }
 
-    /** Applies the same cap after cancellation, quota rollback, or swipe Undo. */
-    suspend fun reconcilePending() = database.withTransaction {
-        for (feed in rss.activeFeeds()) {
-            val previous = rss.pending(feed.id)
-            val kept = selectRssPending(previous, emptyList())
-            val dropped = previous.filter { old -> kept.none { it.id == old.id } }.map { it.id }
-            for (id in dropped) database.rssNotificationDao().discardItem(id)
-            database.importTaskDao().deleteByIds(dropped)
-        }
-    }
+
 }
 
 internal class RssImportSkipped : Exception("RSS item already exists or its subscription was removed")

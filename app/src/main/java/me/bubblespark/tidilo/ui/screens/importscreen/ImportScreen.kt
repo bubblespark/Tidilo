@@ -130,23 +130,17 @@ fun ImportScreen(
     onNavigateToDetail: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val allReadyTasks by viewModel.readyTasks.collectAsStateWithLifecycle()
-    val readyTasks = remember(allReadyTasks) { allReadyTasks.filter { it.rssFeedId == null } }
-    val rssReadyTasks = remember(allReadyTasks) { allReadyTasks.filter { it.rssFeedId != null } }
-    var isRssReadyExpanded by remember { mutableStateOf(true) }
-    var showAllRssReady by remember { mutableStateOf(false) }
     val importingTasks by viewModel.importingTasks.collectAsStateWithLifecycle()
+    val processingTasks by viewModel.processingTasks.collectAsStateWithLifecycle()
     val errorTasks by viewModel.errorTasks.collectAsStateWithLifecycle()
     val notifications by viewModel.notifications.collectAsStateWithLifecycle()
     val unreadNotificationCount by viewModel.unreadNotificationCount.collectAsStateWithLifecycle()
     var showNotificationPopup by remember { mutableStateOf(false) }
 
-    // Section expand/collapse states (Requirements: Ready and Error default to open)
-    var isReadyExpanded by remember { mutableStateOf(true) }
+    // Section expand/collapse states (Error defaults to open)
     var isErrorExpanded by remember { mutableStateOf(true) }
 
     // Show up to 5 items / More Items expanded state
-    var showAllReady by remember { mutableStateOf(false) }
     var showAllError by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -155,24 +149,6 @@ fun ImportScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     var snackbarJob by remember { mutableStateOf<Job?>(null) }
-
-    // Delete & Undo handler (immediately dismisses prior snackbar and displays the newest)
-    fun triggerDeleteReady(task: ImportTask) {
-        val deleted = viewModel.deleteReadyTask(task.id) ?: return
-        snackbarJob?.cancel()
-        snackbarHostState.currentSnackbarData?.dismiss()
-        val deletedTitle = deleted.first.title.ifBlank { deleted.first.url }
-        snackbarJob = coroutineScope.launch {
-            val result = snackbarHostState.showSnackbar(
-                message = context.getString(R.string.import_item_deleted, deletedTitle),
-                actionLabel = context.getString(R.string.common_undo),
-                duration = SnackbarDuration.Short
-            )
-            if (result == SnackbarResult.ActionPerformed) {
-                viewModel.restoreReadyTask(deleted.first, deleted.second)
-            }
-        }
-    }
 
     fun triggerDeleteError(task: ImportTask) {
         val deleted = viewModel.deleteErrorTask(task.id) ?: return
@@ -191,39 +167,11 @@ fun ImportScreen(
         }
     }
 
-    // Battery Quota Exceeded dialog
-    val quotaDialogVisible by viewModel.quotaExceededDialogVisible.collectAsStateWithLifecycle()
-    if (quotaDialogVisible) {
-        AlertDialog(
-            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
-            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
-            onDismissRequest = { viewModel.dismissQuotaExceededDialog() },
-            title = {
-                Text(
-                    text = stringResource(R.string.dialog_aicore_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = stringResource(R.string.dialog_aicore_quota_exceeded_message),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { viewModel.dismissQuotaExceededDialog() }) {
-                    Text(stringResource(R.string.common_ok))
-                }
-            }
-        )
-    }
-
-    // Horizontal bounce affordance on screen transition (if items exist in Ready or Error)
+    // Horizontal bounce affordance on screen transition
     val bounceOffset = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         delay(300)
-        if (allReadyTasks.isNotEmpty() || errorTasks.isNotEmpty()) {
+        if (errorTasks.isNotEmpty()) {
             bounceOffset.animateTo(
                 targetValue = 24f,
                 animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
@@ -433,101 +381,17 @@ fun ImportScreen(
             )
         }
     ) { contentPadding ->
-        // 2 sections (Ready, Error)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = contentPadding,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ==================== 1. Ready Group (defaults to open) ====================
-            item {
-                CollapsibleGroupHeader(
-                    title = stringResource(R.string.import_group_ready),
-                    count = readyTasks.size + importingTasks.size,
-                    color = MaterialTheme.colorScheme.secondary,
-                    isExpanded = isReadyExpanded,
-                    isLoading = importingTasks.isNotEmpty(),
-                    onToggle = { isReadyExpanded = !isReadyExpanded }
-                )
+            val active = importingTasks + processingTasks.map { task ->
+                ImportingTask(id = task.id, url = task.url, title = task.title, createdAt = task.createdAt)
             }
-
-            if (isReadyExpanded) {
-                if (readyTasks.isEmpty() && importingTasks.isEmpty()) {
-                    item {
-                        EmptyGroupCard(
-                            message = stringResource(R.string.import_empty_ready_title),
-                            hint = stringResource(R.string.import_empty_ready_hint)
-                        )
-                    }
-                } else {
-                    if (importingTasks.isNotEmpty()) {
-                        items(
-                            items = importingTasks,
-                            key = { "importing_${it.id}" },
-                            contentType = { "importing_task" }
-                        ) { item ->
-                            ImportingTaskCard(
-                                item = item,
-                                modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
-                            )
-                        }
-                    }
-                    val visibleReady = if (showAllReady) readyTasks else readyTasks.take(5)
-                    items(
-                        items = visibleReady,
-                        key = { it.id },
-                        contentType = { "import_task" }
-                    ) { item ->
-                        SwipeableTaskCard(
-                            item = item,
-                            bounceOffsetDpProvider = { bounceOffset.value },
-                            onSwipeRight = { viewModel.promoteToProcessing(item.id) },
-                            onSwipeLeft = { triggerDeleteReady(item) },
-                            modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
-                        )
-                    }
-                    if (readyTasks.size > 5) {
-                        item {
-                            MoreItemsButton(
-                                hiddenCount = readyTasks.size - 5,
-                                isExpanded = showAllReady,
-                                onClick = { showAllReady = !showAllReady }
-                            )
-                        }
-                    }
-                }
+            items(items = active, key = { "importing_${it.id}" }, contentType = { "importing_task" }) { item ->
+                ImportingTaskCard(item = item, modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null))
             }
-
-            item { Spacer(modifier = Modifier.height(4.dp)) }
-
-            item(key = "rss_ready_header", contentType = "section_header") {
-                CollapsibleGroupHeader(
-                    title = stringResource(R.string.rss_ready), count = rssReadyTasks.size,
-                    color = MaterialTheme.colorScheme.secondary, isExpanded = isRssReadyExpanded,
-                    onToggle = { isRssReadyExpanded = !isRssReadyExpanded }
-                )
-            }
-            if (isRssReadyExpanded) {
-                if (rssReadyTasks.isEmpty()) {
-                    item(key = "rss_ready_empty", contentType = "empty_section") {
-                        EmptyGroupCard(stringResource(R.string.rss_ready_empty), stringResource(R.string.rss_ready_hint))
-                    }
-                } else {
-                    items(items = if (showAllRssReady) rssReadyTasks else rssReadyTasks.take(5),
-                        key = { it.id }, contentType = { "import_task" }) { item ->
-                        SwipeableTaskCard(item = item, bounceOffsetDpProvider = { bounceOffset.value },
-                            onSwipeRight = { viewModel.promoteToProcessing(item.id) },
-                            onSwipeLeft = { triggerDeleteReady(item) },
-                            modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null))
-                    }
-                    if (rssReadyTasks.size > 5) item(key = "rss_ready_more", contentType = "more_items") {
-                        MoreItemsButton(hiddenCount = rssReadyTasks.size - 5, isExpanded = showAllRssReady,
-                            onClick = { showAllRssReady = !showAllRssReady })
-                    }
-                }
-            }
-
-            item { Spacer(modifier = Modifier.height(4.dp)) }
 
             // ==================== 3. Error Group (defaults to open) ====================
             item {
@@ -990,28 +854,6 @@ private fun TaskCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                if (item.status == TaskStatus.COMPLETED && item.assignedTags.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        item.assignedTags.forEach { tag ->
-                            Surface(
-                                shape = themeCorner(ThemeCorner.SMALL),
-                                color = MaterialTheme.colorScheme.primaryContainer
-                            ) {
-                                Text(
-                                    text = "#$tag",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-
                 if (isError && !item.errorMessage.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -1029,22 +871,13 @@ private fun TaskCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     val statusDisplay = resolveTaskStatusText(item)
-                    if (item.status == TaskStatus.PROCESSING_AI) {
-                        PulsingDot()
-                    } else {
-                        StatusBadgeIcon(status = item.status)
-                    }
+                    Icon(Icons.Default.Error, contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                     Text(
                         text = statusDisplay,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Medium,
-                        color = when (item.status) {
-                            TaskStatus.WAITING_AI -> MaterialTheme.colorScheme.tertiary
-                            TaskStatus.READY -> MaterialTheme.colorScheme.secondary
-                            TaskStatus.COMPLETED -> MaterialTheme.colorScheme.primary
-                            TaskStatus.PROCESSING_AI -> MaterialTheme.colorScheme.onSurfaceVariant
-                            TaskStatus.ERROR -> MaterialTheme.colorScheme.error
-                        }
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
             }
@@ -1153,73 +986,6 @@ private fun ImportingTaskCard(
     }
 }
 
-/**
- * Pulsing dot indicator for PROCESSING_AI status.
- */
-@Composable
-private fun PulsingDot() {
-    val transition = rememberInfiniteTransition(label = "pulse")
-    val alpha by transition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse_alpha"
-    )
-    Box(
-        modifier = Modifier
-            .size(8.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha))
-    )
-}
-
-/**
- * Status icon for badges.
- */
-@Composable
-private fun StatusBadgeIcon(status: TaskStatus) {
-    val (icon, tint) = when (status) {
-        TaskStatus.PROCESSING_AI -> Icons.Default.AutoAwesome to MaterialTheme.colorScheme.primary
-        TaskStatus.WAITING_AI -> Icons.Default.HourglassBottom to MaterialTheme.colorScheme.tertiary
-        TaskStatus.READY -> Icons.Default.AddLink to MaterialTheme.colorScheme.secondary
-        TaskStatus.COMPLETED -> Icons.Default.CheckCircle to MaterialTheme.colorScheme.primary
-        TaskStatus.ERROR -> Icons.Default.Error to MaterialTheme.colorScheme.error
-    }
-    if (status == TaskStatus.WAITING_AI) {
-        val transition = rememberInfiniteTransition(label = "rotate_hourglass")
-        val rotation by transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 180f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "hourglass_rotation"
-        )
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier
-                .size(14.dp)
-                .graphicsLayer(rotationZ = rotation)
-        )
-    } else {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(14.dp)
-        )
-    }
-}
-
-/**
- * Dialog for manual URL importing.
- */
 @Composable
 private fun ImportUrlDialog(
     onDismiss: () -> Unit,

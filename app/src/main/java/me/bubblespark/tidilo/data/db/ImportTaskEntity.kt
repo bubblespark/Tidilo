@@ -38,7 +38,7 @@ data class ImportTaskEntity(
     val rssPublishedAt: Long? = null,
     val ogImageKey: String? = bookmarkOgImageKey(url, ogImageUrl),
     @androidx.room.ColumnInfo(defaultValue = "0") val articlePrepared: Boolean = false,
-    @androidx.room.ColumnInfo(defaultValue = "'AI'") val intendedMode: String = "AI",
+    @androidx.room.ColumnInfo(defaultValue = "'AI'") val intendedMode: String = "DIRECT",
     val rssItemKey: String? = null,
     @androidx.room.ColumnInfo(defaultValue = "0") val acquisitionAttempts: Int = 0,
     @androidx.room.ColumnInfo(defaultValue = "0") val acquisitionRetryAt: Long = 0,
@@ -47,12 +47,7 @@ data class ImportTaskEntity(
     @androidx.room.ColumnInfo(defaultValue = "0") val standardClassificationEvaluated: Boolean = false
 ) {
     fun toImportTask(): ImportTask {
-        val taskStatus = runCatching {
-            when (status) {
-                "QUEUED" -> TaskStatus.READY
-                else -> TaskStatus.valueOf(status)
-            }
-        }.getOrDefault(TaskStatus.READY)
+        val taskStatus = runCatching { TaskStatus.valueOf(status) }.getOrDefault(TaskStatus.QUEUED)
 
         return ImportTask(
             id = id,

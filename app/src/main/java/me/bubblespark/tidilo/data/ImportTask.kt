@@ -7,11 +7,9 @@ import java.util.UUID
  * Lifecycle status of an import task.
  */
 enum class TaskStatus {
-    PROCESSING_AI, // Active inference running on Gemini Nano
-    WAITING_AI,    // Waiting for AICore execution slot in processing group
-    READY,         // Ready after share or import, awaiting analysis
-    COMPLETED,     // Finished analysis and saved to bookmarks
-    ERROR          // Failed due to rate limit, non-200 HTTP response, or inference failure
+    QUEUED,
+    PROCESSING,
+    ERROR
 }
 
 /**
@@ -46,7 +44,7 @@ data class ImportTask(
     val rssFeedId: String? = null,
     val rssPublishedAt: Long? = null,
     val articlePrepared: Boolean = false,
-    val intendedMode: String = "AI",
+    val intendedMode: String = "DIRECT",
     val rssItemKey: String? = null,
     val acquisitionAttempts: Int = 0,
     val acquisitionRetryAt: Long = 0,

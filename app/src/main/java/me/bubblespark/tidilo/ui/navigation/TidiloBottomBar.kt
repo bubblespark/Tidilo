@@ -40,11 +40,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.FolderSpecial
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -72,9 +69,6 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
-import me.bubblespark.tidilo.data.AiProcessingProgress
-import me.bubblespark.tidilo.ui.components.AiProcessingIndicatorButton
-import me.bubblespark.tidilo.ui.components.AiProcessingSpeechBubble
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
 import me.bubblespark.tidilo.ui.components.TidiloSurface
 import me.bubblespark.tidilo.ui.components.TidiloPrimaryActionSurface
@@ -97,19 +91,11 @@ import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 fun TidiloBottomBar(
     navController: NavController,
     isBarsVisible: Boolean = true,
-    readyCount: Int = 0,
     isFilterMenuExpanded: Boolean = false,
     onToggleFilterMenu: () -> Unit = {},
     currentFilterMode: LibraryFilterMode = LibraryFilterMode.NEWEST_FIRST,
     onSelectFilterMode: (LibraryFilterMode) -> Unit = {},
     onSearchAction: () -> Unit = {},
-    onAiAnalysisAll: () -> Unit = {},
-    aiProcessingProgress: AiProcessingProgress = AiProcessingProgress(),
-    isSpeechBubbleVisible: Boolean = false,
-    onToggleSpeechBubble: () -> Unit = {},
-    onDismissSpeechBubble: () -> Unit = {},
-    onNavigateToImport: () -> Unit = {},
-    onCancelProcessing: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -128,8 +114,7 @@ fun TidiloBottomBar(
     val barHeight = 68.dp
     val isActionButtonVisible = currentRoute in listOf(
         Screen.Library.route,
-        Screen.Search.route,
-        Screen.Import.route
+        Screen.Search.route
     )
 
     // M3 Expressive: contracted size is 56dp (icon 28dp); expanded/hidden size is 86dp (icon 40dp)
@@ -280,35 +265,12 @@ fun TidiloBottomBar(
                                     val iconVector = if (isSelected) screen.selectedIcon else screen.unselectedIcon
                                     val iconColor = if (isSelected) activeContentColor else inactiveTextColor
 
-                                    if (screen == Screen.Import && readyCount > 0) {
-                                        BadgedBox(
-                                            badge = {
-                                                Badge(
-                                                    containerColor = MaterialTheme.colorScheme.error,
-                                                    contentColor = MaterialTheme.colorScheme.onError
-                                                 ) {
-                                                    Text(
-                                                        text = if (readyCount > 99) "99+" else readyCount.toString(),
-                                                        style = MaterialTheme.typography.labelSmall
-                                                    )
-                                                }
-                                            }
-                                        ) {
-                                            Icon(
-                                                imageVector = iconVector,
-                                                contentDescription = stringResource(screen.titleRes),
-                                                modifier = Modifier.size(tabIconSize),
-                                                tint = iconColor
-                                            )
-                                        }
-                                    } else {
-                                        Icon(
-                                            imageVector = iconVector,
-                                            contentDescription = stringResource(screen.titleRes),
-                                            modifier = Modifier.size(tabIconSize),
-                                            tint = iconColor
-                                        )
-                                    }
+                                    Icon(
+                                        imageVector = iconVector,
+                                        contentDescription = stringResource(screen.titleRes),
+                                        modifier = Modifier.size(tabIconSize),
+                                        tint = iconColor
+                                    )
 
                                     // Display label only for selected item (10% smaller: 12sp * 0.9 = 10.8sp -> 10sp truncated)
                                     AnimatedVisibility(
@@ -349,56 +311,7 @@ fun TidiloBottomBar(
             }
         }
 
-        // 2. AI Processing indicator button positioned symmetrically at the left offset
-        AnimatedVisibility(
-            visible = aiProcessingProgress.isProcessing,
-            enter = scaleIn(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
-            exit = scaleOut(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset { IntOffset(x = -actionButtonOffsetX.value.roundToPx(), y = 0) }
-        ) {
-            Box(
-                modifier = Modifier.requiredSize(buttonSize),
-                contentAlignment = Alignment.Center
-            ) {
-                // Elevated speech bubble floating above the left button
-                AnimatedVisibility(
-                    visible = isSpeechBubbleVisible,
-                    enter = fadeIn(animationSpec = tween(180)) + slideInVertically(
-                        initialOffsetY = { it / 3 },
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-                    ),
-                    exit = fadeOut(animationSpec = tween(120)) + slideOutVertically(
-                        targetOffsetY = { it / 3 },
-                        animationSpec = tween(120)
-                    ),
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .offset(y = -(buttonSize + 14.dp))
-                        .wrapContentSize(align = Alignment.BottomStart, unbounded = true)
-                ) {
-                    AiProcessingSpeechBubble(
-                        progress = aiProcessingProgress,
-                        buttonSize = buttonSize,
-                        onNavigateToImport = onNavigateToImport,
-                        onDismiss = onDismissSpeechBubble,
-                        onCancelProcessing = onCancelProcessing
-                    )
-                }
-
-                // Rainbow glowing button
-                AiProcessingIndicatorButton(
-                    progress = aiProcessingProgress,
-                    buttonSize = buttonSize,
-                    iconSize = iconSize,
-                    buttonElevation = buttonElevation,
-                    onClick = onToggleSpeechBubble
-                )
-            }
-        }
-
-        // 3. Action button and FAB menu positioned at the right offset
+        // Action button and FAB menu positioned at the right offset
         // Palette requirement: matches active tab selection (primaryContainer / onPrimaryContainer)
         AnimatedVisibility(
             visible = isActionButtonVisible,
@@ -607,7 +520,6 @@ fun TidiloBottomBar(
                                 when (currentRoute) {
                                     Screen.Library.route -> onToggleFilterMenu()
                                     Screen.Search.route -> onSearchAction()
-                                    Screen.Import.route -> onAiAnalysisAll()
                                 }
                             },
                         contentAlignment = Alignment.Center
@@ -646,14 +558,6 @@ fun TidiloBottomBar(
                                     Icon(
                                         imageVector = Icons.Default.Search,
                                         contentDescription = stringResource(R.string.bottom_bar_search),
-                                        tint = iconColor,
-                                        modifier = Modifier.size(iconSize)
-                                    )
-                                }
-                                Screen.Import.route -> {
-                                    Icon(
-                                        imageVector = Icons.Default.AutoAwesome,
-                                        contentDescription = stringResource(R.string.bottom_bar_ai_analysis_all),
                                         tint = iconColor,
                                         modifier = Modifier.size(iconSize)
                                     )

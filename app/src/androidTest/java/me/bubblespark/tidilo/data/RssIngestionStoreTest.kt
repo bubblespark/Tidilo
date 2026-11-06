@@ -76,7 +76,7 @@ class RssIngestionStoreTest {
         try {
             val feed = RssFeedEntity("feed", "https://example.com/feed", "Feed", mode = "AI")
             db.rssDao().putFeed(feed)
-            val store = RssIngestionStore(db) { mode }
+            val store = RssIngestionStore(db)
             assertTrue(store.stage(feed, listOf(RssEntry("key", "https://example.com/post", "Post", "", "", null, null,
                 listOf("Kotlin"))), 100))
             val task = db.importTaskDao().getAllTasks().single()

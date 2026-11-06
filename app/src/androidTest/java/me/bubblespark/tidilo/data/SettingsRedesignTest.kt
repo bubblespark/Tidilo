@@ -84,9 +84,7 @@ class SettingsRedesignTest {
                                         if (page == "settings") SettingsScreen({}, {}, onNavigateToDebug = { finalClicks++ })
                                         else AiAnalysisContent(
                                             mode = if (page == "ai") AiAnalysisMode.AICORE else AiAnalysisMode.DISABLE,
-                                            fallback = AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, autoRun = false,
                                             available = page == "ai", onNavigateBack = {}, onModeChange = {},
-                                            onFallbackChange = {}, onAutoRunChange = {},
                                             onNavigateToParameters = {}, onNavigateToSafety = { finalClicks++ })
                                     } }
                                 }

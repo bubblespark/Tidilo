@@ -55,7 +55,7 @@ class RssIngestionTest {
             assertEquals(10, db.rssDao().savedCount(feed.id))
         } finally { db.close() }
     }
-    @Test fun disablingSkipsAcquisitionAndStaleIngestionButKeepsPendingTasks() = runBlocking {
+    @Test fun disablingSkipsAcquisitionAndStaleIngestionButKeepsSavedBookmarks() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
         try {
             val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", mode = "AI")
@@ -67,66 +67,21 @@ class RssIngestionTest {
             assertEquals(1, db.rssDao().activeFeeds().size)
             assertFalse(ingestPreparedFixture(db, feed, listOf(entry(2)), 200))
             assertFalse(ingestPreparedFixture(db, feed.copy(enabled = false, revision = 1), listOf(entry(2)), 200))
-            assertEquals(1, db.rssDao().pending(feed.id).size)
+            assertEquals(1, db.rssDao().savedCount(feed.id))
             assertFalse(db.rssDao().hasSeen(feed.id, entry(2).key, entry(2).url))
             val resumed = feed.copy(revision = 2)
             db.rssDao().putFeed(resumed)
             assertEquals(1, db.rssDao().enabledFeeds().size)
             assertTrue(ingestPreparedFixture(db, resumed, listOf(entry(2)), 300))
-            assertEquals(2, db.rssDao().pending(feed.id).size)
+            assertEquals(2, db.rssDao().savedCount(feed.id))
         } finally { db.close() }
     }
-    @Test fun wifiConstraintRequiresWifiTransportAndUndoReconcilesFiveTasks() = runBlocking {
+    @Test fun wifiConstraintRequiresWifiTransport() = runBlocking {
         val wifiRequest = me.bubblespark.tidilo.data.rss.RssScheduler.constraints(true).requiredNetworkRequest
         assertNotNull(wifiRequest)
         assertTrue(wifiRequest!!.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI))
         assertTrue(wifiRequest.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED))
         assertNull(me.bubblespark.tidilo.data.rss.RssScheduler.constraints(false).requiredNetworkRequest)
-        val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
-        try {
-            val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", mode = "AI")
-            db.rssDao().putFeed(feed)
-            val store = RssIngestionStore(db)
-            ingestPreparedFixture(db, feed, (1..5).map(::entry), 100)
-            val old = db.rssDao().pending(feed.id).minBy { it.rssPublishedAt!! }
-            db.importTaskDao().deleteById(old.id)
-            ingestPreparedFixture(db, feed, listOf(entry(6)), 200)
-            store.restoreTask(old)
-            assertEquals(5, db.rssDao().pending(feed.id).size)
-            assertNull(db.importTaskDao().getTaskById(old.id))
-            db.rssDao().putFeed(feed.copy(deleted = true, revision = 1))
-            store.restoreTask(old)
-            assertNull(db.importTaskDao().getTaskById(old.id))
-        } finally { db.close() }
-    }
-    @Test fun claimingDoesNotRunDiscardedOrRemovedFeedWork() = runBlocking {
-        val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
-        try {
-            val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", mode = "AI")
-            db.rssDao().putFeed(feed)
-            val task = me.bubblespark.tidilo.data.db.ImportTaskEntity("task", entry(1).url, "Title", "WAITING_AI", "", createdAt = 1, rssFeedId = feed.id, articlePrepared = true)
-            val tasks = db.importTaskDao()
-            tasks.insertOrUpdate(task)
-            assertEquals(1, tasks.claimForAi(task.id, "Running"))
-            assertEquals("PROCESSING_AI", tasks.getTaskById(task.id)?.status)
-            db.rssDao().putFeed(feed.copy(mode = "DIRECT"))
-            assertEquals(1, tasks.claimForAi(task.id, "Resume running"))
-            tasks.rejectUnavailableRss()
-            assertEquals("PROCESSING_AI", tasks.getTaskById(task.id)?.status)
-            tasks.updateStatus(task.id, "WAITING_AI", "")
-            assertEquals(0, tasks.claimForAi(task.id, "Discarded"))
-            tasks.rejectUnavailableRss()
-            assertEquals("ERROR", tasks.getTaskById(task.id)?.status)
-            tasks.updateStatus(task.id, "WAITING_AI", "Retry removed subscription")
-            db.rssDao().putFeed(feed.copy(deleted = true))
-            assertEquals(0, tasks.claimForAi(task.id, "Removed"))
-            tasks.rejectUnavailableRss()
-            assertEquals("ERROR", tasks.getTaskById(task.id)?.status)
-            tasks.deleteById(task.id)
-            assertEquals(0, tasks.claimForAi(task.id, "Deleted"))
-            tasks.insertOrUpdate(task.copy(id = "manual", rssFeedId = null))
-            assertEquals(1, tasks.claimForAi("manual", "Manual"))
-        } finally { db.close() }
     }
 
     @Test fun failedRetentionRollsBackReceiptsAndContent() = runBlocking {
@@ -183,26 +138,19 @@ class RssIngestionTest {
             assertEquals(9, db.bookmarkDao().getCount())
         } finally { db.close() }
     }
-    @Test fun concurrentFetchesKeepFiveAndDoNotOverwriteManualBookmarks() = runBlocking {
+    @Test fun concurrentFetchesSaveOnceAndDoNotOverwriteManualBookmarks() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
         try {
-            val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", mode = "AI")
+            val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed")
             db.rssDao().putFeed(feed)
             db.bookmarkDao().insertOrUpdate(BookmarkEntity("manual", "User title", entry(20).url, "Note", createdAt = 1, updatedAt = 1))
-            val store = RssIngestionStore(db)
             coroutineScope { List(3) { async { ingestPreparedFixture(db, feed, (1..20).map(::entry), 100) } }.awaitAll() }
-            assertEquals(5, db.rssDao().pending(feed.id).size)
-            assertEquals(setOf(15L, 16L, 17L, 18L, 19L), db.rssDao().pending(feed.id).map { it.rssPublishedAt }.toSet())
+            assertEquals(19, db.rssDao().savedCount(feed.id))
             assertEquals("User title", db.bookmarkDao().getBookmarkByUrl(entry(20).url)!!.title)
-            val pending = db.rssDao().pending(feed.id).first()
-            db.importTaskDao().updateStatus(pending.id, "WAITING_AI", "Waiting")
-            ingestPreparedFixture(db, feed, (21..23).map(::entry), 200)
-            assertEquals(5, db.rssDao().pending(feed.id).size)
-            db.rssDao().putFeed(feed.copy(deleted = true, revision = 1))
-            assertFalse(ingestPreparedFixture(db, feed, listOf(entry(24)), 300))
-            assertEquals(5, db.rssDao().pending(feed.id).size)
+            assertEquals(0, db.importTaskDao().getCount())
         } finally { db.close() }
     }
+
     @Test fun librarySourceScopesDoNotNarrowCombinedSearchOrTagCounts() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
         try {
@@ -220,7 +168,7 @@ class RssIngestionTest {
     /** Exercises the store with explicitly prepared fixture content, rather than treating XML as HTML. */
     private suspend fun ingestPreparedFixture(db: AppDatabase, feed: RssFeedEntity,
         entries: List<RssEntry>, now: Long): Boolean = db.withTransaction {
-        val store = RssIngestionStore(db) { me.bubblespark.tidilo.config.AiAnalysisMode.AICORE }
+        val store = RssIngestionStore(db)
         if (!store.stage(feed, entries, now)) return@withTransaction false
         for (task in db.importTaskDao().getAllTasks().filter { it.rssFeedId == feed.id && !it.articlePrepared }) {
             val entry = entries.firstOrNull { it.url == task.url } ?: continue

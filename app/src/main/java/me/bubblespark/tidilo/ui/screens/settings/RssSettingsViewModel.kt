@@ -29,7 +29,7 @@ import me.bubblespark.tidilo.data.rss.RssRegistrationSnapshot
 import me.bubblespark.tidilo.data.rss.RssRegistrationConfirmationRequired
 
 internal data class RssRegistrationRequest(
-    val original: RssFeedEntity?, val url: String, val mode: String, val limit: Int?, val convert: Boolean,
+    val original: RssFeedEntity?, val url: String, val limit: Int?,
     val snapshot: RssRegistrationSnapshot
 )
 
@@ -122,22 +122,22 @@ class RssSettingsViewModel(
         RssScheduler.reschedule(getApplication())
     }
 
-    fun saveFeed(original: RssFeedEntity?, url: String, mode: String, limit: Int?, convert: Boolean) =
-        saveFeed(original, url, mode, limit, convert, null)
+    fun saveFeed(original: RssFeedEntity?, url: String, limit: Int?) =
+        saveFeed(original, url, limit, null)
 
-    private fun saveFeed(original: RssFeedEntity?, url: String, mode: String, limit: Int?, convert: Boolean,
+    private fun saveFeed(original: RssFeedEntity?, url: String, limit: Int?,
         confirmed: RssRegistrationSnapshot?) = action {
         try {
-            if (original == null) offerInitialFetch(repository.register(url, mode, limit, confirmed))
-            else if (original.url == url.trim()) repository.edit(original.id, mode, limit, convert)
+            if (original == null) offerInitialFetch(repository.register(url, limit, confirmed))
+            else if (original.url == url.trim()) repository.edit(original.id, limit)
             else {
                 // Validate/create the replacement first; an invalid new URL leaves the old feed intact.
-                val id = repository.register(url, mode, limit, confirmed)
+                val id = repository.register(url, limit, confirmed)
                 repository.delete(original.id)
                 offerInitialFetch(id)
             }
         } catch (required: RssRegistrationConfirmationRequired) {
-            _registration.value = RssRegistrationRequest(original, url, mode, limit, convert, required.snapshot)
+            _registration.value = RssRegistrationRequest(original, url, limit, required.snapshot)
         }
     }
 
@@ -146,7 +146,7 @@ class RssSettingsViewModel(
         val request = _registration.value ?: return
         if (_busy.value) return
         _registration.value = null
-        saveFeed(request.original, request.url, request.mode, request.limit, request.convert, request.snapshot)
+        saveFeed(request.original, request.url, request.limit, request.snapshot)
     }
 
     private fun offerInitialFetch(id: String) {

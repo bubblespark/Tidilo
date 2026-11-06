@@ -24,7 +24,7 @@ class RssSourceMappingTest {
         assertEquals(trash, trashRow.toTrashedBookmarkItem())
     }
     @Test fun importTaskRoundTripPreservesFeedOwnershipAndPublication() {
-        val task = ImportTask(url = "https://example.com/post", title = "Post", status = TaskStatus.READY,
+        val task = ImportTask(url = "https://example.com/post", title = "Post", status = TaskStatus.QUEUED,
             statusText = "Ready", rssFeedId = "feed", rssPublishedAt = 42)
         val row = ImportTaskEntity.fromImportTask(task)
         assertEquals("feed", row.rssFeedId)

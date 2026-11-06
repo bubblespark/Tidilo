@@ -36,28 +36,48 @@ import org.junit.Before
 import org.junit.Test
 
 class ImportDuplicateRoomTest {
+    @Test fun queuedRssPromotionUsesExistingBookmarkWithoutFetching() = runBlocking {
+        val job = kotlinx.coroutines.SupervisorJob()
+        val original = BookmarkEntity("saved", "Saved RSS", "https://example.com/saved", "Description",
+            note = "User note", createdAt = 7, updatedAt = 9, isAiSkipped = true, rssFeedId = "feed")
+        database.bookmarkDao().insertOrUpdate(original)
+        val task = ImportTaskEntity("pending", original.url, original.title, "QUEUED", "", createdAt = 7)
+        database.importTaskDao().insertOrUpdate(task)
+        try {
+            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = { throw java.io.IOException("Offline") })
+            repository.onAppBecameActive()
+            withTimeout(5000) {
+                while (database.importTaskDao().getTaskById(task.id)?.status in listOf("QUEUED", "PROCESSING")) delay(10)
+            }
+            assertEquals(original.copy(rssFeedId = null), database.bookmarkDao().getBookmarkById(original.id))
+            assertNull(database.importTaskDao().getTaskById(task.id))
+        } finally { job.cancel(); job.join() }
+    }
+
     @Test fun disabledRssSkipRemovesTaskOnlyAfterNestedTransactionRollsBack() = runBlocking {
         val job = kotlinx.coroutines.SupervisorJob()
-        val feed = me.bubblespark.tidilo.data.db.RssFeedEntity("skip-feed", "https://example.com/feed", "Feed", mode = "AI")
+        val feed = me.bubblespark.tidilo.data.db.RssFeedEntity("skip-feed", "https://example.com/feed", "Feed", enabled = false)
         database.rssDao().putFeed(feed)
         val task = ImportTask(id = "skip-task", url = "https://example.com/skipped-rss", title = "RSS",
-            rssFeedId = feed.id, articlePrepared = true, status = TaskStatus.READY, statusText = "Ready")
+            rssFeedId = feed.id, articlePrepared = true, status = TaskStatus.QUEUED, statusText = "Ready")
         database.importTaskDao().insertOrUpdate(ImportTaskEntity.fromImportTask(task))
         var attempted = false
         try {
             val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
-                database = database, repositoryScope = CoroutineScope(coroutineContext + job), isAppInForeground = { true },
-                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
-                openModel = { error("Disabled RSS must not initialize AICore") }, persistFallback = { bookmark ->
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
+
+                persistFallback = { bookmark ->
                     attempted = true
                     database.withTransaction {
                         database.bookmarkDao().insertOrUpdate(BookmarkEntity.fromBookmarkItem(bookmark))
                         throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
                     }
                 })
-            repository.promoteTaskToProcessing(task.id)
+            repository.onAppBecameActive()
             withTimeout(5000) {
-                while (!attempted || database.importTaskDao().getTaskById(task.id)?.status in listOf("READY", "WAITING_AI", "PROCESSING_AI")) delay(10)
+                while (!attempted || database.importTaskDao().getTaskById(task.id)?.status in listOf("QUEUED", "QUEUED", "PROCESSING")) delay(10)
             }
             assertNull(database.importTaskDao().getTaskById(task.id))
             assertNull(database.bookmarkDao().getBookmarkByUrl(task.url))
@@ -77,7 +97,8 @@ class ImportDuplicateRoomTest {
             val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
                 database = database, repositoryScope = CoroutineScope(coroutineContext + job),
                 articleAcquirer = { error("Completed promotion must not acquire HTML") },
-                openModel = { error("Completed promotion must not initialize AICore") })
+
+                )
             repository.onEnteringFinalization = { finished.complete(Unit) }
             repository.importUrl(original.url) {
                 callbackInTransaction = database.inTransaction()
@@ -98,12 +119,11 @@ class ImportDuplicateRoomTest {
         val url = "https://example.com/promoted-direct"
         database.importTaskDao().insertOrUpdate(ImportTaskEntity.fromImportTask(ImportTask(id = "promoted",
             url = url, title = "Prepared", description = "Description", articlePrepared = true,
-            rssFeedId = "feed", status = TaskStatus.READY, statusText = "Ready",
+            rssFeedId = "feed", status = TaskStatus.QUEUED, statusText = "Ready",
             standardCategory = "Reference", standardClassificationEvaluated = true)))
         try {
             val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
                 database = database, repositoryScope = CoroutineScope(coroutineContext + job),
-                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
                 persistFallback = { bookmark -> database.withTransaction { database.bookmarkDao().insertOrUpdate(BookmarkEntity.fromBookmarkItem(bookmark)) } })
             repository.onEnteringFinalization = { finished.complete(Unit) }
             repository.importUrl(url) { outcome.complete(it.isSuccess && !database.inTransaction()) }
@@ -122,16 +142,16 @@ class ImportDuplicateRoomTest {
         val attempted = CompletableDeferred<Unit>()
         database.importTaskDao().insertOrUpdate(ImportTaskEntity.fromImportTask(ImportTask(id = "ready-failure",
             url = "https://example.com/ready-failure", title = "Prepared", articlePrepared = true,
-            status = TaskStatus.READY, statusText = "Ready")))
+            status = TaskStatus.QUEUED, statusText = "Ready")))
         try {
             val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
-                database = database, repositoryScope = CoroutineScope(coroutineContext + job), isAppInForeground = { true },
-                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
-                openModel = { error("AICore must not open") }, persistFallback = {
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
+
+                persistFallback = {
                     attempted.complete(Unit)
                     database.withTransaction { throw android.database.sqlite.SQLiteFullException("Simulated disk full") }
                 })
-            repository.promoteTaskToProcessing("ready-failure")
+            repository.onAppBecameActive()
             withTimeout(5000) { attempted.await() }
             withTimeout(2000) { while (database.importTaskDao().getTaskById("ready-failure")?.status != "ERROR") delay(10) }
             assertEquals("Save failed", database.importTaskDao().getTaskById("ready-failure")!!.statusText)
@@ -145,7 +165,6 @@ class ImportDuplicateRoomTest {
         try {
             val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
                 database = database, repositoryScope = CoroutineScope(coroutineContext + job),
-                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
                 articleAcquirer = { createFakeParsedPage(it) }, persistFallback = {
                     database.withTransaction { throw android.database.sqlite.SQLiteFullException("Simulated disk full") }
                 })
@@ -225,7 +244,13 @@ class ImportDuplicateRoomTest {
         override fun observeCollectionCounts(): Flow<me.bubblespark.tidilo.data.CollectionCounts> = delegate.observeCollectionCounts()
         override fun observeCount(query: SupportSQLiteQuery): Flow<Int> = delegate.observeCount(query)
         override suspend fun getBookmarkById(id: String): BookmarkEntity? = delegate.getBookmarkById(id)
-        override suspend fun clearRssFeedId(id: String) = delegate.clearRssFeedId(id)
+        var beforePromotion: (suspend () -> Unit)? = null
+        var afterPromotion: (() -> Unit)? = null
+        override suspend fun clearRssFeedId(id: String) {
+            beforePromotion?.invoke()
+            delegate.clearRssFeedId(id)
+            afterPromotion?.invoke()
+        }
         override suspend fun insertRow(bookmark: BookmarkEntity) = error("Unused primitive")
         override suspend fun insertRows(bookmarks: List<BookmarkEntity>) = error("Unused primitive")
         override suspend fun insertOccurrences(rows: List<BookmarkEntityOccurrence>) = error("Unused primitive")
@@ -252,7 +277,7 @@ class ImportDuplicateRoomTest {
     }
 
     @Test
-    fun testConvergingUrls_RoomBackedTransaction_OnlyOneTaskEnqueued() = runBlocking {
+    fun convergingUrlsPromoteRssBookmarkExactlyOnce() = runBlocking {
         val rssCanonicalUrl = "https://example.com/rss-article"
         val redirectUrl = "https://short.link/rss-redirect"
 
@@ -273,52 +298,34 @@ class ImportDuplicateRoomTest {
         val allowRedirectGate = CompletableDeferred<Unit>()
         val redirectReachedTransactionBoundary = CompletableDeferred<Unit>()
         val redirectReachedDaoLookup = CompletableDeferred<Unit>()
-        var directTaskInserted = false
+        var promotionApplied = false
         val directImportFinished = CompletableDeferred<Result<ImportOutcome>>()
         val redirectImportFinished = CompletableDeferred<Result<ImportOutcome>>()
 
-        val hookableTaskDao = HookableImportTaskDao(database.importTaskDao())
         val hookableBookmarkDao = HookableBookmarkDao(database.bookmarkDao())
 
         // Hook bookmarkDao lookup: called when redirect enters checkDuplicate inside runInDbOrLock
         hookableBookmarkDao.onGetBookmarkByUrl = { url ->
             if (url == rssCanonicalUrl && redirectReachedTransactionBoundary.isCompleted) {
-                assertTrue("Redirect reached DAO lookup before direct promotion was committed!", directTaskInserted)
+                assertTrue("Redirect reached DAO lookup before direct promotion was committed!", promotionApplied)
                 redirectReachedDaoLookup.complete(Unit)
             }
         }
 
-        // Gate direct RSS promotion task insertion:
-        // Direct import holds active Room database.withTransaction.
-        // It releases the redirect import, confirms redirect reaches transaction boundary,
-        // proves redirect is blocked from DAO lookup by the active transaction,
-        // and only then commits the direct task.
-        hookableTaskDao.onBeforeInsert = { task ->
-            if (task.url == rssCanonicalUrl) {
-                allowRedirectGate.complete(Unit)
-                withTimeout(5000) {
-                    redirectReachedTransactionBoundary.await()
-                }
-                // Yield to allow redirect coroutine to attempt acquiring database.withTransaction
-                yield()
-                // Prove competing check is blocked by active Room transaction
-                assertFalse("Competing check bypassed active Room transaction!", redirectReachedDaoLookup.isCompleted)
-            }
+        hookableBookmarkDao.beforePromotion = {
+            allowRedirectGate.complete(Unit)
+            withTimeout(5000) { redirectReachedTransactionBoundary.await() }
+            yield()
+            assertFalse("Competing check bypassed active Room transaction!", redirectReachedDaoLookup.isCompleted)
         }
-
-        hookableTaskDao.onAfterInsert = { task ->
-            if (task.url == rssCanonicalUrl) {
-                directTaskInserted = true
-            }
-        }
+        hookableBookmarkDao.afterPromotion = { promotionApplied = true }
 
         val repository = ImportRepository(
             context = context,
             database = database,
-            taskDao = hookableTaskDao,
+            taskDao = database.importTaskDao(),
             bookmarkDao = hookableBookmarkDao,
             notificationDao = database.importNotificationDao(),
-            aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.AICORE },
             repositoryScope = CoroutineScope(Dispatchers.IO),
             articleAcquirer = { url ->
                 if (url == redirectUrl) {
@@ -351,7 +358,6 @@ class ImportDuplicateRoomTest {
 
         // 2. Start direct canonical URL import:
         //    Evaluates unanalyzed RSS bookmark and enters atomic Room withTransaction promotion block.
-        //    hookableTaskDao.onBeforeInsert performs handshake confirming redirect is blocked.
         val directCallResult = repository.importUrl(rssCanonicalUrl) {
             directImportFinished.complete(it)
         }
@@ -372,16 +378,12 @@ class ImportDuplicateRoomTest {
         }
         assertTrue(redirectResult.isFailure)
 
-        // 4. Verify only one task enqueued in Room database
-        assertEquals(1, database.importTaskDao().getCount())
-        val task = database.importTaskDao().getTaskByUrl(rssCanonicalUrl)
-        assertNotNull(task)
-        assertEquals("READY", task?.status)
+        assertEquals(0, database.importTaskDao().getCount())
+        assertEquals(existing.copy(rssFeedId = null), database.bookmarkDao().getBookmarkByUrl(rssCanonicalUrl))
 
-        // 5. Verify redirect import was rejected as duplicate in queue
         val notifications = withTimeout(5000) {
             database.importNotificationDao().observeNotifications().first()
         }
-        assertTrue(notifications.any { it.message == "Duplicate URL (Already in Queue)" })
+        assertTrue(notifications.any { it.message == "Duplicate URL (Already in Library)" })
     }
 }

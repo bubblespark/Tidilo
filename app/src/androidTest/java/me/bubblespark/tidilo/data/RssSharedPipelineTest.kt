@@ -85,7 +85,7 @@ class RssSharedPipelineTest {
         } finally { db.close() }
     }
 
-    @Test fun notificationSummarySeparatesDirectFromThisRunsAiReadyAdmissions() = runBlocking {
+    @Test fun rssSavesAllArticlesDirectlyEvenForLegacyAiFeed() = runBlocking {
         val db = database()
         try {
             for (mode in listOf("DIRECT", "AI")) db.rssDao().putFeed(
@@ -98,11 +98,11 @@ class RssSharedPipelineTest {
                 ArticleResponse(request, if (request.startsWith(url)) 200 else 404, html.toByteArray(), "text/html")
             })
             assertTrue(repo.fetchAll(1, notificationRunId = "run"))
-            assertEquals(2, events.items("run").count { it.outcome == "DIRECT" })
-            assertEquals(2, events.items("run").count { it.outcome == "AI" })
+            assertEquals(4, events.items("run").count { it.outcome == "DIRECT" })
+            assertEquals(0, db.importTaskDao().getCount())
             events.finish("run")
-            assertEquals(2, events.unpublishedRuns().single().pendingAi)
-            assertEquals(2, db.bookmarkDao().getCount())
+            assertEquals(0, events.unpublishedRuns().single().pendingAi)
+            assertEquals(4, db.bookmarkDao().getCount())
         } finally { db.close() }
     }
     @Test fun registrationAndFetchPersistMetadataAndNotModifiedPreservesIt() = runBlocking {
@@ -117,7 +117,7 @@ class RssSharedPipelineTest {
             assertTrue(it.moveToFirst()); it.getString(0) to it.getString(1)
         }
         try {
-            repo.register("https://feed.example/feed", "DIRECT", 30)
+            repo.register("https://feed.example/feed", 30)
             assertEquals("https://images.example/icon.png" to "https://publisher.example/", saved())
             metadata = "<image><url>https://images.example/new.png</url></image><link>https://new.example/</link>"
             repo.fetchAll(1)
@@ -156,7 +156,7 @@ class RssSharedPipelineTest {
                 assertEquals("ERROR", waiting.status)
                 assertEquals("Waiting for an allowed network", waiting.statusText)
                 assertEquals(0, waiting.acquisitionAttempts)
-                assertEquals(mode, waiting.intendedMode)
+                assertEquals("DIRECT", waiting.intendedMode)
                 assertTrue(db.rssDao().feed(feed.id)!!.enabled)
                 assertFalse(db.rssDao().hasSeen(feed.id, "key", task.url))
             }
@@ -185,44 +185,6 @@ class RssSharedPipelineTest {
             assertEquals(1, relatedRequests)
             assertNotNull(db.bookmarkDao().getBookmarkByUrl(taskUrl))
             assertFalse(db.rssDao().feed(feed.id)!!.enabled)
-        } finally { db.close() }
-    }
-
-    @Test fun completionHonorsPromotionAndCancellationDuringAcquisition() = runBlocking {
-        val db = database()
-        try {
-            val feed = RssFeedEntity("feed", "https://fixture-feed.example/feed", "Feed", mode = "AI")
-            db.rssDao().putFeed(feed)
-            val store = RssIngestionStore(db)
-            store.stage(feed, RssFeedParser.parse(xml(2), feed.url).entries, 1)
-            val tasks = db.importTaskDao().getAllTasks().sortedBy { it.url }
-            fun prepared(task: me.bubblespark.tidilo.data.db.ImportTaskEntity) =
-                PreparedArticle(task.url, "HTML title", "Publisher", "Description", "Body", null, false)
-            db.importTaskDao().updateStatus(tasks[0].id, "WAITING_AI", "Explicitly promoted")
-            store.complete(feed, tasks[0], prepared(tasks[0]))
-            assertEquals("WAITING_AI", db.importTaskDao().getTaskById(tasks[0].id)!!.status)
-            db.importTaskDao().updateStatus(tasks[1].id, "READY", "Canceled while preparing")
-            store.complete(feed, tasks[1], prepared(tasks[1]), promote = true)
-            assertEquals("READY", db.importTaskDao().getTaskById(tasks[1].id)!!.status)
-        } finally { db.close() }
-    }
-
-    @Test fun convertingPreparedAiTasksSavesDirectWithoutFetchingOrImmediateRetention() = runBlocking {
-        val db = database()
-        try {
-            val feed = RssFeedEntity("feed", "https://fixture-feed.example/feed", "Feed", mode = "AI", retentionLimit = 30)
-            db.rssDao().putFeed(feed)
-            repeat(20) { db.bookmarkDao().insertOrUpdate(BookmarkEntity("saved$it", "Keep", "https://fixture-feed.example/saved/$it",
-                "", createdAt = it.toLong(), updatedAt = 1, rssFeedId = feed.id)) }
-            db.importTaskDao().insertOrUpdate(me.bubblespark.tidilo.data.db.ImportTaskEntity("prepared", url,
-                "HTML title", "READY", "Ready", createdAt = 30, rssFeedId = feed.id, articlePrepared = true,
-                description = "HTML description", bodySnippet = "Actual HTML body"))
-            val repo = repository(db, { _, _, _ -> error("Conversion must not fetch XML") }, network { error("Prepared conversion must not fetch HTML") })
-            repo.edit(feed.id, "DIRECT", 10, true)
-            assertEquals(21, db.bookmarkDao().getCount())
-            assertTrue(db.bookmarkDao().getBookmarkByUrl(url)!!.isAiSkipped)
-            assertEquals("HTML description", db.bookmarkDao().getBookmarkByUrl(url)!!.description)
-            assertEquals(0, db.importTaskDao().getCount())
         } finally { db.close() }
     }
 
@@ -260,21 +222,6 @@ class RssSharedPipelineTest {
             catch (_: RssAcquisitionYield) { }
             assertEquals(1, calls)
             assertTrue(db.rssDao().enabledFeeds().size == 3)
-        } finally { db.close() }
-    }
-
-    @Test fun legacyRunningAndErrorTasksAreOutsideFiveUnstartedSelection() = runBlocking {
-        val db = database()
-        try {
-            val feed = RssFeedEntity("feed", "https://fixture-feed.example/feed", "Feed", mode = "AI")
-            db.rssDao().putFeed(feed)
-            for (status in listOf("PROCESSING_AI", "ERROR")) {
-                db.importTaskDao().insertOrUpdate(me.bubblespark.tidilo.data.db.ImportTaskEntity(status,
-                    "$url/$status", "Legacy XML", status, "Legacy", createdAt = 1, rssFeedId = feed.id))
-            }
-            RssIngestionStore(db).stage(feed, RssFeedParser.parse(xml(6), feed.url).entries, 100)
-            assertEquals("PROCESSING_AI", db.importTaskDao().getTaskById("PROCESSING_AI")?.status)
-            assertEquals("ERROR", db.importTaskDao().getTaskById("ERROR")?.status)
         } finally { db.close() }
     }
 
@@ -317,7 +264,7 @@ class RssSharedPipelineTest {
                 if (request.startsWith(url)) { articleCalls++; ArticleResponse(request, 200, html.toByteArray(), "text/html") }
                 else throw RssHttpFailure(404)
             })
-            val id = repo.register("https://fixture-feed.example/feed", "DIRECT", 30)
+            val id = repo.register("https://fixture-feed.example/feed", 30)
             assertEquals(1, xmlCalls)
             assertEquals(0, articleCalls)
             assertEquals(0, db.bookmarkDao().getCount())
@@ -337,25 +284,17 @@ class RssSharedPipelineTest {
         } finally { db.close() }
     }
 
-    @Test fun rssAndManualHtmlProduceIdenticalPreparedPrompt() = runBlocking {
+    @Test fun rssDirectSaveUsesPreparedArticleMetadata() = runBlocking {
         val db = database()
         try {
             val repo = repository(db, { request, _, _ -> RssHttpPage(200, request, xml()) })
-            repo.register("https://fixture-feed.example/feed", "AI", 30)
+            repo.register("https://fixture-feed.example/feed", 30)
             assertTrue(repo.fetchAll(1))
-            val task = db.importTaskDao().getAllTasks().single()
-            assertTrue(task.articlePrepared)
-            assertEquals("READY", task.status)
-            val manual = ArticlePreparation.prepare(WebPageParser.parseHtml("$url/1", html))
-            assertEquals(manual.title, task.title)
-            assertEquals(manual.siteName, task.siteName)
-            assertEquals(manual.bodySnippet, task.bodySnippet)
-            for (language in AppLanguage.entries) {
-                assertEquals(GeminiTaggingService.buildPromptWithSnippets(manual.url, manual.siteName,
-                    manual.title, manual.description, manual.bodySnippet, language),
-                    GeminiTaggingService.buildPromptWithSnippets(task.url, task.siteName, task.title,
-                        task.description, task.bodySnippet, language))
-            }
+            val bookmark = db.bookmarkDao().getBookmarkByUrl("$url/1")!!
+            assertEquals("HTML title", bookmark.title)
+            assertEquals("HTML description", bookmark.description)
+            assertTrue(bookmark.isAiSkipped)
+            assertEquals(0, db.importTaskDao().getCount())
         } finally { db.close() }
     }
 
@@ -373,11 +312,11 @@ class RssSharedPipelineTest {
             })
             assertTrue(repo.fetchAll(1))
             assertFalse(db.rssDao().feed(bad.id)!!.enabled)
-            assertEquals("XML_FETCH_FAILED", db.rssDao().feed(bad.id)!!.error)
+            assertEquals("Timeout", db.rssDao().feed(bad.id)!!.error)
             assertTrue(db.rssDao().feed(good.id)!!.enabled)
             assertEquals(1, db.bookmarkDao().getCount())
             repo.setEnabled(bad.id, true)
-            assertEquals("XML_FETCH_FAILED", db.rssDao().feed(bad.id)!!.error)
+            assertEquals("Timeout", db.rssDao().feed(bad.id)!!.error)
         } finally { db.close() }
     }
 
@@ -461,7 +400,7 @@ class RssSharedPipelineTest {
             val staged = db.importTaskDao().getAllTasks().single()
             assertEquals(0, db.bookmarkDao().getCount())
             assertFalse(db.rssDao().hasSeen(feed.id, staged.rssItemKey!!, staged.url))
-            assertEquals(0, db.importTaskDao().claimForAi(staged.id, "Must not analyze"))
+            assertEquals(0, db.importTaskDao().claimForDirectSave(staged.id, "Must not analyze"))
         } finally { db.close() }
     }
 

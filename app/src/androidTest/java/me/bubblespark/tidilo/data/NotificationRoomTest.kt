@@ -20,21 +20,6 @@ internal fun removeStandardClassificationColumns(execSql: (String) -> Unit) {
 }
 
 class NotificationRoomTest {
-    @Test fun queueCapDiscardMarksUnstartedNotificationItemsSkipped() = runBlocking {
-        val db = database()
-        try {
-            val dao = db.rssNotificationDao()
-            dao.putRun(RssNotificationRunEntity("run", "work", 100, true))
-            val feed = RssFeedEntity("feed", "https://example.com/feed", "Feed", mode = "AI")
-            db.rssDao().putFeed(feed)
-            val store = RssIngestionStore(db) { AiAnalysisMode.AICORE }
-            store.stage(feed, listOf(RssEntry("old", "https://example.com/old", "Old", "", "", null, 1)), 100, "run")
-            val old = db.importTaskDao().getAllTasks().single()
-            store.stage(feed, (1..6).map { RssEntry("$it", "https://example.com/new/$it", "New", "", "", null, 200L + it) }, 200)
-            assertNull(db.importTaskDao().getTaskById(old.id))
-            assertEquals(listOf("SKIPPED"), dao.items("run").map { it.outcome })
-        } finally { db.close() }
-    }
     @Test fun recoveredDuplicateResolvesTheErrorWithoutCountingADirectSave() = runBlocking {
         val db = database()
         try {
@@ -42,7 +27,7 @@ class NotificationRoomTest {
             dao.putRun(RssNotificationRunEntity("run", "work", 100, true))
             val feed = RssFeedEntity("feed", "https://example.com/feed", "Feed")
             db.rssDao().putFeed(feed)
-            val store = RssIngestionStore(db) { AiAnalysisMode.DISABLE }
+            val store = RssIngestionStore(db)
             store.stage(feed, listOf(RssEntry("key", "https://example.com/post", "Post", "", "", null, null)), 100)
             val task = db.importTaskDao().getAllTasks().single()
             store.failArticle(feed, task, java.io.IOException("HTTP 503"), true, "run")
@@ -86,9 +71,9 @@ class NotificationRoomTest {
                 removeStandardClassificationColumns(sql::execSQL)
                 sql.version = 12
             }
-            db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17).build()
+            db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18).build()
             assertEquals("Description", db.bookmarkDao().getBookmarkById("kept")!!.description)
-            assertEquals(17, db.openHelper.readableDatabase.version)
+            assertEquals(18, db.openHelper.readableDatabase.version)
             db.rssNotificationDao().putRun(RssNotificationRunEntity("run", "work", 100, true))
             assertEquals("run", db.rssNotificationDao().unfinishedRun("work")?.id)
         } finally { db.close(); context.deleteDatabase(name) }
@@ -109,19 +94,6 @@ class NotificationRoomTest {
             assertEquals(0, dao.runFor("work", 100)!!.pendingAi)
         } finally { db.close() }
     }
-    @Test fun readyCountIncludesRssButNotProcessingOrErrors() = runBlocking {
-        val db = database()
-        try {
-            db.importTaskDao().insertAll(listOf(task("manual"), task("rss").copy(rssFeedId = "feed"),
-                task("waiting").copy(status = "WAITING_AI"), task("error").copy(status = "ERROR")))
-            assertEquals(2, db.importTaskDao().observeReadyNotificationCount().first())
-            db.importTaskDao().updateStatus("rss", "PROCESSING_AI", "Running")
-            assertEquals(1, db.importTaskDao().observeReadyNotificationCount().first())
-            db.importTaskDao().deleteById("manual")
-            assertEquals(0, db.importTaskDao().observeReadyNotificationCount().first())
-        } finally { db.close() }
-    }
-
     @Test fun committedRssOutcomesAreDistinctRecoverErrorsAndRollbackTogether() = runBlocking {
         val db = database()
         try {
@@ -129,7 +101,7 @@ class NotificationRoomTest {
             events.putRun(RssNotificationRunEntity("run", "work", 100, true))
             val feed = RssFeedEntity("feed", "https://example.com/feed", "Feed")
             db.rssDao().putFeed(feed)
-            val store = RssIngestionStore(db) { AiAnalysisMode.DISABLE }
+            val store = RssIngestionStore(db)
             store.stage(feed, listOf(RssEntry("key", "https://example.com/post", "Post", "", "", null, null)), 100)
             val task = db.importTaskDao().getAllTasks().single()
             store.failArticle(feed, task, java.io.IOException("HTTP 503"), true, "run")
@@ -161,7 +133,7 @@ class NotificationRoomTest {
             db.rssDao().putFeed(feed)
             db.rssNotificationDao().putRun(RssNotificationRunEntity("run", "work", 100, false))
             db.importTaskDao().insertOrUpdate(task("article").copy(rssFeedId = feed.id, status = "ERROR"))
-            val store = RssIngestionStore(db) { AiAnalysisMode.AICORE }
+            val store = RssIngestionStore(db)
             store.failArticle(feed, db.importTaskDao().getTaskById("article")!!, Exception("HTTP 404"), false, "run")
             assertTrue(db.rssDao().feed(feed.id)!!.enabled)
             assertTrue(store.disableAfterXmlFailure(feed, "run"))

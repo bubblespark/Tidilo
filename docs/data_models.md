@@ -168,56 +168,9 @@ Both `Category` and `Subcategory` provide bidirectional constant-time $O(1)$ res
 
 ## 3. Import Task State Machine & Models
 
-Located in `data/ImportTask.kt`:
+Manual URL entry, sharing, and RSS acquisition save bookmarks directly. Persisted work uses `QUEUED`, `PROCESSING`, and `ERROR`. A successful save consumes its task. Retryable failures preserve the source URL and any prepared article data. Import shows active work and errors.
 
-```kotlin
-enum class TaskStatus {
-    PROCESSING_AI, // Active inference running on Gemini Nano
-    WAITING_AI,    // Waiting in Processing group for AICore execution slot
-    READY,         // URL parsed and ready for AI analysis (share sheet or '+' button)
-    COMPLETED,     // Finished tagging and saved into BookmarkRepository
-    ERROR          // Failed due to rate limit, non-200 HTTP response, or parse failure
-}
-
-@Immutable
-data class ImportingTask(
-    val id: String = UUID.randomUUID().toString(),
-    val url: String,
-    val title: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
-)
-
-@Immutable
-data class ImportTask(
-    val id: String = UUID.randomUUID().toString(),
-    val url: String,
-    val title: String,
-    val status: TaskStatus = TaskStatus.READY,
-    val statusText: String = "",
-    val errorMessage: String? = null,
-    val assignedTags: List<String> = emptyList(),
-    val createdAt: Long = System.currentTimeMillis(),
-    val isNsfw: Boolean = false,
-    val siteName: String = "",
-    val description: String = "",
-    val bodySnippet: String = "",
-    val ogImageUrl: String? = null
-)
-```
-
-### 3.1 State Transition Lifecycle
-
-```mermaid
-stateDiagram-v2
-    [*] --> READY : Import URL (Share Sheet or Manual)
-    READY --> WAITING_AI : Promote single / "AI Analysis All"
-    WAITING_AI --> PROCESSING_AI : Session worker selects eligible task
-    PROCESSING_AI --> [*] : Gemini Nano inference succeeds -> Saved to Library
-    PROCESSING_AI --> ERROR : HTTP != 200, Rate Limit, or Parse failure
-    ERROR --> WAITING_AI : User taps Retry
-```
-
----
+Room 18 maps legacy `READY`, `WAITING_AI`, and `PROCESSING_AI` rows to `QUEUED` and preserves RSS provenance, metadata, and retry deadlines. Startup resumes prepared and interrupted saves. Existing RSS acquisition policies apply when a fetch is still required. The saved bookmark's Detail screen owns manual AI review.
 
 ## 4. Web Page Analysis Models
 
@@ -259,7 +212,7 @@ All persistence is managed via **Room Database** (`AppDatabase` v14) for robust 
 2. **`tidilo_library_prefs` (`search_history`)**:
    Array of up to 10 strings representing complete queries, ordered latest-first.
 3. **`tidilo_app_config_prefs`**:
-   Application language, NSFW visibility toggle, AICore fallback mode, and auto-run settings.
+   Application language, NSFW visibility, and AI model settings.
 
 ---
 

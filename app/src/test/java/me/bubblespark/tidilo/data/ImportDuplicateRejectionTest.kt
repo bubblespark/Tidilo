@@ -45,9 +45,8 @@ class ImportDuplicateRejectionTest {
             title = "short.example", status = TaskStatus.ERROR, statusText = "Article acquisition failed")))
         try {
             val repository = ImportRepository(taskDao = tasks, bookmarkDao = bookmarks,
-                repositoryScope = CoroutineScope(coroutineContext + job), isAppInForeground = { true },
-                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
-                openModel = { error("Disabled retry must not initialize AICore") },
+                repositoryScope = CoroutineScope(coroutineContext + job),
+
                 articleAcquirer = { createFakeParsedPage(it, canonical) }, persistFallback = { error("Must retain existing bookmark") })
             repository.retryErrorTask("retry")
             kotlinx.coroutines.withTimeout(5000) { while (tasks.getCount() != 0) delay(5) }
@@ -66,7 +65,6 @@ class ImportDuplicateRejectionTest {
         val canonical = "https://example.com/canonical"
         try {
             val repository = ImportRepository(taskDao = tasks, bookmarkDao = bookmarks, repositoryScope = scope,
-                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
                 articleAcquirer = { url ->
                     if (++fetches == 2) started.complete(Unit)
                     release.await()
@@ -99,11 +97,10 @@ class ImportDuplicateRejectionTest {
         val job = kotlinx.coroutines.SupervisorJob()
         val url = "https://example.com/rss-legacy"
         tasks.insertOrUpdate(ImportTaskEntity.fromImportTask(ImportTask(id = "rss-task", url = url, title = "XML Title",
-            status = TaskStatus.READY, statusText = "Ready", rssFeedId = "feed", articlePrepared = false)))
+            status = TaskStatus.QUEUED, statusText = "Ready", rssFeedId = "feed", articlePrepared = false)))
         try {
             val repository = ImportRepository(taskDao = tasks, bookmarkDao = bookmarks,
                 repositoryScope = CoroutineScope(coroutineContext + job),
-                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
                 articleAcquirer = { createFakeParsedPage(it).copy(standardMetaTags = mapOf("description" to "HTML Description")) },
                 persistFallback = { bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it)) })
             val done = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
@@ -186,7 +183,6 @@ class ImportDuplicateRejectionTest {
     }
 
     private class TestImportTaskDao : ImportTaskDao {
-        override fun observeReadyNotificationCount(): kotlinx.coroutines.flow.Flow<Int> = kotlinx.coroutines.flow.flowOf(0)
         val tasks = mutableMapOf<String, ImportTaskEntity>()
         private val tasksFlow = MutableStateFlow<List<ImportTaskEntity>>(emptyList())
         var onBeforeInsert: (suspend (ImportTaskEntity) -> Unit)? = null
@@ -234,13 +230,13 @@ class ImportDuplicateRejectionTest {
             tasksFlow.map { it.filter { task -> task.status in statuses } }
         override suspend fun getTasksByStatuses(statuses: List<String>): List<ImportTaskEntity> =
             tasks.values.filter { it.status in statuses }
-        override suspend fun claimForAi(id: String, statusText: String): Int {
+        override suspend fun claimForDirectSave(id: String, statusText: String): Int {
             val task = tasks[id] ?: return 0
-            if (task.status !in listOf("WAITING_AI", "PROCESSING_AI")) return 0
-            updateStatus(id, "PROCESSING_AI", statusText, null)
+            if (task.status !in listOf("QUEUED", "PROCESSING")) return 0
+            updateStatus(id, "PROCESSING", statusText, null)
             return 1
         }
-        override suspend fun rejectUnavailableRss() {}
+
         override suspend fun deleteById(id: String) {
             tasks.remove(id)
             emit()
@@ -365,7 +361,7 @@ class ImportDuplicateRejectionTest {
     }
 
     @Test
-    fun testCaseB_PromoteUnanalyzedRssBookmarkToReadyQueue() = runBlocking {
+    fun unanalyzedRssBookmarkIsPromotedWithoutRewritingContent() = runBlocking {
         val bookmarkDao = TestBookmarkDao()
         val taskDao = TestImportTaskDao()
         val notificationDao = TestImportNotificationDao()
@@ -398,12 +394,8 @@ class ImportDuplicateRejectionTest {
         repository.importUrl("https://example.com/raw-rss")
 
         // Then:
-        // 1. Queued in taskDao with rssFeedId = null (normal Ready group)
-        val queued = taskDao.getTaskByUrl("https://example.com/raw-rss")
-        assertNotNull(queued)
-        assertNull(queued?.rssFeedId)
-        assertEquals("READY", queued?.status)
-        assertEquals(false, queued?.articlePrepared)
+        assertEquals(0, taskDao.getCount())
+        assertEquals(existing.copy(rssFeedId = null), bookmarkDao.getBookmarkById(existing.id))
 
         // 2. Notification recorded
         val notifications = notificationDao.observeNotifications().first()
@@ -414,7 +406,7 @@ class ImportDuplicateRejectionTest {
     }
 
     @Test
-    fun testCaseB_RepeatedImportWhilePendingInQueue_RejectsAsDuplicate() = runBlocking {
+    fun repeatedImportAfterRssPromotionIsDuplicate() = runBlocking {
         val bookmarkDao = TestBookmarkDao()
         val taskDao = TestImportTaskDao()
         val notificationDao = TestImportNotificationDao()
@@ -442,25 +434,12 @@ class ImportDuplicateRejectionTest {
             repositoryScope = CoroutineScope(Dispatchers.Unconfined)
         )
 
-        // First import enqueues promotion task
-        repository.importUrl("https://example.com/raw-rss")
-        assertEquals(1, taskDao.getCount())
-
-        // Test each active queue status: importing again rejects as duplicate
-        val activeStatuses = listOf("READY", "WAITING_AI", "PROCESSING_AI", "ERROR")
-        for (status in activeStatuses) {
-            val task = taskDao.getTaskByUrl("https://example.com/raw-rss")!!
-            taskDao.updateStatus(task.id, status, "Test $status", null)
-
-            // Second import while pending in queue
-            repository.importUrl("https://example.com/raw-rss")
-
-            // Count of tasks in queue remains 1 (no duplicate task created)
-            assertEquals(1, taskDao.getCount())
-            val latestNotification = notificationDao.observeNotifications().first().first()
-            assertEquals("WARNING", latestNotification.type)
-            assertEquals("Duplicate URL (Already in Queue)", latestNotification.message)
-        }
+        repository.importUrl(existing.url)
+        var duplicate: Result<ImportOutcome>? = null
+        repository.importUrl(existing.url) { duplicate = it }
+        assertTrue(duplicate!!.isFailure)
+        assertEquals(0, taskDao.getCount())
+        assertEquals(existing.copy(rssFeedId = null), bookmarkDao.getBookmarkById(existing.id))
     }
 
 
@@ -513,20 +492,20 @@ class ImportDuplicateRejectionTest {
     }
 
     @Test
-    fun testCaseC_MoveRssReadyTaskToNormalReady() = runBlocking {
+    fun manualImportSavesPreparedRssTaskIntoLibrary() = runBlocking {
         val bookmarkDao = TestBookmarkDao()
         val taskDao = TestImportTaskDao()
         val notificationDao = TestImportNotificationDao()
 
-        // Given: Task currently in Ready - RSS queue
         val rssTask = ImportTaskEntity(
             id = "t1",
             url = "https://example.com/rss-queued",
             title = "Queued RSS",
-            status = "READY",
+            status = "QUEUED",
             statusText = "Ready",
             createdAt = 1000L,
-            rssFeedId = "feed_789"
+            rssFeedId = "feed_789",
+            articlePrepared = true
         )
         taskDao.insertOrUpdate(rssTask)
 
@@ -535,24 +514,16 @@ class ImportDuplicateRejectionTest {
             taskDao = taskDao,
             bookmarkDao = bookmarkDao,
             notificationDao = notificationDao,
-            repositoryScope = CoroutineScope(Dispatchers.Unconfined)
+            repositoryScope = CoroutineScope(Dispatchers.Unconfined),
+            persistFallback = { bookmarkDao.insertRow(BookmarkEntity.fromBookmarkItem(it)) }
         )
 
         // When: User manually imports the URL
         repository.importUrl("https://example.com/rss-queued")
 
-        // Then:
-        // 1. rssFeedId cleared in taskDao (moved to top-level Ready)
-        val updated = taskDao.getTaskById("t1")
-        assertNotNull(updated)
-        assertNull(updated?.rssFeedId)
-
-        // 2. INFO notification recorded
-        val notifications = notificationDao.observeNotifications().first()
-        assertEquals(1, notifications.size)
-        assertEquals("INFO", notifications[0].type)
-        assertEquals("Moved from RSS to Ready", notifications[0].message)
-        assertNull(notifications[0].existingBookmarkId)
+        assertNull(taskDao.getTaskById("t1"))
+        assertNull(bookmarkDao.getBookmarkById("t1")!!.rssFeedId)
+        assertEquals("t1", notificationDao.observeNotifications().first().single().existingBookmarkId)
     }
 
     @Test
@@ -612,7 +583,7 @@ class ImportDuplicateRejectionTest {
             id = "t_normal",
             url = "https://example.com/already-queued",
             title = "Already Queued",
-            status = "READY",
+            status = "QUEUED",
             statusText = "Ready",
             createdAt = 1000L,
             rssFeedId = null
@@ -747,112 +718,6 @@ class ImportDuplicateRejectionTest {
         )
     }
 
-    @Test
-    fun testConvergingUrls_ToUnanalyzedRssBookmark_OnlyOneTaskEnqueued() = runBlocking {
-        val bookmarkDao = TestBookmarkDao()
-        val taskDao = TestImportTaskDao()
-        val notificationDao = TestImportNotificationDao()
-
-        val rssCanonicalUrl = "https://example.com/rss-article"
-        val redirectUrl = "https://short.link/rss-redirect"
-
-        // Given: Unanalyzed RSS bookmark in library with canonical URL
-        val existing = BookmarkEntity(
-            id = "b_rss_conv",
-            title = "Unanalyzed RSS",
-            url = rssCanonicalUrl,
-            description = "Desc",
-            isAiSkipped = true,
-            rssFeedId = "feed_999",
-            createdAt = 1000L,
-            updatedAt = 1000L
-        )
-        bookmarkDao.insertRow(existing)
-
-        val redirectInFlightGate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val allowRedirectToFinish = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val redirectAboutToEnterCheckGate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val directImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
-        val redirectImportFinished = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
-
-        // Gate the task DAO insertion of the direct RSS promotion:
-        // Before the direct promotion can commit its task into the DAO, release the competing redirect import.
-        // Use a deterministic rendezvous: wait until the redirect import completes article acquisition
-        // and arrives immediately before the post-redirect check.
-        // If the early duplicate check and promotion are atomic inside runInDbOrLock,
-        // the redirect import cannot interleave and will observe the promoted task in queue.
-        // If they are not atomic, the redirect import would pass checkDuplicate and enqueue a competing task first.
-        taskDao.onBeforeInsert = { task ->
-            if (task.url == rssCanonicalUrl) {
-                allowRedirectToFinish.complete(Unit)
-                redirectAboutToEnterCheckGate.await()
-                kotlinx.coroutines.yield()
-            }
-        }
-
-        // Acquirer simulates redirectUrl resolving to rssCanonicalUrl while suspended in-flight
-        val repository = ImportRepository(
-            context = null,
-            taskDao = taskDao,
-            bookmarkDao = bookmarkDao,
-            notificationDao = notificationDao,
-            repositoryScope = CoroutineScope(Dispatchers.IO),
-            articleAcquirer = { url ->
-                if (url == redirectUrl) {
-                    redirectInFlightGate.complete(Unit)
-                    allowRedirectToFinish.await()
-                    redirectAboutToEnterCheckGate.complete(Unit)
-                    createFakeParsedPage(url = redirectUrl, finalUrl = rssCanonicalUrl)
-                } else {
-                    createFakeParsedPage(url = url)
-                }
-            }
-        )
-
-        // 1. Start import of converging redirect URL: suspends in articleAcquirer
-        val redirectCallResult = repository.importUrl(redirectUrl) {
-            redirectImportFinished.complete(it)
-        }
-        assertTrue(redirectCallResult.isSuccess)
-
-        // Wait until redirect import is in-flight inside articleAcquirer
-        kotlinx.coroutines.withTimeout(5000) {
-            redirectInFlightGate.await()
-        }
-
-        // 2. Start direct canonical URL import:
-        //    Evaluates unanalyzed RSS bookmark and enters atomic promotion block.
-        //    taskDao.onBeforeInsert releases redirect URL before committing the direct task.
-        val directCallResult = repository.importUrl(rssCanonicalUrl) {
-            directImportFinished.complete(it)
-        }
-        assertTrue(directCallResult.isSuccess)
-
-        // 3. Await completion of both competing imports
-        val directResult = kotlinx.coroutines.withTimeout(5000) {
-            directImportFinished.await()
-        }
-        assertTrue(directResult.isSuccess)
-
-        val redirectResult = kotlinx.coroutines.withTimeout(5000) {
-            redirectImportFinished.await()
-        }
-        assertTrue(redirectResult.isFailure)
-
-        // 4. Verify only one task enqueued in total
-        assertEquals(1, taskDao.getCount())
-        val task = taskDao.getTaskByUrl(rssCanonicalUrl)
-        assertNotNull(task)
-        assertEquals("READY", task?.status)
-
-        // 5. Verify redirect import was rejected as duplicate in queue
-        val notifications = kotlinx.coroutines.withTimeout(5000) {
-            notificationDao.observeNotifications().filter { list ->
-                list.any { it.message == "Duplicate URL (Already in Queue)" }
-            }.first()
-        }
-        assertTrue(notifications.isNotEmpty())
-    }
     @Test
     fun testInFlightDuplicate_ResolvesUrl_UpdatesNotificationUrl() = runBlocking {
         val bookmarkDao = TestBookmarkDao()

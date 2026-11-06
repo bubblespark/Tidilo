@@ -69,7 +69,7 @@ class SharedArticleRegressionTest {
     }
 
     @Test fun legacyRssSnippetDoesNotProveHtmlPreparation() {
-        val task = ImportTask(url = "https://example.com/post", title = "XML title", status = TaskStatus.READY,
+        val task = ImportTask(url = "https://example.com/post", title = "XML title", status = TaskStatus.QUEUED,
             statusText = "", bodySnippet = "XML excerpt", rssFeedId = "feed")
         assertTrue(ImportRepository.needsArticlePreparse(task))
     }

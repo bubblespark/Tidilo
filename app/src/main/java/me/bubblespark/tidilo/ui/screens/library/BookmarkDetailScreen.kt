@@ -528,12 +528,17 @@ fun BookmarkDetailScreen(
             }
 
             if (showAddEntityDialog) {
+                val suggestionCandidates = remember(bookmark.title, bookmark.description) {
+                    me.bubblespark.tidilo.data.EntityCandidateExtractor.default()
+                        .extractSuggestionTokens(bookmark.title, bookmark.description)
+                }
                 AddEntityDialog(
                     onDismiss = { showAddEntityDialog = false },
                     text = entityInput,
                     onTextChange = { entityInput = it },
                     libraryState = libraryState,
                     onRetry = { entityLibraryRetry++ },
+                    candidates = suggestionCandidates,
                     onConfirm = { rawInput ->
                         val draft = EntityTagDraft(draftEntities, draftReplacements)
                         val conflict = entityTagConflict(rawInput, draft, libraryState.spellings)

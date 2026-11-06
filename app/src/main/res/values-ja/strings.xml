@@ -182,6 +182,7 @@
     <string name="detail_tag_select_entities">既存タグから選択</string>
     <string name="detail_add_entity_title">タグの追加</string>
     <string name="detail_add_entity_placeholder">タグ名を入力</string>
+    <string name="detail_add_entity_suggestions_label">候補</string>
     <string name="detail_entity_picker_title">固有タグの選択</string>
     <string name="detail_entity_picker_selected">選択中</string>
     <string name="detail_entity_picker_all">すべてのタグ</string>

@@ -113,4 +113,29 @@ class EntityTagConflictLayoutTest {
         } finally { host.main { activity.finish() } }
     }
 
+    @Test fun suggestionChipsAppendToInputAndClearResetsInput(): Unit = runBlocking {
+        val activity = host.launch()
+        val textState = mutableStateOf("")
+        var confirmed: String? = null
+        try {
+            host.main { activity.setContent { TidiloTheme(dynamicColor = false) {
+                AddEntityDialog(
+                    onDismiss = {},
+                    onConfirm = { confirmed = it },
+                    text = textState.value,
+                    onTextChange = { textState.value = it },
+                    libraryState = EntityLibraryState(loading = false),
+                    onRetry = {},
+                    candidates = listOf("iPhone", "16", "発売")
+                )
+            } } }
+            assertTrue(button("iPhone").performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            withTimeout(5000) { while (textState.value != "iPhone") delay(30) }
+            assertTrue(button("16").performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            withTimeout(5000) { while (textState.value != "iPhone 16") delay(30) }
+            assertTrue(button("OK").performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            withTimeout(5000) { while (confirmed == null) delay(30) }
+            assertEquals("iPhone 16", confirmed)
+        } finally { host.main { activity.finish() } }
+    }
 }

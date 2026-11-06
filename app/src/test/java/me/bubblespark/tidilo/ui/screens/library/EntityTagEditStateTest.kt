@@ -38,4 +38,40 @@ class EntityTagEditStateTest {
         assertEquals(draft, applyEntityTagChoice(draft, "##C", "#C", false))
         assertEquals(listOf("#C"), applyEntityTagChoice(EntityTagDraft(emptyList()), "##C", null, false).entities)
     }
+    @Test
+    fun appendEntitySuggestion_intoEmptyOrBlankInput_returnsCleanedToken() {
+        assertEquals("iPhone", appendEntitySuggestion("", "iPhone"))
+        assertEquals("iPhone", appendEntitySuggestion("   ", "  iPhone  "))
+    }
+
+    @Test
+    fun appendEntitySuggestion_asciiAlphanumericTokens_insertsSingleSpace() {
+        val step1 = appendEntitySuggestion("", "iPhone")
+        val step2 = appendEntitySuggestion(step1, "16")
+        val step3 = appendEntitySuggestion(step2, "Pro")
+        assertEquals("iPhone 16 Pro", step3)
+    }
+
+    @Test
+    fun appendEntitySuggestion_cjkTokens_concatenatesWithoutSpace() {
+        val step1 = appendEntitySuggestion("", "東京")
+        val step2 = appendEntitySuggestion(step1, "タワー")
+        assertEquals("東京タワー", step2)
+    }
+
+    @Test
+    fun appendEntitySuggestion_mixedAsciiAndCjk_concatenatesWithoutSpace() {
+        assertEquals("iPhone発売", appendEntitySuggestion("iPhone", "発売"))
+        assertEquals("新型iPhone", appendEntitySuggestion("新型", "iPhone"))
+    }
+
+    @Test
+    fun appendEntitySuggestion_whenInputEndsWithWhitespace_doesNotDoubleSpace() {
+        assertEquals("iPhone 16", appendEntitySuggestion("iPhone ", "16"))
+    }
+
+    @Test
+    fun appendEntitySuggestion_withBlankToken_returnsCurrentInputUnchanged() {
+        assertEquals("Kotlin", appendEntitySuggestion("Kotlin", "   "))
+    }
 }

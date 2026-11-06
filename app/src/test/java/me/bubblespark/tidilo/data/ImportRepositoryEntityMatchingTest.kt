@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.config.AiAnalysisMode
-import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.data.db.BookmarkDao
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.BookmarkEntityOccurrence
@@ -113,7 +112,6 @@ class ImportRepositoryEntityMatchingTest {
     }
 
     private class TestImportTaskDao : ImportTaskDao {
-        override fun observeReadyNotificationCount(): Flow<Int> = kotlinx.coroutines.flow.flowOf(0)
         val tasks = mutableMapOf<String, ImportTaskEntity>()
         private val tasksFlow = MutableStateFlow<List<ImportTaskEntity>>(emptyList())
 
@@ -159,13 +157,15 @@ class ImportRepositoryEntityMatchingTest {
             tasksFlow.map { it.filter { task -> task.status in statuses } }
         override suspend fun getTasksByStatuses(statuses: List<String>): List<ImportTaskEntity> =
             tasks.values.filter { it.status in statuses }
-        override suspend fun claimForAi(id: String, statusText: String): Int {
+        override suspend fun rejectUnavailablePreparedRss(id: String): Int = 0
+
+        override suspend fun claimForDirectSave(id: String, statusText: String): Int {
             val task = tasks[id] ?: return 0
-            if (task.status !in listOf("WAITING_AI", "PROCESSING_AI")) return 0
-            updateStatus(id, "PROCESSING_AI", statusText, null)
+            if (task.status !in listOf("QUEUED", "PROCESSING")) return 0
+            updateStatus(id, "PROCESSING", statusText, null)
             return 1
         }
-        override suspend fun rejectUnavailableRss() {}
+
         override suspend fun deleteById(id: String) {
             tasks.remove(id)
             emit()
@@ -308,7 +308,6 @@ class ImportRepositoryEntityMatchingTest {
             bookmarkDao = bookmarks,
             notificationDao = notifications,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            aiAnalysisMode = { AiAnalysisMode.DISABLE },
             articleAcquirer = {
                 createFakeParsedPage(it, title = "Learn Kotlin and Android").copy(
                     jsonLdScripts = listOf("""{"@context":"https://schema.org","@type":"TechArticle","url":"$it"}""")
@@ -355,7 +354,6 @@ class ImportRepositoryEntityMatchingTest {
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            aiAnalysisMode = { AiAnalysisMode.DISABLE },
             articleAcquirer = { createFakeParsedPage(it, title = "Learn Kotlin and Android") },
             persistFallback = {
                 savedItems.add(it)
@@ -394,7 +392,6 @@ class ImportRepositoryEntityMatchingTest {
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            aiAnalysisMode = { AiAnalysisMode.DISABLE },
             articleAcquirer = { createFakeParsedPage(it, title = title) },
             persistFallback = {
                 savedItems.add(it)
@@ -431,7 +428,6 @@ class ImportRepositoryEntityMatchingTest {
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            aiAnalysisMode = { AiAnalysisMode.DISABLE },
             articleAcquirer = { createFakeParsedPage(it, title = "Unrelated Title", description = "Article covering Kotlin development") },
             persistFallback = {
                 savedItems.add(it)
@@ -460,7 +456,6 @@ class ImportRepositoryEntityMatchingTest {
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            aiAnalysisMode = { AiAnalysisMode.DISABLE },
             articleAcquirer = { createFakeParsedPage(it, title = "Learn Kotlin") },
             persistFallback = {
                 savedItems.add(it)
@@ -493,7 +488,6 @@ class ImportRepositoryEntityMatchingTest {
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            aiAnalysisMode = { AiAnalysisMode.DISABLE },
             articleAcquirer = { createFakeParsedPage(it, title = "Learn Kotlin") },
             persistFallback = {
                 savedItems.add(it)
@@ -522,7 +516,6 @@ class ImportRepositoryEntityMatchingTest {
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            aiAnalysisMode = { AiAnalysisMode.DISABLE },
             articleAcquirer = { createFakeParsedPage(it, title = "Learn Kotlin") },
             persistFallback = {
                 savedItems.add(it)
@@ -550,7 +543,6 @@ class ImportRepositoryEntityMatchingTest {
             taskDao = tasks,
             bookmarkDao = null,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            aiAnalysisMode = { AiAnalysisMode.DISABLE },
             articleAcquirer = { createFakeParsedPage(it, title = "Learn Kotlin") },
             persistFallback = { savedItems.add(it) },
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
@@ -576,7 +568,6 @@ class ImportRepositoryEntityMatchingTest {
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            aiAnalysisMode = { AiAnalysisMode.DISABLE },
             articleAcquirer = { createFakeParsedPage(it, title = "Jetpack Compose Tutorial") },
             persistFallback = {
                 savedItems.add(it)
@@ -606,7 +597,7 @@ class ImportRepositoryEntityMatchingTest {
                 id = "rss-task-1",
                 url = rssUrl,
                 title = "Android 15 Features",
-                status = "READY",
+                status = "QUEUED",
                 statusText = "Ready",
                 createdAt = 1000L,
                 rssFeedId = "feed-99",
@@ -619,7 +610,6 @@ class ImportRepositoryEntityMatchingTest {
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            aiAnalysisMode = { AiAnalysisMode.DISABLE },
             articleAcquirer = { createFakeParsedPage(it, title = "Android 15 Features") },
             persistFallback = {
                 savedItems.add(it)
@@ -650,7 +640,7 @@ class ImportRepositoryEntityMatchingTest {
             id = "direct-1",
             url = directUrl,
             title = "Room Persistence Guide",
-            status = TaskStatus.WAITING_AI,
+            status = TaskStatus.QUEUED,
             statusText = "Waiting",
             articlePrepared = true
         )
@@ -661,8 +651,6 @@ class ImportRepositoryEntityMatchingTest {
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            isAppInForeground = { true },
-            aiAnalysisMode = { AiAnalysisMode.DISABLE },
             persistFallback = {
                 savedItems.add(it)
                 bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
@@ -670,7 +658,7 @@ class ImportRepositoryEntityMatchingTest {
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
         )
 
-        repository.retryWaitingProcessingTasks()
+        repository.onAppBecameActive()
 
         withTimeout(5000) {
             while (tasks.getCount() != 0) {
@@ -680,59 +668,6 @@ class ImportRepositoryEntityMatchingTest {
 
         assertEquals(1, savedItems.size)
         assertEquals(listOf("Room"), savedItems.first().tag.entities)
-    }
-
-    @Test
-    fun pathCoverage_saveBookmarkFallbackAfterAiError() = runBlocking {
-        val bookmarks = TestBookmarkDao()
-        val tasks = TestImportTaskDao()
-        bookmarks.insertRow(createBookmarkEntity(id = "b1", title = "Coroutines", url = "https://example.com/c", entities = listOf("Coroutines")))
-
-        val task = ImportTask(
-            id = "ai-fail-1",
-            url = "https://example.com/coroutines-guide",
-            title = "Kotlin Coroutines Deep Dive",
-            status = TaskStatus.WAITING_AI,
-            statusText = "Waiting",
-            articlePrepared = true,
-            standardCategory = "Article",
-            standardClassificationEvaluated = true
-        )
-        tasks.insertOrUpdate(ImportTaskEntity.fromImportTask(task))
-
-        val savedItems = mutableListOf<BookmarkItem>()
-        val repository = ImportRepository(
-            taskDao = tasks,
-            bookmarkDao = bookmarks,
-            repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            isAppInForeground = { true },
-            openModel = { fakeModel() },
-            aiAnalysisMode = { AiAnalysisMode.AICORE },
-            fallbackMode = { AiCoreFallbackMode.ALL },
-            analyzeTask = { _: GenerativeModel, active: ImportTask ->
-                val row = requireNotNull(tasks.getTaskById(active.id))
-                tasks.update(row.copy(standardCategory = null, standardSubcategory = "Tech"))
-                throw AiCoreExecutionException(27, "Inference failure: quota exceeded")
-            },
-            persistFallback = {
-                savedItems.add(it)
-                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
-            },
-            candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
-        )
-
-        repository.retryWaitingProcessingTasks()
-
-        withTimeout(5000) {
-            while (tasks.getCount() != 0) {
-                kotlinx.coroutines.delay(10)
-            }
-        }
-
-        assertEquals(1, savedItems.size)
-        assertEquals(listOf("Coroutines"), savedItems.first().tag.entities)
-        assertEquals("Tech", savedItems.first().tag.subcategory)
-        assertNull(savedItems.first().tag.category)
     }
 
     @Test
@@ -746,7 +681,6 @@ class ImportRepositoryEntityMatchingTest {
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            aiAnalysisMode = { AiAnalysisMode.DISABLE },
             articleAcquirer = { createFakeParsedPage(it, title = "Kotlin Guide") },
             persistFallback = {
                 savedItems.add(it)
@@ -773,7 +707,7 @@ class ImportRepositoryEntityMatchingTest {
                 id = "rss-task-2",
                 url = rssUrl,
                 title = "Kotlin in Action",
-                status = "READY",
+                status = "QUEUED",
                 statusText = "Ready",
                 createdAt = 1000L,
                 rssFeedId = "feed-100",

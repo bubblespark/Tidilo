@@ -22,7 +22,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiAnalysisMode
-import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.ui.screens.settings.AiAnalysisContent
 import me.bubblespark.tidilo.ui.screens.settings.SettingsScreen
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
@@ -84,9 +83,7 @@ class SettingsRedesignTest {
                                         if (page == "settings") SettingsScreen({}, {}, onNavigateToDebug = { finalClicks++ })
                                         else AiAnalysisContent(
                                             mode = if (page == "ai") AiAnalysisMode.AICORE else AiAnalysisMode.DISABLE,
-                                            fallback = AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, autoRun = false,
                                             available = page == "ai", onNavigateBack = {}, onModeChange = {},
-                                            onFallbackChange = {}, onAutoRunChange = {},
                                             onNavigateToParameters = {}, onNavigateToSafety = { finalClicks++ })
                                     } }
                                 }

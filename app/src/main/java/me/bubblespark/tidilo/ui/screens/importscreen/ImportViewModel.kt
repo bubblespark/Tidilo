@@ -19,20 +19,11 @@ class ImportViewModel(
     // Processing group: AI analysis in progress or awaiting execution
     val processingTasks: StateFlow<List<ImportTask>> = repository.processingTasks
 
-    // Batch progress for background AI processing
-    val aiProcessingProgress: StateFlow<me.bubblespark.tidilo.data.AiProcessingProgress> = repository.aiProcessingProgress
-
-    // Ready group: Waiting after share or import
-    val readyTasks: StateFlow<List<ImportTask>> = repository.readyTasks
-
     // Tasks currently being fetched and parsed
     val importingTasks: StateFlow<List<ImportingTask>> = repository.importingTasks
 
     // Error group: Tasks that failed due to rate limits, HTTP errors, etc.
     val errorTasks: StateFlow<List<ImportTask>> = repository.errorTasks
-
-    // Battery Quota Exceeded dialog state
-    val quotaExceededDialogVisible: StateFlow<Boolean> = repository.quotaExceededDialogVisible
 
     val notifications: StateFlow<List<ImportNotificationEntity>> = repository.notifications.stateIn(
         scope = viewModelScope,
@@ -61,51 +52,8 @@ class ImportViewModel(
         }
     }
 
-    fun dismissQuotaExceededDialog() {
-        repository.dismissQuotaExceededDialog()
-    }
-
-    /**
-     * Imports URL into the Ready group.
-     */
     fun importUrl(url: String, title: String? = null) {
         repository.importUrl(url, title)
-    }
-
-    /**
-     * "AI Analysis All": Promotes all Ready URLs to Processing.
-     */
-    fun aiAnalysisAll() {
-        repository.aiAnalysisAll()
-    }
-
-    /**
-     * Promotes a single Ready task to Processing.
-     */
-    fun promoteToProcessing(taskId: String) {
-        repository.promoteTaskToProcessing(taskId)
-    }
-
-    /**
-     * Manually triggers or retries AI analysis for a task in the Processing group.
-     */
-    fun retryProcessing(taskId: String) {
-        repository.executeTaskAiAnalysis(taskId)
-    }
-
-    /**
-     * Retries all waiting or paused tasks in the Processing group.
-     */
-    fun retryWaitingProcessing() {
-        repository.retryWaitingProcessingTasks()
-    }
-
-    /**
-     * Cancels the pending AI queue: restores waiting tasks to Ready,
-     * while allowing the currently running inference task to finish.
-     */
-    fun cancelProcessing() {
-        repository.cancelProcessing()
     }
 
     /**
@@ -113,20 +61,6 @@ class ImportViewModel(
      */
     fun retryError(taskId: String) {
         repository.retryErrorTask(taskId)
-    }
-
-    /**
-     * Deletes a Ready task (returns previous state for Undo).
-     */
-    fun deleteReadyTask(taskId: String): Pair<ImportTask, Int>? {
-        return repository.removeReadyTask(taskId)
-    }
-
-    /**
-     * Restores a deleted Ready task.
-     */
-    fun restoreReadyTask(task: ImportTask, index: Int = 0) {
-        repository.restoreReadyTask(task, index)
     }
 
     /**

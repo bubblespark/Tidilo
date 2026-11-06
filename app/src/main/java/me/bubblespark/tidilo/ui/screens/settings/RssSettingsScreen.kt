@@ -19,8 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -124,7 +122,7 @@ internal fun RssRegistrationDialog(count: Int, limit: Int?, busy: Boolean, onCon
 internal fun RssSettingsContent(
     feeds: StorageLoad<List<RssFeedEntity>>, settings: RssSettings, busy: Boolean, error: String?, wifi: Boolean?,
     onBack: () -> Unit, onRetry: () -> Unit, onSettings: (RssSettings) -> Unit,
-    onFeed: (RssFeedEntity?, String, String, Int?, Boolean) -> Unit, onDelete: (String) -> Unit,
+    onFeed: (RssFeedEntity?, String, Int?) -> Unit, onDelete: (String) -> Unit,
     onFetch: () -> Unit, onDismissError: () -> Unit, onEnabled: (String, Boolean) -> Unit = { _, _ -> },
     manualFetch: ManualFetchStatus = ManualFetchStatus.Idle
 ) {
@@ -229,15 +227,6 @@ internal fun RssSettingsContent(
             if (feeds is StorageLoad.Ready) {
                 item(key = "feed-heading") { Text(stringResource(R.string.rss_feed_count, ready.size),
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) }
-                item(key = "queue") {
-                    val maxQueue = ready.count { it.enabled && it.mode == "AI" } * 5
-                    RssCard(compact = true) {
-                        Text(stringResource(R.string.rss_max_queue, maxQueue), modifier = Modifier.fillMaxWidth(),
-                            style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
-                            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
-                            color = if (maxQueue > 20) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
             }
             when (feeds) {
                 StorageLoad.Loading -> item(key = "loading") { Text(stringResource(R.string.summary_loading)) }
@@ -316,8 +305,8 @@ internal fun RssSettingsContent(
                 }
             }, dismissButton = { TextButton(onClick = { showTime = false }) { Text(stringResource(R.string.rss_cancel)) } })
     }
-    if (showEditor && (editingId == null || editing != null)) RssFeedEditor(editing, onDismiss = { showEditor = false }, onDelete = editing?.let { feed -> { showEditor = false; deletingId = feed.id } }) { url, mode, limit, convert ->
-        onFeed(editing, url, mode, limit, convert)
+    if (showEditor && (editingId == null || editing != null)) RssFeedEditor(editing, onDismiss = { showEditor = false }, onDelete = editing?.let { feed -> { showEditor = false; deletingId = feed.id } }) { url, limit ->
+        onFeed(editing, url, limit)
         showEditor = false
     }
     deleting?.let { feed ->
@@ -395,7 +384,7 @@ private fun RssFeedCard(feed: RssFeedEntity, busy: Boolean, onEdit: () -> Unit,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (label in listOf(stringResource(if (feed.mode == "AI") R.string.rss_ai_mode else R.string.rss_direct_mode),
+                for (label in listOf(stringResource(R.string.rss_direct_mode),
                     feed.retentionLimit?.let { stringResource(R.string.rss_retention_compact, it) } ?: stringResource(R.string.rss_unlimited))) {
                     me.bubblespark.tidilo.ui.components.TidiloDisplayChip(role = SurfaceRole.STATUS_BADGE) {
                         Text(label, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall)
@@ -413,13 +402,10 @@ private fun RssFeedCard(feed: RssFeedEntity, busy: Boolean, onEdit: () -> Unit,
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDelete: (() -> Unit)? = null, onSave: (String, String, Int?, Boolean) -> Unit) {
-    val aiAnalysisMode by me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
+internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDelete: (() -> Unit)? = null, onSave: (String, Int?) -> Unit) {
     var url by rememberSaveable(original?.id) { mutableStateOf(original?.url.orEmpty()) }
-    var mode by rememberSaveable(original?.id) { mutableStateOf(original?.mode ?: "DIRECT") }
     var unlimited by rememberSaveable(original?.id) { mutableStateOf(original != null && original.retentionLimit == null) }
     var limit by rememberSaveable(original?.id) { mutableStateOf((original?.retentionLimit ?: 30).toString()) }
-    var convert by rememberSaveable(original?.id) { mutableStateOf(false) }
     val validLimit = unlimited || limit.toIntOrNull()?.let { it in 10..500 } == true
     ModalBottomSheet(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.SHEET).containerColor,
@@ -432,20 +418,6 @@ internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDe
                 OutlinedTextField(url, { url = it }, label = { Text(stringResource(R.string.rss_feed_url)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
                 HorizontalDivider()
-                Text(stringResource(R.string.rss_import_mode), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("DIRECT" to R.string.rss_direct_mode, "AI" to R.string.rss_ai_mode).forEach { (value, label) ->
-                        Surface(modifier = Modifier.weight(1f).selectable(mode == value, role = Role.RadioButton, onClick = { mode = value }),
-                            shape = themeCorner(ThemeCorner.FIELD), color = if (mode == value) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest) {
-                            Box(Modifier.heightIn(min = 48.dp), contentAlignment = Alignment.Center) { Text(stringResource(label)) }
-                        }
-                    }
-                }
-                if (aiAnalysisMode == me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE) {
-                    Text(stringResource(R.string.rss_ai_disabled_note), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error)
-                }
-                HorizontalDivider()
                 Text(stringResource(R.string.rss_max_saved_items), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Row(Modifier.fillMaxWidth().toggleable(unlimited, role = Role.Switch,
                     onValueChange = { unlimited = it }), verticalAlignment = Alignment.CenterVertically) {
@@ -456,20 +428,12 @@ internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDe
                     label = { Text(stringResource(R.string.rss_retention_input)) }, isError = !validLimit,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                 Text(stringResource(R.string.rss_retention_note), style = MaterialTheme.typography.bodySmall)
-                if (original?.mode == "AI" && mode == "DIRECT") {
-                    Text(stringResource(R.string.rss_mode_change_note), style = MaterialTheme.typography.bodySmall)
-                    Row(Modifier.fillMaxWidth().toggleable(convert, role = Role.Checkbox,
-                        onValueChange = { convert = it }), verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(convert, null)
-                        Text(stringResource(R.string.rss_convert_pending))
-                    }
-                }
                 if (original != null && url.trim() != original.url) Text(stringResource(R.string.rss_url_change_note),
                     style = MaterialTheme.typography.bodySmall)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     if (onDelete != null) TextButton(onClick = onDelete) { Text(stringResource(R.string.rss_delete), color = MaterialTheme.colorScheme.error) }
                     Spacer(Modifier.weight(1f))
-                    Button(onClick = { onSave(url.trim(), mode, if (unlimited) null else limit.toInt(), convert) },
+                    Button(onClick = { onSave(url.trim(), if (unlimited) null else limit.toInt()) },
                         enabled = url.isNotBlank() && validLimit) { Text(stringResource(R.string.rss_save)) }
                 }
                 Spacer(Modifier.height(16.dp))

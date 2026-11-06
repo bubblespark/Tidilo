@@ -128,7 +128,7 @@ class ThemeConsumerRegressionTest {
             SurfaceRole.SETTINGS_GROUP to SurfaceStyleOverride(containerColor = Color.Cyan)))
         scene(preset, content = {
             RssSettingsContent(StorageLoad.Ready(emptyList()), RssSettings(), false, null, true,
-                onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _, _, _ -> },
+                onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _ -> },
                 onDelete = {}, onFetch = {}, onDismissError = {})
         }) { host, activity ->
             val text = host.await(activity) { host.text(it, "Not set") }.boundsInWindow

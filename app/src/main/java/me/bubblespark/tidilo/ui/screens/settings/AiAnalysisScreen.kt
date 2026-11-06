@@ -42,7 +42,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiAnalysisMode
-import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.AiCoreAvailability
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
@@ -58,21 +57,18 @@ fun AiAnalysisScreen(
     checkAiCoreAvailable: suspend () -> Boolean = { AiCoreAvailability.check() }
 ) {
     val mode by AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
-    val fallback by AppConfig.aiCoreFallbackMode.collectAsStateWithLifecycle()
-    val autoRun by AppConfig.isAutoRunAiOnActive.collectAsStateWithLifecycle()
+
     var available by remember { mutableStateOf<Boolean?>(null) }
     val currentCheck by rememberUpdatedState(checkAiCoreAvailable)
     LaunchedEffect(Unit) { available = currentCheck() }
 
     AiAnalysisContent(
         mode = mode,
-        fallback = fallback,
-        autoRun = autoRun,
+
         available = available,
         onNavigateBack = onNavigateBack,
         onModeChange = AppConfig::setAiAnalysisMode,
-        onFallbackChange = AppConfig::setAiCoreFallbackMode,
-        onAutoRunChange = AppConfig::setAutoRunAiOnActive,
+
         onNavigateToParameters = onNavigateToGenerateContentRequest,
         onNavigateToSafety = onNavigateToNsfwContents,
         modifier = modifier
@@ -82,13 +78,11 @@ fun AiAnalysisScreen(
 @Composable
 internal fun AiAnalysisContent(
     mode: AiAnalysisMode,
-    fallback: AiCoreFallbackMode,
-    autoRun: Boolean,
+
     available: Boolean?,
     onNavigateBack: () -> Unit,
     onModeChange: (AiAnalysisMode) -> Unit,
-    onFallbackChange: (AiCoreFallbackMode) -> Unit,
-    onAutoRunChange: (Boolean) -> Unit,
+
     onNavigateToParameters: () -> Unit,
     onNavigateToSafety: () -> Unit,
     modifier: Modifier = Modifier
@@ -108,10 +102,6 @@ internal fun AiAnalysisContent(
                     fadeOut(spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow)) +
                     shrinkVertically(spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow))) {
                 Column {
-                    Spacer(Modifier.height(20.dp))
-                    AiAutomation(autoRun, onAutoRunChange)
-                    Spacer(Modifier.height(20.dp))
-                    AiFallbackChoices(fallback, onFallbackChange)
                     Spacer(Modifier.height(20.dp))
                     SettingsSectionTitle(stringResource(R.string.settings_section_aicore_parameters))
                     SettingsGroup {
@@ -143,33 +133,5 @@ private fun AiModelChoices(mode: AiAnalysisMode, available: Boolean?, onModeChan
         SettingsDivider()
         SettingsRadioRow(stringResource(R.string.settings_ai_analysis_disable), mode == AiAnalysisMode.DISABLE,
             onClick = { onModeChange(AiAnalysisMode.DISABLE) }, subtitle = stringResource(R.string.settings_ai_analysis_disable_desc))
-    }
-}
-
-@Composable
-private fun AiAutomation(autoRun: Boolean, onAutoRunChange: (Boolean) -> Unit) {
-    SettingsSectionTitle(stringResource(R.string.settings_section_automation))
-    SettingsGroup {
-        Row(Modifier.fillMaxWidth().toggleable(value = autoRun, role = Role.Switch, onValueChange = onAutoRunChange)
-            .padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            SettingsIcon(Icons.Default.PlayArrow)
-            Spacer(Modifier.width(16.dp))
-            SettingsRowText(stringResource(R.string.settings_auto_run_ai_title),
-                stringResource(R.string.settings_auto_run_ai_subtitle), Modifier.weight(1f))
-            Spacer(Modifier.width(8.dp))
-            Switch(checked = autoRun, onCheckedChange = null)
-        }
-    }
-}
-
-@Composable
-private fun AiFallbackChoices(fallback: AiCoreFallbackMode, onFallbackChange: (AiCoreFallbackMode) -> Unit) {
-    SettingsSectionTitle(stringResource(R.string.settings_aicore_fallback_section_title),
-        description = stringResource(R.string.settings_aicore_fallback_section_desc))
-    SettingsGroup(Modifier.selectableGroup()) {
-        AiCoreFallbackMode.entries.forEachIndexed { index, choice ->
-            if (index > 0) SettingsDivider()
-            SettingsRadioRow(stringResource(choice.labelRes), fallback == choice, onClick = { onFallbackChange(choice) })
-        }
     }
 }

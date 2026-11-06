@@ -42,8 +42,8 @@ class BookmarkDatabaseTest {
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(17, after.openHelper.readableDatabase.version)
-            assertEquals(queued, after.importTaskDao().getTaskById(queued.id))
+            assertEquals(18, after.openHelper.readableDatabase.version)
+            assertEquals(queued.copy(status = "QUEUED", statusText = ""), after.importTaskDao().getTaskById(queued.id))
         } finally { after.close(); context.deleteDatabase(name) }
     }
 
@@ -152,7 +152,7 @@ class BookmarkDatabaseTest {
             var db = database(name)
             try {
                 val sql = db.openHelper.writableDatabase
-                assertEquals(17, sql.version)
+                assertEquals(18, sql.version)
                 assertTrue(columns(sql, "bookmark_entities").contains("skeletonKey"))
                 sql.query("PRAGMA index_list(bookmark_entities)").use { cursor ->
                     val names = buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
@@ -218,7 +218,7 @@ class BookmarkDatabaseTest {
             helper.close()
             val db = database(name)
             try {
-                assertEquals(17, db.openHelper.readableDatabase.version)
+                assertEquals(18, db.openHelper.readableDatabase.version)
                 val feed = db.rssDao().feed("feed")!!
                 assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
                 assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)
@@ -251,7 +251,7 @@ class BookmarkDatabaseTest {
         } finally { db.close(); context.deleteDatabase(name) }
     }
 
-    @Test fun schemaNinePreservesXmlTasksAndRequiresHtmlBeforeInference() = runBlocking {
+    @Test fun schemaNinePreservesXmlTasksAndRequiresHtmlBeforeSaving() = runBlocking {
         val name = "issue96-migration-${UUID.randomUUID()}.db"
         val helper = legacy(name, 9)
         val old = helper.writableDatabase
@@ -265,13 +265,39 @@ class BookmarkDatabaseTest {
         try {
             val tasks = db.importTaskDao().getAllTasks()
             assertEquals(3, tasks.size)
-            assertTrue(tasks.all { !it.articlePrepared && it.bodySnippet == "XML body" && it.intendedMode == "AI" })
+            assertTrue(tasks.all { !it.articlePrepared && it.bodySnippet == "XML body" && it.intendedMode == "DIRECT" })
             assertEquals(Long.MAX_VALUE, tasks.single { it.status == "ERROR" }.acquisitionRetryAt)
-            assertEquals("PROCESSING_AI", db.importTaskDao().getTaskById("PROCESSING_AI")!!.status)
-            assertEquals(0, db.importTaskDao().claimForAi("PROCESSING_AI", "Not yet prepared"))
+            assertEquals("QUEUED", db.importTaskDao().getTaskById("PROCESSING_AI")!!.status)
+            assertEquals(0, db.importTaskDao().claimForDirectSave("PROCESSING_AI", "Not yet prepared"))
             assertFalse(db.rssDao().feed("feed")!!.enabled)
             assertEquals(100, db.rssDao().feed("feed")!!.retentionLimit)
         } finally { db.close(); context.deleteDatabase(name) }
+    }
+
+    @Test fun upgradeFromSeventeenRequeuesOldAiImportsWithoutLosingPreparedContent() = runBlocking {
+        val name = "direct-import-migration-${UUID.randomUUID()}.db"
+        val before = database(name)
+        try {
+            before.rssDao().putFeed(RssFeedEntity("legacy", "https://example.com/feed", "Feed", mode = "AI"))
+            before.importTaskDao().insertAll(listOf("READY", "WAITING_AI", "PROCESSING_AI", "ERROR").mapIndexed { index, state ->
+                ImportTaskEntity(state, "https://example.com/$index", "Title", state, "Old status",
+                    createdAt = 1L, description = "Prepared description", articlePrepared = index != 1,
+                    rssFeedId = "legacy", intendedMode = "AI", acquisitionRetryAt = 123L)
+            })
+            before.openHelper.writableDatabase.version = 17
+        } finally { before.close() }
+        val after = database(name)
+        try {
+            val tasks = after.importTaskDao().getAllTasks().associateBy { it.id }
+            assertEquals(4, tasks.size)
+            assertEquals("ERROR", tasks.getValue("ERROR").status)
+            assertTrue(listOf("READY", "WAITING_AI", "PROCESSING_AI").all { tasks.getValue(it).status == "QUEUED" })
+            assertEquals("Prepared description", tasks.getValue("READY").description)
+            assertTrue(tasks.getValue("READY").articlePrepared)
+            assertFalse(tasks.getValue("WAITING_AI").articlePrepared)
+            assertTrue(tasks.values.all { it.intendedMode == "DIRECT" && it.acquisitionRetryAt == 123L })
+            assertEquals("DIRECT", after.rssDao().feed("legacy")?.mode)
+        } finally { after.close(); context.deleteDatabase(name) }
     }
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -279,7 +305,7 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showNsfw: Boolean = true): List<BookmarkEntity> {
@@ -664,7 +690,10 @@ class BookmarkDatabaseTest {
                 if (version >= 7) rebuildBookmarkDerivedData(old)
                 if (version == 8) old.execSQL("INSERT INTO rss_feeds(id,url,title,mode,retentionLimit,deleted,revision) VALUES('existing','https://example.com/feed','Existing','DIRECT',100,0,4)")
                 for (table in listOf("bookmarks", "trashed_bookmarks", "import_tasks")) {
-                    val names = columns(old, table).filterNot { table == "bookmarks" && it == "entities" }
+                    val names = columns(old, table).filterNot { column ->
+                        (table == "bookmarks" && column == "entities") ||
+                            (table == "import_tasks" && column in setOf("status", "statusText", "errorMessage", "intendedMode"))
+                    }
                     snapshots[table] = names to fingerprint(old, table, names)
                 }
                 old.setTransactionSuccessful()
@@ -681,6 +710,10 @@ class BookmarkDatabaseTest {
                 }
                 val elapsedMs = (System.nanoTime() - start) / 1_000_000
                 Log.i("Issue81Migration", "from=$version rows=$count durationMs=$elapsedMs")
+                val task = db.importTaskDao().getTaskById("import")!!
+                assertEquals("QUEUED", task.status)
+                assertEquals("", task.statusText)
+                assertEquals("DIRECT", task.intendedMode)
                 val sql = db.openHelper.readableDatabase
                 for ((table, snapshot) in snapshots) {
                     assertEquals("Original data changed in $table from v$version", snapshot.second,

@@ -12,9 +12,6 @@ import kotlinx.coroutines.flow.Flow
  */
 @Dao
 interface ImportTaskDao {
-    @Query("SELECT COUNT(*) FROM import_tasks WHERE status = 'READY'")
-    fun observeReadyNotificationCount(): Flow<Int>
-
     @Query("SELECT * FROM import_tasks ORDER BY createdAt DESC")
     fun getAllTasksFlow(): Flow<List<ImportTaskEntity>>
 
@@ -48,19 +45,19 @@ interface ImportTaskDao {
     @Query("UPDATE import_tasks SET status = :status, statusText = :statusText, errorMessage = :errorMessage WHERE id = :id")
     suspend fun updateStatus(id: String, status: String, statusText: String, errorMessage: String? = null)
 
-    // A single statement claims only existing work; ingestion/edit transactions can remove only unstarted work.
-    @Query("""UPDATE import_tasks SET status = 'PROCESSING_AI', statusText = :statusText, errorMessage = NULL
-        WHERE id = :id AND status IN ('WAITING_AI', 'PROCESSING_AI') AND
-        (rssFeedId IS NULL OR (articlePrepared = 1 AND intendedMode = 'AI' AND EXISTS (SELECT 1 FROM rss_feeds f WHERE f.id = rssFeedId AND f.deleted = 0
-            AND (f.mode = 'AI' OR import_tasks.status = 'PROCESSING_AI'))))""")
-    suspend fun claimForAi(id: String, statusText: String): Int
+    @Query("""UPDATE import_tasks SET status = 'PROCESSING', statusText = :statusText, errorMessage = NULL
+        WHERE id = :id AND status IN ('QUEUED', 'PROCESSING') AND
+        (rssFeedId IS NULL OR (articlePrepared = 1 AND EXISTS (
+            SELECT 1 FROM rss_feeds f WHERE f.id = rssFeedId AND f.deleted = 0)))""")
+    suspend fun claimForDirectSave(id: String, statusText: String): Int
 
-    @Query("""UPDATE import_tasks SET status = 'ERROR', statusText = 'Subscription unavailable',
-        errorMessage = 'This RSS subscription was removed or no longer uses AI Analyze.'
-        WHERE rssFeedId IS NOT NULL AND status IN ('WAITING_AI', 'PROCESSING_AI') AND
-        NOT EXISTS (SELECT 1 FROM rss_feeds f WHERE f.id = rssFeedId AND f.deleted = 0
-            AND (f.mode = 'AI' OR import_tasks.status = 'PROCESSING_AI'))""")
-    suspend fun rejectUnavailableRss()
+    /** Reject a prepared save only while its feed is unavailable and the task is runnable. */
+    @Query("""UPDATE import_tasks SET status = 'ERROR', statusText = 'Save failed',
+        errorMessage = 'RSS feed is unavailable'
+        WHERE id = :id AND status IN ('QUEUED', 'PROCESSING')
+            AND articlePrepared = 1 AND rssFeedId IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM rss_feeds f WHERE f.id = rssFeedId AND f.deleted = 0)""")
+    suspend fun rejectUnavailablePreparedRss(id: String): Int
 
     @Query("DELETE FROM import_tasks WHERE id = :id")
     suspend fun deleteById(id: String)

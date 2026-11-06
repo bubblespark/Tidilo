@@ -22,14 +22,14 @@ class NotificationNavigationTest {
 
     @Test fun pendingIntentOpensImportOnColdStartAndRssAndLibraryOnWarmStart() = runBlocking {
         val mode = AppConfig.aiAnalysisMode.value
-        val auto = AppConfig.isAutoRunAiOnActive.value
+
         AppConfig.setAiAnalysisMode(AiAnalysisMode.DISABLE)
-        AppConfig.setAutoRunAiOnActive(false)
+
         val monitor = instrumentation.addMonitor(MainActivity::class.java.name, null, false)
         var activity: ComponentActivity? = null
         try {
             val coordinator = NotificationCoordinator.getInstance(context)
-            coordinator.buildNotification(NotificationCategory.READY, "Ready").contentIntent.send()
+            coordinator.buildNotification(NotificationCategory.IMPORT_ERROR, "Import error").contentIntent.send()
             activity = instrumentation.waitForMonitorWithTimeout(monitor, 8000) as ComponentActivity?
             assertNotNull(activity)
             awaitText(context.getString(R.string.import_header_subtitle))
@@ -44,7 +44,7 @@ class NotificationNavigationTest {
             instrumentation.removeMonitor(monitor)
             activity?.let { current -> instrumentation.runOnMainSync { current.finish() } }
             AppConfig.setAiAnalysisMode(mode)
-            AppConfig.setAutoRunAiOnActive(auto)
+
         }
     }
 

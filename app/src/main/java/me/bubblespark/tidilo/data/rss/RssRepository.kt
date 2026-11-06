@@ -73,10 +73,9 @@ internal class RssRepository internal constructor(private val context: Context,
     val feeds = dao.observeFeeds()
     val settings = preferences.state
 
-    suspend fun register(url: String, mode: String, limit: Int?, confirmed: RssRegistrationSnapshot? = null): String = withContext(Dispatchers.IO) {
+    suspend fun register(url: String, limit: Int?, confirmed: RssRegistrationSnapshot? = null): String = withContext(Dispatchers.IO) {
         preferences.initialize()
         val normalized = RssFeedParser.httpUrl(url, url) ?: throw IllegalArgumentException("Enter an HTTP or HTTPS feed URL")
-        require(mode in setOf("AI", "DIRECT"))
         require(limit == null || limit in 10..500)
         operation.withLock {
             val old = dao.feedByUrl(normalized)
@@ -85,7 +84,7 @@ internal class RssRepository internal constructor(private val context: Context,
             if (snapshot != null && snapshot != confirmed) throw RssRegistrationConfirmationRequired(snapshot)
             val fetched = fetcher(registration = true).fetch(normalized, null, null)
             val document = requireNotNull(fetched.document) { "Feed returned no document" }
-            val feed = RssFeedEntity(old?.id ?: UUID.randomUUID().toString(), normalized, document.title, mode, limit,
+            val feed = RssFeedEntity(old?.id ?: UUID.randomUUID().toString(), normalized, document.title, "DIRECT", limit,
                 revision = (old?.revision ?: -1) + 1, iconUrl = document.iconUrl, siteUrl = document.siteUrl)
             // XML validation discovers feed metadata only; ingestion has its own operation and validators.
             store.registerFeed(feed, confirmed)
@@ -94,27 +93,14 @@ internal class RssRepository internal constructor(private val context: Context,
         }
     }
 
-    suspend fun edit(id: String, mode: String, limit: Int?, convertPending: Boolean) = withContext(Dispatchers.IO) {
-        require(mode in setOf("AI", "DIRECT"))
+    suspend fun edit(id: String, limit: Int?) = withContext(Dispatchers.IO) {
         require(limit == null || limit in 10..500)
         run {
             db.withTransaction {
                 val previous = requireNotNull(dao.feed(id))
                 require(!previous.deleted)
-                val updated = previous.copy(mode = mode, retentionLimit = limit, revision = previous.revision + 1, acquisitionId = null, acquisitionMobileOverride = false, acquisitionXmlDone = false)
+                val updated = previous.copy(mode = "DIRECT", retentionLimit = limit, revision = previous.revision + 1, acquisitionId = null, acquisitionMobileOverride = false, acquisitionXmlDone = false)
                 dao.putFeed(updated)
-                if (previous.mode == "AI" && mode == "DIRECT") {
-                    val pending = dao.pending(id) + dao.unstartedAcquisitions(id)
-                    if (convertPending) for (task in pending) {
-                        val converted = task.copy(intendedMode = "DIRECT", articlePrepared = false,
-                            status = "ERROR", statusText = "Waiting for Direct article acquisition",
-                            acquisitionAttempts = 0, acquisitionRetryAt = 0)
-                        db.importTaskDao().insertOrUpdate(converted)
-                        if (task.articlePrepared) store.complete(updated, converted,
-                            me.bubblespark.tidilo.parser.PreparedArticle(task.url, task.title, task.siteName,
-                                task.description, task.bodySnippet, task.ogImageUrl, task.isNsfw))
-                    } else db.importTaskDao().deleteByIds(pending.map { it.id })
-                }
             }
             cleanup()
             scheduleChanged()
@@ -139,6 +125,7 @@ internal class RssRepository internal constructor(private val context: Context,
             dao.putFeed(feed.copy(enabled = enabled, revision = feed.revision + 1, acquisitionId = null, acquisitionMobileOverride = false, acquisitionXmlDone = false))
         }
         scheduleChanged()
+        if (enabled) resumeAcquisitions()
     }
 
     suspend fun requestInitialFetch(feedId: String, mobileAllowed: Boolean) = withContext(Dispatchers.IO) {
@@ -159,15 +146,19 @@ internal class RssRepository internal constructor(private val context: Context,
     /** A stopped initial operation keeps only its own permission; ordinary requests cannot borrow it. */
     suspend fun resumeAcquisitions() = withContext(Dispatchers.IO) {
         preferences.initialize()
-        for (feed in dao.enabledFeeds()) {
+        val feeds = dao.enabledFeeds()
+        for (feed in feeds) {
             if (feed.acquisitionId != null) enqueueInitial(feed.id, feed.acquisitionId, feed.acquisitionMobileOverride)
         }
+        val enabledIds = feeds.map { it.id }.toSet()
+        if (db.importTaskDao().getTasksByStatuses(listOf("QUEUED")).any {
+            it.rssFeedId in enabledIds && !it.articlePrepared
+        }) RssScheduler.fetchNow(context)
     }
 
     /** XML success and article completion are separate durable checkpoints. */
     suspend fun fetchAll(since: Long, onlyFeedId: String? = null, authorizedOperation: String? = null,
         notificationRunId: String? = null): Boolean = withContext(Dispatchers.IO) {
-        me.bubblespark.tidilo.TidiloApplication.instance.awaitAiAnalysisInitialization()
         preferences.initialize()
         operation.withLock {
             val deadline = elapsedMillis() + 6 * 60_000L
@@ -175,8 +166,8 @@ internal class RssRepository internal constructor(private val context: Context,
             for (snapshot in dao.enabledFeeds().filter { onlyFeedId == null || it.id == onlyFeedId }) {
                 if (onlyFeedId != null && snapshot.acquisitionId != authorizedOperation) continue
                 val retryTasks = db.importTaskDao().getAllTasks().any {
-                    it.rssFeedId == snapshot.id && !it.articlePrepared && it.status != "PROCESSING_AI" &&
-                        (it.intendedMode == "DIRECT" || snapshot.mode == "AI") && it.acquisitionAttempts < 5 && it.acquisitionRetryAt != Long.MAX_VALUE
+                    it.rssFeedId == snapshot.id && !it.articlePrepared &&
+                        it.acquisitionAttempts < 5 && it.acquisitionRetryAt != Long.MAX_VALUE
                 }
                 if (snapshot.acquisitionId == null && !retryTasks && (snapshot.lastSuccessAt ?: Long.MIN_VALUE) >= since) continue
                 var feed = db.withTransaction {
@@ -227,8 +218,8 @@ internal class RssRepository internal constructor(private val context: Context,
                     feed = dao.feed(feed.id) ?: continue
                 }
                 val tasks = db.importTaskDao().getAllTasks().filter {
-                    it.rssFeedId == feed.id && !it.articlePrepared && it.status != "PROCESSING_AI" &&
-                        (it.intendedMode == "DIRECT" || feed.mode == "AI") && it.acquisitionAttempts < 5 &&
+                    it.rssFeedId == feed.id && !it.articlePrepared &&
+                        it.acquisitionAttempts < 5 &&
                         it.acquisitionRetryAt <= System.currentTimeMillis()
                 }
                 for (window in tasks.chunked(4)) {
@@ -239,8 +230,8 @@ internal class RssRepository internal constructor(private val context: Context,
                     store.enforceRetention(feed.id, feed.revision)
                 }
                 val pending = db.importTaskDao().getAllTasks().any {
-                    it.rssFeedId == feed.id && !it.articlePrepared && it.status != "PROCESSING_AI" &&
-                        (it.intendedMode == "DIRECT" || feed.mode == "AI") && it.acquisitionAttempts < 5 && it.acquisitionRetryAt != Long.MAX_VALUE
+                    it.rssFeedId == feed.id && !it.articlePrepared &&
+                        it.acquisitionAttempts < 5 && it.acquisitionRetryAt != Long.MAX_VALUE
                 }
                 incomplete = incomplete || pending
                 db.withTransaction {
@@ -257,9 +248,8 @@ internal class RssRepository internal constructor(private val context: Context,
         }
     }
 
-    /** Explicit retry preserves the task's intended mode and never starts inference itself. */
-    suspend fun retryAcquisition(taskId: String, promote: Boolean = false) = withContext(Dispatchers.IO) {
-        me.bubblespark.tidilo.TidiloApplication.instance.awaitAiAnalysisInitialization()
+    /** Explicitly retry an article acquisition. */
+    suspend fun retryAcquisition(taskId: String) = withContext(Dispatchers.IO) {
         preferences.initialize()
         operation.withLock {
             val task = db.importTaskDao().getTaskById(taskId) ?: return@withLock
@@ -269,15 +259,11 @@ internal class RssRepository internal constructor(private val context: Context,
                 return@withLock
             }
             if (task.articlePrepared) return@withLock
-            if (task.intendedMode == "AI" && feed.mode != "AI") {
-                db.importTaskDao().updateStatus(task.id, "ERROR", "Subscription no longer uses AI Analyze")
-                return@withLock
-            }
             db.importTaskDao().insertOrUpdate(task.copy(acquisitionAttempts = 0, acquisitionRetryAt = 0))
             try {
-                acquireTask(feed, task.copy(acquisitionAttempts = 0, acquisitionRetryAt = 0), articleNetwork(feed = feed), promote)
+                acquireTask(feed, task.copy(acquisitionAttempts = 0, acquisitionRetryAt = 0), articleNetwork(feed = feed))
             } catch (_: RssWifiUnavailable) {
-                // Connectivity waits belong to this task, not the foreground AI batch or uncaught handler.
+                // Connectivity waits belong to this task, not the uncaught handler.
                 db.withTransaction {
                     val current = dao.feed(feed.id)
                     if (current != null && current.enabled && !current.deleted && current.revision == feed.revision) {
@@ -292,13 +278,13 @@ internal class RssRepository internal constructor(private val context: Context,
     }
 
     private suspend fun acquireTask(feed: RssFeedEntity, task: me.bubblespark.tidilo.data.db.ImportTaskEntity,
-        network: me.bubblespark.tidilo.parser.ArticleNetwork, promote: Boolean = false, runId: String? = null) {
+        network: me.bubblespark.tidilo.parser.ArticleNetwork, runId: String? = null) {
         try {
             store.claimNotificationTask(runId, task.id)
             val parsed = me.bubblespark.tidilo.parser.ArticleAcquirer.acquire(task.url, network)
             val article = me.bubblespark.tidilo.parser.ArticlePreparation.prepare(parsed)
             val classification = me.bubblespark.tidilo.parser.classifyStandardMetadata(parsed)
-            if (!store.complete(feed, task, article, promote, runId, classification)) return
+            if (!store.complete(feed, task, article, runId, classification)) return
             val domain = DomainIconManager.extractDomain(article.url)
             DomainPolicyManager.registerDomain(domain, false, article.siteName)
             if (article.isNsfw && !AppConfig.isNsfwContentBookmarkable.value) return

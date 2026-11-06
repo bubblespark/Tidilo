@@ -26,7 +26,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RssNotificationRunEntity::class,
         RssNotificationItemEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -43,6 +43,17 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         val MIGRATION_15_16 = collectionMigration15To16
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""UPDATE import_tasks SET status = 'QUEUED', statusText = '', errorMessage = NULL
+                    WHERE status IN ('READY', 'WAITING_AI', 'PROCESSING_AI')
+                       OR (status = 'ERROR' AND statusText = 'Waiting for article acquisition'
+                           AND articlePrepared = 0 AND acquisitionAttempts = 0 AND errorMessage IS NULL)""")
+                db.execSQL("UPDATE import_tasks SET intendedMode = 'DIRECT' WHERE intendedMode <> 'DIRECT'")
+                db.execSQL("UPDATE rss_feeds SET mode = 'DIRECT' WHERE mode <> 'DIRECT'")
+            }
+        }
+
         val MIGRATION_16_17 = object : Migration(16, 17) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE import_tasks ADD COLUMN standardCategory TEXT")
@@ -213,7 +224,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
                     .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }

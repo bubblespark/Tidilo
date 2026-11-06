@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
-import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.service.AiCoreExecutionException
@@ -27,6 +26,51 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImportRepositoryTest {
+    @Test fun foregroundStartupDirectlySavesQueuedAndInterruptedTasks() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        val saved = mutableListOf<BookmarkItem>()
+        try {
+            dao.insertAll(listOf(
+                waitingEntity("ready").copy(status = "QUEUED", articlePrepared = true),
+                waitingEntity("waiting").copy(status = "QUEUED", articlePrepared = true),
+                waitingEntity("interrupted").copy(status = "PROCESSING", articlePrepared = true),
+                waitingEntity("error").copy(status = "ERROR")
+            ))
+            val repository = ImportRepository(
+                taskDao = dao,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                persistFallback = { saved.add(it) }
+            )
+            repository.onAppBecameActive()
+            withTimeout(3000) { while (dao.getCount() > 1) delay(10) }
+            assertEquals(setOf("ready", "waiting", "interrupted"), saved.map { it.id }.toSet())
+            assertEquals("ERROR", dao.getTaskById("error")?.status)
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test fun newImportSavesDirectlyWithAiEnabled() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        val saved = mutableListOf<BookmarkItem>()
+        val completed = CompletableDeferred<Result<ImportOutcome>>()
+        try {
+            val repository = ImportRepository(
+                taskDao = dao,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = { directFixture(it) },
+                persistFallback = { saved.add(it) },
+
+                )
+            repository.importUrl("https://direct.example/article") { completed.complete(it) }
+            val outcome = withTimeout(5000) { completed.await() }.getOrThrow()
+            assertTrue("Expected a saved bookmark, got $outcome", outcome is ImportOutcome.BookmarkSaved)
+            assertEquals("Parsed Description", saved.single().description)
+            assertTrue(saved.single().isAiSkipped)
+            assertEquals(0, dao.getCount())
+        } finally { job.cancelAndJoin() }
+    }
+
     @Test fun invalidImportReportsOneDetailedOsError() = runBlocking {
         val job = SupervisorJob()
         val reported = mutableListOf<Throwable>()
@@ -38,39 +82,22 @@ class ImportRepositoryTest {
         } finally { job.cancelAndJoin() }
     }
 
-    @Test fun quotaErrorReportsOnceWhileReturningWholeBatchToReady() = runBlocking {
-        val job = SupervisorJob()
-        val dao = FakeImportTaskDao()
-        val closed = CompletableDeferred<Unit>()
-        val reported = mutableListOf<Int?>()
-        try {
-            dao.insertAll(listOf(waitingEntity("a"), waitingEntity("b")))
-            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-                isAppInForeground = { true }, openModel = { fakeModel { closed.complete(Unit) } },
-                analyzeTask = { _, _ -> throw AiCoreExecutionException(27, "Battery quota exceeded") },
-                fallbackMode = { AiCoreFallbackMode.DISABLE }, reportAiCoreError = { _, code -> reported.add(code) })
-            repository.retryWaitingProcessingTasks()
-            withTimeout(5000) { closed.await() }
-            assertEquals(listOf(27), reported)
-            assertEquals(2, dao.getTasksByStatuses(listOf("READY")).size)
-        } finally { job.cancelAndJoin() }
-    }
     @Test fun disabledRssSkipDeletesTaskWithoutErrorAndContinuesBatch() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()
-        dao.insertAll(listOf(waitingEntity("skipped").copy(status = "READY", articlePrepared = true, rssFeedId = "feed"),
-            waitingEntity("following").copy(status = "READY", articlePrepared = true, rssFeedId = "feed")))
+        dao.insertAll(listOf(waitingEntity("skipped").copy(status = "QUEUED", articlePrepared = true, rssFeedId = "feed"),
+            waitingEntity("following").copy(status = "QUEUED", articlePrepared = true, rssFeedId = "feed")))
         val saved = mutableListOf<BookmarkItem>()
         try {
             val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-                isAppInForeground = { true }, aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
-                openModel = { error("Disabled RSS must not initialize AICore") }, persistFallback = {
+
+                persistFallback = {
                     if (it.id == "skipped") throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
                     saved.add(it)
                 })
-            repository.aiAnalysisAll()
+            repository.onAppBecameActive()
             withTimeout(5000) {
-                while (dao.getTasksByStatuses(listOf("WAITING_AI", "PROCESSING_AI")).isNotEmpty() || saved.isEmpty()) delay(5)
+                while (dao.getTasksByStatuses(listOf("QUEUED", "PROCESSING")).isNotEmpty() || saved.isEmpty()) delay(5)
             }
             assertNull(dao.getTaskById("skipped"))
             assertEquals(0, dao.getCount())
@@ -88,7 +115,8 @@ class ImportRepositoryTest {
         try {
             val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
                 articleAcquirer = { directFixture(it) }, persistFallback = { saved.add(it) },
-                openModel = { error("Disabled import must not open a model") })
+
+                )
             repository.importUrl("https://direct.example/article") { completed.complete(Unit) }
             withTimeout(5000) { completed.await() }
             assertEquals(0, dao.getCount())
@@ -108,18 +136,17 @@ class ImportRepositoryTest {
     @Test fun disabledReadyBatchNeverOpensModelAndPreservesRssMetadata() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()
-        dao.insertAll(listOf(waitingEntity("normal").copy(status = "READY", articlePrepared = true, description = "Normal"),
-            waitingEntity("rss").copy(status = "READY", articlePrepared = true, description = "RSS", rssFeedId = "feed", createdAt = 7)))
+        dao.insertAll(listOf(waitingEntity("normal").copy(status = "QUEUED", articlePrepared = true, description = "Normal"),
+            waitingEntity("rss").copy(status = "QUEUED", articlePrepared = true, description = "RSS", rssFeedId = "feed", createdAt = 7)))
         val saved = mutableListOf<BookmarkItem>()
         val old = me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value
         me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE)
         try {
             val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-                isAppInForeground = { true }, openModel = { error("Disabled execution opened a model") },
                 persistFallback = { saved.add(it) })
             delay(10)
             assertEquals(2, dao.getCount())
-            repository.aiAnalysisAll()
+            repository.onAppBecameActive()
             withTimeout(5000) { while (dao.getCount() > 0) delay(5) }
             assertEquals(2, saved.size)
             assertTrue(saved.all { it.isAiSkipped && it.tag == Tag.createEmpty() })
@@ -138,23 +165,6 @@ class ImportRepositoryTest {
         h2List = emptyList(), readabilityArticle = null, jsoupBodyText = "Body is not the Description",
         jsoupBodyCharCount = 27, fetchLatencyMs = 0, parseLatencyMs = 0, rawHtmlSizeBytes = 100)
 
-    @Test fun aiCoreNewImportQueuesPreparedDescriptionWithoutSavingBookmark() = runBlocking {
-        val job = SupervisorJob()
-        val dao = FakeImportTaskDao()
-        val done = CompletableDeferred<ImportOutcome>()
-        try {
-            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-                aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.AICORE },
-                articleAcquirer = { directFixture(it) }, persistFallback = { error("Must queue for AI") })
-            repository.importUrl("https://direct.example/aicore") { done.complete(it.getOrThrow()) }
-            assertTrue(withTimeout(5000) { done.await() } is ImportOutcome.QueuedForAi)
-            val task = dao.getAllTasks().single()
-            assertEquals("READY", task.status)
-            assertEquals("Parsed Description", task.description)
-            assertTrue(task.articlePrepared)
-        } finally { job.cancelAndJoin() }
-    }
-
     @Test fun disabledAcquisitionFailuresRemainRetryableAndSaveAfterRecovery() = runBlocking {
         for (failure in listOf("offline", "404", "503", "parse")) {
             val job = SupervisorJob()
@@ -164,9 +174,8 @@ class ImportRepositoryTest {
             val saved = mutableListOf<BookmarkItem>()
             try {
                 val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-                    isAppInForeground = { true }, aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
-                    openModel = { error("Disabled retry must not initialize AICore") },
-                    articleAcquirer = {
+
+                articleAcquirer = {
                         if (failed) when (failure) {
                             "offline" -> throw java.io.IOException("Offline")
                             "parse" -> throw IllegalArgumentException("Parse failed")
@@ -198,8 +207,7 @@ class ImportRepositoryTest {
         val saved = mutableListOf<BookmarkItem>()
         try {
             val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-                isAppInForeground = { true }, aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
-                openModel = { error("Disabled save retry must not initialize AICore") },
+
                 articleAcquirer = { fetches++; directFixture(it) }, persistFallback = {
                     if (failSave) error("Disk full")
                     saveStarted.complete(Unit)
@@ -223,207 +231,28 @@ class ImportRepositoryTest {
         } finally { job.cancelAndJoin() }
     }
 
-    @Test fun disablingBetweenReadyTasksSkipsSecondModelCallWithoutConvertingUntilExecution() = runBlocking {
-        val job = SupervisorJob()
-        val dao = FakeImportTaskDao()
-        dao.insertAll(listOf(waitingEntity("one").copy(status = "READY", articlePrepared = true),
-            waitingEntity("two").copy(status = "READY", articlePrepared = true)))
-        var mode = me.bubblespark.tidilo.config.AiAnalysisMode.AICORE
-        var opens = 0
-        var analyzed = 0
-        val saved = mutableListOf<BookmarkItem>()
-        try {
-            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-                isAppInForeground = { true }, aiAnalysisMode = { mode }, openModel = { opens++; fakeModel {} },
-                analyzeTask = { _, _ -> analyzed++; mode = me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
-                persistFallback = { saved.add(it) })
-            repository.promoteTaskToProcessing("one")
-            withTimeout(5000) { while (dao.getTaskById("one") != null) delay(5) }
-            assertEquals("READY", dao.getTaskById("two")!!.status)
-            repository.promoteTaskToProcessing("two")
-            withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
-            assertEquals(1, opens)
-            assertEquals(1, analyzed)
-            assertEquals(1, saved.size)
-        } finally { job.cancelAndJoin() }
-    }
-
-    @Test fun disabledCancellationFinishesActiveSaveAndRestoresWaitingTask() = runBlocking {
-        val job = SupervisorJob()
-        val dao = FakeImportTaskDao()
-        dao.insertAll(listOf(waitingEntity("active").copy(status = "READY", articlePrepared = true),
-            waitingEntity("waiting").copy(status = "READY", articlePrepared = true)))
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        val saved = mutableListOf<BookmarkItem>()
-        try {
-            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-                isAppInForeground = { true }, aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
-                openModel = { error("Disabled cancellation must not initialize AICore") }, persistFallback = {
-                    started.complete(Unit)
-                    release.await()
-                    saved.add(it)
-                })
-            repository.aiAnalysisAll()
-            withTimeout(5000) { started.await() }
-            repository.cancelProcessing()
-            withTimeout(5000) { while (dao.getAllTasks().none { it.status == "READY" }) delay(5) }
-            release.complete(Unit)
-            withTimeout(5000) { while (dao.getCount() != 1) delay(5) }
-            assertEquals("READY", dao.getAllTasks().single().status)
-            assertEquals(1, saved.size)
-        } finally { job.cancelAndJoin() }
-    }
-
     @Test fun disabledRestartResumesInterruptedProcessingWithoutOpeningModel() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()
-        dao.insertOrUpdate(waitingEntity("interrupted").copy(status = "PROCESSING_AI", articlePrepared = true,
+        dao.insertOrUpdate(waitingEntity("interrupted").copy(status = "PROCESSING", articlePrepared = true,
             description = "Persisted Description"))
         val saved = mutableListOf<BookmarkItem>()
         try {
             val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-                isAppInForeground = { true }, aiAnalysisMode = { me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE },
-                openModel = { error("Disabled recovery must not initialize AICore") }, persistFallback = { saved.add(it) })
-            repository.retryWaitingProcessingTasks()
+
+                persistFallback = { saved.add(it) })
+            repository.onAppBecameActive()
             withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
             assertEquals("Persisted Description", saved.single().description)
         } finally { job.cancelAndJoin() }
     }
 
-    @Test fun manualContentRetryFetchFailuresDoNotFailOtherAiTasks() = runBlocking {
-        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
-        for (status in listOf(404, 503)) server.createContext("/$status") { exchange ->
-            exchange.sendResponseHeaders(status, -1)
-            exchange.close()
-        }
-        server.createContext("/disconnect") { exchange -> exchange.close() }
-        server.start()
-        try {
-            for (path in listOf("404", "503", "disconnect")) {
-                val job = SupervisorJob()
-                val scope = CoroutineScope(coroutineContext + job)
-                val dao = FakeImportTaskDao()
-                val source = "http://127.0.0.1:${server.address.port}/$path"
-                dao.insertAll(listOf(waitingEntity("retry").copy(url = source, articlePrepared = true,
-                    status = "ERROR", errorMessage = me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE)))
-                val closed = CompletableDeferred<Unit>()
-                val attempted = mutableListOf<String>()
-                try {
-                    val repository = ImportRepository(taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
-                        openModel = { fakeModel { closed.complete(Unit) } },
-                        analyzeTask = { model, task ->
-                            attempted.add(task.id)
-                            if (task.id == "retry") {
-                                dao.insertOrUpdate(waitingEntity("good"))
-                                me.bubblespark.tidilo.service.GeminiTaggingService.processAndSaveBookmark(
-                                    model, task.url, me.bubblespark.tidilo.config.AppLanguage.ENGLISH,
-                                    bodySnippet = task.bodySnippet, description = task.description, articlePrepared = task.articlePrepared).getOrThrow()
-                            }
-                        })
-                    repository.retryErrorTask("retry")
-                    withTimeout(5000) { closed.await() }
-                    assertEquals(path, listOf("retry", "good"), attempted)
-                    assertNull(dao.getTaskById("good"))
-                    val failed = dao.getTaskById("retry")!!
-                    assertEquals("ERROR", failed.status)
-                    assertFalse(failed.articlePrepared)
-                    assertTrue(failed.errorMessage!!.startsWith("Article acquisition failed"))
-                } finally { job.cancelAndJoin() }
-            }
-        } finally { server.stop(0) }
-    }
-
-    @Test fun manualPreparseRefreshesImageReferenceKeyForChangedUrlAndImage() = runBlocking {
-        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
-        val html = """<title>Prepared title</title><link rel="canonical" href="https://prepared.example/canonical">
-            <meta property="og:image" content="/new.png"><p>Prepared content</p>""".toByteArray()
-        server.createContext("/article") { exchange ->
-            exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
-            exchange.sendResponseHeaders(200, html.size.toLong())
-            exchange.responseBody.use { it.write(html) }
-        }
-        server.start()
-        val job = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + job)
-        try {
-            for (oldImage in listOf<String?>(null, "/old.png")) {
-                val dao = FakeImportTaskDao()
-                val source = "http://127.0.0.1:${server.address.port}/article"
-                val task = waitingEntity("prepare").copy(url = source, title = source, status = "READY",
-                    ogImageUrl = oldImage, ogImageKey = me.bubblespark.tidilo.data.db.bookmarkOgImageKey(source, oldImage))
-                dao.insertOrUpdate(task)
-                val repository = ImportRepository(taskDao = dao, repositoryScope = scope)
-                val preparse = ImportRepository::class.java.getDeclaredMethod("fetchAndPreparseTaskAsync", String::class.java, String::class.java)
-                preparse.isAccessible = true
-                preparse.invoke(repository, task.id, source)
-                val prepared = withTimeout(5000) {
-                    while (dao.getTaskById(task.id)?.articlePrepared != true) delay(10)
-                    dao.getTaskById(task.id)!!
-                }
-                assertEquals("https://prepared.example/canonical", prepared.url)
-                assertEquals(me.bubblespark.tidilo.data.db.bookmarkOgImageKey(prepared.url, prepared.ogImageUrl), prepared.ogImageKey)
-                assertTrue(prepared.ogImageKey != task.ogImageKey)
-            }
-        } finally { job.cancelAndJoin(); server.stop(0) }
-    }
-
-    @Test fun emptyPreparedManualArticleFailsOnlyItselfAndRetryRefreshesPreparation() = runBlocking {
-        val job = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + job)
-        val dao = FakeImportTaskDao()
-        dao.insertAll(listOf(waitingEntity("empty").copy(articlePrepared = true), waitingEntity("good")))
-        val closed = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
-        val attempts = mutableListOf<String>()
-        var repaired = false
-        try {
-            val repository = ImportRepository(taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
-                openModel = { fakeModel { closed.trySend(Unit) } },
-                analyzeTask = { model, task ->
-                    attempts.add(task.id)
-                    if (task.id == "empty" && !repaired) {
-                        me.bubblespark.tidilo.service.GeminiTaggingService.processAndSaveBookmark(model, task.url,
-                            me.bubblespark.tidilo.config.AppLanguage.ENGLISH, articlePrepared = task.articlePrepared).getOrThrow()
-                    } else if (task.id == "empty") assertFalse(task.articlePrepared)
-                })
-            repository.retryWaitingProcessingTasks()
-            withTimeout(5000) { closed.receive() }
-            assertEquals(listOf("empty", "good"), attempts)
-            assertNull(dao.getTaskById("good"))
-            assertEquals(TaskStatus.ERROR.name, dao.getTaskById("empty")!!.status)
-            repaired = true
-            repository.retryErrorTask("empty")
-            withTimeout(5000) { closed.receive() }
-            assertEquals(0, dao.getCount())
-        } finally { job.cancelAndJoin(); closed.close() }
-    }
-
     @Test
     fun legacyRssBodyRequiresArticlePreparse() {
         val rss = ImportTask(id = "rss", url = "https://example.com/rss", title = "Feed title",
-            status = TaskStatus.READY, statusText = "", rssFeedId = "feed")
+            status = TaskStatus.QUEUED, statusText = "", rssFeedId = "feed")
         assertTrue(ImportRepository.needsArticlePreparse(rss))
         assertTrue(ImportRepository.needsArticlePreparse(rss.copy(rssFeedId = null)))
-    }
-
-    @Test
-    fun testRemoveAndRestoreReadyTaskLogic() {
-        val item1 = ImportTask(id = "1", url = "https://example.com/1", title = "Item 1", status = TaskStatus.READY, statusText = "Ready")
-        val item2 = ImportTask(id = "2", url = "https://example.com/2", title = "Item 2", status = TaskStatus.READY, statusText = "Ready")
-        val item3 = ImportTask(id = "3", url = "https://example.com/3", title = "Item 3", status = TaskStatus.READY, statusText = "Ready")
-
-        val list = mutableListOf(item1, item2, item3)
-
-        // Delete item2
-        val index = list.indexOfFirst { it.id == "2" }
-        assertEquals(1, index)
-        val removed = list.removeAt(index)
-        assertEquals("Item 2", removed.title)
-        assertEquals(listOf(item1, item3), list)
-
-        // Restore item2 to its original index
-        list.add(index.coerceIn(0, list.size), removed)
-        assertEquals(listOf(item1, item2, item3), list)
     }
 
     @Test
@@ -446,56 +275,12 @@ class ImportRepositoryTest {
     }
 
     @Test
-    fun testIsAiCoreOrInterruptionExceptionClassification() {
-        val aiCoreException1 = Exception("AICore Service Unavailable on device")
-        val aiCoreException2 = Exception("AICore Rate Limit Exceeded: System service temporarily busy")
-        val aiCoreException3 = Exception("AICore Inference Failed: timeout")
-        val remoteException = Exception("RemoteException: AICore service binder died")
-        val cancelException = java.util.concurrent.CancellationException("Cancelled")
-
-        assertTrue(ImportRepository.isAiCoreOrInterruptionException(aiCoreException1))
-        assertTrue(ImportRepository.isAiCoreOrInterruptionException(aiCoreException2))
-        assertTrue(ImportRepository.isAiCoreOrInterruptionException(aiCoreException3))
-        assertTrue(ImportRepository.isAiCoreOrInterruptionException(remoteException))
-        assertTrue(ImportRepository.isAiCoreOrInterruptionException(cancelException))
-
-        val http404 = Exception("HTTP Error 404: Not Found")
-        val http500 = Exception("HTTP Error 500: Server Error")
-        val invalidUrl = IllegalArgumentException("Invalid HTTP/HTTPS URL")
-
-        assertFalse(ImportRepository.isAiCoreOrInterruptionException(http404))
-        assertFalse(ImportRepository.isAiCoreOrInterruptionException(http500))
-        assertFalse(ImportRepository.isAiCoreOrInterruptionException(invalidUrl))
-    }
-
-    @Test
-    fun testInterruptedProcessingTaskRetainsWaitingStatusWithoutError() {
-        val processingTask = ImportTask(
-            id = "run-test",
-            url = "https://example.com/test",
-            title = "Test Item",
-            status = TaskStatus.PROCESSING_AI,
-            statusText = "Gemini Nano analyzing content..."
-        )
-
-        // When interrupted by background/AICore exception, it should be set to WAITING_AI with paused status
-        val interruptedTask = processingTask.copy(
-            status = TaskStatus.WAITING_AI,
-            statusText = "Paused • Retrying when app is active"
-        )
-
-        assertEquals(TaskStatus.WAITING_AI, interruptedTask.status)
-        assertEquals("Paused • Retrying when app is active", interruptedTask.statusText)
-        assertEquals("run-test", interruptedTask.id)
-    }
-
-    @Test
     fun testPrecomputedImportTaskMetadataFields() {
         val item = ImportTask(
             id = "preparsed-1",
             url = "https://example.com/article",
             title = "Example Article Title",
-            status = TaskStatus.READY,
+            status = TaskStatus.QUEUED,
             statusText = "Ready for AI Analysis",
             isNsfw = false,
             siteName = "Example Blog",
@@ -530,60 +315,6 @@ class ImportRepositoryTest {
     }
 
     @Test
-    fun testExtractAiCoreErrorCodeFromDirectAndWrappedExceptions() {
-        val busyEx = AiCoreExecutionException(
-            com.google.mlkit.genai.common.GenAiException.ErrorCode.BUSY,
-            "Busy"
-        )
-        val quotaEx = AiCoreExecutionException(
-            com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED,
-            "Quota exceeded"
-        )
-        val blockedEx = AiCoreExecutionException(
-            com.google.mlkit.genai.common.GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED,
-            "Background use blocked"
-        )
-
-        assertEquals(
-            com.google.mlkit.genai.common.GenAiException.ErrorCode.BUSY,
-            ImportRepository.extractAiCoreErrorCode(busyEx)
-        )
-        assertEquals(
-            com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED,
-            ImportRepository.extractAiCoreErrorCode(quotaEx)
-        )
-        assertEquals(
-            com.google.mlkit.genai.common.GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED,
-            ImportRepository.extractAiCoreErrorCode(blockedEx)
-        )
-
-        // Nested in runtime exception wrapper
-        val wrappedQuotaEx = RuntimeException("Wrapper exception", quotaEx)
-        assertEquals(
-            com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED,
-            ImportRepository.extractAiCoreErrorCode(wrappedQuotaEx)
-        )
-
-        // String message fallback detection
-        val msgFallbackQuota = Exception("AICore battery use quota exceeded (code 27)")
-        val msgFallbackBusy = Exception("AICore BUSY rate limit exceeded")
-        val msgFallbackBlocked = Exception("AICore BACKGROUND_USE_BLOCKED error")
-
-        assertEquals(
-            com.google.mlkit.genai.common.GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED,
-            ImportRepository.extractAiCoreErrorCode(msgFallbackQuota)
-        )
-        assertEquals(
-            com.google.mlkit.genai.common.GenAiException.ErrorCode.BUSY,
-            ImportRepository.extractAiCoreErrorCode(msgFallbackBusy)
-        )
-        assertEquals(
-            com.google.mlkit.genai.common.GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED,
-            ImportRepository.extractAiCoreErrorCode(msgFallbackBlocked)
-        )
-    }
-
-    @Test
     fun testMapInferenceExceptionTransformsToAiCoreExecutionException() {
         val genAiBusy = com.google.mlkit.genai.common.GenAiException(
             "System busy",
@@ -614,107 +345,12 @@ class ImportRepositoryTest {
     }
 
     @Test
-    fun testMoveAllProcessingToReadyLogic() {
-        val item1 = ImportTask(id = "run-1", url = "https://example.com/1", title = "Task 1", status = TaskStatus.PROCESSING_AI, statusText = "Inference")
-        val item2 = ImportTask(id = "run-2", url = "https://example.com/2", title = "Task 2", status = TaskStatus.WAITING_AI, statusText = "Waiting")
-        val currentProcessing = listOf(item1, item2)
-
-        // When battery quota exceeded occurs:
-        val converted = currentProcessing.map { item ->
-            item.copy(
-                status = TaskStatus.READY,
-                statusText = "Ready • Quota exceeded"
-            )
-        }
-
-        assertEquals(2, converted.size)
-        assertEquals(TaskStatus.READY, converted[0].status)
-        assertEquals("Ready • Quota exceeded", converted[0].statusText)
-        assertEquals(TaskStatus.READY, converted[1].status)
-        assertEquals("Ready • Quota exceeded", converted[1].statusText)
-    }
-
-    @Test
-    fun testMoveAllProcessingToErrorBatchFailureLogic() {
-        val item1 = ImportTask(id = "run-1", url = "https://example.com/1", title = "Task 1", status = TaskStatus.PROCESSING_AI, statusText = "Inference")
-        val item2 = ImportTask(id = "run-2", url = "https://example.com/2", title = "Task 2", status = TaskStatus.WAITING_AI, statusText = "Waiting")
-        val currentProcessing = listOf(item1, item2)
-
-        val primaryFailedItem = item1
-        val failureMsg = "AICore busy: Retry limit exceeded (3/3)"
-
-        val errorItems = currentProcessing.map { item ->
-            item.copy(
-                status = TaskStatus.ERROR,
-                statusText = "Failed",
-                errorMessage = if (item.id == primaryFailedItem.id) {
-                    failureMsg
-                } else {
-                    "Batch stopped: $failureMsg"
-                }
-            )
-        }
-
-        assertEquals(2, errorItems.size)
-        assertEquals(TaskStatus.ERROR, errorItems[0].status)
-        assertEquals(failureMsg, errorItems[0].errorMessage)
-        assertEquals(TaskStatus.ERROR, errorItems[1].status)
-        assertEquals("Batch stopped: AICore busy: Retry limit exceeded (3/3)", errorItems[1].errorMessage)
-    }
-
-    @Test
-    fun testAiCoreFallbackModeEnumAndConfig() {
-        assertEquals("disable", AiCoreFallbackMode.DISABLE.code)
-        assertEquals("無効", AiCoreFallbackMode.DISABLE.jaLabel)
-        assertEquals("Disable", AiCoreFallbackMode.DISABLE.enLabel)
-
-        assertEquals("quota_only", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.code)
-        assertEquals("AICore超過時のみ", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.jaLabel)
-        assertEquals("Only if the AICore quota is exceeded", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.enLabel)
-
-        assertEquals("all", AiCoreFallbackMode.ALL.code)
-        assertEquals("全て", AiCoreFallbackMode.ALL.jaLabel)
-        assertEquals("All", AiCoreFallbackMode.ALL.enLabel)
-
-        assertEquals(AiCoreFallbackMode.DISABLE, AiCoreFallbackMode.fromCode("disable"))
-        assertEquals(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, AiCoreFallbackMode.fromCode("quota_only"))
-        assertEquals(AiCoreFallbackMode.ALL, AiCoreFallbackMode.fromCode("all"))
-        assertEquals(AiCoreFallbackMode.DISABLE, AiCoreFallbackMode.fromCode("unknown"))
-    }
-
-    @Test
-    fun testIsFallbackApplicableLogic() {
-        val quotaExceededCode = GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED
-        val busyCode = GenAiException.ErrorCode.BUSY
-        val quotaExceededException = GenAiException("Quota exceeded", null, quotaExceededCode)
-        val busyException = GenAiException("Busy", null, busyCode)
-        val networkException = Exception("Network connection failed")
-
-        // 1. DISABLE mode: never applicable
-        assertFalse(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.DISABLE, quotaExceededCode, quotaExceededException))
-        assertFalse(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.DISABLE, busyCode, busyException))
-        assertFalse(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.DISABLE, null, networkException))
-
-        // 2. QUOTA_EXCEEDED_ONLY mode: only applicable for PER_APP_BATTERY_USE_QUOTA_EXCEEDED (27)
-        assertTrue(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, quotaExceededCode, quotaExceededException))
-        assertFalse(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, busyCode, busyException))
-        assertFalse(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, null, networkException))
-
-        // 3. ALL mode: applicable for any AICore error code or AICore exception
-        assertTrue(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, quotaExceededCode, quotaExceededException))
-        assertTrue(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, busyCode, busyException))
-        val aiCoreMsgException = Exception("AICore Service Unavailable")
-        assertTrue(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, null, aiCoreMsgException))
-        assertFalse(ImportRepository.isFallbackApplicable(AiCoreFallbackMode.ALL, null, networkException))
-    }
-
-    @Test
     fun testFallbackBookmarkCreationContract() {
         val target = ImportTask(
             id = "import-test-1",
             url = "https://example.com/fallback-target",
             title = "Target Web Page",
-            status = TaskStatus.PROCESSING_AI,
+            status = TaskStatus.PROCESSING,
             statusText = "Processing",
             isNsfw = true,
             siteName = "ExampleSite",
@@ -748,7 +384,7 @@ class ImportRepositoryTest {
             id = "task-entity-test",
             url = "https://example.com/entity",
             title = "Entity Test",
-            status = TaskStatus.READY,
+            status = TaskStatus.QUEUED,
             statusText = "Ready for AI",
             errorMessage = null,
             assignedTags = listOf("tag1", "tag2"),
@@ -762,7 +398,7 @@ class ImportRepositoryTest {
         val entity = ImportTaskEntity.fromImportTask(task)
         assertEquals("task-entity-test", entity.id)
         assertEquals("https://example.com/entity", entity.url)
-        assertEquals(TaskStatus.READY.name, entity.status)
+        assertEquals(TaskStatus.QUEUED.name, entity.status)
         assertEquals(listOf("tag1", "tag2"), entity.assignedTags)
 
         val reconstructed = entity.toImportTask()
@@ -779,466 +415,11 @@ class ImportRepositoryTest {
         assertEquals(task.bodySnippet, reconstructed.bodySnippet)
     }
 
-    @Test
-    fun testTaskExecutionEligibilityGuardsAgainstInvalidStates() {
-        // executeTaskAiAnalysis requires the task to be in WAITING_AI or PROCESSING_AI
-        fun isEligibleForExecution(status: TaskStatus): Boolean {
-            return status == TaskStatus.WAITING_AI || status == TaskStatus.PROCESSING_AI
-        }
-
-        assertTrue(isEligibleForExecution(TaskStatus.WAITING_AI))
-        assertTrue(isEligibleForExecution(TaskStatus.PROCESSING_AI))
-        assertFalse(isEligibleForExecution(TaskStatus.READY))
-        assertFalse(isEligibleForExecution(TaskStatus.COMPLETED))
-        assertFalse(isEligibleForExecution(TaskStatus.ERROR))
-    }
-
-    @Test
-    fun testPromoteReadyTaskToWaitingAiStateTransition() {
-        val readyTask = ImportTask(
-            id = "test-promote-1",
-            url = "https://example.com/test",
-            title = "Sample Webpage",
-            status = TaskStatus.READY,
-            statusText = "Ready for AI Analysis",
-            isNsfw = false,
-            siteName = "SampleSite",
-            description = "Snippet description",
-            bodySnippet = "Extracted body content"
-        )
-
-        val promoted = readyTask.copy(
-            status = TaskStatus.WAITING_AI,
-            statusText = "Waiting for AICore slot..."
-        )
-
-        assertEquals(TaskStatus.WAITING_AI, promoted.status)
-        assertEquals("Waiting for AICore slot...", promoted.statusText)
-        assertEquals(readyTask.id, promoted.id)
-        assertEquals(readyTask.url, promoted.url)
-        assertEquals(readyTask.title, promoted.title)
-        assertEquals(readyTask.siteName, promoted.siteName)
-        assertEquals(readyTask.description, promoted.description)
-        assertEquals(readyTask.bodySnippet, promoted.bodySnippet)
-
-        // Convert to entity and back to ensure Room compatibility
-        val entity = ImportTaskEntity.fromImportTask(promoted)
-        assertEquals(TaskStatus.WAITING_AI.name, entity.status)
-        assertEquals("Waiting for AICore slot...", entity.statusText)
-
-        val restored = entity.toImportTask()
-        assertEquals(TaskStatus.WAITING_AI, restored.status)
-        assertEquals("Waiting for AICore slot...", restored.statusText)
-    }
-
-    @Test
-    fun testAiProcessingProgressDefaultState() {
-        val defaultProgress = AiProcessingProgress()
-        assertFalse(defaultProgress.isProcessing)
-        assertEquals(0, defaultProgress.completedCount)
-        assertEquals(0, defaultProgress.totalCount)
-        assertNull(defaultProgress.currentTaskTitle)
-    }
-
-    @Test
-    fun testBatchProgressTrackingLifecycle() {
-        var state = ImportRepository.BatchProgressState()
-
-        fun computeProgress(processingTasks: List<ImportTask>): AiProcessingProgress {
-            val (progress, newState) = ImportRepository.computeBatchProgress(
-                processingTasks = processingTasks,
-                state = state
-            )
-            state = newState
-            return progress
-        }
-
-        // 1. Initial empty state
-        val step0 = computeProgress(emptyList())
-        assertFalse(step0.isProcessing)
-        assertEquals(0, step0.totalCount)
-        assertEquals(0, step0.completedCount)
-
-        // 2. Batch starts with 3 tasks (t1 analyzing, t2, t3 waiting)
-        val t1 = ImportTask(id = "1", url = "https://a.com", title = "Task A", status = TaskStatus.PROCESSING_AI, statusText = "")
-        val t2 = ImportTask(id = "2", url = "https://b.com", title = "Task B", status = TaskStatus.WAITING_AI, statusText = "")
-        val t3 = ImportTask(id = "3", url = "https://c.com", title = "Task C", status = TaskStatus.WAITING_AI, statusText = "")
-
-        val step1 = computeProgress(listOf(t1, t2, t3))
-        assertTrue(step1.isProcessing)
-        assertEquals(3, step1.totalCount)
-        assertEquals(0, step1.completedCount)
-        assertEquals("Task A", step1.currentTaskTitle)
-
-        // 3. Task 1 finishes -> remaining t2 (analyzing) and t3 (waiting)
-        val t2Active = t2.copy(status = TaskStatus.PROCESSING_AI)
-        val step2 = computeProgress(listOf(t2Active, t3))
-        assertTrue(step2.isProcessing)
-        assertEquals(3, step2.totalCount)
-        assertEquals(1, step2.completedCount)
-        assertEquals("Task B", step2.currentTaskTitle)
-
-        // 4. User adds task 4 mid-flight
-        val t4 = ImportTask(id = "4", url = "https://d.com", title = "Task D", status = TaskStatus.WAITING_AI, statusText = "")
-        val step3 = computeProgress(listOf(t2Active, t3, t4))
-        assertTrue(step3.isProcessing)
-        assertEquals(4, step3.totalCount)
-        assertEquals(1, step3.completedCount)
-
-        // 5. Task 2 finishes -> remaining t3 (analyzing) and t4
-        val t3Active = t3.copy(status = TaskStatus.PROCESSING_AI)
-        val step4 = computeProgress(listOf(t3Active, t4))
-        assertTrue(step4.isProcessing)
-        assertEquals(4, step4.totalCount)
-        assertEquals(2, step4.completedCount)
-        assertEquals("Task C", step4.currentTaskTitle)
-
-        // 6. Task 3 finishes -> remaining t4 (analyzing)
-        val t4Active = t4.copy(status = TaskStatus.PROCESSING_AI)
-        val step5 = computeProgress(listOf(t4Active))
-        assertTrue(step5.isProcessing)
-        assertEquals(4, step5.totalCount)
-        assertEquals(3, step5.completedCount)
-        assertEquals("Task D", step5.currentTaskTitle)
-
-        // 7. Task 4 finishes -> empty list (all completed)
-        val step6 = computeProgress(emptyList())
-        assertFalse(step6.isProcessing)
-        assertEquals(0, step6.totalCount)
-        assertEquals(0, step6.completedCount)
-        assertNull(step6.currentTaskTitle)
-    }
-
-    @Test
-    fun testBatchProgressCancellationLifecycle() {
-        var state = ImportRepository.BatchProgressState()
-        var isAiCancelPending = false
-
-        fun computeProgress(processingTasks: List<ImportTask>): AiProcessingProgress {
-            val (progress, newState) = ImportRepository.computeBatchProgress(
-                processingTasks = processingTasks,
-                state = state,
-                isCancelPending = isAiCancelPending
-            )
-            state = newState
-            return progress
-        }
-
-        // 1. Batch starts with 3 tasks (t1 processing, t2 & t3 waiting)
-        val t1 = ImportTask(id = "1", url = "https://a.com", title = "Task A", status = TaskStatus.PROCESSING_AI, statusText = "")
-        val t2 = ImportTask(id = "2", url = "https://b.com", title = "Task B", status = TaskStatus.WAITING_AI, statusText = "")
-        val t3 = ImportTask(id = "3", url = "https://c.com", title = "Task C", status = TaskStatus.WAITING_AI, statusText = "")
-
-        val activeList = mutableListOf(t1, t2, t3)
-        val initialProgress = computeProgress(activeList)
-        assertTrue(initialProgress.isProcessing)
-        assertFalse(initialProgress.isCancelPending)
-        assertEquals(3, initialProgress.totalCount)
-        assertEquals("Task A", initialProgress.currentTaskTitle)
-
-        // 2. User taps '×' cancel button:
-        // isAiCancelPending flag is set to true
-        isAiCancelPending = true
-        // Waiting tasks (t2, t3) are returned to READY and removed from processing list
-        val waitingTasks = activeList.filter { it.status == TaskStatus.WAITING_AI }
-        assertEquals(2, waitingTasks.size)
-        activeList.removeAll(waitingTasks)
-        val restoredToReady = waitingTasks.map { it.copy(status = TaskStatus.READY, statusText = "") }
-        assertEquals(2, restoredToReady.size)
-        assertTrue(restoredToReady.all { it.status == TaskStatus.READY })
-
-        // Active list now contains ONLY the single actively executing task (t1)
-        val cancelledProgress = computeProgress(activeList)
-        assertTrue(cancelledProgress.isProcessing)
-        assertTrue(cancelledProgress.isCancelPending) // Cancel button is now disabled / grayed out
-        assertEquals("Task A", cancelledProgress.currentTaskTitle)
-        assertEquals(1, activeList.size)
-        assertEquals(TaskStatus.PROCESSING_AI, activeList.first().status)
-
-        // 3. Actively executing task finishes -> active list becomes empty
-        activeList.clear()
-        val finalProgress = computeProgress(activeList)
-        assertFalse(finalProgress.isProcessing) // Indicator button hides
-        assertFalse(finalProgress.isCancelPending) // Reset for future batches
-        assertEquals(0, finalProgress.totalCount)
-        assertEquals(0, finalProgress.completedCount)
-        assertNull(finalProgress.currentTaskTitle)
-    }
-
-    private fun fakeModel(onClose: () -> Unit): GenerativeModel = Proxy.newProxyInstance(
-        GenerativeModel::class.java.classLoader,
-        arrayOf(GenerativeModel::class.java)
-    ) { _, method, _ ->
-        check(method.name == "close") { "Unexpected model call: ${method.name}" }
-        onClose()
-        null
-    } as GenerativeModel
-
     private fun waitingEntity(id: String) = ImportTaskEntity.fromImportTask(
-        ImportTask(id = id, url = "https://example.com/$id", title = id, status = TaskStatus.WAITING_AI, statusText = "")
+        ImportTask(id = id, url = "https://example.com/$id", title = id, status = TaskStatus.QUEUED, statusText = "")
     )
 
-    @Test
-    fun processingLoopRetriesBusyTaskWithoutBlockingOtherTasksOrReopeningModel() = runBlocking {
-        val job = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + job)
-        val dao = FakeImportTaskDao()
-        dao.insertAll(listOf(waitingEntity("busy"), waitingEntity("next")))
-        val closed = CompletableDeferred<Unit>()
-        val attempts = mutableListOf<String>()
-        var opens = 0
-        var closes = 0
-        try {
-            val repository = ImportRepository(
-                taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
-                openModel = { opens++; fakeModel { closes++; closed.complete(Unit) } },
-                analyzeTask = { _, task ->
-                    attempts.add(task.id)
-                    if (task.id == "busy") throw AiCoreExecutionException(9, "AICore busy")
-                },
-                fallbackMode = { AiCoreFallbackMode.DISABLE },
-                retryIntervalMs = 10L
-            )
-            repository.retryWaitingProcessingTasks()
-            withTimeout(15000) { closed.await() }
-            assertEquals(listOf("busy", "next", "busy", "busy", "busy"), attempts)
-            assertEquals(1, opens)
-            assertEquals(1, closes)
-            assertEquals(TaskStatus.ERROR.name, dao.getTaskById("busy")?.status)
-            assertNull(dao.getTaskById("next"))
-        } finally { job.cancelAndJoin() }
-    }
-
-    @Test
-    fun processingLoopCancellationFinishesActiveTaskAndRestoresWaitingTasks() = runBlocking {
-        val job = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + job)
-        val dao = FakeImportTaskDao()
-        dao.insertAll(listOf(waitingEntity("active"), waitingEntity("waiting")))
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        val closed = CompletableDeferred<Unit>()
-        val processed = mutableListOf<String>()
-        try {
-            val repository = ImportRepository(
-                taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
-                openModel = { fakeModel { closed.complete(Unit) } },
-                analyzeTask = { _, task -> processed.add(task.id); started.complete(Unit); release.await() }
-            )
-            repository.retryWaitingProcessingTasks()
-            withTimeout(5000) { started.await() }
-            repository.cancelProcessing()
-            // Give the repository's queued cancellation update a chance to run.
-            kotlinx.coroutines.yield()
-            assertEquals(TaskStatus.READY.name, dao.getTaskById("waiting")?.status)
-            release.complete(Unit)
-            withTimeout(5000) { closed.await() }
-            assertEquals(listOf("active"), processed)
-            assertNull(dao.getTaskById("active"))
-            assertEquals(TaskStatus.READY.name, dao.getTaskById("waiting")?.status)
-        } finally { job.cancelAndJoin() }
-    }
-
-    @Test
-    fun backgroundPauseClosesSessionAndForegroundResumeProcessesInterruptedTasks() = runBlocking {
-        val job = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + job)
-        val dao = FakeImportTaskDao()
-        dao.insertAll(listOf(waitingEntity("first"), waitingEntity("second")))
-        val paused = CompletableDeferred<Unit>()
-        val finished = CompletableDeferred<Unit>()
-        var foreground = true
-        var opens = 0
-        var closes = 0
-        val processed = mutableListOf<String>()
-        try {
-            val repository = ImportRepository(
-                taskDao = dao, repositoryScope = scope, isAppInForeground = { foreground },
-                openModel = {
-                    opens++
-                    fakeModel { if (++closes == 1) paused.complete(Unit) else finished.complete(Unit) }
-                },
-                analyzeTask = { _, task ->
-                    processed.add(task.id)
-                    if (task.id == "first") foreground = false
-                }
-            )
-            repository.retryWaitingProcessingTasks()
-            withTimeout(5000) { paused.await() }
-            assertEquals(listOf("first"), processed)
-            assertEquals(TaskStatus.WAITING_AI.name, dao.getTaskById("second")?.status)
-            // Simulate the persisted interrupted state handled by the resume entry point.
-            dao.updateStatus("second", TaskStatus.PROCESSING_AI.name, "Interrupted")
-            foreground = true
-            repository.retryWaitingProcessingTasks()
-            withTimeout(5000) { finished.await() }
-            assertEquals(listOf("first", "second"), processed)
-            assertEquals(2, opens)
-            assertEquals(2, closes)
-            assertEquals(0, dao.getCount())
-        } finally { job.cancelAndJoin() }
-    }
-
-    @Test
-    fun quotaFailureRestoresBatchBeforeLoopCanStartAnotherInference() = runBlocking {
-        val job = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + job)
-        val dao = FakeImportTaskDao()
-        dao.insertAll(listOf(waitingEntity("first"), waitingEntity("second")))
-        val closed = CompletableDeferred<Unit>()
-        val attempts = mutableListOf<String>()
-        try {
-            val repository = ImportRepository(
-                taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
-                openModel = { fakeModel { closed.complete(Unit) } },
-                analyzeTask = { _, task ->
-                    attempts.add(task.id)
-                    throw AiCoreExecutionException(27, "Battery quota exceeded")
-                },
-                fallbackMode = { AiCoreFallbackMode.DISABLE }
-            )
-            repository.retryWaitingProcessingTasks()
-            withTimeout(5000) { closed.await() }
-            assertEquals(listOf("first"), attempts)
-            assertTrue(dao.getAllTasks().all { it.status == TaskStatus.READY.name })
-            assertTrue(repository.quotaExceededDialogVisible.value)
-        } finally { job.cancelAndJoin() }
-    }
-
-    @Test
-    fun bulkAndIndividualPromotionsUseSameSessionIncludingWorkAddedDuringInference() = runBlocking {
-        val job = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + job)
-        val dao = FakeImportTaskDao()
-        dao.insertAll(listOf(waitingEntity("bulk").copy(status = TaskStatus.READY.name)))
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        val closed = CompletableDeferred<Unit>()
-        var opens = 0
-        val processed = mutableListOf<String>()
-        try {
-            val repository = ImportRepository(
-                taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
-                openModel = { opens++; fakeModel { closed.complete(Unit) } },
-                analyzeTask = { _, task ->
-                    processed.add(task.id)
-                    if (task.id == "bulk") { started.complete(Unit); release.await() }
-                }
-            )
-            repository.aiAnalysisAll()
-            withTimeout(5000) { started.await() }
-            dao.insertOrUpdate(waitingEntity("individual").copy(status = TaskStatus.READY.name))
-            repository.promoteTaskToProcessing("individual")
-            kotlinx.coroutines.yield()
-            release.complete(Unit)
-            withTimeout(5000) { closed.await() }
-            assertEquals(listOf("bulk", "individual"), processed)
-            assertEquals(1, opens)
-            assertEquals(0, dao.getCount())
-        } finally { job.cancelAndJoin() }
-    }
-
-    @Test
-    fun fallbackRetainsImportTaskUntilDurableSaveCompletes() = verifyFallbackPersistence(false)
-
-    @Test
-    fun failedFallbackSaveRetainsRetryableTaskAndRetryCanSucceed() = verifyFallbackPersistence(true)
-
-    @Test
-    fun rssFallbackPreservesFirstSeenDateWithoutPublication() = verifyFallbackPersistence(false, rss = true)
-
-    private fun verifyFallbackPersistence(initiallyFail: Boolean, rss: Boolean = false) = runBlocking {
-        val job = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + job)
-        val dao = FakeImportTaskDao()
-        dao.insertOrUpdate(waitingEntity("fallback").copy(rssFeedId = if (rss) "feed" else null, createdAt = 7, articlePrepared = true))
-        val saveStarted = CompletableDeferred<Unit>()
-        val releaseSave = CompletableDeferred<Unit>()
-        val firstClosed = CompletableDeferred<Unit>()
-        val secondClosed = CompletableDeferred<Unit>()
-        var closes = 0
-        var failSave = initiallyFail
-        val saved = mutableListOf<BookmarkItem>()
-        try {
-            val repository = ImportRepository(
-                taskDao = dao, repositoryScope = scope, isAppInForeground = { true },
-                openModel = {
-                    fakeModel { if (++closes == 1) firstClosed.complete(Unit) else secondClosed.complete(Unit) }
-                },
-                analyzeTask = { _, _ -> throw AiCoreExecutionException(27, "Battery quota exceeded") },
-                fallbackMode = { AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY },
-                persistFallback = { bookmark ->
-                    saveStarted.complete(Unit)
-                    releaseSave.await()
-                    assertTrue(dao.getTaskById("fallback") != null)
-                    if (failSave) error("Disk write failed")
-                    saved.add(bookmark)
-                }
-            )
-            repository.retryWaitingProcessingTasks()
-            withTimeout(5000) { saveStarted.await() }
-            assertEquals(TaskStatus.PROCESSING_AI.name, dao.getTaskById("fallback")?.status)
-            assertTrue(saved.isEmpty())
-            releaseSave.complete(Unit)
-            withTimeout(5000) { firstClosed.await() }
-            if (initiallyFail) {
-                assertEquals(TaskStatus.ERROR.name, dao.getTaskById("fallback")?.status)
-                assertTrue(saved.isEmpty())
-                failSave = false
-                repository.retryErrorTask("fallback")
-                withTimeout(5000) { secondClosed.await() }
-            }
-            assertNull(dao.getTaskById("fallback"))
-            assertEquals(1, saved.size)
-            assertTrue(saved.single().isAiSkipped)
-            if (rss) {
-                assertEquals("feed", saved.single().rssFeedId)
-                assertEquals(7L, saved.single().createdAt)
-                assertNull(saved.single().rssPublishedAt)
-            }
-        } finally { job.cancelAndJoin() }
-    }
-
-    @Test
-    fun manualTasksRunBeforeNewerRssTasks() = runBlocking {
-        val dao = FakeImportTaskDao()
-        dao.insertAll(listOf(
-            ImportTaskEntity("rss", "https://example.com/rss", "RSS", "WAITING_AI", "", createdAt = 20, rssFeedId = "feed", articlePrepared = true),
-            ImportTaskEntity("manual", "https://example.com/manual", "Manual", "WAITING_AI", "", createdAt = 10)))
-        val root = SupervisorJob()
-        val done = CompletableDeferred<Unit>()
-        val processed = mutableListOf<String>()
-        val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + root),
-            isAppInForeground = { true }, openModel = { fakeModel { done.complete(Unit) } },
-            analyzeTask = { _, task -> processed.add(task.id) })
-        try {
-            repository.retryWaitingProcessingTasks()
-            withTimeout(3000) { done.await() }
-            assertEquals(listOf("manual", "rss"), processed)
-        } finally { root.cancelAndJoin() }
-    }
-
-    @Test
-    fun subscriptionRemovedDuringClaimStopsWithoutInferenceOrBusyLoop() = runBlocking {
-        val dao = FakeImportTaskDao()
-        dao.insertOrUpdate(ImportTaskEntity("rss", "https://example.com/rss", "RSS", "WAITING_AI", "", createdAt = 1, rssFeedId = "feed", articlePrepared = true))
-        dao.beforeClaim = { dao.unavailableIds = setOf("rss") }
-        val root = SupervisorJob()
-        val closed = CompletableDeferred<Unit>()
-        var attempts = 0
-        val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + root),
-            isAppInForeground = { true }, openModel = { fakeModel { closed.complete(Unit) } },
-            analyzeTask = { _, _ -> attempts++ })
-        try {
-            repository.retryWaitingProcessingTasks()
-            withTimeout(3000) { closed.await() }
-            assertEquals(0, attempts)
-            assertEquals("ERROR", dao.getTaskById("rss")?.status)
-        } finally { root.cancelAndJoin() }
-    }
-
     private class FakeImportTaskDao : ImportTaskDao {
-        override fun observeReadyNotificationCount(): Flow<Int> = getAllTasksFlow().map { tasks -> tasks.count { it.status == "READY" } }
         var insertCount = 0
         val tasksFlow = MutableStateFlow<List<ImportTaskEntity>>(emptyList())
         var unavailableIds = emptySet<String>()
@@ -1288,22 +469,18 @@ class ImportRepositoryTest {
             insertOrUpdate(existing.copy(status = status, statusText = statusText, errorMessage = errorMessage))
         }
 
-        override suspend fun claimForAi(id: String, statusText: String): Int {
+        override suspend fun rejectUnavailablePreparedRss(id: String): Int = 0
+
+        override suspend fun claimForDirectSave(id: String, statusText: String): Int {
             beforeClaim()
             delay(1)
             if (id in unavailableIds) return 0
             val task = getTaskById(id) ?: return 0
-            if (task.status !in listOf("WAITING_AI", "PROCESSING_AI")) return 0
-            updateStatus(id, "PROCESSING_AI", statusText, null)
+            if (task.status !in listOf("QUEUED", "PROCESSING")) return 0
+            updateStatus(id, "PROCESSING", statusText, null)
             return 1
         }
 
-        override suspend fun rejectUnavailableRss() {
-            tasksFlow.value = tasksFlow.value.map {
-                if (it.id in unavailableIds && it.status in listOf("WAITING_AI", "PROCESSING_AI"))
-                    it.copy(status = "ERROR", statusText = "Subscription unavailable") else it
-            }
-        }
 
         override suspend fun deleteById(id: String) {
             tasksFlow.value = tasksFlow.value.filter { it.id != id }
@@ -1318,62 +495,6 @@ class ImportRepositoryTest {
         }
 
         override suspend fun getCount(): Int = tasksFlow.value.size
-    }
-
-    @Test
-    fun testRepositoryCancellationWithFakeDao() = runBlocking {
-        val fakeDao = FakeImportTaskDao()
-        val t1 = ImportTaskEntity(
-            id = "1", url = "https://a.com", title = "Task A",
-            status = TaskStatus.PROCESSING_AI.name, statusText = "", assignedTags = emptyList(),
-            createdAt = 100L, isNsfw = false, siteName = "", description = "", bodySnippet = ""
-        )
-        val t2 = ImportTaskEntity(
-            id = "2", url = "https://b.com", title = "Task B",
-            status = TaskStatus.WAITING_AI.name, statusText = "", assignedTags = emptyList(),
-            createdAt = 200L, isNsfw = false, siteName = "", description = "", bodySnippet = ""
-        )
-        val t3 = ImportTaskEntity(
-            id = "3", url = "https://c.com", title = "Task C",
-            status = TaskStatus.WAITING_AI.name, statusText = "", assignedTags = emptyList(),
-            createdAt = 300L, isNsfw = false, siteName = "", description = "", bodySnippet = ""
-        )
-
-        fakeDao.tasksFlow.value = listOf(t1, t2, t3)
-
-        val repository = ImportRepository(context = null, taskDao = fakeDao)
-        delay(150)
-
-        // 1. Initial batch progress state
-        val initialProgress = repository.aiProcessingProgress.value
-        assertTrue(initialProgress.isProcessing)
-        assertFalse(initialProgress.isCancelPending)
-        assertEquals(3, initialProgress.totalCount)
-
-        // 2. User invokes cancelProcessing()
-        repository.cancelProcessing()
-        delay(150)
-
-        // Waiting tasks (t2, t3) are restored to READY in DAO
-        val allTasks = fakeDao.getAllTasks()
-        val waitingTasks = allTasks.filter { it.status == TaskStatus.WAITING_AI.name }
-        val readyTasks = allTasks.filter { it.status == TaskStatus.READY.name }
-        assertEquals(0, waitingTasks.size)
-        assertEquals(2, readyTasks.size)
-
-        // Progress emits isCancelPending = true while active task is finishing
-        val cancelProgress = repository.aiProcessingProgress.value
-        assertTrue(cancelProgress.isProcessing)
-        assertTrue(cancelProgress.isCancelPending)
-        assertEquals("Task A", cancelProgress.currentTaskTitle)
-
-        // 3. When active task finishes and DB is updated (only ready tasks remain)
-        fakeDao.tasksFlow.value = readyTasks
-        delay(150)
-
-        val finalProgress = repository.aiProcessingProgress.value
-        assertFalse(finalProgress.isProcessing)
-        assertFalse(finalProgress.isCancelPending)
     }
 
     @Test

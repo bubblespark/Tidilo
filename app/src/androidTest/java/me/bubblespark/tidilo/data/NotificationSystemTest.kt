@@ -28,6 +28,8 @@ class NotificationSystemTest {
             coordinator.publishCompletedRssRuns()
             val notices = manager.activeNotifications.filter { it.tag == runId }
             assertEquals(2, notices.size)
+            val summary = notices.single { it.notification.channelId == NotificationCategory.RSS_UPDATES.channelId }
+            assertFalse(summary.notification.extras.getCharSequence("android.text").toString().contains("Pending AI"))
             val errors = notices.single { it.notification.channelId == NotificationCategory.IMPORT_ERROR.channelId }
             assertTrue(errors.notification.extras.getCharSequence("android.text").toString().contains("100 RSS articles"))
             assertTrue(notices.none { it.notification.channelId == NotificationCategory.RSS_ERROR.channelId })
@@ -43,12 +45,14 @@ class NotificationSystemTest {
         }
     }
 
-    @Test fun fiveChannelsAndDestinationsUseStandardNotifications() {
+    @Test fun obsoleteAiWaitingChannelIsRemoved() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val coordinator = NotificationCoordinator.getInstance(context)
-        coordinator.createChannels()
         val manager = context.getSystemService(NotificationManager::class.java)
-        assertEquals(listOf("URLs Pending AI Analysis", "Import Errors", "RSS Scheduled Updates", "RSS Errors", "AICore Errors"),
+        manager.createNotificationChannel(android.app.NotificationChannel("ready_ai_analysis", "Legacy AI waiting", NotificationManager.IMPORTANCE_DEFAULT))
+        coordinator.createChannels()
+        assertNull(manager.getNotificationChannel("ready_ai_analysis"))
+        assertEquals(listOf("Import Errors", "RSS Scheduled Updates", "RSS Errors"),
             NotificationCategory.entries.map { manager.getNotificationChannel(it.channelId).name.toString() })
         for (category in NotificationCategory.entries) {
             val notification = coordinator.buildNotification(category, "First line\nSecond line")
@@ -57,11 +61,9 @@ class NotificationSystemTest {
             assertNotNull(notification.contentIntent)
             assertEquals(0, notification.flags and android.app.Notification.FLAG_ONGOING_EVENT)
         }
-        assertEquals("import", NotificationCategory.READY.destination)
         assertEquals("import", NotificationCategory.IMPORT_ERROR.destination)
         assertEquals("library", NotificationCategory.RSS_UPDATES.destination)
         assertEquals("settings_rss", NotificationCategory.RSS_ERROR.destination)
-        assertEquals("import", NotificationCategory.AICORE_ERROR.destination)
         assertEquals(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS, coordinator.settingsIntent().action)
         assertEquals(context.packageName, coordinator.settingsIntent().getStringExtra(android.provider.Settings.EXTRA_APP_PACKAGE))
     }

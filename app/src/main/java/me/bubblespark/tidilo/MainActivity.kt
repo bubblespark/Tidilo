@@ -33,11 +33,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -45,7 +43,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -180,10 +177,6 @@ fun TidiloApp(
     onNotificationConsumed: () -> Unit = {}
 ) {
     val navController = rememberNavController()
-    val readyTasks by importViewModel.readyTasks.collectAsStateWithLifecycle()
-    val importingTasks by importViewModel.importingTasks.collectAsStateWithLifecycle()
-    val aiProcessingProgress by importViewModel.aiProcessingProgress.collectAsStateWithLifecycle()
-    val quotaExceededDialogVisible by importViewModel.quotaExceededDialogVisible.collectAsStateWithLifecycle()
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
 
     LaunchedEffect(notificationRoute) {
@@ -196,7 +189,7 @@ fun TidiloApp(
         }
     }
 
-    // When receiving a shared URL via Intent, import to Ready and navigate to Import screen automatically
+    // When receiving a shared URL via Intent, save directly and navigate to Import screen automatically
     LaunchedEffect(sharedUrl) {
         if (!sharedUrl.isNullOrBlank()) {
             importViewModel.importUrl(sharedUrl)
@@ -219,21 +212,10 @@ fun TidiloApp(
     var isBarsVisible by remember { mutableStateOf(true) }
     // Library FAB menu expanded/collapsed state
     var isFilterMenuExpanded by remember { mutableStateOf(false) }
-    // AI Processing speech bubble visible state
-    var isAiSpeechBubbleVisible by remember { mutableStateOf(false) }
-
     // Reset bars to visible and collapse menus when switching tabs, filter modes, or domain drilldown
     LaunchedEffect(currentRoute, filterMode, selectedDomainFilter, selectedRssFeedFilter?.id) {
         isBarsVisible = true
         isFilterMenuExpanded = false
-        isAiSpeechBubbleVisible = false
-    }
-
-    // Dismiss AI speech bubble when processing completes
-    LaunchedEffect(aiProcessingProgress.isProcessing) {
-        if (!aiProcessingProgress.isProcessing) {
-            isAiSpeechBubbleVisible = false
-        }
     }
 
     // Scroll linking: Trigger only when content is actually scrolled (prevents false triggers on short screens)
@@ -363,20 +345,6 @@ fun TidiloApp(
                     )
                 }
 
-                // Invisible dismiss scrim when AI speech bubble is open (tap outside to close)
-                if (isBottomBarVisible && isAiSpeechBubbleVisible && aiProcessingProgress.isProcessing) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                isAiSpeechBubbleVisible = false
-                            }
-                    )
-                }
-
                 // M3 Expressive navigation bar & action button shown only on main tabs (Library, Search, Import)
                 AnimatedVisibility(
                     visible = isBottomBarVisible,
@@ -390,11 +358,9 @@ fun TidiloApp(
                     TidiloBottomBar(
                         navController = navController,
                         isBarsVisible = isBarsVisible,
-                        readyCount = readyTasks.size + importingTasks.size,
                         isFilterMenuExpanded = isFilterMenuExpanded,
                         onToggleFilterMenu = {
                             isFilterMenuExpanded = !isFilterMenuExpanded
-                            if (isFilterMenuExpanded) isAiSpeechBubbleVisible = false
                         },
                         currentFilterMode = filterMode,
                         onSelectFilterMode = { mode ->
@@ -403,55 +369,10 @@ fun TidiloApp(
                         onSearchAction = {
                             libraryViewModel.triggerSearchFocus()
                         },
-                        onAiAnalysisAll = {
-                            importViewModel.aiAnalysisAll()
-                        },
-                        aiProcessingProgress = aiProcessingProgress,
-                        isSpeechBubbleVisible = isAiSpeechBubbleVisible,
-                        onToggleSpeechBubble = {
-                            isAiSpeechBubbleVisible = !isAiSpeechBubbleVisible
-                            if (isAiSpeechBubbleVisible) isFilterMenuExpanded = false
-                        },
-                        onDismissSpeechBubble = { isAiSpeechBubbleVisible = false },
-                        onNavigateToImport = {
-                            if (currentRoute != Screen.Import.route) {
-                                navController.navigate(Screen.Import.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }
-                        },
-                        onCancelProcessing = {
-                            importViewModel.cancelProcessing()
-                        }
                     )
                 }
             }
         }
 
-        if (quotaExceededDialogVisible) {
-            AlertDialog(
-                onDismissRequest = { importViewModel.dismissQuotaExceededDialog() },
-                title = {
-                    Text(
-                        text = stringResource(R.string.dialog_aicore_title),
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                text = {
-                    Text(
-                        text = stringResource(R.string.dialog_aicore_quota_exceeded_message)
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = { importViewModel.dismissQuotaExceededDialog() }) {
-                        Text(text = stringResource(R.string.common_ok))
-                    }
-                }
-            )
-        }
     }
 }

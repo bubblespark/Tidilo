@@ -1,50 +1,14 @@
 # AICore & Gemini Nano Architecture and Prompt Design Specification
 
-Actionable quota/terminal failures also use the independent AICore Errors OS channel; retries, fallback, and existing dialogs retain their behavior. See [Android OS Notifications](notifications.md).
-
 This document details the optional on-device AI integration (AI Analysis can be disabled; see below), prompt engineering architecture, generation configuration parameters, and output parsing pipeline for Tidilo.
 
 ---
 
 ## 1. Overview & On-Device AI Architecture
 
-### AI Analysis selection
+### Manual analysis
 
-Settings > General > AI Analysis opens a dedicated configuration page offering **AICore** and **Disable**, persisted in AppConfig SharedPreferences and exposed as a StateFlow. This setting is independent of AICore error fallback.
-
-On the first launch of a fresh installation, a status-only check selects AICore only for `FeatureStatus.AVAILABLE`; DOWNLOADABLE, DOWNLOADING, UNAVAILABLE, unknown status, initialization/status failure, and a ten-second timeout select Disable. The persisted selection also serves as the initialization marker, so later launches do not repeat automatic selection. Existing saved settings and manual changes during the check take precedence. Updates without a saved setting preserve the previous AICore default. A fresh installation is identified by matching Android `firstInstallTime` and `lastUpdateTime`; an update before the first-ever launch conservatively preserves the previous default. If package inspection fails, treat installation history as unknown and preserve that default rather than failing the shared initialization gate; coroutine cancellation still propagates. Startup checking runs on IO, and normal imports, queued execution, and RSS acquisition wait for it before choosing a processing mode.
-
-Every entry to the AI Analysis page performs a fresh availability check. AICore is gray and unselectable while checking or whenever the result is not AVAILABLE; Disable remains enabled. An unavailable result does not itself modify the current selection. Leaving and reopening checks again. Automatic Disable selection applies only to the existing fresh-install initialization; settings-page checks never replace a saved choice. AICore-only controls hide when Disable is selected, preserving fallback, request parameter, and automation preferences. Content Safety remains available in either mode. Checks never download a model, generate content, or record inference usage, and the client closes on completion, failure, timeout, or cancellation.
-
-With Disable, normal manual/shared imports retain URL normalization, duplicate checks, HTML acquisition, parsed Description, OG image references/cache recovery, and domain icons. Successful acquisition saves immediately through BookmarkRepository.addBookmarkAndAwait with `isAiSkipped = true` and [standards-based classification](bookmark_classification.md), without inserting a Ready task. Parsed OG Description takes precedence over standard Description; a missing Description remains empty. Body snippets are not persisted on bookmarks. Acquisition failures remain retryable Error tasks; persistence failures retain prepared data as Save failed.
-
-Changing the setting alone leaves existing Ready tasks untouched. Executing a single task or AI Analysis All while disabled saves the selected normal/RSS tasks without opening a Gemini client. Prepared tasks reuse metadata; unprepared tasks acquire articles first. Active work finishes under the existing cancellation policy while waiting work can return to Ready. Interrupted processing can resume without AICore. RSS execution retains source identity and subscription/network checks.
-
-RSS feeds configured for AI Analyze fall back to effective Direct acquisition while global AI Analysis is disabled; their configured mode is preserved. See [RSS modes](rss.md#modes-queue-and-inference).
-
-Import completion distinguishes a committed bookmark from an AI-queued task. Shared direct saves notify **Bookmark added** only after the save/promotion transaction commits. If a nested persistence transaction fails, Error recovery occurs after the failed outer transaction rolls back.
-
-When AI Analysis is enabled, Tidilo processes and categorizes web bookmarks locally on-device without transmitting user browsing data, URLs, or page contents to external cloud servers.
-
-```
-+-------------------------------------------------------------------------------+
-|                             Android User Space                                |
-|                                                                               |
-|  [QueueRepository / Worker]                                                   |
-|             │                                                                 |
-|             ▼                                                                 |
-|  [WebPageParser] ──> Jsoup & Readability4J (DOM parsing & content extraction)  |
-|             │                                                                 |
-|             ▼                                                                 |
-|  [GeminiTaggingService] ──> Constructs Structured Prompt                       |
-|             │                                                                 |
-|             ▼                                                                 |
-|  [ML Kit GenAI Prompt API] (com.google.mlkit:genai-prompt:1.0.0-beta2)         |
-|             │                                                                 |
-|             ▼ (IPC via Android System Service)                                |
-|  [Google AICore Service] ──> Gemini Nano Foundation Model (Tensor NPU)        |
-+-------------------------------------------------------------------------------+
-```
+Manual URL entry, sharing, and RSS acquisition save directly. After saving, the Detail screen opens the existing AI review for the selected bookmark. Generation uses on-device Gemini Nano. Applying a proposal updates the bookmark, and closing review preserves the stored record. Model availability checks do not run inference.
 
 ### Key Technical Attributes
 - **Library Coordinate**: `com.google.mlkit:genai-prompt:1.0.0-beta2`
@@ -53,21 +17,7 @@ When AI Analysis is enabled, Tidilo processes and categorizes web bookmarks loca
 - **Execution Thread**: `Dispatchers.IO` for all model preparation, IPC dispatch, and post-processing.
 - **Resource Lifecycle**: Every `GenerativeModel` instance created via `Generation.getClient()` must be explicitly released using `model.close()` inside a `finally` block to release system binder tokens and GPU/NPU memory.
 
-### Import Processing Sessions
-
-- `ImportRepository` uses one persistent `AiProcessingWorker` coroutine. Bulk analysis, individual promotion, error retry, and foreground resume all signal this worker after persisting runnable task states.
-- A conflated channel retains wake-up requests, including requests arriving between the final empty Room query and session shutdown. Repeated requests never start concurrent inference workers.
-- Each processing session holds `executionMutex` once, lazily opens one `GenerativeModel`, and reuses it until no runnable tasks remain or background execution is paused. The model is closed in `finally`, including coroutine cancellation and failure paths. Idle workers hold no model.
-- `GeminiTaggingService.processAndSaveBookmark` and `runNanoInference` use the caller-owned model. Standalone `generateProposal` calls own and close their individual models.
-- Worker cancellation is distinguished from dependency-originated `CancellationException` using the current coroutine's active state. Actual worker cancellation propagates and closes the model; task-level interruptions use existing failure recovery, and session-level interruptions are reported without terminating the signal consumer.
-- Session failures, including task-selection failures, close the current model and automatically retry up to three times at one-second intervals without requiring a new wake-up signal. Exhausting the retry budget leaves persisted tasks intact and the worker available for a later external wake-up.
-- Tasks are selected from Room in its existing newest-first order. BUSY and foreground BACKGROUND_USE_BLOCKED retries retain their three-second backoff and maximum of three retries. Other eligible tasks can run during backoff; the session remains open while waiting, and new work wakes the wait early.
-- Cancellation restores waiting tasks to Ready while allowing the active inference to finish. Background suspension preserves waiting tasks for foreground resume. Quota handling, fallback saving, and batch error transitions complete before the next task is selected.
-- Both normal AI results and fallback bookmarks use `BookmarkRepository.addBookmarkAndAwait`, which awaits a transactional bookmark replacement before import-task deletion. Failed replacements retain existing bookmark records. A fallback save failure retains the import task in Error for manual retry; auxiliary metadata and cache work run separately after successful persistence.
-- Unit tests inject model creation, inference, foreground state, fallback mode, and coroutine scope so session ownership and recovery can be verified without AICore or an emulator inference attempt.
-- Retry interval injection defaults to 3000 milliseconds in production and permits a short interval in retry regression tests.
-
----
+The manual review owns its generation lifecycle and closes the model when finished.
 
 ## 2. Device Readiness & Status Checking
 
@@ -109,11 +59,6 @@ To fit within the limited context window of on-device LLMs and minimize inferenc
    - Extracted using Readability4J (main article content cleaner) with fallback to Jsoup body text.
    - Cleaned of excessive whitespace and line breaks (`replace("\n", " ")`).
    - **Context Window Ceiling**: Hard truncated to the first **800 characters** (`bodySnippet.take(800)`).
-4. **Enqueue-Time Pre-Parsing & Fast Path Architecture**:
-   - HTML fetching, Readability4J body extraction, OGP metadata detection, and domain icon caching are executed and completed **immediately at URL ingestion time (enqueue)**.
-   - The precomputed snippets (`bodySnippet`, `description`, `siteName`, `isNsfw`) are stored in `QueueItem` and persisted into preferences.
-   - When a task transitions to **Running**, `GeminiTaggingService` activates the **Fast Path**, completely bypassing redundant HTTP network calls and DOM parsing to invoke on-device AICore inference with zero I/O delay, slashing Running task latency from ~1.8s to ~1.0s.
-
 The debug web parser's Body Text panel offers Readability4J, Jsoup Clean, and Prompt modes. Readability4J shows the original extraction; Prompt displays and copies only the full ad-filtered body before the 800-character limit, without instructions or metadata. Both the preview and ArticlePreparation consume ParsedWebPage.promptBodyText; production applies its existing truncation and newline replacement afterward. HTTP error bodies remain inspectable without preparing an inference request. The preview reflects the current parse, not a previously queued snippet; existing prepared tasks and saved tags are not rewritten by the filter.
 
 ---
@@ -255,37 +200,7 @@ On-device SLMs (Small Language Models) can occasionally produce conversational p
 
 ## 8. Error Handling & Rate Limiting
 
-The AICore system service enforces device-level thermal, power, and rate limits. The execution pipeline handles AICore error responses with the following deterministic recovery policies:
-
-### Foreground-Only Execution Policy
-AICore inference is only permitted while the app is in the foreground (`TidiloApplication.isAppInForeground == true`).
-- If an item starts or encounters backgrounding during execution, its status is updated to `WAITING_AI` (`"Paused • Retrying when app is active"`).
-- It remains in the `Running` queue and automatically resumes once the app returns to the foreground (`onAppBecameActive()`).
-
-### Error Code Recovery Matrix
-
-| Error Code / Name | GenAiException ErrorCode | Trigger Condition | System Behavior & Recovery Strategy |
-| :--- | :--- | :--- | :--- |
-| **`BUSY`** | `9` | AICore system service or NPU is temporarily overloaded. | Retry up to 3 times at 3-second intervals while in foreground (`WAITING_AI: "AICore busy • Retrying (x/3)..."`). If all 3 retries fail, abort the entire Running batch and move all Running items to `Error`. |
-| **`PER_APP_BATTERY_USE_QUOTA_EXCEEDED`** | `27` | Daily on-device battery/power budget for AICore is exceeded. | **Without Fallback (`DISABLE`)**: Display an `AlertDialog` stating *"AICore使用制限を超過しました。URLを取り込めません。しばらく待ってから再度実行するか、フォールバック機能の仕様を検討してください。"* (EN: *"You have exceeded the AICore usage limit. We cannot import the URL. Please wait a while and try again, or enable the fallback feature."*). Move active task and other pending Running tasks back to `Queuing`.<br>**With Fallback (`QUOTA_EXCEEDED_ONLY` or `ALL`)**: Ingest item immediately as an **AI Skipped Bookmark** using the fallback bookmark contract below. The error dialog is suppressed. |
-| **`BACKGROUND_USE_BLOCKED`** | `30` | Execution blocked because app was detected in background by system service. | If app is in foreground, retry up to 3 times at 3-second intervals (`WAITING_AI: "AICore background blocked • Retrying (x/3)..."`). If retry limit reached: if fallback mode is `ALL`, ingest as AI Skipped Bookmark; otherwise fail entire Running batch to `Error`. If app is backgrounded, pause in `WAITING_AI` until foreground. |
-| **Other Inference Errors / Retry Limit Exhausted** | `UNKNOWN`, `UNAVAILABLE`, etc. | Unrecoverable model faults, timeouts, or exhausted retries. | If fallback mode is `ALL`, convert item directly into an AI Skipped Bookmark (`isAiSkipped = true`). Otherwise, move the active task and pending Running tasks to the `Error` group (`"Batch stopped: <Error>"`). |
-| **HTTP Non-200 / Network** | Pre-parsing network failure | Status != 200 during fetch | Skipped during ingestion/fast-path pre-parsing, marked as `HTTP Error <Code>`. Non-AICore errors do not fallback. |
-| **JSON Parse Malformed** | SLM formatting anomaly | Unparseable JSON syntax | Gracefully caught in `GeminiTaggingService`; falls back to HTML OGP metadata without throwing an unrecoverable exception. |
-
-### AICore Error Fallback Modes (`AppConfig.aiCoreFallbackMode`)
-Users can configure the fallback behavior under **Settings > General > AI Analysis > AICore error fallback** using inline radio choices:
-- **`無効 (Disable)`** *(Default)*: Standard behavior where quota exceeded triggers a warning dialog and other fatal errors push items to the `Error` list.
-- **`If the quota is exceeded`**: Triggers fallback exclusively when error code `PER_APP_BATTERY_USE_QUOTA_EXCEEDED (27)` is returned. Items are saved into the Library as bookmarks with `isAiSkipped = true` without showing the error dialog.
-- **`All AICore errors`**: Applies fallback to quota exceeded and all AICore error codes (after retry exhaustion where applicable).
-
-#### Fallback Bookmark Contract
-- **`isAiSkipped`**: `true` (renders an "AI Skipped" badge in bookmark list and detail cards).
-- **Tag** uses [standards-based classification](bookmark_classification.md) for the two nullable axes and the existing entity-tag rules.
-- **`description`**: Set to the HTML-parsed page description (`og:description` or `<meta name="description">`).
-- **Domain Icons & Policies**: Cached and associated normally.
-
----
+Manual review displays generation failures in the review UI. Acquisition and persistence failures remain in the direct import queue for retry.
 
 ## 9. Diagnostic & Test Tooling
 
@@ -308,21 +223,13 @@ python tools/verify_mlkit_release.py
 
 The verifier requires Android SDK Command-Line Tools (`apkanalyzer`) and uses `ANDROID_HOME` or `ANDROID_SDK_ROOT`. Override paths with `--apkanalyzer` and `--apk` if necessary. It checks that every registrar declared by the ML Kit discovery service retains its public no-argument constructor. It does not run inference or establish device/model readiness.
 
-For #113, the verifier failed on the original minified APK and passed after the targeted keep rule. A separate local instrumentation probe also changed from a client-construction `NullPointerException` to successful construction and closure without invoking AICore. Confirm `Check Status`, `Run Test`, and a normal import on a supported physical device using the signed release build; emulator initialization checks do not validate inference.
+For #113, the verifier failed on the original minified APK and passed after the targeted keep rule. A separate local instrumentation probe also changed from a client-construction `NullPointerException` to successful construction and closure without invoking AICore. Confirm `Check Status`, `Run Test`, and AI Review from a saved bookmark’s Detail screen on a supported physical device using the signed release build; emulator initialization checks do not validate inference.
 
 
 ## Local Inference Usage Accounting
 
 The production `GeminiTaggingService.runNanoInference` and debug `DebugPromptTester` SDK calls are wrapped by `AiCoreUsageRepository`. Counting occurs at the SDK attempt boundary, including retries; setup, parsing, and persistence are excluded. Results and cancellation retain their original behavior even if statistics cannot be saved. AiCoreUsageRepository tracks daily outcomes and the first quota-27 detection benchmark per start date, without suggesting a fixed quota or midnight reset. See [Application Summary](application_summary.md) for the complete contract.
 
-## RSS Foreground Inference
+## Direct import preparation
 
-RSS workers never invoke AICore. RSS tasks use the common extracted article HTML input; legacy XML snippets require preparation before inference. The foreground worker atomically claims prepared valid tasks, prioritizes manual waiters, and preserves RSS first-seen/publication/source fields through AI success and fallback. The five-task cap applies only to unstarted tasks per feed; it is unrelated to retention or an SDK quota. See [RSS and Atom Subscriptions](rss.md).
-
-## Shared manual/RSS prepared input
-
-`ArticlePreparation` maps shared HTML extraction into title/site/Description/body input for manual and RSS imports. Both sources use the same prompt builder for identical HTML/settings; explicit manual title overrides remain intentional input. Legacy RSS XML tasks require HTML preparation before inference, even when their XML excerpt is nonblank. Insufficient HTML content and fetch failure remain acquisition errors. Scheduled work never invokes AICore, and Direct acquisition/retry bypasses AI entirely.
-
-Missing extracted text is a per-article error, including for manual imports. It does not invoke AICore or stop other waiting AI tasks. Explicit retry of a manual content error invalidates its preparation marker so article HTML can be fetched again rather than permanently reusing empty input.
-
-HTTP, connectivity, and other article acquisition failures during that re-fetch also remain per-article errors. They are distinguished from AICore failures and do not move unrelated waiting tasks to Error. Cancellation continues to propagate normally.
+Manual and RSS acquisition share article preparation and standard metadata classification. Inference input for manual review is prepared independently from the selected bookmark URL.

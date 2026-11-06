@@ -88,7 +88,7 @@ Detail Save accepts already-cleaned display values and a replacement map keyed b
 
 ### Non-AI save entity matching via skeleton keys
 
-When a bookmark is saved without AI classification (AI disabled in settings, AICore error fallback, direct save from share/queue, or RSS item promotion), existing entity tags already present in the library are automatically attached based on exact skeleton-key matching against the bookmark's title and description:
+When a direct URL import saves a bookmark, existing entity tags already present in the library are automatically attached based on exact skeleton-key matching against the bookmark's title and description:
 
 - **Candidate extraction**: Uses ICU `BreakIterator` (word instance with `ULocale.ROOT`, falling back to Java `BreakIterator` in non-Android JVM test environments) via `TextSegmenter`. Whitespace and punctuation tokens are dropped, retaining only tokens containing letters or digits. Sliding windows spanning 1 to 6 tokens (`MAX_WINDOW = 6`) are concatenated without delimiters (`joinToString("")`) and mapped to skeleton keys via `entitySkeletonKey`.
 - **Extraction bounds**: Title and description text are truncated to the first 1,000 characters (`MAX_DESCRIPTION_CHARS = 1000`). Tokenization is bounded to at most 300 tokens per section (`MAX_TOKENS_PER_SECTION = 300`) for title and description. Candidate key generation terminates as soon as 500 distinct candidate keys (`MAX_CANDIDATE_KEYS = 500`) are collected.
@@ -168,56 +168,9 @@ Both `Category` and `Subcategory` provide bidirectional constant-time $O(1)$ res
 
 ## 3. Import Task State Machine & Models
 
-Located in `data/ImportTask.kt`:
+Manual URL entry, sharing, and RSS acquisition save bookmarks directly. Persisted work uses `QUEUED`, `PROCESSING`, and `ERROR`. A successful save consumes its task. Retryable failures preserve the source URL and any prepared article data. Import shows active work and errors.
 
-```kotlin
-enum class TaskStatus {
-    PROCESSING_AI, // Active inference running on Gemini Nano
-    WAITING_AI,    // Waiting in Processing group for AICore execution slot
-    READY,         // URL parsed and ready for AI analysis (share sheet or '+' button)
-    COMPLETED,     // Finished tagging and saved into BookmarkRepository
-    ERROR          // Failed due to rate limit, non-200 HTTP response, or parse failure
-}
-
-@Immutable
-data class ImportingTask(
-    val id: String = UUID.randomUUID().toString(),
-    val url: String,
-    val title: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
-)
-
-@Immutable
-data class ImportTask(
-    val id: String = UUID.randomUUID().toString(),
-    val url: String,
-    val title: String,
-    val status: TaskStatus = TaskStatus.READY,
-    val statusText: String = "",
-    val errorMessage: String? = null,
-    val assignedTags: List<String> = emptyList(),
-    val createdAt: Long = System.currentTimeMillis(),
-    val isNsfw: Boolean = false,
-    val siteName: String = "",
-    val description: String = "",
-    val bodySnippet: String = "",
-    val ogImageUrl: String? = null
-)
-```
-
-### 3.1 State Transition Lifecycle
-
-```mermaid
-stateDiagram-v2
-    [*] --> READY : Import URL (Share Sheet or Manual)
-    READY --> WAITING_AI : Promote single / "AI Analysis All"
-    WAITING_AI --> PROCESSING_AI : Session worker selects eligible task
-    PROCESSING_AI --> [*] : Gemini Nano inference succeeds -> Saved to Library
-    PROCESSING_AI --> ERROR : HTTP != 200, Rate Limit, or Parse failure
-    ERROR --> WAITING_AI : User taps Retry
-```
-
----
+Room 18 maps legacy `READY`, `WAITING_AI`, and `PROCESSING_AI` rows to `QUEUED` and preserves RSS provenance, metadata, and retry deadlines. Startup resumes prepared and interrupted saves. Existing RSS acquisition policies apply when a fetch is still required. The saved bookmark's Detail screen owns manual AI review.
 
 ## 4. Web Page Analysis Models
 
@@ -247,19 +200,19 @@ Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt
 
 ## 6. Persistence & Serialization Schemas
 
-All persistence is managed via **Room Database** (`AppDatabase` v14) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
+All persistence is managed via **Room Database** (`AppDatabase` v18) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
 
 1. **Room Database (`AppDatabase`)**:
    - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, `domain`, and `ogImageUrl` / `ogImageKey` linking to specific cached OG image assets. Bulk writes (`insertAll`) execute in chunked batches of 500 with per-chunk ID deduplication.
    - **`trashed_bookmarks` table (`TrashedBookmarkEntity`)**: Managed by `TrashDao`, storing trashed items with retention tracking and `ogImageUrl`.
-   - **`import_tasks` table (`ImportTaskEntity`)**: Managed by `ImportTaskDao`, storing processing, ready, and error tasks with reactive `Flow<List<ImportTaskEntity>>` observation and status index.
+   - **`import_tasks` table (`ImportTaskEntity`)**: Managed by `ImportTaskDao`, storing `QUEUED`, `PROCESSING`, and `ERROR` tasks with reactive `Flow<List<ImportTaskEntity>>` observation and status index.
    - **Safe Migration & Database Decoupling (v6)**: In version 6, obsolete image BLOB storage (`og_images` table) was cleanly dropped via `MIGRATION_5_6`, liberating database file size while preserving 100% of bookmark, tag, and note data.
-   - **Awaited Import Persistence**: Normal and fallback import results await `addBookmarkAndAwait`, which replaces bookmarks by ID or URL inside a Room transaction. Import tasks are deleted only after bookmark persistence succeeds. Fallback persistence failures retain the task in Error for retry. Bookmark persistence and import-task deletion are separate operations; an interruption between them can retain both records, but cannot delete the only durable copy. URL-based replacement makes a repeated save replace the same URL.
-   - **Single Source of Truth & Concurrency**: Room DB serves as the authoritative source of truth for all business operations, state promotions, and the single AI session worker. UI StateFlows (`_readyTasks`, `_processingTasks`, `_errorTasks`) are read-only observers of Room. The worker holds `executionMutex` for the session, queries Room directly for runnable tasks, and awaits task and batch state updates before selecting more work. It rechecks each selected task after model initialization to skip tasks that have been deleted or are no longer runnable. Retry deadlines are transient in-memory state; background and interrupted tasks remain persisted for foreground resume.
+   - **Import Persistence**: A recovered direct save commits its bookmark, any RSS retention and notification updates, and task deletion together. A failed save retains a retryable error.
+   - **Concurrency**: Room persists queued and interrupted direct saves. Import observes active and failed work, and recovery rechecks each task before saving.
 2. **`tidilo_library_prefs` (`search_history`)**:
    Array of up to 10 strings representing complete queries, ordered latest-first.
 3. **`tidilo_app_config_prefs`**:
-   Application language, NSFW visibility toggle, AICore fallback mode, and auto-run settings.
+   Application language, NSFW visibility, and AI model settings.
 
 ---
 
@@ -407,7 +360,7 @@ Room9 source fields, receipt transactions, indexed image references, queue claim
 
 ## Shared ingestion preparation (Room10)
 
-Import tasks persist `articlePrepared`, `intendedMode`, `rssItemKey`, `acquisitionAttempts`, and `acquisitionRetryAt`. Room migration 16 to 17 adds nullable `standardCategory` and `standardSubcategory` plus `standardClassificationEvaluated`, which distinguishes an evaluated task with no labels from a task whose metadata was never evaluated. See [Standards-based bookmark classification](bookmark_classification.md). Nonblank XML content never proves HTML preparation. Failed/unprepared acquisition is not eligible for an AI claim; Direct acquisition retries remain Direct. Feed entities persist `acquisitionId`, `acquisitionMobileOverride`, `acquisitionXmlDone`, and `acquisitionRequestedAt` for interruption-safe continuation. `enabled=false` plus `error=XML_FETCH_FAILED` represents automatic disabling after a feed XML failure; disabling does not delete content or consumed receipts. Migration9-to10 preserves existing rows and configured retention.
+Import tasks persist `articlePrepared`, `intendedMode`, `rssItemKey`, `acquisitionAttempts`, and `acquisitionRetryAt`. Room migration 16 to 17 adds nullable `standardCategory` and `standardSubcategory` plus `standardClassificationEvaluated`, which distinguishes an evaluated task with no labels from a task whose metadata was never evaluated. See [Standards-based bookmark classification](bookmark_classification.md). Nonblank XML content never proves HTML preparation. Failed or unprepared RSS acquisitions must acquire article content before direct save. Feed entities persist `acquisitionId`, `acquisitionMobileOverride`, `acquisitionXmlDone`, and `acquisitionRequestedAt` for interruption-safe continuation. `enabled=false` plus `error=XML_FETCH_FAILED` represents automatic disabling after a feed XML failure; disabling does not delete content or consumed receipts. Migration9-to10 preserves existing rows and configured retention.
 
 ## RSS feed metadata and library groups (Room12)
 

@@ -1,5 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
@@ -9,10 +12,12 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import me.bubblespark.tidilo.ui.theme.collectionMembershipColor
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
-import me.bubblespark.tidilo.ui.theme.themeFloatingBarSurface
-import me.bubblespark.tidilo.ui.theme.themeIconButtonSurface
-import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
+import me.bubblespark.tidilo.ui.components.TidiloClassificationContent
+import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.components.TidiloIconButton
+import me.bubblespark.tidilo.ui.components.TidiloIconToggleButton
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.SurfaceVariant
 
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -38,7 +43,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.material.icons.Icons
@@ -60,7 +64,6 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -86,6 +89,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -266,7 +270,7 @@ fun BookmarkDetailScreen(
     val detailAccent = rememberDetailAccent(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
     val bannerBounds = remember(bookmark.id, ogBitmap) { mutableStateOf<Rect?>(null) }
     val lightingHostOrigin = remember { mutableStateOf(Offset.Zero) }
-    val darkLighting = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val darkLighting = currentThemeSurfaces().isDark
 
     TidiloScreenScaffold(
         modifier = modifier
@@ -349,107 +353,71 @@ fun BookmarkDetailScreen(
             )
         },
         overlay = {
-            val themeStyle = LocalAppThemeStyle.current
-            val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val toolbarOffset = if (maxWidth >= 368.dp) 32.dp else 0.dp
-            Row(
-                modifier = Modifier.fillMaxSize().navigationBarsPadding()
-                    .padding(start = 12.dp, end = 12.dp, bottom = 31.dp)
-                    .offset(x = toolbarOffset),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                val toolbarShape = RoundedCornerShape(32.dp)
-                val toolbarShadowElevation = if (themeStyle.floatingBarStyle.depth > 0.dp) 0.dp else 10.dp
-                val toolbarTonalElevation = if (themeStyle.floatingBarStyle.depth > 0.dp) 0.dp else 6.dp
-                Surface(
-                    modifier = Modifier.themeFloatingBarSurface(
-                        style = themeStyle.floatingBarStyle,
-                        palette = themeStyle.surfacePalette,
-                        isDark = isDark,
-                        fallbackShape = toolbarShape
-                    ),
-                    shape = toolbarShape,
-                    color = if (themeStyle.floatingBarStyle.depth > 0.dp) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = themeStyle.floatingBarAlpha),
-                    tonalElevation = toolbarTonalElevation,
-                    shadowElevation = toolbarShadowElevation
+                val toolbarOffset = if (maxWidth >= 368.dp) 32.dp else 0.dp
+                Row(
+                    modifier = Modifier.fillMaxSize().navigationBarsPadding()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 31.dp)
+                        .offset(x = toolbarOffset),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.Bottom
                 ) {
-                    Box {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .themeSurfaceBlur(themeStyle.floatingBarBlurRadius, toolbarShape)
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
-                                Icon(ImageVector.vectorResource(R.drawable.ic_delete),
-                                    contentDescription = stringResource(R.string.detail_action_delete),
-                                    tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
+                    TidiloSurface(role = SurfaceRole.TOOLBAR) {
+                        Box {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
+                                    Icon(ImageVector.vectorResource(R.drawable.ic_delete),
+                                        contentDescription = stringResource(R.string.detail_action_delete),
+                                        tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
+                                }
+                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { onNavigateToAiReview(bookmark.id) }, modifier = Modifier.size(54.dp)) {
+                                    Icon(Icons.Default.AutoAwesome,
+                                        contentDescription = stringResource(R.string.detail_action_ai_summary),
+                                        modifier = Modifier.size(22.dp))
+                                }
+                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showCollectionMembership = true },
+                                    modifier = Modifier.size(54.dp).semantics { selected = hasCollection }) {
+                                    Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
+                                        contentDescription = stringResource(R.string.bookmark_collection_action),
+                                        tint = if (hasCollection) collectionMembershipColor(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp))
+                                }
+                                TidiloIconToggleButton(role = SurfaceRole.LIKE_ACTION, checked = bookmark.isLiked, onCheckedChange = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(54.dp)) {
+                                    Icon(
+                                        imageVector = if (bookmark.isLiked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
+                                        contentDescription = stringResource(if (bookmark.isLiked) R.string.bookmark_unlike else R.string.bookmark_like),
+                                        tint = if (bookmark.isLiked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
                             }
-                            IconButton(onClick = { onNavigateToAiReview(bookmark.id) }, modifier = Modifier.size(54.dp)) {
-                                Icon(Icons.Default.AutoAwesome,
-                                    contentDescription = stringResource(R.string.detail_action_ai_summary),
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    TidiloSurface(
+                        onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
+                        role = SurfaceRole.PRIMARY_ACTION,
+                        variant = SurfaceVariant.COMPACT,
+                        modifier = Modifier.size(54.dp)
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Icon(ImageVector.vectorResource(R.drawable.ic_open_in_browser),
+                                    contentDescription = stringResource(R.string.bookmark_open_in_browser),
+                                    tint = LocalContentColor.current,
                                     modifier = Modifier.size(22.dp))
-                            }
-                            IconButton(onClick = { showCollectionMembership = true },
-                                modifier = Modifier.size(54.dp).semantics { selected = hasCollection }) {
-                                Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
-                                    contentDescription = stringResource(R.string.bookmark_collection_action),
-                                    tint = if (hasCollection) collectionMembershipColor(MaterialTheme.colorScheme.surfaceContainerHighest)
-                                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp))
-                            }
-                            IconButton(onClick = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(54.dp)) {
-                                Icon(
-                                    imageVector = if (bookmark.isLiked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
-                                    contentDescription = stringResource(if (bookmark.isLiked) R.string.bookmark_unlike else R.string.bookmark_like),
-                                    tint = if (bookmark.isLiked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp)
-                                )
                             }
                         }
                     }
                 }
-                Spacer(Modifier.width(10.dp))
-                val openButtonShape = RoundedCornerShape(16.dp)
-                val openButtonShadowElevation = if (themeStyle.iconButtonStyle.depth > 0.dp) 0.dp else 4.dp
-                Surface(
-                    onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
-                    modifier = Modifier
-                        .size(54.dp)
-                        .themeIconButtonSurface(
-                            plate = themeStyle.iconButtonStyle.actionButtonPlate,
-                            style = themeStyle.iconButtonStyle,
-                            palette = themeStyle.surfacePalette,
-                            isDark = isDark,
-                            shape = openButtonShape,
-                            fallbackContainerColor = MaterialTheme.colorScheme.primaryContainer
-                        ),
-                    shape = openButtonShape,
-                    color = if (themeStyle.iconButtonStyle.depth > 0.dp) Color.Transparent else MaterialTheme.colorScheme.primaryContainer.copy(alpha = themeStyle.floatingBarAlpha),
-                    shadowElevation = openButtonShadowElevation
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .themeSurfaceBlur(LocalAppThemeStyle.current.floatingBarBlurRadius, openButtonShape)
-                        )
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(ImageVector.vectorResource(R.drawable.ic_open_in_browser),
-                                contentDescription = stringResource(R.string.bookmark_open_in_browser),
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(22.dp))
-                        }
-                    }
-                }
-            }
             }
 
             // Discard changes confirmation dialog
             if (showDiscardConfirmDialog) {
                 AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
                     onDismissRequest = { showDiscardConfirmDialog = false; discardToCollections = false },
                     title = {
                         Text(
@@ -493,6 +461,7 @@ fun BookmarkDetailScreen(
             // Delete confirmation dialog
             if (showDeleteConfirmDialog) {
                 AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
                     onDismissRequest = { showDeleteConfirmDialog = false },
                     title = {
                         Text(
@@ -531,7 +500,7 @@ fun BookmarkDetailScreen(
                             Text(stringResource(R.string.common_cancel))
                         }
                     },
-                    shape = RoundedCornerShape(24.dp)
+                    shape = themeCorner(ThemeCorner.PROMINENT_CARD)
                 )
             }
 
@@ -663,7 +632,7 @@ fun BookmarkDetailScreen(
                                             bannerBounds.value = Rect(it.positionInRoot(), Size(it.size.width.toFloat(), it.size.height.toFloat()))
                                         }
                                         .detailBannerLight(detailAccent)
-                                        .clip(RoundedCornerShape(16.dp))
+                                        .clip(themeCorner(ThemeCorner.IMAGE))
                                 )
                             }
                             Spacer(modifier = Modifier.height(16.dp))
@@ -688,7 +657,7 @@ fun BookmarkDetailScreen(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(themeCorner(ThemeCorner.FIELD))
                         .combinedClickable(
                             onClick = {
                                 openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) }
@@ -708,7 +677,7 @@ fun BookmarkDetailScreen(
                                     .show()
                             }
                         ),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = themeCorner(ThemeCorner.FIELD),
                     color = Color.Transparent
                 ) {
                     Row(
@@ -807,15 +776,14 @@ fun BookmarkDetailScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // [category] > [subcategory] newline [entities] (uniform 8.dp line spacing)
-                val themeStyle = LocalAppThemeStyle.current
-                if (themeStyle.chipStyle.depth > 0.dp) {
+                TidiloClassificationContent(decorated = {
                     BookmarkTagSection(
                         tag = editedTag,
                         localizedCategory = localizedCategory,
                         localizedSubcategory = localizedSubcategory,
                         isNsfw = editedIsNsfw
                     )
-                } else {
+                }, material = {
                     CompositionLocalProvider(
                         LocalMinimumInteractiveComponentSize provides Dp.Unspecified
                     ) {
@@ -847,7 +815,7 @@ fun BookmarkDetailScreen(
                                         labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                         leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                     ),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = themeCorner(ThemeCorner.CONTROL)
                                 )
 
                                 Text(
@@ -873,7 +841,7 @@ fun BookmarkDetailScreen(
                                         labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                         leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                     ),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = themeCorner(ThemeCorner.CONTROL)
                                 )
                             } else if (localizedCategory.isNotBlank()) {
                                 AssistChip(
@@ -891,7 +859,7 @@ fun BookmarkDetailScreen(
                                         labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                         leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                     ),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = themeCorner(ThemeCorner.CONTROL)
                                 )
                             } else if (localizedSubcategory.isNotBlank()) {
                                 AssistChip(
@@ -909,7 +877,7 @@ fun BookmarkDetailScreen(
                                         labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                         leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
                                     ),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = themeCorner(ThemeCorner.CONTROL)
                                 )
                             }
 
@@ -922,7 +890,7 @@ fun BookmarkDetailScreen(
                                         containerColor = MaterialTheme.colorScheme.errorContainer,
                                         labelColor = MaterialTheme.colorScheme.onErrorContainer
                                     ),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = themeCorner(ThemeCorner.CONTROL)
                                 )
                             }
                         }
@@ -955,7 +923,7 @@ fun BookmarkDetailScreen(
                                                 containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
                                                 labelColor = MaterialTheme.colorScheme.onSurface
                                             ),
-                                            shape = RoundedCornerShape(10.dp)
+                                            shape = themeCorner(ThemeCorner.CONTROL)
                                         )
                                     }
                                 }
@@ -963,7 +931,7 @@ fun BookmarkDetailScreen(
                         }
                     }
                 }
-                }
+                })
 
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -990,7 +958,7 @@ fun BookmarkDetailScreen(
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = themeCorner(ThemeCorner.FIELD),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                     ),
@@ -1061,7 +1029,7 @@ fun BookmarkDetailScreen(
                             .onFocusChanged { focusState ->
                                 isNoteFocused = focusState.isFocused
                             },
-                        shape = RoundedCornerShape(12.dp),
+                        shape = themeCorner(ThemeCorner.FIELD),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = MaterialTheme.colorScheme.primary,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,

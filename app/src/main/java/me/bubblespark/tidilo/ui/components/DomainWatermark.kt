@@ -1,8 +1,9 @@
 package me.bubblespark.tidilo.ui.components
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -58,7 +59,7 @@ internal fun IconWatermark(
         contentDescription = null,
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(20.dp)),
+            .clip(themeCorner(ThemeCorner.CARD)),
         contentScale = ContentScale.Fit,
         alpha = alpha,
         colorFilter = saturationFilter

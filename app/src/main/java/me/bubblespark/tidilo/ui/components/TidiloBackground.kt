@@ -17,8 +17,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 
 /**
  * Root-level centralized background layer for Tidilo.
@@ -32,7 +31,7 @@ fun TidiloBackground(
     modifier: Modifier = Modifier,
     isDestinationAllowed: Boolean = true
 ) {
-    val themeStyle = LocalAppThemeStyle.current
+    val themeStyle = currentThemeSurfaces().preset
     val lightingState = LocalAmbientLighting.current
     var lastActiveColor by remember { mutableStateOf(Color.Transparent) }
     val rawColor = if (isDestinationAllowed) lightingState.effectiveActiveColor else null
@@ -49,11 +48,7 @@ fun TidiloBackground(
         label = "ambientLightingColor"
     )
 
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val canvasColor = themeStyle.surfacePalette.canvas(
-        isDark = isDark,
-        fallback = MaterialTheme.colorScheme.background
-    )
+    val canvasColor = currentThemeSurfaces().canvasColor
 
     Box(
         modifier = modifier

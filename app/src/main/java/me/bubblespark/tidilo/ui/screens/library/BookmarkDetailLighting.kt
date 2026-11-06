@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.tween
@@ -29,7 +30,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.OgImageManager
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import kotlin.math.ceil
 
 /** The bookmark key owns animation state so a new detail never inherits its predecessor's hue. */
@@ -42,7 +42,7 @@ internal fun rememberDetailAccent(
     showFallback: Boolean
 ): State<Color> = key(bookmarkId, domain) {
     val context = LocalContext.current
-    val themeStyle = LocalAppThemeStyle.current
+    val themeStyle = currentThemeSurfaces().preset
     val colorScheme = MaterialTheme.colorScheme
     val iconRevision by androidx.compose.runtime.remember(domain) { DomainIconManager.observeIconUpdates(domain) }
         .collectAsStateWithLifecycle(initialValue = 0L)

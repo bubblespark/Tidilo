@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -91,7 +93,9 @@ internal fun CollectionMembershipContent(
             notifyClosed()
         }
     }
-    ModalBottomSheet(onDismissRequest = { if (closing) notifyClosed() else if (!pending) onDismiss() },
+    ModalBottomSheet(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.SHEET).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.SHEET).shape,onDismissRequest = { if (closing) notifyClosed() else if (!pending) onDismiss() },
         modifier = modifier, sheetState = sheetState, sheetGesturesEnabled = !pending && !closing) {
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             Text(stringResource(R.string.collection_assign_title),

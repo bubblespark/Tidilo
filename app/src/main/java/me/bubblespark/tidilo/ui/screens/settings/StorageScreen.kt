@@ -1,5 +1,9 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import android.widget.Toast
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
@@ -19,7 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmarks
@@ -124,7 +127,7 @@ internal fun StorageContent(
             // Hero Card: Total Bookmarks (Primary)
             // ==========================================
             Card(
-                shape = RoundedCornerShape(24.dp),
+                shape = themeCorner(ThemeCorner.PROMINENT_CARD),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 ),
@@ -355,6 +358,8 @@ internal fun StorageContent(
 
     if (showClearCacheConfirmDialog) {
         AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
             onDismissRequest = { showClearCacheConfirmDialog = false },
             title = {
                 Text(
@@ -405,7 +410,7 @@ private fun StorageSectionCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = themeCorner(ThemeCorner.CARD),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),

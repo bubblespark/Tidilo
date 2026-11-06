@@ -66,7 +66,8 @@ data class ThemeCardStyle(
     val depth: Dp = 0.dp,
     val shape: CornerBasedShape? = null,
     val useGradientFill: Boolean = false,
-    val showAccentRim: Boolean = true
+    val showAccentRim: Boolean = true,
+    val treatment: SurfaceTreatment = SurfaceTreatment.MATERIAL
 ) {
     companion object {
         val Default = ThemeCardStyle()
@@ -88,7 +89,8 @@ data class ThemeChipStyle(
     val darkCategoryContent: Color? = null,
     val lightCategoryContent: Color? = null,
     val darkEntityContent: Color? = null,
-    val lightEntityContent: Color? = null
+    val lightEntityContent: Color? = null,
+    val treatment: SurfaceTreatment = SurfaceTreatment.MATERIAL
 ) {
     fun neutralContainer(isDark: Boolean, fallback: Color): Color =
         (if (isDark) darkNeutralContainer else lightNeutralContainer) ?: fallback
@@ -114,7 +116,8 @@ data class ThemeFloatingBarStyle(
     val darkActiveContainerColor: Color? = null,
     val lightActiveContainerColor: Color? = null,
     val darkActiveContentColor: Color? = null,
-    val lightActiveContentColor: Color? = null
+    val lightActiveContentColor: Color? = null,
+    val treatment: SurfaceTreatment = SurfaceTreatment.MATERIAL
 ) {
     fun activeContainer(isDark: Boolean, fallback: Color): Color =
         (if (isDark) darkActiveContainerColor else lightActiveContainerColor) ?: fallback
@@ -164,11 +167,8 @@ enum class ThemeColorRole {
 }
 
 /**
- * Visual theme styling contract governing color role, blur, and transparency across all UI surfaces in Tidilo.
- *
- * For [AppTheme.DEFAULT], colorRole is ACCENT, all blur radii are 0.dp, and all sub-configs are Default (depth == 0.dp),
- * ensuring zero GPU overhead and 100% native M3 appearance.
- * Future themes configure their own values without touching individual component or screen files.
+ * Preset values consumed by Material theming and shared semantic surface resolution.
+ * Drawing treatment is independent of shadow depth. Existing blur values describe self-blur only.
  */
 data class AppThemeStyle(
     val theme: AppTheme,
@@ -183,7 +183,11 @@ data class AppThemeStyle(
     val floatingBarBlurRadius: Dp = 0.dp,
     val floatingBarAlpha: Float = 1.0f,
     val cardBlurRadius: Dp = 0.dp,
-    val cardAlpha: Float = 1.0f
+    val cardAlpha: Float = 1.0f,
+    val surfaceOverrides: Map<SurfaceRole, SurfaceStyleOverride> = emptyMap(),
+    val shapeScale: ThemeShapeScale = ThemeShapeScale(),
+    val lightMaterialColors: ColorScheme? = null,
+    val darkMaterialColors: ColorScheme? = null
 ) {
     fun resolveColor(colorScheme: ColorScheme, dynamicAccent: Color? = null): Color =
         colorRole.resolve(colorScheme, dynamicAccent)
@@ -203,7 +207,8 @@ data class AppThemeStyle(
                 depth = 3.dp,
                 shape = RoundedCornerShape(26.dp),
                 useGradientFill = true,
-                showAccentRim = false
+                showAccentRim = false,
+                treatment = SurfaceTreatment.DECORATED
             ),
             chipStyle = ThemeChipStyle(
                 depth = 3.dp,
@@ -217,7 +222,8 @@ data class AppThemeStyle(
                 darkCategoryContent = Color(0xFFE2E8F0),
                 lightCategoryContent = Color(0xFF1E293B),
                 darkEntityContent = Color(0xFF94A3B8),
-                lightEntityContent = Color(0xFF475569)
+                lightEntityContent = Color(0xFF475569),
+                treatment = SurfaceTreatment.DECORATED
             ),
             floatingBarStyle = ThemeFloatingBarStyle(
                 depth = 3.dp,
@@ -226,7 +232,8 @@ data class AppThemeStyle(
                 darkActiveContainerColor = Color(0xFF22262B),
                 lightActiveContainerColor = Color.White,
                 darkActiveContentColor = Color(0xFFE2E8F0),
-                lightActiveContentColor = Color(0xFF1E293B)
+                lightActiveContentColor = Color(0xFF1E293B),
+                treatment = SurfaceTreatment.DECORATED
             ),
             iconButtonStyle = ThemeIconButtonStyle(
                 actionButtonPlate = IconButtonPlateStyle.TACTILE_CIRCULAR_3D,

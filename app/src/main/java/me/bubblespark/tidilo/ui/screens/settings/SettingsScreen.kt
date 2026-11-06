@@ -1,5 +1,9 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -124,6 +127,7 @@ fun SettingsScreen(
             LocalConfiguration provides localConfig
         ) {
             AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
                 onDismissRequest = { showLanguageDialog = false },
                 title = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
@@ -174,7 +178,7 @@ fun SettingsScreen(
                         }
                     }
                 },
-                shape = RoundedCornerShape(24.dp)
+                shape = themeCorner(ThemeCorner.PROMINENT_CARD)
             )
         }
     }
@@ -185,6 +189,7 @@ fun SettingsScreen(
             LocalConfiguration provides localConfig
         ) {
             AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
                 onDismissRequest = { showThemeDialog = false },
                 title = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
@@ -235,7 +240,7 @@ fun SettingsScreen(
                         }
                     }
                 },
-                shape = RoundedCornerShape(24.dp)
+                shape = themeCorner(ThemeCorner.PROMINENT_CARD)
             )
         }
     }

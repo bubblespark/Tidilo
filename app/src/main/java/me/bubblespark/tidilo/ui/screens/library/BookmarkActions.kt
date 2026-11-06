@@ -8,6 +8,8 @@ import me.bubblespark.tidilo.R
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -19,12 +21,14 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun BookmarkLikeIndicator(liked: Boolean) {
+    TidiloSurface(role = SurfaceRole.LIKE_ACTION) {
     Icon(
         imageVector = if (liked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
         contentDescription = stringResource(if (liked) R.string.bookmark_liked else R.string.bookmark_not_liked),
         tint = if (liked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.size(20.dp)
     )
+    }
 }
 
 internal fun openBookmarkInBrowser(context: Context, url: String, onOpened: () -> Unit) {

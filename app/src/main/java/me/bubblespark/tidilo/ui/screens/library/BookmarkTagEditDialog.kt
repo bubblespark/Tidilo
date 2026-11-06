@@ -1,11 +1,15 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -19,7 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -102,6 +105,7 @@ fun BookmarkTagEditDialog(
     }
 
     AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
         onDismissRequest = onDismiss,
         title = {
             Text(
@@ -128,14 +132,11 @@ fun BookmarkTagEditDialog(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        TidiloSurface(
+                            onClick = { isCategoryDropdownExpanded = true },
+                            role = SurfaceRole.INPUT,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { isCategoryDropdownExpanded = true }
                         ) {
                             Row(
                                 modifier = Modifier
@@ -167,13 +168,13 @@ fun BookmarkTagEditDialog(
                                 .border(
                                     width = 1.dp,
                                     color = MaterialTheme.colorScheme.outlineVariant,
-                                    shape = RoundedCornerShape(16.dp)
+                                    shape = themeCorner(ThemeCorner.IMAGE)
                                 )
                                 .verticalScrollbar(
                                     scrollState = categoryScrollState,
                                     color = MaterialTheme.colorScheme.primary
                                 ),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = themeCorner(ThemeCorner.IMAGE),
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
                         ) {
                             Category.entries.forEach { category ->
@@ -219,14 +220,11 @@ fun BookmarkTagEditDialog(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        TidiloSurface(
+                            onClick = { isSubcategoryDropdownExpanded = true },
+                            role = SurfaceRole.INPUT,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { isSubcategoryDropdownExpanded = true }
                         ) {
                             Row(
                                 modifier = Modifier
@@ -258,13 +256,13 @@ fun BookmarkTagEditDialog(
                                 .border(
                                     width = 1.dp,
                                     color = MaterialTheme.colorScheme.outlineVariant,
-                                    shape = RoundedCornerShape(16.dp)
+                                    shape = themeCorner(ThemeCorner.IMAGE)
                                 )
                                 .verticalScrollbar(
                                     scrollState = subcategoryScrollState,
                                     color = MaterialTheme.colorScheme.primary
                                 ),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = themeCorner(ThemeCorner.IMAGE),
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
                         ) {
                             Subcategory.entries.forEach { subcategory ->
@@ -323,7 +321,7 @@ fun BookmarkTagEditDialog(
                     if (!isNsfwContentVisible && isNsfw) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = themeCorner(ThemeCorner.CONTROL),
                             color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -401,7 +399,7 @@ fun BookmarkTagEditDialog(
 
                     if (showInlineLimitError && selectedEntities.size >= Tag.MAX_ENTITIES) {
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = themeCorner(ThemeCorner.CONTROL),
                             color = MaterialTheme.colorScheme.errorContainer,
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -429,7 +427,7 @@ fun BookmarkTagEditDialog(
 
                     if (selectedEntities.isEmpty()) {
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = themeCorner(ThemeCorner.CONTROL),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -448,7 +446,7 @@ fun BookmarkTagEditDialog(
                         ) {
                             selectedEntities.forEach { entity ->
                                 Surface(
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = themeCorner(ThemeCorner.CONTROL),
                                     color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
                                     contentColor = MaterialTheme.colorScheme.onSurface,
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
@@ -490,7 +488,7 @@ fun BookmarkTagEditDialog(
                 Text(text = stringResource(R.string.common_cancel))
             }
         },
-        shape = RoundedCornerShape(24.dp)
+        shape = themeCorner(ThemeCorner.PROMINENT_CARD)
     )
 
 }
@@ -509,6 +507,7 @@ fun AddEntityDialog(
     modifier: Modifier = Modifier
 ) {
     AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
         onDismissRequest = onDismiss,
         modifier = modifier,
         title = {
@@ -529,7 +528,7 @@ fun AddEntityDialog(
                     },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = themeCorner(ThemeCorner.FIELD),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
@@ -565,7 +564,7 @@ fun AddEntityDialog(
                 Text(text = stringResource(R.string.common_cancel))
             }
         },
-        shape = RoundedCornerShape(20.dp)
+        shape = themeCorner(ThemeCorner.CARD)
     )
 }
 
@@ -631,6 +630,8 @@ fun EntityTagConflictDialog(
     modifier: Modifier = Modifier
 ) {
     AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
         onDismissRequest = onDismiss,
         modifier = modifier,
         title = { Text(stringResource(R.string.entity_conflict_title)) },

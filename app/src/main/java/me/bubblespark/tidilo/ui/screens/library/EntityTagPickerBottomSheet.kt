@@ -1,11 +1,12 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -30,6 +31,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.SurfaceVariant
+import me.bubblespark.tidilo.ui.theme.ThemeSurfaceState
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -128,7 +133,7 @@ fun EntityTagPickerBottomSheet(
 
             if (selectedEntities.isEmpty()) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = themeCorner(ThemeCorner.FIELD),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -160,7 +165,7 @@ fun EntityTagPickerBottomSheet(
             if (showLimitWarning && selectedEntities.size >= Tag.MAX_ENTITIES) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = themeCorner(ThemeCorner.CONTROL),
                     color = MaterialTheme.colorScheme.errorContainer,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -199,7 +204,7 @@ fun EntityTagPickerBottomSheet(
 
             if (sortedAllEntities.isEmpty()) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = themeCorner(ThemeCorner.FIELD),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -251,11 +256,13 @@ private fun SelectedEntityChip(
     name: String,
     onDelete: () -> Unit
 ) {
+    val visual = currentThemeSurfaces().resolve(SurfaceRole.ENTITY_CHIP, SurfaceVariant.COMPACT,
+        ThemeSurfaceState(selected = true))
     Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.primary,
-        contentColor = MaterialTheme.colorScheme.onPrimary,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        shape = visual.shape,
+        color = visual.containerColor,
+        contentColor = visual.contentColor,
+        border = BorderStroke(visual.borderWidth, visual.borderColor)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -264,7 +271,7 @@ private fun SelectedEntityChip(
             Icon(
                 imageVector = Icons.Default.Tag,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary,
+                tint = visual.contentColor,
                 modifier = Modifier.size(14.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))
@@ -272,7 +279,7 @@ private fun SelectedEntityChip(
                 text = name,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimary
+                color = visual.contentColor
             )
             Spacer(modifier = Modifier.width(4.dp))
             IconButton(
@@ -282,7 +289,7 @@ private fun SelectedEntityChip(
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = stringResource(R.string.detail_tag_remove_entity, name),
-                    tint = MaterialTheme.colorScheme.onPrimary,
+                    tint = visual.contentColor,
                     modifier = Modifier.size(14.dp)
                 )
             }
@@ -300,32 +307,26 @@ private fun AllEntityToggleChip(
     isAtMaxLimit: Boolean = false,
     onToggle: () -> Unit
 ) {
+    val visual = currentThemeSurfaces().resolve(SurfaceRole.FILTER_CHIP, SurfaceVariant.COMPACT,
+        ThemeSurfaceState(enabled = !isAtMaxLimit, selected = isSelected))
     val backgroundColor by animateColorAsState(
-        targetValue = when {
-            isSelected -> MaterialTheme.colorScheme.primary
-            isAtMaxLimit -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-        },
+        targetValue = visual.containerColor,
         animationSpec = tween(150),
         label = "all_chip_bg"
     )
 
     val contentColor by animateColorAsState(
-        targetValue = when {
-            isSelected -> MaterialTheme.colorScheme.onPrimary
-            isAtMaxLimit -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
-        },
+        targetValue = visual.contentColor,
         animationSpec = tween(150),
         label = "all_chip_content"
     )
 
     Surface(
-        shape = RoundedCornerShape(10.dp),
+        shape = visual.shape,
         color = backgroundColor,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = BorderStroke(visual.borderWidth, visual.borderColor),
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(visual.shape)
             .clickable(onClick = onToggle)
     ) {
         Row(

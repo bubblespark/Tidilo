@@ -24,7 +24,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 // 14-stop fine-grained Hermite / Smootherstep (6t^5 - 15t^4 + 10t^3) decay curve
@@ -57,13 +58,14 @@ private val SMOOTHERSTEP_CURVE = listOf(
 @Composable
 fun FrostedHeaderContainer(
     modifier: Modifier = Modifier,
-    contentAlpha: Float = LocalAppThemeStyle.current.headerAlpha,
+    contentAlpha: Float = currentThemeSurfaces().resolve(SurfaceRole.HEADER).opacity,
     fadeHeight: Dp = HeaderDefaults.FadeHeight,
     decayOverlap: Dp = HeaderDefaults.DecayOverlap,
     scrollState: ScrollableState? = null,
     content: @Composable () -> Unit
 ) {
-    val bgColor = MaterialTheme.colorScheme.background
+    val headerStyle = currentThemeSurfaces().resolve(SurfaceRole.HEADER)
+    val bgColor = headerStyle.containerColor
     val headerScrollState = scrollState?.let { remember(it) { HeaderScrollState(it) } }
 
     Box(
@@ -73,7 +75,7 @@ fun FrostedHeaderContainer(
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .themeSurfaceBlur(LocalAppThemeStyle.current.headerBlurRadius)
+                .themeSurfaceBlur(headerStyle.selfBlurRadius)
                 .drawWithCache {
                     val totalHeight = size.height
                     if (totalHeight <= 0f) {

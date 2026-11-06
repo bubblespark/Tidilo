@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,11 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -44,10 +43,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.ui.components.DomainWatermark
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
-import androidx.compose.ui.graphics.luminance
-import me.bubblespark.tidilo.ui.theme.themeCardSurface
+import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.SurfaceVariant
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -105,10 +105,8 @@ internal fun LibraryDeckCard(
     modifier: Modifier = Modifier,
     watermark: @Composable (Modifier) -> Unit
 ) {
-    val themeStyle = LocalAppThemeStyle.current
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val cardShape = remember { RoundedCornerShape(20.dp) }
-    val effectiveShape = themeStyle.cardStyle.shape ?: cardShape
+    val themeStyle = currentThemeSurfaces().preset
+    val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.DECK_FRONT, SurfaceVariant.COMPACT).shape
     val stackOffset = 7.dp
     val cardHeight = 154.dp
 
@@ -123,16 +121,15 @@ internal fun LibraryDeckCard(
             )
     ) {
         // Deepest background stacked card (Layer 2, top-right most)
-        Surface(
+        TidiloSurface(
+            role = SurfaceRole.DECK_BACK,
+            variant = SurfaceVariant.COMPACT,
+            accent = dominantColor,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = stackOffset * 2)
                 .height(cardHeight)
-                .align(Alignment.TopStart),
-            shape = cardShape,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.18f)),
-            shadowElevation = 0.dp
+                .align(Alignment.TopStart)
         ) {
             Box(
                 modifier = Modifier
@@ -142,17 +139,16 @@ internal fun LibraryDeckCard(
         }
 
         // Intermediate background stacked card (Layer 1, middle)
-        Surface(
+        TidiloSurface(
+            role = SurfaceRole.DECK_BACK,
+            variant = SurfaceVariant.EMPHASIZED,
+            accent = dominantColor,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = stackOffset, end = stackOffset)
                 .height(cardHeight)
                 .align(Alignment.TopStart)
-                .offset(y = stackOffset),
-            shape = cardShape,
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            border = BorderStroke(1.dp, dominantColor.copy(alpha = 0.28f)),
-            shadowElevation = 1.dp
+                .offset(y = stackOffset)
         ) {
             Box(
                 modifier = Modifier
@@ -162,25 +158,16 @@ internal fun LibraryDeckCard(
         }
 
         // Front interactive main card (bottom-left)
-        val frontCardColor = themeStyle.surfacePalette.container(
-            isDark = isDark,
-            fallback = MaterialTheme.colorScheme.surfaceContainerHigh
-        ).copy(alpha = themeStyle.cardAlpha)
-
-        Card(
+        TidiloSurface(
+            role = SurfaceRole.DECK_FRONT,
+            variant = SurfaceVariant.COMPACT,
+            accent = dominantColor,
             onClick = onClick,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(end = stackOffset * 2)
                 .height(cardHeight)
                 .align(Alignment.BottomStart)
-                .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, effectiveShape, frontCardColor),
-            shape = effectiveShape,
-            colors = CardDefaults.cardColors(
-                containerColor = if (themeStyle.cardStyle.depth > 0.dp) Color.Transparent else frontCardColor
-            ),
-            border = if (themeStyle.cardStyle.showAccentRim) BorderStroke(1.dp, dominantColor.copy(alpha = 0.42f)) else null,
-            elevation = CardDefaults.cardElevation(defaultElevation = if (themeStyle.cardStyle.depth > 0.dp) 0.dp else 2.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -251,7 +238,7 @@ internal fun LibraryDeckCard(
 
                     // Total bookmark count pill badge
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = themeCorner(ThemeCorner.CONTROL),
                         color = dominantColor.copy(alpha = 0.20f),
                         contentColor = dominantColor
                     ) {

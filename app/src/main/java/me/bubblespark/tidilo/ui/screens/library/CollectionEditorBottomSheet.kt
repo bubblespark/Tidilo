@@ -1,5 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.SurfaceVariant
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -52,10 +55,14 @@ internal fun CollectionEditorContent(
     val pending by rememberUpdatedState(state.pending)
     val canEdit = !state.pending && !state.loading && !state.missing && state.error != "load"
     val accent = CollectionColorPalette.getOrElse(draft.colorIndex) { CollectionColorPalette.first() }
-    ModalBottomSheet(onDismissRequest = { if (!pending) onDismiss() }, modifier = modifier,
+    val sheetStyle = currentThemeSurfaces().resolve(SurfaceRole.SHEET, SurfaceVariant.EMPHASIZED)
+    ModalBottomSheet(
+        shape = sheetStyle.shape,
+        onDismissRequest = { if (!pending) onDismiss() },
+        modifier = modifier,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
             confirmValueChange = { it != SheetValue.Hidden || !pending }),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        containerColor = sheetStyle.containerColor) {
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             CollectionSheetHeader(
                 title = stringResource(if (editing) R.string.collection_edit_title else R.string.collection_create_title),
@@ -124,7 +131,9 @@ internal fun CollectionEditorContent(
             }
         }
     }
-    if (state.confirmDelete) AlertDialog(onDismissRequest = { onConfirmDelete(false) },
+    if (state.confirmDelete) AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = { onConfirmDelete(false) },
         title = { Text(stringResource(R.string.collection_delete_title)) },
         text = { Text(stringResource(R.string.collection_delete_message, draft.title)) },
         confirmButton = { TextButton(onClick = onDelete, enabled = !state.pending) { Text(stringResource(R.string.common_delete)) } },

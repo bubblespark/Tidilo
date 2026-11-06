@@ -1,5 +1,9 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
@@ -20,7 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -116,7 +119,7 @@ fun SettingsDebugScreen(
             // Device & SDK Info Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
+                shape = themeCorner(ThemeCorner.PROMINENT_CARD),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                     contentColor = MaterialTheme.colorScheme.onSurface
@@ -153,7 +156,7 @@ fun SettingsDebugScreen(
             // Gemini Nano / AICore Status Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
+                shape = themeCorner(ThemeCorner.PROMINENT_CARD),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                     contentColor = MaterialTheme.colorScheme.onSurface
@@ -189,7 +192,7 @@ fun SettingsDebugScreen(
             // ML Kit GenAI Prompt API Diagnostic & Test Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
+                shape = themeCorner(ThemeCorner.PROMINENT_CARD),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     contentColor = MaterialTheme.colorScheme.onSurface
@@ -235,7 +238,7 @@ fun SettingsDebugScreen(
                                 }
                             },
                             enabled = genAiState !is GenAiTestState.Loading,
-                            shape = RoundedCornerShape(12.dp),
+                            shape = themeCorner(ThemeCorner.FIELD),
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
@@ -268,7 +271,7 @@ fun SettingsDebugScreen(
                                 }
                             },
                             enabled = genAiState !is GenAiTestState.Loading,
-                            shape = RoundedCornerShape(12.dp),
+                            shape = themeCorner(ThemeCorner.FIELD),
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
@@ -315,7 +318,7 @@ fun SettingsDebugScreen(
                         }
                         is GenAiTestState.StatusResult -> {
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = themeCorner(ThemeCorner.FIELD),
                                 color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -336,7 +339,7 @@ fun SettingsDebugScreen(
                         }
                         is GenAiTestState.InferenceResult -> {
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = themeCorner(ThemeCorner.FIELD),
                                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -359,7 +362,7 @@ fun SettingsDebugScreen(
                         }
                         is GenAiTestState.Error -> {
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = themeCorner(ThemeCorner.FIELD),
                                 color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -403,6 +406,8 @@ fun SettingsDebugScreen(
 
     if (showClearConfirmDialog) {
         AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
             onDismissRequest = { showClearConfirmDialog = false },
             title = {
                 Text(
@@ -474,6 +479,8 @@ internal fun CrashLogDetailsDialog(
     modifier: Modifier = Modifier
 ) {
     AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
         onDismissRequest = onDismiss,
         modifier = modifier,
         title = {
@@ -544,7 +551,7 @@ internal fun CrashLogDetailsContent(
         }
         Spacer(modifier = Modifier.height(12.dp))
         Surface(
-            shape = RoundedCornerShape(8.dp),
+            shape = themeCorner(ThemeCorner.SMALL),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -568,7 +575,7 @@ internal fun CrashLogsSection(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = themeCorner(ThemeCorner.PROMINENT_CARD),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
             contentColor = MaterialTheme.colorScheme.onSurface
@@ -609,7 +616,7 @@ internal fun CrashLogsSection(
 
             if (crashLogs.isEmpty()) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = themeCorner(ThemeCorner.FIELD),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -645,7 +652,7 @@ private fun CrashLogItemCard(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = themeCorner(ThemeCorner.CHIP),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
         tonalElevation = 1.dp,
         modifier = modifier.fillMaxWidth()

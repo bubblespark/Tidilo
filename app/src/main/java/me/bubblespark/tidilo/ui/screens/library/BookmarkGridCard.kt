@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -23,7 +25,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Link
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,9 +39,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
-import me.bubblespark.tidilo.ui.theme.themeCardSurface
+import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.SurfaceVariant
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -103,12 +105,8 @@ fun BookmarkGridCard(
         } ?: primaryColor
     }
 
-    val themeStyle = LocalAppThemeStyle.current
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val hasSummary = bookmark.description.isNotBlank()
-    val cardStyle = rememberBookmarkCardStyle(MaterialTheme.colorScheme.surfaceContainer)
-    val cardShape = RoundedCornerShape(16.dp)
-    val effectiveShape = themeStyle.cardStyle.shape ?: cardShape
+    val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.BOOKMARK_CARD, SurfaceVariant.COMPACT).shape
     val topImageShape = if (effectiveShape is RoundedCornerShape) {
         effectiveShape.copy(
             bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp),
@@ -118,31 +116,16 @@ fun BookmarkGridCard(
         RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
     }
 
-    Surface(
+    TidiloSurface(
+        onClick = onClick,
+        onLongClick = if (hasSummary) onLongClick else null,
+        role = SurfaceRole.BOOKMARK_CARD,
+        variant = SurfaceVariant.COMPACT,
+        accent = LocalCardAccentColor.current,
         modifier = modifier
             .fillMaxWidth()
-            .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, effectiveShape, cardStyle.containerColor)
-            .bookmarkCardLighting(cardStyle, effectiveShape, themeStyle.cardStyle.showAccentRim)
-            .clip(effectiveShape)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = if (hasSummary && onLongClick != null) {
-                    { onLongClick() }
-                } else null
-            ),
-        shape = effectiveShape,
-        color = if (themeStyle.cardStyle.depth > 0.dp) Color.Transparent else cardStyle.containerColor,
-        tonalElevation = 0.dp
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
-            // Background surface layer: isolated blur and surface wash behind content
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .bookmarkCardSurfaceBlur(cardStyle, effectiveShape)
-                    .bookmarkCardSurfaceWash(cardStyle)
-            )
-
             Column(modifier = Modifier.fillMaxWidth()) {
             // 1. Top Image Area (Aspect Ratio 16:9)
             Box(
@@ -177,14 +160,14 @@ fun BookmarkGridCard(
                             contentDescription = domainDisplayName,
                             modifier = Modifier
                                 .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(themeCorner(ThemeCorner.SMALL))
                         )
                     } else {
                         // A bundled link icon is always available, including offline.
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(themeCorner(ThemeCorner.SMALL))
                                 .background(domainAccentColor.copy(alpha = 0.30f)),
                             contentAlignment = Alignment.Center
                         ) {

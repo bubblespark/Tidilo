@@ -1,5 +1,11 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
@@ -16,7 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -88,7 +93,9 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
 @Composable
 internal fun RssInitialFetchDialog(mobileNotice: Boolean, connected: Boolean, busy: Boolean,
     onFetch: () -> Unit, onLater: () -> Unit) {
-    AlertDialog(onDismissRequest = { if (!busy) onLater() }, title = { Text(stringResource(R.string.rss_initial_title)) },
+    AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = { if (!busy) onLater() }, title = { Text(stringResource(R.string.rss_initial_title)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.rss_initial_message))
             if (connected && mobileNotice) Text(stringResource(R.string.rss_initial_mobile), color = MaterialTheme.colorScheme.error)
@@ -100,7 +107,9 @@ internal fun RssInitialFetchDialog(mobileNotice: Boolean, connected: Boolean, bu
 
 @Composable
 internal fun RssRegistrationDialog(count: Int, limit: Int?, busy: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.rss_register_existing_title)) },
+    AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = onDismiss, title = { Text(stringResource(R.string.rss_register_existing_title)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.rss_register_existing_count, count))
             Text(if (limit == null) stringResource(R.string.rss_register_existing_unlimited)
@@ -265,6 +274,8 @@ internal fun RssSettingsContent(
             if (trigger !in settings.triggerTimes) deletingTriggerMinute = null
         }
         if (trigger in settings.triggerTimes) AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
             onDismissRequest = { deletingTriggerMinute = null },
             title = { Text(stringResource(R.string.rss_delete_trigger_title)) },
             text = { Text(stringResource(R.string.rss_delete_trigger_message,
@@ -286,7 +297,9 @@ internal fun RssSettingsContent(
         LaunchedEffect(settings.triggerTimes, original) {
             if ((original != null && original !in settings.triggerTimes) || (original == null && settings.triggerTimes.size >= 3)) showTime = false
         }
-        AlertDialog(onDismissRequest = { showTime = false }, title = { Text(stringResource(R.string.rss_trigger_time)) },
+        AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = { showTime = false }, title = { Text(stringResource(R.string.rss_trigger_time)) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TimePicker(time)
                 if (duplicate) Text(stringResource(R.string.rss_trigger_duplicate), color = MaterialTheme.colorScheme.error,
@@ -308,7 +321,9 @@ internal fun RssSettingsContent(
         showEditor = false
     }
     deleting?.let { feed ->
-        AlertDialog(onDismissRequest = { deletingId = null }, title = { Text(stringResource(R.string.rss_delete)) },
+        AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = { deletingId = null }, title = { Text(stringResource(R.string.rss_delete)) },
             text = { Text(stringResource(R.string.rss_delete_note)) },
             confirmButton = { TextButton(onClick = { onDelete(feed.id); deletingId = null }) { Text(stringResource(R.string.rss_delete)) } },
             dismissButton = { TextButton(onClick = { deletingId = null }) { Text(stringResource(R.string.rss_cancel)) } })
@@ -322,10 +337,10 @@ private fun RssTriggerTimeCard(time: LocalTime, busy: Boolean, onRemove: () -> U
     RssCard(compact = true) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onRemove, enabled = !busy, modifier = Modifier.size(48.dp)) {
-                Surface(shape = CircleShape, color = DestructiveActionColors.container, modifier = Modifier.size(20.dp)) {
+                TidiloSurface(role = SurfaceRole.DESTRUCTIVE_ACTION, modifier = Modifier.size(20.dp)) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Remove, stringResource(R.string.rss_remove_trigger_time, label),
-                            tint = DestructiveActionColors.content, modifier = Modifier.size(16.dp))
+                            tint = currentThemeSurfaces().resolve(SurfaceRole.DESTRUCTIVE_ACTION).contentColor, modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -354,7 +369,7 @@ private fun RssFeedCard(feed: RssFeedEntity, busy: Boolean, onEdit: () -> Unit,
     val enabledLabel = stringResource(R.string.rss_enabled)
     val deleteLabel = stringResource(R.string.rss_delete)
     Card(modifier = Modifier.fillMaxWidth().combinedClickable(enabled = !busy, onClick = onEdit, onLongClickLabel = deleteLabel,
-        onLongClick = onDelete), shape = RoundedCornerShape(20.dp),
+        onLongClick = onDelete), shape = themeCorner(ThemeCorner.CARD),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -382,7 +397,7 @@ private fun RssFeedCard(feed: RssFeedEntity, busy: Boolean, onEdit: () -> Unit,
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (label in listOf(stringResource(if (feed.mode == "AI") R.string.rss_ai_mode else R.string.rss_direct_mode),
                     feed.retentionLimit?.let { stringResource(R.string.rss_retention_compact, it) } ?: stringResource(R.string.rss_unlimited))) {
-                    Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+                    me.bubblespark.tidilo.ui.components.TidiloDisplayChip(role = SurfaceRole.STATUS_BADGE) {
                         Text(label, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall)
                     }
                 }
@@ -406,7 +421,9 @@ internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDe
     var limit by rememberSaveable(original?.id) { mutableStateOf((original?.retentionLimit ?: 30).toString()) }
     var convert by rememberSaveable(original?.id) { mutableStateOf(false) }
     val validLimit = unlimited || limit.toIntOrNull()?.let { it in 10..500 } == true
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.SHEET).containerColor,
+            shape = currentThemeSurfaces().resolve(SurfaceRole.SHEET).shape,onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(if (original == null) R.string.rss_add_feed else R.string.rss_edit), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
@@ -419,7 +436,7 @@ internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDe
                 Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("DIRECT" to R.string.rss_direct_mode, "AI" to R.string.rss_ai_mode).forEach { (value, label) ->
                         Surface(modifier = Modifier.weight(1f).selectable(mode == value, role = Role.RadioButton, onClick = { mode = value }),
-                            shape = RoundedCornerShape(12.dp), color = if (mode == value) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest) {
+                            shape = themeCorner(ThemeCorner.FIELD), color = if (mode == value) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest) {
                             Box(Modifier.heightIn(min = 48.dp), contentAlignment = Alignment.Center) { Text(stringResource(label)) }
                         }
                     }
@@ -462,8 +479,7 @@ internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDe
 
 @Composable
 private fun RssCard(compact: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
-    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        modifier = Modifier.fillMaxWidth()) {
+    TidiloSurface(role = SurfaceRole.SETTINGS_GROUP, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(if (compact) 16.dp else 20.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 12.dp), content = content)
     }

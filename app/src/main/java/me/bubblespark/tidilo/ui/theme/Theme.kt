@@ -8,6 +8,9 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import me.bubblespark.tidilo.config.AppTheme
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
@@ -58,9 +61,11 @@ private val LightColorScheme = lightColorScheme(
 fun TidiloTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true, // Prioritize Material You / Dynamic Color on Pixel and compatible devices
+    theme: AppTheme = AppTheme.DEFAULT,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
+    val style = remember(theme) { AppThemeStyle.forTheme(theme) }
+    val baseColorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -69,10 +74,20 @@ fun TidiloTheme(
         else -> LightColorScheme
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        shapes = Shapes,
-        content = content
-    )
+    val colorScheme = resolveMaterialColors(baseColorScheme, darkTheme, style)
+    val surfaces = remember(theme, darkTheme, colorScheme, style) {
+        resolveThemeSurfaces(theme, darkTheme, colorScheme, style)
+    }
+    CompositionLocalProvider(LocalThemeSurfaces provides surfaces, LocalAppThemeStyle provides style) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            shapes = remember(style.shapeScale) { resolveMaterialShapes(style.shapeScale) },
+            content = content
+        )
+    }
 }
+
+/** An explicit preset palette overrides the system palette; absent values retain Dynamic Color. */
+fun resolveMaterialColors(base: androidx.compose.material3.ColorScheme, darkTheme: Boolean, style: AppThemeStyle): androidx.compose.material3.ColorScheme =
+    (if (darkTheme) style.darkMaterialColors else style.lightMaterialColors) ?: base

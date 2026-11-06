@@ -1,5 +1,10 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import androidx.activity.compose.BackHandler
@@ -21,7 +26,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -309,7 +313,7 @@ fun TagSelectionScreen(
                         }
                     }
                 },
-                shape = RoundedCornerShape(20.dp),
+                shape = themeCorner(ThemeCorner.CARD),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
@@ -387,9 +391,9 @@ fun TagSelectionScreen(
                         DropdownMenu(
                             expanded = isSortMenuExpanded,
                             onDismissRequest = { isSortMenuExpanded = false },
-                            shape = RoundedCornerShape(16.dp),
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            tonalElevation = 6.dp
+                            shape = currentThemeSurfaces().resolve(SurfaceRole.MENU).shape,
+                            containerColor = currentThemeSurfaces().resolve(SurfaceRole.MENU).containerColor,
+                            tonalElevation = currentThemeSurfaces().resolve(SurfaceRole.MENU).tonalElevation
                         ) {
                             CompositionLocalProvider(
                                 LocalContext provides context,
@@ -491,7 +495,7 @@ private fun TagGroupSection(
 
         if (tags.isEmpty()) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = themeCorner(ThemeCorner.IMAGE),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -532,10 +536,10 @@ private fun TagGroupSection(
                     )
 
                     Surface(
-                        shape = RoundedCornerShape(14.dp), // M3 Expressive Pill/Chip shape
+                        shape = themeCorner(ThemeCorner.CHIP), // M3 Expressive Pill/Chip shape
                         color = backgroundColor,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(themeCorner(ThemeCorner.CHIP))
                             .then(
                                 if (isSelectable) {
                                     Modifier.clickable { onTagToggled(tagItem.id) }

@@ -70,8 +70,6 @@ import me.bubblespark.tidilo.ui.navigation.TidiloBottomBar
 import me.bubblespark.tidilo.ui.navigation.TidiloNavGraph
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
 import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
-import me.bubblespark.tidilo.ui.theme.AppThemeStyle
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 
 import android.content.res.Configuration
@@ -160,7 +158,8 @@ class MainActivity : ComponentActivity() {
                 LocalConfiguration provides updatedConfig,
                 LocalContext provides localizedContext
             ) {
-                TidiloTheme {
+                val selectedTheme by AppConfig.currentTheme.collectAsStateWithLifecycle()
+                TidiloTheme(theme = selectedTheme) {
                     TidiloApp(notificationRoute = notificationDestination.value, onNotificationConsumed = {
                         notificationDestination.value = null
                         intent.removeExtra(NotificationCoordinator.EXTRA_DESTINATION)
@@ -186,7 +185,6 @@ fun TidiloApp(
     val aiProcessingProgress by importViewModel.aiProcessingProgress.collectAsStateWithLifecycle()
     val quotaExceededDialogVisible by importViewModel.quotaExceededDialogVisible.collectAsStateWithLifecycle()
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
-    val currentTheme by AppConfig.currentTheme.collectAsStateWithLifecycle()
 
     LaunchedEffect(notificationRoute) {
         if (notificationRoute != null) {
@@ -294,7 +292,6 @@ fun TidiloApp(
 
     CompositionLocalProvider(
         LocalBarsVisible provides isBarsVisible,
-        LocalAppThemeStyle provides remember(currentTheme) { AppThemeStyle.forTheme(currentTheme) },
         LocalAmbientLighting provides ambientLightingState
     ) {
         Scaffold(

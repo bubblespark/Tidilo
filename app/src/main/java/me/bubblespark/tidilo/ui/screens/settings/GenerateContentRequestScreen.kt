@@ -1,5 +1,12 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.SurfaceVariant
+import me.bubblespark.tidilo.ui.theme.ThemeSurfaceState
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
@@ -15,14 +22,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
@@ -119,7 +123,7 @@ fun GenerateContentRequestScreen(
                                 placeholder = { Text("null") },
                                 singleLine = true,
                                 enabled = state.cachedContextNameEnabled,
-                                shape = RoundedCornerShape(12.dp),
+                                shape = themeCorner(ThemeCorner.FIELD),
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                                 colors = OutlinedTextFieldDefaults.colors(
@@ -153,7 +157,7 @@ fun GenerateContentRequestScreen(
                                 },
                                 singleLine = true,
                                 enabled = state.candidateCountEnabled,
-                                shape = RoundedCornerShape(12.dp),
+                                shape = themeCorner(ThemeCorner.FIELD),
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Number,
                                     imeAction = ImeAction.Done
@@ -211,7 +215,7 @@ fun GenerateContentRequestScreen(
                                 },
                                 singleLine = true,
                                 enabled = state.maxOutputTokensEnabled,
-                                shape = RoundedCornerShape(12.dp),
+                                shape = themeCorner(ThemeCorner.FIELD),
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Number,
                                     imeAction = ImeAction.Done
@@ -248,7 +252,7 @@ fun GenerateContentRequestScreen(
                                 },
                                 singleLine = true,
                                 enabled = state.seedEnabled,
-                                shape = RoundedCornerShape(12.dp),
+                                shape = themeCorner(ThemeCorner.FIELD),
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Number,
                                     imeAction = ImeAction.Done
@@ -312,7 +316,7 @@ fun GenerateContentRequestScreen(
                                 },
                                 singleLine = true,
                                 enabled = state.topKEnabled,
-                                shape = RoundedCornerShape(12.dp),
+                                shape = themeCorner(ThemeCorner.FIELD),
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Number,
                                     imeAction = ImeAction.Done
@@ -338,6 +342,7 @@ fun GenerateContentRequestScreen(
     // Default reset confirmation dialog
     if (showResetConfirmDialog) {
         AlertDialog(
+            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             onDismissRequest = { showResetConfirmDialog = false },
             title = {
                 Text(
@@ -376,7 +381,7 @@ fun GenerateContentRequestScreen(
                     )
                 }
             },
-            shape = RoundedCornerShape(24.dp)
+            shape = themeCorner(ThemeCorner.PROMINENT_CARD)
         )
     }
 }
@@ -396,14 +401,11 @@ private fun ParameterCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .alpha(if (enabled) 1f else 0.42f),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (enabled) 0.5f else 0.22f)
-        )
+    TidiloSurface(
+        role = SurfaceRole.SETTINGS_GROUP,
+        variant = SurfaceVariant.COMPACT,
+        state = ThemeSurfaceState(enabled = enabled),
+        modifier = modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.42f)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)

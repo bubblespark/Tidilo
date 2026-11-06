@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -18,8 +20,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.ui.components.DomainWatermark
 import androidx.compose.foundation.text.InlineTextContent
@@ -39,6 +39,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
+import me.bubblespark.tidilo.ui.theme.ThemeSurfaceState
+import me.bubblespark.tidilo.ui.theme.SurfaceTone
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,10 +49,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
-import me.bubblespark.tidilo.ui.theme.LocalAppThemeStyle
-import me.bubblespark.tidilo.ui.theme.themeCardSurface
-import me.bubblespark.tidilo.ui.theme.themeChipSurface
+import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.theme.SurfaceRole
+import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.components.TidiloBadgeSurface
+import me.bubblespark.tidilo.ui.theme.ChipResolvedColors
 import me.bubblespark.tidilo.ui.theme.resolveChipColors
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -80,11 +84,6 @@ fun BookmarkItemCard(
     onToggleLike: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val themeStyle = LocalAppThemeStyle.current
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val cardStyle = rememberBookmarkCardStyle(MaterialTheme.colorScheme.surfaceContainerHigh)
-    val cardShape = RoundedCornerShape(24.dp)
-    val effectiveShape = themeStyle.cardStyle.shape ?: cardShape
     // Localized category and subcategory labels
     val localizedCategory = remember(bookmark.tag.category, context) {
         bookmark.tag.category?.let { Category.toLocalized(it, context) } ?: ""
@@ -129,32 +128,18 @@ fun BookmarkItemCard(
         )
     }
 
-    Card(
+    TidiloSurface(
         onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .themeCardSurface(themeStyle.cardStyle, themeStyle.surfacePalette, isDark, effectiveShape, cardStyle.containerColor)
-            .bookmarkCardLighting(cardStyle, effectiveShape, themeStyle.cardStyle.showAccentRim),
-        shape = effectiveShape, // M3 Expressive Large Rounding
-        colors = CardDefaults.cardColors(
-            containerColor = if (themeStyle.cardStyle.depth > 0.dp) Color.Transparent else cardStyle.containerColor
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        role = SurfaceRole.BOOKMARK_CARD,
+        accent = LocalCardAccentColor.current,
+        modifier = Modifier.fillMaxWidth()
     ) {
         val domain = bookmark.domain
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(effectiveShape)
         ) {
-            // Background surface layer: isolated blur and surface wash behind content
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .bookmarkCardSurfaceBlur(cardStyle, effectiveShape)
-                    .bookmarkCardSurfaceWash(cardStyle)
-            )
             // Background watermark layer: domain icon (lightly displayed clipped in top-right)
             DomainWatermark(
                 domain = domain,
@@ -297,21 +282,12 @@ fun BookmarkTagSection(
     tagKeywords: List<String> = emptyList(),
     modifier: Modifier = Modifier
 ) {
-    val themeStyle = LocalAppThemeStyle.current
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val themeStyle = currentThemeSurfaces().preset
 
-    val chipNeutralContainer = themeStyle.chipStyle.neutralContainer(
-        isDark,
-        fallback = if (isDark) Color(0xFF161920) else Color(0xFFFFFFFF)
-    )
-    val chipCategoryContent = themeStyle.chipStyle.categoryContent(
-        isDark,
-        fallback = if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B)
-    )
-    val chipEntityContent = themeStyle.chipStyle.entityContent(
-        isDark,
-        fallback = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
-    )
+    val surfaces = currentThemeSurfaces()
+    val chipNeutralContainer = surfaces.resolve(SurfaceRole.CLASSIFICATION_CHIP).containerColor
+    val chipCategoryContent = surfaces.resolve(SurfaceRole.CLASSIFICATION_CHIP).contentColor
+    val chipEntityContent = surfaces.resolve(SurfaceRole.ENTITY_CHIP).contentColor
     val folderIconTint = themeStyle.chipStyle.categoryIconTint
     val subcategoryIconTint = themeStyle.chipStyle.subcategoryIconTint
 
@@ -411,6 +387,7 @@ fun BookmarkTagSection(
                     CompactTagBadge(
                         icon = null,
                         text = "NSFW",
+                        tone = SurfaceTone.ERROR,
                         isMatched = false,
                         containerColor = MaterialTheme.colorScheme.errorContainer,
                         contentColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -448,7 +425,8 @@ fun BookmarkTagSection(
                     CompactTagBadge(
                         icon = Icons.Default.Tag,
                         text = cleanEntity,
-                        iconTint = if (themeStyle.chipStyle.depth > 0.dp) chipEntityContent else null,
+                        role = SurfaceRole.ENTITY_CHIP,
+                        iconTint = currentThemeSurfaces().entityChipIconTint,
                         isMatched = isEntityMatched,
                         containerColor = entityColors.containerColor,
                         contentColor = entityColors.contentColor,
@@ -474,36 +452,18 @@ fun CompactTagBadge(
     matchedContainerColor: Color,
     matchedContentColor: Color,
     modifier: Modifier = Modifier,
-    iconTint: Color? = null
+    iconTint: Color? = null,
+    role: SurfaceRole = SurfaceRole.CLASSIFICATION_CHIP,
+    tone: SurfaceTone = SurfaceTone.NORMAL
 ) {
-    val themeStyle = LocalAppThemeStyle.current
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val badgeShape = themeStyle.chipStyle.shape ?: RoundedCornerShape(12.dp)
-    val effectiveContainerColor = if (isMatched) matchedContainerColor else containerColor
-
-    val surfaceModifier = if (themeStyle.chipStyle.depth > 0.dp) {
-        modifier
-            .height(26.dp)
-            .themeChipSurface(
-                style = themeStyle.chipStyle,
-                palette = themeStyle.surfacePalette,
-                isDark = isDark,
-                fallbackShape = RoundedCornerShape(12.dp),
-                fallbackContainerColor = effectiveContainerColor
-            )
-    } else {
-        modifier
-            .height(26.dp)
-            .background(
-                color = effectiveContainerColor,
-                shape = badgeShape
-            )
-    }
-
-    Box(
-        modifier = surfaceModifier.padding(horizontal = 10.dp),
-        contentAlignment = Alignment.Center
+    TidiloBadgeSurface(
+        role = role,
+        state = ThemeSurfaceState(selected = isMatched, tone = tone),
+        colors = ChipResolvedColors(if (isMatched) matchedContainerColor else containerColor,
+            if (isMatched) matchedContentColor else contentColor),
+        modifier = modifier.height(26.dp)
     ) {
+        Box(Modifier.padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -511,7 +471,7 @@ fun CompactTagBadge(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = iconTint ?: (if (isMatched) matchedContentColor else contentColor.copy(alpha = 0.75f)),
+                    tint = iconTint ?: LocalContentColor.current.copy(alpha = if (isMatched) 1f else 0.75f),
                     modifier = Modifier.size(14.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
@@ -520,10 +480,11 @@ fun CompactTagBadge(
                 text = text,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = if (isMatched) FontWeight.Bold else FontWeight.Medium,
-                color = if (isMatched) matchedContentColor else contentColor,
+                color = LocalContentColor.current,
                 maxLines = 1
             )
         }
+    }
     }
 }
 
@@ -582,7 +543,7 @@ fun SkeletonBookmarkList(
         repeat(3) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
+                shape = themeCorner(ThemeCorner.PROMINENT_CARD),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                 )
@@ -592,7 +553,7 @@ fun SkeletonBookmarkList(
                         modifier = Modifier
                             .fillMaxWidth(0.7f)
                             .height(18.dp),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = themeCorner(ThemeCorner.SMALL),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f)
                     ) {}
                     Spacer(modifier = Modifier.height(10.dp))
@@ -600,7 +561,7 @@ fun SkeletonBookmarkList(
                         modifier = Modifier
                             .fillMaxWidth(0.9f)
                             .height(14.dp),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = themeCorner(ThemeCorner.LINE),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f)
                     ) {}
                     Spacer(modifier = Modifier.height(8.dp))
@@ -608,7 +569,7 @@ fun SkeletonBookmarkList(
                         modifier = Modifier
                             .fillMaxWidth(0.5f)
                             .height(14.dp),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = themeCorner(ThemeCorner.LINE),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f)
                     ) {}
                     Spacer(modifier = Modifier.height(14.dp))
@@ -617,14 +578,14 @@ fun SkeletonBookmarkList(
                             modifier = Modifier
                                 .width(70.dp)
                                 .height(26.dp),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = themeCorner(ThemeCorner.CONTROL),
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f)
                         ) {}
                         Surface(
                             modifier = Modifier
                                 .width(90.dp)
                                 .height(26.dp),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = themeCorner(ThemeCorner.CONTROL),
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f)
                         ) {}
                     }
@@ -644,7 +605,7 @@ fun EmptySearchResult(query: String) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 24.dp),
-        shape = RoundedCornerShape(20.dp),
+        shape = themeCorner(ThemeCorner.CARD),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
         )

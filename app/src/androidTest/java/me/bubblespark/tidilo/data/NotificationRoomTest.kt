@@ -94,7 +94,7 @@ class NotificationRoomTest {
         } finally { db.close(); context.deleteDatabase(name) }
     }
 
-    @Test fun pendingAiSnapshotSurvivesProcessingAndFinishedRunLookupPreventsReplay() = runBlocking {
+    @Test fun finishedRunLookupPreventsReplayWithoutCountingAiQueue() = runBlocking {
         val db = database()
         try {
             val dao = db.rssNotificationDao()
@@ -103,10 +103,10 @@ class NotificationRoomTest {
             dao.putItem(RssNotificationItemEntity("run", "pending", "AI"))
             dao.finish("run")
             db.importTaskDao().deleteById("pending")
-            assertEquals(1, dao.runFor("work", 100)!!.pendingAi)
+            assertEquals(0, dao.runFor("work", 100)!!.pendingAi)
             assertTrue(dao.runFor("work", 100)!!.completed)
             dao.finish("run")
-            assertEquals(1, dao.runFor("work", 100)!!.pendingAi)
+            assertEquals(0, dao.runFor("work", 100)!!.pendingAi)
         } finally { db.close() }
     }
     @Test fun readyCountIncludesRssButNotProcessingOrErrors() = runBlocking {

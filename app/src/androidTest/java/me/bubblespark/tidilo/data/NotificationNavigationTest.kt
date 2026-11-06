@@ -29,7 +29,7 @@ class NotificationNavigationTest {
         var activity: ComponentActivity? = null
         try {
             val coordinator = NotificationCoordinator.getInstance(context)
-            coordinator.buildNotification(NotificationCategory.READY, "Ready").contentIntent.send()
+            coordinator.buildNotification(NotificationCategory.IMPORT_ERROR, "Import error").contentIntent.send()
             activity = instrumentation.waitForMonitorWithTimeout(monitor, 8000) as ComponentActivity?
             assertNotNull(activity)
             awaitText(context.getString(R.string.import_header_subtitle))

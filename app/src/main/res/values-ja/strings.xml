@@ -1,8 +1,7 @@
 <resources>
     <string name="settings_notification_title">通知</string>
     <string name="settings_notification_description">システム設定で通知を管理</string>
-    <string name="notification_ready_body">%1$d件のURLがAI解析待ちです。\nタップしてAI解析を実行します。</string>
-    <string name="notification_rss_complete_body">RSSの取得が完了しました。\n直接保存: %1$d件\nAI解析待ち: %2$d件</string>
+    <string name="notification_rss_complete_body">RSSの取得が完了しました。\n直接保存: %1$d件</string>
     <string name="notification_rss_disabled_body">取得に失敗したため一部のRSSが無効化されました。\nタップして詳細を確認してください。</string>
     <string name="notification_rss_article_errors">%1$d件のRSS記事の取得に失敗しました。\n%2$s</string>
     <string name="settings_ai_analysis_title">AI解析</string>

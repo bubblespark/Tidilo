@@ -45,21 +45,14 @@ interface RssNotificationDao {
     @Query("""UPDATE rss_notification_items SET outcome = 'SKIPPED', detail = '' WHERE itemId = :itemId
         AND runId IN (SELECT id FROM rss_notification_runs WHERE completed = 0)""")
     suspend fun discardItem(itemId: String)
-    @Query("""UPDATE rss_notification_runs SET completed = 1, pendingAi =
-        (SELECT COUNT(*) FROM rss_notification_items n JOIN import_tasks t ON t.id = n.itemId
-         WHERE n.runId = rss_notification_runs.id AND n.outcome = 'AI' AND t.status = 'READY')
+    @Query("""UPDATE rss_notification_runs SET completed = 1
         WHERE completed = 0 AND NOT EXISTS (SELECT 1 FROM rss_feeds WHERE enabled = 1 AND deleted = 0)""")
     suspend fun finishRunsWithoutEnabledFeeds()
     @Query("SELECT * FROM rss_notification_runs WHERE completed = 1 AND published = 0 ORDER BY requestedAt")
     suspend fun unpublishedRuns(): List<RssNotificationRunEntity>
     @Query("SELECT * FROM rss_notification_items WHERE runId = :runId")
     suspend fun items(runId: String): List<RssNotificationItemEntity>
-    @Query("""SELECT COUNT(*) FROM rss_notification_items n JOIN import_tasks t ON t.id = n.itemId
-        WHERE n.runId = :runId AND n.outcome = 'AI' AND t.status = 'READY'""")
-    suspend fun pendingAiCount(runId: String): Int
-    @Query("""UPDATE rss_notification_runs SET completed = 1, pendingAi =
-        (SELECT COUNT(*) FROM rss_notification_items n JOIN import_tasks t ON t.id = n.itemId
-         WHERE n.runId = :runId AND n.outcome = 'AI' AND t.status = 'READY')
+    @Query("""UPDATE rss_notification_runs SET completed = 1
         WHERE id = :runId AND completed = 0""")
     suspend fun finish(runId: String)
     @Query("UPDATE rss_notification_runs SET published = 1 WHERE id = :runId")

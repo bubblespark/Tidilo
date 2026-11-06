@@ -32,8 +32,18 @@ data class Tag(
         }
 
         /** Builds a tag from stored or previously cleaned display values without cleaning twice. */
-        fun fromDisplayValues(category: String?, subcategory: String?, entities: List<String> = emptyList()): Tag =
-            create(category, subcategory).copy(entities = entities)
+        fun fromDisplayValues(
+            category: String?,
+            subcategory: String?,
+            entities: List<String> = emptyList(),
+            preserveNullAxes: Boolean = false
+        ): Tag = create(category, subcategory).let { tag ->
+            tag.copy(
+                category = tag.category.takeUnless { preserveNullAxes && category == null },
+                subcategory = tag.subcategory.takeUnless { preserveNullAxes && subcategory == null },
+                entities = entities
+            )
+        }
 
         fun createEmpty(): Tag = Tag(category = null, subcategory = null, entities = emptyList())
 

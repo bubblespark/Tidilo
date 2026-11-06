@@ -49,5 +49,8 @@ data class ImportTask(
     val intendedMode: String = "AI",
     val rssItemKey: String? = null,
     val acquisitionAttempts: Int = 0,
-    val acquisitionRetryAt: Long = 0
+    val acquisitionRetryAt: Long = 0,
+    val standardCategory: String? = null,
+    val standardSubcategory: String? = null,
+    val standardClassificationEvaluated: Boolean = false
 )

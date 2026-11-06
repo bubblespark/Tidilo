@@ -13,6 +13,7 @@ import me.bubblespark.tidilo.data.rss.RssIngestionStore
 import me.bubblespark.tidilo.parser.PreparedArticle
 import me.bubblespark.tidilo.parser.RssEntry
 import me.bubblespark.tidilo.parser.RssFeedParser
+import me.bubblespark.tidilo.parser.StandardClassification
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -30,8 +31,12 @@ class RssIngestionStoreTest {
             val entry = RssFeedParser.parse("<rss><channel><item><link>https://example.com/post</link>$rawCategories</item></channel></rss>", feed.url).entries.single()
             assertTrue(store.stage(feed, listOf(entry), 100))
             val task = db.importTaskDao().getAllTasks().single()
-            assertTrue(store.complete(feed, task, article(task.url)))
+            assertTrue(store.complete(feed, task, article(task.url),
+                classification = StandardClassification(subcategory = Subcategory.FOOD)))
             assertEquals(listOf("GitHub", "#C", "C", "New"), dao.getBookmarkById(task.id)?.entities)
+            val tag = dao.getBookmarkById(task.id)?.toBookmarkItem()?.tag
+            assertNull(tag?.category)
+            assertEquals("Food", tag?.subcategory)
             db.openHelper.readableDatabase.query("SELECT value FROM bookmark_entities WHERE bookmarkId = ? ORDER BY position", arrayOf(task.id)).use { cursor ->
                 val values = mutableListOf<String>()
                 while (cursor.moveToNext()) values += cursor.getString(0)

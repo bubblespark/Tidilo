@@ -203,10 +203,12 @@ object WebPageParser {
 
         // 5. JSON-LD (schema.org)
         val jsonLdList = mutableListOf<JsonLdItem>()
+        val jsonLdScripts = mutableListOf<String>()
         for (script in doc.select("script[type=application/ld+json]")) {
             val jsonText = script.data().trim().ifBlank { script.html().trim() }
             if (jsonText.isNotBlank()) {
                 parseJsonLd(jsonText, jsonLdList)
+                jsonLdScripts.add(jsonText)
             }
         }
 
@@ -291,7 +293,9 @@ object WebPageParser {
             isNsfwSignal = isNsfwSignal,
             iconCandidates = iconCandidates,
             imageBaseUrl = imageBaseUrl,
-            cleanedBodyText = cleanedBodyText
+            cleanedBodyText = cleanedBodyText,
+            jsonLdScripts = jsonLdScripts,
+            pageOpenGraphType = doc.head().selectFirst("> meta[property=og:type]")?.attr("content")?.trim()
         )
     }
 

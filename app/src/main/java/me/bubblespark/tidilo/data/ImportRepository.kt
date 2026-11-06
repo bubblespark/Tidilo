@@ -42,6 +42,7 @@ import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.parser.ArticleAcquirer
 import me.bubblespark.tidilo.parser.ParsedWebPage
+import me.bubblespark.tidilo.parser.classifyStandardMetadata
 import me.bubblespark.tidilo.parser.ArticlePreparation
 import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.service.GeminiTaggingService
@@ -82,7 +83,7 @@ class ImportRepository internal constructor(
     private val repositoryScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     private val isAppInForeground: () -> Boolean = { TidiloApplication.instance.isAppInForeground },
     private val openModel: () -> GenerativeModel = { Generation.getClient() },
-    private val analyzeTask: suspend (GenerativeModel, ImportTask) -> Unit = ::analyzeImportTask,
+    private val analyzeTask: (suspend (GenerativeModel, ImportTask) -> Unit)? = null,
     private val fallbackMode: () -> AiCoreFallbackMode = { AppConfig.aiCoreFallbackMode.value },
     private val retryIntervalMs: Long = 3000L,
     private val articleAcquirer: suspend (String) -> ParsedWebPage = { ArticleAcquirer.acquire(it) },
@@ -502,6 +503,7 @@ class ImportRepository internal constructor(
                 // 1. Fetch & parse HTML, extract metadata, OGP, and Readability body snippet
                 val parsed = articleAcquirer(normalized)
                 val prepared = ArticlePreparation.prepare(parsed)
+                val classification = classifyStandardMetadata(parsed)
 
                 val realUrl = WebPageParser.normalizeUrl(prepared.url) ?: prepared.url
                 // Post-Redirect Check (handles redirects) - atomic duplicate check & mutation in database transaction
@@ -560,7 +562,10 @@ class ImportRepository internal constructor(
                     description = description,
                     bodySnippet = bodySnippet,
                     ogImageUrl = ogImageUrl,
-                    articlePrepared = true
+                    articlePrepared = true,
+                    standardCategory = classification.category?.id,
+                    standardSubcategory = classification.subcategory?.id,
+                    standardClassificationEvaluated = true
                 )
 
                 var outcome: ImportOutcome = ImportOutcome.QueuedForAi(newItem)
@@ -947,7 +952,24 @@ class ImportRepository internal constructor(
         }
 
         // 2. Gemini Nano inference using precomputed metadata -> Save to Library
-        analyzeTask(model, target)
+        val analyzer = analyzeTask
+        if (analyzer != null) {
+            analyzer(model, target)
+        } else {
+            analyzeImportTask(model, target) { parsed ->
+                val classification = classifyStandardMetadata(parsed)
+                runInDbOrLock(target.url) {
+                    val current = taskDao.getTaskById(taskId)
+                    if (current?.status == TaskStatus.PROCESSING_AI.name) {
+                        taskDao.update(current.copy(
+                            standardCategory = classification.category?.id,
+                            standardSubcategory = classification.subcategory?.id,
+                            standardClassificationEvaluated = true
+                        ))
+                    }
+                }
+            }
+        }
 
         // 3. Success: Remove from database and register in library
         foregroundRetryCounts.remove(taskId)
@@ -1089,7 +1111,10 @@ class ImportRepository internal constructor(
         title = target.title,
         url = target.url,
         description = target.description,
-        tag = resolveSkippedTag(target),
+        tag = resolveSkippedTag(target).copy(
+            category = target.standardCategory.takeIf { target.standardClassificationEvaluated },
+            subcategory = target.standardSubcategory.takeIf { target.standardClassificationEvaluated }
+        ),
         isNsfw = target.isNsfw,
         isAiSkipped = true,
         ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() },
@@ -1143,11 +1168,15 @@ class ImportRepository internal constructor(
             if (!target.articlePrepared) {
                 val parsed = articleAcquirer(target.url)
                 val article = ArticlePreparation.prepare(parsed)
+                val classification = classifyStandardMetadata(parsed)
                 target = target.copy(url = WebPageParser.normalizeUrl(article.url) ?: article.url,
                     title = if (isRawUrlOrHost(target.title, target.url)) article.title else target.title,
                     siteName = article.siteName, description = article.description, bodySnippet = article.bodySnippet,
                     ogImageUrl = article.ogImageUrl, isNsfw = article.isNsfw || DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(article.url)),
-                    articlePrepared = true, status = TaskStatus.PROCESSING_AI, errorMessage = null)
+                    articlePrepared = true, status = TaskStatus.PROCESSING_AI, errorMessage = null,
+                    standardCategory = classification.category?.id,
+                    standardSubcategory = classification.subcategory?.id,
+                    standardClassificationEvaluated = true)
                 val current = taskDao.getTaskById(target.id) ?: return
                 if (current.status != "PROCESSING_AI") return
                 taskDao.update(ImportTaskEntity.fromImportTask(target))
@@ -1193,7 +1222,8 @@ class ImportRepository internal constructor(
     private suspend fun saveBookmarkFallback(target: ImportTask) {
         foregroundRetryCounts.remove(target.id)
         retryNotBefore.remove(target.id)
-        val fallbackBookmark = skippedBookmark(target)
+        val latest = taskDao.getTaskById(target.id)?.toImportTask() ?: return
+        val fallbackBookmark = skippedBookmark(latest)
         try {
             persistFallback(fallbackBookmark)
         } catch (e: Exception) {
@@ -1279,6 +1309,7 @@ class ImportRepository internal constructor(
                 }
                 val parsed = ArticleAcquirer.acquire(url)
                 val prepared = ArticlePreparation.prepare(parsed)
+                val classification = classifyStandardMetadata(parsed)
                 val realTitle = prepared.title
                 val realUrl = prepared.url
                 val domain = DomainIconManager.extractDomain(realUrl)
@@ -1313,7 +1344,10 @@ class ImportRepository internal constructor(
                         ogImageUrl = prepared.ogImageUrl,
                         ogImageKey = me.bubblespark.tidilo.data.db.bookmarkOgImageKey(realUrl, prepared.ogImageUrl),
                         articlePrepared = true,
-                        isNsfw = isNsfw || existing.isNsfw
+                        isNsfw = isNsfw || existing.isNsfw,
+                        standardCategory = classification.category?.id,
+                        standardSubcategory = classification.subcategory?.id,
+                        standardClassificationEvaluated = true
                     )
                     taskDao.update(updated)
                 }
@@ -1567,7 +1601,11 @@ class ImportRepository internal constructor(
 }
 
 /** Runs one import task using the session-owned model. */
-private suspend fun analyzeImportTask(model: GenerativeModel, target: ImportTask) {
+private suspend fun analyzeImportTask(
+    model: GenerativeModel,
+    target: ImportTask,
+    onArticleAcquired: suspend (ParsedWebPage) -> Unit
+) {
     GeminiTaggingService.processAndSaveBookmark(
         model = model,
         url = target.url,
@@ -1581,7 +1619,8 @@ private suspend fun analyzeImportTask(model: GenerativeModel, target: ImportTask
         rssFeedId = target.rssFeedId,
         rssPublishedAt = target.rssPublishedAt,
         rssFirstSeenAt = if (target.rssFeedId != null) target.createdAt else null,
-        articlePrepared = target.articlePrepared
+        articlePrepared = target.articlePrepared,
+        onArticleAcquired = onArticleAcquired
     ).getOrThrow()
 }
 

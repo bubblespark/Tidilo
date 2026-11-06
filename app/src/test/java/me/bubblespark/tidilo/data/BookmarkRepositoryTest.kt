@@ -15,6 +15,17 @@ class BookmarkRepositoryTest {
     private val defaultTag = Tag.create("Article", "Tech", listOf("Test"))
 
     @Test
+    fun skippedBookmarkPreservesEachNullableAxisThroughBackupAndRoomMapping() {
+        for (tag in listOf(Tag("Article", null), Tag(null, "Food"), Tag(null, null, listOf("Saved")))) {
+            val original = BookmarkItem("partial", "Page", "https://example.com", "", tag, isAiSkipped = true)
+            val restored = BookmarkRepository.parseBookmarkFromObj(BookmarkRepository.serializeBookmarkToObj(original))
+            val fromRoom = me.bubblespark.tidilo.data.db.BookmarkEntity.fromBookmarkItem(restored).toBookmarkItem()
+            assertEquals(tag, fromRoom.tag)
+            assertTrue(fromRoom.isAiSkipped)
+        }
+    }
+
+    @Test
     fun legacyListParserPreservesSerializedCanonicalHash() {
         val original = BookmarkItem("legacy-hash", "Hash", "https://example.com/hash", "", Tag("Tool", "Tech", listOf("#C", "C")))
         val restored = BookmarkRepository.parseBookmarks(BookmarkRepository.serializeBookmarks(listOf(original))).single()

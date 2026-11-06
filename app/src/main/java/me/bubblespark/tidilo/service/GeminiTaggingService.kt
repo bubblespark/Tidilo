@@ -59,7 +59,8 @@ object GeminiTaggingService {
         rssFeedId: String? = null,
         rssPublishedAt: Long? = null,
         rssFirstSeenAt: Long? = null,
-        articlePrepared: Boolean = false
+        articlePrepared: Boolean = false,
+        onArticleAcquired: suspend (ParsedWebPage) -> Unit = {}
     ): Result<BookmarkItem> = withContext(Dispatchers.IO) {
         runCatching {
             require(rssFeedId == null || articlePrepared) { "RSS article requires HTML preparation" }
@@ -112,6 +113,7 @@ object GeminiTaggingService {
                     ?: extractHost(realUrl)
 
                 val prepared = ArticlePreparation.prepare(parsed)
+                onArticleAcquired(parsed)
                 if (prepared.bodySnippet.isBlank() && prepared.description.isBlank()) {
                     throw me.bubblespark.tidilo.parser.ArticleContentUnavailable()
                 }

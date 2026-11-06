@@ -63,7 +63,9 @@ data class ParsedWebPage(
     val isNsfwSignal: Boolean = false,
     val iconCandidates: List<me.bubblespark.tidilo.data.DomainIconCandidate>? = null,
     val imageBaseUrl: String = finalUrl,
-    val cleanedBodyText: String? = null
+    val cleanedBodyText: String? = null,
+    val jsonLdScripts: List<String> = emptyList(),
+    val pageOpenGraphType: String? = null
 ) {
     /** Full ad-filtered body before snippet truncation; legacy callers retain the extraction fallback. */
     val promptBodyText: String

@@ -26,7 +26,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RssNotificationRunEntity::class,
         RssNotificationItemEntity::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -43,6 +43,13 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         val MIGRATION_15_16 = collectionMigration15To16
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE import_tasks ADD COLUMN standardCategory TEXT")
+                db.execSQL("ALTER TABLE import_tasks ADD COLUMN standardSubcategory TEXT")
+                db.execSQL("ALTER TABLE import_tasks ADD COLUMN standardClassificationEvaluated INTEGER NOT NULL DEFAULT 0")
+            }
+        }
         val MIGRATION_13_14 = entityTagMigration13To14
 
         val MIGRATION_14_15 = object : Migration(14, 15) {
@@ -206,7 +213,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }

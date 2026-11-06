@@ -3,7 +3,7 @@
 ## 1. Application Overview
 
 **Tidilo** is a local-first Android bookmark and RSS manager with optional on-device AI.  
-When a user shares a URL from a web browser, enqueues a link within the app, or receives an article from an RSS/Atom subscription, Tidilo fetches the page, parses semantic metadata (OGP, meta tags, Mozilla Readability article body), resolves wrappers or shortened links, and saves the bookmark to the local library. With AI Analysis disabled (**Direct** mode), the page's own description is used as the summary and no tags are set.
+When a user shares a URL from a web browser, enqueues a link within the app, or receives an article from an RSS/Atom subscription, Tidilo fetches the page, parses semantic metadata (OGP, meta tags, Mozilla Readability article body), resolves wrappers or shortened links, and saves the bookmark to the local library. With AI Analysis disabled (**Direct** mode), the page's own description is used as the summary. Supported Schema.org JSON-LD and Open Graph types can supply category and subcategory independently. The classifier uses page and node URLs only to associate metadata. Missing, unrelated, or conflicting evidence leaves the affected axis empty. Titles and descriptions are outside the classifier's inputs.
 
 When AI Analysis is enabled, Tidilo additionally leverages Google's **Gemini Nano** foundation model running locally via the Android system **AICore** service to automatically:
 1. Synthesize an objective, one- or two-sentence summary.
@@ -61,6 +61,7 @@ flowchart TD
 - Saved data lives on the device and is readable without a connection. Network access is needed only to fetch pages, images, and feeds that the user adds.
 - Bookmark and trash records are persisted in a robust local SQLite database via AndroidX Room (`AppDatabase`, `BookmarkEntity`, `TrashedBookmarkEntity`).
 - Indexed queries on URL, creation timestamp, category, subcategory, NSFW, and domain support targeted reads; transactions preserve durable write integrity.
+- Room migration 16 to 17 stages nullable standard category and subcategory IDs and an evaluation marker on prepared imports. Existing queued rows keep their data and start without staged classification.
 - Room is the source of truth. Writes are awaited by ID/domain; Room invalidation refreshes Paging and aggregate observers. Active bookmarks are never cached as an unbounded application-wide list.
 - An automatic migration bridge on startup safely ingests legacy `SharedPreferences` JSON caches into Room on first launch with an empty database.
 - Disposable OG previews remain in `cacheDir/og_images`. Imports and grid cards share exact-image recovery with four concurrent workers, reference-counted cancellation, generation-safe clearing, and failure backoff. See [Bookmark Preview Cache](og_image_cache.md).

@@ -17,9 +17,6 @@
     <string name="settings_ai_analysis_using_model_title">Using AI Model</string>
     <string name="settings_ai_analysis_aicore_desc">Summarize and categorize bookmarks using on-device Gemini Nano</string>
     <string name="settings_ai_analysis_disable_desc">Save bookmarks directly without AI analysis</string>
-    <string name="settings_section_automation">Automation</string>
-    <string name="settings_aicore_fallback_section_title">AICore error fallback</string>
-    <string name="settings_aicore_fallback_section_desc">When fallback is enabled for an AICore error, the import completes without AI analysis. No tags are set, and the summary uses the web page’s description.</string>
     <string name="settings_section_aicore_parameters">AICore parameters</string>
     <string name="settings_section_content_safety">Content Safety</string>
     <string name="rss_ai_disabled_note">AI Analysis is disabled in Settings. Feeds will be imported in Direct mode automatically.</string>
@@ -58,7 +55,6 @@
     <string name="bottom_bar_close_filter_menu">Close filter menu</string>
     <string name="bottom_bar_filter_menu">Filter menu</string>
     <string name="bottom_bar_search">Search</string>
-    <string name="bottom_bar_ai_analysis_all">AI Analysis All</string>
     <string name="bottom_bar_ai_processing">AI Processing Status</string>
     <string name="ai_indicator_processing_title">AI Analyzing…</string>
     <string name="ai_indicator_progress_format">AI Analyzing… (%1$d/%2$d)</string>
@@ -98,7 +94,6 @@
 
     <!-- AICore Dialogs -->
     <string name="dialog_aicore_title">AICore</string>
-    <string name="dialog_aicore_quota_exceeded_message">You have exceeded the AICore usage limit. We cannot import the URL.\nPlease wait a while and try again, or enable the fallback feature.</string>
 
     <!-- Library Screen -->
     <string name="library_header_title">Library</string>
@@ -216,11 +211,6 @@
     <string name="settings_section_general">General</string>
     <string name="settings_language_title">Language</string>
     <string name="settings_language_dialog_title">Select Language</string>
-    <string name="settings_auto_run_ai_title">Run AI when active</string>
-    <string name="settings_auto_run_ai_subtitle">Auto-promote Queuing tasks when app becomes active</string>
-    <string name="settings_fallback_mode_disable">Disable</string>
-    <string name="settings_fallback_mode_quota">If the quota is exceeded</string>
-    <string name="settings_fallback_mode_all">All AICore errors</string>
     <string name="settings_generate_content_title">GenerateContentRequest</string>
     <string name="settings_generate_content_subtitle">Configure AICore request parameters</string>
     <string name="settings_nsfw_title">NSFW Contents</string>

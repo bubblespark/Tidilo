@@ -569,6 +569,9 @@ class ImportRepository internal constructor(
                     processDirectTask(task.id)
                 }
             }
+            appContext?.let {
+                me.bubblespark.tidilo.data.notifications.NotificationCoordinator.getInstance(it).publishCompletedRssRuns()
+            }
         }
     }
 
@@ -685,6 +688,12 @@ class ImportRepository internal constructor(
                     if (target.rssFeedId == null && existing.rssFeedId != null) bookmarkDao.clearRssFeedId(existing.id)
                 } else {
                     persistDirectBookmark(target, skippedBookmark(target))
+                    val feedId = target.rssFeedId
+                    if (feedId != null && database != null) {
+                        me.bubblespark.tidilo.data.rss.RssIngestionStore(database)
+                            .enforceRetention(feedId, includeDisabled = true)
+                        database.rssNotificationDao().recordRecoveredDirectSave(target.id)
+                    }
                 }
                 taskDao.deleteById(target.id)
             }
@@ -701,7 +710,12 @@ class ImportRepository internal constructor(
             }
             return
         }
-        if (taskDao.getTaskById(target.id) == null) cacheDirectOgImage(target)
+        if (taskDao.getTaskById(target.id) == null) {
+            cacheDirectOgImage(target)
+            if (target.rssFeedId != null && appContext != null) {
+                me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).cleanup()
+            }
+        }
     }
 
     private suspend fun migrateFromLegacyPrefs() {

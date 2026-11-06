@@ -59,11 +59,6 @@ To fit within the limited context window of on-device LLMs and minimize inferenc
    - Extracted using Readability4J (main article content cleaner) with fallback to Jsoup body text.
    - Cleaned of excessive whitespace and line breaks (`replace("\n", " ")`).
    - **Context Window Ceiling**: Hard truncated to the first **800 characters** (`bodySnippet.take(800)`).
-4. **Enqueue-Time Pre-Parsing & Fast Path Architecture**:
-   - HTML fetching, Readability4J body extraction, OGP metadata detection, and domain icon caching are executed and completed **immediately at URL ingestion time (enqueue)**.
-   - The precomputed snippets (`bodySnippet`, `description`, `siteName`, `isNsfw`) are stored in `QueueItem` and persisted into preferences.
-   - When a task transitions to **Running**, `GeminiTaggingService` activates the **Fast Path**, completely bypassing redundant HTTP network calls and DOM parsing to invoke on-device AICore inference with zero I/O delay, slashing Running task latency from ~1.8s to ~1.0s.
-
 The debug web parser's Body Text panel offers Readability4J, Jsoup Clean, and Prompt modes. Readability4J shows the original extraction; Prompt displays and copies only the full ad-filtered body before the 800-character limit, without instructions or metadata. Both the preview and ArticlePreparation consume ParsedWebPage.promptBodyText; production applies its existing truncation and newline replacement afterward. HTTP error bodies remain inspectable without preparing an inference request. The preview reflects the current parse, not a previously queued snippet; existing prepared tasks and saved tags are not rewritten by the filter.
 
 ---

@@ -9,8 +9,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.async
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.detectFreshInstallation
 import me.bubblespark.tidilo.data.debug.CrashLogManager
@@ -19,11 +17,6 @@ import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
 class TidiloApplication : Application() {
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private lateinit var aiAnalysisInitialization: Deferred<Unit>
-
-    suspend fun awaitAiAnalysisInitialization() {
-        aiAnalysisInitialization.await()
-    }
 
     var isAppInForeground: Boolean = false
         private set
@@ -38,7 +31,7 @@ class TidiloApplication : Application() {
         super.onCreate()
         CrashLogManager.initialize(this)
         instance = this
-        aiAnalysisInitialization = applicationScope.async {
+        applicationScope.launch {
             val isFreshInstallation = detectFreshInstallation {
                 val info = packageManager.getPackageInfo(packageName, 0)
                 info.firstInstallTime to info.lastUpdateTime

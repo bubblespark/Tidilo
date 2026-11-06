@@ -52,7 +52,7 @@ class NotificationSystemTest {
         manager.createNotificationChannel(android.app.NotificationChannel("ready_ai_analysis", "Legacy AI waiting", NotificationManager.IMPORTANCE_DEFAULT))
         coordinator.createChannels()
         assertNull(manager.getNotificationChannel("ready_ai_analysis"))
-        assertEquals(listOf("Import Errors", "RSS Scheduled Updates", "RSS Errors", "AICore Errors"),
+        assertEquals(listOf("Import Errors", "RSS Scheduled Updates", "RSS Errors"),
             NotificationCategory.entries.map { manager.getNotificationChannel(it.channelId).name.toString() })
         for (category in NotificationCategory.entries) {
             val notification = coordinator.buildNotification(category, "First line\nSecond line")
@@ -64,7 +64,6 @@ class NotificationSystemTest {
         assertEquals("import", NotificationCategory.IMPORT_ERROR.destination)
         assertEquals("library", NotificationCategory.RSS_UPDATES.destination)
         assertEquals("settings_rss", NotificationCategory.RSS_ERROR.destination)
-        assertEquals("import", NotificationCategory.AICORE_ERROR.destination)
         assertEquals(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS, coordinator.settingsIntent().action)
         assertEquals(context.packageName, coordinator.settingsIntent().getStringExtra(android.provider.Settings.EXTRA_APP_PACKAGE))
     }

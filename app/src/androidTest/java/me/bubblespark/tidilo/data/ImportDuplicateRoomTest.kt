@@ -36,6 +36,44 @@ import org.junit.Before
 import org.junit.Test
 
 class ImportDuplicateRoomTest {
+    @Test fun recoveredPreparedRssSaveTrimsFeedAndUpdatesUnpublishedSummary() = runBlocking {
+        val job = kotlinx.coroutines.SupervisorJob()
+        val feedId = "recovered-feed"
+        database.rssDao().putFeed(me.bubblespark.tidilo.data.db.RssFeedEntity(
+            feedId, "https://example.com/feed", "Feed", retentionLimit = 10
+        ))
+        repeat(10) { index ->
+            database.bookmarkDao().insertOrUpdate(BookmarkEntity(
+                "old-$index", "Old", "https://example.com/old-$index", "",
+                createdAt = index.toLong(), updatedAt = 1, rssFeedId = feedId
+            ))
+        }
+        val task = ImportTaskEntity("recovered", "https://example.com/new", "New", "WAITING_AI", "",
+            createdAt = 100, rssFeedId = feedId, articlePrepared = true)
+        database.importTaskDao().insertOrUpdate(task)
+        val notifications = database.rssNotificationDao()
+        notifications.putRun(me.bubblespark.tidilo.data.db.RssNotificationRunEntity("run", "work", 1, true, completed = true))
+        notifications.putItem(me.bubblespark.tidilo.data.db.RssNotificationItemEntity("run", task.id, "AI"))
+        database.withTransaction {
+            AppDatabase.MIGRATION_17_18.migrate(database.openHelper.writableDatabase)
+        }
+        assertTrue(notifications.unpublishedRuns().isEmpty())
+        try {
+            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
+                persistFallback = { database.bookmarkDao().insertOrUpdate(BookmarkEntity.fromBookmarkItem(it)) })
+            repository.onAppBecameActive()
+            withTimeout(5000) {
+                while (database.importTaskDao().getTaskById(task.id) != null) delay(10)
+            }
+            assertEquals(10, database.bookmarkDao().getCount())
+            assertNull(database.bookmarkDao().getBookmarkById("old-0"))
+            assertNotNull(database.bookmarkDao().getBookmarkById(task.id))
+            assertEquals("DIRECT", notifications.items("run").single().outcome)
+            assertEquals("run", notifications.unpublishedRuns().single().id)
+        } finally { job.cancel(); job.join() }
+    }
+
     @Test fun queuedRssPromotionUsesExistingBookmarkWithoutFetching() = runBlocking {
         val job = kotlinx.coroutines.SupervisorJob()
         val original = BookmarkEntity("saved", "Saved RSS", "https://example.com/saved", "Description",

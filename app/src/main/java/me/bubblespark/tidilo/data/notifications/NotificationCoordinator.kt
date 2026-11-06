@@ -22,8 +22,7 @@ import me.bubblespark.tidilo.data.db.AppDatabase
 enum class NotificationCategory(val channelId: String, val title: String, val destination: String, val id: Int) {
     IMPORT_ERROR("import_errors", "Import Errors", "import", 2002),
     RSS_UPDATES("rss_updates", "RSS Scheduled Updates", "library", 2003),
-    RSS_ERROR("rss_errors", "RSS Errors", "settings_rss", 2004),
-    AICORE_ERROR("aicore_errors", "AICore Errors", "import", 2005)
+    RSS_ERROR("rss_errors", "RSS Errors", "settings_rss", 2004)
 }
 
 /** Owns OS notifications only; ImportScreen's bell history is deliberately independent. */
@@ -35,6 +34,8 @@ class NotificationCoordinator private constructor(private val context: Context) 
         manager.createNotificationChannels(NotificationCategory.entries.map {
             NotificationChannel(it.channelId, it.title, NotificationManager.IMPORTANCE_DEFAULT)
         })
+        manager.cancel("aicore", 2005)
+        manager.deleteNotificationChannel("aicore_errors")
         manager.cancel("ready", 2001)
         manager.deleteNotificationChannel("ready_ai_analysis")
         manager.cancel(1001)
@@ -82,12 +83,6 @@ class NotificationCoordinator private constructor(private val context: Context) 
 
     fun importError(error: Throwable) {
         post(NotificationCategory.IMPORT_ERROR, notificationErrorDetail(error), "manual_import")
-    }
-
-    fun aiCoreError(error: Throwable, code: Int?) {
-        val detail = notificationErrorDetail(error)
-        val body = if (code == null) detail else "AICore error $code: $detail"
-        post(NotificationCategory.AICORE_ERROR, body, "aicore")
     }
 
     /** Stable run tags make replay after process death replace the same notices without another alert. */

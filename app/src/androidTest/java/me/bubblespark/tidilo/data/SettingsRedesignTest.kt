@@ -22,7 +22,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiAnalysisMode
-import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.ui.screens.settings.AiAnalysisContent
 import me.bubblespark.tidilo.ui.screens.settings.SettingsScreen
 import me.bubblespark.tidilo.ui.theme.TidiloTheme

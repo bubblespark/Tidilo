@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
-import me.bubblespark.tidilo.config.AiCoreFallbackMode
 import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.service.AiCoreExecutionException
@@ -343,26 +342,6 @@ class ImportRepositoryTest {
         val mappedBlocked = me.bubblespark.tidilo.service.GeminiTaggingService.mapInferenceException(genAiBlocked)
         assertEquals(com.google.mlkit.genai.common.GenAiException.ErrorCode.BACKGROUND_USE_BLOCKED, mappedBlocked.errorCode)
         assertTrue(mappedBlocked.message?.contains("background use blocked") == true)
-    }
-
-    @Test
-    fun testAiCoreFallbackModeEnumAndConfig() {
-        assertEquals("disable", AiCoreFallbackMode.DISABLE.code)
-        assertEquals("無効", AiCoreFallbackMode.DISABLE.jaLabel)
-        assertEquals("Disable", AiCoreFallbackMode.DISABLE.enLabel)
-
-        assertEquals("quota_only", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.code)
-        assertEquals("AICore超過時のみ", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.jaLabel)
-        assertEquals("Only if the AICore quota is exceeded", AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY.enLabel)
-
-        assertEquals("all", AiCoreFallbackMode.ALL.code)
-        assertEquals("全て", AiCoreFallbackMode.ALL.jaLabel)
-        assertEquals("All", AiCoreFallbackMode.ALL.enLabel)
-
-        assertEquals(AiCoreFallbackMode.DISABLE, AiCoreFallbackMode.fromCode("disable"))
-        assertEquals(AiCoreFallbackMode.QUOTA_EXCEEDED_ONLY, AiCoreFallbackMode.fromCode("quota_only"))
-        assertEquals(AiCoreFallbackMode.ALL, AiCoreFallbackMode.fromCode("all"))
-        assertEquals(AiCoreFallbackMode.DISABLE, AiCoreFallbackMode.fromCode("unknown"))
     }
 
     @Test

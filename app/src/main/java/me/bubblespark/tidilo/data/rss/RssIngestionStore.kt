@@ -136,8 +136,8 @@ internal class RssIngestionStore(private val database: AppDatabase) {
         }
     }
 
-    suspend fun enforceRetention(feedId: String, expectedRevision: Long? = null) = database.withTransaction {
-        rss.feed(feedId)?.takeIf { !it.deleted && it.enabled && (expectedRevision == null || it.revision == expectedRevision) }?.let { enforceRetentionLocked(it) }
+    suspend fun enforceRetention(feedId: String, expectedRevision: Long? = null, includeDisabled: Boolean = false) = database.withTransaction {
+        rss.feed(feedId)?.takeIf { !it.deleted && (it.enabled || includeDisabled) && (expectedRevision == null || it.revision == expectedRevision) }?.let { enforceRetentionLocked(it) }
     }
 
     suspend fun restoreTask(task: ImportTaskEntity) = database.withTransaction {

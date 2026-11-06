@@ -1,15 +1,14 @@
 # Android OS Notifications
 
-Tidilo registers four independently configurable Android notification channels. Settings > Notification uses `ic_notifications` in the standard circular card icon container and directly opens the app's system notification settings. It launches from the host view's Activity context rather than the localized Compose resource context, preserving Back navigation to Tidilo; non-Activity hosts use `FLAG_ACTIVITY_NEW_TASK`. The host Activity requests `POST_NOTIFICATIONS` once when needed; denial or a blocked channel never prevents ingestion.
+Tidilo registers three independently configurable Android notification channels. Settings > Notification uses `ic_notifications` in the standard circular card icon container and directly opens the app's system notification settings. It launches from the host view's Activity context rather than the localized Compose resource context, preserving Back navigation to Tidilo; non-Activity hosts use `FLAG_ACTIVITY_NEW_TASK`. The host Activity requests `POST_NOTIFICATIONS` once when needed; denial or a blocked channel never prevents ingestion.
 
 | Channel | Event | Tap destination |
 | --- | --- | --- |
 | Import Errors | Manual import failure, or aggregated RSS article acquisition failures | Import |
 | RSS Scheduled Updates | Daily fetch or Fetch Now logical operation completes | Library |
 | RSS Errors | Feed XML acquisition/parsing failure disables a subscription | RSS Settings |
-| AICore Errors | Existing channel for AICore error notices | Import |
 
-Startup cancels the former AI-waiting notification and removes its channel.
+Startup cancels legacy AI-waiting and AICore error notifications and removes their channels. An unpublished RSS summary waits for eligible prepared legacy AI items to leave the recovery queue. A successful recovery records its direct save in the same transaction.
 
 ## RSS logical operations
 

@@ -12,9 +12,6 @@
     <string name="settings_ai_analysis_using_model_title">使用AIモデル</string>
     <string name="settings_ai_analysis_aicore_desc">端末内のGemini Nanoで要約とタグ付けを行います</string>
     <string name="settings_ai_analysis_disable_desc">AI解析を行わずに直接ブックマークを保存します</string>
-    <string name="settings_section_automation">自動化</string>
-    <string name="settings_aicore_fallback_section_title">AICoreエラー時の代替処理</string>
-    <string name="settings_aicore_fallback_section_desc">AICoreエラー時に代替処理を有効にすると、AI解析を行わずに保存を完了します。タグは付与されず、概要にはWebページの説明文が使用されます。</string>
     <string name="settings_section_aicore_parameters">AICore パラメータ</string>
     <string name="settings_section_content_safety">コンテンツ安全性</string>
     <string name="rss_ai_disabled_note">AI解析が無効のため、フィードは自動的にDirectモードで取得されます。</string>
@@ -53,7 +50,6 @@
     <string name="bottom_bar_close_filter_menu">フィルターメニューを閉じる</string>
     <string name="bottom_bar_filter_menu">フィルターメニュー</string>
     <string name="bottom_bar_search">Search</string>
-    <string name="bottom_bar_ai_analysis_all">AI Analysis All</string>
     <string name="bottom_bar_ai_processing">AI処理ステータス</string>
     <string name="ai_indicator_processing_title">AI解析中…</string>
     <string name="ai_indicator_progress_format">AI解析中… (%1$d/%2$d)</string>
@@ -93,7 +89,6 @@
 
     <!-- AICore Dialogs -->
     <string name="dialog_aicore_title">AICore</string>
-    <string name="dialog_aicore_quota_exceeded_message">AICoreの使用制限を超過したためURLをインポートできません。\nしばらく待ってから再度実行するか、代替処理機能を有効にしてください。</string>
 
     <!-- Library Screen -->
     <string name="library_header_title">Library</string>
@@ -214,11 +209,6 @@
     <string name="settings_section_general">一般</string>
     <string name="settings_language_title">言語</string>
     <string name="settings_language_dialog_title">言語を選択</string>
-    <string name="settings_auto_run_ai_title">起動時にAI処理を実行</string>
-    <string name="settings_auto_run_ai_subtitle">アプリ起動・復帰時に待機タスクを自動実行</string>
-    <string name="settings_fallback_mode_disable">無効</string>
-    <string name="settings_fallback_mode_quota">制限超過時のみ</string>
-    <string name="settings_fallback_mode_all">全エラー時</string>
     <string name="settings_generate_content_title">GenerateContentRequest</string>
     <string name="settings_generate_content_subtitle">AICoreリクエストパラメータの設定</string>
     <string name="settings_nsfw_title">NSFW Contents</string>

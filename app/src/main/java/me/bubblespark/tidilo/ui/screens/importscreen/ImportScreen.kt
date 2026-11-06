@@ -1065,33 +1065,8 @@ private fun ImportUrlDialog(
 /**
  * Resolves localized status text for an import task while preserving backwards compatibility.
  */
-private val AICORE_RETRY_REGEX = Regex("""AICore busy • Retrying \((\d+)/(\d+)\)\.\.\.""")
-private val AICORE_BLOCKED_REGEX = Regex("""AICore background blocked • Retrying \((\d+)/(\d+)\)\.\.\.""")
-
 @Composable
-private fun resolveTaskStatusText(item: ImportTask): String {
-    val text = item.statusText
-
-    val retryMatch = AICORE_RETRY_REGEX.find(text)
-    if (retryMatch != null) {
-        val (current, max) = retryMatch.destructured
-        return stringResource(R.string.import_status_aicore_busy, current.toInt(), max.toInt())
-    }
-
-    val blockedMatch = AICORE_BLOCKED_REGEX.find(text)
-    if (blockedMatch != null) {
-        val (current, max) = blockedMatch.destructured
-        return stringResource(R.string.import_status_aicore_blocked, current.toInt(), max.toInt())
-    }
-
-    return when {
-        text == "Waiting for AICore slot..." -> stringResource(R.string.import_status_waiting_aicore)
-        text == "Gemini Nano generating semantic tags..." || text == "Gemini Nano analyzing content..." -> stringResource(R.string.import_status_analyzing_content)
-        text == "Paused • Retrying when app is active" -> stringResource(R.string.import_status_paused_retry_active)
-        text == "Queued • Quota exceeded" || text == "Ready • Quota exceeded" -> stringResource(R.string.import_status_ready_quota_exceeded)
-        text == "Failed" -> stringResource(R.string.import_status_failed)
-        text == "Completed" -> stringResource(R.string.import_status_completed)
-        text == "Queued" || text == "Ready" || text == "Ready for AI Analysis" || text == "Ready • Added without metadata" -> stringResource(R.string.import_status_ready)
-        else -> text
-    }
+private fun resolveTaskStatusText(item: ImportTask): String = when (item.statusText) {
+    "Save failed", "Article acquisition failed" -> item.statusText
+    else -> stringResource(R.string.import_status_failed)
 }

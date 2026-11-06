@@ -561,6 +561,8 @@ Located in `ui/components/AmbientLighting.kt`:
 
 ### 8.3 Resolved theme and shared Surface contract
 
+For preset registration, editing points, parameter limits, and verification steps, see [Developing app themes](theme_development.md).
+
 `TidiloTheme` receives the selected `AppTheme` and resolves Material colors, Material shapes and `LocalThemeSurfaces` together. `AppConfig` continues to persist the existing `default` and `modern` codes locally. A theme change updates composition values without keying or recreating navigation, scrolling state or editor drafts.
 
 - `AppThemeStyle` owns preset configuration, optional light/dark Material palettes, the named `ThemeShapeScale`, and per-role `SurfaceStyleOverride` values.

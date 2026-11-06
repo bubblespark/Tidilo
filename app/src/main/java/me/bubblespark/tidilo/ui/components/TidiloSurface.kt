@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Surface
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
@@ -88,6 +89,7 @@ private fun ResolvedSurfaceStyle.materialElevation() = if (treatment == SurfaceT
 private fun ResolvedSurfaceStyle.materialBorder() =
     if (treatment == SurfaceTreatment.MATERIAL && borderWidth > 0.dp) BorderStroke(borderWidth, borderColor) else null
 
+@Composable
 private fun Modifier.decoration(style: ResolvedSurfaceStyle): Modifier {
     var result = this
     if (style.treatment == SurfaceTreatment.DECORATED && style.elevation > 0.dp) {
@@ -95,14 +97,27 @@ private fun Modifier.decoration(style: ResolvedSurfaceStyle): Modifier {
     }
     style.accentAmbientShadow?.let { result = result.shadow(4.dp, style.shape, clip = false, ambientColor = it, spotColor = style.accentSpotShadow) }
     if (style.treatment == SurfaceTreatment.DECORATED && style.borderWidth > 0.dp) {
-        result = if (style.bevel != null) result.border(style.borderWidth, Brush.verticalGradient(listOf(style.bevel.top, style.bevel.bottom)), style.shape)
-        else result.border(style.borderWidth, style.borderColor, style.shape)
+        val bevel = style.bevel
+        result = if (bevel != null) {
+            val brush = remember(bevel) { Brush.verticalGradient(listOf(bevel.top, bevel.bottom)) }
+            result.border(style.borderWidth, brush, style.shape)
+        } else {
+            result.border(style.borderWidth, style.borderColor, style.shape)
+        }
     }
     style.accentRim?.let { rim ->
-        result = result.border(1.dp, Brush.linearGradient(listOf(rim.top, rim.bottom),
-            start = Offset(Float.POSITIVE_INFINITY, 0f), end = Offset(0f, Float.POSITIVE_INFINITY)), style.shape)
+        result = result.border(1.dp, rememberAccentBrush(rim), style.shape)
     }
     return result
+}
+
+@Composable
+private fun rememberAccentBrush(gradient: SurfaceGradient): Brush = remember(gradient) {
+    Brush.linearGradient(
+        listOf(gradient.top, gradient.bottom),
+        start = Offset(Float.POSITIVE_INFINITY, 0f),
+        end = Offset(0f, Float.POSITIVE_INFINITY)
+    )
 }
 
 @Composable
@@ -120,8 +135,8 @@ private fun SurfaceContent(style: ResolvedSurfaceStyle, content: @Composable () 
             })
         }
         style.accentWash?.let { wash ->
-            Box(Modifier.matchParentSize().themeSurfaceBlur(style.selfBlurRadius, style.shape).background(
-                Brush.linearGradient(listOf(wash.top, wash.bottom), start = Offset(Float.POSITIVE_INFINITY, 0f), end = Offset(0f, Float.POSITIVE_INFINITY))))
+            Box(Modifier.matchParentSize().themeSurfaceBlur(style.selfBlurRadius, style.shape)
+                .background(rememberAccentBrush(wash)))
         }
         content()
     }

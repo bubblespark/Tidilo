@@ -376,9 +376,6 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         .catch { emit(EntityLibraryState(loading = false, error = it)) }
         .onStart { emit(EntityLibraryState()) }
 
-    val entityNames = tagCounts(emptySet(), TagKind.ENTITY).map { it.keys.toList() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     suspend fun updateBookmarkNote(id: String, note: String) = bookmarkRepository.updateBookmarkNote(id, note)
 
     suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) =

@@ -205,7 +205,7 @@ Manual review displays generation failures in the review UI. Acquisition and per
 ## 9. Diagnostic & Test Tooling
 
 Developers and QA can test and inspect AICore behavior using:
-- **`DebugPromptTester.kt`**: Low-level status checker (`checkStatus()`), model downloader (`startDownload()`), and single-shot raw prompt tester with custom hyperparameter overrides.
+- **`DebugPromptTester.kt`**: Low-level status checker (`checkStatus()`) and single-shot raw prompt tester with custom hyperparameter overrides.
 - **Settings ➔ Debug ➔ ML Kit GenAI Prompt API Test**: Live UI in `SettingsDebugScreen.kt` to test latency, status codes, and model responses on physical Pixel devices.
 
 ### Release SDK initialization and shrinking

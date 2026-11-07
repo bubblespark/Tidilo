@@ -328,15 +328,6 @@ object OgImageManager {
         deferred.await()
     }
 
-    /**
-     * Backward-compatible alias for loadOgImage.
-     */
-    suspend fun loadOgImageFromDb(
-        context: Context,
-        domain: String,
-        filename: String? = null
-    ): ImageBitmap? = loadOgImage(context, domain, filename)
-
     private suspend fun loadOgImageInternal(
         context: Context,
         domain: String,
@@ -484,14 +475,6 @@ object OgImageManager {
         } catch (_: Exception) {
             "${normalized.hashCode().toUInt().toString(16)}.webp"
         }
-    }
-
-    /**
-     * Extracts a clean filename from an image URL, stripping query parameters and hashes.
-     * Maintained for backward compatibility; prefer computeImageKey for distinct identity.
-     */
-    fun extractFilename(imageUrl: String): String {
-        return computeImageKey(imageUrl)
     }
 
     /**

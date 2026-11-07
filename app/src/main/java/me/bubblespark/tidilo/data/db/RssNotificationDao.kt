@@ -42,9 +42,6 @@ interface RssNotificationDao {
     @Query("""SELECT n.runId FROM rss_notification_items n JOIN rss_notification_runs r ON r.id = n.runId
         WHERE n.itemId = :itemId AND r.completed = 0 ORDER BY r.requestedAt LIMIT 1""")
     suspend fun pendingOwner(itemId: String): String?
-    @Query("""UPDATE rss_notification_items SET outcome = 'SKIPPED', detail = '' WHERE itemId = :itemId
-        AND runId IN (SELECT id FROM rss_notification_runs WHERE completed = 0)""")
-    suspend fun discardItem(itemId: String)
     @Query("""UPDATE rss_notification_runs SET completed = 1
         WHERE completed = 0 AND NOT EXISTS (SELECT 1 FROM rss_feeds WHERE enabled = 1 AND deleted = 0)""")
     suspend fun finishRunsWithoutEnabledFeeds()

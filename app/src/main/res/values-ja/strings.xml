@@ -14,8 +14,6 @@
     <string name="settings_ai_analysis_disable_desc">AI解析を行わずに直接ブックマークを保存します</string>
     <string name="settings_section_aicore_parameters">AICore パラメータ</string>
     <string name="settings_section_content_safety">コンテンツ安全性</string>
-    <string name="rss_ai_disabled_note">AI解析が無効のため、フィードは自動的にDirectモードで取得されます。</string>
-    <string name="notification_bookmark_added">ブックマークを追加しました</string>
     <!-- App & Navigation -->
     <string name="app_name">Tidilo</string>
     <string name="nav_library">Library</string>
@@ -37,12 +35,10 @@
     <string name="common_close">閉じる</string>
     <string name="common_clear">クリア</string>
     <string name="common_delete">削除</string>
-    <string name="common_save">保存</string>
     <string name="common_retry">再試行</string>
     <string name="common_undo">戻す</string>
     <string name="common_back">戻る</string>
     <string name="common_remove">削除</string>
-    <string name="common_search">検索</string>
 
     <!-- Bottom Navigation Bar & FAB -->
     <string name="bottom_bar_domain">Domain</string>
@@ -50,20 +46,12 @@
     <string name="bottom_bar_close_filter_menu">フィルターメニューを閉じる</string>
     <string name="bottom_bar_filter_menu">フィルターメニュー</string>
     <string name="bottom_bar_search">Search</string>
-    <string name="bottom_bar_ai_processing">AI処理ステータス</string>
-    <string name="ai_indicator_processing_title">AI解析中…</string>
-    <string name="ai_indicator_progress_format">AI解析中… (%1$d/%2$d)</string>
-    <string name="ai_indicator_tap_to_view">タップでImport画面を開く</string>
-    <string name="ai_indicator_cancel_button">AI解析キューをキャンセル</string>
 
     <!-- Import Screen -->
     <string name="import_header_title">Import</string>
     <string name="import_header_subtitle">Semantic AI Analysis &amp; Management</string>
     <string name="import_button_content_desc">URLの登録</string>
-    <string name="import_group_ready">待機中</string>
     <string name="import_group_error">エラー</string>
-    <string name="import_empty_ready_title">待機中のタスクはありません</string>
-    <string name="import_empty_ready_hint">画面右上の登録ボタン、またはデバイスの共有メニューからURLを追加してください</string>
     <string name="import_empty_error_title">エラーのタスクはありません</string>
     <string name="import_empty_error_hint">HTTPエラーやAICoreエラーの場合、ここに表示されます</string>
     <string name="import_show_less">表示を縮小</string>
@@ -76,19 +64,10 @@
     <string name="import_dialog_error_invalid">http:// または https:// で始まり、有効なドメイン名である必要があります</string>
     <string name="import_dialog_supporting_text">http:// または https:// で始まる必要があります</string>
     <string name="import_dialog_confirm">登録</string>
-    <string name="import_status_waiting_aicore">AICore待機中…</string>
-    <string name="import_status_analyzing_content">Gemini Nanoで解析中…</string>
-    <string name="import_status_paused_retry_active">一時停止中 • アプリ起動時に再試行</string>
-    <string name="import_status_aicore_busy">AICore混雑中 • 再試行 (%1$d/%2$d)…</string>
-    <string name="import_status_aicore_blocked">バックグラウンド制限中 • 再試行 (%1$d/%2$d)…</string>
-    <string name="import_status_ready_quota_exceeded">待機中 • 制限超過</string>
     <string name="import_status_failed">失敗</string>
-    <string name="import_status_completed">完了</string>
-    <string name="import_status_ready">待機中</string>
     <string name="import_status_importing">インポート中…</string>
 
     <!-- AICore Dialogs -->
-    <string name="dialog_aicore_title">AICore</string>
 
     <!-- Library Screen -->
     <string name="library_header_title">Library</string>
@@ -115,8 +94,6 @@
     </plurals>
     <string name="bookmark_open_in_browser">ブラウザで開く</string>
     <string name="bookmark_could_not_open_browser">ブラウザを開けませんでした</string>
-    <string name="bookmark_ai_skipped">AI Skipped</string>
-    <string name="bookmark_nsfw">NSFW</string>
 
     <!-- Search Screen -->
     <string name="search_header_title">Search</string>
@@ -159,8 +136,6 @@
     <string name="detail_updated_at">更新日時: %1$s</string>
     <string name="detail_action_delete">削除</string>
     <string name="detail_action_ai_summary">AI要約</string>
-    <string name="detail_fab_open">メニューを開く</string>
-    <string name="detail_fab_close">メニューを閉じる</string>
     <string name="detail_dialog_discard_title">変更を破棄しますか？</string>
     <string name="detail_dialog_discard_message">保存されていない変更は破棄されます。</string>
     <string name="detail_dialog_delete_title">ブックマークの削除</string>
@@ -214,10 +189,6 @@
     <string name="settings_nsfw_title">NSFW Contents</string>
     <string name="settings_nsfw_subtitle">表示設定とドメイン管理</string>
     <string name="settings_section_data">データ管理</string>
-    <string name="settings_clear_image_cache_title">画像キャッシュの削除</string>
-    <string name="settings_clear_image_cache_subtitle">プレビュー画像とドメインアイコンのキャッシュを削除</string>
-    <string name="settings_clear_image_cache_dialog_title">画像キャッシュを削除しますか？</string>
-    <string name="settings_clear_image_cache_dialog_message">プレビュー画像とドメインアイコンのキャッシュを削除しますか？保存済みのブックマークやメモは保持されます。再表示時に必要に応じてダウンロードされます。</string>
     <string name="settings_clear_image_cache_done">画像キャッシュを削除しました</string>
     <string name="settings_section_debug">Debug</string>
     <string name="settings_debug_title">Debug</string>
@@ -254,10 +225,6 @@
     <string name="debug_crash_logs_thread">スレッド: %1$s</string>
 
     <!-- Notifications -->
-    <string name="notification_channel_name">インポート通知</string>
-    <string name="notification_channel_desc">URLインポートに関する通知</string>
-    <string name="notification_import_success">インポートに成功しました。%1$d件が準備完了です。</string>
-    <string name="notification_import_failed">インポートに失敗しました。内容をご確認ください。</string>
 
     <!-- Taxonomy: Categories -->
     <string name="category_article">記事</string>
@@ -291,9 +258,6 @@
     <string name="summary_clear_cache_dialog_title">画像キャッシュを削除しますか？</string>
     <string name="summary_clear_cache_dialog_message">プレビュー画像とドメインアイコンのキャッシュを削除します。表示時に再ダウンロードされます。</string>
     <string name="summary_storage_privacy">すべてのデータとキャッシュは端末内でのみ管理されます。</string>
-    <string name="summary_collection">コレクション</string>
-    <string name="summary_bookmarks">ブックマーク（ごみ箱を除く）</string>
-    <string name="summary_trash">ごみ箱</string>
     <string name="summary_storage">キャッシュ容量</string>
     <string name="summary_icons">ドメインアイコン</string>
     <string name="summary_images">プレビュー画像</string>
@@ -304,9 +268,6 @@
     <string name="summary_error">統計情報を読み込めませんでした。</string>
     <string name="summary_retry">再試行</string>
     <string name="rss_title">RSS</string>
-    <string name="rss_ready">Ready - RSS</string>
-    <string name="rss_ready_empty">待機中のRSS記事はありません</string>
-    <string name="rss_ready_hint">AI解析対象のフィードの最新記事がここに追加されます。</string>
     <string name="rss_source">RSS · %1$s</string>
     <string name="rss_subtitle">フィード購読と定期取得</string>
     <string name="rss_schedule">定期取得時刻</string>
@@ -316,7 +277,6 @@
     <string name="rss_fetch_now">今すぐ取得</string>
     <string name="rss_fetch_checking">状態を確認中</string>
     <string name="rss_fetch_waiting">取得待機中</string>
-    <string name="rss_max_queue">最大AI解析キュー: %1$d件</string>
     <string name="rss_dismiss">閉じる</string>
     <string name="rss_add_feed">フィードを追加</string>
     <string name="rss_feed_count">RSS (%1$d)</string>
@@ -333,17 +293,10 @@
     <string name="rss_delete_trigger_title">取得時刻の削除</string>
     <string name="rss_delete_trigger_message">取得時刻 %1$s を削除しますか？</string>
     <string name="rss_no_feeds">購読中のフィードはありません</string>
-    <string name="rss_ai_mode">AI Analyze</string>
     <string name="rss_direct_mode">Direct</string>
-    <string name="rss_retention_display">最大保存件数: %1$s</string>
-    <string name="rss_mode_display">取得モード: %1$s</string>
-    <string name="rss_import_mode">取得モード</string>
     <string name="rss_max_saved_items">最大保存件数</string>
     <string name="rss_enabled">有効</string>
-    <string name="rss_on">ON</string>
-    <string name="rss_off">OFF</string>
     <string name="rss_retention_compact">最大 %1$d件</string>
-    <string name="rss_edit_compact">編集</string>
     <string name="rss_retention_input">保存件数 (10–500)</string>
     <string name="rss_unlimited">無制限</string>
     <string name="rss_edit">フィードを編集</string>
@@ -358,8 +311,6 @@
     <string name="rss_feed_url">フィードURL</string>
     <string name="rss_retention_note">上限を超える古い記事はごみ箱を経由せず完全に削除されます。Directモードの取得には影響しません。</string>
     <string name="rss_delete_note">取得を停止し未開始のタスクを削除します。保存済み記事はそのまま残ります。</string>
-    <string name="rss_mode_change_note">Directモードに変更すると未開始のAIタスクが削除されます。先に直接保存する場合は以下を選択してください。</string>
-    <string name="rss_convert_pending">保留中の記事を直接保存</string>
     <string name="rss_url_change_note">URLを変更すると新しい購読として登録されます。古いフィードの保存済み記事は残ります。</string>
     <string name="rss_initial_title">フィードを登録しました</string>
     <string name="rss_initial_message">今すぐ記事を取得しますか？次回の定期取得まで待つこともできます。</string>

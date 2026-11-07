@@ -51,8 +51,6 @@ class BookmarkRepository private constructor(context: Context) {
     private val bookmarkDao = database.bookmarkDao()
     private val trashDao = database.trashDao()
 
-    private val _trashItems = MutableStateFlow<List<TrashedBookmarkItem>>(emptyList())
-
     private val _isInitialized = MutableStateFlow(false)
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
 
@@ -111,20 +109,7 @@ class BookmarkRepository private constructor(context: Context) {
 
     init {
         retryInitialization()
-        // 3. Reactively observe trash changes
-        repositoryScope.launch {
-            observeSafely { trashDao.getAllTrashFlow() }
-                .map { entities -> entities.map { it.toTrashedBookmarkItem() } }
-                .collect { items ->
-                    _trashItems.value = items
-                }
-        }
     }
-
-    /**
-     * Persists a bookmark and lets Room refresh its active queries.
-     */
-    suspend fun addBookmark(item: BookmarkItem) = addBookmarkAndAwait(item)
 
     /** Persists a bookmark before returning, retaining any existing record if replacement fails. */
     suspend fun addBookmarkAndAwait(item: BookmarkItem) = withContext(Dispatchers.IO) {
@@ -232,23 +217,6 @@ class BookmarkRepository private constructor(context: Context) {
      */
     suspend fun moveToTrash(bookmarkId: String): Boolean = withContext(Dispatchers.IO) {
         database.moveBookmarkToTrash(bookmarkId, System.currentTimeMillis(), MAX_TRASH_CAPACITY)
-    }
-
-    /**
-     * Purges trashed bookmarks older than TRASH_RETENTION_MS (30 days).
-     */
-    fun purgeExpiredTrash() {
-        val cutoff = System.currentTimeMillis() - TRASH_RETENTION_MS
-        repositoryScope.launch {
-            trashDao.purgeExpired(cutoff)
-        }
-    }
-
-    /**
-     * Returns the list of currently trashed bookmarks.
-     */
-    fun getTrashItems(): List<TrashedBookmarkItem> {
-        return _trashItems.value
     }
 
     /**

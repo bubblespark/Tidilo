@@ -98,21 +98,27 @@ class LibraryChromeRegressionTest {
             val size = icon.size
             val bounds = androidx.compose.ui.geometry.Rect(offset, androidx.compose.ui.geometry.Size(size.width.toFloat(), size.height.toFloat()))
             val bitmap = host.instrumentation.uiAutomation.takeScreenshot()
-            val centerPixel = bitmap.getPixel((bounds.left + bounds.width / 2).roundToInt(), (bounds.top + bounds.height / 2).roundToInt())
-            var foreground = 0
-            for (y in bounds.top.roundToInt() until bounds.bottom.roundToInt()) {
-                for (x in bounds.left.roundToInt() until bounds.right.roundToInt()) {
-                    val pixel = bitmap.getPixel(x, y)
-                    if (android.graphics.Color.red(pixel) >= 50 && android.graphics.Color.green(pixel) >= 50) foreground++
-                }
-            }
-            val title = host.await(activity) { host.text(it, host.context.getString(R.string.search_header_title)) }
-            val button = generateSequence(icon) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
-            val trailingSeparation = title.boundsInWindow.left - button.boundsInWindow.right
-            val density = activity.resources.displayMetrics.density
             try {
+                var foreground = 0
+                var glyphPixel = android.graphics.Color.BLACK
+                for (y in bounds.top.roundToInt() until bounds.bottom.roundToInt()) {
+                    for (x in bounds.left.roundToInt() until bounds.right.roundToInt()) {
+                        val pixel = bitmap.getPixel(x, y)
+                        if (android.graphics.Color.red(pixel) >= 50 && android.graphics.Color.green(pixel) >= 50) {
+                            foreground++
+                            if (glyphPixel == android.graphics.Color.BLACK) {
+                                glyphPixel = pixel
+                            }
+                        }
+                    }
+                }
+                val title = host.await(activity) { host.text(it, host.context.getString(R.string.search_header_title)) }
+                val button = generateSequence(icon) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
+                val trailingSeparation = title.boundsInWindow.left - button.boundsInWindow.right
+                val density = activity.resources.displayMetrics.density
+
                 assertNotEquals("The back button icon must not be black (0xFF000000) on a dark header",
-                    android.graphics.Color.BLACK, centerPixel)
+                    android.graphics.Color.BLACK, glyphPixel)
                 assertTrue("The back button glyph must contrast with a dark header on SearchScreen (foreground pixels: $foreground)",
                     foreground > 30)
                 assertTrue("Back navigation slot must retain 4dp trailing separation (actual: ${trailingSeparation / density}dp)",

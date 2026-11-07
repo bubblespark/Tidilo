@@ -270,8 +270,9 @@ fun SearchScreen(
         headerVisible = peekBookmark == null,
         bottomContentPadding = 24.dp,
         header = { TidiloFrostedHeader(navigationIcon = {
-            IconButton(onClick = onNavigateBack, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
+            IconButton(onClick = onNavigateBack, modifier = Modifier.padding(end = 4.dp).size(48.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back),
+                    tint = MaterialTheme.colorScheme.onBackground)
             }
         }, scrollState = when {
             searchQuery.isBlank() -> historyState

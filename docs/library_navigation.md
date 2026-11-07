@@ -14,8 +14,8 @@ Make Library the only root screen. Replace the floating navigation bar with a co
 
 ## Library and rail
 
-- Library alone exposes the rail through a top-left menu icon. Preserve the existing title, subtitle, header styling, and title interaction. Its only top-right action is the current list/grid display-mode icon.
-- Remove the floating navigation bar and filter-mode action/menu. The bottom-right Search action is always the current contracted size: 56dp container and 28dp icon. Scrolling does not resize or reposition it. Respect system insets, summary-peek overlays, and minimum touch targets.
+- Library alone exposes the rail through a top-left menu icon. Preserve the existing title, subtitle, header styling, and title interaction. Its only top-right action is the existing dashboard/gear display-mode selector. The menu glyph explicitly uses the header foreground color, and the display-mode popup anchors to its own button without the former two-action offset.
+- Remove the floating navigation bar and filter-mode action/menu. The bottom-right Search action is always the current contracted size: 56dp container and 28dp icon. Scrolling does not resize or reposition it. Respect system insets, summary-peek overlays, and minimum touch targets. Click/ripple handling lives inside the primary-action Surface so feedback follows its resolved shape while exterior shadows remain visible.
 - The rail header contains Tidilo at the left and the existing `ic_notifications` action at the right. Only this header remains fixed while rail content scrolls.
 - Scrollable content order: Search; the non-clickable Filters heading; Newest first; Domain; RSS; Collection; Manual Import; Settings. All entries except the section heading have an icon and label. The active filter is selected.
 - Manual Import and Settings sit at the bottom of the scroll content, in that order. On tall screens, flexible space places them near the bottom. On short screens or large fonts, they scroll with the content; they are not a pinned footer.

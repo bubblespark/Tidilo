@@ -82,7 +82,6 @@ import kotlinx.coroutines.flow.first
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -418,7 +417,7 @@ fun LibraryScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onOpenNavigation, modifier = Modifier.padding(end = 4.dp).size(48.dp)) {
-                        Icon(Icons.Default.Menu, stringResource(R.string.navigation_open))
+                        Icon(Icons.Default.Menu, stringResource(R.string.navigation_open), tint = MaterialTheme.colorScheme.onBackground)
                     }
                 },
                 actions = {
@@ -429,7 +428,7 @@ fun LibraryScreen(
                             modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
-                                imageVector = viewMode.icon,
+                                imageVector = ImageVector.vectorResource(R.drawable.ic_dashboard_2_gear),
                                 contentDescription = stringResource(R.string.library_view_mode_menu_desc),
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
@@ -439,7 +438,6 @@ fun LibraryScreen(
                         DropdownMenu(
                             expanded = isViewModeMenuExpanded,
                             onDismissRequest = { isViewModeMenuExpanded = false },
-                            offset = DpOffset(x = 96.dp - menuWidth, y = 0.dp),
                             shape = themeCorner(ThemeCorner.IMAGE),
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             tonalElevation = 6.dp,

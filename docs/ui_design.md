@@ -119,7 +119,7 @@ Library is the only root destination. Its top-left menu opens `ModalWideNavigati
 
 The rail header fixes the application name and `ic_notifications` action above its scroll content. Search precedes the Filters section, followed by Newest first, Domain, RSS and Collection. Manual Import and Settings are bottom-aligned within that same scroll region, not pinned outside it. Each actionable row has an icon and label. See [Library Navigation](library_navigation.md) for actions, timestamp formatting and error recovery behavior.
 
-Library retains its title/subtitle, exposes only the current list/grid icon on the right, and has a fixed compact Search action at bottom-right. Search retains its scrolling input, history, tag selector and feedback layout; it has no separate floating action or root tab.
+Library retains its title/subtitle, exposes only the existing dashboard/gear display-mode selector on the right, and has a fixed compact Search action at bottom-right. Search retains its scrolling input, history, tag selector and feedback layout; it has no separate floating action or root tab.
 
 ### 6.2 `BookmarkItemCard`
 - **Shape**: `RoundedCornerShape(24.dp)`.
@@ -361,7 +361,7 @@ Active imports show a progress indicator. Error cards support right swipe to ret
 - **Header Action Button & Material Symbols Icon**:
   - The only right-side action in `LibraryScreen.kt`'s frosted header row.
   - Sized at `48.dp` matching the Settings `IconButton` interactive slot.
-  - Displays the currently selected LIST or GRID mode icon (24dp).
+  - Displays `R.drawable.ic_dashboard_2_gear` (24dp); the popup is anchored to this button without a legacy two-button offset.
 - **Dropdown Menu Positioning & Container Geometry**:
   - Anchored directly to the button container using Material 3 `DropdownMenu`.
   - Width is fixed to `200.dp`, providing a generous and polished layout that avoids feeling narrow or cramped.

@@ -184,13 +184,13 @@ class BookmarkRepository private constructor(context: Context) {
     }
 
     /** Applies optional fields atomically against the current durable row. */
-    suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) = withContext(Dispatchers.IO) {
+    suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null, isAiSkipped: Boolean? = null) = withContext(Dispatchers.IO) {
         database.withTransaction {
             val target = bookmarkDao.getBookmarkById(id) ?: return@withTransaction
             bookmarkDao.updateFields(id, description ?: target.description,
                 tag?.category ?: if (tag == null) target.category else null,
                 tag?.subcategory ?: if (tag == null) target.subcategory else null,
-                tag?.entities ?: target.entities, System.currentTimeMillis())
+                tag?.entities ?: target.entities, System.currentTimeMillis(), isAiSkipped = isAiSkipped)
         }
     }
 

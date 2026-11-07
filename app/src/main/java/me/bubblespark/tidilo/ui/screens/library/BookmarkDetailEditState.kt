@@ -2,12 +2,17 @@ package me.bubblespark.tidilo.ui.screens.library
 
 import android.os.Bundle
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.Saver
 
 /** Saves the accepted screen draft and the unaccepted nested editor as one unit. */
 @Stable
-internal class BookmarkDetailEditState(val originalNote: String, val originalTag: Tag, val originalNsfw: Boolean) {
+internal class BookmarkDetailEditState(initialNote: String, initialTag: Tag, initialNsfw: Boolean) {
+    var originalNote by mutableStateOf(initialNote)
+    var originalTag by mutableStateOf(initialTag)
+    var originalNsfw by mutableStateOf(initialNsfw)
     val noteText = mutableStateOf(originalNote)
     val editedTag = mutableStateOf(originalTag)
     val editedIsNsfw = mutableStateOf(originalNsfw)
@@ -23,6 +28,22 @@ internal class BookmarkDetailEditState(val originalNote: String, val originalTag
     val entityInput = mutableStateOf("")
     val conflictInput = mutableStateOf<String?>(null)
     val conflictExisting = mutableStateOf<String?>(null)
+
+    /** Synchronizes remote bookmark updates while preserving unconfirmed user edits. */
+    fun syncWithBookmark(bookmark: BookmarkItem) {
+        if (noteText.value == originalNote) {
+            noteText.value = bookmark.note
+        }
+        if (editedTag.value == originalTag) {
+            editedTag.value = bookmark.tag
+        }
+        if (editedIsNsfw.value == originalNsfw) {
+            editedIsNsfw.value = bookmark.isNsfw
+        }
+        originalNote = bookmark.note
+        originalTag = bookmark.tag
+        originalNsfw = bookmark.isNsfw
+    }
 
     companion object {
         val Saver = Saver<BookmarkDetailEditState, Bundle>(

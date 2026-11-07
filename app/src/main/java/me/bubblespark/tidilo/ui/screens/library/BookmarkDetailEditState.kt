@@ -2,12 +2,17 @@ package me.bubblespark.tidilo.ui.screens.library
 
 import android.os.Bundle
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.Saver
 
 /** Saves the accepted screen draft and the unaccepted nested editor as one unit. */
 @Stable
-internal class BookmarkDetailEditState(var originalNote: String, var originalTag: Tag, var originalNsfw: Boolean) {
+internal class BookmarkDetailEditState(initialNote: String, initialTag: Tag, initialNsfw: Boolean) {
+    var originalNote by mutableStateOf(initialNote)
+    var originalTag by mutableStateOf(initialTag)
+    var originalNsfw by mutableStateOf(initialNsfw)
     val noteText = mutableStateOf(originalNote)
     val editedTag = mutableStateOf(originalTag)
     val editedIsNsfw = mutableStateOf(originalNsfw)

@@ -187,7 +187,7 @@ fun BookmarkDetailScreen(
     val edit = rememberSaveable(bookmark.id, saver = BookmarkDetailEditState.Saver) {
         BookmarkDetailEditState(bookmark.note, bookmark.tag, bookmark.isNsfw)
     }
-    LaunchedEffect(bookmark.updatedAt) {
+    LaunchedEffect(bookmark.id, bookmark.note, bookmark.tag, bookmark.isNsfw) {
         edit.syncWithBookmark(bookmark)
     }
     val hasCollection by remember(viewModel, bookmark.id) { viewModel.bookmarkHasCollections(bookmark.id) }

@@ -17,8 +17,10 @@ import me.bubblespark.tidilo.MainActivity
 internal class HeaderTestHost {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    fun launch() = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+    fun launch(destination: String? = null) = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).apply {
+            destination?.let { putExtra(me.bubblespark.tidilo.data.notifications.NotificationCoordinator.EXTRA_DESTINATION, it) }
+        }) as ComponentActivity
     fun main(block: () -> Unit) = instrumentation.runOnMainSync(block)
     private fun roots(view: View): List<ViewRootForTest> = when (view) {
         is ViewRootForTest -> listOf(view)

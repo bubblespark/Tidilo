@@ -103,27 +103,23 @@ class CollectionUiTest {
         } finally { host.main { activity.finish() } }
     }
 
+    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
     @Test fun collectionFilterExposesRoleAndActiveState(): Unit = runBlocking {
         val activity = host.launch()
         val mode = mutableStateOf(LibraryFilterMode.NEWEST_FIRST)
         try {
             host.main { activity.setContent { MaterialTheme {
-                val controller = androidx.navigation.compose.rememberNavController()
-                androidx.compose.foundation.layout.Box {
-                    androidx.navigation.compose.NavHost(controller, me.bubblespark.tidilo.ui.navigation.Screen.Library.route) {
-                        composable(me.bubblespark.tidilo.ui.navigation.Screen.Library.route) {}
-                    }
-                    me.bubblespark.tidilo.ui.navigation.TidiloBottomBar(controller, isFilterMenuExpanded = true,
-                        currentFilterMode = mode.value, onSelectFilterMode = { mode.value = it })
-                }
+                val rail = androidx.compose.material3.rememberWideNavigationRailState()
+                androidx.compose.runtime.LaunchedEffect(Unit) { rail.expand() }
+                me.bubblespark.tidilo.ui.navigation.LibraryNavigationRail(rail, mode.value,
+                    { mode.value = it }, {}, {}, {}, {})
             } } }
-            val button = await { it.config.getOrNull(SemanticsProperties.Selected) == false &&
-                it.config.getOrNull(SemanticsProperties.Role) == Role.Button }
-            host.main {
-                assertTrue(button.children.any { host.text(it, "Collection") } || host.text(button, "Collection"))
-            }
+            val label = await { host.text(it, "Collection") }
+            val button = generateSequence(label) { it.parent }.first { it.config.getOrNull(SemanticsProperties.Selected) != null }
+            assertEquals(false, button.config.getOrNull(SemanticsProperties.Selected))
             action(button)
-            await { it.config.getOrNull(SemanticsProperties.Selected) == true && it.config.getOrNull(SemanticsProperties.Role) == Role.Button }
+            await { it.config.getOrNull(SemanticsProperties.Selected) == true &&
+                it.children.any { child -> host.text(child, "Collection") } }
             assertEquals(LibraryFilterMode.COLLECTION, mode.value)
         } finally { host.main { activity.finish() } }
     }

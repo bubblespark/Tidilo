@@ -3,6 +3,6 @@ package me.bubblespark.tidilo.ui.navigation
 import androidx.compose.runtime.compositionLocalOf
 
 /**
- * CompositionLocal holding the visibility state of app bar (header) and navigation (bottom bar).
+ * CompositionLocal holding the Library header visibility state.
  */
 val LocalBarsVisible = compositionLocalOf { true }

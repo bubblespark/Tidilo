@@ -126,6 +126,32 @@ internal class RssRepository internal constructor(private val context: Context,
         if (enabled) resumeAcquisitions()
     }
 
+    suspend fun dismissXmlError(feedId: String, expectedRevision: Long, expectedAttemptAt: Long) = withContext(Dispatchers.IO) {
+        db.withTransaction {
+            val feed = dao.feed(feedId) ?: return@withTransaction
+            if (!feed.deleted && feed.revision == expectedRevision && feed.lastAttemptAt == expectedAttemptAt) {
+                dao.putFeed(feed.copy(error = null))
+            }
+        }
+    }
+
+    suspend fun retryXmlError(feedId: String) = withContext(Dispatchers.IO) {
+        preferences.initialize()
+        operation.withLock {
+            val operationId = db.withTransaction {
+                val feed = dao.feed(feedId) ?: return@withTransaction null
+                if (feed.deleted || feed.error == null) return@withTransaction null
+                val id = UUID.randomUUID().toString()
+                dao.putFeed(feed.copy(enabled = true, error = null, revision = feed.revision + 1,
+                    acquisitionId = id, acquisitionMobileOverride = false, acquisitionXmlDone = false,
+                    acquisitionRequestedAt = System.currentTimeMillis()))
+                id
+            } ?: return@withLock
+            scheduleChanged()
+            enqueueInitial(feedId, operationId, false)
+        }
+    }
+
     suspend fun requestInitialFetch(feedId: String, mobileAllowed: Boolean) = withContext(Dispatchers.IO) {
         preferences.initialize()
         val operationId = operation.withLock {

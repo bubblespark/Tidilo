@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
@@ -82,17 +83,18 @@ import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 /**
- * Main Tab Search Screen
+ * Secondary Search screen
  * - Edge-to-Edge full screen layout matching Library & Queue
  * - Shared header with scrolling body search input & TagSelection shortcut
- * - Responds to floating navigation bar search action button to focus search input
+ * - Returns to Library through the shared Back action; retained focus events reveal the body input
  */
 @Composable
 fun SearchScreen(
     viewModel: LibraryViewModel,
     onNavigateToTagSelection: () -> Unit = {},
     onNavigateToDetail: (String) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateBack: () -> Unit = {}
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
@@ -266,7 +268,11 @@ fun SearchScreen(
         hideHeaderOnScroll = true,
         headerVisible = peekBookmark == null,
         bottomContentPadding = HeaderDefaults.BottomNavigationPadding,
-        header = { TidiloFrostedHeader(scrollState = when {
+        header = { TidiloFrostedHeader(navigationIcon = {
+            IconButton(onClick = onNavigateBack, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
+            }
+        }, scrollState = when {
             searchQuery.isBlank() -> historyState
             viewMode == LibraryViewMode.GRID -> resultGridState
             else -> resultListState

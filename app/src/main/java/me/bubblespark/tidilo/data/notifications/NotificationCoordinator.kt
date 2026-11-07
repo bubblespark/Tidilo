@@ -21,12 +21,12 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.AppDatabase
 
 enum class NotificationCategory(val channelId: String, val title: String, val destination: String, val id: Int) {
-    IMPORT_ERROR("import_errors", "Import Errors", "import", 2002),
+    IMPORT_ERROR("import_errors", "Import Errors", "notifications", 2002),
     RSS_UPDATES("rss_updates", "RSS Scheduled Updates", "library", 2003),
     RSS_ERROR("rss_errors", "RSS Errors", "settings_rss", 2004)
 }
 
-/** Owns OS notifications only; ImportScreen's bell history is deliberately independent. */
+/** Owns OS notifications only; the in-app Notification history is deliberately independent. */
 class NotificationCoordinator private constructor(private val context: Context) {
     private val manager = context.getSystemService(NotificationManager::class.java)
     private val publishMutex = Mutex()

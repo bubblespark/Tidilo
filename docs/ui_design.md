@@ -2,7 +2,7 @@
 
 The Collection library, prototype-derived horizontal cards, editor and bookmark assignment sheets are specified in [Manual Collections](collections.md).
 
-OS notification channels and the Settings > Notification system-settings entry are specified in [Android OS Notifications](notifications.md). The entry opens system settings directly, without an intermediate dialog. ImportScreen's bell history remains unchanged.
+OS notification channels and the Settings > Notification system-settings entry are specified in [Android OS Notifications](notifications.md). The entry opens system settings directly, without an intermediate dialog. The Library rail opens the separate in-app Notification list; see [Library Navigation](library_navigation.md).
 
 Tidilo strictly adheres to Google's **Material 3 Expressive** design specification, emphasizing organic fluid motion, prominent rounded shapes, expressive typography, tonal surface hierarchy, and deep Edge-to-Edge immersion.
 
@@ -61,7 +61,7 @@ Defined in `ui/theme/Shape.kt`:
 - **Small (`12dp`)**: Compact tag badges (`CompactTagBadge`), text field inputs, icon container boxes.
 - **Medium (`20dp`)**: Expressive interactive buttons (OK, Save, More Items), settings cards.
 - **Large (`24dp` - `28dp`)**: Bookmark cards (`BookmarkItemCard`), dialog containers, parameter cards.
-- **ExtraLarge / Pill (`CircleShape` / `36dp`)**: Floating navigation bar (`TidiloBottomBar`), fab-style pills, primary action buttons.
+- **ExtraLarge / Pill (`CircleShape` / `36dp`)**: Fab-style pills and primary action buttons.
 
 ---
 
@@ -69,11 +69,11 @@ Defined in `ui/theme/Shape.kt`:
 
 Tidilo uses realistic spring physics rather than mechanical linear transitions:
 
-### 4.1 Header & Bottom Bar Transitions
+### 4.1 Library Header Transitions
 - **Animation Spec**: `spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)`
 - **Behavior**:
-  - When scrolling down (upward swipe): Header slides out upward; bottom bar slides out downward.
-  - When scrolling up (downward swipe): Header slides in from above; bottom bar slides in from below.
+  - When scrolling down (upward swipe): The Library header slides out upward; its Search action stays visible at 56dp.
+  - When scrolling up (downward swipe): The Library header slides in from above; Search does not resize or move.
   - Combined with subtle alpha fade (`fadeIn(200ms)` / `fadeOut(150ms)`).
 
 ### 4.2 Screen-to-Screen Navigation & In-Page State Transitions
@@ -86,11 +86,6 @@ Tidilo uses realistic spring physics rather than mechanical linear transitions:
     - **Zero-Hierarchy Clean Architecture**: Avoids static depth numbers or hardcoded screen names.
     - Transitions evaluate returning vs advancing dynamically: when `targetState.id == navController.previousBackStackEntry?.id`, the transition is definitively a backward/pop operation and slides toward `End` (rightward). Otherwise, forward hierarchical transitions slide toward `Start` (leftward).
     - **Mid-Transition Back Swipe Collision Prevention (Fixes Issue #29)**: When a back gesture interrupts an in-flight forward entrance animation, Navigation Compose evaluates `enterTransition` / `exitTransition` instead of `popEnter` / `popExit`. Because the dynamic resolver checks `navController.previousBackStackEntry`, it accurately detects that the destination is the returning parent and enforces `SlideDirection.End`. This ensures the outgoing screen smoothly slides out to the right (→) and parent screen slides in from the left (→) without collision (`→ ←`) or blackout artifacts.
-  - **Bottom Navigation Tab-Relative Direction**:
-    - For floating navigation bar tabs (`Screen.allTabs`: `Library: 0`, `Search: 1`, `Import: 2`), the transition direction is determined by relative physical tab order rather than back-stack depth:
-      - **Moving Right (`targetIndex > initialIndex`)**: `Library ➔ Search`, `Search ➔ Import`, `Library ➔ Import` slide with `SlideDirection.Start` (incoming enters from right).
-      - **Moving Left (`targetIndex < initialIndex`)**: `Import ➔ Search`, `Search ➔ Library`, `Import ➔ Library` slide with `SlideDirection.End` (incoming enters from left).
-      - Completely fixes the Navigation Compose artifact where `Import ➔ Search` was erroneously pushed as a forward (rightward) transition.
   - **Centralized Surface Background**: The full-screen background is managed centrally by `TidiloBackground` beneath the root `Scaffold` (`containerColor = Color.Transparent`) in `MainActivity.kt`. Because the lateral transitions maintain strictly adjacent (side-by-side) bounds with zero spatial overlap, individual screen roots avoid duplicate `.background()` modifiers, eliminating GPU overdraw while guaranteeing 100% seamless edge-to-edge visuals.
 - **In-Page Content & Filter Transitions (`LibraryScreen.kt`)**:
   - Filter mode switching and Domain Grid ⇄ Domain DrillDown utilize a lightweight crossfade (`fadeIn(220ms)` togetherWith `fadeOut(180ms)`).
@@ -104,9 +99,9 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 
 1. **Full-screen Surface**: `MainActivity` calls `enableEdgeToEdge()` and sets `contentWindowInsets = WindowInsets(0, 0, 0, 0)` on the root `Scaffold`.
 2. **Scroll Immersion & Actual Scroll Tracking**:
-   - Lazy lists occupy the full physical screen with shared scaffold `contentPadding`: normally `statusBars + 104dp` at the top and `140dp` total bottom clearance on the three root tabs. Secondary pages preserve their own navigation/IME and floating-action clearance.
+   - Lazy lists occupy the full physical screen with shared scaffold `contentPadding`: normally `statusBars + 104dp` at the top. Library reserves clearance for its fixed Search action; Search and other child pages have no bottom navigation bar. Secondary pages preserve their own navigation/IME and floating-action clearance.
    - Content flows freely under the translucent status and navigation bars.
-   - **`onPostScroll` Consumption-based Connection**: Controls only hide when content **actually consumes vertical scroll** (`consumed.y < -30f`), completely preventing false dismissals on screens with few or non-scrollable items (such as ImportScreen or empty Library). Reappears when content actually scrolls up (`consumed.y > +20f`) or is pulled down at the top overscroll boundary (`available.y > +20f`).
+   - **`onPostScroll` Consumption-based Connection**: Controls only hide when content **actually consumes vertical scroll** (`consumed.y < -30f`), completely preventing false dismissals on screens with few or non-scrollable items (such as empty Library). Reappears when content actually scrolls up (`consumed.y > +20f`) or is pulled down at the top overscroll boundary (`available.y > +20f`).
 3. **Status Bar Scrim**:
    - When bars are hidden during scroll, a dynamic 4-stop vertical gradient scrim renders over the status bar:
      `listOf(scrimBg.copy(0.85f), scrimBg.copy(0.50f), scrimBg.copy(0.15f), Color.Transparent)`.
@@ -118,27 +113,13 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 
 ## 6. Reusable Component Specifications
 
-### 6.1 `TidiloBottomBar` (Floating Pill Navigation & Separated Circular Action Button)
-- **Navigation Pill Bar**:
-  - **Dimensions & Centering**: Outer Container Height `68dp`, Inner Tab Button Height `56dp` (aligned with the contracted 56dp action button height for a unified horizontal baseline), Width `maxWidth * 0.58f` centered horizontally (`Alignment.Center`). Anchored via `.navigationBarsPadding().padding(bottom = 24.dp)` in `MainActivity.kt` to symmetrically adjust top and bottom boundaries by 8dp relative to the previous 84dp/16dp layout, preserving the exact vertical center position (58dp above navigation bars).
-  - **Shape**: `CircleShape` pill with `10dp` elevation shadow on `surfaceContainerHighest` container.
-  - **Dynamic Tab Expansion & Vertical Layout**:
-    - Layout: Vertical `Column` with icons and labels below.
-    - Selected tab: Expands with spring weight animation (`1.35f`), rendering downscaled `[25dp Icon]` (10% smaller, truncated from `28 * 0.9 = 25.2dp` to `25dp`) and `[10sp Label]` (10% smaller, truncated from `12 * 0.9 = 10.8sp` to `10sp`, with `14sp` lineHeight and `2dp` vertical spacer) within an active container capsule (`primaryContainer`).
-    - Unselected tabs: Contract with weight `1.0f`, rendering full-sized `[28dp Icon]` only (label hidden, icon centered vertically in the 56dp inner pill button).
-    - Bar outer width remains invariant across tab selections.
-- **Separated Circular Action Button** (Material 3 Expressive Filled Tonal Button):
-  - **Design & Colors**: `CircleShape` filled with the exact active tab container color (`MaterialTheme.colorScheme.primaryContainer`), with uniform active content icon tint (`MaterialTheme.colorScheme.onPrimaryContainer`) across all screens, ensuring harmonious visual unity between the floating navigation capsule and the action button.
-  - **Dynamic Scaling, Offset & Scroll Persistence**:
-    - **Contracted Size (Navigation Visible)**: Medium **M size** equivalent (`56dp` container, `28dp` icon, elevation `6dp`). Offset shifted right (`offset(x = (barWidth / 2) + 14.dp + (56.dp / 2))`) with a clean 14dp gap from the navigation pill bar to completely eliminate overlap.
-    - **Expanded Size (Navigation Hidden / Scrolled)**: Fine-tuned **`86dp` container**, **`40dp` icon** (+12dp enlargement tracking container expansion), elevation `10dp`. Center offset anchors cleanly to standard FAB margin (`(maxWidth / 2) - 16.dp - (86.dp / 2)`).
-    - **Perfect Circle Guarantee**: Outer `BoxWithConstraints` expands to `containerHeight = maxOf(barHeight, buttonSize)` with `requiredSize(buttonSize)`, preventing parent height constraints from clamping the vertical dimension to `barHeight` (68dp) and ensuring a pristine 1:1 circular aspect ratio (`86dp × 86dp`) in all states.
-    - When navigation reappears (scroll up): Smoothly contracts back to 56dp container / 28dp icon with low bouncy spring animation.
-  - **Contextual Behavior**:
-    - `LibraryScreen`: Filter FAB menu toggle button (`R.drawable.ic_filter_list` / `Icons.Default.Close`). Expands a Material 3 Expressive pill menu with two persistent options: "Domain" on top (`R.drawable.ic_domain`, 28dp) and "Newest first" below (`R.drawable.ic_arrow_downward`, 28dp). The active mode pill is highlighted using `primaryContainer` / `onPrimaryContainer`, and inactive using `secondaryContainer` / `onSecondaryContainer`. The pill size matches `BookmarkDetailScreen`'s FAB menu exactly (`horizontal = 24dp, vertical = 16dp`, typography `titleMedium`, SemiBold) and remains invariant regardless of the FAB container's 56dp/86dp scaling state, aligning flush to the right edge of the FAB. When expanded, the floating navigation bar hides downwards using official Edge-to-Edge slide-out animation, returning on dismissal.
-    - `SearchScreen`: Search action button (`Icons.Default.Search`). The search field is the first scrolling body item, including history, list/grid results and loading/empty/error states. Grid input spans both columns. Tapping the action scrolls the active body to the input, waits for layout attachment, requests focus and reopens the keyboard even after manual dismissal. History/bookmark keys are namespaced separately from structural items. There is no second header tier or independent 144dp header allowance.
-    - Loading and refresh-error feedback is centered in the remaining body viewport below the measured search field and item spacing, excluding scaffold top/bottom clearances. The viewport follows IME padding so feedback remains above the keyboard. Empty-result cards retain their existing layout. Feedback can grow beyond its minimum viewport allowance when its content needs more height.
-    - Import displays active direct saves and errors within the screen.
+### 6.1 Library Modal Navigation Rail
+
+Library is the only root destination. Its top-left menu opens `ModalWideNavigationRail` with `hideOnCollapse = true`; no collapsed icon column occupies the Library. Search, Notification and Settings are secondary pages with Back navigation. Manual Import opens the URL-entry dialog.
+
+The rail header fixes the application name and `ic_notifications` action above its scroll content. Search precedes the Filters section, followed by Newest first, Domain, RSS and Collection. Manual Import and Settings are bottom-aligned within that same scroll region, not pinned outside it. Each actionable row has an icon and label. See [Library Navigation](library_navigation.md) for actions, timestamp formatting and error recovery behavior.
+
+Library retains its title/subtitle, exposes only the current list/grid icon on the right, and has a fixed compact Search action at bottom-right. Search retains its scrolling input, history, tag selector and feedback layout; it has no separate floating action or root tab.
 
 ### 6.2 `BookmarkItemCard`
 - **Shape**: `RoundedCornerShape(24.dp)`.
@@ -182,7 +163,7 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
     - When `og:image` is available, the banner is rendered and the background `DomainWatermark` is suppressed to prevent visual overlap.
     - When `og:image` is absent (`ogImageUrl == null` or load fails) and image resolution has completed (`ogState.resolved`), no empty banner space is reserved; the layout seamlessly falls back to displaying `DomainWatermark` (`195dp`, 50% saturation, `0.14f` alpha, `RoundedCornerShape(20.dp)`) in the upper-right background (`Alignment.TopEnd`, `offset(x = 20.dp)`).
     - The same resolved-only fallback uses the existing domain accent (deterministic domain color when no icon is available) for upper-right shoulder lighting anchored to the scrolling watermark region. Pending resolution is neutral. Each bookmark owns its color animation and measured anchor, preventing a newly opened bookmark from inheriting the previous image's lighting.
-- **Bottom toolbar**: A rounded bar contains Trash, AI Summary, an inert Collection placeholder, and Like in that order. A separate rounded-square browser action of matching height sits to the right. The bar is centered when both actions fit with side clearance; on narrower screens the entire group is centered instead. Its vertical center aligns with the floating navigation bar. Trash retains its confirmation; Like persists immediately and uses a red filled heart when selected, without changing its background. Save remains in the header.
+- **Bottom toolbar**: A rounded bar contains Trash, AI Summary, an inert Collection placeholder, and Like in that order. A separate rounded-square browser action of matching height sits to the right. The bar is centered when both actions fit with side clearance; on narrower screens the entire group is centered instead. It retains its existing detail-screen positioning. Trash retains its confirmation; Like persists immediately and uses a red filled heart when selected, without changing its background. Save remains in the header.
 - **Entity Tags Multi-Line Spacing**:
   - Wrapped in `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to avoid inflated chip spacing. The classification row exists only when category, subcategory or NSFW is present. Entity `FlowRow` has no additional top padding: the parent supplies 8dp between actual classification/entity rows, and wrapped entity rows retain 8dp spacing. Entity-only bookmarks have no empty classification row; the section header and edit action remain present even when all tags are empty.
 - **Integrated Category & Tag Editing Workflow (Parent Dialog + Screen-Level Bottom Sheet)**:
@@ -211,14 +192,9 @@ Tidilo implements the Android 15+ official Edge-to-Edge guidelines:
 
 ---
 
-## 7. Mandatory Design Rule: Bottom-Right Action Buttons & FAB Placement
+## 7. Bottom-Right Action Placement
 
-Whenever a button or floating menu (FAB / Speed Dial) is placed at the bottom-right corner of a screen in Tidilo, it **MUST strictly adhere to the sizing, elevation, and positioning standards of the floating navigation action button**:
-
-| State | Container Size | Icon Size | Shape | Elevation | Position / Margins |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Contracted**<br>*(When bottom navigation bar is visible)* | **`56dp`** | **`28dp`** | `CircleShape` | `6dp` | Placed adjacent to navigation pill with `14dp` clearance |
-| **Expanded / Standalone**<br>*(During scroll / on screens with a standalone FAB)* | **`86dp`** | **`40dp`** | `CircleShape` | **`10dp`** | `.navigationBarsPadding().padding(bottom = 16.dp, end = 16.dp)` at `Alignment.BottomEnd` |
+Library's Search action uses the shared PRIMARY_ACTION surface with `expanded = false`, a fixed 56dp container and 28dp Search icon, 24dp right/bottom content margins plus system navigation insets. Scrolling never resizes or shifts it. It is hidden during summary peek and absent from child pages. Other detail-page action menus retain their existing geometry and behavior.
 
 ### Expansion Rules for Sub-Menus (FAB Menu Items)
 When a standalone 86dp bottom-right button expands into a menu, child menu pills must scale up in proportion:
@@ -323,9 +299,9 @@ Active imports show a progress indicator. Error cards support right swipe to ret
   - Icon Vector & Tint: `Icons.AutoMirrored.Filled.ArrowBack` with `tint = MaterialTheme.colorScheme.onBackground`.
   - Horizontal Title Text Alignment: 72dp (`20dp + 48dp + 4dp`) from the start edge when the navigation slot is present, and 20dp when absent.
 - **Secondary Actions & Toolbar Buttons**:
-  - Header Icon Buttons: 48dp interactive slots (Settings gear in Library, Add link in Import, Reset Wrench in GenerateContentRequest). Title slots take the remaining width so actions stay visible at large font sizes.
+  - Header Icon Buttons: 48dp interactive slots (Library menu and display mode, Notification overflow actions, Reset Wrench in GenerateContentRequest). Title slots take the remaining width so actions stay visible at large font sizes.
 - **Unified Screens**:
-  - Tab Screens without Back Button: `LibraryScreen`, `SearchScreen`, `ImportScreen`.
+  - Library has a menu button. Search and Notification use the shared Back header; the Import overview is removed.
   - Sub-Screens with Back Button: `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `NsfwSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `StorageScreen`, `RssSettingsScreen`, `BookmarkAiReviewScreen`. Library Domain/RSS drill-downs also show Back; root tabs do not.
 - **Visibility Policy**:
   - `hideHeaderOnScroll` defaults to false. Library/Search/Import explicitly enable it and reuse MainActivity's `LocalBarsVisible` signal. Settings and all secondary pages explicitly keep fixed headers.
@@ -383,9 +359,9 @@ Active imports show a progress indicator. Error cards support right swipe to ret
 
 ### 6.14 Library Bookmark List View Mode Dropdown Menu Specification (`LibraryScreen.kt`, `LibraryViewMode.kt`)
 - **Header Action Button & Material Symbols Icon**:
-  - Placed immediately to the left of the Settings button in `LibraryScreen.kt`'s frosted header row.
+  - The only right-side action in `LibraryScreen.kt`'s frosted header row.
   - Sized at `48.dp` matching the Settings `IconButton` interactive slot.
-  - Displays `R.drawable.ic_dashboard_2_gear` (Material Symbols Outlined `dashboard_2_gear`, 24dp), providing visual affordance for layout/dashboard customization.
+  - Displays the currently selected LIST or GRID mode icon (24dp).
 - **Dropdown Menu Positioning & Container Geometry**:
   - Anchored directly to the button container using Material 3 `DropdownMenu`.
   - Width is fixed to `200.dp`, providing a generous and polished layout that avoids feeling narrow or cramped.

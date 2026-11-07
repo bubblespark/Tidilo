@@ -4,7 +4,7 @@ Tidilo registers three independently configurable Android notification channels.
 
 | Channel | Event | Tap destination |
 | --- | --- | --- |
-| Import Errors | Manual import failure, or aggregated RSS article acquisition failures | Import |
+| Import Errors | Manual import failure, or aggregated RSS article acquisition failures | Notification |
 | RSS Scheduled Updates | Daily fetch or Fetch Now logical operation completes | Library |
 | RSS Errors | Feed XML acquisition/parsing failure disables a subscription | RSS Settings |
 
@@ -40,4 +40,4 @@ The common import outcome path reports invalid HTTP/HTTPS input, acquisition/HTT
 
 Manual AI review reports generation errors inside the review screen.
 
-Each notification uses an immutable destination-specific PendingIntent. MainActivity consumes destination intents on cold start and `onNewIntent`, opening Import, Library, or RSS Settings as specified. ImportScreen's bell icon, Room history, read/clear operations, and ordinary Snackbar/Toast feedback remain independent of these OS channels.
+Each notification uses an immutable destination-specific PendingIntent. MainActivity consumes destination intents on cold start and `onNewIntent`, opening Notification, Library, or RSS Settings as specified. Legacy import destination extras are normalized to Notification. The Library rail's bell opens the in-app Notification list; Room history and ordinary Snackbar/Toast feedback remain independent of these OS channels. See [Library Navigation](library_navigation.md) for the combined history/import-error/XML-error list, per-item Retry/Delete menus and second-precision creation timestamps.

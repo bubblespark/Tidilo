@@ -366,10 +366,16 @@ Import tasks persist `articlePrepared`, `intendedMode`, `rssItemKey`, `acquisiti
 
 `RssFeedEntity.iconUrl` and `siteUrl` are nullable persisted HTTP(S) metadata added by `MIGRATION_11_12`, after the notification schema's unchanged `MIGRATION_10_11`. Migration 11 to 12 also supports the earlier RSS-only v11 development build: it creates the notification table/index if absent and adds only missing RSS metadata columns, preserving existing metadata and user data. Registration and 200 XML responses update metadata; 304 preserves it. `RssFeedGroup(feed, count)` is an observed SQL join/aggregate over rss_feeds and visible active bookmarks, including disabled/deleted subscriptions. Bookmark query builders accept an optional bound rssFeedId for both Paging results and counts. Feed grouping never materializes all bookmarks, and search/tag source scope remains unchanged. See [RSS and Atom Subscriptions](rss.md).
 
+## Notification List Projection
+
+The Notification screen combines existing `import_notifications`, ERROR `import_tasks`, and non-deleted `rss_feeds` with a persisted error and failed-attempt timestamp. Stable UI keys are prefixed history/task/feed IDs. History uses createdAt, import errors use task.createdAt, and XML errors use lastAttemptAt. The date is formatted in the current device time zone to second precision. This projection adds no Room tables or migration and keeps the existing 50-row history limit.
+
+Clear removes saved history while preserving unresolved tasks/feed errors. Item deletion awaits the import-task write, or clears only a matching feed revision and lastAttemptAt. Explicit XML Retry replaces an errored acquisition with a new operation and no inherited mobile override. See [Library Navigation](library_navigation.md).
+
 ## Import Notifications and Duplicate Resolution (Room11)
 
 Room version 11 introduces `import_notifications` for tracking duplicate import rejections, RSS article promotions, and import warnings:
 - Table: `import_notifications` with fields `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `type` (TEXT: `INFO`, `WARNING`, `ERROR`), `domain` (TEXT), `url` (TEXT), `message` (TEXT), `existingBookmarkId` (TEXT), `isRead` (INTEGER), and `createdAt` (INTEGER).
-- Indexed on `createdAt DESC` for fast notification popup retrieval.
+- Indexed on `createdAt DESC` for fast notification history retrieval.
 - DAO provides reactive flows `observeNotifications()` and `observeUnreadCount()`, plus `markAllAsRead()` and `deleteAll()`.
 - Migration 10 to 11 preserves all existing tables and creates the `import_notifications` table and index.

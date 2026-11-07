@@ -503,26 +503,32 @@ class ImportRepository internal constructor(
         return Result.success(estimatedCount)
     }
 
-    fun retryErrorTask(taskId: String) {
-        repositoryScope.launch {
-            val targetEntity = taskDao.getTaskById(taskId) ?: return@launch
-            if (targetEntity.status != "ERROR") return@launch
-            val target = targetEntity.toImportTask()
-            if (target.rssFeedId != null && !target.articlePrepared) {
-                appContext?.let { me.bubblespark.tidilo.data.rss.RssRepository.getInstance(it).retryAcquisition(taskId) }
-                return@launch
-            }
-            if (target.rssFeedId == null && target.errorMessage == me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE) {
-                // Explicit retry may recover text that was unavailable when the page was first acquired.
-                taskDao.update(targetEntity.copy(articlePrepared = false))
-            }
-            val retried = target.copy(
-                status = TaskStatus.QUEUED,
-                statusText = "Waiting to save",
-                errorMessage = null
-            )
-            taskDao.updateStatus(retried.id, retried.status.name, retried.statusText, retried.errorMessage)
-            resumeDirectImports()
+    fun retryErrorTask(taskId: String) = repositoryScope.launch { retryErrorTaskAndAwait(taskId) }
+
+    suspend fun retryErrorTaskAndAwait(taskId: String) = withContext(Dispatchers.IO) {
+        val targetEntity = taskDao.getTaskById(taskId) ?: return@withContext
+        if (targetEntity.status != "ERROR") return@withContext
+        val target = targetEntity.toImportTask()
+        if (target.rssFeedId != null && !target.articlePrepared) {
+            appContext?.let { me.bubblespark.tidilo.data.rss.RssRepository.getInstance(it).retryAcquisition(taskId) }
+            return@withContext
+        }
+        if (target.rssFeedId == null && target.errorMessage == me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE) {
+            // Explicit retry may recover text that was unavailable when the page was first acquired.
+            taskDao.update(targetEntity.copy(articlePrepared = false))
+        }
+        val retried = target.copy(
+            status = TaskStatus.QUEUED,
+            statusText = "Waiting to save",
+            errorMessage = null
+        )
+        taskDao.updateStatus(retried.id, retried.status.name, retried.statusText, retried.errorMessage)
+        resumeDirectImports()
+    }
+
+    suspend fun deleteErrorTaskAndAwait(taskId: String) = withContext(Dispatchers.IO) {
+        runInDbOrLock {
+            if (taskDao.getTaskById(taskId)?.status == "ERROR") taskDao.deleteById(taskId)
         }
     }
 

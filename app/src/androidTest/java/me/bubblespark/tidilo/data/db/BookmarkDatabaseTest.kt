@@ -38,11 +38,12 @@ class BookmarkDatabaseTest {
             before.importTaskDao().insertOrUpdate(queued)
             val sql = before.openHelper.writableDatabase
             removeStandardClassificationColumns(sql::execSQL)
+            me.bubblespark.tidilo.data.restoreLegacyAiSkippedColumns(sql::execSQL)
             sql.version = 16
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(18, after.openHelper.readableDatabase.version)
+            assertEquals(19, after.openHelper.readableDatabase.version)
             assertEquals(queued.copy(status = "QUEUED", statusText = ""), after.importTaskDao().getTaskById(queued.id))
         } finally { after.close(); context.deleteDatabase(name) }
     }
@@ -144,15 +145,15 @@ class BookmarkDatabaseTest {
                 old.execSQL("UPDATE bookmarks SET rssFeedId='feed',rssPublishedAt=123,ogImageKey='saved-image-key' WHERE id='a'")
             }
             old.execSQL("INSERT INTO trashed_bookmarks(id,title,url,description,entities,createdAt,updatedAt,note,isNsfw,isAiSkipped,trashedAt) VALUES('trash','Trash','https://example.com/trash','Description','[\"OpenAI\",\"Open AI\"]',1,2,'Trash note',1,0,3)")
-            val keptColumns = columns(old, "bookmarks").filterNot { it == "entities" || it == "domain" || it.startsWith("search") }
+            val keptColumns = columns(old, "bookmarks").filterNot { it == "entities" || it == "domain" || it.startsWith("search") || it == "isAiSkipped" }
             val before = fingerprint(old, "bookmarks", keptColumns)
-            val trashColumns = columns(old, "trashed_bookmarks")
+            val trashColumns = columns(old, "trashed_bookmarks").filterNot { it == "isAiSkipped" }
             val trashBefore = fingerprint(old, "trashed_bookmarks", trashColumns)
             helper.close()
             var db = database(name)
             try {
                 val sql = db.openHelper.writableDatabase
-                assertEquals(18, sql.version)
+                assertEquals(19, sql.version)
                 assertTrue(columns(sql, "bookmark_entities").contains("skeletonKey"))
                 sql.query("PRAGMA index_list(bookmark_entities)").use { cursor ->
                     val names = buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
@@ -160,6 +161,8 @@ class BookmarkDatabaseTest {
                 }
                 assertEquals(before, fingerprint(sql, "bookmarks", keptColumns))
                 assertEquals(trashBefore, fingerprint(sql, "trashed_bookmarks", trashColumns))
+                assertTrue(!columns(sql, "bookmarks").contains("isAiSkipped"))
+                assertTrue(!columns(sql, "trashed_bookmarks").contains("isAiSkipped"))
                 val expected = mapOf(
                     "a" to (listOf("First", "Open AI") + (1..8).map { "Key$it" }),
                     "hidden" to (1..10).map { "Other$it" },
@@ -218,7 +221,7 @@ class BookmarkDatabaseTest {
             helper.close()
             val db = database(name)
             try {
-                assertEquals(18, db.openHelper.readableDatabase.version)
+                assertEquals(19, db.openHelper.readableDatabase.version)
                 val feed = db.rssDao().feed("feed")!!
                 assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
                 assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)
@@ -305,7 +308,7 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showNsfw: Boolean = true): List<BookmarkEntity> {
@@ -390,7 +393,7 @@ class BookmarkDatabaseTest {
         try {
             val rows = listOf(
                 BookmarkEntity("none", "No tags", "https://example.com/n", "", createdAt = 1, updatedAt = 1),
-                BookmarkEntity("skipped", "Skipped", "https://example.com/s", "", createdAt = 2, updatedAt = 2, isAiSkipped = true),
+                BookmarkEntity("skipped", "Skipped", "https://example.com/s", "", createdAt = 2, updatedAt = 2),
                 BookmarkEntity("raw", "Raw tags", "https://example.com/r", "", " #Article ", " #Tech ",
                     me.bubblespark.tidilo.data.EntityTagPolicy.normalizeEntities(listOf(" #Kotlin ", " ", "Kotlin")), 3, 3),
                 BookmarkEntity("clean", "Clean tags", "https://example.com/c", "", "Article", "Life", createdAt = 4, updatedAt = 4),
@@ -405,7 +408,7 @@ class BookmarkDatabaseTest {
             assertEquals(listOf(TagCount("Kotlin", 1)), counts)
             val categoryCounts = normalizeTagCounts(db.bookmarkDao().tagCounts(
                 BookmarkQueries.tags(emptySet(), true, TagKind.CATEGORY)).first(), TagKind.CATEGORY)
-            assertEquals(mapOf("None" to 2, "Article" to 2), categoryCounts.associate { it.value to it.count })
+            assertEquals(mapOf("None" to 1, "Article" to 2), categoryCounts.associate { it.value to it.count })
             assertEquals(" #Article ", db.bookmarkDao().getBookmarkById("raw")?.category)
             assertEquals(listOf("Kotlin"), db.bookmarkDao().getBookmarkById("raw")?.entities)
         } finally { db.close(); context.deleteDatabase(name) }
@@ -653,7 +656,7 @@ class BookmarkDatabaseTest {
                 val flag = if (version == 2) ",isAiSkipped" else ""
                 val flagValue = if (version == 2) ",1" else ""
                 old.execSQL("INSERT INTO $table(id,title,url,description,category,subcategory,entities,createdAt,updatedAt,note,isNsfw$flag$trash) VALUES('kept','Title','https://example.com','Description','Article','Tech','[\"Kotlin\"]',11,22,'Important',1$flagValue$trashValue)")
-                val names = columns(old, table)
+                val names = columns(old, table).filterNot { it == "isAiSkipped" }
                 snapshots[table] = names to fingerprint(old, table, names)
             }
             helper.close()
@@ -664,7 +667,8 @@ class BookmarkDatabaseTest {
                 assertEquals(0, db.importTaskDao().getCount())
                 val sql = db.openHelper.readableDatabase
                 for ((table, snapshot) in snapshots) assertEquals(snapshot.second, fingerprint(sql, table, snapshot.first))
-                assertEquals(version == 2, db.bookmarkDao().getBookmarkById("kept")!!.isAiSkipped)
+                assertTrue(!columns(sql, "bookmarks").contains("isAiSkipped"))
+                assertTrue(!columns(sql, "trashed_bookmarks").contains("isAiSkipped"))
                 assertEquals(listOf("kept"), results(db, "#Kotlin").map { it.id })
             } finally { db.close(); context.deleteDatabase(name) }
         }
@@ -692,6 +696,7 @@ class BookmarkDatabaseTest {
                 for (table in listOf("bookmarks", "trashed_bookmarks", "import_tasks")) {
                     val names = columns(old, table).filterNot { column ->
                         (table == "bookmarks" && column == "entities") ||
+                            column == "isAiSkipped" ||
                             (table == "import_tasks" && column in setOf("status", "statusText", "errorMessage", "intendedMode"))
                     }
                     snapshots[table] = names to fingerprint(old, table, names)

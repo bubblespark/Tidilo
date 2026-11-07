@@ -278,7 +278,6 @@ class RssSharedPipelineTest {
             val saved = db.bookmarkDao().getBookmarkByUrl("$url/1")!!
             assertEquals("HTML description", saved.description)
             assertEquals("HTML title", saved.title)
-            assertTrue(saved.isAiSkipped)
             assertNull(saved.category)
             assertEquals(0, db.importTaskDao().getCount())
         } finally { db.close() }
@@ -293,7 +292,6 @@ class RssSharedPipelineTest {
             val bookmark = db.bookmarkDao().getBookmarkByUrl("$url/1")!!
             assertEquals("HTML title", bookmark.title)
             assertEquals("HTML description", bookmark.description)
-            assertTrue(bookmark.isAiSkipped)
             assertEquals(0, db.importTaskDao().getCount())
         } finally { db.close() }
     }
@@ -365,7 +363,6 @@ class RssSharedPipelineTest {
                 if (request.startsWith(url)) ArticleResponse(request, 200, html.toByteArray(), "text/html") else throw RssHttpFailure(404)
             })
             assertTrue(restarted.fetchAll(2))
-            assertTrue(db.bookmarkDao().getBookmarkByUrl(failed.url)!!.isAiSkipped)
             assertEquals(0, db.importTaskDao().getCount())
         } finally { db.close() }
     }

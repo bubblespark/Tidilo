@@ -17,12 +17,25 @@ class BookmarkRepositoryTest {
     @Test
     fun skippedBookmarkPreservesEachNullableAxisThroughBackupAndRoomMapping() {
         for (tag in listOf(Tag("Article", null), Tag(null, "Food"), Tag(null, null, listOf("Saved")))) {
-            val original = BookmarkItem("partial", "Page", "https://example.com", "", tag, isAiSkipped = true)
+            val original = BookmarkItem("partial", "Page", "https://example.com", "", tag)
             val restored = BookmarkRepository.parseBookmarkFromObj(BookmarkRepository.serializeBookmarkToObj(original))
             val fromRoom = me.bubblespark.tidilo.data.db.BookmarkEntity.fromBookmarkItem(restored).toBookmarkItem()
             assertEquals(tag, fromRoom.tag)
-            assertTrue(fromRoom.isAiSkipped)
+            assertFalse(BookmarkRepository.serializeBookmarkToObj(original).has("isAiSkipped"))
         }
+    }
+
+    @Test
+    fun backupParsingDistinguishesExplicitBlankFromNullCategoryAxes() {
+        val jsonWithNull = org.json.JSONObject("{\"id\":\"1\",\"title\":\"T\",\"url\":\"https://example.com\",\"description\":\"\",\"tag\":{\"category\":null,\"subcategory\":null}}")
+        val restoredNull = BookmarkRepository.parseBookmarkFromObj(jsonWithNull)
+        org.junit.Assert.assertNull(restoredNull.tag.category)
+        org.junit.Assert.assertNull(restoredNull.tag.subcategory)
+
+        val jsonWithBlank = org.json.JSONObject("{\"id\":\"2\",\"title\":\"T\",\"url\":\"https://example.com\",\"description\":\"\",\"tag\":{\"category\":\"   \",\"subcategory\":\"\"}}")
+        val restoredBlank = BookmarkRepository.parseBookmarkFromObj(jsonWithBlank)
+        assertEquals("None", restoredBlank.tag.category)
+        assertEquals("None", restoredBlank.tag.subcategory)
     }
 
     @Test

@@ -31,7 +31,6 @@ data class BookmarkItem(
     val updatedAt: Long = System.currentTimeMillis(),
     val note: String = "",
     val isNsfw: Boolean = false,
-    val isAiSkipped: Boolean = false,
     val isLiked: Boolean = false,
     val browserOpenCount: Int = 0,
     val detailViewCount: Int = 0,
@@ -49,8 +48,8 @@ data class BookmarkItem(
 
 @Immutable
 data class Tag(
-    val category: String? = DEFAULT_TAG,       // 1 of 7 Top-Level Categories, "None", or null (when AI is skipped)
-    val subcategory: String? = DEFAULT_TAG,    // 1 of 11 Subcategories, "None", or null (when AI is skipped)
+    val category: String? = DEFAULT_TAG,       // 1 of 7 Top-Level Categories, "None", or null
+    val subcategory: String? = DEFAULT_TAG,    // 1 of 11 Subcategories, "None", or null
     val entities: List<String> = emptyList()   // Keyword strings
 ) {
     companion object {
@@ -93,7 +92,7 @@ When a direct URL import saves a bookmark, existing entity tags already present 
 - **Candidate extraction**: Uses ICU `BreakIterator` (word instance with `ULocale.ROOT`, falling back to Java `BreakIterator` in non-Android JVM test environments) via `TextSegmenter`. Whitespace and punctuation tokens are dropped, retaining only tokens containing letters or digits. Sliding windows spanning 1 to 6 tokens (`MAX_WINDOW = 6`) are concatenated without delimiters (`joinToString("")`) and mapped to skeleton keys via `entitySkeletonKey`.
 - **Extraction bounds**: Title and description text are truncated to the first 1,000 characters (`MAX_DESCRIPTION_CHARS = 1000`). Tokenization is bounded to at most 300 tokens per section (`MAX_TOKENS_PER_SECTION = 300`) for title and description. Candidate key generation terminates as soon as 500 distinct candidate keys (`MAX_CANDIDATE_KEYS = 500`) are collected.
 - **Chunked indexed lookup**: Candidate skeleton keys are queried against the indexed `bookmark_entities.skeletonKey` table using `BookmarkDao.findCanonicalEntitySpellings` in chunks of 500 keys, avoiding SQLite parameter limits.
-- **Determinism & ordering**: Candidates are evaluated in deterministic priority order: title tokens are processed before description tokens; at each token start position, longer windows (6 down to 1) take precedence over shorter windows. For each matching skeleton key, the canonical display spelling is resolved from the earliest occurrence in the library (`ORDER BY bookmarkId, position`, first row wins). Matched tags are deduplicated and bounded to at most 10 entities via `EntityTagPolicy.normalizeEntities`. Category and subcategory remain `null` (AI skipped).
+- **Determinism & ordering**: Candidates are evaluated in deterministic priority order: title tokens are processed before description tokens; at each token start position, longer windows (6 down to 1) take precedence over shorter windows. For each matching skeleton key, the canonical display spelling is resolved from the earliest occurrence in the library (`ORDER BY bookmarkId, position`, first row wins). Matched tags are deduplicated and bounded to at most 10 entities via `EntityTagPolicy.normalizeEntities`. Category and subcategory remain `null` (when unclassified).
 - **Graceful degradation**: If candidate extraction or database lookup encounters an exception, the error is logged and the bookmark is safely saved without entities (`Tag.createEmpty()`).
 - **Known limitation**: Symbol-bearing tags (such as `C++`, `C#`, or `.NET`) are not matched by their full text. ICU `BreakIterator` discards their symbol tokens before sliding-window concatenation, so text such as `C++` can instead match an existing `C` tag.
 

@@ -55,7 +55,7 @@ class BookmarkDaoUpdateFieldsTest {
         override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) {}
     }
 
-    private fun sampleEntity(id: String, isAiSkipped: Boolean): BookmarkEntity = BookmarkEntity(
+    private fun sampleEntity(id: String): BookmarkEntity = BookmarkEntity(
         id = id,
         title = "Title",
         url = "https://example.com",
@@ -64,14 +64,13 @@ class BookmarkDaoUpdateFieldsTest {
         subcategory = null,
         entities = emptyList(),
         createdAt = 1000L,
-        updatedAt = 1000L,
-        isAiSkipped = isAiSkipped
+        updatedAt = 1000L
     )
 
     @Test
-    fun updateFields_updatesIsAiSkipped_whenExplicitlyProvided(): Unit = runBlocking {
+    fun updateFields_updatesDescriptionAndTagFields(): Unit = runBlocking {
         val dao = TestableBookmarkDao()
-        dao.bookmarkToReturn = sampleEntity("bm-1", isAiSkipped = true)
+        dao.bookmarkToReturn = sampleEntity("bm-1")
 
         dao.updateFields(
             id = "bm-1",
@@ -79,8 +78,7 @@ class BookmarkDaoUpdateFieldsTest {
             category = "Article",
             subcategory = "Tech",
             entities = listOf("AI"),
-            updatedAt = 2000L,
-            isAiSkipped = false
+            updatedAt = 2000L
         )
 
         val updated = dao.lastInserted
@@ -88,26 +86,7 @@ class BookmarkDaoUpdateFieldsTest {
         assertEquals("New AI summary", updated.description)
         assertEquals("Article", updated.category)
         assertEquals("Tech", updated.subcategory)
-        assertFalse("isAiSkipped should be updated to false", updated.isAiSkipped)
-    }
-
-    @Test
-    fun updateFields_preservesExistingIsAiSkipped_whenParameterIsNull(): Unit = runBlocking {
-        val dao = TestableBookmarkDao()
-        dao.bookmarkToReturn = sampleEntity("bm-2", isAiSkipped = true)
-
-        dao.updateFields(
-            id = "bm-2",
-            description = "Manual summary update",
-            category = "Article",
-            subcategory = "Tech",
-            entities = listOf("AI"),
-            updatedAt = 2000L,
-            isAiSkipped = null
-        )
-
-        val updated = dao.lastInserted
-        requireNotNull(updated)
-        assertTrue("isAiSkipped should remain true when null passed", updated.isAiSkipped)
+        assertEquals(listOf("AI"), updated.entities)
+        assertEquals(2000L, updated.updatedAt)
     }
 }

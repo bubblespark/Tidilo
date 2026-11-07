@@ -70,7 +70,6 @@ class AiAnalysisShareTest {
             val bookmark = db.bookmarkDao().getBookmarkByUrl(url)!!
             assertEquals("Publisher Description", bookmark.description)
             assertEquals("Shared fixture", bookmark.title)
-            assertTrue(bookmark.isAiSkipped)
             assertNull(bookmark.category)
             assertTrue(bookmark.entities.isEmpty())
             assertNull(db.importTaskDao().getTaskByUrl(url))

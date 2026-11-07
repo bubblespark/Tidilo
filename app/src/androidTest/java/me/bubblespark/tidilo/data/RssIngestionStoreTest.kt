@@ -62,7 +62,6 @@ class RssIngestionStoreTest {
             assertEquals(listOf("Kotlin", "Android"), bookmark.toBookmarkItem().tag.entities)
             assertNull(bookmark.toBookmarkItem().tag.category)
             assertNull(bookmark.toBookmarkItem().tag.subcategory)
-            assertTrue(bookmark.isAiSkipped)
             assertNull(db.importTaskDao().getTaskById(task.id))
             assertEquals(1, db.bookmarkDao().observeCount(BookmarkQueries.count("#Kotlin", true)).first())
             assertEquals(1, db.bookmarkDao().tagCounts(BookmarkQueries.tags(emptySet(), true, TagKind.ENTITY))

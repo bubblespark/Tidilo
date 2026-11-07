@@ -80,7 +80,7 @@ internal class RssIngestionStore(private val database: AppDatabase) {
                 bookmarks.insertOrUpdate(BookmarkEntity(task.id, article.title, article.url, article.description,
                     category = category, subcategory = subcategory,
                     entities = actual.assignedTags, createdAt = task.createdAt,
-                    updatedAt = System.currentTimeMillis(), isNsfw = nsfw, isAiSkipped = true,
+                    updatedAt = System.currentTimeMillis(), isNsfw = nsfw,
                     ogImageUrl = article.ogImageUrl, rssFeedId = feed.id, rssPublishedAt = task.rssPublishedAt))
             }
             database.importTaskDao().deleteById(task.id)

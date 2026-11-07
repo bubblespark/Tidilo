@@ -172,7 +172,6 @@ class BookmarkDetailTest {
             updatedAt = initialTime,
             note = "Original Note",
             isNsfw = false,
-            isAiSkipped = false
         )
 
         val updatedTag = Tag.create("Tool", "Business", listOf("Kotlin", "Productivity"))
@@ -197,7 +196,6 @@ class BookmarkDetailTest {
         assertEquals("Original Description", modified.description)
         assertEquals(initialTime, modified.createdAt)
         assertEquals(false, modified.isNsfw)
-        assertEquals(false, modified.isAiSkipped)
     }
 
     @Test
@@ -237,26 +235,23 @@ class BookmarkDetailTest {
     }
 
     @Test
-    fun testTagUpdatePreservesAiSkippedFlag() {
+    fun testTagUpdatePopulatesTagsAndNote() {
         val original = BookmarkItem(
-            id = "b-ai-skipped",
+            id = "b-tag-update",
             title = "BOM Mapping",
             url = "https://developer.android.com/compose/bom",
             description = "BOM release notes",
-            tag = Tag.createEmpty(),
-            isAiSkipped = true
+            tag = Tag.createEmpty()
         )
-        assertTrue(original.isAiSkipped)
 
-        // User edits tags in BookmarkDetailScreen: isAiSkipped remains true as historical fact
+        // User edits tags in BookmarkDetailScreen
         val newTag = Tag.create("Tool", "Tech", listOf("Android", "Compose"))
         val updated = original.copy(
             tag = newTag,
             note = "Updated note"
         )
 
-        // Verify isAiSkipped remains true as an independent label, while tags are fully populated
-        assertTrue(updated.isAiSkipped)
+        // Verify tags and note are fully populated
         assertEquals("Tool", updated.tag.category)
         assertEquals("Tech", updated.tag.subcategory)
         assertEquals(listOf("Android", "Compose"), updated.tag.entities)
@@ -271,7 +266,6 @@ class BookmarkDetailTest {
             url = "https://example.com/item",
             description = "Description",
             tag = Tag.create("Media", "Video", listOf("Tutorial")),
-            isAiSkipped = true,
             isNsfw = false
         )
         org.junit.Assert.assertFalse(original.isNsfw)
@@ -279,13 +273,11 @@ class BookmarkDetailTest {
         // Toggle NSFW ON
         val toggledOn = original.copy(isNsfw = true)
         assertTrue(toggledOn.isNsfw)
-        assertTrue("isAiSkipped must still be preserved", toggledOn.isAiSkipped)
         assertEquals("Media", toggledOn.tag.category)
 
         // Toggle NSFW OFF
         val toggledOff = toggledOn.copy(isNsfw = false)
         org.junit.Assert.assertFalse(toggledOff.isNsfw)
-        assertTrue("isAiSkipped must still be preserved", toggledOff.isAiSkipped)
     }
 
     @Test

@@ -33,6 +33,6 @@ A primary `Recipe` paired with `og:type=article` yields `Article / Food`. A reci
 
 - Unsupported or missing evidence leaves the corresponding axis null. A bookmark can have both axes, either one, or neither. Entity tags follow the existing manual-import or RSS rules independently.
 - Prepared tasks store the two nullable IDs and an evaluation marker so later saves can reuse the result. Room migration 16 to 17 preserves existing queued data and marks older rows as unevaluated. Normal HTML acquisition or refresh supplies new evidence.
-- Rule-classified bookmarks retain `isAiSkipped = true`. Successful AI analysis uses its own output. Existing bookmarks are not reclassified in bulk.
+- Successful AI analysis uses its own output. Existing bookmarks are not reclassified in bulk.
 
 See also [Import task and Room models](data_models.md), [RSS imports](rss.md), and [AICore fallback](aicore.md).

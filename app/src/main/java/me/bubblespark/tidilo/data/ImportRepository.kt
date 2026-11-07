@@ -627,7 +627,6 @@ class ImportRepository internal constructor(
             subcategory = target.standardSubcategory.takeIf { target.standardClassificationEvaluated }
         ),
         isNsfw = target.isNsfw,
-        isAiSkipped = true,
         ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() },
         createdAt = if (target.rssFeedId != null) target.createdAt else System.currentTimeMillis(),
         rssFeedId = target.rssFeedId,

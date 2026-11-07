@@ -132,7 +132,6 @@ class RssIngestionTest {
             assertEquals(10, db.bookmarkDao().getCount())
             assertEquals(0, db.importTaskDao().getCount())
             assertNull(db.bookmarkDao().getBookmarkByUrl(entry(1).url))
-            assertTrue(db.bookmarkDao().getBookmarkByUrl(entry(20).url)!!.isAiSkipped)
             db.bookmarkDao().deleteById(db.bookmarkDao().getBookmarkByUrl(entry(20).url)!!.id)
             ingestPreparedFixture(db, feed, (1..20).map(::entry), 200)
             assertEquals(9, db.bookmarkDao().getCount())

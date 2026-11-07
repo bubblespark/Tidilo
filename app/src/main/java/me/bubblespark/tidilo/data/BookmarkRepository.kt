@@ -121,9 +121,14 @@ class BookmarkRepository private constructor(context: Context) {
             val existing = bookmarkDao.getBookmarkByUrl(resolvedItem.url)
                 ?: bookmarkDao.getBookmarkById(resolvedItem.id)
             val finalItem = if (existing != null) {
+                val existingTag = existing.logicalTag()
                 resolvedItem.copy(
                     id = existing.id,
-                    tag = if (resolvedItem.isAiSkipped) existing.logicalTag() else resolvedItem.tag,
+                    tag = Tag(
+                        category = resolvedItem.tag.category ?: existingTag.category,
+                        subcategory = resolvedItem.tag.subcategory ?: existingTag.subcategory,
+                        entities = resolvedItem.tag.entities.ifEmpty { existingTag.entities }
+                    ),
                     note = if (resolvedItem.note.isNotBlank()) resolvedItem.note else existing.note,
                     createdAt = existing.createdAt,
                     isLiked = existing.isLiked,
@@ -184,19 +189,18 @@ class BookmarkRepository private constructor(context: Context) {
     }
 
     /** Applies optional fields atomically against the current durable row. */
-    suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null, isAiSkipped: Boolean? = null) = withContext(Dispatchers.IO) {
+    suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) = withContext(Dispatchers.IO) {
         database.withTransaction {
             val target = bookmarkDao.getBookmarkById(id) ?: return@withTransaction
             bookmarkDao.updateFields(id, description ?: target.description,
                 tag?.category ?: if (tag == null) target.category else null,
                 tag?.subcategory ?: if (tag == null) target.subcategory else null,
-                tag?.entities ?: target.entities, System.currentTimeMillis(), isAiSkipped = isAiSkipped)
+                tag?.entities ?: target.entities, System.currentTimeMillis())
         }
     }
 
     /**
      * Updates note, tag, and NSFW status of a bookmark and persists the change atomically.
-     * Preserves existing isAiSkipped flag.
      */
     suspend fun updateBookmarkDetails(
         id: String,
@@ -304,14 +308,12 @@ class BookmarkRepository private constructor(context: Context) {
                 put("updatedAt", item.updatedAt)
                 put("note", item.note)
                 put("isNsfw", item.isNsfw)
-                put("isAiSkipped", item.isAiSkipped)
             }
         }
 
         fun parseBookmarkFromObj(obj: JSONObject): BookmarkItem {
             val id = obj.getString("id")
             val url = obj.getString("url")
-            val isAiSkipped = obj.optBoolean("isAiSkipped", false)
             val tagObj = obj.optJSONObject("tag")
             val entitiesList = mutableListOf<String>()
             tagObj?.optJSONArray("entities")?.let { ea ->
@@ -320,10 +322,9 @@ class BookmarkRepository private constructor(context: Context) {
                 }
             }
             val tag = logicalBookmarkTag(
-                category = (tagObj?.opt("category") as? String)?.takeIf { it.isNotBlank() },
-                subcategory = (tagObj?.opt("subcategory") as? String)?.takeIf { it.isNotBlank() },
-                entities = entitiesList,
-                isAiSkipped = isAiSkipped
+                category = tagObj?.opt("category") as? String,
+                subcategory = tagObj?.opt("subcategory") as? String,
+                entities = entitiesList
             )
             val now = System.currentTimeMillis()
             val createdAt = obj.optLong("createdAt", now)
@@ -340,8 +341,7 @@ class BookmarkRepository private constructor(context: Context) {
                 createdAt = createdAt,
                 updatedAt = updatedAt,
                 note = note,
-                isNsfw = isNsfw,
-                isAiSkipped = isAiSkipped
+                isNsfw = isNsfw
             )
         }
 
@@ -431,7 +431,6 @@ class BookmarkRepository private constructor(context: Context) {
                     val note = obj.optString("note", "")
                     val isNsfw = obj.optBoolean("isNsfw", false) ||
                         DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(url))
-                    val isAiSkipped = obj.optBoolean("isAiSkipped", false)
                     list.add(
                         BookmarkItem(
                             id = id,
@@ -442,8 +441,7 @@ class BookmarkRepository private constructor(context: Context) {
                             createdAt = createdAt,
                             updatedAt = updatedAt,
                             note = note,
-                            isNsfw = isNsfw,
-                            isAiSkipped = isAiSkipped
+                            isNsfw = isNsfw
                         )
                     )
                 }

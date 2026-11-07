@@ -22,18 +22,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.ui.components.DomainWatermark
-import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.foundation.text.appendInlineContent
-import androidx.compose.ui.text.Placeholder
-import androidx.compose.ui.text.PlaceholderVerticalAlign
-import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material.icons.outlined.Warning
-import me.bubblespark.tidilo.ui.theme.WarningColor
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -67,8 +60,6 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppLanguage
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.Subcategory
-
-private const val INLINE_AI_SKIPPED_ICON = "inlineAiSkippedIcon"
 
 /**
  * Bookmark item card (supports keyword highlighting and tag icon matching).
@@ -106,26 +97,6 @@ fun BookmarkItemCard(
             it.equals(bookmark.tag.subcategory, ignoreCase = true) ||
                     it.equals(localizedSubcategory, ignoreCase = true)
         }
-    }
-
-    val warningColor = WarningColor.textOrIcon
-    val inlineContent = remember(warningColor) {
-        mapOf(
-            INLINE_AI_SKIPPED_ICON to InlineTextContent(
-                Placeholder(
-                    width = 16.sp,
-                    height = 16.sp,
-                    placeholderVerticalAlign = PlaceholderVerticalAlign.Center
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Warning,
-                    contentDescription = null,
-                    tint = warningColor,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        )
     }
 
     TidiloSurface(
@@ -214,42 +185,22 @@ fun BookmarkItemCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            if (bookmark.isAiSkipped) {
-                val highlightedDescription = rememberHighlightedText(
-                    text = bookmark.description,
-                    keywords = wordKeywords
-                )
-                val descriptionText = remember(highlightedDescription) {
-                    buildAnnotatedString {
-                        appendInlineContent(INLINE_AI_SKIPPED_ICON, "[!]")
-                        append(" ")
-                        append(highlightedDescription)
-                    }
-                }
+            if (wordKeywords.isEmpty()) {
                 Text(
-                    text = descriptionText,
-                    inlineContent = inlineContent,
+                    text = bookmark.description,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
-                if (wordKeywords.isEmpty()) {
-                    Text(
-                        text = bookmark.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else {
-                    val highlightedDescription = rememberHighlightedText(
-                        text = bookmark.description,
-                        keywords = wordKeywords
-                    )
-                    Text(
-                        text = highlightedDescription,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                val highlightedDescription = rememberHighlightedText(
+                    text = bookmark.description,
+                    keywords = wordKeywords
+                )
+                Text(
+                    text = highlightedDescription,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Spacer(modifier = Modifier.height(14.dp))

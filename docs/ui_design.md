@@ -26,7 +26,7 @@ The color system supports both **Material You Dynamic Color** (on Android 12+ / 
 Visual categorization chips dynamically derive container and content colors from `MaterialTheme.colorScheme` tokens via `resolveChipColors` (`ThemeModifiers.kt`) and `ThemeSurfaces.kt` rather than static hardcoded color constants, adapting seamlessly across dynamic light and dark themes.
 
 ### 1.3 Warning Colors (Semantic Amber/Gold)
-Used for warning indicators, non-blocking fallback statuses, and AI Skipped notifications:
+Used for warning indicators and non-blocking fallback statuses:
 - **`WarningLight` (`0xFFB87700`)**: Brightened amber-gold tone calibrated for clear yellow/warning icon recognition and high legibility against light backgrounds.
 - **`WarningDark` (`0xFFFFBA28`)**: Luminous gold/yellow tone ensuring vibrant visibility and high contrast against dark OLED/gray surfaces.
 - **`WarningColor.textOrIcon`**: Adaptive `@Composable` helper dynamically resolving to `WarningDark` when `isSystemInDarkTheme() == true` and `WarningLight` otherwise.

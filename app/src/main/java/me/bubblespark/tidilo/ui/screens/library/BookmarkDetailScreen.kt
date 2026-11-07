@@ -56,8 +56,6 @@ import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
-import androidx.compose.material.icons.outlined.Warning
-import me.bubblespark.tidilo.ui.theme.WarningColor
 import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets

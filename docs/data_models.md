@@ -31,7 +31,6 @@ data class BookmarkItem(
     val updatedAt: Long = System.currentTimeMillis(),
     val note: String = "",
     val isNsfw: Boolean = false,
-    val isAiSkipped: Boolean = false,
     val isLiked: Boolean = false,
     val browserOpenCount: Int = 0,
     val detailViewCount: Int = 0,
@@ -49,8 +48,8 @@ data class BookmarkItem(
 
 @Immutable
 data class Tag(
-    val category: String? = DEFAULT_TAG,       // 1 of 7 Top-Level Categories, "None", or null (when AI is skipped)
-    val subcategory: String? = DEFAULT_TAG,    // 1 of 11 Subcategories, "None", or null (when AI is skipped)
+    val category: String? = DEFAULT_TAG,       // 1 of 7 Top-Level Categories, "None", or null
+    val subcategory: String? = DEFAULT_TAG,    // 1 of 11 Subcategories, "None", or null
     val entities: List<String> = emptyList()   // Keyword strings
 ) {
     companion object {

@@ -35,12 +35,11 @@ data class Tag(
         fun fromDisplayValues(
             category: String?,
             subcategory: String?,
-            entities: List<String> = emptyList(),
-            preserveNullAxes: Boolean = false
+            entities: List<String> = emptyList()
         ): Tag = create(category, subcategory).let { tag ->
             tag.copy(
-                category = tag.category.takeUnless { preserveNullAxes && category == null },
-                subcategory = tag.subcategory.takeUnless { preserveNullAxes && subcategory == null },
+                category = tag.category.takeUnless { category == null },
+                subcategory = tag.subcategory.takeUnless { subcategory == null },
                 entities = entities
             )
         }
@@ -76,7 +75,6 @@ data class BookmarkItem(
     val updatedAt: Long = createdAt,
     val note: String = "",
     val isNsfw: Boolean = false,
-    val isAiSkipped: Boolean = false,
     val isLiked: Boolean = false,
     val browserOpenCount: Int = 0,
     val detailViewCount: Int = 0,
@@ -101,4 +99,3 @@ data class TrashedBookmarkItem(
     val bookmark: BookmarkItem,
     val trashedAt: Long = System.currentTimeMillis()
 )
-

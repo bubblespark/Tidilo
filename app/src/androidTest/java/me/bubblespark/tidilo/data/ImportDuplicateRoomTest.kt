@@ -112,7 +112,7 @@ class ImportDuplicateRoomTest {
     @Test fun queuedRssPromotionUsesExistingBookmarkWithoutFetching() = runBlocking {
         val job = kotlinx.coroutines.SupervisorJob()
         val original = BookmarkEntity("saved", "Saved RSS", "https://example.com/saved", "Description",
-            note = "User note", createdAt = 7, updatedAt = 9, isAiSkipped = true, rssFeedId = "feed")
+            note = "User note", createdAt = 7, updatedAt = 9, rssFeedId = "feed")
         database.bookmarkDao().insertOrUpdate(original)
         val task = ImportTaskEntity("pending", original.url, original.title, "QUEUED", "", createdAt = 7)
         database.importTaskDao().insertOrUpdate(task)
@@ -206,7 +206,6 @@ class ImportDuplicateRoomTest {
             val bookmark = requireNotNull(database.bookmarkDao().getBookmarkByUrl(url)).toBookmarkItem()
             assertEquals("Reference", bookmark.tag.category)
             assertNull(bookmark.tag.subcategory)
-            assertTrue(bookmark.isAiSkipped)
         } finally { job.cancel(); job.join() }
     }
 
@@ -360,7 +359,6 @@ class ImportDuplicateRoomTest {
             title = "Unanalyzed RSS Room",
             url = rssCanonicalUrl,
             description = "Desc",
-            isAiSkipped = true,
             rssFeedId = "feed_room_999",
             createdAt = 1000L,
             updatedAt = 1000L

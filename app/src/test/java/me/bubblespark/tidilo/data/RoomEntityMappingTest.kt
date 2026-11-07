@@ -159,7 +159,7 @@ class RoomEntityMappingTest {
     }
 
     @Test
-    fun testBookmarkEntityWithAiSkippedAndNullTagsRoundtrip() {
+    fun testBookmarkEntityWithNullTagsRoundtrip() {
         val now = 1776000000000L
         val original = BookmarkItem(
             id = "fallback-1",
@@ -169,8 +169,7 @@ class RoomEntityMappingTest {
             tag = Tag.createEmpty(),
             createdAt = now,
             updatedAt = now,
-            isNsfw = false,
-            isAiSkipped = true
+            isNsfw = false
         )
 
         val entity = BookmarkEntity.fromBookmarkItem(original)
@@ -178,34 +177,30 @@ class RoomEntityMappingTest {
         assertEquals(null, entity.category)
         assertEquals(null, entity.subcategory)
         assertEquals(emptyList<String>(), entity.entities)
-        assertTrue(entity.isAiSkipped)
 
         val restored = entity.toBookmarkItem()
         assertEquals(original.id, restored.id)
         assertEquals(null, restored.tag.category)
         assertEquals(null, restored.tag.subcategory)
         assertEquals(emptyList<String>(), restored.tag.entities)
-        assertTrue(restored.isAiSkipped)
 
         val trashedItem = TrashedBookmarkItem(
             bookmark = original,
             trashedAt = now + 5000L
         )
         val trashedEntity = TrashedBookmarkEntity.fromTrashedBookmarkItem(trashedItem)
-        assertTrue(trashedEntity.isAiSkipped)
         assertEquals(null, trashedEntity.category)
         assertEquals(null, trashedEntity.subcategory)
 
         val restoredTrash = trashedEntity.toTrashedBookmarkItem()
-        assertTrue(restoredTrash.bookmark.isAiSkipped)
         assertEquals(null, restoredTrash.bookmark.tag.category)
         assertEquals(null, restoredTrash.bookmark.tag.subcategory)
     }
 
     @Test
-    fun aiSkippedEntityTagsDoNotCreateClassificationTags() {
+    fun entityOnlyTagsDoNotCreateClassificationTags() {
         val bookmark = BookmarkEntity("rss-direct", "Post", "https://example.com/post", "Description",
-            entities = listOf("Kotlin", "Android"), createdAt = 1, updatedAt = 2, isAiSkipped = true)
+            entities = listOf("Kotlin", "Android"), createdAt = 1, updatedAt = 2)
         val tag = bookmark.toBookmarkItem().tag
         assertEquals(null, tag.category)
         assertEquals(null, tag.subcategory)

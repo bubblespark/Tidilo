@@ -525,7 +525,7 @@ fun BookmarkDetailScreen(
                     onOpenEntityPickerClick = { showEntityBottomSheet = true },
                     onConfirm = {
                         editedTag = Tag.fromDisplayValues(
-                            draftCategory, draftSubcategory, draftEntities, preserveNullAxes = bookmark.isAiSkipped
+                            draftCategory, draftSubcategory, draftEntities
                         )
                         editedIsNsfw = draftIsNsfw
                         pendingReplacements = draftReplacements
@@ -716,29 +716,7 @@ fun BookmarkDetailScreen(
                     }
                 }
 
-                if (bookmark.isAiSkipped) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Warning,
-                            contentDescription = null,
-                            tint = WarningColor.textOrIcon,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.detail_ai_not_analyzed_warning),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = WarningColor.textOrIcon
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(14.dp))
-                } else {
-                    Spacer(modifier = Modifier.height(24.dp))
-                }
+                Spacer(modifier = Modifier.height(24.dp))
 
                 // 4. Section: Tags & Classification
                 Row(

@@ -246,7 +246,6 @@ class ImportRepositoryEntityMatchingTest {
         entities: List<String> = emptyList(),
         createdAt: Long = 1000L,
         updatedAt: Long = 1000L,
-        isAiSkipped: Boolean = false,
         rssFeedId: String? = null
     ): BookmarkEntity = BookmarkEntity(
         id = id,
@@ -256,7 +255,6 @@ class ImportRepositoryEntityMatchingTest {
         entities = entities,
         createdAt = createdAt,
         updatedAt = updatedAt,
-        isAiSkipped = isAiSkipped,
         rssFeedId = rssFeedId
     )
 

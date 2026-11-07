@@ -37,7 +37,7 @@ class BookmarkDetailTagLayoutTest {
         val id = UUID.randomUUID().toString()
         val item = BookmarkEntity(id, "Entity-only spacing", "https://tag-$id.invalid/article", "Summary",
             category = category, subcategory = subcategory, isNsfw = nsfw,
-            entities = entities, createdAt = 1, updatedAt = 1, isAiSkipped = true)
+            entities = entities, createdAt = 1, updatedAt = 1)
         var activity: ComponentActivity? = null
         try {
             db.bookmarkDao().insertOrUpdate(item)

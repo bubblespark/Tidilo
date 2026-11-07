@@ -229,8 +229,7 @@ fun BookmarkAiReviewScreen(
                                     viewModel.updateBookmarkFields(
                                         id = bookmark.id,
                                         description = finalSummary,
-                                        tag = finalTag,
-                                        isAiSkipped = false
+                                        tag = finalTag
                                     )
 
                                     Toast.makeText(

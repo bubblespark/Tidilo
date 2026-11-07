@@ -378,8 +378,8 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
 
     suspend fun updateBookmarkNote(id: String, note: String) = bookmarkRepository.updateBookmarkNote(id, note)
 
-    suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null, isAiSkipped: Boolean? = null) =
-        bookmarkRepository.updateBookmarkFields(id, description, tag, isAiSkipped)
+    suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) =
+        bookmarkRepository.updateBookmarkFields(id, description, tag)
 
     suspend fun updateBookmarkDetails(id: String, note: String, tag: Tag, isNsfw: Boolean, replacements: Map<String, String> = emptyMap()) =
         bookmarkRepository.updateBookmarkDetails(id, note, tag, isNsfw, replacements)

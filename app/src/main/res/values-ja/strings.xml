@@ -133,7 +133,6 @@
     <string name="detail_save">保存</string>
     <string name="detail_open_url">URLを開く</string>
     <string name="detail_url_copied">URLをクリップボードにコピーしました</string>
-    <string name="detail_ai_not_analyzed_warning">このブックマークはAICoreで解析されていません。</string>
     <string name="detail_section_tags">分類 &amp; タグ</string>
     <string name="detail_section_summary">要約</string>
     <string name="detail_section_note">メモ</string>

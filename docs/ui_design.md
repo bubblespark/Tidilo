@@ -309,17 +309,14 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
   - The scroll-related `LocalBarsVisible` read lives inside the narrow `ScaffoldHeaderVisibility` child, independently of the body and overlay composition scopes. Fixed headers do not subscribe to that scroll signal.
   - Content is drawn first, the header second, and optional overlays last. The app shell owns the Library-only modal rail and compact Search action; scroll detection remains shared. Search reserves only system navigation insets and regular safe spacing, with IME padding applied to its body. Library title/subtitle/list-grid transitions remain unchanged.
 
-### 6.11 AI Skipped (AICore Fallback) Representation & Detail Layout Rhythm
+### 6.11 Card and Detail Layout Rhythm
 - **Bookmark Card (`BookmarkCard.kt`)**:
-  - Removed the standalone `AI Skipped` tag chip from the card tags row.
-  - When `bookmark.isAiSkipped == true`, embeds the warning icon directly inside the summary text via `InlineTextContent` (`16.sp` with `PlaceholderVerticalAlign.Center`). Wrapped text lines naturally wrap underneath the icon flush with the left margin rather than creating an artificial empty column.
+  - Description text renders directly using `MaterialTheme.typography.bodyMedium` with keyword highlighting when search terms are present.
 - **Bookmark Detail Screen Spacing & Layout Rhythm (`BookmarkDetailScreen.kt`)**:
-  - Removed the `AI Skipped` assist chip from the Category & Tags section.
-  - When `bookmark.isAiSkipped == true`, displays a clear warning notice below the URL surface: `[warning icon] This bookmark has not been analyzed by AICore.` using `WarningColor.textOrIcon` for both icon and text with 8dp horizontal spacing.
-  - Spacing rhythm: URL to Warning notice is `6.dp`, Warning notice to Category & Tags is `14.dp` (eliminating disproportionate voids).
+  - Standard spacing rhythm: URL surface to Tags & Classification header is `24.dp`.
   - Category & Tags edit `IconButton` and, under `AppTheme.DEFAULT`, tag chips (`AssistChip`, kept as the original layout) are scoped under `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to eliminate invisible accessibility touch-target inflation (which previously caused a 32dp gap), harmonizing the header-to-content gap across Category & Tags, Summary, and Note to a consistent `10.dp`.
   - Under `AppTheme.MODERN` (`chipStyle.depth > 0.dp`), tags are rendered by the shared `BookmarkTagSection` composable (`CompactTagBadge`, 26dp tactile chips), identical to `BookmarkItemCard`.
-  - Direct/AI-skipped bookmarks with no category or subcategory omit the classification row unless NSFW is set. Removing the entity row's redundant top padding preserves the 10dp section-header-to-content gap without a blank row; existing `None` classification labels remain unchanged.
+  - Direct bookmarks with no category or subcategory omit the classification row unless NSFW is set. Removing the entity row's redundant top padding preserves the 10dp section-header-to-content gap without a blank row; existing `None` classification labels remain unchanged.
 
 ### 6.12 Tag Edit Dialog Dropdown Menu Specification (`BookmarkTagEditDialog.kt`)
 - **Full-Width Popup Anchoring**:

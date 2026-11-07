@@ -106,7 +106,6 @@ class ImportRepositoryTest {
             val outcome = withTimeout(5000) { completed.await() }.getOrThrow()
             assertTrue("Expected a saved bookmark, got $outcome", outcome is ImportOutcome.BookmarkSaved)
             assertEquals("Parsed Description", saved.single().description)
-            assertTrue(saved.single().isAiSkipped)
             assertEquals(0, dao.getCount())
         } finally { job.cancelAndJoin() }
     }
@@ -164,7 +163,6 @@ class ImportRepositoryTest {
             val bookmark = saved.single()
             assertEquals("Parsed Description", bookmark.description)
             assertEquals("Parsed Title", bookmark.title)
-            assertTrue(bookmark.isAiSkipped)
             assertEquals(Tag.createEmpty(), bookmark.tag)
             assertEquals("https://direct.example/og.png", bookmark.ogImageUrl)
         } finally {
@@ -189,7 +187,7 @@ class ImportRepositoryTest {
             repository.onAppBecameActive()
             withTimeout(5000) { while (dao.getCount() > 0) delay(5) }
             assertEquals(2, saved.size)
-            assertTrue(saved.all { it.isAiSkipped && it.tag == Tag.createEmpty() })
+            assertTrue(saved.all { it.tag == Tag.createEmpty() })
             assertEquals(7L, saved.single { it.rssFeedId != null }.createdAt)
         } finally {
             me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(old)
@@ -231,7 +229,6 @@ class ImportRepositoryTest {
                 repository.retryErrorTask(task.id)
                 withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
                 assertEquals("Parsed Description", saved.single().description)
-                assertTrue(saved.single().isAiSkipped)
             } finally { job.cancelAndJoin() }
         }
     }
@@ -405,7 +402,6 @@ class ImportRepositoryTest {
             description = target.description,
             tag = Tag.createEmpty(),
             isNsfw = target.isNsfw,
-            isAiSkipped = true
         )
 
         assertEquals("Target Web Page", fallbackBookmark.title)
@@ -415,7 +411,6 @@ class ImportRepositoryTest {
         assertNull(fallbackBookmark.tag.subcategory)
         assertTrue(fallbackBookmark.tag.entities.isEmpty())
         assertTrue(fallbackBookmark.isNsfw)
-        assertTrue(fallbackBookmark.isAiSkipped)
     }
 
     @Test

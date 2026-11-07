@@ -12,7 +12,7 @@ import org.junit.Test
 class RssSourceMappingTest {
     @Test fun bookmarkAndTrashRoundTripsPreserveFeedOwnershipAndPublication() {
         val item = BookmarkItem("id", "Title", "https://example.com/post", "Body", Tag.createEmpty(),
-            isAiSkipped = true, rssFeedId = "feed", rssPublishedAt = 42)
+            rssFeedId = "feed", rssPublishedAt = 42)
         val row = BookmarkEntity.fromBookmarkItem(item)
         assertEquals("feed", row.rssFeedId)
         assertEquals(42L, row.rssPublishedAt)

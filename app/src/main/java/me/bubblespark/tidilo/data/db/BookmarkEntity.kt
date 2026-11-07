@@ -21,7 +21,6 @@ import me.bubblespark.tidilo.ui.screens.library.Tag
         Index(value = ["category"]),
         Index(value = ["subcategory"]),
         Index(value = ["isNsfw"]),
-        Index(value = ["isAiSkipped"]),
         Index(value = ["domain"])
     ]
 )
@@ -38,7 +37,6 @@ data class BookmarkEntity(
     val updatedAt: Long,
     val note: String = "",
     val isNsfw: Boolean = false,
-    val isAiSkipped: Boolean = false,
     @ColumnInfo(defaultValue = "0") val isLiked: Boolean = false,
     @ColumnInfo(defaultValue = "0") val browserOpenCount: Int = 0,
     @ColumnInfo(defaultValue = "0") val detailViewCount: Int = 0,
@@ -59,7 +57,7 @@ data class BookmarkEntity(
     val ogImageKey: String? = bookmarkOgImageKey(url, ogImageUrl)
 ) {
     /** Recomputes derived fields after copies, ensuring every DAO write stays consistent. */
-    internal fun logicalTag(): Tag = logicalBookmarkTag(category, subcategory, entities, isAiSkipped)
+    internal fun logicalTag(): Tag = logicalBookmarkTag(category, subcategory, entities)
 
     fun withSearchFields(): BookmarkEntity = copy(
         ogImageKey = bookmarkOgImageKey(url, ogImageUrl),
@@ -80,7 +78,6 @@ data class BookmarkEntity(
             updatedAt = updatedAt,
             note = note,
             isNsfw = isNsfw,
-            isAiSkipped = isAiSkipped,
             isLiked = isLiked,
             browserOpenCount = browserOpenCount,
             detailViewCount = detailViewCount,
@@ -108,7 +105,6 @@ data class BookmarkEntity(
                 updatedAt = item.updatedAt,
                 note = item.note,
                 isNsfw = item.isNsfw,
-                isAiSkipped = item.isAiSkipped,
                 isLiked = item.isLiked,
                 browserOpenCount = item.browserOpenCount,
                 detailViewCount = item.detailViewCount,
@@ -125,5 +121,5 @@ data class BookmarkEntity(
 }
 
 /** Maps canonical stored display values without applying raw-input cleaning again. */
-internal fun logicalBookmarkTag(category: String?, subcategory: String?, entities: List<String>, isAiSkipped: Boolean): Tag =
-    Tag.fromDisplayValues(category, subcategory, entities, preserveNullAxes = isAiSkipped)
+internal fun logicalBookmarkTag(category: String?, subcategory: String?, entities: List<String>): Tag =
+    Tag.fromDisplayValues(category, subcategory, entities)

@@ -17,11 +17,11 @@ class BookmarkRepositoryTest {
     @Test
     fun skippedBookmarkPreservesEachNullableAxisThroughBackupAndRoomMapping() {
         for (tag in listOf(Tag("Article", null), Tag(null, "Food"), Tag(null, null, listOf("Saved")))) {
-            val original = BookmarkItem("partial", "Page", "https://example.com", "", tag, isAiSkipped = true)
+            val original = BookmarkItem("partial", "Page", "https://example.com", "", tag)
             val restored = BookmarkRepository.parseBookmarkFromObj(BookmarkRepository.serializeBookmarkToObj(original))
             val fromRoom = me.bubblespark.tidilo.data.db.BookmarkEntity.fromBookmarkItem(restored).toBookmarkItem()
             assertEquals(tag, fromRoom.tag)
-            assertTrue(fromRoom.isAiSkipped)
+            assertFalse(BookmarkRepository.serializeBookmarkToObj(original).has("isAiSkipped"))
         }
     }
 

@@ -75,9 +75,9 @@ class EntityTagConflictTest {
         try {
             db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Editor", "https://$id.invalid", "Summary",
                 category = if (classified) "Tool" else null, subcategory = if (classified) "Tech" else null,
-                entities = if (currentHasEntity) listOf(canonical) else emptyList(), createdAt = 1, updatedAt = 1, isAiSkipped = true))
+                entities = if (currentHasEntity) listOf(canonical) else emptyList(), createdAt = 1, updatedAt = 1))
             db.bookmarkDao().insertOrUpdate(BookmarkEntity(other, "Hidden", "https://$other.invalid", "Summary",
-                entities = listOf(canonical), isNsfw = true, createdAt = 2, updatedAt = 2, isAiSkipped = true))
+                entities = listOf(canonical), isNsfw = true, createdAt = 2, updatedAt = 2))
             val activity = host.launch().also { launchedActivity = it }
             host.main {
                 val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]

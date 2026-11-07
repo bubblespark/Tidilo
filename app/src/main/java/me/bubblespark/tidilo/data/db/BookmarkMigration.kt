@@ -48,20 +48,20 @@ internal fun rebuildBookmarkDerivedData(db: SupportSQLiteDatabase) {
             // Only the required scalar fields of at most 256 rows are read at a time.
             val rows = mutableListOf<Array<String?>>()
             val query = if (lastId == null) {
-                "SELECT id,url,title,description,category,subcategory,entities,isAiSkipped FROM bookmarks ORDER BY id LIMIT 256"
+                "SELECT id,url,title,description,category,subcategory,entities FROM bookmarks ORDER BY id LIMIT 256"
             } else {
-                "SELECT id,url,title,description,category,subcategory,entities,isAiSkipped FROM bookmarks WHERE id > ? ORDER BY id LIMIT 256"
+                "SELECT id,url,title,description,category,subcategory,entities FROM bookmarks WHERE id > ? ORDER BY id LIMIT 256"
             }
             db.query(query, lastId?.let { arrayOf<Any>(it) } ?: emptyArray()).use { cursor ->
                 while (cursor.moveToNext()) {
-                    rows.add(Array(8) { if (cursor.isNull(it)) null else cursor.getString(it) })
+                    rows.add(Array(7) { if (cursor.isNull(it)) null else cursor.getString(it) })
                 }
             }
             if (rows.isEmpty()) break
             for (row in rows) {
                 val id = requireNotNull(row[0])
                 val storedEntities = Converters().toStringList(row[6])
-                val tag = logicalBookmarkTag(row[4], row[5], storedEntities, row[7] == "1")
+                val tag = logicalBookmarkTag(row[4], row[5], storedEntities)
                 // v14 JSON already contains canonical spelling; only historical schemas need cleaning.
                 val entities = if (hasSkeletonKey) storedEntities else storedEntities.mapNotNull(EntityTagPolicy::clean)
                 val values = listOf(DomainIconManager.extractDomain(row[1].orEmpty()),

@@ -111,7 +111,6 @@ class ImportDuplicateRejectionTest {
             assertEquals("rss-task", bookmark.id)
             assertEquals("HTML Description", bookmark.description)
             assertNull(bookmark.rssFeedId)
-            assertTrue(bookmark.isAiSkipped)
         } finally { job.cancel(); job.join() }
     }
 
@@ -322,7 +321,6 @@ class ImportDuplicateRejectionTest {
             entities = listOf("AI"),
             createdAt = 1000L,
             updatedAt = 1000L,
-            isAiSkipped = false,
             rssFeedId = "feed_123"
         )
         bookmarkDao.insertRow(existing)
@@ -368,7 +366,7 @@ class ImportDuplicateRejectionTest {
         val taskDao = TestImportTaskDao()
         val notificationDao = TestImportNotificationDao()
 
-        // Given: RSS bookmark in library but isAiSkipped = true (unanalyzed)
+        // Given: RSS bookmark in library with unanalyzed tags
         val existing = BookmarkEntity(
             id = "b2",
             title = "Raw RSS Item",
@@ -379,7 +377,6 @@ class ImportDuplicateRejectionTest {
             entities = emptyList(),
             createdAt = 1000L,
             updatedAt = 1000L,
-            isAiSkipped = true,
             rssFeedId = "feed_456"
         )
         bookmarkDao.insertRow(existing)
@@ -423,7 +420,6 @@ class ImportDuplicateRejectionTest {
             entities = emptyList(),
             createdAt = 1000L,
             updatedAt = 1000L,
-            isAiSkipped = true,
             rssFeedId = "feed_456"
         )
         bookmarkDao.insertRow(existing)
@@ -463,7 +459,6 @@ class ImportDuplicateRejectionTest {
             note = userNote,
             createdAt = originalCreatedAt,
             updatedAt = originalCreatedAt,
-            isAiSkipped = true,
             rssFeedId = "feed_1"
         )
         bookmarkDao.insertRow(existing)

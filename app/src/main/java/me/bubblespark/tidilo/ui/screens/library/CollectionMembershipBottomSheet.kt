@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -100,14 +101,18 @@ internal fun CollectionMembershipContent(
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             Text(stringResource(R.string.collection_assign_title),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
-                style = MaterialTheme.typography.titleLarge)
+                style = modernRaisedTextStyle(MaterialTheme.typography.titleLarge))
             Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (state.loading) CircularProgressIndicator()
                 else if (state.rows.isEmpty() && state.error == null) {
                     Text(stringResource(R.string.collection_assign_empty))
-                    Button(onClick = onOpenCollections, enabled = !state.pending && !closing, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.collection_open_library))
+                    val canOpenCollections = !state.pending && !closing
+                    Button(onClick = onOpenCollections, enabled = canOpenCollections, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            stringResource(R.string.collection_open_library),
+                            style = modernRaisedTextStyle(LocalTextStyle.current, canOpenCollections)
+                        )
                     }
                 }
                 state.rows.forEach { row ->

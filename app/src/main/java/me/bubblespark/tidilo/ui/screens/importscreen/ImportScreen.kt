@@ -7,6 +7,7 @@ import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
+import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.animation.core.Animatable
@@ -205,7 +206,7 @@ fun ImportScreen(
                 title = {
                     Text(
                         text = stringResource(R.string.import_header_title),
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = modernRaisedTextStyle(MaterialTheme.typography.headlineMedium),
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 1,

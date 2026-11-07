@@ -58,6 +58,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Warning
 import me.bubblespark.tidilo.ui.theme.WarningColor
+import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
@@ -168,7 +169,7 @@ fun BookmarkDetailScreen(
         TidiloScreenScaffold(
             modifier = modifier,
             // Top Header: Back Button + Title + Save Button
-        header = { TidiloPageHeader(stringResource(R.string.detail_title), onNavigateBack) }
+        header = { TidiloPageHeader(stringResource(R.string.detail_title), onNavigateBack, raisedTitle = true) }
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 when {
@@ -285,7 +286,7 @@ fun BookmarkDetailScreen(
                 title = {
                     Text(
                         text = stringResource(R.string.detail_title),
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = modernRaisedTextStyle(MaterialTheme.typography.headlineMedium),
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 1,
@@ -346,7 +347,7 @@ fun BookmarkDetailScreen(
                         } else {
                             Text(
                                 text = stringResource(R.string.detail_save),
-                                style = MaterialTheme.typography.labelLarge,
+                                style = modernRaisedTextStyle(MaterialTheme.typography.labelLarge, hasChanges && !isSaving),
                                 fontWeight = FontWeight.Bold
                             )
                         }

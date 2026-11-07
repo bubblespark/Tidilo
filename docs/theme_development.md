@@ -56,6 +56,10 @@ SurfaceRole.BOOKMARK_CARD to SurfaceStyleOverride(
 
 This entry applies to both bookmark variants. Collection, domain, and RSS decks use separate deck roles. A change intended only for the compact grid variant belongs in variant resolution, with a check for the list variant.
 
+Modern supplies both fixed Material schemes in `ModernColors.kt`. Its canvas and shared containers reuse those scheme tokens. Keep header colors tied to the Material background role so the existing scroll fade blends into the canvas.
+
+Use `modernRaisedTextStyle` at eligible text call sites. Pass the existing text style and the control state so Default and disabled controls keep their existing styling. Shared page headers require explicit opt-in. Settings titles and controls use the ordinary text style.
+
 ## Understand precedence and renderer limits
 
 - Begin with the Material palette and role and variant defaults. The resolver applies preset overrides and then enforces semantic rules where applicable. Check error and caution states, selected filters, and matched and warning badges. A neutral override can be superseded by a state-specific color pair. Animated navigation has its own resolution path and reapplies drawing overrides.

@@ -5,6 +5,7 @@ import me.bubblespark.tidilo.ui.theme.SurfaceRole
 
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
+import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import androidx.activity.compose.BackHandler
@@ -222,7 +223,7 @@ fun TagSelectionScreen(
                 title = {
                     Text(
                         text = stringResource(R.string.tag_selection_title),
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = modernRaisedTextStyle(MaterialTheme.typography.headlineMedium),
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 1,

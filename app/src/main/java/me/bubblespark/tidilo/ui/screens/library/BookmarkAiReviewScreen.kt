@@ -4,6 +4,7 @@ import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
+import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
@@ -50,6 +51,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
@@ -75,6 +77,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.DomainIconManager
@@ -113,7 +116,7 @@ fun BookmarkAiReviewScreen(
     if (detailState.loading || detailState.error != null || bookmark == null) {
         TidiloScreenScaffold(
             modifier = modifier,
-            header = { TidiloPageHeader(stringResource(R.string.ai_review_title), onNavigateBack) }
+            header = { TidiloPageHeader(stringResource(R.string.ai_review_title), onNavigateBack, raisedTitle = true) }
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 when {
@@ -161,7 +164,7 @@ fun BookmarkAiReviewScreen(
                 title = {
                     Text(
                         text = stringResource(R.string.ai_review_title),
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = modernRaisedTextStyle(MaterialTheme.typography.headlineMedium),
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
                         maxLines = 1,
@@ -337,7 +340,7 @@ fun BookmarkAiReviewScreen(
                             onClick = { retryCount++ },
                             shape = themeCorner(ThemeCorner.FIELD)
                         ) {
-                            Text(stringResource(R.string.common_retry))
+                            Text(stringResource(R.string.common_retry), style = modernRaisedTextStyle(LocalTextStyle.current))
                         }
                     }
                 }
@@ -590,18 +593,7 @@ private fun SummaryComparisonCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    shape = themeCorner(ThemeCorner.LINE),
-                    color = if (isAi) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceContainerHighest,
-                    contentColor = if (isAi) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
+                ComparisonLabel(title, isAi)
 
                 RadioButton(
                     selected = isSelected,
@@ -662,18 +654,7 @@ private fun TagComparisonCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    shape = themeCorner(ThemeCorner.LINE),
-                    color = if (isAi) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceContainerHighest,
-                    contentColor = if (isAi) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
+                ComparisonLabel(title, isAi)
 
                 RadioButton(
                     selected = isSelected,
@@ -752,5 +733,31 @@ private fun TagComparisonCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ComparisonLabel(title: String, isAi: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    val useFixedAccentPair = isAi && currentThemeSurfaces().preset.theme == AppTheme.MODERN
+    Surface(
+        shape = themeCorner(ThemeCorner.LINE),
+        color = when {
+            useFixedAccentPair -> colors.primaryContainer
+            isAi -> colors.primary.copy(alpha = 0.15f)
+            else -> colors.surfaceContainerHighest
+        },
+        contentColor = when {
+            useFixedAccentPair -> colors.onPrimaryContainer
+            isAi -> colors.primary
+            else -> colors.onSurfaceVariant
+        }
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
     }
 }

@@ -153,10 +153,10 @@ class AppThemeStyleTest {
         assertEquals(ThemeColorRole.ACCENT, style.colorRole)
 
         // surfacePalette
-        assertEquals(Color(0xFF181A1E), style.surfacePalette.darkCanvasColor)
-        assertEquals(Color(0xFFE8EEF2), style.surfacePalette.lightCanvasColor)
-        assertEquals(Color(0xFF22262B), style.surfacePalette.darkContainerColor)
-        assertEquals(Color(0xFFFFFFFF), style.surfacePalette.lightContainerColor)
+        assertEquals(Color(0xFF1D1F20), style.surfacePalette.darkCanvasColor)
+        assertEquals(Color(0xFFF5F1E9), style.surfacePalette.lightCanvasColor)
+        assertEquals(Color(0xFF2B2C2D), style.surfacePalette.darkContainerColor)
+        assertEquals(Color(0xFFFFFAF2), style.surfacePalette.lightContainerColor)
 
         // cardStyle
         assertEquals(3.dp, style.cardStyle.depth)

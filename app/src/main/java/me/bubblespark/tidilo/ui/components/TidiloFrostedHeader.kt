@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
+import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 
 /** A stable toolbar row; title-specific typography and transitions belong to its slots. */
 @Composable
@@ -78,11 +79,12 @@ fun TidiloPageHeader(
     subtitle: (@Composable () -> Unit)? = null,
     scrollState: ScrollableState? = null,
     onTitleClick: (() -> Unit)? = null,
+    raisedTitle: Boolean = false,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     TidiloFrostedHeader(
         title = {
-            Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
+            Text(title, style = modernRaisedTextStyle(MaterialTheme.typography.headlineMedium, raisedTitle), fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
         },
         modifier = modifier,

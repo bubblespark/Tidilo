@@ -7,7 +7,7 @@ import androidx.compose.runtime.saveable.Saver
 
 /** Saves the accepted screen draft and the unaccepted nested editor as one unit. */
 @Stable
-internal class BookmarkDetailEditState(val originalNote: String, val originalTag: Tag, val originalNsfw: Boolean) {
+internal class BookmarkDetailEditState(var originalNote: String, var originalTag: Tag, var originalNsfw: Boolean) {
     val noteText = mutableStateOf(originalNote)
     val editedTag = mutableStateOf(originalTag)
     val editedIsNsfw = mutableStateOf(originalNsfw)
@@ -23,6 +23,22 @@ internal class BookmarkDetailEditState(val originalNote: String, val originalTag
     val entityInput = mutableStateOf("")
     val conflictInput = mutableStateOf<String?>(null)
     val conflictExisting = mutableStateOf<String?>(null)
+
+    /** Synchronizes remote bookmark updates while preserving unconfirmed user edits. */
+    fun syncWithBookmark(bookmark: BookmarkItem) {
+        if (noteText.value == originalNote) {
+            noteText.value = bookmark.note
+        }
+        if (editedTag.value == originalTag) {
+            editedTag.value = bookmark.tag
+        }
+        if (editedIsNsfw.value == originalNsfw) {
+            editedIsNsfw.value = bookmark.isNsfw
+        }
+        originalNote = bookmark.note
+        originalTag = bookmark.tag
+        originalNsfw = bookmark.isNsfw
+    }
 
     companion object {
         val Saver = Saver<BookmarkDetailEditState, Bundle>(

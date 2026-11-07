@@ -190,11 +190,12 @@ abstract class BookmarkDao {
     @Transaction
     open suspend fun updateFields(
         id: String, description: String, category: String?, subcategory: String?,
-        entities: List<String>, updatedAt: Long
+        entities: List<String>, updatedAt: Long, isAiSkipped: Boolean? = null
     ) {
         val current = getBookmarkById(id) ?: return
         insertOrUpdate(current.copy(description = description, category = category,
-            subcategory = subcategory, entities = entities, updatedAt = updatedAt))
+            subcategory = subcategory, entities = entities, updatedAt = updatedAt,
+            isAiSkipped = isAiSkipped ?: current.isAiSkipped))
     }
 
     @Transaction

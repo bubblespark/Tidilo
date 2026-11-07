@@ -26,6 +26,19 @@ class BookmarkRepositoryTest {
     }
 
     @Test
+    fun backupParsingDistinguishesExplicitBlankFromNullCategoryAxes() {
+        val jsonWithNull = org.json.JSONObject("{\"id\":\"1\",\"title\":\"T\",\"url\":\"https://example.com\",\"description\":\"\",\"tag\":{\"category\":null,\"subcategory\":null}}")
+        val restoredNull = BookmarkRepository.parseBookmarkFromObj(jsonWithNull)
+        org.junit.Assert.assertNull(restoredNull.tag.category)
+        org.junit.Assert.assertNull(restoredNull.tag.subcategory)
+
+        val jsonWithBlank = org.json.JSONObject("{\"id\":\"2\",\"title\":\"T\",\"url\":\"https://example.com\",\"description\":\"\",\"tag\":{\"category\":\"   \",\"subcategory\":\"\"}}")
+        val restoredBlank = BookmarkRepository.parseBookmarkFromObj(jsonWithBlank)
+        assertEquals("None", restoredBlank.tag.category)
+        assertEquals("None", restoredBlank.tag.subcategory)
+    }
+
+    @Test
     fun legacyListParserPreservesSerializedCanonicalHash() {
         val original = BookmarkItem("legacy-hash", "Hash", "https://example.com/hash", "", Tag("Tool", "Tech", listOf("#C", "C")))
         val restored = BookmarkRepository.parseBookmarks(BookmarkRepository.serializeBookmarks(listOf(original))).single()

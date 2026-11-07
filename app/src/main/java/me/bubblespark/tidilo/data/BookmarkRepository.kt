@@ -322,8 +322,8 @@ class BookmarkRepository private constructor(context: Context) {
                 }
             }
             val tag = logicalBookmarkTag(
-                category = (tagObj?.opt("category") as? String)?.takeIf { it.isNotBlank() },
-                subcategory = (tagObj?.opt("subcategory") as? String)?.takeIf { it.isNotBlank() },
+                category = tagObj?.opt("category") as? String,
+                subcategory = tagObj?.opt("subcategory") as? String,
                 entities = entitiesList
             )
             val now = System.currentTimeMillis()

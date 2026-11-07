@@ -90,28 +90,3 @@ enum class Subcategory(
     }
 }
 
-/**
- * Taxonomy helper for AI prompt generation.
- * Injects a fixed list of English taxonomy IDs into system instructions.
- */
-object TaxonomyPromptHelper {
-    fun getCategoriesPromptString(): String =
-        Category.entries.joinToString(", ") { it.id }
-
-    fun getSubcategoriesPromptString(): String =
-        Subcategory.entries.joinToString(", ") { it.id }
-
-    fun getPromptGuidelines(): String = """
-Classify the given web content into three attributes:
-1. "category": Must be strictly one of [${getCategoriesPromptString()}]
-2. "subcategory": Must be strictly one of [${getSubcategoriesPromptString()}]
-3. "entities": Extract 1 to 3 distinctive proper nouns, brands, product names, or core keywords (keep original language).
-
-Respond in JSON format:
-{
-  "category": "...",
-  "subcategory": "...",
-  "entities": ["...", "..."]
-}
-""".trimIndent()
-}

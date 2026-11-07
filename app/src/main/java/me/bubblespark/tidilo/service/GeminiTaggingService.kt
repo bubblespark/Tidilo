@@ -9,7 +9,6 @@ import me.bubblespark.tidilo.data.AiCoreUsageRepository
 import me.bubblespark.tidilo.data.AiUsageSource
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.config.AppLanguage
-import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
@@ -17,14 +16,12 @@ import me.bubblespark.tidilo.data.Subcategory
 import me.bubblespark.tidilo.parser.ArticlePreparation
 import me.bubblespark.tidilo.parser.ParsedWebPage
 import me.bubblespark.tidilo.parser.WebPageParser
-import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.Tag
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.URI
-import java.util.UUID
 
 open class AiCoreExecutionException(
     val errorCode: Int,
@@ -42,140 +39,6 @@ data class TaggingResult(
 )
 
 object GeminiTaggingService {
-
-    /**
-     * Parses the URL or uses pre-parsed snippets, generates summary and tags using Gemini Nano, and saves into Library.
-     */
-    suspend fun processAndSaveBookmark(
-        model: GenerativeModel,
-        url: String,
-        language: AppLanguage,
-        preferredTitle: String? = null,
-        bodySnippet: String? = null,
-        description: String? = null,
-        siteName: String? = null,
-        isNsfw: Boolean = false,
-        ogImageUrl: String? = null,
-        rssFeedId: String? = null,
-        rssPublishedAt: Long? = null,
-        rssFirstSeenAt: Long? = null,
-        articlePrepared: Boolean = false,
-        onArticleAcquired: suspend (ParsedWebPage) -> Unit = {}
-    ): Result<BookmarkItem> = withContext(Dispatchers.IO) {
-        runCatching {
-            require(rssFeedId == null || articlePrepared) { "RSS article requires HTML preparation" }
-            val hasPreparsedData = articlePrepared || !bodySnippet.isNullOrBlank()
-            if (hasPreparsedData && bodySnippet.isNullOrBlank() && description.isNullOrBlank()) {
-                throw me.bubblespark.tidilo.parser.ArticleContentUnavailable()
-            }
-
-            val realUrl: String
-            val finalTitle: String
-            val prompt: String
-            val resolvedIsNsfw: Boolean
-            var parsedWebPage: ParsedWebPage? = null
-            val effectiveOgImageUrl: String?
-
-            if (hasPreparsedData) {
-                // Fast path: Bypass network fetch, DOM parsing, and icon downloads.
-                // Precomputed metadata from enqueue time is used directly for instant prompt assembly.
-                realUrl = url
-                finalTitle = preferredTitle?.trim()?.takeIf { it.isNotBlank() && !isRawUrlOrHost(it, url) }
-                    ?: extractHost(url)
-                val effectiveSiteName = siteName?.trim()?.takeIf { it.isNotBlank() } ?: extractHost(url)
-                val effectiveDescription = description.orEmpty()
-                val effectiveSnippet = bodySnippet.orEmpty()
-                resolvedIsNsfw = isNsfw
-                effectiveOgImageUrl = ogImageUrl?.trim()?.takeIf { it.isNotBlank() }
-
-                prompt = buildPromptWithSnippets(
-                    url = realUrl,
-                    siteName = effectiveSiteName,
-                    title = finalTitle,
-                    description = effectiveDescription,
-                    bodySnippet = effectiveSnippet,
-                    language = language
-                )
-            } else {
-                // Fallback path: Full web fetch and DOM extraction (for legacy items or direct calls)
-                val parsed = try {
-                    me.bubblespark.tidilo.parser.ArticleAcquirer.acquire(url)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    throw me.bubblespark.tidilo.parser.ArticleAcquisitionFailure(error)
-                }
-
-                realUrl = parsed.resolvedUrl.takeIf { it.isNotBlank() } ?: url
-                finalTitle = parsed.ogpTags["og:title"]?.trim()?.takeIf { it.isNotBlank() }
-                    ?: parsed.title?.trim()?.takeIf { it.isNotBlank() }
-                    ?: preferredTitle?.trim()?.takeIf { it.isNotBlank() && !isRawUrlOrHost(it, realUrl) }
-                    ?: extractHost(realUrl)
-
-                val prepared = ArticlePreparation.prepare(parsed)
-                onArticleAcquired(parsed)
-                if (prepared.bodySnippet.isBlank() && prepared.description.isBlank()) {
-                    throw me.bubblespark.tidilo.parser.ArticleContentUnavailable()
-                }
-                prompt = buildPrompt(url = realUrl, parsed = parsed, language = language)
-                parsedWebPage = parsed
-
-                // Domain registration and NSFW policy check
-                val domain = DomainIconManager.extractDomain(realUrl)
-                val detectedSiteName = parsed.ogpTags["og:site_name"]?.trim()?.takeIf { it.isNotBlank() } ?: ""
-                DomainPolicyManager.registerDomain(domain, false, detectedSiteName)
-                resolvedIsNsfw = parsed.isNsfwSignal || DomainPolicyManager.isNsfwDomain(domain)
-
-                // Verify domain icon cache and fetch only if not yet cached during execution
-                if (domain != null && !DomainIconManager.hasIcon(TidiloApplication.instance, domain)) {
-                    DomainIconManager.fetchAndSaveDomainIcon(
-                        context = TidiloApplication.instance,
-                        url = realUrl,
-                        appleTouchIconUrl = parsed.appleTouchIconUrl,
-                        faviconUrl = parsed.faviconUrl,
-                        knownCandidates = parsed.iconCandidates
-                    )
-                }
-                effectiveOgImageUrl = ogImageUrl?.trim()?.takeIf { it.isNotBlank() }
-                    ?: parsed.ogpTags["og:image"]?.trim()?.takeIf { it.isNotBlank() }
-                    ?: parsed.twitterTags["twitter:image"]?.trim()?.takeIf { it.isNotBlank() }
-            }
-
-            // Run inference with Gemini Nano
-            val aiOutput = try {
-                runNanoInference(model, prompt)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                throw mapInferenceException(e)
-            }
-
-            // Parse JSON and normalize results
-            val result = parseAiResponse(aiOutput, finalTitle, parsedWebPage, description)
-
-            // Construct BookmarkItem with resolved URL
-            val bookmarkItem = BookmarkItem(
-                id = UUID.randomUUID().toString(),
-                title = result.title,
-                url = realUrl,
-                description = result.summary,
-                tag = Tag.fromDisplayValues(
-                    category = result.category,
-                    subcategory = result.subcategory,
-                    entities = result.entities
-                ),
-                isNsfw = resolvedIsNsfw,
-                createdAt = rssFirstSeenAt ?: System.currentTimeMillis(),
-                rssFeedId = rssFeedId, rssPublishedAt = rssPublishedAt,
-                ogImageUrl = effectiveOgImageUrl
-            )
-
-            // Save to Library (BookmarkRepository)
-            BookmarkRepository.getInstance().addBookmarkAndAwait(bookmarkItem)
-
-            bookmarkItem
-        }.onFailure { if (it is CancellationException) throw it }
-    }
 
     /**
      * Parses the URL and generates summary and tag proposal using Gemini Nano without adding to Library.

@@ -4,16 +4,12 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import kotlinx.coroutines.flow.Flow
 
 /**
  * Data Access Object for trashed_bookmarks table.
  */
 @Dao
 interface TrashDao {
-
-    @Query("SELECT * FROM trashed_bookmarks ORDER BY trashedAt DESC")
-    fun getAllTrashFlow(): Flow<List<TrashedBookmarkEntity>>
 
     @Query("SELECT * FROM trashed_bookmarks ORDER BY trashedAt DESC")
     suspend fun getAllTrash(): List<TrashedBookmarkEntity>

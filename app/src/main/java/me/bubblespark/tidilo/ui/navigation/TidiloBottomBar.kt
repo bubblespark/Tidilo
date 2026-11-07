@@ -136,15 +136,6 @@ fun TidiloBottomBar(
         label = "actionButtonIconSize"
     )
 
-    val buttonElevation by animateDpAsState(
-        targetValue = if (isBarsVisible) 6.dp else 10.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow
-        ),
-        label = "actionButtonElevation"
-    )
-
     val containerHeight = maxOf(barHeight, buttonSize)
 
     BoxWithConstraints(

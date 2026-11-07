@@ -10,8 +10,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -241,7 +239,6 @@ internal class RssRepository internal constructor(private val context: Context,
                     }
                 }
                 store.enforceRetention(feed.id, feed.revision)
-                acquired.tryEmit(Unit)
             }
             cleanup()
             !incomplete
@@ -273,7 +270,6 @@ internal class RssRepository internal constructor(private val context: Context,
                 }
                 return@withLock
             }
-            acquired.tryEmit(Unit)
         }
     }
 
@@ -323,8 +319,6 @@ internal class RssRepository internal constructor(private val context: Context,
     }
 
     companion object {
-        private val acquired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-        val acquisitions = acquired.asSharedFlow()
         @Volatile private var instance: RssRepository? = null
         fun getInstance(context: Context): RssRepository = instance ?: synchronized(this) {
             instance ?: RssRepository(context.applicationContext).also { instance = it }

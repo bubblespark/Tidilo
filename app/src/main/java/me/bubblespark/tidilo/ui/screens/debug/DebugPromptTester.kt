@@ -3,7 +3,6 @@ package me.bubblespark.tidilo.ui.screens.debug
 import me.bubblespark.tidilo.data.AiCoreUsageRepository
 import me.bubblespark.tidilo.data.AiUsageSource
 import android.content.Context
-import com.google.mlkit.genai.common.DownloadStatus
 import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.common.GenAiException
 import com.google.mlkit.genai.prompt.Generation
@@ -13,7 +12,6 @@ import com.google.mlkit.genai.prompt.generateContentRequest
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.ui.screens.settings.GenerateContentRequestState
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 
 sealed class GenAiTestState {
@@ -51,14 +49,6 @@ object DebugPromptTester {
         } finally {
             model?.close()
         }
-    }
-
-    /**
-     * Initiates model download.
-     */
-    fun startDownload(): Flow<DownloadStatus> {
-        val model = Generation.getClient()
-        return model.download()
     }
 
     /**

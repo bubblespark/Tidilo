@@ -39,7 +39,7 @@ try {
 ```
 
 ### Background Model Download
-When `status == FeatureStatus.DOWNLOADABLE`, the app can initiate a background download stream via `model.download()`, returning a `Flow<DownloadStatus>` that emits byte progress and completion states.
+The ML Kit GenAI SDK provides `model.download()`, which returns a `Flow<DownloadStatus>` emitting download progress and completion states when `status == FeatureStatus.DOWNLOADABLE`. In Tidilo, model delivery and updates are managed by the Android AICore system service without exposing an in-app download flow; the application detects availability via `checkStatus()` and guides users to system settings if the model is not ready.
 
 ---
 
@@ -205,7 +205,7 @@ Manual review displays generation failures in the review UI. Acquisition and per
 ## 9. Diagnostic & Test Tooling
 
 Developers and QA can test and inspect AICore behavior using:
-- **`DebugPromptTester.kt`**: Low-level status checker (`checkStatus()`), model downloader (`startDownload()`), and single-shot raw prompt tester with custom hyperparameter overrides.
+- **`DebugPromptTester.kt`**: Low-level status checker (`checkStatus()`) and single-shot raw prompt tester with custom hyperparameter overrides.
 - **Settings ➔ Debug ➔ ML Kit GenAI Prompt API Test**: Live UI in `SettingsDebugScreen.kt` to test latency, status codes, and model responses on physical Pixel devices.
 
 ### Release SDK initialization and shrinking

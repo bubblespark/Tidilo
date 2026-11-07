@@ -3,7 +3,6 @@
     <string name="bookmark_unlike">Unlike</string>
     <string name="bookmark_liked">Liked</string>
     <string name="bookmark_not_liked">Not liked</string>
-    <string name="bookmark_collection_placeholder">Collection</string>
     <string name="settings_notification_title">Notification</string>
     <string name="settings_notification_description">Manage notifications in system settings</string>
     <string name="notification_rss_complete_body">RSS import completed.\nSaved directly: %1$d items.</string>
@@ -19,8 +18,6 @@
     <string name="settings_ai_analysis_disable_desc">Save bookmarks directly without AI analysis</string>
     <string name="settings_section_aicore_parameters">AICore parameters</string>
     <string name="settings_section_content_safety">Content Safety</string>
-    <string name="rss_ai_disabled_note">AI Analysis is disabled in Settings. Feeds will be imported in Direct mode automatically.</string>
-    <string name="notification_bookmark_added">Bookmark added</string>
     <!-- App & Navigation -->
     <string name="app_name">Tidilo</string>
     <string name="nav_library">Library</string>
@@ -42,12 +39,10 @@
     <string name="common_close">Close</string>
     <string name="common_clear">Clear</string>
     <string name="common_delete">Delete</string>
-    <string name="common_save">Save</string>
     <string name="common_retry">Retry</string>
     <string name="common_undo">Undo</string>
     <string name="common_back">Back</string>
     <string name="common_remove">Remove</string>
-    <string name="common_search">Search</string>
 
     <!-- Bottom Navigation Bar & FAB -->
     <string name="bottom_bar_domain">Domain</string>
@@ -55,20 +50,12 @@
     <string name="bottom_bar_close_filter_menu">Close filter menu</string>
     <string name="bottom_bar_filter_menu">Filter menu</string>
     <string name="bottom_bar_search">Search</string>
-    <string name="bottom_bar_ai_processing">AI Processing Status</string>
-    <string name="ai_indicator_processing_title">AI Analyzing…</string>
-    <string name="ai_indicator_progress_format">AI Analyzing… (%1$d/%2$d)</string>
-    <string name="ai_indicator_tap_to_view">Tap to view in Import</string>
-    <string name="ai_indicator_cancel_button">Cancel AI queue</string>
 
     <!-- Import Screen -->
     <string name="import_header_title">Import</string>
     <string name="import_header_subtitle">Semantic AI Analysis &amp; Management</string>
     <string name="import_button_content_desc">Import URL</string>
-    <string name="import_group_ready">Ready</string>
     <string name="import_group_error">Error</string>
-    <string name="import_empty_ready_title">No URLs ready for analysis</string>
-    <string name="import_empty_ready_hint">Add URLs via the \'+\' Import button or device Share menu</string>
     <string name="import_empty_error_title">No failed items</string>
     <string name="import_empty_error_hint">Rate limits or non-200 HTTP responses will appear here</string>
     <string name="import_show_less">Show Less</string>
@@ -81,19 +68,10 @@
     <string name="import_dialog_error_invalid">Must start with http:// or https:// and have a valid domain</string>
     <string name="import_dialog_supporting_text">http:// or https:// required</string>
     <string name="import_dialog_confirm">Import</string>
-    <string name="import_status_waiting_aicore">Waiting for AICore slot...</string>
-    <string name="import_status_analyzing_content">Gemini Nano analyzing content...</string>
-    <string name="import_status_paused_retry_active">Paused • Retrying when app is active</string>
-    <string name="import_status_aicore_busy">AICore busy • Retrying (%1$d/%2$d)...</string>
-    <string name="import_status_aicore_blocked">AICore background blocked • Retrying (%1$d/%2$d)...</string>
-    <string name="import_status_ready_quota_exceeded">Ready • Quota exceeded</string>
     <string name="import_status_failed">Failed</string>
-    <string name="import_status_completed">Completed</string>
-    <string name="import_status_ready">Ready</string>
     <string name="import_status_importing">Importing...</string>
 
     <!-- AICore Dialogs -->
-    <string name="dialog_aicore_title">AICore</string>
 
     <!-- Library Screen -->
     <string name="library_header_title">Library</string>
@@ -117,8 +95,6 @@
     <string name="domain_card_item_count">%1$d items</string>
     <string name="bookmark_open_in_browser">Open in browser</string>
     <string name="bookmark_could_not_open_browser">Could not open browser</string>
-    <string name="bookmark_ai_skipped">AI Skipped</string>
-    <string name="bookmark_nsfw">NSFW</string>
 
     <!-- Search Screen -->
     <string name="search_header_title">Search</string>
@@ -161,8 +137,6 @@
     <string name="detail_updated_at">Updated: %1$s</string>
     <string name="detail_action_delete">Delete</string>
     <string name="detail_action_ai_summary">AI Summary</string>
-    <string name="detail_fab_open">Open menu</string>
-    <string name="detail_fab_close">Close menu</string>
     <string name="detail_dialog_discard_title">Discard changes?</string>
     <string name="detail_dialog_discard_message">Unsaved changes will be discarded.</string>
     <string name="detail_dialog_delete_title">Delete Bookmark</string>
@@ -216,10 +190,6 @@
     <string name="settings_nsfw_title">NSFW Contents</string>
     <string name="settings_nsfw_subtitle">Visibility &amp; Domain Policies</string>
     <string name="settings_section_data">Data Management</string>
-    <string name="settings_clear_image_cache_title">Clear Image Cache</string>
-    <string name="settings_clear_image_cache_subtitle">Free storage by removing cached preview images and domain icons</string>
-    <string name="settings_clear_image_cache_dialog_title">Clear Image Cache</string>
-    <string name="settings_clear_image_cache_dialog_message">Are you sure you want to clear all cached preview images and domain icons? Your saved bookmarks and notes will not be affected. Preview images and domain icons will be downloaded again when their bookmarks are displayed.</string>
     <string name="settings_clear_image_cache_done">Image cache cleared</string>
     <string name="settings_section_debug">Debug</string>
     <string name="settings_debug_title">Debug</string>
@@ -256,10 +226,6 @@
     <string name="debug_crash_logs_thread">Thread: %1$s</string>
 
     <!-- Notifications -->
-    <string name="notification_channel_name">Import Notifications</string>
-    <string name="notification_channel_desc">Notifications for URL import operations</string>
-    <string name="notification_import_success">Import was successful. There are %1$d items ready.</string>
-    <string name="notification_import_failed">Import failed. Please check the contents.</string>
 
     <!-- Taxonomy: Categories -->
     <string name="category_article">Article</string>
@@ -293,9 +259,6 @@
     <string name="summary_clear_cache_dialog_title">Clear image cache?</string>
     <string name="summary_clear_cache_dialog_message">Cached preview images and domain icons will be deleted. They will be re-downloaded when viewed.</string>
     <string name="summary_storage_privacy">All bookmark data and cache remain stored strictly on this device.</string>
-    <string name="summary_collection">Collection</string>
-    <string name="summary_bookmarks">Bookmarks (excluding trash)</string>
-    <string name="summary_trash">Trash</string>
     <string name="summary_storage">Cache storage</string>
     <string name="summary_icons">Domain icons</string>
     <string name="summary_images">Page images</string>
@@ -306,9 +269,6 @@
     <string name="summary_error">Could not load these statistics.</string>
     <string name="summary_retry">Retry</string>
     <string name="rss_title">RSS</string>
-    <string name="rss_ready">Ready - RSS</string>
-    <string name="rss_ready_empty">No RSS items ready</string>
-    <string name="rss_ready_hint">AI Analyze feeds add their latest items here.</string>
     <string name="rss_source">RSS · %1$s</string>
     <string name="rss_subtitle">Feed subscriptions and daily fetching</string>
     <string name="rss_schedule">Daily fetch time</string>
@@ -318,7 +278,6 @@
     <string name="rss_fetch_now">Fetch now</string>
     <string name="rss_fetch_checking">Checking fetch status</string>
     <string name="rss_fetch_waiting">Waiting to fetch</string>
-    <string name="rss_max_queue">Maximum AI queue: %1$d items</string>
     <string name="rss_dismiss">Dismiss</string>
     <string name="rss_add_feed">Add feed</string>
     <string name="rss_feed_count">RSS (%1$d)</string>
@@ -335,17 +294,10 @@
     <string name="rss_delete_trigger_title">Delete trigger time</string>
     <string name="rss_delete_trigger_message">Delete the trigger time %1$s?</string>
     <string name="rss_no_feeds">No feed subscriptions yet</string>
-    <string name="rss_ai_mode">AI Analyze</string>
     <string name="rss_direct_mode">Direct</string>
-    <string name="rss_retention_display">Max saved items: %1$s</string>
-    <string name="rss_mode_display">Import Mode: %1$s</string>
-    <string name="rss_import_mode">Import Mode</string>
     <string name="rss_max_saved_items">Max saved items</string>
     <string name="rss_enabled">Enabled</string>
-    <string name="rss_on">On</string>
-    <string name="rss_off">Off</string>
     <string name="rss_retention_compact">Max %1$d</string>
-    <string name="rss_edit_compact">Edit</string>
     <string name="rss_retention_input">Retained items (10–500)</string>
     <string name="rss_unlimited">Unlimited</string>
     <string name="rss_edit">Edit feed</string>
@@ -360,8 +312,6 @@
     <string name="rss_feed_url">Feed URL</string>
     <string name="rss_retention_note">Oldest RSS bookmarks above this count are permanently deleted, without going to Trash. This does not limit Direct ingestion. Restored RSS bookmarks are subject to this limit again.</string>
     <string name="rss_delete_note">Stop fetching and remove unstarted tasks. Saved articles remain in RSS and search.</string>
-    <string name="rss_mode_change_note">Switching to Direct removes existing unstarted AI tasks. Select below to save them directly first. Running tasks finish separately.</string>
-    <string name="rss_convert_pending">Save pending items directly</string>
     <string name="rss_url_change_note">Changing the URL creates a replacement subscription. Saved articles from the old feed remain.</string>
     <string name="rss_initial_title">Subscription registered</string>
     <string name="rss_initial_message">Fetch articles now, or wait until the next scheduled fetch?</string>

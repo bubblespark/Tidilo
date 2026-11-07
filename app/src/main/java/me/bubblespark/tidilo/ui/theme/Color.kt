@@ -58,12 +58,6 @@ object DestructiveActionColors {
     val content: Color = Color(0xFFFFFFFF)
 }
 
-// Accent Tag Colors for Expressive Chips
-val TagTech = Color(0xFF388E3C)
-val TagAI = Color(0xFF7B1FA2)
-val TagDesign = Color(0xFFE64A19)
-val TagNews = Color(0xFF0288D1)
-
 // Warning Colors (Semantic Amber/Gold for AI Skipped / Warnings)
 val WarningLight = Color(0xFFB87700)
 val WarningDark = Color(0xFFFFBA28)

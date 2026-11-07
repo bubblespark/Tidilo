@@ -39,7 +39,7 @@ try {
 ```
 
 ### Background Model Download
-When `status == FeatureStatus.DOWNLOADABLE`, the app can initiate a background download stream via `model.download()`, returning a `Flow<DownloadStatus>` that emits byte progress and completion states.
+The ML Kit GenAI SDK provides `model.download()`, which returns a `Flow<DownloadStatus>` emitting download progress and completion states when `status == FeatureStatus.DOWNLOADABLE`. In Tidilo, model delivery and updates are managed by the Android AICore system service without exposing an in-app download flow; the application detects availability via `checkStatus()` and guides users to system settings if the model is not ready.
 
 ---
 

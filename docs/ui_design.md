@@ -23,7 +23,7 @@ The color system supports both **Material You Dynamic Color** (on Android 12+ / 
   - `surfaceVariant`: Unfocused text field containers, subtle borders, inactive pills.
 
 ### 1.2 Accent Tag Tokens
-Visual categorization chips dynamically derive tonal surfaces and borders via `ThemeSurfaces.kt` and `CollectionColors.kt` rather than static hardcoded color constants, adapting seamlessly across dynamic light and dark themes.
+Visual categorization chips dynamically derive container and content colors from `MaterialTheme.colorScheme` tokens via `resolveChipColors` (`ThemeModifiers.kt`) and `ThemeSurfaces.kt` rather than static hardcoded color constants, adapting seamlessly across dynamic light and dark themes.
 
 ### 1.3 Warning Colors (Semantic Amber/Gold)
 Used for warning indicators, non-blocking fallback statuses, and AI Skipped notifications:

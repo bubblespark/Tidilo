@@ -123,7 +123,7 @@ Managed in `data/OgImageManager.kt` and `data/DomainIconManager.kt`:
 
 #### Trash Retention & Lifecycle Rules
 - **Physical Exclusion**: Trashed items are physically excluded from normal bookmarks list, search feeds, and category queries.
-- **Persistence**: Serialized to `trashed_bookmarks_list` in `tidilo_bookmark_prefs.xml`.
+- **Persistence**: Stored in the Room SQLite `trashed_bookmarks` table (managed via `TrashDao`). The legacy `trashed_bookmarks_list` in `tidilo_bookmark_prefs.xml` serves only as a one-time startup migration source if the Room database is empty.
 - **Retention Period**: Kept for 30 days (`TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000L`). Expired items are purged on application launch via `trashDao.purgeExpired()`.
 - **Maximum Capacity**: Capped at 100 items (`MAX_TRASH_CAPACITY = 100`). When a 101st item is trashed, the oldest item (closest to the 30-day limit) is permanently deleted automatically.
 

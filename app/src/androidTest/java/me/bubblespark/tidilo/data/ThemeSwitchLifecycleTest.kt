@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
@@ -49,7 +50,8 @@ class ThemeSwitchLifecycleTest {
                         val state = rememberLazyListState()
                         val coroutineScope = rememberCoroutineScope()
                         var draft by rememberSaveable { mutableStateOf("Draft") }
-                        SideEffect { nav = controller; list = state; scope = coroutineScope; observedDraft = draft }
+                        val committedDraft = draft
+                        SideEffect { nav = controller; list = state; scope = coroutineScope; observedDraft = committedDraft }
                         Column {
                             Text("Theme ${theme.code}")
                             NavHost(controller, startDestination = "editor") {
@@ -69,6 +71,10 @@ class ThemeSwitchLifecycleTest {
             }
             val field = host.await(activity) { it.config.getOrNull(SemanticsActions.SetText) != null }
             host.main { field.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("Retained draft")) }
+            host.await(activity) {
+                it.config.getOrNull(SemanticsProperties.EditableText)?.text == "Retained draft"
+            }
+            host.main { assertEquals("The editor must commit the draft before navigation", "Retained draft", observedDraft) }
             host.main { scope.launch { list.scrollToItem(12) } }
             host.await(activity) { host.text(it, "Row 12") }
             val originalController = nav

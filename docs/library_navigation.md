@@ -6,6 +6,8 @@ Status: Implemented.
 
 Make Library the only root screen. Replace the floating navigation bar with a completely dismissible Material 3 Expressive modal rail. Keep existing bookmark storage, filters, search, direct ingestion, manual AI review, RSS behavior, themes, and localization.
 
+Preserve the current theme foundation, including the fixed Modern palettes and raised Library/Search title styles. Removed navigation and Import overview components do not need their former text decoration restored.
+
 ## Approaches
 
 - Selected: `ModalWideNavigationRail` with `hideOnCollapse = true`. It preserves the full Library width while closed and overlays content while open.

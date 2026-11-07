@@ -41,7 +41,7 @@ class LibraryNavigationEntryTest {
         val host = HeaderTestHost()
         val activity = host.launch()
         try {
-            host.await(activity) { host.text(it, host.context.getString(R.string.library_header_title)) }
+            host.await(activity) { host.description(it, host.context.getString(R.string.navigation_open)) }
             delay(300)
             host.main {
                 assertTrue("Library must have its navigation menu",

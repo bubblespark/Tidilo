@@ -61,7 +61,7 @@ class NotificationSystemTest {
             assertNotNull(notification.contentIntent)
             assertEquals(0, notification.flags and android.app.Notification.FLAG_ONGOING_EVENT)
         }
-        assertEquals("import", NotificationCategory.IMPORT_ERROR.destination)
+        assertEquals("notifications", NotificationCategory.IMPORT_ERROR.destination)
         assertEquals("library", NotificationCategory.RSS_UPDATES.destination)
         assertEquals("settings_rss", NotificationCategory.RSS_ERROR.destination)
         assertEquals(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS, coordinator.settingsIntent().action)

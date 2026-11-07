@@ -30,9 +30,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
 import me.bubblespark.tidilo.data.db.CollectionEntity
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import me.bubblespark.tidilo.data.rss.RssSettings
@@ -43,8 +40,10 @@ import me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent
 import me.bubblespark.tidilo.ui.screens.settings.SettingsGroup
 import me.bubblespark.tidilo.ui.screens.settings.StorageLoad
 import me.bubblespark.tidilo.ui.theme.*
-import me.bubblespark.tidilo.ui.navigation.TidiloBottomBar
-import me.bubblespark.tidilo.ui.navigation.Screen
+import me.bubblespark.tidilo.ui.navigation.LibrarySearchAction
+import me.bubblespark.tidilo.ui.navigation.LibraryNavigationRail
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberWideNavigationRailState
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.Locale
@@ -224,14 +223,13 @@ class ThemeConsumerRegressionTest {
         }
     }
 
-    @Test fun navigationConsumerKeepsCustomEdgeFillAndOpacity() {
+    @Test fun searchActionKeepsCustomEdgeFillAndOpacity() {
         val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
-            SurfaceRole.NAVIGATION_INDICATOR to SurfaceStyleOverride(containerColor = Color.Black,
+            SurfaceRole.PRIMARY_ACTION to SurfaceStyleOverride(containerColor = Color.Black,
                 gradient = SurfaceGradient(Color.Blue, Color.Blue), bevel = SurfaceGradient(Color.Green, Color.Green),
                 borderWidth = 4.dp, opacity = 0.4f, shape = androidx.compose.foundation.shape.RoundedCornerShape(7.dp))))
         scene(preset, content = { NavigationFixture(false) }) { host, activity ->
-            val label = host.await(activity) { host.text(it, "Library") }
-            val tab = generateSequence(label) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
+            val tab = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_search_action" }
             val bounds = tab.boundsInWindow
             val density = host.context.resources.displayMetrics.density
             withTimeout(5000) {
@@ -252,7 +250,7 @@ class ThemeConsumerRegressionTest {
             SurfaceRole.FILTER_ACTION to SurfaceStyleOverride(containerColor = Color.Gray, contentColor = Color.Black)))
         var selectedColor = Color.Unspecified
         scene(preset, content = {
-            val color = MaterialTheme.colorScheme.primaryContainer
+            val color = MaterialTheme.colorScheme.secondaryContainer
             SideEffect { selectedColor = color }
             NavigationFixture(true)
         }) { host, activity ->
@@ -270,18 +268,15 @@ class ThemeConsumerRegressionTest {
         }
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun NavigationFixture(expanded: Boolean) {
-        val nav = rememberNavController()
         Box(Modifier.fillMaxWidth().height(420.dp)) {
-            NavHost(nav, startDestination = Screen.Library.route) {
-                composable(Screen.Library.route) { Text("Body fixture") }
-                composable(Screen.Search.route) { Text("Search fixture") }
-                composable(Screen.Import.route) { Text("Import fixture") }
-            }
-            TidiloBottomBar(nav, isFilterMenuExpanded = expanded,
-                currentFilterMode = LibraryFilterMode.DOMAIN,
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+            if (expanded) {
+                val state = rememberWideNavigationRailState()
+                LaunchedEffect(Unit) { state.expand() }
+                LibraryNavigationRail(state, LibraryFilterMode.DOMAIN, {}, {}, {}, {}, {})
+            } else LibrarySearchAction({}, Modifier.align(Alignment.BottomEnd))
         }
     }
 }

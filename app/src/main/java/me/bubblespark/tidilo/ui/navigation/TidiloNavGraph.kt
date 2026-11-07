@@ -9,7 +9,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
-import me.bubblespark.tidilo.ui.screens.importscreen.ImportScreen
 import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
 
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -27,45 +26,20 @@ import androidx.lifecycle.compose.dropUnlessResumed
 import me.bubblespark.tidilo.ui.screens.settings.SettingsDebugScreen
 import me.bubblespark.tidilo.ui.screens.settings.GenerateContentRequestScreen
 
-internal val BottomNavTabOrder = listOf(
-    Screen.Library.route,
-    Screen.Search.route,
-    Screen.Import.route
-)
-
-internal fun isBottomNavTabSwitch(initialRoute: String?, targetRoute: String?): Boolean {
-    return initialRoute in BottomNavTabOrder && targetRoute in BottomNavTabOrder
-}
-
-internal fun getTabSlideDirection(
-    initialRoute: String?,
-    targetRoute: String?
-): AnimatedContentTransitionScope.SlideDirection {
-    val initialIndex = BottomNavTabOrder.indexOf(initialRoute)
-    val targetIndex = BottomNavTabOrder.indexOf(targetRoute)
-    return if (targetIndex > initialIndex) {
-        AnimatedContentTransitionScope.SlideDirection.Start
-    } else {
-        AnimatedContentTransitionScope.SlideDirection.End
-    }
-}
-
 @Composable
 fun TidiloNavGraph(
     navController: NavHostController,
     importViewModel: ImportViewModel,
-    sharedUrl: String? = null,
     libraryViewModel: LibraryViewModel = viewModel(),
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenNavigation: () -> Unit = {}
 ) {
     NavHost(
         navController = navController,
-        startDestination = if (sharedUrl != null) Screen.Import.route else Screen.Library.route,
+        startDestination = Screen.Library.route,
         modifier = modifier,
         enterTransition = {
-            val direction = if (isBottomNavTabSwitch(initialState.destination.route, targetState.destination.route)) {
-                getTabSlideDirection(initialState.destination.route, targetState.destination.route)
-            } else if (targetState.id == navController.previousBackStackEntry?.id) {
+            val direction = if (targetState.id == navController.previousBackStackEntry?.id) {
                 AnimatedContentTransitionScope.SlideDirection.End
             } else {
                 AnimatedContentTransitionScope.SlideDirection.Start
@@ -79,9 +53,7 @@ fun TidiloNavGraph(
             )
         },
         exitTransition = {
-            val direction = if (isBottomNavTabSwitch(initialState.destination.route, targetState.destination.route)) {
-                getTabSlideDirection(initialState.destination.route, targetState.destination.route)
-            } else if (targetState.id == navController.previousBackStackEntry?.id) {
+            val direction = if (targetState.id == navController.previousBackStackEntry?.id) {
                 AnimatedContentTransitionScope.SlideDirection.End
             } else {
                 AnimatedContentTransitionScope.SlideDirection.Start
@@ -134,8 +106,9 @@ fun TidiloNavGraph(
         composable(Screen.Library.route) {
             LibraryScreen(
                 viewModel = libraryViewModel,
-                onNavigateToSettings = {
-                    navController.navigate(Screen.Settings.route)
+                onOpenNavigation = onOpenNavigation,
+                onNavigateToSearch = {
+                    navController.navigate(Screen.Search.route) { launchSingleTop = true }
                 },
                 onNavigateToDetail = { bookmarkId ->
                     navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
@@ -147,6 +120,7 @@ fun TidiloNavGraph(
         composable(Screen.Search.route) {
             SearchScreen(
                 viewModel = libraryViewModel,
+                onNavigateBack = { navController.popBackStack() },
                 onNavigateToTagSelection = {
                     navController.navigate(Screen.TagSelection.route)
                 },
@@ -263,10 +237,10 @@ fun TidiloNavGraph(
                 }
             )
         }
-        composable(Screen.Import.route) {
-            ImportScreen(
+        composable(Screen.Notifications.route) {
+            me.bubblespark.tidilo.ui.screens.notifications.NotificationScreen(
                 viewModel = importViewModel,
-                initialSharedUrl = sharedUrl,
+                onNavigateBack = { navController.popBackStack() },
                 onNavigateToDetail = { bookmarkId ->
                     navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
                         launchSingleTop = true

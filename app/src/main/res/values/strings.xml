@@ -1,4 +1,10 @@
 <resources>
+    <string name="navigation_open">Open navigation</string>
+    <string name="navigation_filters">Filters</string>
+    <string name="navigation_manual_import">Manual Import</string>
+    <string name="notification_empty">No notifications</string>
+    <string name="notification_more_actions">More actions</string>
+    <string name="notification_action_failed">Unable to complete this action. Try again.</string>
     <string name="bookmark_like">Like</string>
     <string name="bookmark_unlike">Unlike</string>
     <string name="bookmark_liked">Liked</string>

@@ -54,7 +54,8 @@ app/src/main/java/com/ykgudev/tidilo/
     ├── navigation/                      # Navigation and root shell components
     │   ├── BarsState.kt                 # CompositionLocal for scroll-based bar visibility (LocalBarsVisible)
     │   ├── Screen.kt                    # Sealed route classes, titles, icons, deep-link templates
-    │   ├── TidiloBottomBar.kt          # M3 Expressive Floating Navigation Bar (Library, Search, Queue)
+    │   ├── LibraryNavigationRail.kt   # Library-only modal rail with a fixed header and scrolling utilities
+    │   ├── LibrarySearchAction.kt     # Fixed compact Search action
     │   └── TidiloNavGraph.kt           # NavHost graph, screen declarations, spring transition animations
     │
     ├── screens/                         # Feature screens and screen-scoped ViewModels
@@ -66,14 +67,18 @@ app/src/main/java/com/ykgudev/tidilo/
     │   │   ├── BookmarkCard.kt          # BookmarkItemCard, CompactTagBadge, keyword highlighting, skeletons
     │   │   ├── BookmarkDetailScreen.kt  # Bookmark inspection, browser launch, inline notes editing
     │   │   ├── BookmarkItem.kt          # BookmarkItem & Tag immutable data models
-    │   │   ├── LibraryScreen.kt         # Infinite vertical feed of saved bookmarks, animated header, FAB filter
+    │   │   ├── LibraryScreen.kt         # Infinite vertical feed of saved bookmarks, animated header, rail entry and fixed Search action
     │   │   ├── LibraryViewModel.kt      # Bookmark filtering, tokenized AND search logic, history tracking
-    │   │   ├── SearchScreen.kt          # Main tab search view: Expressive header, 2-line history & live hit feed
+    │   │   ├── SearchScreen.kt          # Secondary search page: Back header, history and live results
     │   │   └── TagSelectionScreen.kt    # Mutual AND multi-tag selection dialog matrix
     │   │
-    │   ├── queue/                       # Background scraping & AI tagging monitor
-    │   │   ├── QueueScreen.kt           # 4-group collapsible monitor (Running, Queuing, Error, Completed)
-    │   │   └── QueueViewModel.kt        # Enqueueing, promote-to-running, retry triggers
+    │   ├── importscreen/                # Direct-ingestion presentation adapter and URL entry
+    │   │   ├── ImportUrlDialog.kt       # Validated, saveable manual URL draft
+    │   │   └── ImportViewModel.kt       # Import, history and notification action state
+    │   │
+    │   ├── notifications/               # Combined local history and actionable errors
+    │   │   ├── NotificationListItem.kt  # Stable row projection and date formatting
+    │   │   └── NotificationScreen.kt    # Back/Clear header and per-error action menus
     │   │
     │   └── settings/                    # User preferences & LLM inference parameters
     │       ├── AiAnalysisScreen.kt                # Inline AI model, automation, fallback, parameters, and safety settings
@@ -120,7 +125,7 @@ app/src/main/java/com/ykgudev/tidilo/
 ### `me.bubblespark.tidilo.ui`
 - Responsible for all user-facing pixels and input handling.
 - Divided into:
-  - `navigation/`: Root navigation graph, bar animation state, bottom navigation.
+  - `navigation/`: Root navigation graph, Library header state, modal rail and fixed Search action.
   - `screens/`: Feature modules. Each feature folder contains its Composable screens, screen-specific widgets, and associated `ViewModel`.
   - `theme/`: Styling tokens ensuring consistent Material 3 Expressive aesthetics.
 

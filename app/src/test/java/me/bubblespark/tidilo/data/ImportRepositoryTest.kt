@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
 import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.service.AiCoreExecutionException
@@ -26,6 +27,45 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImportRepositoryTest {
+    @Test fun notificationDeleteWaitsForStorageCompletion() = runBlocking {
+        val dao = FakeImportTaskDao()
+        dao.insertOrUpdate(waitingEntity("error").copy(status = "ERROR"))
+        val began = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val delayed = object : ImportTaskDao by dao {
+            override suspend fun deleteById(id: String) { began.complete(Unit); release.await(); dao.deleteById(id) }
+        }
+        val job = SupervisorJob()
+        try {
+            val repository = ImportRepository(taskDao = delayed, repositoryScope = CoroutineScope(coroutineContext + job))
+            withTimeout(3000) { while (repository.errorTasks.value.isEmpty()) delay(10) }
+            val pending = kotlinx.coroutines.CoroutineScope(coroutineContext).async { repository.deleteErrorTaskAndAwait("error") }
+            began.await()
+            assertFalse("Delete must remain in flight until Room finishes", pending.isCompleted)
+            release.complete(Unit)
+            pending.await()
+            assertNull(dao.getTaskById("error"))
+        } finally { release.complete(Unit); job.cancelAndJoin() }
+    }
+
+    @Test fun notificationRetryPropagatesStorageFailureToItsCaller() = runBlocking {
+        val dao = FakeImportTaskDao()
+        dao.insertOrUpdate(waitingEntity("error").copy(status = "ERROR"))
+        val failing = object : ImportTaskDao by dao {
+            override suspend fun updateStatus(id: String, status: String, statusText: String, errorMessage: String?) {
+                throw java.io.IOException("storage unavailable")
+            }
+        }
+        val job = SupervisorJob()
+        try {
+            val repository = ImportRepository(taskDao = failing, repositoryScope = CoroutineScope(coroutineContext + job +
+                kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> }))
+            val error = runCatching { repository.retryErrorTaskAndAwait("error") }.exceptionOrNull()
+            assertEquals("storage unavailable", error?.message)
+            assertEquals("ERROR", dao.getTaskById("error")?.status)
+        } finally { job.cancelAndJoin() }
+    }
+
     @Test fun foregroundStartupDirectlySavesQueuedAndInterruptedTasks() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()

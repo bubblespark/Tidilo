@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -48,7 +49,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.CompositionLocalProvider
@@ -81,7 +82,6 @@ import kotlinx.coroutines.flow.first
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -121,7 +121,8 @@ private sealed interface LibraryDisplayState {
 @Composable
 fun LibraryScreen(
     viewModel: LibraryViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
-    onNavigateToSettings: () -> Unit = {},
+    onOpenNavigation: () -> Unit = {},
+    onNavigateToSearch: () -> Unit = {},
     onNavigateToDetail: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -181,9 +182,13 @@ fun LibraryScreen(
         lastScrollCollection = selectedCollectionId
     }
 
+    var lastScrollFilterMode by rememberSaveable { mutableStateOf(filterMode.name) }
     LaunchedEffect(filterMode) {
-        newestFirstListState.requestScrollToItem(0)
-        newestFirstGridState.requestScrollToItem(0)
+        if (lastScrollFilterMode != filterMode.name) {
+            newestFirstListState.requestScrollToItem(0)
+            newestFirstGridState.requestScrollToItem(0)
+        }
+        lastScrollFilterMode = filterMode.name
     }
 
     // Detail return restores the same domain; only an actual filter change resets its position.
@@ -301,6 +306,10 @@ fun LibraryScreen(
         bottomContentPadding = HeaderDefaults.BottomNavigationPadding,
         headerVisible = peekBookmark == null,
         overlay = {
+            if (peekBookmark == null && !showCollectionEditorSheet) {
+                me.bubblespark.tidilo.ui.navigation.LibrarySearchAction(onNavigateToSearch,
+                    Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 24.dp, bottom = 24.dp))
+            }
             BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null }
             if (showCollectionEditorSheet) {
                 CollectionEditorBottomSheet(
@@ -407,22 +416,19 @@ fun LibraryScreen(
                     }
                 },
                 navigationIcon = {
-                    AnimatedVisibility(
-                        visible = isDrillDown,
-                        enter = fadeIn(animationSpec = tween(200)) + expandHorizontally(),
-                        exit = fadeOut(animationSpec = tween(150)) + shrinkHorizontally()
-                    ) {
-                        IconButton(
-                            onClick = { if (peekBookmark == null) clearCollectionFilter() else peekBookmark = null },
-                            modifier = Modifier
-                                .padding(end = 4.dp)
-                                .size(48.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(when (filterMode) { LibraryFilterMode.COLLECTION -> R.string.collection_back_to_collections; LibraryFilterMode.RSS -> R.string.rss_back_to_feeds; else -> R.string.library_back_to_domains }),
-                                tint = MaterialTheme.colorScheme.onBackground
-                            )
+                    Row {
+                        IconButton(onClick = onOpenNavigation, modifier = Modifier.padding(end = 4.dp).size(48.dp)) {
+                            Icon(Icons.Default.Menu, stringResource(R.string.navigation_open), tint = MaterialTheme.colorScheme.onBackground)
+                        }
+                        if (isDrillDown) {
+                            IconButton(onClick = { clearCollectionFilter() }, modifier = Modifier.size(48.dp)) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack,
+                                    stringResource(when (filterMode) {
+                                        LibraryFilterMode.COLLECTION -> R.string.collection_back_to_collections
+                                        LibraryFilterMode.RSS -> R.string.rss_back_to_feeds
+                                        else -> R.string.library_back_to_domains
+                                    }), tint = MaterialTheme.colorScheme.onBackground)
+                            }
                         }
                     }
                 },
@@ -444,7 +450,6 @@ fun LibraryScreen(
                         DropdownMenu(
                             expanded = isViewModeMenuExpanded,
                             onDismissRequest = { isViewModeMenuExpanded = false },
-                            offset = DpOffset(x = 96.dp - menuWidth, y = 0.dp),
                             shape = themeCorner(ThemeCorner.IMAGE),
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             tonalElevation = 6.dp,
@@ -499,17 +504,7 @@ fun LibraryScreen(
                         }
                     }
 
-                    // Settings button
-                    IconButton(
-                        onClick = { if (peekBookmark == null) onNavigateToSettings() else peekBookmark = null },
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = stringResource(R.string.title_settings),
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
+
                 }
             )
         }

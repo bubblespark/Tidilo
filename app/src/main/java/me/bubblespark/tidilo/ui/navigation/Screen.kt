@@ -3,11 +3,9 @@ package me.bubblespark.tidilo.ui.navigation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CollectionsBookmark
-import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CollectionsBookmark
-import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -29,12 +27,9 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.CollectionsBookmark
     )
 
-    data object Import : Screen(
-        route = "import",
-        title = "Import",
-        titleRes = R.string.nav_import,
-        selectedIcon = Icons.Filled.HourglassTop,
-        unselectedIcon = Icons.Outlined.HourglassEmpty
+    data object Notifications : Screen(
+        route = "notifications", title = "Notification", titleRes = R.string.settings_notification_title,
+        selectedIcon = Icons.Filled.CollectionsBookmark, unselectedIcon = Icons.Outlined.CollectionsBookmark
     )
 
     data object Search : Screen(
@@ -126,7 +121,12 @@ sealed class Screen(
         fun createRoute(bookmarkId: String): String = "bookmark_ai_review/$bookmarkId"
     }
 
-    companion object {
-        val allTabs: List<Screen> by lazy { listOf(Library, Search, Import) }
-    }
+
+}
+
+internal fun normalizeNotificationDestination(route: String?): String? = when (route) {
+    "import", "notifications" -> Screen.Notifications.route
+    "library" -> Screen.Library.route
+    "settings_rss" -> Screen.RssSettings.route
+    else -> null
 }

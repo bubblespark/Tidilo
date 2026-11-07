@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -37,6 +38,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
@@ -82,17 +84,18 @@ import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 /**
- * Main Tab Search Screen
+ * Secondary Search screen
  * - Edge-to-Edge full screen layout matching Library & Queue
  * - Shared header with scrolling body search input & TagSelection shortcut
- * - Responds to floating navigation bar search action button to focus search input
+ * - Returns to Library through the shared Back action; retained focus events reveal the body input
  */
 @Composable
 fun SearchScreen(
     viewModel: LibraryViewModel,
     onNavigateToTagSelection: () -> Unit = {},
     onNavigateToDetail: (String) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateBack: () -> Unit = {}
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
@@ -265,8 +268,12 @@ fun SearchScreen(
         ) { focusManager.clearFocus() },
         hideHeaderOnScroll = true,
         headerVisible = peekBookmark == null,
-        bottomContentPadding = HeaderDefaults.BottomNavigationPadding,
-        header = { TidiloFrostedHeader(scrollState = when {
+        bottomContentPadding = 24.dp,
+        header = { TidiloFrostedHeader(navigationIcon = {
+            IconButton(onClick = onNavigateBack, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
+            }
+        }, scrollState = when {
             searchQuery.isBlank() -> historyState
             viewMode == LibraryViewMode.GRID -> resultGridState
             else -> resultListState
@@ -293,7 +300,7 @@ fun SearchScreen(
         }) },
         overlay = { BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null } }
     ) { contentPadding ->
-        BoxWithConstraints(Modifier.fillMaxSize().imePadding()) {
+        BoxWithConstraints(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
             val showingHistory = searchQuery.isBlank()
             val showingGrid = !showingHistory && viewMode == LibraryViewMode.GRID
             val itemSpacing = if (showingHistory) 4.dp else if (showingGrid) 10.dp else 16.dp
@@ -457,7 +464,7 @@ fun SearchScreen(
             }
             boundaryFeedback(filteredBookmarks.loadState.prepend, filteredBookmarks.loadState.append)?.let { state ->
                 PagingFeedback(state, filteredBookmarks::retry,
-                    Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp))
+                    Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
             }
         }
     }

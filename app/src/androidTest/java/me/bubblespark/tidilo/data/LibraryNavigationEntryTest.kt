@@ -1,6 +1,10 @@
 package me.bubblespark.tidilo.data
 
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.ui.semantics.SemanticsActions
@@ -16,6 +20,39 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LibraryNavigationEntryTest {
+    @Test fun searchHistoryEndsWithoutObsoleteNavigationClearance(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val model = androidx.lifecycle.ViewModelProvider(activity)[LibraryViewModel::class.java]
+        val previous = model.searchHistory.value
+        val query = model.searchQuery.value
+        try {
+            host.main {
+                model.onSearchQueryChanged("")
+                model.clearSearchHistory()
+                (0..9).reversed().forEach { model.addSearchHistory("Spacing fixture $it") }
+                activity.setContent { MaterialTheme {
+                    Box(Modifier.height(500.dp)) { SearchScreen(model) }
+                } }
+            }
+            host.await(activity) { host.text(it, "Spacing fixture 0") }
+            host.scroll(activity, 100000f)
+            delay(500)
+            val last = host.await(activity) { host.text(it, "Spacing fixture 9") }
+            host.main {
+                val grid = host.nodes(activity).first { it.config.getOrNull(SemanticsActions.ScrollBy) != null }
+                val gap = (grid.boundsInRoot.bottom - last.boundsInRoot.bottom) / activity.resources.displayMetrics.density
+                assertTrue("Search must use safe insets rather than obsolete bar clearance: $gap dp", gap < 100f)
+            }
+        } finally {
+            host.main {
+                model.clearSearchHistory()
+                previous.reversed().forEach(model::addSearchHistory)
+                model.onSearchQueryChanged(query)
+                activity.finish()
+            }
+        }
+    }
     @Test fun railUtilitiesReachBottomAndHeaderStaysVisible(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()

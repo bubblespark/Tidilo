@@ -16,6 +16,28 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NotificationScreenTest {
+    @Test fun historyExposesButtonRoleAndOpensSelectedNotification(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val row = NotificationListItem.History(me.bubblespark.tidilo.data.db.ImportNotificationEntity(
+            id = 42, type = "INFO", domain = "History fixture", url = "https://example.invalid", message = "Saved"))
+        var opened: String? = null
+        try {
+            host.main { activity.setContent { MaterialTheme {
+                NotificationContent(listOf(row), false, emptySet(), {}, {}, {}, {}, { opened = it.key })
+            } } }
+            val label = host.await(activity) { host.text(it, "History fixture") }
+            host.main {
+                val button = generateSequence(label) { it.parent }.first {
+                    it.config.getOrNull(SemanticsActions.OnClick) != null
+                }
+                assertEquals(androidx.compose.ui.semantics.Role.Button, button.config.getOrNull(SemanticsProperties.Role))
+                assertTrue(button.config[SemanticsActions.OnClick].action!!.invoke())
+                assertEquals(row.key, opened)
+            }
+        } finally { host.main { activity.finish() } }
+    }
+
     @Test fun newerFailureClosesAnAlreadyOpenActionMenu(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()

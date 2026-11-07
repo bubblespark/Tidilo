@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
@@ -57,7 +58,7 @@ fun NotificationContent(items: List<NotificationListItem>, canClear: Boolean, bu
         if (items.isEmpty()) Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
             Text(stringResource(R.string.notification_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
-            items(items, key = { it.key }) { row ->
+            items(items, key = { it.key }, contentType = { if (it is NotificationListItem.History) "history" else "failure" }) { row ->
                 val failure = row !is NotificationListItem.History
                 val title = when (row) {
                     is NotificationListItem.History -> row.notification.domain
@@ -76,7 +77,7 @@ fun NotificationContent(items: List<NotificationListItem>, canClear: Boolean, bu
                 }
                 var menuOpen by remember(row) { mutableStateOf(false) }
                 Row(Modifier.fillMaxWidth().then(if (row is NotificationListItem.History)
-                    Modifier.clickable { onOpen(row) } else Modifier).padding(vertical = 16.dp),
+                    Modifier.clickable(role = Role.Button) { onOpen(row) } else Modifier).padding(vertical = 16.dp),
                     verticalAlignment = Alignment.Top) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(title, style = MaterialTheme.typography.titleSmall)

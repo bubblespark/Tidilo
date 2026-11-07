@@ -15,6 +15,13 @@ import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
 
+private val navigationFilters = listOf(
+    Triple(LibraryFilterMode.NEWEST_FIRST, R.string.bottom_bar_newest_first, Icons.Default.Schedule),
+    Triple(LibraryFilterMode.DOMAIN, R.string.bottom_bar_domain, Icons.Default.Language),
+    Triple(LibraryFilterMode.RSS, R.string.rss_title, Icons.Default.RssFeed),
+    Triple(LibraryFilterMode.COLLECTION, R.string.collection_title, Icons.Default.CollectionsBookmark)
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryNavigationRail(state: WideNavigationRailState, selectedFilter: LibraryFilterMode,
@@ -36,13 +43,7 @@ fun LibraryNavigationRail(state: WideNavigationRailState, selectedFilter: Librar
                         onClick = onSearch, icon = { Icon(Icons.Default.Search, null) })
                     Text(stringResource(R.string.navigation_filters), Modifier.padding(start = 16.dp, top = 24.dp, bottom = 12.dp),
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    val filters = listOf(
-                        Triple(LibraryFilterMode.NEWEST_FIRST, R.string.bottom_bar_newest_first, Icons.Default.Schedule),
-                        Triple(LibraryFilterMode.DOMAIN, R.string.bottom_bar_domain, Icons.Default.Language),
-                        Triple(LibraryFilterMode.RSS, R.string.rss_title, Icons.Default.RssFeed),
-                        Triple(LibraryFilterMode.COLLECTION, R.string.collection_title, Icons.Default.CollectionsBookmark)
-                    )
-                    filters.forEach { (mode, label, icon) ->
+                    navigationFilters.forEach { (mode, label, icon) ->
                         NavigationDrawerItem(label = { Text(stringResource(label)) }, selected = selectedFilter == mode,
                             onClick = { onSelectFilter(mode) }, icon = { Icon(icon, null) })
                     }

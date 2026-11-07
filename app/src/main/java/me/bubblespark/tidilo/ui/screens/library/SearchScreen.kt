@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -267,7 +268,7 @@ fun SearchScreen(
         ) { focusManager.clearFocus() },
         hideHeaderOnScroll = true,
         headerVisible = peekBookmark == null,
-        bottomContentPadding = HeaderDefaults.BottomNavigationPadding,
+        bottomContentPadding = 24.dp,
         header = { TidiloFrostedHeader(navigationIcon = {
             IconButton(onClick = onNavigateBack, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back))
@@ -299,7 +300,7 @@ fun SearchScreen(
         }) },
         overlay = { BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null } }
     ) { contentPadding ->
-        BoxWithConstraints(Modifier.fillMaxSize().imePadding()) {
+        BoxWithConstraints(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
             val showingHistory = searchQuery.isBlank()
             val showingGrid = !showingHistory && viewMode == LibraryViewMode.GRID
             val itemSpacing = if (showingHistory) 4.dp else if (showingGrid) 10.dp else 16.dp
@@ -463,7 +464,7 @@ fun SearchScreen(
             }
             boundaryFeedback(filteredBookmarks.loadState.prepend, filteredBookmarks.loadState.append)?.let { state ->
                 PagingFeedback(state, filteredBookmarks::retry,
-                    Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp))
+                    Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
             }
         }
     }

@@ -7,6 +7,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -20,17 +23,49 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LibraryNavigationEntryTest {
+    @Test fun domainDrillDownOffersBackAlongsideLibraryMenu(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val model = ViewModelProvider(activity)[LibraryViewModel::class.java]
+        val prefs = host.context.getSharedPreferences("tidilo_library_prefs", android.content.Context.MODE_PRIVATE)
+        val previous = prefs.getString("library_filter_mode", null)
+        val scopeJob = model.viewModelScope.coroutineContext[Job]
+        try {
+            host.main {
+                model.setFilterMode(me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.DOMAIN)
+                model.selectDomainFilter("navigation.invalid")
+            }
+            val back = host.await(activity) { host.description(it, host.context.getString(R.string.library_back_to_domains)) }
+            host.main {
+                assertTrue(host.nodes(activity).any { host.description(it, host.context.getString(R.string.navigation_open)) })
+                val button = generateSequence(back) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
+                assertTrue(button.config[SemanticsActions.OnClick].action!!.invoke())
+                org.junit.Assert.assertNull(model.selectedDomainFilter.value)
+            }
+        } finally {
+            host.main { activity.viewModelStore.clear(); activity.finish() }
+            scopeJob?.cancelAndJoin()
+            val restore = prefs.edit()
+            if (previous == null) restore.remove("library_filter_mode") else restore.putString("library_filter_mode", previous)
+            assertTrue(restore.commit())
+            org.junit.Assert.assertEquals(previous, prefs.getString("library_filter_mode", null))
+        }
+    }
+
     @Test fun searchHistoryEndsWithoutObsoleteNavigationClearance(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()
-        val model = androidx.lifecycle.ViewModelProvider(activity)[LibraryViewModel::class.java]
-        val previous = model.searchHistory.value
-        val query = model.searchQuery.value
+        val prefs = host.context.getSharedPreferences("tidilo_library_prefs", android.content.Context.MODE_PRIVATE)
+        val previous = prefs.getString("search_history", null)
+        val store = androidx.lifecycle.ViewModelStore()
+        lateinit var model: LibraryViewModel
+        var scopeJob: Job? = null
         try {
+            val fixture = org.json.JSONArray((0..9).map { "Spacing fixture $it" }).toString()
+            assertTrue(prefs.edit().putString("search_history", fixture).commit())
             host.main {
-                model.onSearchQueryChanged("")
-                model.clearSearchHistory()
-                (0..9).reversed().forEach { model.addSearchHistory("Spacing fixture $it") }
+                model = ViewModelProvider(store, ViewModelProvider.NewInstanceFactory())[LibraryViewModel::class.java]
+                scopeJob = model.viewModelScope.coroutineContext[Job]
                 activity.setContent { MaterialTheme {
                     Box(Modifier.height(500.dp)) { SearchScreen(model) }
                 } }
@@ -45,12 +80,14 @@ class LibraryNavigationEntryTest {
                 assertTrue("Search must use safe insets rather than obsolete bar clearance: $gap dp", gap < 100f)
             }
         } finally {
-            host.main {
-                model.clearSearchHistory()
-                previous.reversed().forEach(model::addSearchHistory)
-                model.onSearchQueryChanged(query)
-                activity.finish()
-            }
+            host.main { store.clear() }
+            scopeJob?.cancelAndJoin()
+            val restore = prefs.edit()
+            if (previous == null) restore.remove("search_history") else restore.putString("search_history", previous)
+            val restored = restore.commit()
+            host.main { activity.finish() }
+            assertTrue("Search history restoration must complete before teardown", restored)
+            org.junit.Assert.assertEquals(previous, prefs.getString("search_history", null))
         }
     }
     @Test fun railUtilitiesReachBottomAndHeaderStaysVisible(): Unit = runBlocking {

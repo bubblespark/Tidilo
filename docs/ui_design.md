@@ -365,7 +365,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 - **Dropdown Menu Positioning & Container Geometry**:
   - Anchored directly to the button container using Material 3 `DropdownMenu`.
   - Width is fixed to `200.dp`, providing a generous and polished layout that avoids feeling narrow or cramped.
-  - Aligned flush to the right edge of the header row and bookmark cards (`screenWidth - 20.dp`) by applying `offset = DpOffset(x = 96.dp - menuWidth, y = 0.dp)` for the two 48dp action slots.
+  - Uses the single display-mode button as its anchor, without an explicit offset for former action slots.
   - Follows Tidilo menu design language with `shape = RoundedCornerShape(16.dp)`, `containerColor = MaterialTheme.colorScheme.surfaceContainerHigh`, and `tonalElevation = 6.dp`.
   - Wrapped with `CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig)` to ensure accurate localization in dynamic popup windows.
 - **Item Order & Leading Checkmark Alignment**:

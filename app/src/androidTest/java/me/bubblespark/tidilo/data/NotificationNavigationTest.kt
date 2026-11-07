@@ -20,7 +20,7 @@ class NotificationNavigationTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
 
-    @Test fun pendingIntentOpensImportOnColdStartAndRssAndLibraryOnWarmStart() = runBlocking {
+    @Test fun pendingIntentOpensNotificationsOnColdStartAndRssAndLibraryOnWarmStart() = runBlocking {
         val mode = AppConfig.aiAnalysisMode.value
 
         AppConfig.setAiAnalysisMode(AiAnalysisMode.DISABLE)
@@ -32,11 +32,13 @@ class NotificationNavigationTest {
             coordinator.buildNotification(NotificationCategory.IMPORT_ERROR, "Import error").contentIntent.send()
             activity = instrumentation.waitForMonitorWithTimeout(monitor, 8000) as ComponentActivity?
             assertNotNull(activity)
-            awaitText(context.getString(R.string.import_header_subtitle))
+            awaitText(context.getString(R.string.settings_notification_title))
             coordinator.buildNotification(NotificationCategory.RSS_ERROR, "Disabled").contentIntent.send()
             awaitText(context.getString(R.string.rss_schedule))
             coordinator.buildNotification(NotificationCategory.RSS_UPDATES, "Completed").contentIntent.send()
-            awaitText(context.getString(R.string.library_header_title))
+            withTimeout(8000) {
+                while (find { it.contentDescription?.toString() == context.getString(R.string.navigation_open) } == null) delay(50)
+            }
             withTimeout(5000) {
                 while (find { it.text?.toString() == context.getString(R.string.rss_schedule) } != null) delay(50)
             }
@@ -52,7 +54,8 @@ class NotificationNavigationTest {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         try {
-            click { it.contentDescription?.toString() == activity.getString(R.string.title_settings) }
+            click { it.contentDescription?.toString() == activity.getString(R.string.navigation_open) }
+            click { it.text?.toString() == activity.getString(R.string.title_settings) }
             awaitText("Notification")
             repeat(2) {
                 android.util.Log.i("NotificationSettingsTest", "Opening OS settings iteration=$it")

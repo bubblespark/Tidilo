@@ -416,8 +416,20 @@ fun LibraryScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onOpenNavigation, modifier = Modifier.padding(end = 4.dp).size(48.dp)) {
-                        Icon(Icons.Default.Menu, stringResource(R.string.navigation_open), tint = MaterialTheme.colorScheme.onBackground)
+                    Row {
+                        IconButton(onClick = onOpenNavigation, modifier = Modifier.padding(end = 4.dp).size(48.dp)) {
+                            Icon(Icons.Default.Menu, stringResource(R.string.navigation_open), tint = MaterialTheme.colorScheme.onBackground)
+                        }
+                        if (isDrillDown) {
+                            IconButton(onClick = { clearCollectionFilter() }, modifier = Modifier.size(48.dp)) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack,
+                                    stringResource(when (filterMode) {
+                                        LibraryFilterMode.COLLECTION -> R.string.collection_back_to_collections
+                                        LibraryFilterMode.RSS -> R.string.rss_back_to_feeds
+                                        else -> R.string.library_back_to_domains
+                                    }), tint = MaterialTheme.colorScheme.onBackground)
+                            }
+                        }
                     }
                 },
                 actions = {

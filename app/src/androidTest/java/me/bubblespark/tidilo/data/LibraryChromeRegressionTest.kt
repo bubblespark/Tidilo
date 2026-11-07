@@ -30,6 +30,7 @@ import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.ui.navigation.LibrarySearchAction
 import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
+import me.bubblespark.tidilo.ui.screens.library.SearchScreen
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.*
 import org.junit.Test
@@ -65,10 +66,76 @@ class LibraryChromeRegressionTest {
         check(target.config[SemanticsActions.OnClick].action?.invoke() == true)
     }
 
+    private suspend fun search(check: suspend (HeaderTestHost, ComponentActivity) -> Unit) {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        var ready = false
+        try {
+            host.main {
+                val model = ViewModelProvider(activity)[LibraryViewModel::class.java]
+                activity.setContent { TidiloTheme(darkTheme = true, dynamicColor = false, theme = AppTheme.DEFAULT) {
+                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                        SearchScreen(model)
+                    }
+                    SideEffect { ready = true }
+                } }
+            }
+            withTimeout(3000) { while (!ready) delay(20) }
+            host.instrumentation.waitForIdleSync()
+            delay(800)
+            host.instrumentation.waitForIdleSync()
+            check(host, activity)
+        } finally { host.main { activity.finish() } }
+    }
+
+    @Test fun searchBackButtonUsesReadableForegroundOnDarkHeader(): Unit = runBlocking {
+        search { host, activity ->
+            val icon = host.await(activity) { host.description(it, host.context.getString(R.string.common_back)) }
+            var offset = androidx.compose.ui.geometry.Offset.Zero
+            host.main {
+                offset = icon.layoutInfo.coordinates.localToScreen(androidx.compose.ui.geometry.Offset.Zero)
+            }
+            val size = icon.size
+            val bounds = androidx.compose.ui.geometry.Rect(offset, androidx.compose.ui.geometry.Size(size.width.toFloat(), size.height.toFloat()))
+            val bitmap = host.instrumentation.uiAutomation.takeScreenshot()
+            try {
+                var foreground = 0
+                var glyphPixel = android.graphics.Color.BLACK
+                for (y in bounds.top.roundToInt() until bounds.bottom.roundToInt()) {
+                    for (x in bounds.left.roundToInt() until bounds.right.roundToInt()) {
+                        val pixel = bitmap.getPixel(x, y)
+                        if (android.graphics.Color.red(pixel) >= 50 && android.graphics.Color.green(pixel) >= 50) {
+                            foreground++
+                            if (glyphPixel == android.graphics.Color.BLACK) {
+                                glyphPixel = pixel
+                            }
+                        }
+                    }
+                }
+                val title = host.await(activity) { host.text(it, host.context.getString(R.string.search_header_title)) }
+                val button = generateSequence(icon) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
+                val trailingSeparation = title.boundsInWindow.left - button.boundsInWindow.right
+                val density = activity.resources.displayMetrics.density
+
+                assertNotEquals("The back button icon must not be black (0xFF000000) on a dark header",
+                    android.graphics.Color.BLACK, glyphPixel)
+                assertTrue("The back button glyph must contrast with a dark header on SearchScreen (foreground pixels: $foreground)",
+                    foreground > 30)
+                assertTrue("Back navigation slot must retain 4dp trailing separation (actual: ${trailingSeparation / density}dp)",
+                    trailingSeparation >= 3.5f * density)
+            } finally { bitmap.recycle() }
+        }
+    }
+
     @Test fun menuGlyphUsesReadableForegroundOnDarkHeader(): Unit = runBlocking {
         library { host, activity ->
             val icon = host.await(activity) { host.description(it, host.context.getString(R.string.navigation_open)) }
-            val bounds = icon.boundsInWindow
+            var offset = androidx.compose.ui.geometry.Offset.Zero
+            host.main {
+                offset = icon.layoutInfo.coordinates.localToScreen(androidx.compose.ui.geometry.Offset.Zero)
+            }
+            val size = icon.size
+            val bounds = androidx.compose.ui.geometry.Rect(offset, androidx.compose.ui.geometry.Size(size.width.toFloat(), size.height.toFloat()))
             val bitmap = host.instrumentation.uiAutomation.takeScreenshot()
             try {
                 var foreground = 0

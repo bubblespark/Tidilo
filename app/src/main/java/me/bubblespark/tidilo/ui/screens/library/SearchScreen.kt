@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
+import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import androidx.paging.LoadState
@@ -272,7 +273,7 @@ fun SearchScreen(
         }, title = {
             Text(
                 text = stringResource(R.string.search_header_title),
-                style = MaterialTheme.typography.headlineMedium,
+                style = modernRaisedTextStyle(MaterialTheme.typography.headlineMedium),
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,

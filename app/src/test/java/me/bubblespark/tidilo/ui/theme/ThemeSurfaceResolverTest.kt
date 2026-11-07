@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.ui.theme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.config.AppTheme
 import org.junit.Assert.*
@@ -10,6 +11,39 @@ import org.junit.Test
 
 class ThemeSurfaceResolverTest {
     private val colors = lightColorScheme()
+
+    @Test fun modernPaletteIgnoresSystemColorsAndAlignsHeader() {
+        for (dark in listOf(false, true)) {
+            val first = lightColorScheme(primary = Color.Green)
+            val second = darkColorScheme(primary = Color.Blue)
+            val modern = resolveMaterialColors(first, dark, AppThemeStyle.Modern)
+            assertEquals(modern, resolveMaterialColors(second, dark, AppThemeStyle.Modern))
+            assertSame(first, resolveMaterialColors(first, dark, AppThemeStyle.Default))
+            val surfaces = resolveThemeSurfaces(AppTheme.MODERN, dark, modern)
+            assertEquals(if (dark) Color(0xFF1D1F20) else Color(0xFFF5F1E9), modern.background)
+            assertEquals(if (dark) Color(0xFFD4B06B) else Color(0xFF886225), modern.primary)
+            assertEquals(modern.background, surfaces.canvasColor)
+            assertEquals(modern.background, surfaces.resolve(SurfaceRole.HEADER).containerColor)
+            val textPairs = listOf(
+                modern.onBackground to modern.background,
+                modern.onSurface to modern.surfaceContainerHighest,
+                modern.onSurfaceVariant to modern.surfaceVariant,
+                modern.onPrimary to modern.primary,
+                modern.onPrimaryContainer to modern.primaryContainer,
+                modern.primary to modern.background,
+                surfaces.resolve(SurfaceRole.NAVIGATION_INDICATOR).let { it.contentColor to it.containerColor }
+            )
+            for ((foreground, background) in textPairs) {
+                val light = maxOf(foreground.luminance(), background.luminance())
+                val dark = minOf(foreground.luminance(), background.luminance())
+                assertTrue((light + 0.05f) / (dark + 0.05f) >= 4.5f)
+            }
+            assertEquals(
+                if (dark) Color(0xFF2B2C2D) else Color(0xFFFFFAF2),
+                surfaces.resolve(SurfaceRole.BOOKMARK_CARD).containerColor
+            )
+        }
+    }
 
     @Test fun decoratedZeroElevationKeepsFillAndBorder() {
         val preset = AppThemeStyle.Modern.copy(cardStyle = AppThemeStyle.Modern.cardStyle.copy(depth = 0.dp))
@@ -53,8 +87,8 @@ class ThemeSurfaceResolverTest {
     @Test fun explicitModeWinsOverSystemMode() {
         val theme = resolveThemeSurfaces(AppTheme.MODERN, true, colors)
         assertTrue(theme.isDark)
-        assertEquals(Color(0xFF181A1E), theme.canvasColor)
-        assertEquals(Color(0xFF22262B), theme.resolve(SurfaceRole.BOOKMARK_CARD).containerColor)
+        assertEquals(Color(0xFF1D1F20), theme.canvasColor)
+        assertEquals(Color(0xFF2B2C2D), theme.resolve(SurfaceRole.BOOKMARK_CARD).containerColor)
     }
 
     @Test fun rejectsNonFiniteOpacityAndNegativeElevation() {
@@ -120,7 +154,7 @@ class ThemeSurfaceResolverTest {
     @Test fun presetMaterialColorsRetainDynamicWhenUnspecified() {
         assertSame(colors, resolveMaterialColors(colors, false, AppThemeStyle.Default))
         val replacement = colors.copy(surfaceContainerHigh = Color.Cyan)
-        val preset = AppThemeStyle.Modern.copy(lightMaterialColors = replacement)
+        val preset = AppThemeStyle.Default.copy(lightMaterialColors = replacement)
         assertSame(replacement, resolveMaterialColors(colors, false, preset))
         assertSame(colors, resolveMaterialColors(colors, true, preset))
     }

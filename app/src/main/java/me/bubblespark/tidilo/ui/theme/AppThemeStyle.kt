@@ -198,10 +198,10 @@ data class AppThemeStyle(
         val Modern = AppThemeStyle(
             theme = AppTheme.MODERN,
             surfacePalette = ThemeSurfacePalette(
-                darkCanvasColor = Color(0xFF181A1E),
-                lightCanvasColor = Color(0xFFE8EEF2),
-                darkContainerColor = Color(0xFF22262B),
-                lightContainerColor = Color(0xFFFFFFFF)
+                darkCanvasColor = ModernDarkColorScheme.background,
+                lightCanvasColor = ModernLightColorScheme.background,
+                darkContainerColor = ModernDarkColorScheme.surfaceContainer,
+                lightContainerColor = ModernLightColorScheme.surfaceContainerLow
             ),
             cardStyle = ThemeCardStyle(
                 depth = 3.dp,
@@ -215,24 +215,24 @@ data class AppThemeStyle(
                 shape = RoundedCornerShape(12.dp),
                 useGradientFill = true,
                 colorMode = ChipColorMode.UNIFIED,
-                categoryIconTint = Color(0xFFF59E0B),
-                subcategoryIconTint = Color(0xFFF97316),
-                darkNeutralContainer = Color(0xFF161920),
-                lightNeutralContainer = Color(0xFFFFFFFF),
-                darkCategoryContent = Color(0xFFE2E8F0),
-                lightCategoryContent = Color(0xFF1E293B),
-                darkEntityContent = Color(0xFF94A3B8),
-                lightEntityContent = Color(0xFF475569),
+                categoryIconTint = Color(0xFFA47D40),
+                subcategoryIconTint = Color(0xFFA37C5F),
+                darkNeutralContainer = ModernDarkColorScheme.surfaceContainerLow,
+                lightNeutralContainer = ModernLightColorScheme.surfaceContainerLow,
+                darkCategoryContent = ModernDarkColorScheme.onSurface,
+                lightCategoryContent = ModernLightColorScheme.onSurface,
+                darkEntityContent = ModernDarkColorScheme.onSurfaceVariant,
+                lightEntityContent = ModernLightColorScheme.onSurfaceVariant,
                 treatment = SurfaceTreatment.DECORATED
             ),
             floatingBarStyle = ThemeFloatingBarStyle(
                 depth = 3.dp,
                 activeTabStyle = ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE,
                 useGradientFill = true,
-                darkActiveContainerColor = Color(0xFF22262B),
-                lightActiveContainerColor = Color.White,
-                darkActiveContentColor = Color(0xFFE2E8F0),
-                lightActiveContentColor = Color(0xFF1E293B),
+                darkActiveContainerColor = ModernDarkColorScheme.surfaceContainer,
+                lightActiveContainerColor = ModernLightColorScheme.surfaceContainerLow,
+                darkActiveContentColor = ModernDarkColorScheme.primary,
+                lightActiveContentColor = ModernLightColorScheme.primary,
                 treatment = SurfaceTreatment.DECORATED
             ),
             iconButtonStyle = ThemeIconButtonStyle(
@@ -241,7 +241,9 @@ data class AppThemeStyle(
                 toolbarActionPlate = IconButtonPlateStyle.PLAIN_ICON,
                 depth = 3.dp,
                 useGradientFill = true
-            )
+            ),
+            lightMaterialColors = ModernLightColorScheme,
+            darkMaterialColors = ModernDarkColorScheme
         )
 
         fun forTheme(theme: AppTheme): AppThemeStyle = when (theme) {

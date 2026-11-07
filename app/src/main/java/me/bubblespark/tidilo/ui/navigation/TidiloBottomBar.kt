@@ -82,6 +82,7 @@ import me.bubblespark.tidilo.ui.components.themeNavigationIndicator
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.ThemeSurfaceState
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
+import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 
 /**
  * M3 Expressive Floating Navigation Bar with Separated Action Button
@@ -330,10 +331,10 @@ fun TidiloBottomBar(
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Text(
                                                 text = stringResource(screen.titleRes),
-                                                style = MaterialTheme.typography.labelMedium.copy(
+                                                style = modernRaisedTextStyle(MaterialTheme.typography.labelMedium.copy(
                                                     fontSize = 10.sp,
                                                     lineHeight = 14.sp
-                                                ),
+                                                ), enabled = isSelected),
                                                 fontWeight = FontWeight.Bold,
                                                 color = activeContentColor,
                                                 maxLines = 1,

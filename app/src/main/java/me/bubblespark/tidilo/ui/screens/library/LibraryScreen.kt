@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
+import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import androidx.paging.PagingData
@@ -367,7 +368,7 @@ fun LibraryScreen(
                             text = title,
                             modifier = if (drillDown) Modifier.basicMarquee(initialDelayMillis = 2000)
                                 else Modifier,
-                            style = when {
+                            style = modernRaisedTextStyle(when {
                                 !drillDown || titleLength <= 6 -> MaterialTheme.typography.headlineMedium
                                 titleLength <= 9 -> MaterialTheme.typography.headlineSmall.copy(
                                     fontSize = 23.sp, lineHeight = 28.sp
@@ -378,7 +379,7 @@ fun LibraryScreen(
                                 else -> MaterialTheme.typography.titleMedium.copy(
                                     fontSize = 17.sp, lineHeight = 22.sp
                                 )
-                            },
+                            }),
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground,
                             maxLines = 1,

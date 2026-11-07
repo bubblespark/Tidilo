@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -65,16 +66,16 @@ fun TidiloTheme(
     content: @Composable () -> Unit
 ) {
     val style = remember(theme) { AppThemeStyle.forTheme(theme) }
-    val baseColorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    val colorScheme = resolveMaterialColors(darkTheme, style) {
+        when {
+            dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+                val context = LocalContext.current
+                if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            }
+            darkTheme -> DarkColorScheme
+            else -> LightColorScheme
         }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
     }
-
-    val colorScheme = resolveMaterialColors(baseColorScheme, darkTheme, style)
     val surfaces = remember(theme, darkTheme, colorScheme, style) {
         resolveThemeSurfaces(theme, darkTheme, colorScheme, style)
     }
@@ -89,5 +90,11 @@ fun TidiloTheme(
 }
 
 /** An explicit preset palette overrides the system palette; absent values retain Dynamic Color. */
-fun resolveMaterialColors(base: androidx.compose.material3.ColorScheme, darkTheme: Boolean, style: AppThemeStyle): androidx.compose.material3.ColorScheme =
-    (if (darkTheme) style.darkMaterialColors else style.lightMaterialColors) ?: base
+fun resolveMaterialColors(base: ColorScheme, darkTheme: Boolean, style: AppThemeStyle): ColorScheme =
+    resolveMaterialColors(darkTheme, style) { base }
+
+private inline fun resolveMaterialColors(
+    darkTheme: Boolean,
+    style: AppThemeStyle,
+    fallback: () -> ColorScheme
+): ColorScheme = (if (darkTheme) style.darkMaterialColors else style.lightMaterialColors) ?: fallback()

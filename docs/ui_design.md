@@ -566,7 +566,7 @@ For preset registration, editing points, parameter limits, and verification step
 `TidiloTheme` receives the selected `AppTheme` and resolves Material colors, Material shapes and `LocalThemeSurfaces` together. `AppConfig` continues to persist the existing `default` and `modern` codes locally. A theme change updates composition values without keying or recreating navigation, scrolling state or editor drafts.
 
 - `AppThemeStyle` owns preset configuration, optional light/dark Material palettes, the named `ThemeShapeScale`, and per-role `SurfaceStyleOverride` values.
-- Unspecified Material palettes preserve the existing Dynamic Color behavior. Shipped Default and Modern presets keep their previous palettes and geometry.
+- Unspecified Material palettes preserve Dynamic Color. Modern provides fixed Material palettes for both appearances.
 - `ResolvedThemeSurfaces.resolve` supplies complete foreground/background pairs, shape, treatment, shadow/elevation, edge and fill values. Explicit applied dark mode is authoritative; isolated MaterialTheme previews use one centralized fallback.
 - `SurfaceTreatment` selects native or decorated drawing independently of elevation. A decorated surface at zero elevation retains its background, shape and edge. Shared click/long-click handling places shadows outside the content/ripple clip.
 - `TidiloSurface` owns Material background suppression and custom drawing. Feature screens do not make containers transparent or disable shadows based on depth.
@@ -595,7 +595,9 @@ Native Material consumers inherit their palette and shape defaults rather than s
 
 ### 8.5 Modern preset and verification boundaries
 
-Modern retains its neutral canvas (#181A1E dark, #E8EEF2 light), neutral shared containers (#22262B dark, #FFFFFF light), 3dp tactile depth, 26dp card corners and 12dp badge corners. Category/subcategory icon tints remain #F59E0B/#F97316. Settings, modal and editor roles that were flat before the migration remain flat; making them tactile is a separate visual change.
+Modern uses a fixed palette in both appearances. Dark uses a #1D1F20 canvas, #2B2C2D shared containers and a #D4B06B accent. Light uses a #F5F1E9 canvas, #FFFAF2 shared containers and a #886225 accent. The header shares the canvas base color and retains its scroll fade. Settings uses the same palette. Modern retains its 3dp tactile depth, 26dp card corners and 12dp badge corners.
+
+Selected navigation labels, screen titles and enabled primary action labels can opt into a 1dp downward text shadow. Settings text, body copy and badges retain their regular styling.
 
 Unit tests cover role resolution, zero elevation, semantic precedence, preset overrides, Material palette fallback and shape-scale propagation. Instrumentation fixtures use real components, actual painted-pixel assertions and theme switching with navigation/list/draft state. Building instrumentation does not prove visual parity: before/after capture, input, recreation and frame checks require a connected device. No whole-screen zero-overdraw or zero-GPU-cost guarantee is made.
 

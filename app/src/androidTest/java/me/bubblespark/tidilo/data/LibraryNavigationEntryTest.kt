@@ -23,35 +23,156 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LibraryNavigationEntryTest {
-    @Test fun domainDrillDownOffersBackAlongsideLibraryMenu(): Unit = runBlocking {
+    @Test fun domainDrillDownReplacesMenuWithUp(): Unit = runBlocking {
+        verifyGroupNavigation(me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.DOMAIN)
+    }
+
+    @Test fun emptyRssDrillDownReplacesMenuWithUp(): Unit = runBlocking {
+        verifyGroupNavigation(me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.RSS)
+    }
+
+    @Test fun emptyCollectionDrillDownReplacesMenuWithUp(): Unit = runBlocking {
+        verifyGroupNavigation(me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.COLLECTION)
+    }
+
+    @Test fun groupNavigationSurvivesPeekAndDetailReturn(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val model = ViewModelProvider(activity)[LibraryViewModel::class.java]
+        val prefs = host.context.getSharedPreferences("tidilo_library_prefs", android.content.Context.MODE_PRIVATE)
+        val snapshot = listOf("library_filter_mode", "library_view_mode").associateWith { prefs.getString(it, null) }
+        val scopeJob = model.viewModelScope.coroutineContext[Job]
+        val dao = me.bubblespark.tidilo.data.db.AppDatabase.getInstance(host.context).bookmarkDao()
+        val prefix = java.util.UUID.randomUUID().toString()
+        val domain = "$prefix.invalid"
+        val ids = (0..19).map { "$prefix-$it" }
+        try {
+            ids.forEachIndexed { index, id -> dao.insertOrUpdate(me.bubblespark.tidilo.data.db.BookmarkEntity(
+                id, "Group fixture $index", "https://$domain/$index", "Summary fixture $index",
+                createdAt = index.toLong(), updatedAt = 1)) }
+            host.main {
+                model.setViewMode(me.bubblespark.tidilo.ui.screens.library.LibraryViewMode.GRID)
+                model.setFilterMode(me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.DOMAIN)
+                model.selectDomainFilter(domain)
+            }
+            host.await(activity) { host.text(it, "Group fixture 19") }
+            delay(350)
+            host.capture("navigation-domain-up")
+            host.scroll(activity, 500f)
+            delay(400)
+            var visibleTitle = ""
+            var visibleTop = 0f
+            host.main {
+                val visible = host.nodes(activity).filter {
+                    it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text.startsWith("Group fixture") } == true &&
+                        it.boundsInRoot.top > 0f && it.boundsInRoot.bottom < activity.window.decorView.height
+                }.minBy { it.boundsInRoot.top }
+                visibleTitle = visible.config[SemanticsProperties.Text].single().text
+                visibleTop = visible.boundsInRoot.top
+                val card = generateSequence(visible) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnLongClick) != null }
+                assertTrue(card.config[SemanticsActions.OnLongClick].action!!.invoke())
+            }
+            host.await(activity) { host.text(it, host.context.getString(R.string.detail_action_ai_summary)) }
+            host.main { activity.onBackPressedDispatcher.onBackPressed() }
+            delay(300)
+            org.junit.Assert.assertEquals("Back must dismiss Peek before leaving the group", domain, model.selectedDomainFilter.value)
+            host.main {
+                org.junit.Assert.assertFalse(host.nodes(activity).any { host.text(it, host.context.getString(R.string.detail_action_ai_summary)) })
+                val visible = host.nodes(activity).first { host.text(it, visibleTitle) }
+                val card = generateSequence(visible) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
+                assertTrue(card.config[SemanticsActions.OnClick].action!!.invoke())
+            }
+            host.await(activity) { host.text(it, host.context.getString(R.string.detail_title)) }
+            delay(350)
+            host.main { activity.onBackPressedDispatcher.onBackPressed() }
+            host.await(activity) { host.text(it, visibleTitle) }
+            delay(400)
+            host.main {
+                org.junit.Assert.assertEquals(domain, model.selectedDomainFilter.value)
+                val restored = host.nodes(activity).first { host.text(it, visibleTitle) }
+                org.junit.Assert.assertEquals("Detail Back must retain the group scroll position", visibleTop, restored.boundsInRoot.top, 2f)
+                activity.onBackPressedDispatcher.onBackPressed()
+            }
+            host.await(activity) { host.description(it, host.context.getString(R.string.navigation_open)) }
+            org.junit.Assert.assertNull(model.selectedDomainFilter.value)
+        } finally {
+            host.main { activity.viewModelStore.clear(); activity.finish() }
+            scopeJob?.cancelAndJoin()
+            ids.forEach { dao.deleteById(it) }
+            val restore = prefs.edit()
+            snapshot.forEach { (key, value) -> if (value == null) restore.remove(key) else restore.putString(key, value) }
+            assertTrue(restore.commit())
+        }
+    }
+    private suspend fun verifyGroupNavigation(mode: me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode) {
         val host = HeaderTestHost()
         val activity = host.launch()
         val model = ViewModelProvider(activity)[LibraryViewModel::class.java]
         val prefs = host.context.getSharedPreferences("tidilo_library_prefs", android.content.Context.MODE_PRIVATE)
         val previous = prefs.getString("library_filter_mode", null)
         val scopeJob = model.viewModelScope.coroutineContext[Job]
-        try {
-            host.main {
-                model.setFilterMode(me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.DOMAIN)
-                model.selectDomainFilter("navigation.invalid")
+        val id = java.util.UUID.randomUUID().toString()
+        val collectionDao = me.bubblespark.tidilo.data.db.AppDatabase.getInstance(host.context).collectionDao()
+        val backLabel = host.context.getString(when (mode) {
+            me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.COLLECTION -> R.string.collection_back_to_collections
+            me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.RSS -> R.string.rss_back_to_feeds
+            else -> R.string.library_back_to_domains
+        })
+        fun selectGroup() {
+            when (mode) {
+                me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.COLLECTION -> model.selectCollectionFilter(id)
+                me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.RSS -> model.selectRssFeedFilter(
+                    me.bubblespark.tidilo.data.db.RssFeedEntity(id, "https://navigation.invalid/$id", "Navigation fixture"))
+                else -> model.selectDomainFilter("navigation.invalid")
             }
-            val back = host.await(activity) { host.description(it, host.context.getString(R.string.library_back_to_domains)) }
+        }
+        fun assertCleared() {
+            org.junit.Assert.assertNull(model.selectedDomainFilter.value)
+            org.junit.Assert.assertNull(model.selectedRssFeedFilter.value)
+            org.junit.Assert.assertNull(model.selectedCollectionId.value)
+            org.junit.Assert.assertEquals(mode, model.filterMode.value)
+        }
+        try {
+            if (mode == me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.COLLECTION) {
+                collectionDao.insert(me.bubblespark.tidilo.data.db.CollectionEntity(
+                    id, "Navigation fixture", "", "folder", null, 0, 1, 1))
+                kotlinx.coroutines.withTimeout(8000) {
+                    while (model.collectionState.value.rows.none { it.collection.id == id }) delay(20)
+                }
+                host.main { model.setFilterMode(mode) }
+                host.await(activity) { host.text(it, "Navigation fixture") }
+            }
+            host.main { model.setFilterMode(mode); selectGroup() }
+            val back = host.await(activity) { host.description(it, backLabel) }
             host.main {
-                assertTrue(host.nodes(activity).any { host.description(it, host.context.getString(R.string.navigation_open)) })
+                org.junit.Assert.assertFalse("Group navigation must replace Menu with Up",
+                    host.nodes(activity).any { host.description(it, host.context.getString(R.string.navigation_open)) })
                 val button = generateSequence(back) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
                 assertTrue(button.config[SemanticsActions.OnClick].action!!.invoke())
-                org.junit.Assert.assertNull(model.selectedDomainFilter.value)
+                assertCleared()
             }
+            val menu = host.await(activity) { host.description(it, host.context.getString(R.string.navigation_open)) }
+            host.main {
+                val button = generateSequence(menu) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
+                assertTrue(button.config[SemanticsActions.OnClick].action!!.invoke())
+            }
+            host.await(activity) { host.text(it, host.context.getString(R.string.app_name)) }
+            host.main { activity.onBackPressedDispatcher.onBackPressed() }
+            delay(350)
+            host.main { selectGroup() }
+            host.await(activity) { host.description(it, backLabel) }
+            host.main { activity.onBackPressedDispatcher.onBackPressed(); assertCleared() }
+            host.await(activity) { host.description(it, host.context.getString(R.string.navigation_open)) }
         } finally {
             host.main { activity.viewModelStore.clear(); activity.finish() }
             scopeJob?.cancelAndJoin()
+            collectionDao.delete(id)
             val restore = prefs.edit()
             if (previous == null) restore.remove("library_filter_mode") else restore.putString("library_filter_mode", previous)
             assertTrue(restore.commit())
             org.junit.Assert.assertEquals(previous, prefs.getString("library_filter_mode", null))
         }
     }
-
     @Test fun searchHistoryEndsWithoutObsoleteNavigationClearance(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()

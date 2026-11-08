@@ -46,10 +46,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.CompositionLocalProvider
@@ -416,21 +414,16 @@ fun LibraryScreen(
                     }
                 },
                 navigationIcon = {
-                    Row {
-                        IconButton(onClick = onOpenNavigation, modifier = Modifier.padding(end = 4.dp).size(48.dp)) {
-                            Icon(Icons.Default.Menu, stringResource(R.string.navigation_open), tint = MaterialTheme.colorScheme.onBackground)
-                        }
-                        if (isDrillDown) {
-                            IconButton(onClick = { clearCollectionFilter() }, modifier = Modifier.size(48.dp)) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack,
-                                    stringResource(when (filterMode) {
-                                        LibraryFilterMode.COLLECTION -> R.string.collection_back_to_collections
-                                        LibraryFilterMode.RSS -> R.string.rss_back_to_feeds
-                                        else -> R.string.library_back_to_domains
-                                    }), tint = MaterialTheme.colorScheme.onBackground)
-                            }
-                        }
-                    }
+                    LibraryNavigationButton(
+                        isDrillDown = isDrillDown,
+                        backContentDescription = stringResource(when (filterMode) {
+                            LibraryFilterMode.COLLECTION -> R.string.collection_back_to_collections
+                            LibraryFilterMode.RSS -> R.string.rss_back_to_feeds
+                            else -> R.string.library_back_to_domains
+                        }),
+                        onOpenNavigation = onOpenNavigation,
+                        onNavigateUp = { clearCollectionFilter() }
+                    )
                 },
                 actions = {
                     // View mode toggle menu button

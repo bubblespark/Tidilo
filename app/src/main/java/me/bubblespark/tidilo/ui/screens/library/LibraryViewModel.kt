@@ -62,6 +62,23 @@ internal class LibraryPagingSession(
     var users: Int = 0
 }
 
+internal class SearchFocusRequestTracker {
+    private val _trigger = MutableStateFlow(0L)
+    val trigger: StateFlow<Long> = _trigger.asStateFlow()
+    private val sequence = java.util.concurrent.atomic.AtomicLong(0L)
+
+    fun requestFocus(): Long {
+        val next = sequence.incrementAndGet()
+        _trigger.value = next
+        return next
+    }
+
+    fun consumeFocus(token: Long): Boolean {
+        if (token <= 0L) return false
+        return _trigger.compareAndSet(token, 0L)
+    }
+}
+
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, FlowPreview::class)
 class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle()) : ViewModel() {
 
@@ -77,11 +94,15 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         .debounce { if (it.isBlank()) 0L else 250L }
         .distinctUntilChanged()
 
-    private val _searchFocusTrigger = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val searchFocusTrigger: SharedFlow<Unit> = _searchFocusTrigger.asSharedFlow()
+    private val searchFocusTracker = SearchFocusRequestTracker()
+    val searchFocusTrigger: StateFlow<Long> = searchFocusTracker.trigger
 
     fun triggerSearchFocus() {
-        _searchFocusTrigger.tryEmit(Unit)
+        searchFocusTracker.requestFocus()
+    }
+
+    fun consumeSearchFocus(token: Long) {
+        searchFocusTracker.consumeFocus(token)
     }
 
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())

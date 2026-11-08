@@ -132,18 +132,21 @@ fun SearchScreen(
     val currentViewMode by rememberUpdatedState(viewMode)
     // Lazy input may be detached: bring its item back before requesting keyboard focus.
     LaunchedEffect(viewModel) {
-        viewModel.searchFocusTrigger.collect {
-            peekBookmark = null
-            when {
-                currentQuery.isBlank() -> historyState.scrollToItem(0)
-                currentViewMode == LibraryViewMode.GRID -> resultGridState.scrollToItem(0)
-                else -> resultListState.scrollToItem(0)
+        viewModel.searchFocusTrigger
+            .filter { it > 0L }
+            .collect { token ->
+                peekBookmark = null
+                when {
+                    currentQuery.isBlank() -> historyState.scrollToItem(0)
+                    currentViewMode == LibraryViewMode.GRID -> resultGridState.scrollToItem(0)
+                    else -> resultListState.scrollToItem(0)
+                }
+                snapshotFlow { inputAttachment }.first { it != null }
+                withFrameNanos { }
+                focusRequester.requestFocus()
+                keyboardController?.show()
+                viewModel.consumeSearchFocus(token)
             }
-            snapshotFlow { inputAttachment }.first { it != null }
-            withFrameNanos { }
-            focusRequester.requestFocus()
-            keyboardController?.show()
-        }
     }
 
     // Pre-parse and memoize search tokens once per screen to eliminate scroll overhead

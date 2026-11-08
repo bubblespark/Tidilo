@@ -287,4 +287,42 @@ class LibrarySearchTest {
         assertTrue(LibraryViewModel.filterBookmarksByDomain(domainBookmarks, "").isEmpty())
         assertTrue(LibraryViewModel.filterBookmarksByDomain(domainBookmarks, "   ").isEmpty())
     }
+
+    @Test
+    fun testSearchFocusRequestTrackerRetainsPreNavigationRequestUntilConsumed() {
+        val tracker = me.bubblespark.tidilo.ui.screens.library.SearchFocusRequestTracker()
+        assertEquals(0L, tracker.trigger.value)
+
+        // Triggered before collector is attached (e.g., before navigating to SearchScreen)
+        val token = tracker.requestFocus()
+        assertEquals(1L, token)
+        assertEquals(1L, tracker.trigger.value)
+
+        // Consumed once SearchScreen finishes focusing
+        assertTrue(tracker.consumeFocus(token))
+        assertEquals(0L, tracker.trigger.value)
+
+        // Subsequent duplicate consume is a no-op (e.g., returning from BookmarkDetailScreen)
+        org.junit.Assert.assertFalse(tracker.consumeFocus(token))
+        assertEquals(0L, tracker.trigger.value)
+    }
+
+    @Test
+    fun testSearchFocusRequestTrackerPreservesNewerTokenOnStaleConsume() {
+        val tracker = me.bubblespark.tidilo.ui.screens.library.SearchFocusRequestTracker()
+        val firstToken = tracker.requestFocus()
+        val secondToken = tracker.requestFocus()
+
+        assertEquals(1L, firstToken)
+        assertEquals(2L, secondToken)
+        assertEquals(2L, tracker.trigger.value)
+
+        // Stale consumption of firstToken must not wipe secondToken
+        org.junit.Assert.assertFalse(tracker.consumeFocus(firstToken))
+        assertEquals(2L, tracker.trigger.value)
+
+        // Consuming current secondToken resets to 0L
+        assertTrue(tracker.consumeFocus(secondToken))
+        assertEquals(0L, tracker.trigger.value)
+    }
 }

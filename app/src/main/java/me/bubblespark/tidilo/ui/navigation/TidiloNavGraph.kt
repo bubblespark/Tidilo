@@ -108,6 +108,7 @@ fun TidiloNavGraph(
                 viewModel = libraryViewModel,
                 onOpenNavigation = onOpenNavigation,
                 onNavigateToSearch = {
+                    libraryViewModel.triggerSearchFocus()
                     navController.navigate(Screen.Search.route) { launchSingleTop = true }
                 },
                 onNavigateToDetail = { bookmarkId ->

@@ -10,6 +10,8 @@ Room version 16 adds `collections` and `bookmark_collection_cross_ref` through t
 
 CollectionDao returns aggregate counts through Flow and collection bookmarks through PagingSource. CollectionRepository validates writes and saves membership sets atomically. Empty collections remain visible. Counts and pages apply the same NSFW visibility rule and include all bookmark sources. Collections and their bookmarks sort by creation time descending, then ID descending. Membership changes do not change collection creation order.
 
+Collection membership exempts RSS articles from automatic age deletion while any membership remains. Removing the last membership resumes the normal age rule without restarting its clock; a Like still protects the article. Image cache remains disposable under [Daily Library Maintenance](library_maintenance.md).
+
 Normal bookmark upserts preserve memberships. Explicit URL replacement transfers the affected memberships to the surviving bookmark ID within the existing write transaction. Failed replacement or membership writes roll back completely. A collection deleted while being edited cannot be recreated by Save.
 
 Deleting a collection removes its memberships and keeps every bookmark. Moving a bookmark to trash removes all memberships and stores `isLiked = false` in its trash snapshot. Unrelated engagement counters and timestamps remain intact. Collection or Like restoration is outside this feature.

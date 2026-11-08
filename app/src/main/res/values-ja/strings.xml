@@ -1,4 +1,19 @@
 <resources>
+    <string name="trash_title">ゴミ箱</string>
+    <string name="trash_empty">ゴミ箱は空です</string>
+    <string name="trash_load_failed">ゴミ箱を読み込めませんでした。</string>
+    <string name="trash_restore">復元</string>
+    <string name="trash_duplicate">Libraryに存在</string>
+    <string name="trash_more_actions">ブックマークのオプション</string>
+    <string name="trash_restore_title">ブックマークを復元しますか？</string>
+    <string name="trash_restore_message">このブックマークをLibraryに復元しますか？</string>
+    <string name="trash_delete_title">完全に削除しますか？</string>
+    <string name="trash_delete_message">このブックマークを完全に削除します。この操作は取り消せません。</string>
+    <string name="trash_import_pending">このURLには未完了のインポートがあります。解決してから復元してください。</string>
+    <string name="trash_identity_conflict">既存のアイテムと競合しているため復元できません。</string>
+    <string name="trash_missing">このアイテムは現在利用できません。</string>
+    <string name="trash_restored">ブックマークを復元しました。</string>
+    <string name="trash_deleted">ブックマークを完全に削除しました。</string>
     <string name="navigation_open">ナビゲーションを開く</string>
     <string name="navigation_filters">フィルター</string>
     <string name="navigation_manual_import">手動インポート</string>
@@ -299,11 +314,8 @@
     <string name="rss_delete_trigger_message">取得時刻 %1$s を削除しますか？</string>
     <string name="rss_no_feeds">購読中のフィードはありません</string>
     <string name="rss_direct_mode">Direct</string>
-    <string name="rss_max_saved_items">最大保存件数</string>
     <string name="rss_enabled">有効</string>
-    <string name="rss_retention_compact">最大 %1$d件</string>
-    <string name="rss_retention_input">保存件数 (10–500)</string>
-    <string name="rss_unlimited">無制限</string>
+    <string name="rss_retention_compact">未読10日・既読30日</string>
     <string name="rss_edit">フィードを編集</string>
     <string name="rss_delete">フィードを削除</string>
     <string name="rss_save">保存</string>
@@ -311,10 +323,8 @@
     <string name="rss_register">登録</string>
     <string name="rss_register_existing_title">フィードを再開しますか？</string>
     <string name="rss_register_existing_count">保存済み記事が%1$d件あります。再登録すると同じフィードとして継続します。</string>
-    <string name="rss_register_existing_limit">新着を含め最大%1$d件が保持されます。定期取得または手動取得時の整理により、制限を超える古い記事はごみ箱を経由せず完全に削除されます。</string>
-    <string name="rss_register_existing_unlimited">保存済み記事は件数制限による自動削除を行わず保持されます。</string>
     <string name="rss_feed_url">フィードURL</string>
-    <string name="rss_retention_note">上限を超える古い記事はごみ箱を経由せず完全に削除されます。Directモードの取得には影響しません。</string>
+    <string name="rss_retention_note">未読のRSS記事は取り込みから10日、既読の記事は最終操作から30日後の定期整理で、ごみ箱を経由せず完全に削除されます。詳細表示・ブラウザ起動・要約プレビューで期限が延長されます。いいねまたはCollection登録済みの記事は自動削除されません。</string>
     <string name="rss_delete_note">取得を停止し未開始のタスクを削除します。保存済み記事はそのまま残ります。</string>
     <string name="rss_url_change_note">URLを変更すると新しい購読として登録されます。古いフィードの保存済み記事は残ります。</string>
     <string name="rss_initial_title">フィードを登録しました</string>

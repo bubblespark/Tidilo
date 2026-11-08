@@ -11,6 +11,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.consumeAsFlow
 import me.bubblespark.tidilo.data.OgImageManager
 
 const val DEFAULT_OG_ASPECT_RATIO = 1.91f
@@ -72,13 +76,19 @@ fun rememberOgImage(
         produceState(initialValue = initialOgImageState(cached, ogFilename)) {
             if (domain != null && ogFilename != null) {
                 coroutineScope {
-                    launch {
-                        OgImageManager.observeExactImageUpdates(ogFilename).collect {
-                            OgImageManager.getCachedOgImageBitmap(domain, ogFilename)?.let { value = resolvedOgImageState(it) }
-                        }
+                    val updates = Channel<Unit>(Channel.CONFLATED)
+                    // Subscribe before the initial fetch so eviction cannot be missed during loading.
+                    launch(start = CoroutineStart.UNDISPATCHED) {
+                        OgImageManager.observeExactImageUpdates(ogFilename).collect { updates.send(Unit) }
                     }
-                    if (cached == null) {
-                        value = resolvedOgImageState(OgImageManager.loadOrFetchOgImage(context, url, domain, ogImageUrl))
+                    updates.trySend(Unit)
+                    updates.consumeAsFlow().collectLatest {
+                        val available = OgImageManager.getCachedOgImageBitmap(domain, ogFilename)
+                        if (available != null) value = resolvedOgImageState(available)
+                        else {
+                            value = initialOgImageState(null, ogFilename)
+                            value = resolvedOgImageState(OgImageManager.loadOrFetchOgImage(context, url, domain, ogImageUrl))
+                        }
                     }
                 }
             }

@@ -108,6 +108,7 @@ fun TidiloNavGraph(
                 viewModel = libraryViewModel,
                 onOpenNavigation = onOpenNavigation,
                 onNavigateToSearch = {
+                    libraryViewModel.triggerSearchFocus()
                     navController.navigate(Screen.Search.route) { launchSingleTop = true }
                 },
                 onNavigateToDetail = { bookmarkId ->
@@ -246,6 +247,11 @@ fun TidiloNavGraph(
                         launchSingleTop = true
                     }
                 }
+            )
+        }
+        composable(Screen.Trash.route) {
+            me.bubblespark.tidilo.ui.screens.trash.TrashScreen(
+                onNavigateBack = dropUnlessResumed { navController.popBackStack() }
             )
         }
     }

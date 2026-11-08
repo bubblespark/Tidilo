@@ -1,5 +1,7 @@
 # UI Design & Material 3 Expressive Specification
 
+Trash list rows, overflow actions and confirmations are specified in [Trash](trash.md). Rows have no tap action; they use the existing header and shared dialog/menu surface roles with explicit theme foreground colors.
+
 The Collection library, prototype-derived horizontal cards, editor and bookmark assignment sheets are specified in [Manual Collections](collections.md).
 
 OS notification channels and the Settings > Notification system-settings entry are specified in [Android OS Notifications](notifications.md). The entry opens system settings directly, without an intermediate dialog. The Library rail opens the separate in-app Notification list; see [Library Navigation](library_navigation.md).
@@ -119,7 +121,7 @@ Library is the only root destination. Its top-left menu opens `ModalWideNavigati
 
 The rail header fixes the application name and `ic_notifications` action above its scroll content. Search precedes the Filters section, followed by Newest first, Domain, RSS and Collection. Manual Import and Settings are bottom-aligned within that same scroll region, not pinned outside it. Each actionable row has an icon and label. See [Library Navigation](library_navigation.md) for actions, timestamp formatting and error recovery behavior.
 
-Library retains its title/subtitle, exposes only the existing dashboard/gear display-mode selector on the right, and has a fixed compact Search action at bottom-right. Search retains its scrolling input, history, tag selector and feedback layout; it has no separate floating action or root tab.
+Library retains its title/subtitle, exposes only the existing dashboard/gear display-mode selector on the right, and has a fixed compact Search action at bottom-right. Search retains its scrolling input, history, tag selector and feedback layout; it automatically focuses the search input and requests the keyboard on entry from Library or return from Tag Selection, and has no separate floating action or root tab.
 
 ### 6.2 `BookmarkItemCard`
 - **Shape**: `RoundedCornerShape(24.dp)`.
@@ -262,7 +264,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 - **Page Transition Animations (`AnimatedContent` & `AnimatedVisibility`)**:
   - **Forward and Backward Transitions**: Domain and RSS grid/drill-down navigation uses a symmetric crossfade (220ms in, 180ms out, EaseInOutCubic). Loading, error, and empty content render inside the persistent transition host.
   - **Filter Mode Transition**: Uses the same crossfade between Newest First, Domain, and RSS destinations.
-  - **Header Elements**: Back button expands/shrinks horizontally with alpha fade in `AnimatedVisibility`; header title and subtitle crossfade via `AnimatedContent`. Subtitle text and accent are one immutable presentation, so outgoing bookmark counts retain their color throughout fade-out. Counts are observed for the destination identity; known collection counts seed drill-down headers without an intermediate Loading label.
+  - **Header Elements**: Library uses one persistent 48dp leading navigation button with 4dp trailing padding: Menu at overview level, Up inside Domain, RSS and Collection groups. Its decorative glyphs crossfade symmetrically over 220ms with EaseInOutCubic; button bounds and title position remain fixed. The current hierarchy owns the action and sole accessible label throughout the transition. Initial composition has no entrance transition, and disabled system animations settle immediately. Header title and subtitle crossfade via `AnimatedContent`. Subtitle text and accent are one immutable presentation, so outgoing bookmark counts retain their color throughout fade-out. Counts are observed for the destination identity; known collection counts seed drill-down headers without an intermediate Loading label.
   - **Scroll Position Memory**: Grid scroll state (`domainGridState`) is preserved when popping back from a drill-down list, while the drill-down list resets to top (`scrollToItem(0)`) upon selection.
 
 ### 6.9 `FrostedHeaderContainer`
@@ -301,7 +303,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 - **Secondary Actions & Toolbar Buttons**:
   - Header Icon Buttons: 48dp interactive slots (Library menu and display mode, Notification overflow actions, Reset Wrench in GenerateContentRequest). Title slots take the remaining width so actions stay visible at large font sizes.
 - **Unified Screens**:
-  - Library has a menu button. Search and Notification use the shared Back header; the Import overview is removed.
+  - Library has a menu button. Search and Notification use the shared Back header; the Import overview is removed. Search automatically focuses the search input and shows the software keyboard when entered from Library or returning from Tag Selection, while returning from Bookmark Detail preserves the scroll position without re-focusing.
   - Sub-Screens with Back Button: Search, Notification, `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `NsfwSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `StorageScreen`, `RssSettingsScreen`, `BookmarkAiReviewScreen`. Library Domain/RSS drill-downs also show Back; Library's root uses its menu action.
 - **Visibility Policy**:
   - `hideHeaderOnScroll` defaults to false. Library and Search explicitly enable it and reuse MainActivity's `LocalBarsVisible` signal. Notification, Settings and the other secondary pages keep fixed headers.

@@ -34,5 +34,5 @@ data class RssFeedEntity(
 data class RssSeenItemEntity(val feedId: String, val itemKey: String, val url: String)
 
 /** An outbox keeps failed post-commit image removal retryable. */
-@Entity(tableName = "rss_image_cleanup")
-data class RssImageCleanupEntity(@PrimaryKey val imageUrl: String, val articleUrl: String)
+@Entity(tableName = "rss_image_cleanup", primaryKeys = ["imageUrl", "articleUrl"])
+data class RssImageCleanupEntity(val imageUrl: String, val articleUrl: String)

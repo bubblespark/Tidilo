@@ -43,16 +43,16 @@ class RssIngestionTest {
             assertTrue(db.rssDao().feed(feed.id)!!.deleted)
             store.registerFeed(resumed, store.registrationSnapshot(feed.url))
             ingestPreparedFixture(db, resumed, emptyList(), 300)
-            assertEquals(10, db.rssDao().savedCount(feed.id))
+            assertEquals(21, db.rssDao().savedCount(feed.id))
             assertEquals(feed.id, db.rssDao().feedByUrl(feed.url)!!.id)
             assertEquals(1, db.rssDao().activeFeeds().size)
             assertTrue(db.rssDao().hasSeen(feed.id, entry(1).key, entry(1).url))
-            assertNull(db.bookmarkDao().getBookmarkByUrl(entry(1).url))
+            assertNotNull(db.bookmarkDao().getBookmarkByUrl(entry(1).url))
             db.rssDao().putFeed(resumed.copy(deleted = true, revision = 3))
             val unlimited = resumed.copy(retentionLimit = null, revision = 4)
             store.registerFeed(unlimited, store.registrationSnapshot(feed.url))
             ingestPreparedFixture(db, unlimited, emptyList(), 400)
-            assertEquals(10, db.rssDao().savedCount(feed.id))
+            assertEquals(21, db.rssDao().savedCount(feed.id))
         } finally { db.close() }
     }
     @Test fun disablingSkipsAcquisitionAndStaleIngestionButKeepsSavedBookmarks() = runBlocking {
@@ -84,21 +84,14 @@ class RssIngestionTest {
         assertNull(me.bubblespark.tidilo.data.rss.RssScheduler.constraints(false).requiredNetworkRequest)
     }
 
-    @Test fun failedRetentionRollsBackReceiptsAndContent() = runBlocking {
+    @Test fun legacyCountDoesNotRejectIngestion() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
         try {
             val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", retentionLimit = 1)
             db.rssDao().putFeed(feed)
-            try {
-                ingestPreparedFixture(db, feed, listOf(entry(1)), 100)
-                fail("Invalid retention must roll back")
-            } catch (_: IllegalArgumentException) { }
-            assertEquals(0, db.bookmarkDao().getCount())
-            assertFalse(db.rssDao().hasSeen(feed.id, entry(1).key, entry(1).url))
-            val repaired = feed.copy(retentionLimit = 10)
-            db.rssDao().putFeed(repaired)
-            assertTrue(ingestPreparedFixture(db, repaired, listOf(entry(1)), 200))
+            assertTrue(ingestPreparedFixture(db, feed, listOf(entry(1)), 100))
             assertEquals(1, db.bookmarkDao().getCount())
+            assertTrue(db.rssDao().hasSeen(feed.id, entry(1).key, entry(1).url))
         } finally { db.close() }
     }
 
@@ -122,19 +115,19 @@ class RssIngestionTest {
         } finally { db.close() }
     }
     private fun entry(id: Int) = RssEntry("id:$id", "https://rss.example/$id", "Post $id", "Text", "Text", null, id.toLong())
-    @Test fun directImportsWithoutQueueAndRetentionPreventsReplay() = runBlocking {
+    @Test fun directImportsIgnoreLegacyCountAndReceiptsPreventReplay() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
         try {
             val feed = RssFeedEntity("feed", "https://rss.example/feed", "Feed", retentionLimit = 10)
             db.rssDao().putFeed(feed)
             val store = RssIngestionStore(db)
             assertTrue(ingestPreparedFixture(db, feed, (1..20).map(::entry), 100))
-            assertEquals(10, db.bookmarkDao().getCount())
+            assertEquals(20, db.bookmarkDao().getCount())
             assertEquals(0, db.importTaskDao().getCount())
-            assertNull(db.bookmarkDao().getBookmarkByUrl(entry(1).url))
+            assertNotNull(db.bookmarkDao().getBookmarkByUrl(entry(1).url))
             db.bookmarkDao().deleteById(db.bookmarkDao().getBookmarkByUrl(entry(20).url)!!.id)
             ingestPreparedFixture(db, feed, (1..20).map(::entry), 200)
-            assertEquals(9, db.bookmarkDao().getCount())
+            assertEquals(19, db.bookmarkDao().getCount())
         } finally { db.close() }
     }
     @Test fun concurrentFetchesSaveOnceAndDoNotOverwriteManualBookmarks() = runBlocking {
@@ -174,7 +167,6 @@ class RssIngestionTest {
             store.complete(feed, task, me.bubblespark.tidilo.parser.PreparedArticle(entry.url, entry.title,
                 "rss.example", entry.description, entry.bodySnippet, entry.imageUrl, false))
         }
-        store.enforceRetention(feed.id)
         true
     }
 

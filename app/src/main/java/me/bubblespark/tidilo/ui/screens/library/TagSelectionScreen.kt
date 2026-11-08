@@ -208,6 +208,7 @@ fun TagSelectionScreen(
                 ?: id
         }.toSet()
         viewModel.updateQueryWithSelectedTags(tagsToApply)
+        viewModel.triggerSearchFocus()
         onNavigateBack()
     }
 

@@ -6,6 +6,10 @@ import androidx.room.withTransaction
 import me.bubblespark.tidilo.data.db.updateBookmarkDetails
 import me.bubblespark.tidilo.data.db.logicalBookmarkTag
 import me.bubblespark.tidilo.data.db.moveBookmarkToTrash
+import me.bubblespark.tidilo.data.db.restoreTrashedBookmark
+import me.bubblespark.tidilo.data.db.deleteTrashedBookmark
+import me.bubblespark.tidilo.data.db.TrashBookmarkRow
+import me.bubblespark.tidilo.data.db.TrashMutationResult
 import me.bubblespark.tidilo.data.db.updateDomainNsfwWithPolicy
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
@@ -107,6 +111,13 @@ class BookmarkRepository private constructor(context: Context) {
         }
     }
 
+    /** Waits for startup attempts to settle before readers subscribe again. */
+    suspend fun retryInitializationAndAwait() {
+        initializationJob?.join()
+        retryInitialization()
+        initializationJob?.join()
+    }
+
     init {
         retryInitialization()
     }
@@ -154,7 +165,6 @@ class BookmarkRepository private constructor(context: Context) {
         repositoryScope.launch {
             DomainPolicyManager.registerDomain(domain)
             warmUpDomainIconsAsync(listOf(savedItem))
-            if (savedItem.rssFeedId != null) me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).cleanup()
         }
     }
 
@@ -221,6 +231,17 @@ class BookmarkRepository private constructor(context: Context) {
      */
     suspend fun moveToTrash(bookmarkId: String): Boolean = withContext(Dispatchers.IO) {
         database.moveBookmarkToTrash(bookmarkId, System.currentTimeMillis(), MAX_TRASH_CAPACITY)
+    }
+
+    fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> =
+        trashBookmarkQuery(isInitialized, initializationFailure) { trashDao.observeTrash(showNsfw) }
+
+    suspend fun restoreFromTrash(id: String): TrashMutationResult = withContext(Dispatchers.IO) {
+        database.restoreTrashedBookmark(id)
+    }
+
+    suspend fun deleteFromTrash(id: String): TrashMutationResult = withContext(Dispatchers.IO) {
+        database.deleteTrashedBookmark(id)
     }
 
     /**

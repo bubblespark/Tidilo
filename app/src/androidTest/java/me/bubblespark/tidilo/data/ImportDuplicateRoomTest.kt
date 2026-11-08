@@ -67,7 +67,7 @@ class ImportDuplicateRoomTest {
         } finally { job.cancel(); job.join() }
     }
 
-    @Test fun recoveredPreparedRssSaveTrimsFeedAndUpdatesUnpublishedSummary() = runBlocking {
+    @Test fun recoveredPreparedRssSaveKeepsArticlesAndUpdatesUnpublishedSummary() = runBlocking {
         val job = kotlinx.coroutines.SupervisorJob()
         val feedId = "recovered-feed"
         database.rssDao().putFeed(me.bubblespark.tidilo.data.db.RssFeedEntity(
@@ -99,11 +99,11 @@ class ImportDuplicateRoomTest {
             withTimeout(5000) {
                 while (database.importTaskDao().getCount() != 0) delay(10)
             }
-            assertEquals(10, database.bookmarkDao().getCount())
-            assertNull(database.bookmarkDao().getBookmarkById("old-0"))
+            assertEquals(12, database.bookmarkDao().getCount())
+            assertNotNull(database.bookmarkDao().getBookmarkById("old-0"))
             assertNotNull(database.bookmarkDao().getBookmarkById(task.id))
-            assertNull(database.bookmarkDao().getBookmarkById(oldest.id))
-            assertTrue(database.rssDao().cleanupItems().any { it.imageUrl == oldest.ogImageUrl })
+            assertNotNull(database.bookmarkDao().getBookmarkById(oldest.id))
+            assertTrue(database.rssDao().cleanupItems().isEmpty())
             assertEquals("DIRECT", notifications.items("run").single().outcome)
             assertEquals("run", notifications.unpublishedRuns().single().id)
         } finally { job.cancel(); job.join() }

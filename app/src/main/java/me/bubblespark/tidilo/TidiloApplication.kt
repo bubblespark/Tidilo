@@ -40,6 +40,11 @@ class TidiloApplication : Application() {
         }
         applicationScope.launch { AiCoreUsageRepository.getInstance(this@TidiloApplication).initialize() }
         applicationScope.launch {
+            try { me.bubblespark.tidilo.data.maintenance.LibraryMaintenanceScheduler.reschedule(this@TidiloApplication) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { android.util.Log.w("LibraryMaintenance", "Could not reconcile daily maintenance", error) }
+        }
+        applicationScope.launch {
             runCatching { me.bubblespark.tidilo.data.rss.RssScheduler.reschedule(this@TidiloApplication) }
         }
         NotificationCoordinator.getInstance(this).apply {

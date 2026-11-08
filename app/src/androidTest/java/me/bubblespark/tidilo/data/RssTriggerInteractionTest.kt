@@ -61,7 +61,7 @@ class RssTriggerInteractionTest {
                 if (mounted.value) CompositionLocalProvider(LocalSaveableStateRegistry provides registry.value) {
                     RssSettingsContent(StorageLoad.Ready(emptyList()), settings.value, false, null, true,
                         onBack = {}, onRetry = {}, onSettings = { settings.value = it; updates++ },
-                        onFeed = { _, _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
+                        onFeed = { _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
                 }
             } } }
             stage = "add default time"
@@ -120,7 +120,7 @@ class RssTriggerInteractionTest {
                         CompositionLocalProvider(LocalDensity provides Density(density, scale)) {
                             Surface { Box(Modifier.width(360.dp)) {
                                 RssSettingsContent(StorageLoad.Ready(emptyList()), settings, false, null, true,
-                                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _ -> },
+                                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
                                     onDelete = {}, onFetch = {}, onDismissError = {})
                             } }
                         }

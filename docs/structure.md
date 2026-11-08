@@ -1,5 +1,7 @@
 # Directory Structure & Module Responsibilities
 
+Trash list/state ownership lives in `ui/screens/trash/`; transactional operations and live row projections live in `data/db/Trash*`, with initialization-aware observation in `data/TrashQuery`. There is no Trash Detail route or renderer. See [Trash](trash.md).
+
 Manual collection persistence lives in `data/db/Collection*` and `BookmarkCollectionCrossRef`; validation and transactional APIs live in `data/CollectionPolicy` and `CollectionRepository`. Collection cards, editor/membership sheets, their state holders, and sheet-scoped model ownership live in `ui/screens/library/`; palette tokens live in `ui/theme/CollectionColors`. See [Manual Collections](collections.md).
 
 This document defines the physical directory layout of the Tidilo codebase and outlines strict architectural responsibilities and component placement rules.
@@ -167,3 +169,7 @@ app/src/main/java/com/ykgudev/tidilo/
 
 The component catalogue and rendering/lifecycle checks live in Android test sources. There is no production catalogue screen or future backdrop-blur infrastructure. See [UI design](ui_design.md#83-resolved-theme-and-shared-surface-contract) for the coverage contract and native Material inheritance limits.
 For instructions on adding or tuning a preset, see [Developing app themes](theme_development.md).
+
+## Daily library maintenance
+
+`data/maintenance/RetentionPolicy.kt` defines the RSS and OG cache age predicates. `LibraryMaintenanceRepository.kt` owns bounded Room expiration and reference-safe file cleanup through OgImageManager. `LibraryMaintenanceScheduler.kt` and `LibraryMaintenanceWorker.kt` schedule one network-independent daily maintenance cycle. Startup and the existing time-change receiver reconcile it separately from RSS acquisition. See [Daily Library Maintenance](library_maintenance.md).

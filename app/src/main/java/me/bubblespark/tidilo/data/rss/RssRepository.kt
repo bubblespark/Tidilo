@@ -71,10 +71,9 @@ internal class RssRepository internal constructor(private val context: Context,
     val feeds = dao.observeFeeds()
     val settings = preferences.state
 
-    suspend fun register(url: String, limit: Int?, confirmed: RssRegistrationSnapshot? = null): String = withContext(Dispatchers.IO) {
+    suspend fun register(url: String, confirmed: RssRegistrationSnapshot? = null): String = withContext(Dispatchers.IO) {
         preferences.initialize()
         val normalized = RssFeedParser.httpUrl(url, url) ?: throw IllegalArgumentException("Enter an HTTP or HTTPS feed URL")
-        require(limit == null || limit in 10..500)
         operation.withLock {
             val old = dao.feedByUrl(normalized)
             require(old == null || old.deleted) { "This feed is already registered" }
@@ -82,26 +81,12 @@ internal class RssRepository internal constructor(private val context: Context,
             if (snapshot != null && snapshot != confirmed) throw RssRegistrationConfirmationRequired(snapshot)
             val fetched = fetcher(registration = true).fetch(normalized, null, null)
             val document = requireNotNull(fetched.document) { "Feed returned no document" }
-            val feed = RssFeedEntity(old?.id ?: UUID.randomUUID().toString(), normalized, document.title, "DIRECT", limit,
+            val feed = RssFeedEntity(old?.id ?: UUID.randomUUID().toString(), normalized, document.title, "DIRECT",
                 revision = (old?.revision ?: -1) + 1, iconUrl = document.iconUrl, siteUrl = document.siteUrl)
             // XML validation discovers feed metadata only; ingestion has its own operation and validators.
             store.registerFeed(feed, confirmed)
             scheduleChanged()
             feed.id
-        }
-    }
-
-    suspend fun edit(id: String, limit: Int?) = withContext(Dispatchers.IO) {
-        require(limit == null || limit in 10..500)
-        run {
-            db.withTransaction {
-                val previous = requireNotNull(dao.feed(id))
-                require(!previous.deleted)
-                val updated = previous.copy(mode = "DIRECT", retentionLimit = limit, revision = previous.revision + 1, acquisitionId = null, acquisitionMobileOverride = false, acquisitionXmlDone = false)
-                dao.putFeed(updated)
-            }
-            cleanup()
-            scheduleChanged()
         }
     }
 
@@ -251,7 +236,6 @@ internal class RssRepository internal constructor(private val context: Context,
                     val current = dao.feed(feed.id)
                     if (current == null || current.deleted || !current.enabled || current.revision != feed.revision) break
                     coroutineScope { window.map { task -> async { acquireTask(feed, task, network, runId = notificationRunId) } }.awaitAll() }
-                    store.enforceRetention(feed.id, feed.revision)
                 }
                 val pending = db.importTaskDao().getAllTasks().any {
                     it.rssFeedId == feed.id && !it.articlePrepared &&
@@ -264,9 +248,7 @@ internal class RssRepository internal constructor(private val context: Context,
                             acquisitionMobileOverride = false, acquisitionXmlDone = false))
                     }
                 }
-                store.enforceRetention(feed.id, feed.revision)
             }
-            cleanup()
             !incomplete
         }
     }
@@ -323,24 +305,6 @@ internal class RssRepository internal constructor(private val context: Context,
             val retryable = error is IOException && (error !is RssHttpFailure || error.retryable) &&
                 (error !is me.bubblespark.tidilo.parser.ArticleHttpFailure || error.retryable)
             store.failArticle(feed, task, error, retryable, runId)
-        }
-    }
-
-    suspend fun cleanup() = withContext(Dispatchers.IO) {
-        for (item in dao.cleanupItems()) {
-            try {
-                db.withTransaction {
-                    val resolved = OgImageManager.resolveImageUrl(item.articleUrl, item.imageUrl)
-                    val key = OgImageManager.computeImageKey(resolved)
-                    if (!dao.imageReferenced(key)) {
-                        val domain = DomainIconManager.extractDomain(item.articleUrl)
-                        if (domain != null) OgImageManager.deleteUnreferencedImage(context, domain, key,
-                            !dao.domainReferenced(domain, "%$domain%"))
-                    }
-                    dao.removeCleanup(item.imageUrl)
-                }
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { /* The durable outbox retains failed removals for the next run. */ }
         }
     }
 

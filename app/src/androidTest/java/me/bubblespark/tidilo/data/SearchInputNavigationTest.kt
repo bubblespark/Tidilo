@@ -2,10 +2,12 @@ package me.bubblespark.tidilo.data
 
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.AnnotatedString
@@ -16,6 +18,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.TidiloApp
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
@@ -174,4 +178,139 @@ class SearchInputNavigationTest {
     }
 
     private fun isFixtureHistory(value: String) = value.matches(Regex("headersearch[0-9a-f-]{36}"))
+
+    @Test fun openingSearchFromButtonRailAndTagSelectionFocusesInput(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        fun click(node: SemanticsNode) {
+            var target = node
+            while (target.config.getOrNull(SemanticsActions.OnClick) == null) target = requireNotNull(target.parent)
+            check(target.config[SemanticsActions.OnClick].action?.invoke() == true)
+        }
+        lateinit var vm: LibraryViewModel
+        var contentReady = false
+        try {
+            host.main {
+                vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
+                activity.setContent {
+                    MaterialTheme {
+                        TidiloApp(libraryViewModel = vm)
+                        SideEffect { contentReady = true }
+                    }
+                }
+            }
+            withTimeout(3000) { while (!contentReady) delay(20) }
+
+            // 1. Taps the library_search_action button, awaits SearchScreen, and asserts input is focused
+            val searchAction = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_search_action" }
+            host.main { click(searchAction) }
+            val searchInput1 = host.await(activity) {
+                it.config.getOrNull(SemanticsProperties.EditableText) != null && it.config.getOrNull(SemanticsProperties.Focused) == true
+            }
+            assertNotNull(searchInput1)
+
+            // 2. Taps the Tag Selection button, awaits TagSelectionScreen, taps Back button, and asserts input is focused again
+            val tagSelectionBtn = host.await(activity) {
+                host.description(it, host.context.getString(R.string.search_tag_selection_content_desc))
+            }
+            host.main { click(tagSelectionBtn) }
+            host.await(activity) { host.text(it, host.context.getString(R.string.tag_selection_title)) }
+            val backFromTags = host.await(activity) {
+                host.description(it, host.context.getString(R.string.tag_selection_back_and_apply))
+            }
+            host.main { click(backFromTags) }
+            val searchInput2 = host.await(activity) {
+                it.config.getOrNull(SemanticsProperties.EditableText) != null && it.config.getOrNull(SemanticsProperties.Focused) == true
+            }
+            assertNotNull(searchInput2)
+
+            // 3. Navigates back to Library, opens the Navigation Rail, taps Search item, and asserts input is focused
+            val backToLibrary = host.await(activity) {
+                host.description(it, host.context.getString(R.string.common_back))
+            }
+            host.main { click(backToLibrary) }
+            val railOpen = host.await(activity) {
+                host.description(it, host.context.getString(R.string.navigation_open))
+            }
+            host.main { click(railOpen) }
+            val railSearch = host.await(activity) {
+                host.text(it, host.context.getString(R.string.nav_search))
+            }
+            host.main { click(railSearch) }
+            val searchInput3 = host.await(activity) {
+                it.config.getOrNull(SemanticsProperties.EditableText) != null && it.config.getOrNull(SemanticsProperties.Focused) == true
+            }
+            assertNotNull(searchInput3)
+
+            // 4. Bookmark Detail round-trip: scroll search results, open detail, navigate back, and verify scroll position is restored, focus is NOT requested, and IME remains hidden
+            val db = AppDatabase.getInstance(host.context)
+            val prefix = "search-detail-${UUID.randomUUID()}"
+            val fixtureIds = (0..15).map { "$prefix-$it" }
+            fixtureIds.forEachIndexed { index, id ->
+                db.bookmarkDao().insertOrUpdate(
+                    BookmarkEntity(
+                        id = id,
+                        title = "Detail Roundtrip $index",
+                        url = "https://roundtrip.invalid/$index",
+                        description = "Summary",
+                        createdAt = System.currentTimeMillis() + index,
+                        updatedAt = 1
+                    )
+                )
+            }
+            try {
+                host.main { vm.onSearchQueryChanged("Detail Roundtrip") }
+                host.await(activity) { host.text(it, "Detail Roundtrip 15") }
+                host.scroll(activity, 600f)
+                delay(400)
+
+                var visibleTitle = ""
+                var visibleTop = 0f
+                var targetNode: SemanticsNode? = null
+                host.main {
+                    val first = host.nodes(activity).filter { node ->
+                        node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.startsWith("Detail Roundtrip") } == true &&
+                            node.boundsInRoot.top > 0f && node.boundsInRoot.bottom < activity.window.decorView.height
+                    }.minBy { it.boundsInRoot.top }
+                    visibleTitle = first.config[SemanticsProperties.Text].single().text
+                    visibleTop = first.boundsInRoot.top
+                    targetNode = first
+                }
+                assertNotNull(targetNode)
+                host.main { click(targetNode!!) }
+                host.await(activity) {
+                    it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text.startsWith("https://roundtrip.invalid") } == true
+                }
+
+                val backFromDetail = host.await(activity) {
+                    host.description(it, host.context.getString(R.string.common_back))
+                }
+                host.main { click(backFromDetail) }
+                val restored = host.await(activity) { host.text(it, visibleTitle) }
+                assertEquals("Back from Detail must restore the same bookmark position", visibleTop, restored.boundsInRoot.top, 2f)
+
+                val inputAfterDetail = host.nodes(activity).firstOrNull {
+                    it.config.getOrNull(SemanticsProperties.EditableText) != null
+                }
+                assertNotNull(inputAfterDetail)
+                assertFalse(
+                    "Search input must not be focused when returning from Bookmark Detail",
+                    inputAfterDetail?.config?.getOrNull(SemanticsProperties.Focused) == true
+                )
+
+                var imeVisible = false
+                host.main {
+                    imeVisible = ViewCompat.getRootWindowInsets(activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+                }
+                assertFalse("IME must remain hidden when returning from Bookmark Detail", imeVisible)
+            } finally {
+                fixtureIds.forEach { db.bookmarkDao().deleteById(it) }
+            }
+        } finally {
+            host.main {
+                activity.setContent { }
+                activity.finish()
+            }
+        }
+    }
 }

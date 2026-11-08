@@ -343,10 +343,14 @@ fun TidiloApp(
                             libraryViewModel.setFilterMode(mode)
                             navigationScope.launch { railState.collapse() }
                         },
-                        onSearch = { openDestination(Screen.Search.route) },
+                        onSearch = {
+                            libraryViewModel.triggerSearchFocus()
+                            openDestination(Screen.Search.route)
+                        },
                         onNotifications = { openDestination(Screen.Notifications.route) },
                         onManualImport = { navigationScope.launch { railState.collapse(); showManualImport = true } },
-                        onSettings = { openDestination(Screen.Settings.route) })
+                        onSettings = { openDestination(Screen.Settings.route) },
+                        onTrash = { openDestination(Screen.Trash.route) })
                 }
 
             }

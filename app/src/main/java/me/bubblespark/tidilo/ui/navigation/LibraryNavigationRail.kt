@@ -26,7 +26,7 @@ private val navigationFilters = listOf(
 @Composable
 fun LibraryNavigationRail(state: WideNavigationRailState, selectedFilter: LibraryFilterMode,
     onSelectFilter: (LibraryFilterMode) -> Unit, onSearch: () -> Unit, onNotifications: () -> Unit,
-    onManualImport: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
+    onManualImport: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier, onTrash: () -> Unit = {}) {
     ModalWideNavigationRail(state = state, hideOnCollapse = true, modifier = modifier) {
         Column(Modifier.fillMaxHeight().widthIn(min = 260.dp, max = 320.dp)) {
             Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
@@ -41,6 +41,8 @@ fun LibraryNavigationRail(state: WideNavigationRailState, selectedFilter: Librar
                 Column(Modifier.fillMaxWidth().heightIn(min = maxHeight).verticalScroll(rememberScrollState()).padding(12.dp)) {
                     NavigationDrawerItem(label = { Text(stringResource(R.string.nav_search)) }, selected = false,
                         onClick = onSearch, icon = { Icon(Icons.Default.Search, null) })
+                    NavigationDrawerItem(label = { Text(stringResource(R.string.trash_title)) }, selected = false,
+                        onClick = onTrash, icon = { Icon(Icons.Default.Delete, null) })
                     Text(stringResource(R.string.navigation_filters), Modifier.padding(start = 16.dp, top = 24.dp, bottom = 12.dp),
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     navigationFilters.forEach { (mode, label, icon) ->

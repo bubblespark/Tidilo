@@ -32,6 +32,11 @@ sealed class Screen(
         selectedIcon = Icons.Filled.CollectionsBookmark, unselectedIcon = Icons.Outlined.CollectionsBookmark
     )
 
+    data object Trash : Screen(
+        route = "trash", title = "Trash", titleRes = R.string.trash_title,
+        selectedIcon = Icons.Filled.CollectionsBookmark, unselectedIcon = Icons.Outlined.CollectionsBookmark
+    )
+
     data object Search : Screen(
         route = "search",
         title = "Search",

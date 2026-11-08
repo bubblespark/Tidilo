@@ -249,5 +249,10 @@ fun TidiloNavGraph(
                 }
             )
         }
+        composable(Screen.Trash.route) {
+            me.bubblespark.tidilo.ui.screens.trash.TrashScreen(
+                onNavigateBack = dropUnlessResumed { navController.popBackStack() }
+            )
+        }
     }
 }

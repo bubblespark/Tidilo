@@ -242,31 +242,52 @@ class SearchInputNavigationTest {
             }
             assertNotNull(searchInput3)
 
-            // 4. Bookmark Detail round-trip: open detail from search results, navigate back, and verify focus is NOT requested and IME remains hidden
+            // 4. Bookmark Detail round-trip: scroll search results, open detail, navigate back, and verify scroll position is restored, focus is NOT requested, and IME remains hidden
             val db = AppDatabase.getInstance(host.context)
-            val fixtureId = "search-detail-${UUID.randomUUID()}"
-            db.bookmarkDao().insertOrUpdate(
-                BookmarkEntity(
-                    id = fixtureId,
-                    title = "Detail Roundtrip Fixture",
-                    url = "https://roundtrip.invalid",
-                    description = "Summary",
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis()
+            val prefix = "search-detail-${UUID.randomUUID()}"
+            val fixtureIds = (0..15).map { "$prefix-$it" }
+            fixtureIds.forEachIndexed { index, id ->
+                db.bookmarkDao().insertOrUpdate(
+                    BookmarkEntity(
+                        id = id,
+                        title = "Detail Roundtrip $index",
+                        url = "https://roundtrip.invalid/$index",
+                        description = "Summary",
+                        createdAt = System.currentTimeMillis() + index,
+                        updatedAt = 1
+                    )
                 )
-            )
+            }
             try {
-                host.main { vm.onSearchQueryChanged("Roundtrip") }
-                val bookmarkCard = host.await(activity) { host.text(it, "Detail Roundtrip Fixture") }
-                host.main { click(bookmarkCard) }
-                host.await(activity) { host.text(it, "https://roundtrip.invalid") }
+                host.main { vm.onSearchQueryChanged("Detail Roundtrip") }
+                host.await(activity) { host.text(it, "Detail Roundtrip 15") }
+                host.scroll(activity, 600f)
+                delay(400)
+
+                var visibleTitle = ""
+                var visibleTop = 0f
+                var targetNode: SemanticsNode? = null
+                host.main {
+                    val first = host.nodes(activity).filter { node ->
+                        node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.startsWith("Detail Roundtrip") } == true &&
+                            node.boundsInRoot.top > 0f && node.boundsInRoot.bottom < activity.window.decorView.height
+                    }.minBy { it.boundsInRoot.top }
+                    visibleTitle = first.config[SemanticsProperties.Text].single().text
+                    visibleTop = first.boundsInRoot.top
+                    targetNode = first
+                }
+                assertNotNull(targetNode)
+                host.main { click(targetNode!!) }
+                host.await(activity) {
+                    it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text.startsWith("https://roundtrip.invalid") } == true
+                }
 
                 val backFromDetail = host.await(activity) {
                     host.description(it, host.context.getString(R.string.common_back))
                 }
                 host.main { click(backFromDetail) }
-                host.await(activity) { host.text(it, "Detail Roundtrip Fixture") }
-                delay(300)
+                val restored = host.await(activity) { host.text(it, visibleTitle) }
+                assertEquals("Back from Detail must restore the same bookmark position", visibleTop, restored.boundsInRoot.top, 2f)
 
                 val inputAfterDetail = host.nodes(activity).firstOrNull {
                     it.config.getOrNull(SemanticsProperties.EditableText) != null
@@ -283,7 +304,7 @@ class SearchInputNavigationTest {
                 }
                 assertFalse("IME must remain hidden when returning from Bookmark Detail", imeVisible)
             } finally {
-                db.bookmarkDao().deleteById(fixtureId)
+                fixtureIds.forEach { db.bookmarkDao().deleteById(it) }
             }
         } finally {
             host.main {

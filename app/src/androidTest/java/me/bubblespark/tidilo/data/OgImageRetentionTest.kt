@@ -25,10 +25,50 @@ class OgImageRetentionTest {
     private suspend fun fixture(body: suspend (Context, AppDatabase, LibraryMaintenanceRepository) -> Unit) {
         val real = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = Files.createTempDirectory(real.cacheDir.toPath(), "retention-test-").toFile()
-        val context = object : ContextWrapper(real) { override fun getCacheDir(): File = dir }
-        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
-        try { body(context, db, LibraryMaintenanceRepository(context, db) { now }) }
-        finally { db.close(); dir.deleteRecursively(); OgImageManager.clearMemoryCache() }
+        var db: AppDatabase? = null
+        var failure: Throwable? = null
+        try {
+            val context = object : ContextWrapper(real) { override fun getCacheDir(): File = dir }
+            val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+            db = database
+            body(context, database, LibraryMaintenanceRepository(context, database) { now })
+        } catch (error: Throwable) { failure = error }
+        finally {
+            finishFixture(failure, { db?.close() },
+                { check(dir.deleteRecursively()) { "Could not delete fixture directory" } },
+                { OgImageManager.clearMemoryCache() })
+        }
+    }
+
+    private fun finishFixture(originalFailure: Throwable?, vararg cleanups: () -> Unit) {
+        var failure = originalFailure
+        for (cleanup in cleanups) {
+            try { cleanup() }
+            catch (error: Throwable) {
+                if (failure == null) failure = error else if (failure !== error) failure.addSuppressed(error)
+            }
+        }
+        failure?.let { throw it }
+    }
+
+    @Test fun fixtureCleanupAttemptsEveryStepAndPreservesOriginalFailure() {
+        val body = IllegalStateException("body")
+        val close = IllegalStateException("close")
+        var cleared = false
+        try {
+            finishFixture(body, { throw close }, { cleared = true })
+            fail("Original failure must propagate")
+        } catch (error: IllegalStateException) {
+            assertSame(body, error)
+            assertEquals(listOf(close), error.suppressed.toList())
+        }
+        assertTrue(cleared)
+        cleared = false
+        try {
+            finishFixture(null, { throw close }, { cleared = true })
+            fail("Cleanup failure must propagate")
+        } catch (error: IllegalStateException) { assertSame(close, error) }
+        assertTrue(cleared)
     }
 
     private fun bookmark(id: String, age: Int, image: String = "/shared.webp") = BookmarkEntity(

@@ -15,6 +15,8 @@ import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.RssImageCleanupEntity
 
+private val OG_IMAGE_FILE_REGEX = Regex("[a-f0-9]{1,64}\\.webp")
+
 internal class LibraryMaintenanceRepository(
     private val context: Context,
     private val database: AppDatabase = AppDatabase.getInstance(context),
@@ -24,7 +26,7 @@ internal class LibraryMaintenanceRepository(
         val files = OgImageManager.getOgImageDir(context).listFiles()
             ?: throw IOException("Could not list OG image cache")
         val candidates = files.filter {
-            (it.name.matches(Regex("[a-f0-9]{1,64}\\.webp")) ||
+            (OG_IMAGE_FILE_REGEX.matches(it.name) ||
                 it.name.startsWith("latest_") && it.name.endsWith(".webp")) &&
                 Files.isRegularFile(it.toPath(), LinkOption.NOFOLLOW_LINKS) &&
                 ogImageExpired(it.lastModified(), null, now)
@@ -95,7 +97,7 @@ internal class LibraryMaintenanceRepository(
             val removed = database.withTransaction {
                 // Selection and deletion share the write transaction with engagement/membership edits.
                 val rows = database.rssDao().expiredRssBookmarks(
-                    now - 10 * RETENTION_DAY_MS, now - 30 * RETENTION_DAY_MS)
+                    now - RSS_UNREAD_DAYS * RETENTION_DAY_MS, now - RSS_READ_DAYS * RETENTION_DAY_MS)
                 for (row in rows) {
                     row.ogImageUrl?.let { database.rssDao().enqueueCleanup(RssImageCleanupEntity(it, row.url)) }
                     database.bookmarkDao().deleteById(row.id)

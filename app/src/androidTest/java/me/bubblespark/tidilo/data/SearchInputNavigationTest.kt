@@ -2,10 +2,12 @@ package me.bubblespark.tidilo.data
 
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.AnnotatedString
@@ -16,6 +18,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.TidiloApp
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
@@ -174,4 +178,74 @@ class SearchInputNavigationTest {
     }
 
     private fun isFixtureHistory(value: String) = value.matches(Regex("headersearch[0-9a-f-]{36}"))
+
+    @Test fun openingSearchFromButtonRailAndTagSelectionFocusesInput(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        fun click(node: SemanticsNode) {
+            var target = node
+            while (target.config.getOrNull(SemanticsActions.OnClick) == null) target = requireNotNull(target.parent)
+            check(target.config[SemanticsActions.OnClick].action?.invoke() == true)
+        }
+        lateinit var vm: LibraryViewModel
+        var contentReady = false
+        try {
+            host.main {
+                vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
+                activity.setContent {
+                    MaterialTheme {
+                        TidiloApp(libraryViewModel = vm)
+                        SideEffect { contentReady = true }
+                    }
+                }
+            }
+            withTimeout(3000) { while (!contentReady) delay(20) }
+
+            // 1. Taps the library_search_action button, awaits SearchScreen, and asserts input is focused
+            val searchAction = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_search_action" }
+            host.main { click(searchAction) }
+            val searchInput1 = host.await(activity) {
+                it.config.getOrNull(SemanticsProperties.EditableText) != null && it.config.getOrNull(SemanticsProperties.Focused) == true
+            }
+            assertNotNull(searchInput1)
+
+            // 2. Taps the Tag Selection button, awaits TagSelectionScreen, taps Back button, and asserts input is focused again
+            val tagSelectionBtn = host.await(activity) {
+                host.description(it, host.context.getString(R.string.search_tag_selection_content_desc))
+            }
+            host.main { click(tagSelectionBtn) }
+            host.await(activity) { host.text(it, host.context.getString(R.string.tag_selection_title)) }
+            val backFromTags = host.await(activity) {
+                host.description(it, host.context.getString(R.string.tag_selection_back_and_apply))
+            }
+            host.main { click(backFromTags) }
+            val searchInput2 = host.await(activity) {
+                it.config.getOrNull(SemanticsProperties.EditableText) != null && it.config.getOrNull(SemanticsProperties.Focused) == true
+            }
+            assertNotNull(searchInput2)
+
+            // 3. Navigates back to Library, opens the Navigation Rail, taps Search item, and asserts input is focused
+            val backToLibrary = host.await(activity) {
+                host.description(it, host.context.getString(R.string.common_back))
+            }
+            host.main { click(backToLibrary) }
+            val railOpen = host.await(activity) {
+                host.description(it, host.context.getString(R.string.navigation_open))
+            }
+            host.main { click(railOpen) }
+            val railSearch = host.await(activity) {
+                host.text(it, host.context.getString(R.string.nav_search))
+            }
+            host.main { click(railSearch) }
+            val searchInput3 = host.await(activity) {
+                it.config.getOrNull(SemanticsProperties.EditableText) != null && it.config.getOrNull(SemanticsProperties.Focused) == true
+            }
+            assertNotNull(searchInput3)
+        } finally {
+            host.main {
+                activity.setContent { }
+                activity.finish()
+            }
+        }
+    }
 }

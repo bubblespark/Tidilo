@@ -119,7 +119,7 @@ Library is the only root destination. Its top-left menu opens `ModalWideNavigati
 
 The rail header fixes the application name and `ic_notifications` action above its scroll content. Search precedes the Filters section, followed by Newest first, Domain, RSS and Collection. Manual Import and Settings are bottom-aligned within that same scroll region, not pinned outside it. Each actionable row has an icon and label. See [Library Navigation](library_navigation.md) for actions, timestamp formatting and error recovery behavior.
 
-Library retains its title/subtitle, exposes only the existing dashboard/gear display-mode selector on the right, and has a fixed compact Search action at bottom-right. Search retains its scrolling input, history, tag selector and feedback layout; it has no separate floating action or root tab.
+Library retains its title/subtitle, exposes only the existing dashboard/gear display-mode selector on the right, and has a fixed compact Search action at bottom-right. Search retains its scrolling input, history, tag selector and feedback layout; it automatically focuses the search input and requests the keyboard on entry from Library or return from Tag Selection, and has no separate floating action or root tab.
 
 ### 6.2 `BookmarkItemCard`
 - **Shape**: `RoundedCornerShape(24.dp)`.
@@ -301,7 +301,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 - **Secondary Actions & Toolbar Buttons**:
   - Header Icon Buttons: 48dp interactive slots (Library menu and display mode, Notification overflow actions, Reset Wrench in GenerateContentRequest). Title slots take the remaining width so actions stay visible at large font sizes.
 - **Unified Screens**:
-  - Library has a menu button. Search and Notification use the shared Back header; the Import overview is removed.
+  - Library has a menu button. Search and Notification use the shared Back header; the Import overview is removed. Search automatically focuses the search input and shows the software keyboard when entered from Library or returning from Tag Selection, while returning from Bookmark Detail preserves the scroll position without re-focusing.
   - Sub-Screens with Back Button: Search, Notification, `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `NsfwSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `StorageScreen`, `RssSettingsScreen`, `BookmarkAiReviewScreen`. Library Domain/RSS drill-downs also show Back; Library's root uses its menu action.
 - **Visibility Policy**:
   - `hideHeaderOnScroll` defaults to false. Library and Search explicitly enable it and reuse MainActivity's `LocalBarsVisible` signal. Notification, Settings and the other secondary pages keep fixed headers.

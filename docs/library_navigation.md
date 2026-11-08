@@ -22,7 +22,7 @@ Preserve the current theme foundation, including the fixed Modern palettes and r
 - Scrollable content order: Search; the non-clickable Filters heading; Newest first; Domain; RSS; Collection; Manual Import; Settings. All entries except the section heading have an icon and label. The active filter is selected.
 - Manual Import and Settings sit at the bottom of the scroll content, in that order. On tall screens, flexible space places them near the bottom. On short screens or large fonts, they scroll with the content; they are not a pinned footer.
 - Selecting a filter changes Library's existing filter state and closes the rail. Preserve existing domain/feed/collection drill-down behavior. No expandable subgroups are requested in this revision.
-- Domain, RSS, and Collection drill-downs expose a Back button beside the Library menu. Back clears the selected group and returns to its overview; the menu remains available and the only right-side action is still display mode.
+- Domain, RSS, and Collection overviews expose the Library menu; their drill-downs replace that icon with Up in the same persistent 48dp button, with 4dp trailing padding. Up clears the selected group and returns to its overview, where Menu opens the rail again. Only the glyph crossfades (220ms, EaseInOutCubic); button geometry and title position remain fixed. Click handling and the single accessible description follow the current hierarchy immediately, including during interrupted transitions. The outgoing and incoming glyphs are decorative. The only right-side action remains display mode.
 - Opening the notification action or another destination closes the rail. Dismissal returns to the same Library. Back first dismisses an open rail.
 
 ## Secondary destinations

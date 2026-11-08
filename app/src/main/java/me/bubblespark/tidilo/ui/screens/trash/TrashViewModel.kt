@@ -37,14 +37,14 @@ class TrashViewModel(
 
     private fun observe() {
         observation?.cancel()
-        mutable.value = mutable.value.copy(loading = true, error = null)
+        mutable.value = mutable.value.copy(loading = true, error = null, readFailed = false)
         observation = scope.launch {
             try {
                 visibility.flatMapLatest(store::observe).collect { rows ->
                     mutable.value = mutable.value.copy(loading = false, rows = rows)
                 }
             } catch (error: CancellationException) { throw error }
-            catch (error: Exception) { mutable.value = mutable.value.copy(loading = false, error = error) }
+            catch (error: Exception) { mutable.value = mutable.value.copy(loading = false, error = error, readFailed = true) }
         }
     }
 
@@ -59,7 +59,8 @@ class TrashViewModel(
     private fun setConfirmation(target: TrashConfirmation?) {
         savedStateHandle["target"] = target?.id
         savedStateHandle["action"] = target?.action?.let { if (it == TrashAction.Restore) "restore" else "delete" }
-        mutable.value = mutable.value.copy(confirmation = target, error = null)
+        val state = mutable.value
+        mutable.value = state.copy(confirmation = target, error = state.error.takeIf { state.readFailed })
     }
 
     fun dismissConfirmation() {
@@ -69,7 +70,7 @@ class TrashViewModel(
     fun confirmAction() {
         val state = mutable.value
         val target = state.confirmation ?: return
-        if (state.busy || state.loading) return
+        if (state.busy || state.loading || state.readFailed) return
         val row = state.rows.find { it.item.id == target.id }
         val rejected = when {
             row == null -> TrashMutationResult.Missing

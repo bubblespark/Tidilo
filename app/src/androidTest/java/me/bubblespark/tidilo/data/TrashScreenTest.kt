@@ -24,6 +24,9 @@ import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.data.db.*
 import me.bubblespark.tidilo.ui.screens.trash.*
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
+import me.bubblespark.tidilo.ui.screens.library.TrashBookmarkDetailContent
+import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
+import me.bubblespark.tidilo.ui.screens.library.Tag
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -182,5 +185,57 @@ class TrashScreenTest {
             }
             assertEquals(4, confirmed)
         } finally { host.main { screen.finish() } }
+    }
+
+    @Test fun shortDisplayKeepsConfirmationAndDetailBrowserReachable(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+            host.instrumentation.uiAutomation.executeShellCommand(command)).bufferedReader().use { it.readText() }
+        val previous = shell("wm size").lineSequence().firstOrNull { it.startsWith("Override size:") }
+            ?.substringAfter(':')?.trim() ?: "reset"
+        val density = host.context.resources.displayMetrics.density
+        var screen: ComponentActivity? = null
+        try {
+            shell("wm size ${(320 * density).toInt()}x${(480 * density).toInt()}")
+            val activity = host.launch()
+            screen = activity
+            val row = TrashBookmarkRow(TrashedBookmarkEntity("short", "Long title ".repeat(20), "https://example.com/long-path", "",
+                createdAt = 1, updatedAt = 1, note = "", isNsfw = false, trashedAt = 2), false)
+            val state = mutableStateOf(TrashUiState(loading = false, rows = listOf(row)))
+            var confirmed = false
+            host.main { activity.setContent {
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 2f)) {
+                    TidiloTheme(dynamicColor = false) { Surface(color = MaterialTheme.colorScheme.background) {
+                        TrashContent(state.value, {}, {}, { id, action -> state.value = state.value.copy(confirmation = TrashConfirmation(id, action)) },
+                            { state.value = state.value.copy(confirmation = null) }, { confirmed = true }, {})
+                    } }
+                }
+            } }
+            action(host, activity, "short", R.string.trash_restore)
+            host.capture("trash-short-confirmation")
+            clickTrashNode(host, host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "trash_confirm" })
+            assertTrue(confirmed)
+            val item = BookmarkItem("short", "Long title ".repeat(20), "https://example.com/long-path", "Long summary ".repeat(20),
+                Tag("Article", "Tech", listOf("Kotlin", "Android")), note = "Memo ".repeat(40))
+            host.main { activity.setContent {
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 2f)) {
+                    TidiloTheme(dynamicColor = false) { Surface(color = MaterialTheme.colorScheme.background) {
+                        TrashBookmarkDetailContent(item, {})
+                    } }
+                }
+            } }
+            val browser = host.await(activity) { host.description(it, host.context.getString(R.string.bookmark_open_in_browser)) }
+            val monitor = host.instrumentation.addMonitor(android.content.IntentFilter(android.content.Intent.ACTION_VIEW).apply {
+                addDataScheme("https"); addDataAuthority("example.com", null)
+            }, android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_OK, null), true)
+            try {
+                host.capture("trash-short-detail")
+                clickTrashNode(host, browser)
+                assertTrue(host.instrumentation.checkMonitorHit(monitor, 1))
+            } finally { host.instrumentation.removeMonitor(monitor) }
+        } finally {
+            screen?.let { host.main { it.finish() } }
+            shell("wm size $previous")
+        }
     }
 }

@@ -97,7 +97,7 @@ fun TrashContent(state: TrashUiState, onBack: () -> Unit, onDetail: (String) -> 
     state.confirmation?.let { target ->
         val row = state.rows.find { it.item.id == target.id }
         val restore = target.action == TrashAction.Restore
-        val canConfirm = !state.loading && !state.busy && row != null && (!restore || !row.duplicateInLibrary)
+        val canConfirm = !state.loading && !state.busy && !state.readFailed && row != null && (!restore || !row.duplicateInLibrary)
         val style = currentThemeSurfaces().resolve(SurfaceRole.DIALOG)
         AlertDialog(onDismissRequest = { if (!state.busy) onDismissConfirmation() },
             containerColor = style.containerColor, shape = style.shape,
@@ -107,7 +107,8 @@ fun TrashContent(state: TrashUiState, onBack: () -> Unit, onDetail: (String) -> 
                 Text(stringResource(if (restore) R.string.trash_restore_message else R.string.trash_delete_message))
                 if (row == null) Text(stringResource(R.string.trash_missing), color = MaterialTheme.colorScheme.error)
                 else if (restore && row.duplicateInLibrary) Text(stringResource(R.string.trash_duplicate), color = MaterialTheme.colorScheme.error)
-                if (state.error != null) Text(stringResource(R.string.common_save_failed), color = MaterialTheme.colorScheme.error)
+                if (state.error != null) Text(stringResource(if (state.readFailed) R.string.trash_load_failed else R.string.common_save_failed),
+                    color = MaterialTheme.colorScheme.error)
                 if (state.busy) CircularProgressIndicator(Modifier.size(24.dp))
             } },
             confirmButton = { TextButton(onClick = onConfirm, enabled = canConfirm, modifier = Modifier.testTag("trash_confirm")) {

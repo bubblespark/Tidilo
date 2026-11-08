@@ -55,7 +55,7 @@ internal fun TrashBookmarkDetailContent(bookmark: BookmarkItem, onBack: () -> Un
     ) { padding ->
         Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(padding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.fillMaxWidth()) {
-                DomainWatermark(bookmark.domain, Modifier.align(Alignment.TopEnd))
+                DomainWatermark(bookmark.domain, Modifier.align(Alignment.TopEnd), allowNetwork = false)
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Spacer(Modifier.height(8.dp))
                     Text(bookmark.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)

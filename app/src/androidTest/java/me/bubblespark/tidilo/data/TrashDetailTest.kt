@@ -12,6 +12,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.lifecycle.ViewModelProvider
+import androidx.room.Room
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
 import me.bubblespark.tidilo.R
@@ -24,6 +25,27 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
 class TrashDetailTest {
+    private suspend fun seedDetail(db: AppDatabase, row: BookmarkEntity): TrashedBookmarkEntity {
+        val snapshot = TrashedBookmarkEntity.fromTrashedBookmarkItem(
+            TrashedBookmarkItem(row.copy(isLiked = false).toBookmarkItem(), System.currentTimeMillis()))
+        db.trashDao().insert(snapshot)
+        return snapshot
+    }
+
+    @Test fun detailFixtureDoesNotEvictExistingTrash(): Unit = runBlocking {
+        val context = HeaderTestHost().context
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            for (index in 0 until 100) db.trashDao().insert(TrashedBookmarkEntity("existing-$index", "Existing", "https://example.com/$index", "",
+                createdAt = 1, updatedAt = 1, note = "Keep", isNsfw = false, trashedAt = index.toLong()))
+            seedDetail(db, BookmarkEntity("fixture", "Fixture", "https://example.com/fixture", "", createdAt = 1, updatedAt = 1))
+            assertEquals(101, db.trashDao().getCount())
+            assertEquals("Keep", db.trashDao().getById("existing-0")?.note)
+            db.trashDao().deleteById("fixture")
+            assertEquals(100, db.trashDao().getCount())
+        } finally { db.close() }
+    }
+
     private suspend fun fixture(block: suspend (HeaderTestHost, ComponentActivity, TrashedBookmarkEntity) -> Unit) {
         val host = HeaderTestHost()
         val db = AppDatabase.getInstance(host.context)
@@ -34,9 +56,7 @@ class TrashDetailTest {
             lastInteractedAt = 9, ogImageUrl = "https://$id.invalid/image.png")
         var activity: ComponentActivity? = null
         try {
-            db.bookmarkDao().insertOrUpdate(row)
-            db.moveBookmarkToTrash(id, System.currentTimeMillis(), 100)
-            val snapshot = requireNotNull(db.trashDao().getById(id))
+            val snapshot = seedDetail(db, row)
             activity = host.launch()
             val screen = activity
             host.main {
@@ -49,7 +69,6 @@ class TrashDetailTest {
         } finally {
             activity?.let { host.main { it.finish() } }
             db.trashDao().deleteById(id)
-            db.bookmarkDao().deleteById(id)
         }
     }
 
@@ -106,6 +125,30 @@ class TrashDetailTest {
             assertEquals(0, requests.get())
             assertEquals(row, AppDatabase.getInstance(host.context).trashDao().getById(row.id))
         } } finally { OgImageManager.imageDownloader = previous }
+    }
+
+    @Test fun missingDomainCacheNeverFetchesHtmlOrIcons(): Unit = runBlocking {
+        val previousHtml = DomainIconManager.htmlDiscoverer
+        val previousDownload = DomainIconManager.httpDownloader
+        val htmlRequests = AtomicInteger()
+        val imageRequests = AtomicInteger()
+        DomainIconManager.htmlDiscoverer = { url ->
+            if (url.contains("trash-detail-")) htmlRequests.incrementAndGet()
+            DomainIconManager.HtmlDiscoveryResult(emptyList(), false, true)
+        }
+        DomainIconManager.httpDownloader = { url ->
+            if (url.contains("trash-detail-")) imageRequests.incrementAndGet()
+            DomainIconManager.DownloadResult(null, false, true)
+        }
+        try { fixture { host, screen, row ->
+            host.await(screen) { host.text(it, row.title) }
+            delay(500)
+            assertEquals(0, htmlRequests.get())
+            assertEquals(0, imageRequests.get())
+        } } finally {
+            DomainIconManager.htmlDiscoverer = previousHtml
+            DomainIconManager.httpDownloader = previousDownload
+        }
     }
 
     @Test fun missingTrashItemShowsUnavailableState(): Unit = runBlocking {

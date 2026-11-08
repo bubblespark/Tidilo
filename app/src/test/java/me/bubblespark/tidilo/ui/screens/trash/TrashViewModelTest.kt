@@ -20,9 +20,13 @@ class TrashViewModelTest {
         var deferred: CompletableDeferred<Unit>? = null
         var failWrite = false
         var failRead = false
+        val readFailure = MutableStateFlow<Throwable?>(null)
         override fun observe(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> = flow {
             if (failRead) throw java.io.IOException("read")
-            rows.collect { emit(it.filter { row -> showNsfw || !row.item.isNsfw }) }
+            combine(rows, readFailure) { current, error ->
+                if (error != null) throw error
+                current.filter { row -> showNsfw || !row.item.isNsfw }
+            }.collect { emit(it) }
         }
         override suspend fun restore(id: String): TrashMutationResult {
             restoreCalls++
@@ -127,5 +131,22 @@ class TrashViewModelTest {
             visibility.value = true
             assertEquals(2, model.uiState.value.rows.size)
         } finally { scope.cancel() }
+    }
+
+    @Test fun readFailureDuringDialogSurvivesCancelAndRemainsRetryable() = fixture { model, store, _, _ ->
+        model.requestAction("old", TrashAction.Restore)
+        store.readFailure.value = java.io.IOException("observation failed")
+        assertNotNull(model.uiState.value.error)
+        model.confirmAction()
+        assertEquals(0, store.restoreCalls)
+        assertNotNull(model.uiState.value.confirmation)
+        model.dismissConfirmation()
+        assertNull(model.uiState.value.confirmation)
+        assertNotNull(model.uiState.value.error)
+        store.rows.value = emptyList()
+        store.readFailure.value = null
+        model.retry()
+        assertNull(model.uiState.value.error)
+        assertTrue(model.uiState.value.rows.isEmpty())
     }
 }

@@ -12,6 +12,7 @@ data class TrashUiState(
     val confirmation: TrashConfirmation? = null,
     val busy: Boolean = false,
     val error: Throwable? = null,
+    val readFailed: Boolean = false,
     val actionResult: TrashMutationResult? = null
 )
 

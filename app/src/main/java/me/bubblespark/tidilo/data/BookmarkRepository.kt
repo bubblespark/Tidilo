@@ -229,10 +229,6 @@ class BookmarkRepository private constructor(context: Context) {
     fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> =
         trashBookmarkQuery(isInitialized, initializationFailure) { trashDao.observeTrash(showNsfw) }
 
-    fun observeTrashedBookmark(id: String): Flow<BookmarkItem?> =
-        trashBookmarkQuery(isInitialized, initializationFailure) { trashDao.observeById(id) }
-            .map { it?.toTrashedBookmarkItem()?.bookmark }
-
     suspend fun restoreFromTrash(id: String): TrashMutationResult = withContext(Dispatchers.IO) {
         database.restoreTrashedBookmark(id)
     }

@@ -16,9 +16,6 @@ interface TrashDao {
     fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>>
 
     @Query("SELECT * FROM trashed_bookmarks WHERE id = :id")
-    fun observeById(id: String): Flow<TrashedBookmarkEntity?>
-
-    @Query("SELECT * FROM trashed_bookmarks WHERE id = :id")
     suspend fun getById(id: String): TrashedBookmarkEntity?
 
     @Query("DELETE FROM trashed_bookmarks WHERE id = :id")

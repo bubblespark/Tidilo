@@ -30,12 +30,11 @@ fun DomainWatermark(
     size: Dp = 195.dp,
     saturation: Float = 0.50f,
     alpha: Float = 0.14f,
-    pageUrl: String? = null,
-    allowNetwork: Boolean = true
+    pageUrl: String? = null
 ) {
     if (domain.isNullOrBlank()) return
 
-    val iconBitmap by rememberDomainIcon(domain, pageUrl, allowNetwork)
+    val iconBitmap by rememberDomainIcon(domain, pageUrl)
 
     IconWatermark(iconBitmap, modifier, size, saturation, alpha)
 }

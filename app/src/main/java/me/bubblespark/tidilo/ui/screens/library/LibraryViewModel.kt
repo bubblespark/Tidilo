@@ -387,12 +387,6 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         .catch { emit(BookmarkDetailState(loading = false, error = it)) }
         .onStart { emit(BookmarkDetailState()) }
 
-    fun trashedBookmarkDetails(id: String): Flow<BookmarkDetailState> =
-        combine(bookmarkRepository.observeTrashedBookmark(id), AppConfig.isNsfwContentVisible) { item, visible ->
-            BookmarkDetailState(item?.takeIf { visible || !it.isNsfw }, false)
-        }.catch { emit(BookmarkDetailState(loading = false, error = it)) }
-            .onStart { emit(BookmarkDetailState()) }
-
     internal fun tagCounts(selected: Set<String>, kind: TagKind): Flow<Map<String, Int>> =
         AppConfig.isNsfwContentVisible.flatMapLatest { visible ->
             bookmarkRepository.observeTagCounts(selected, visible, kind)

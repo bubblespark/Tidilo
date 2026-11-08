@@ -6,17 +6,9 @@ Trash is a secondary destination opened from the Library navigation rail immedia
 
 The single-column, text-only list shows each deleted bookmark's title, URL and deletion time. Rows sort by deletion time descending, with descending ID as a stable tie-breaker. Time is displayed as `yyyy/MM/dd HH:mm` in the current device time zone. Existing NSFW visibility settings apply.
 
-Tapping a row opens its read-only Detail. The trailing overflow menu contains Restore and Delete. Both require a confirmation dialog; cancelling performs no writes. Delete permanently removes only that Trash record. There are no bulk actions.
+Rows have no tap action and do not open Detail. The trailing overflow menu contains Restore and Delete. Both require a confirmation dialog; cancelling performs no writes. Delete permanently removes only that Trash record. There are no bulk actions. Title and overflow icon colors explicitly follow the theme foreground, including when the parent has transparent content.
 
 A small Already in Library label marks URLs present in the active bookmarks table, across manual and RSS sources and including hidden NSFW records. Restore is disabled for those rows. Matching uses exact stored URL equality, following existing ingestion normalization; no new URL equivalence rules are introduced. Other Trash rows alone do not count as active duplicates.
-
-## Read-only Detail
-
-Trash uses a distinct ID-based Detail route and an explicit read-only mode of the existing Detail entry point. A focused content component shares header, tag, surface and field primitives. It returns before editable Detail state and observers are created. Title, URL, classification, entity tags, summary, memo, and original creation/update times remain inspectable.
-
-OG images are treated as unavailable: the screen never invokes the OG loader or decodes its cached image. The ordinary domain watermark uses cached icons only, without HTML discovery or image downloads. Stored image references are retained. The editing toolbar, Save, tag editor, AI review, Collection and Like actions are absent. A standalone Open in browser button remains; the displayed URL also opens the saved URL. Neither viewing nor browser opening changes engagement counters or timestamps.
-
-The memo uses an enabled, read-only text field with native text selection. There is no dedicated copy button, custom clipboard handler or selection wrapper. The field cannot edit stored text or request the editing keyboard.
 
 ## Persistence and restoration
 
@@ -34,4 +26,4 @@ Permanent deletion removes only the selected Trash row and does not delete share
 
 Live Room queries update duplicate labels when either table changes. A screen-scoped ViewModel saves confirmation target ID/action, guards double submission, revalidates current rows and delegates final conflict safety to the storage transaction. Recreation restores the confirmation without automatically submitting it. Read failures expose Retry and block writes against stale rows; cancelling a confirmation preserves the read error so Retry remains available. Write failures retain the confirmation and target for another attempt. Missing or newly conflicting targets produce feedback without replacement.
 
-The existing editable Detail path remains the default. No dependency, version, Gradle configuration, serialization/reflection or release-only behavior is added; no R8/Release-specific risk is identified.
+The existing Library Detail is unchanged; Trash has no separate Detail renderer, mode or route. No dependency, version, Gradle configuration, serialization/reflection or release-only behavior is added; no R8/Release-specific risk is identified.

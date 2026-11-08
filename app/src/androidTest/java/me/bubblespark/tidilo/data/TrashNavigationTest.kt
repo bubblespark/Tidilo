@@ -1,91 +1,43 @@
 package me.bubblespark.tidilo.data
 
-import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.delay
 import me.bubblespark.tidilo.R
-import me.bubblespark.tidilo.data.db.*
+import me.bubblespark.tidilo.data.db.AppDatabase
+import me.bubblespark.tidilo.data.db.TrashedBookmarkEntity
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.UUID
-import androidx.activity.ComponentActivity
-import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
-import androidx.test.runner.lifecycle.Stage
 
 class TrashNavigationTest {
-    @Test fun railTrashDetailBackPreservesLibrary(): Unit = verifyNavigation(false)
-    @Test fun recreatedDetailRetainsSnapshotAndReadOnlyMode(): Unit = verifyNavigation(true)
-
-    private fun verifyNavigation(recreate: Boolean): Unit = runBlocking {
+    @Test fun railOpensNonInteractiveTrashListAndBackReturnsToLibrary(): Unit = runBlocking {
         val host = HeaderTestHost()
         val db = AppDatabase.getInstance(host.context)
         val id = "trash-navigation-${UUID.randomUUID()}"
         val title = "Trash navigation fixture $id"
-        db.trashDao().insert(TrashedBookmarkEntity(id, title, "https://example.com/$id", "Summary",
-            createdAt = 1, updatedAt = 1, note = "memo", isNsfw = false, trashedAt = System.currentTimeMillis()))
-        val original = requireNotNull(db.trashDao().getById(id))
-        var screen = host.launch()
-        var stage = "open rail"
-        suspend fun awaitAbsent(predicate: (androidx.compose.ui.semantics.SemanticsNode) -> Boolean) {
-            withTimeout(5000) {
-                var present = true
-                while (present) {
-                    host.main { present = host.nodes(screen).any(predicate) }
-                    if (present) delay(20)
-                }
-            }
-        }
+        db.trashDao().insert(TrashedBookmarkEntity(id, title, "https://example.com/$id", "",
+            createdAt = 1, updatedAt = 1, note = "", isNsfw = false, trashedAt = System.currentTimeMillis()))
+        val screen = host.launch()
         try {
             clickTrashNode(host, host.await(screen) { host.description(it, host.context.getString(R.string.navigation_open)) })
             val search = host.await(screen) { host.text(it, host.context.getString(R.string.nav_search)) }
             val trash = host.await(screen) { host.text(it, host.context.getString(R.string.trash_title)) }
-            val filters = host.await(screen) { host.text(it, host.context.getString(R.string.navigation_filters)) }
             assertTrue(trash.boundsInRoot.top > search.boundsInRoot.bottom)
-            assertTrue(trash.boundsInRoot.bottom < filters.boundsInRoot.top)
             clickTrashNode(host, trash)
-            stage = "Trash list"
-            host.await(screen) { host.text(it, title) }
+            val rowTitle = host.await(screen) { host.text(it, title) }
+            host.main { assertFalse(generateSequence(rowTitle) { it.parent }.any { it.config.getOrNull(SemanticsActions.OnClick) != null }) }
             withTimeout(5000) {
-                var outgoingLibrary = true
-                while (outgoingLibrary) {
-                    host.main { outgoingLibrary = host.nodes(screen).any { host.description(it, host.context.getString(R.string.navigation_open)) } }
-                    if (outgoingLibrary) delay(20)
+                var outgoing = true
+                while (outgoing) {
+                    host.main { outgoing = host.nodes(screen).any { host.description(it, host.context.getString(R.string.navigation_open)) } }
+                    if (outgoing) delay(20)
                 }
             }
-            clickTrashNode(host, host.await(screen) { host.text(it, title) })
-            stage = "Trash Detail"
-            host.await(screen) { host.description(it, host.context.getString(R.string.bookmark_open_in_browser)) }
-            awaitAbsent { it.config.getOrNull(SemanticsProperties.TestTag) == "trash_actions:$id" }
-            if (recreate) {
-                stage = "recreate Trash Detail"
-                val previous = screen
-                host.main { previous.recreate() }
-                screen = withTimeout(8000) {
-                    var replacement: ComponentActivity? = null
-                    while (replacement == null) {
-                        host.main {
-                            replacement = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
-                                .filterIsInstance<ComponentActivity>().firstOrNull { it !== previous && it.javaClass == previous.javaClass }
-                        }
-                        if (replacement == null) delay(20)
-                    }
-                    requireNotNull(replacement)
-                }
-                host.await(screen) { host.description(it, host.context.getString(R.string.bookmark_open_in_browser)) }
-                assertEquals(original, db.trashDao().getById(id))
-            }
-            host.main { assertFalse(host.nodes(screen).any { host.description(it, host.context.getString(R.string.detail_edit_tags)) }) }
             clickTrashNode(host, host.await(screen) { host.description(it, host.context.getString(R.string.common_back)) })
-            stage = "Detail back to Trash"
-            host.await(screen) { it.config.getOrNull(SemanticsProperties.TestTag) == "trash_actions:$id" }
-            awaitAbsent { host.description(it, host.context.getString(R.string.bookmark_open_in_browser)) }
-            clickTrashNode(host, host.await(screen) { host.description(it, host.context.getString(R.string.common_back)) })
-            stage = "Trash back to Library"
             host.await(screen) { host.description(it, host.context.getString(R.string.navigation_open)) }
-        } catch (error: Throwable) {
-            throw AssertionError("Trash navigation failed during $stage", error)
         } finally {
             host.main { screen.finish() }
             db.trashDao().deleteById(id)

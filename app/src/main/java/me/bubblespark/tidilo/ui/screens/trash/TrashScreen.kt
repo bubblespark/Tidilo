@@ -1,6 +1,5 @@
 package me.bubblespark.tidilo.ui.screens.trash
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,7 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,7 +43,7 @@ private fun trashViewModel(): TrashViewModel {
 }
 
 @Composable
-fun TrashScreen(onNavigateBack: () -> Unit, onNavigateToDetail: (String) -> Unit,
+fun TrashScreen(onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier, viewModel: TrashViewModel = trashViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -61,14 +59,14 @@ fun TrashScreen(onNavigateBack: () -> Unit, onNavigateToDetail: (String) -> Unit
         resultText?.let { snackbar.showSnackbar(it); viewModel.clearActionResult() }
     }
     Box(modifier.fillMaxSize()) {
-        TrashContent(state, onNavigateBack, onNavigateToDetail, viewModel::requestAction,
+        TrashContent(state, onNavigateBack, viewModel::requestAction,
             viewModel::dismissConfirmation, viewModel::confirmAction, viewModel::retry)
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
     }
 }
 
 @Composable
-fun TrashContent(state: TrashUiState, onBack: () -> Unit, onDetail: (String) -> Unit,
+fun TrashContent(state: TrashUiState, onBack: () -> Unit,
     onRequestAction: (String, TrashAction) -> Unit, onDismissConfirmation: () -> Unit,
     onConfirm: () -> Unit, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     LocalConfiguration.current
@@ -88,7 +86,7 @@ fun TrashContent(state: TrashUiState, onBack: () -> Unit, onDetail: (String) -> 
             }
             else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
                 items(state.rows, key = { it.item.id }, contentType = { "trash" }) { row ->
-                    TrashRow(row, state.busy, zone, onDetail, onRequestAction)
+                    TrashRow(row, state.busy, zone, onRequestAction)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
@@ -120,13 +118,14 @@ fun TrashContent(state: TrashUiState, onBack: () -> Unit, onDetail: (String) -> 
 }
 
 @Composable
-private fun TrashRow(row: TrashBookmarkRow, busy: Boolean, zone: ZoneId, onDetail: (String) -> Unit,
+private fun TrashRow(row: TrashBookmarkRow, busy: Boolean, zone: ZoneId,
     onRequestAction: (String, TrashAction) -> Unit) {
     var menu by remember(row.item.id) { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().clickable(enabled = !busy, role = Role.Button) { onDetail(row.item.id) }.padding(vertical = 16.dp),
+    Row(Modifier.fillMaxWidth().padding(vertical = 16.dp),
         verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(row.item.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(row.item.title, color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(row.item.url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (row.duplicateInLibrary) Text(stringResource(R.string.trash_duplicate), style = MaterialTheme.typography.labelSmall,
@@ -137,7 +136,7 @@ private fun TrashRow(row: TrashBookmarkRow, busy: Boolean, zone: ZoneId, onDetai
         Box {
             IconButton(onClick = { menu = true }, enabled = !busy,
                 modifier = Modifier.size(48.dp).testTag("trash_actions:${row.item.id}")) {
-                Icon(Icons.Default.MoreVert, stringResource(R.string.trash_more_actions))
+                Icon(Icons.Default.MoreVert, stringResource(R.string.trash_more_actions), tint = MaterialTheme.colorScheme.onBackground)
             }
             val style = currentThemeSurfaces().resolve(SurfaceRole.MENU)
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = style.containerColor, shape = style.shape) {

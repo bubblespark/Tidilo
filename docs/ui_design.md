@@ -1,6 +1,6 @@
 # UI Design & Material 3 Expressive Specification
 
-Trash list rows, overflow actions, confirmations and read-only Detail are specified in [Trash](trash.md). They use the existing header, native field and shared dialog/menu/primary-action surface roles.
+Trash list rows, overflow actions and confirmations are specified in [Trash](trash.md). Rows have no tap action; they use the existing header and shared dialog/menu surface roles with explicit theme foreground colors.
 
 The Collection library, prototype-derived horizontal cards, editor and bookmark assignment sheets are specified in [Manual Collections](collections.md).
 

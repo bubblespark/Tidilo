@@ -1,6 +1,6 @@
 # Data Models, State Flows, & Persistence Interfaces
 
-Trash restoration, live duplicate projection, read-only observation and snapshot preservation are specified in [Trash](trash.md). The feature uses existing tables without a schema migration.
+Trash restoration, live duplicate projection and snapshot preservation are specified in [Trash](trash.md). The feature uses existing tables without a schema migration.
 
 Room 16 adds user-curated collections and many-to-many membership without replacing existing tables. See [Manual Collections](collections.md) for schema, visibility, atomic update/replacement behavior, and trash clearing rules.
 

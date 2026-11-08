@@ -24,9 +24,6 @@ import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.data.db.*
 import me.bubblespark.tidilo.ui.screens.trash.*
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
-import me.bubblespark.tidilo.ui.screens.library.TrashBookmarkDetailContent
-import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
-import me.bubblespark.tidilo.ui.screens.library.Tag
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -37,12 +34,34 @@ internal fun clickTrashNode(host: HeaderTestHost, node: SemanticsNode) = host.ma
 }
 
 class TrashScreenTest {
-    private suspend fun fixture(block: suspend (HeaderTestHost, ComponentActivity, AppDatabase, () -> Int) -> Unit) {
+    @Test fun darkListUsesThemeForegroundWithoutParentSurface(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val screen = host.launch()
+        val row = TrashBookmarkRow(TrashedBookmarkEntity("dark", "Dark title", "https://example.com", "",
+            createdAt = 1, updatedAt = 1, note = "", isNsfw = false, trashedAt = 2), false)
+        var foreground = androidx.compose.ui.graphics.Color.Unspecified
+        try {
+            host.main { screen.setContent { TidiloTheme(darkTheme = true, dynamicColor = false) {
+                foreground = MaterialTheme.colorScheme.onBackground
+                CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides androidx.compose.ui.graphics.Color.Black) {
+                    TrashContent(TrashUiState(loading = false, rows = listOf(row)), {}, { _, _ -> }, {}, {}, {})
+                }
+            } } }
+            val title = host.await(screen) { host.text(it, "Dark title") }
+            host.main {
+                val layout = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+                assertTrue(title.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layout) == true)
+                assertEquals(foreground, layout.single().layoutInput.style.color)
+            }
+            host.capture("trash-dark-no-parent-surface")
+        } finally { host.main { screen.finish() } }
+    }
+
+    private suspend fun fixture(block: suspend (HeaderTestHost, ComponentActivity, AppDatabase) -> Unit) {
         val host = HeaderTestHost()
         val db = Room.inMemoryDatabaseBuilder(host.context, AppDatabase::class.java).build()
         var screen: ComponentActivity? = null
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-        var opens = 0
         try {
             for (id in listOf("one", "two")) {
                 db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Deleted $id", "https://example.com/$id", "Summary", createdAt = 1, updatedAt = 1))
@@ -61,13 +80,13 @@ class TrashScreenTest {
                 activity.setContent { TidiloTheme {
                     val state by model.uiState.collectAsStateWithLifecycle()
                     Surface(color = MaterialTheme.colorScheme.background) {
-                        TrashContent(state, {}, { opens++ }, model::requestAction, model::dismissConfirmation,
+                        TrashContent(state, {}, model::requestAction, model::dismissConfirmation,
                             model::confirmAction, model::retry)
                     }
                 } }
             }
             host.await(activity) { host.text(it, "Deleted one") }
-            block(host, activity, db) { opens }
+            block(host, activity, db)
         } finally {
             screen?.let { host.main { it.finish(); scope.cancel() } }
             db.close()
@@ -87,7 +106,7 @@ class TrashScreenTest {
         host.await(screen) { it.config.getOrNull(SemanticsProperties.TestTag) == "trash_confirm" }
     }
 
-    @Test fun bothActionsRequireConfirmation(): Unit = runBlocking { fixture { host, screen, db, _ ->
+    @Test fun bothActionsRequireConfirmation(): Unit = runBlocking { fixture { host, screen, db ->
         action(host, screen, "one", R.string.trash_restore)
         host.await(screen) { host.text(it, host.context.getString(R.string.trash_restore_title)) }
         assertNotNull(db.trashDao().getById("one")); assertNull(db.bookmarkDao().getBookmarkById("one"))
@@ -108,7 +127,7 @@ class TrashScreenTest {
         host.await(screen) { host.text(it, host.context.getString(R.string.trash_empty)) }
     } }
 
-    @Test fun duplicatesHaveLabelAndDisabledRestore(): Unit = runBlocking { fixture { host, screen, db, opens ->
+    @Test fun duplicatesHaveLabelAndDisabledRestore(): Unit = runBlocking { fixture { host, screen, db ->
         db.bookmarkDao().insertOrUpdate(BookmarkEntity("existing", "Existing", "https://example.com/one", "", createdAt = 1, updatedAt = 1, isNsfw = true))
         host.await(screen) { host.text(it, host.context.getString(R.string.trash_duplicate)) }
         clickTrashNode(host, host.await(screen) { it.config.getOrNull(SemanticsProperties.TestTag) == "trash_actions:one" })
@@ -116,15 +135,14 @@ class TrashScreenTest {
         host.main {
             assertTrue(generateSequence(restore) { it.parent }.any { it.config.getOrNull(SemanticsProperties.Disabled) != null })
         }
-        assertEquals(0, opens())
         clickTrashNode(host, host.await(screen) { host.text(it, host.context.getString(R.string.common_delete)) })
         clickTrashNode(host, host.await(screen) { host.text(it, host.context.getString(R.string.common_cancel)) })
-        clickTrashNode(host, host.await(screen) { host.text(it, "Deleted one") })
-        assertEquals(1, opens())
+        val title = host.await(screen) { host.text(it, "Deleted one") }
+        host.main { assertFalse(generateSequence(title) { it.parent }.any { it.config.getOrNull(SemanticsActions.OnClick) != null }) }
         assertEquals("Existing", db.bookmarkDao().getBookmarkById("existing")?.title)
     } }
 
-    @Test fun duplicateAppearsAfterDialogOpens(): Unit = runBlocking { fixture { host, screen, db, _ ->
+    @Test fun duplicateAppearsAfterDialogOpens(): Unit = runBlocking { fixture { host, screen, db ->
         action(host, screen, "one", R.string.trash_restore)
         host.await(screen) { host.text(it, host.context.getString(R.string.trash_restore_title)) }
         db.bookmarkDao().insertOrUpdate(BookmarkEntity("existing", "Keep me", "https://example.com/one", "", createdAt = 1, updatedAt = 1))
@@ -136,7 +154,7 @@ class TrashScreenTest {
         assertEquals("Keep me", db.bookmarkDao().getBookmarkById("existing")?.title)
     } }
 
-    @Test fun writeFailureRetainsDialogAndCanRetry(): Unit = runBlocking { fixture { host, screen, db, _ ->
+    @Test fun writeFailureRetainsDialogAndCanRetry(): Unit = runBlocking { fixture { host, screen, db ->
         db.openHelper.writableDatabase.execSQL("CREATE TRIGGER reject_trash_delete BEFORE DELETE ON trashed_bookmarks BEGIN SELECT RAISE(ABORT, 'injected'); END")
         action(host, screen, "one", R.string.trash_restore)
         clickTrashNode(host, host.await(screen) { it.config.getOrNull(SemanticsProperties.TestTag) == "trash_confirm" })
@@ -164,7 +182,7 @@ class TrashScreenTest {
                     Box(Modifier.width(320.dp)) {
                         TidiloTheme(theme = appearance.value.first, darkTheme = appearance.value.second, dynamicColor = false) {
                             Surface(color = MaterialTheme.colorScheme.background) {
-                                TrashContent(state.value, {}, {}, { id, action -> state.value = state.value.copy(confirmation = TrashConfirmation(id, action)) },
+                                TrashContent(state.value, {}, { id, action -> state.value = state.value.copy(confirmation = TrashConfirmation(id, action)) },
                                     { state.value = state.value.copy(confirmation = null) }, { confirmed++ }, {})
                             }
                         }
@@ -187,7 +205,7 @@ class TrashScreenTest {
         } finally { host.main { screen.finish() } }
     }
 
-    @Test fun shortDisplayKeepsConfirmationAndDetailBrowserReachable(): Unit = runBlocking {
+    @Test fun shortDisplayKeepsConfirmationReachable(): Unit = runBlocking {
         val host = HeaderTestHost()
         fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(
             host.instrumentation.uiAutomation.executeShellCommand(command)).bufferedReader().use { it.readText() }
@@ -206,7 +224,7 @@ class TrashScreenTest {
             host.main { activity.setContent {
                 CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 2f)) {
                     TidiloTheme(dynamicColor = false) { Surface(color = MaterialTheme.colorScheme.background) {
-                        TrashContent(state.value, {}, {}, { id, action -> state.value = state.value.copy(confirmation = TrashConfirmation(id, action)) },
+                        TrashContent(state.value, {}, { id, action -> state.value = state.value.copy(confirmation = TrashConfirmation(id, action)) },
                             { state.value = state.value.copy(confirmation = null) }, { confirmed = true }, {})
                     } }
                 }
@@ -215,24 +233,6 @@ class TrashScreenTest {
             host.capture("trash-short-confirmation")
             clickTrashNode(host, host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "trash_confirm" })
             assertTrue(confirmed)
-            val item = BookmarkItem("short", "Long title ".repeat(20), "https://example.com/long-path", "Long summary ".repeat(20),
-                Tag("Article", "Tech", listOf("Kotlin", "Android")), note = "Memo ".repeat(40))
-            host.main { activity.setContent {
-                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 2f)) {
-                    TidiloTheme(dynamicColor = false) { Surface(color = MaterialTheme.colorScheme.background) {
-                        TrashBookmarkDetailContent(item, {})
-                    } }
-                }
-            } }
-            val browser = host.await(activity) { host.description(it, host.context.getString(R.string.bookmark_open_in_browser)) }
-            val monitor = host.instrumentation.addMonitor(android.content.IntentFilter(android.content.Intent.ACTION_VIEW).apply {
-                addDataScheme("https"); addDataAuthority("example.com", null)
-            }, android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_OK, null), true)
-            try {
-                host.capture("trash-short-detail")
-                clickTrashNode(host, browser)
-                assertTrue(host.instrumentation.checkMonitorHit(monitor, 1))
-            } finally { host.instrumentation.removeMonitor(monitor) }
         } finally {
             screen?.let { host.main { it.finish() } }
             shell("wm size $previous")

@@ -226,10 +226,12 @@ class BookmarkRepository private constructor(context: Context) {
         database.moveBookmarkToTrash(bookmarkId, System.currentTimeMillis(), MAX_TRASH_CAPACITY)
     }
 
-    fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> = observeSafely { trashDao.observeTrash(showNsfw) }
+    fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> =
+        trashBookmarkQuery(isInitialized, initializationFailure) { trashDao.observeTrash(showNsfw) }
 
     fun observeTrashedBookmark(id: String): Flow<BookmarkItem?> =
-        observeSafely { trashDao.observeById(id) }.map { it?.toTrashedBookmarkItem()?.bookmark }
+        trashBookmarkQuery(isInitialized, initializationFailure) { trashDao.observeById(id) }
+            .map { it?.toTrashedBookmarkItem()?.bookmark }
 
     suspend fun restoreFromTrash(id: String): TrashMutationResult = withContext(Dispatchers.IO) {
         database.restoreTrashedBookmark(id)

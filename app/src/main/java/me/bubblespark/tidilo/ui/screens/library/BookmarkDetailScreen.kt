@@ -138,6 +138,8 @@ import java.time.format.DateTimeFormatter
 
 private val DETAIL_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
 
+enum class BookmarkDetailMode { Editable, Trash }
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BookmarkDetailScreen(
@@ -146,19 +148,23 @@ fun BookmarkDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToAiReview: (String) -> Unit = {},
     modifier: Modifier = Modifier,
-    onOpenCollections: () -> Unit = {}
+    onOpenCollections: () -> Unit = {},
+    mode: BookmarkDetailMode = BookmarkDetailMode.Editable
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
     val coroutineScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     var detailRetry by remember(bookmarkId) { mutableStateOf(0) }
-    val detailFlow = remember(viewModel, bookmarkId, detailRetry) { viewModel.bookmarkDetails(bookmarkId) }
+    val detailFlow = remember(viewModel, bookmarkId, detailRetry, mode) {
+        if (mode == BookmarkDetailMode.Trash) viewModel.trashedBookmarkDetails(bookmarkId)
+        else viewModel.bookmarkDetails(bookmarkId)
+    }
     val detailState by detailFlow.collectAsStateWithLifecycle(initialValue = BookmarkDetailState())
     val bookmark = detailState.bookmark
     var detailRecorded by rememberSaveable(bookmarkId) { mutableStateOf(false) }
     LaunchedEffect(bookmarkId, bookmark?.id) {
-        if (bookmark != null && !detailRecorded) {
+        if (mode == BookmarkDetailMode.Editable && bookmark != null && !detailRecorded) {
             detailRecorded = true
             viewModel.recordDetailView(bookmarkId)
         }
@@ -173,12 +179,20 @@ fun BookmarkDetailScreen(
                 when {
                     detailState.loading -> androidx.compose.material3.CircularProgressIndicator()
                     detailState.error != null -> PagingFeedback(
-                        androidx.paging.LoadState.Error(requireNotNull(detailState.error)), { detailRetry++ }
+                        androidx.paging.LoadState.Error(requireNotNull(detailState.error)), {
+                            if (mode == BookmarkDetailMode.Trash) viewModel.retryInitialization()
+                            detailRetry++
+                        }
                     )
                     else -> Text(stringResource(R.string.detail_item_not_found), color = MaterialTheme.colorScheme.outline)
                 }
             }
         }
+        return
+    }
+
+    if (mode == BookmarkDetailMode.Trash) {
+        TrashBookmarkDetailContent(bookmark, onNavigateBack, modifier)
         return
     }
 

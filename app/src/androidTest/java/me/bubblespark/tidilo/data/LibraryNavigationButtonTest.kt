@@ -72,7 +72,9 @@ class LibraryNavigationButtonTest {
             assertTrue(host.description(actions.single(), if (up) backLabel else menuLabel))
             assertEquals(1, nodes.count { host.description(it, if (up) backLabel else menuLabel) })
             assertFalse(nodes.any { host.description(it, if (up) menuLabel else backLabel) })
-            assertTrue(actions.single().config[SemanticsActions.OnClick].action!!.invoke())
+            assertTrue(checkNotNull(actions.single().config.getOrNull(SemanticsActions.OnClick)?.action) {
+                "The current navigation button must expose an invokable Click action"
+            }.invoke())
         }
         fun glyphPixels(): IntArray {
             val button = host.nodes(activity).single { it.config.getOrNull(SemanticsActions.OnClick) != null }
@@ -98,7 +100,8 @@ class LibraryNavigationButtonTest {
                     ) {
                         MaterialTheme(colorScheme = if (rtl) darkColorScheme() else lightColorScheme()) {
                             Surface { Row(Modifier.statusBarsPadding().size(320.dp, 80.dp)) {
-                                LibraryNavigationButton(drillDown.value, backLabel, { menuClicks++ }, { upClicks++ })
+                                LibraryNavigationButton(drillDown.value, backLabel, { menuClicks++ }, { upClicks++ },
+                                    modifier = Modifier.testTag("library-navigation-button"))
                                 Text("Navigation title", Modifier.testTag("navigation-title"))
                             } }
                         }
@@ -106,7 +109,10 @@ class LibraryNavigationButtonTest {
                 }
             }
             repeat(3) { frame() }
-            val initial = host.await(activity) { host.description(it, menuLabel) }
+            val initial = host.await(activity) {
+                host.description(it, menuLabel) &&
+                    it.config.getOrNull(SemanticsProperties.TestTag) == "library-navigation-button"
+            }
             val title = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "navigation-title" }
             val initialBounds = initial.boundsInRoot
             val initialTitleX = title.boundsInRoot.left

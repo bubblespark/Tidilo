@@ -9,7 +9,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -23,6 +25,49 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LibraryNavigationEntryTest {
+    @Test fun cleanupAttemptsEveryStepAndPreservesPrimaryFailure(): Unit = runBlocking {
+        val primary = AssertionError("Navigation assertion failed")
+        val teardown = IllegalStateException("Activity teardown failed")
+        val deletion = IllegalStateException("First row deletion failed")
+        val attempts = mutableListOf<String>()
+        cleanupNavigationTest(primary,
+            { attempts += "activity"; throw teardown },
+            { attempts += "scope"; delay(1) },
+            { attempts += "first row"; throw deletion },
+            { attempts += "second row" },
+            { attempts += "preferences" })
+        org.junit.Assert.assertEquals(listOf("activity", "scope", "first row", "second row", "preferences"), attempts)
+        org.junit.Assert.assertArrayEquals(arrayOf(teardown, deletion), primary.suppressed)
+    }
+
+    @Test fun cleanupReportsFailuresAfterAttemptingRemainingSteps(): Unit = runBlocking {
+        val first = IllegalStateException("First cleanup failed")
+        val second = IllegalStateException("Second cleanup failed")
+        var restored = false
+        val failure = runCatching {
+            cleanupNavigationTest(null, { throw first }, { throw second }, { restored = true })
+        }.exceptionOrNull()
+        assertTrue("Preference restoration must still be attempted", restored)
+        org.junit.Assert.assertSame(first, failure)
+        org.junit.Assert.assertArrayEquals(arrayOf(second), first.suppressed)
+    }
+
+    private suspend fun cleanupNavigationTest(primaryFailure: Throwable?, vararg steps: suspend () -> Unit) {
+        var failure = primaryFailure
+        withContext(NonCancellable) {
+            steps.forEach { step ->
+                try {
+                    step()
+                } catch (error: Throwable) {
+                    val previous = failure
+                    if (previous == null) failure = error
+                    else if (previous !== error) previous.addSuppressed(error)
+                }
+            }
+        }
+        if (primaryFailure == null) failure?.let { throw it }
+    }
+
     @Test fun domainDrillDownReplacesMenuWithUp(): Unit = runBlocking {
         verifyGroupNavigation(me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.DOMAIN)
     }
@@ -46,6 +91,7 @@ class LibraryNavigationEntryTest {
         val prefix = java.util.UUID.randomUUID().toString()
         val domain = "$prefix.invalid"
         val ids = (0..19).map { "$prefix-$it" }
+        var primaryFailure: Throwable? = null
         try {
             ids.forEachIndexed { index, id -> dao.insertOrUpdate(me.bubblespark.tidilo.data.db.BookmarkEntity(
                 id, "Group fixture $index", "https://$domain/$index", "Summary fixture $index",
@@ -69,8 +115,11 @@ class LibraryNavigationEntryTest {
                 }.minBy { it.boundsInRoot.top }
                 visibleTitle = visible.config[SemanticsProperties.Text].single().text
                 visibleTop = visible.boundsInRoot.top
-                val card = generateSequence(visible) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnLongClick) != null }
-                assertTrue(card.config[SemanticsActions.OnLongClick].action!!.invoke())
+                val action = checkNotNull(generateSequence(visible) { it.parent }
+                    .mapNotNull { it.config.getOrNull(SemanticsActions.OnLongClick)?.action }.firstOrNull()) {
+                    "The summary card must expose an invokable LongClick action"
+                }
+                assertTrue(action.invoke())
             }
             host.await(activity) { host.text(it, host.context.getString(R.string.detail_action_ai_summary)) }
             host.main { activity.onBackPressedDispatcher.onBackPressed() }
@@ -79,14 +128,18 @@ class LibraryNavigationEntryTest {
             host.main {
                 org.junit.Assert.assertFalse(host.nodes(activity).any { host.text(it, host.context.getString(R.string.detail_action_ai_summary)) })
                 val visible = host.nodes(activity).first { host.text(it, visibleTitle) }
-                val card = generateSequence(visible) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
-                assertTrue(card.config[SemanticsActions.OnClick].action!!.invoke())
+                val action = checkNotNull(generateSequence(visible) { it.parent }
+                    .mapNotNull { it.config.getOrNull(SemanticsActions.OnClick)?.action }.firstOrNull()) {
+                    "The bookmark card must expose an invokable Click action to open Detail"
+                }
+                assertTrue(action.invoke())
             }
             host.await(activity) { host.text(it, host.context.getString(R.string.detail_title)) }
             delay(350)
             host.main { activity.onBackPressedDispatcher.onBackPressed() }
-            host.await(activity) { host.text(it, visibleTitle) }
-            delay(400)
+            host.await(activity) {
+                host.text(it, visibleTitle) && kotlin.math.abs(it.boundsInRoot.top - visibleTop) <= 2f
+            }
             host.main {
                 org.junit.Assert.assertEquals(domain, model.selectedDomainFilter.value)
                 val restored = host.nodes(activity).first { host.text(it, visibleTitle) }
@@ -95,13 +148,20 @@ class LibraryNavigationEntryTest {
             }
             host.await(activity) { host.description(it, host.context.getString(R.string.navigation_open)) }
             org.junit.Assert.assertNull(model.selectedDomainFilter.value)
+        } catch (error: Throwable) {
+            primaryFailure = error
+            throw error
         } finally {
-            host.main { activity.viewModelStore.clear(); activity.finish() }
-            scopeJob?.cancelAndJoin()
-            ids.forEach { dao.deleteById(it) }
-            val restore = prefs.edit()
-            snapshot.forEach { (key, value) -> if (value == null) restore.remove(key) else restore.putString(key, value) }
-            assertTrue(restore.commit())
+            cleanupNavigationTest(primaryFailure,
+                { host.main { activity.viewModelStore.clear() } },
+                { host.main { activity.finish() } },
+                { scopeJob?.cancelAndJoin() },
+                *ids.map { id -> suspend { dao.deleteById(id) } }.toTypedArray(),
+                {
+                    val restore = prefs.edit()
+                    snapshot.forEach { (key, value) -> if (value == null) restore.remove(key) else restore.putString(key, value) }
+                    assertTrue("Group navigation preferences must be restored", restore.commit())
+                })
         }
     }
     private suspend fun verifyGroupNavigation(mode: me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode) {
@@ -132,6 +192,7 @@ class LibraryNavigationEntryTest {
             org.junit.Assert.assertNull(model.selectedCollectionId.value)
             org.junit.Assert.assertEquals(mode, model.filterMode.value)
         }
+        var primaryFailure: Throwable? = null
         try {
             if (mode == me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.COLLECTION) {
                 collectionDao.insert(me.bubblespark.tidilo.data.db.CollectionEntity(
@@ -147,14 +208,20 @@ class LibraryNavigationEntryTest {
             host.main {
                 org.junit.Assert.assertFalse("Group navigation must replace Menu with Up",
                     host.nodes(activity).any { host.description(it, host.context.getString(R.string.navigation_open)) })
-                val button = generateSequence(back) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
-                assertTrue(button.config[SemanticsActions.OnClick].action!!.invoke())
+                val action = checkNotNull(generateSequence(back) { it.parent }
+                    .mapNotNull { it.config.getOrNull(SemanticsActions.OnClick)?.action }.firstOrNull()) {
+                    "The group Up button must expose an invokable Click action"
+                }
+                assertTrue(action.invoke())
                 assertCleared()
             }
             val menu = host.await(activity) { host.description(it, host.context.getString(R.string.navigation_open)) }
             host.main {
-                val button = generateSequence(menu) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
-                assertTrue(button.config[SemanticsActions.OnClick].action!!.invoke())
+                val action = checkNotNull(generateSequence(menu) { it.parent }
+                    .mapNotNull { it.config.getOrNull(SemanticsActions.OnClick)?.action }.firstOrNull()) {
+                    "The overview Menu button must expose an invokable Click action"
+                }
+                assertTrue(action.invoke())
             }
             host.await(activity) { host.text(it, host.context.getString(R.string.app_name)) }
             host.main { activity.onBackPressedDispatcher.onBackPressed() }
@@ -163,14 +230,21 @@ class LibraryNavigationEntryTest {
             host.await(activity) { host.description(it, backLabel) }
             host.main { activity.onBackPressedDispatcher.onBackPressed(); assertCleared() }
             host.await(activity) { host.description(it, host.context.getString(R.string.navigation_open)) }
+        } catch (error: Throwable) {
+            primaryFailure = error
+            throw error
         } finally {
-            host.main { activity.viewModelStore.clear(); activity.finish() }
-            scopeJob?.cancelAndJoin()
-            collectionDao.delete(id)
-            val restore = prefs.edit()
-            if (previous == null) restore.remove("library_filter_mode") else restore.putString("library_filter_mode", previous)
-            assertTrue(restore.commit())
-            org.junit.Assert.assertEquals(previous, prefs.getString("library_filter_mode", null))
+            cleanupNavigationTest(primaryFailure,
+                { host.main { activity.viewModelStore.clear() } },
+                { host.main { activity.finish() } },
+                { scopeJob?.cancelAndJoin() },
+                { collectionDao.delete(id) },
+                {
+                    val restore = prefs.edit()
+                    if (previous == null) restore.remove("library_filter_mode") else restore.putString("library_filter_mode", previous)
+                    assertTrue("Library filter mode must be restored", restore.commit())
+                    org.junit.Assert.assertEquals(previous, prefs.getString("library_filter_mode", null))
+                })
         }
     }
     @Test fun searchHistoryEndsWithoutObsoleteNavigationClearance(): Unit = runBlocking {

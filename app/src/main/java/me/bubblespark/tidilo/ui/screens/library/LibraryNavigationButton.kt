@@ -25,12 +25,13 @@ internal fun LibraryNavigationButton(
     isDrillDown: Boolean,
     backContentDescription: String,
     onOpenNavigation: () -> Unit,
-    onNavigateUp: () -> Unit
+    onNavigateUp: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val description = if (isDrillDown) backContentDescription else stringResource(R.string.navigation_open)
     IconButton(
         onClick = { if (isDrillDown) onNavigateUp() else onOpenNavigation() },
-        modifier = Modifier.padding(end = 4.dp).size(48.dp).semantics { contentDescription = description }
+        modifier = modifier.padding(end = 4.dp).size(48.dp).semantics { contentDescription = description }
     ) {
         Crossfade(
             targetState = isDrillDown,

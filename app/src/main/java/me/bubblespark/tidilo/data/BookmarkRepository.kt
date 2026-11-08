@@ -6,6 +6,10 @@ import androidx.room.withTransaction
 import me.bubblespark.tidilo.data.db.updateBookmarkDetails
 import me.bubblespark.tidilo.data.db.logicalBookmarkTag
 import me.bubblespark.tidilo.data.db.moveBookmarkToTrash
+import me.bubblespark.tidilo.data.db.restoreTrashedBookmark
+import me.bubblespark.tidilo.data.db.deleteTrashedBookmark
+import me.bubblespark.tidilo.data.db.TrashBookmarkRow
+import me.bubblespark.tidilo.data.db.TrashMutationResult
 import me.bubblespark.tidilo.data.db.updateDomainNsfwWithPolicy
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
@@ -220,6 +224,19 @@ class BookmarkRepository private constructor(context: Context) {
      */
     suspend fun moveToTrash(bookmarkId: String): Boolean = withContext(Dispatchers.IO) {
         database.moveBookmarkToTrash(bookmarkId, System.currentTimeMillis(), MAX_TRASH_CAPACITY)
+    }
+
+    fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> = observeSafely { trashDao.observeTrash(showNsfw) }
+
+    fun observeTrashedBookmark(id: String): Flow<BookmarkItem?> =
+        observeSafely { trashDao.observeById(id) }.map { it?.toTrashedBookmarkItem()?.bookmark }
+
+    suspend fun restoreFromTrash(id: String): TrashMutationResult = withContext(Dispatchers.IO) {
+        database.restoreTrashedBookmark(id)
+    }
+
+    suspend fun deleteFromTrash(id: String): TrashMutationResult = withContext(Dispatchers.IO) {
+        database.deleteTrashedBookmark(id)
     }
 
     /**

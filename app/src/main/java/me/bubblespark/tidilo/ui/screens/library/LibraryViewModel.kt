@@ -65,13 +65,12 @@ internal class LibraryPagingSession(
 internal class SearchFocusRequestTracker {
     private val _trigger = MutableStateFlow(0L)
     val trigger: StateFlow<Long> = _trigger.asStateFlow()
+    private val sequence = java.util.concurrent.atomic.AtomicLong(0L)
 
     fun requestFocus(): Long {
-        while (true) {
-            val current = _trigger.value
-            val next = current + 1L
-            if (_trigger.compareAndSet(current, next)) return next
-        }
+        val next = sequence.incrementAndGet()
+        _trigger.value = next
+        return next
     }
 
     fun consumeFocus(token: Long): Boolean {

@@ -2,8 +2,10 @@ package me.bubblespark.tidilo
 
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
+import me.bubblespark.tidilo.ui.screens.library.SearchFocusRequestTracker
 import me.bubblespark.tidilo.ui.screens.library.Tag
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -290,7 +292,7 @@ class LibrarySearchTest {
 
     @Test
     fun testSearchFocusRequestTrackerRetainsPreNavigationRequestUntilConsumed() {
-        val tracker = me.bubblespark.tidilo.ui.screens.library.SearchFocusRequestTracker()
+        val tracker = SearchFocusRequestTracker()
         assertEquals(0L, tracker.trigger.value)
 
         // Triggered before collector is attached (e.g., before navigating to SearchScreen)
@@ -303,13 +305,13 @@ class LibrarySearchTest {
         assertEquals(0L, tracker.trigger.value)
 
         // Subsequent duplicate consume is a no-op (e.g., returning from BookmarkDetailScreen)
-        org.junit.Assert.assertFalse(tracker.consumeFocus(token))
+        assertFalse(tracker.consumeFocus(token))
         assertEquals(0L, tracker.trigger.value)
     }
 
     @Test
     fun testSearchFocusRequestTrackerPreservesNewerTokenOnStaleConsume() {
-        val tracker = me.bubblespark.tidilo.ui.screens.library.SearchFocusRequestTracker()
+        val tracker = SearchFocusRequestTracker()
         val firstToken = tracker.requestFocus()
         val secondToken = tracker.requestFocus()
 
@@ -318,10 +320,33 @@ class LibrarySearchTest {
         assertEquals(2L, tracker.trigger.value)
 
         // Stale consumption of firstToken must not wipe secondToken
-        org.junit.Assert.assertFalse(tracker.consumeFocus(firstToken))
+        assertFalse(tracker.consumeFocus(firstToken))
         assertEquals(2L, tracker.trigger.value)
 
         // Consuming current secondToken resets to 0L
+        assertTrue(tracker.consumeFocus(secondToken))
+        assertEquals(0L, tracker.trigger.value)
+    }
+
+    @Test
+    fun testSearchFocusRequestTrackerMonotonicAcrossConsumptionCycles() {
+        val tracker = SearchFocusRequestTracker()
+        val firstToken = tracker.requestFocus()
+        assertEquals(1L, firstToken)
+        assertEquals(1L, tracker.trigger.value)
+
+        assertTrue(tracker.consumeFocus(firstToken))
+        assertEquals(0L, tracker.trigger.value)
+
+        // Across consumption cycles, subsequent request gets a strictly higher monotonic token
+        val secondToken = tracker.requestFocus()
+        assertEquals(2L, secondToken)
+        assertEquals(2L, tracker.trigger.value)
+
+        // Delayed/stale consume of firstToken must not clear secondToken
+        assertFalse(tracker.consumeFocus(firstToken))
+        assertEquals(2L, tracker.trigger.value)
+
         assertTrue(tracker.consumeFocus(secondToken))
         assertEquals(0L, tracker.trigger.value)
     }

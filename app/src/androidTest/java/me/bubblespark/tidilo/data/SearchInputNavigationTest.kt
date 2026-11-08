@@ -241,6 +241,50 @@ class SearchInputNavigationTest {
                 it.config.getOrNull(SemanticsProperties.EditableText) != null && it.config.getOrNull(SemanticsProperties.Focused) == true
             }
             assertNotNull(searchInput3)
+
+            // 4. Bookmark Detail round-trip: open detail from search results, navigate back, and verify focus is NOT requested and IME remains hidden
+            val db = AppDatabase.getInstance(host.context)
+            val fixtureId = "search-detail-${UUID.randomUUID()}"
+            db.bookmarkDao().insertOrUpdate(
+                BookmarkEntity(
+                    id = fixtureId,
+                    title = "Detail Roundtrip Fixture",
+                    url = "https://roundtrip.invalid",
+                    description = "Summary",
+                    createdAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+            try {
+                host.main { vm.onSearchQueryChanged("Roundtrip") }
+                val bookmarkCard = host.await(activity) { host.text(it, "Detail Roundtrip Fixture") }
+                host.main { click(bookmarkCard) }
+                host.await(activity) { host.text(it, "https://roundtrip.invalid") }
+
+                val backFromDetail = host.await(activity) {
+                    host.description(it, host.context.getString(R.string.common_back))
+                }
+                host.main { click(backFromDetail) }
+                host.await(activity) { host.text(it, "Detail Roundtrip Fixture") }
+                delay(300)
+
+                val inputAfterDetail = host.nodes(activity).firstOrNull {
+                    it.config.getOrNull(SemanticsProperties.EditableText) != null
+                }
+                assertNotNull(inputAfterDetail)
+                assertFalse(
+                    "Search input must not be focused when returning from Bookmark Detail",
+                    inputAfterDetail?.config?.getOrNull(SemanticsProperties.Focused) == true
+                )
+
+                var imeVisible = false
+                host.main {
+                    imeVisible = ViewCompat.getRootWindowInsets(activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+                }
+                assertFalse("IME must remain hidden when returning from Bookmark Detail", imeVisible)
+            } finally {
+                db.bookmarkDao().deleteById(fixtureId)
+            }
         } finally {
             host.main {
                 activity.setContent { }

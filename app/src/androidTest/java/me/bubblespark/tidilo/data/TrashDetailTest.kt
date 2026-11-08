@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.material3.Surface
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -39,7 +41,9 @@ class TrashDetailTest {
             val screen = activity
             host.main {
                 val model = ViewModelProvider(screen)[LibraryViewModel::class.java]
-                screen.setContent { TidiloTheme { BookmarkDetailScreen(id, model, {}, mode = BookmarkDetailMode.Trash) } }
+                screen.setContent { TidiloTheme { Surface(color = MaterialTheme.colorScheme.background) {
+                    BookmarkDetailScreen(id, model, {}, mode = BookmarkDetailMode.Trash)
+                } } }
             }
             block(host, screen, snapshot)
         } finally {
@@ -62,6 +66,7 @@ class TrashDetailTest {
         }
         host.scroll(screen, 1000f)
         val note = host.await(screen) { it.config.getOrNull(SemanticsProperties.EditableText)?.text == "Saved memo" }
+        host.capture("trash-detail")
         host.main {
             assertNull(note.config.getOrNull(SemanticsProperties.Disabled))
             assertNull(note.config.getOrNull(SemanticsActions.SetText))

@@ -1,5 +1,7 @@
 # Directory Structure & Module Responsibilities
 
+Trash list/state ownership lives in `ui/screens/trash/`; transactional operations and live row projections live in `data/db/Trash*`, with initialization-aware observation in `data/TrashQuery`. The existing Library Detail entry selects `TrashBookmarkDetailContent` for its read-only mode. See [Trash](trash.md).
+
 Manual collection persistence lives in `data/db/Collection*` and `BookmarkCollectionCrossRef`; validation and transactional APIs live in `data/CollectionPolicy` and `CollectionRepository`. Collection cards, editor/membership sheets, their state holders, and sheet-scoped model ownership live in `ui/screens/library/`; palette tokens live in `ui/theme/CollectionColors`. See [Manual Collections](collections.md).
 
 This document defines the physical directory layout of the Tidilo codebase and outlines strict architectural responsibilities and component placement rules.

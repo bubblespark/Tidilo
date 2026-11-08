@@ -249,5 +249,18 @@ fun TidiloNavGraph(
                 }
             )
         }
+        composable(Screen.Trash.route) {
+            me.bubblespark.tidilo.ui.screens.trash.TrashScreen(
+                onNavigateBack = dropUnlessResumed { navController.popBackStack() },
+                onNavigateToDetail = { id ->
+                    navController.navigate(Screen.TrashDetail.createRoute(id)) { launchSingleTop = true }
+                }
+            )
+        }
+        composable(Screen.TrashDetail.route, arguments = listOf(navArgument("bookmarkId") { type = NavType.StringType })) { entry ->
+            BookmarkDetailScreen(bookmarkId = entry.arguments?.getString("bookmarkId").orEmpty(),
+                viewModel = libraryViewModel, onNavigateBack = dropUnlessResumed { navController.popBackStack() },
+                mode = me.bubblespark.tidilo.ui.screens.library.BookmarkDetailMode.Trash)
+        }
     }
 }

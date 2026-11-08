@@ -32,6 +32,18 @@ sealed class Screen(
         selectedIcon = Icons.Filled.CollectionsBookmark, unselectedIcon = Icons.Outlined.CollectionsBookmark
     )
 
+    data object Trash : Screen(
+        route = "trash", title = "Trash", titleRes = R.string.trash_title,
+        selectedIcon = Icons.Filled.CollectionsBookmark, unselectedIcon = Icons.Outlined.CollectionsBookmark
+    )
+
+    data object TrashDetail : Screen(
+        route = "trash_detail/{bookmarkId}", title = "Details", titleRes = R.string.detail_title,
+        selectedIcon = Icons.Filled.CollectionsBookmark, unselectedIcon = Icons.Outlined.CollectionsBookmark
+    ) {
+        fun createRoute(bookmarkId: String): String = "trash_detail/${android.net.Uri.encode(bookmarkId)}"
+    }
+
     data object Search : Screen(
         route = "search",
         title = "Search",

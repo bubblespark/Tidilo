@@ -1,4 +1,19 @@
 <resources>
+    <string name="trash_title">ゴミ箱</string>
+    <string name="trash_empty">ゴミ箱は空です</string>
+    <string name="trash_load_failed">ゴミ箱を読み込めませんでした。</string>
+    <string name="trash_restore">復元</string>
+    <string name="trash_duplicate">Libraryに存在</string>
+    <string name="trash_more_actions">ブックマークのオプション</string>
+    <string name="trash_restore_title">ブックマークを復元しますか？</string>
+    <string name="trash_restore_message">このブックマークをLibraryに復元しますか？</string>
+    <string name="trash_delete_title">完全に削除しますか？</string>
+    <string name="trash_delete_message">このブックマークを完全に削除します。この操作は取り消せません。</string>
+    <string name="trash_import_pending">このURLには未完了のインポートがあります。解決してから復元してください。</string>
+    <string name="trash_identity_conflict">既存のアイテムと競合しているため復元できません。</string>
+    <string name="trash_missing">このアイテムは現在利用できません。</string>
+    <string name="trash_restored">ブックマークを復元しました。</string>
+    <string name="trash_deleted">ブックマークを完全に削除しました。</string>
     <string name="navigation_open">ナビゲーションを開く</string>
     <string name="navigation_filters">フィルター</string>
     <string name="navigation_manual_import">手動インポート</string>

@@ -1,4 +1,19 @@
 <resources>
+    <string name="trash_title">Trash</string>
+    <string name="trash_empty">Trash is empty</string>
+    <string name="trash_load_failed">Could not load Trash.</string>
+    <string name="trash_restore">Restore</string>
+    <string name="trash_duplicate">Already in Library</string>
+    <string name="trash_more_actions">Bookmark options</string>
+    <string name="trash_restore_title">Restore bookmark?</string>
+    <string name="trash_restore_message">Restore this bookmark to Library?</string>
+    <string name="trash_delete_title">Delete permanently?</string>
+    <string name="trash_delete_message">This bookmark will be permanently deleted. This cannot be undone.</string>
+    <string name="trash_import_pending">This URL has an unfinished import. Resolve it before restoring.</string>
+    <string name="trash_identity_conflict">This bookmark conflicts with an existing item.</string>
+    <string name="trash_missing">This item is no longer available.</string>
+    <string name="trash_restored">Bookmark restored.</string>
+    <string name="trash_deleted">Bookmark permanently deleted.</string>
     <string name="navigation_open">Open navigation</string>
     <string name="navigation_filters">Filters</string>
     <string name="navigation_manual_import">Manual Import</string>

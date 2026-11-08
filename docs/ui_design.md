@@ -1,5 +1,7 @@
 # UI Design & Material 3 Expressive Specification
 
+Trash list rows, overflow actions, confirmations and read-only Detail are specified in [Trash](trash.md). They use the existing header, native field and shared dialog/menu/primary-action surface roles.
+
 The Collection library, prototype-derived horizontal cards, editor and bookmark assignment sheets are specified in [Manual Collections](collections.md).
 
 OS notification channels and the Settings > Notification system-settings entry are specified in [Android OS Notifications](notifications.md). The entry opens system settings directly, without an intermediate dialog. The Library rail opens the separate in-app Notification list; see [Library Navigation](library_navigation.md).

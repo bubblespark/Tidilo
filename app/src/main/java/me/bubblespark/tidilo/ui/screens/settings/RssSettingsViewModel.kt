@@ -29,7 +29,7 @@ import me.bubblespark.tidilo.data.rss.RssRegistrationSnapshot
 import me.bubblespark.tidilo.data.rss.RssRegistrationConfirmationRequired
 
 internal data class RssRegistrationRequest(
-    val original: RssFeedEntity?, val url: String, val limit: Int?,
+    val original: RssFeedEntity?, val url: String,
     val snapshot: RssRegistrationSnapshot
 )
 
@@ -122,22 +122,22 @@ class RssSettingsViewModel(
         RssScheduler.reschedule(getApplication())
     }
 
-    fun saveFeed(original: RssFeedEntity?, url: String, limit: Int?) =
-        saveFeed(original, url, limit, null)
+    fun saveFeed(original: RssFeedEntity?, url: String) =
+        saveFeed(original, url, null)
 
-    private fun saveFeed(original: RssFeedEntity?, url: String, limit: Int?,
+    private fun saveFeed(original: RssFeedEntity?, url: String,
         confirmed: RssRegistrationSnapshot?) = action {
         try {
-            if (original == null) offerInitialFetch(repository.register(url, limit, confirmed))
-            else if (original.url == url.trim()) repository.edit(original.id, limit)
+            if (original == null) offerInitialFetch(repository.register(url, confirmed))
+            else if (original.url == url.trim()) Unit
             else {
                 // Validate/create the replacement first; an invalid new URL leaves the old feed intact.
-                val id = repository.register(url, limit, confirmed)
+                val id = repository.register(url, confirmed)
                 repository.delete(original.id)
                 offerInitialFetch(id)
             }
         } catch (required: RssRegistrationConfirmationRequired) {
-            _registration.value = RssRegistrationRequest(original, url, limit, required.snapshot)
+            _registration.value = RssRegistrationRequest(original, url, required.snapshot)
         }
     }
 
@@ -146,7 +146,7 @@ class RssSettingsViewModel(
         val request = _registration.value ?: return
         if (_busy.value) return
         _registration.value = null
-        saveFeed(request.original, request.url, request.limit, request.snapshot)
+        saveFeed(request.original, request.url, request.snapshot)
     }
 
     private fun offerInitialFetch(id: String) {

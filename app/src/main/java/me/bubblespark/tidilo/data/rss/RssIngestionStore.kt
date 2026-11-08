@@ -10,7 +10,6 @@ import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
-import me.bubblespark.tidilo.data.db.RssImageCleanupEntity
 import me.bubblespark.tidilo.data.db.RssSeenItemEntity
 
 internal class RssIngestionStore(private val database: AppDatabase) {
@@ -38,7 +37,6 @@ internal class RssIngestionStore(private val database: AppDatabase) {
     suspend fun stage(feed: RssFeedEntity, entries: List<RssEntry>, now: Long, runId: String? = null): Boolean = database.withTransaction {
         val current = rss.feed(feed.id) ?: return@withTransaction false
         if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
-        require(current.retentionLimit == null || current.retentionLimit in 10..500)
         val fresh = entries.distinctBy { it.url }.filter { entry ->
             if (rss.hasSeen(feed.id, entry.key, entry.url)) false
             else if (rss.urlExists(entry.url)) {
@@ -136,27 +134,12 @@ internal class RssIngestionStore(private val database: AppDatabase) {
         }
     }
 
-    suspend fun enforceRetention(feedId: String, expectedRevision: Long? = null, includeDisabled: Boolean = false) = database.withTransaction {
-        rss.feed(feedId)?.takeIf { !it.deleted && (it.enabled || includeDisabled) && (expectedRevision == null || it.revision == expectedRevision) }?.let { enforceRetentionLocked(it) }
-    }
-
     suspend fun restoreTask(task: ImportTaskEntity) = database.withTransaction {
         val feed = task.rssFeedId?.let { rss.feed(it) } ?: return@withTransaction
         if (feed.deleted) return@withTransaction
         if (rss.rssWriteConflict(task.url, task.id)) return@withTransaction
         database.importTaskDao().insertOrUpdate(task)
     }
-
-    private suspend fun enforceRetentionLocked(feed: RssFeedEntity) {
-        val limit = feed.retentionLimit ?: return
-        require(limit in 10..500)
-        for (bookmark in rss.excess(feed.id, limit)) {
-            bookmark.ogImageUrl?.let { rss.enqueueCleanup(RssImageCleanupEntity(it, bookmark.url)) }
-            database.bookmarkDao().deleteById(bookmark.id)
-        }
-    }
-
-
 }
 
 internal class RssImportSkipped : Exception("RSS item already exists or its subscription was removed")

@@ -31,7 +31,7 @@ class RssSettingsScreenTest {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
                 RssSettingsContent(StorageLoad.Ready(emptyList()), settings.value, false, null, true,
                     onBack = {}, onRetry = {}, onSettings = { settings.value = it },
-                    onFeed = { _, _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
+                    onFeed = { _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
             } } }
             node("Unset trigger card") { it.text?.toString() == "Not set" }
             node("Empty counter") { it.text?.toString() == "0 / 3" }
@@ -84,7 +84,7 @@ class RssSettingsScreenTest {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
                 RssSettingsContent(StorageLoad.Ready(emptyList()), settings.value, false, null, true,
                     onBack = {}, onRetry = {}, onSettings = { settings.value = it },
-                    onFeed = { _, _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
+                    onFeed = { _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
             } } }
             click(node("Add trigger") { it.contentDescription?.toString() == "Add trigger time" })
             node("Duplicate feedback") { it.text?.toString() == "This time is already set." }
@@ -117,7 +117,7 @@ class RssSettingsScreenTest {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
                 RssSettingsContent(StorageLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
                     "waiting-test", "https://example.invalid/feed", "Example"))), RssSettings(), false, null, false,
-                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _ -> },
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
                     onDelete = {}, onFetch = { fetches++ }, onDismissError = {}, manualFetch = status.value)
             } } }
             val waiting = node("Waiting status") { it.text?.toString() == "Waiting to fetch" }
@@ -142,7 +142,7 @@ class RssSettingsScreenTest {
                 "header-$it", "https://header-$it.invalid/feed", "Feed $it") }
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
                 RssSettingsContent(StorageLoad.Ready(feeds), RssSettings(), false, null, true,
-                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _ -> },
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
                     onDelete = {}, onFetch = {}, onDismissError = {})
             } } }
             host.await(activity) { host.text(it, "Daily fetch") && it.boundsInRoot.height > 0f }
@@ -191,7 +191,7 @@ class RssSettingsScreenTest {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
                 RssSettingsContent(StorageLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
                     "delete-test", "https://example.com/feed", "Example"))), RssSettings(), false, null, true,
-                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _ -> },
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
                     onDelete = { deleted = it }, onFetch = {}, onDismissError = {})
             } } }
             repeat(8) {
@@ -217,7 +217,7 @@ class RssSettingsScreenTest {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
                 RssSettingsContent(StorageLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
                     "progress-test", "https://example.com/feed", "Example"))), RssSettings(), false, null, true,
-                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _ -> },
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
                     onDelete = {}, onFetch = {}, onDismissError = {}, manualFetch = me.bubblespark.tidilo.ui.screens.settings.ManualFetchStatus.Running)
             } } }
             val label = node("Fetch now") { it.text?.toString() == "Fetch now" }
@@ -238,7 +238,7 @@ class RssSettingsScreenTest {
                 RssSettingsContent(StorageLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
                     "daily-test", "https://example.com/feed", "Example"))), settings.value, false, null, true,
                     onBack = {}, onRetry = {}, onSettings = { settings.value = it },
-                    onFeed = { _, _, _ -> }, onDelete = {}, onFetch = { fetched = true }, onDismissError = {})
+                    onFeed = { _, _ -> }, onDelete = {}, onFetch = { fetched = true }, onDismissError = {})
             } } }
             clickText("Daily fetch")
             withTimeout(3000) { while (settings.value.dailyEnabled) delay(20) }
@@ -252,7 +252,7 @@ class RssSettingsScreenTest {
             .putExtra(me.bubblespark.tidilo.data.notifications.NotificationCoordinator.EXTRA_DESTINATION, "import")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         try {
-            node("Import header") { it.text?.toString() == context.getString(me.bubblespark.tidilo.R.string.import_header_subtitle) }
+            node("Notification header") { it.text?.toString() == context.getString(me.bubblespark.tidilo.R.string.settings_notification_title) }
             assertNull(find { it.text?.toString()?.startsWith("Ready - RSS (") == true })
             assertNull(find { it.text?.toString()?.startsWith("Ready (") == true })
         } finally {
@@ -268,7 +268,7 @@ class RssSettingsScreenTest {
                 "feed", "https://fixture.example/feed", "Feed", mode = "AI"
             )
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                me.bubblespark.tidilo.ui.screens.settings.RssFeedEditor(original, onDismiss = {}) { _, _ -> }
+                me.bubblespark.tidilo.ui.screens.settings.RssFeedEditor(original, onDismiss = {}) { _ -> }
             } } }
             node("Save action") { it.text?.toString() == "Save" }
             assertNull(find { it.text?.toString() == "AI Analyze" })
@@ -305,7 +305,7 @@ class RssSettingsScreenTest {
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
                 RssSettingsContent(StorageLoad.Ready(listOf(feed)), RssSettings(), false, null, true,
-                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _ -> }, onDelete = {},
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> }, onDelete = {},
                     onFetch = {}, onDismissError = {})
             } } }
             repeat(8) {
@@ -328,24 +328,36 @@ class RssSettingsScreenTest {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         var accepted = false
         var dismissed = false
-        val limit = mutableStateOf<Int?>(30)
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                me.bubblespark.tidilo.ui.screens.settings.RssRegistrationDialog(100, limit.value, false,
+                me.bubblespark.tidilo.ui.screens.settings.RssRegistrationDialog(100, false,
                     onConfirm = { accepted = true }, onDismiss = { dismissed = true })
             } } }
             node("Existing count") { it.text?.toString()?.contains("100 saved articles") == true }
-            node("Cycle permanent deletion warning") { it.text?.toString()?.contains("scheduled or explicit fetch") == true }
+            node("Cycle permanent deletion warning") { it.text?.toString()?.contains("daily maintenance") == true }
             assertFalse(accepted)
             click(node("Cancel registration") { it.text?.toString() == "Cancel" })
             assertTrue(dismissed)
             assertFalse(accepted)
-            instrumentation.runOnMainSync { limit.value = null }
-            node("Unlimited explanation") { it.text?.toString()?.contains("no automatic count deletion") == true }
+            node("Protected articles explanation") { it.text?.toString()?.contains("Collection") == true }
             click(node("Confirm registration") { it.text?.toString() == "Register" })
             assertTrue(accepted)
         } finally { instrumentation.runOnMainSync { activity.finish() } }
     }
+    @Test fun feedEditorShowsAgePolicyWithoutCountControls(): Unit = runBlocking {
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        try {
+            instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
+                me.bubblespark.tidilo.ui.screens.settings.RssFeedEditor(null, onDismiss = {}) { _ -> }
+            } } }
+            node("Fixed age policy") { it.text?.toString()?.contains("10 days") == true }
+            assertNull(find { it.text?.toString() == "Unlimited" })
+            assertNull(find { it.text?.toString()?.contains("10–500") == true })
+            assertNull(find { it.isEditable && it.text?.toString() == "30" })
+        } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
 
@@ -410,7 +422,7 @@ class RssSettingsScreenTest {
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
                 RssSettingsContent(StorageLoad.Ready(listOf(feed.value)), RssSettings(), false, null, true,
-                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _ -> }, onDelete = {},
+                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> }, onDelete = {},
                     onFetch = {}, onDismissError = {}, onEnabled = { id, value ->
                         assertEquals("feed", id); feed.value = feed.value.copy(enabled = value)
                     })
@@ -423,7 +435,7 @@ class RssSettingsScreenTest {
                 }
             }
             val mode = node("Compact mode") { it.text?.toString() == "Direct" }
-            val retention = node("Compact retention") { it.text?.toString() == "Unlimited" }
+            val retention = node("Compact retention") { it.text?.toString() == "Unread 10d · Read 30d" }
             val modeBounds = android.graphics.Rect()
             val retentionBounds = android.graphics.Rect()
             mode.getBoundsInScreen(modeBounds)
@@ -441,7 +453,7 @@ class RssSettingsScreenTest {
             click(toggle)
             withTimeout(3000) { while (feed.value.enabled) delay(20) }
             instrumentation.runOnMainSync { feed.value = feed.value.copy(error = null, retentionLimit = 30) }
-            node("Numeric maximum") { it.text?.toString() == "Max 30" }
+            node("Fixed retention") { it.text?.toString() == "Unread 10d · Read 30d" }
             click(node("Feed title") { it.text?.toString() == "Example" })
             node("Delete in editor") { it.text?.toString() == "Delete feed" }
             delay(250)
@@ -456,15 +468,16 @@ class RssSettingsScreenTest {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         try {
-            click(node("Settings button") { it.contentDescription?.toString() == activity.getString(me.bubblespark.tidilo.R.string.title_settings) })
-            node("Settings heading") { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.settings_title) }
+            click(node("Open navigation") { it.contentDescription?.toString() == activity.getString(me.bubblespark.tidilo.R.string.navigation_open) })
+            click(node("Settings entry") { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.title_settings) })
+            node("Settings content") { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.settings_language_title) }
             repeat(10) {
-                if (find { it.text?.toString() == "RSS" } == null) {
+                if (find { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_subtitle) } == null) {
                     find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
                     delay(150)
                 }
             }
-            click(node("RSS entry") { it.text?.toString() == "RSS" })
+            click(node("RSS settings entry") { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_subtitle) })
             node("RSS daily time heading") { it.text?.toString() == "Daily fetch time" }
             node("Wi-Fi policy") { it.text?.toString() == "Fetch only over Wi-Fi" }
             delay(500)
@@ -482,7 +495,6 @@ class RssSettingsScreenTest {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         val settings = mutableStateOf(RssSettings(listOf(java.time.LocalTime.MIDNIGHT), dailyEnabled = true))
         val wifi = mutableStateOf<Boolean?>(null)
-        var savedLimit: Int? = 1
         var savedUrl: String? = null
         var backed = false
         try {
@@ -490,7 +502,7 @@ class RssSettingsScreenTest {
                 activity.setContent { MaterialTheme {
                     RssSettingsContent(StorageLoad.Ready(emptyList()), settings.value, false, null, wifi.value,
                         onBack = { backed = true }, onRetry = {}, onSettings = { settings.value = it },
-                        onFeed = { _, url, limit -> savedUrl = url; savedLimit = limit },
+                        onFeed = { _, url -> savedUrl = url },
                         onDelete = {}, onFetch = {}, onDismissError = {})
                 } }
             }
@@ -521,21 +533,16 @@ class RssSettingsScreenTest {
                 screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
             } } finally { screenshot.recycle() }
             click(node("Add feed") { it.contentDescription?.toString() == "Add feed" })
-            node("Max saved items section") { it.text?.toString() == "Max saved items" }
+            node("Fixed retention explanation") { it.text?.toString()?.contains("10 days") == true }
             assertNull(find { it.text?.toString() == "Import Mode" })
-            node("Default retention") { it.isEditable && it.text?.toString() == "30" }
             val input = node("Feed URL input") { it.isEditable && it.text?.toString() != "30" }
             assertTrue(input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
                 putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "https://example.com/feed.xml")
             }))
-            val unlimitedLabel = node("Unlimited") { it.text?.toString() == "Unlimited" }
-            assertTrue(unlimitedLabel.parent.isCheckable)
-            click(unlimitedLabel)
-            instrumentation.waitForIdleSync()
+            assertNull(find { it.text?.toString() == "Unlimited" })
             clickCurrent { it.text?.toString() == "Save" }
             withTimeout(3000) { while (savedUrl == null) delay(20) }
             assertEquals("https://example.com/feed.xml", savedUrl)
-            assertNull(savedLimit)
             click(node("Back") { it.contentDescription?.toString() == activity.getString(me.bubblespark.tidilo.R.string.common_back) })
             assertTrue(backed)
         } finally { instrumentation.runOnMainSync { activity.finish() } }

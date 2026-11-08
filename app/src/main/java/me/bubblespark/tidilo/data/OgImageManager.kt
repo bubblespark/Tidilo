@@ -130,24 +130,65 @@ object OgImageManager {
     private val cacheMutex = Mutex()
     private val imageEpochs = ConcurrentHashMap<String, AtomicLong>()
 
+    internal suspend fun evictExpiredImage(context: Context, filename: String,
+        expectedModifiedAt: Long, domains: Set<String>): Boolean = withContext(Dispatchers.IO) {
+        cacheMutex.withLock {
+            val file = File(getOgImageDir(context), filename)
+            if (file.parentFile != getOgImageDir(context) ||
+                !java.nio.file.Files.isRegularFile(file.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS) ||
+                file.lastModified() != expectedModifiedAt) return@withLock false
+            val fallback = filename.startsWith("latest_")
+            val affectedDomains = if (fallback) domains + filename.removePrefix("latest_").removeSuffix(".webp") else domains
+            if (!fallback) imageEpochs.computeIfAbsent(filename) { AtomicLong(0) }.incrementAndGet()
+            if (!file.delete()) throw IOException("Could not remove expired OG image")
+            if (fallback) {
+                for (domain in affectedDomains) {
+                    memoryCache.remove(fallbackCacheKey(domain))
+                    invalidateDominantColors(fallbackCacheKey(domain))
+                    notifyOgImageUpdated(domain)
+                }
+            } else {
+                memoryCache.snapshot().keys.filter { it.endsWith("/$filename") }.forEach {
+                    memoryCache.remove(it)
+                    invalidateDominantColors(it)
+                }
+                // An orphan may still be present in memory even without a current database domain.
+                for (domain in affectedDomains.ifEmpty { setOf("") }) notifyExactImageUpdated(domain, filename)
+            }
+            true
+        }
+    }
+
     /** Called after a transactional reference check; invalidate only this deleted image's work. */
-    internal suspend fun deleteUnreferencedImage(context: Context, domain: String, imageKey: String, removeLatest: Boolean) = withContext(Dispatchers.IO) {
+    internal suspend fun deleteUnreferencedImage(context: Context, domain: String, imageKey: String, removeLatest: Boolean) =
+        deleteUnreferencedImage(context, setOf(domain), imageKey, if (removeLatest) setOf(domain) else emptySet())
+
+    /** Remove all matching domain copies before the exact file, preserving retry comparisons. */
+    internal suspend fun deleteUnreferencedImage(context: Context, domains: Set<String>, imageKey: String,
+        removeLatestDomains: Set<String>) = withContext(Dispatchers.IO) {
         cacheMutex.withLock {
             imageEpochs.computeIfAbsent(imageKey) { AtomicLong(0) }.incrementAndGet()
             val exact = getOgImageFile(context, imageKey)
-            val latest = getDomainLatestImageFile(context, domain)
-            val matchesLatest = removeLatest && exact.isFile && latest.isFile &&
-                exact.length() == latest.length() && exact.readBytes().contentEquals(latest.readBytes())
-            if (matchesLatest && !latest.delete()) throw IOException("Could not remove RSS image copy")
+            for (domain in removeLatestDomains) {
+                val latest = getDomainLatestImageFile(context, domain)
+                val matchesLatest = exact.isFile && latest.isFile &&
+                    exact.length() == latest.length() && exact.readBytes().contentEquals(latest.readBytes())
+                if (matchesLatest) {
+                    if (!latest.delete()) throw IOException("Could not remove RSS image copy")
+                    invalidateDominantColors(fallbackCacheKey(domain))
+                    memoryCache.remove(fallbackCacheKey(domain))
+                    notifyOgImageUpdated(domain)
+                }
+            }
             if (exact.exists() && !exact.delete()) throw IOException("Could not remove RSS image")
             memoryCache.snapshot().keys.filter { it.endsWith("/$imageKey") }.forEach {
                 memoryCache.remove(it)
                 invalidateDominantColors(it)
             }
-            invalidateDominantColors(cacheKey(domain, imageKey))
-            if (matchesLatest) invalidateDominantColors(fallbackCacheKey(domain))
-            if (matchesLatest) memoryCache.remove(fallbackCacheKey(domain))
-            notifyExactImageUpdated(domain, imageKey)
+            for (domain in domains) {
+                invalidateDominantColors(cacheKey(domain, imageKey))
+                notifyExactImageUpdated(domain, imageKey)
+            }
         }
     }
 

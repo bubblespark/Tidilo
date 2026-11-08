@@ -35,11 +35,12 @@ class TrashViewModel(
 
     init { observe() }
 
-    private fun observe() {
+    private fun observe(retry: Boolean = false) {
         observation?.cancel()
         mutable.value = mutable.value.copy(loading = true, error = null, readFailed = false)
         observation = scope.launch {
             try {
+                if (retry) store.retry()
                 visibility.flatMapLatest(store::observe).collect { rows ->
                     mutable.value = mutable.value.copy(loading = false, rows = rows)
                 }
@@ -94,9 +95,8 @@ class TrashViewModel(
     }
 
     fun retry() {
-        if (mutable.value.busy) return
-        store.retry()
-        observe()
+        if (mutable.value.busy || mutable.value.loading) return
+        observe(retry = true)
     }
 
     fun clearActionResult() { mutable.value = mutable.value.copy(actionResult = null) }
@@ -106,5 +106,5 @@ internal class RepositoryTrashStore(private val repository: BookmarkRepository) 
     override fun observe(showNsfw: Boolean) = repository.observeTrash(showNsfw)
     override suspend fun restore(id: String) = repository.restoreFromTrash(id)
     override suspend fun delete(id: String) = repository.deleteFromTrash(id)
-    override fun retry() = repository.retryInitialization()
+    override suspend fun retry() = repository.retryInitializationAndAwait()
 }

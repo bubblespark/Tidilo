@@ -20,6 +20,7 @@ class TrashViewModelTest {
         var deferred: CompletableDeferred<Unit>? = null
         var failWrite = false
         var failRead = false
+        var retryAction: suspend () -> Unit = {}
         val readFailure = MutableStateFlow<Throwable?>(null)
         override fun observe(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> = flow {
             if (failRead) throw java.io.IOException("read")
@@ -40,7 +41,7 @@ class TrashViewModelTest {
             rows.value = rows.value.filterNot { it.item.id == id }
             return TrashMutationResult.Deleted
         }
-        override fun retry() = Unit
+        override suspend fun retry() = retryAction()
     }
 
     private fun fixture(block: (TrashViewModel, Store, SavedStateHandle, CoroutineScope) -> Unit) {
@@ -148,5 +149,24 @@ class TrashViewModelTest {
         model.retry()
         assertNull(model.uiState.value.error)
         assertTrue(model.uiState.value.rows.isEmpty())
+    }
+
+    @Test fun oneRetryRecoversAfterAsynchronousInitializationReset() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = Store(listOf(row()))
+        val reset = CompletableDeferred<Unit>()
+        store.failRead = true
+        store.retryAction = { reset.await(); store.failRead = false }
+        try {
+            val model = TrashViewModel(store, SavedStateHandle(), MutableStateFlow(true), scope)
+            assertNotNull(model.uiState.value.error)
+            model.retry()
+            assertTrue(model.uiState.value.loading)
+            model.retry()
+            assertTrue(model.uiState.value.loading)
+            reset.complete(Unit)
+            assertNull(model.uiState.value.error)
+            assertEquals(listOf("old"), model.uiState.value.rows.map { it.item.id })
+        } finally { scope.cancel() }
     }
 }

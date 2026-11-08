@@ -111,6 +111,13 @@ class BookmarkRepository private constructor(context: Context) {
         }
     }
 
+    /** Waits for startup attempts to settle before readers subscribe again. */
+    suspend fun retryInitializationAndAwait() {
+        initializationJob?.join()
+        retryInitialization()
+        initializationJob?.join()
+    }
+
     init {
         retryInitialization()
     }

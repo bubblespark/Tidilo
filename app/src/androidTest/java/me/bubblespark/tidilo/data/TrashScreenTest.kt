@@ -71,7 +71,7 @@ class TrashScreenTest {
                 override fun observe(showNsfw: Boolean) = db.trashDao().observeTrash(showNsfw)
                 override suspend fun restore(id: String) = db.restoreTrashedBookmark(id)
                 override suspend fun delete(id: String) = db.deleteTrashedBookmark(id)
-                override fun retry() = Unit
+                override suspend fun retry() = Unit
             }
             screen = host.launch()
             val activity = screen

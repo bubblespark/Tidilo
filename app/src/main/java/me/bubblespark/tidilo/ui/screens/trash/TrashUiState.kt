@@ -20,5 +20,5 @@ interface TrashStore {
     fun observe(showNsfw: Boolean): Flow<List<TrashBookmarkRow>>
     suspend fun restore(id: String): TrashMutationResult
     suspend fun delete(id: String): TrashMutationResult
-    fun retry()
+    suspend fun retry()
 }

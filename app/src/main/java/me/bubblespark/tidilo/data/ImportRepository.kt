@@ -716,8 +716,6 @@ class ImportRepository internal constructor(
                     persistDirectBookmark(target, skippedBookmark(target))
                     val feedId = target.rssFeedId
                     if (feedId != null && database != null) {
-                        me.bubblespark.tidilo.data.rss.RssIngestionStore(database)
-                            .enforceRetention(feedId, includeDisabled = true)
                         database.rssNotificationDao().recordRecoveredDirectSave(target.id)
                     }
                 }
@@ -739,9 +737,6 @@ class ImportRepository internal constructor(
         if (taskDao.getTaskById(target.id) == null) {
             if (target.rssFeedId == null || bookmarkDao?.getBookmarkById(target.id) != null) {
                 cacheDirectOgImage(target)
-            }
-            if (target.rssFeedId != null && appContext != null) {
-                me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).cleanup()
             }
         }
     }

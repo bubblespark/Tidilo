@@ -154,7 +154,6 @@ class BookmarkRepository private constructor(context: Context) {
         repositoryScope.launch {
             DomainPolicyManager.registerDomain(domain)
             warmUpDomainIconsAsync(listOf(savedItem))
-            if (savedItem.rssFeedId != null) me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).cleanup()
         }
     }
 

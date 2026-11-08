@@ -78,9 +78,9 @@ class NotificationRoomTest {
                 restoreLegacyAiSkippedColumns(sql::execSQL)
                 sql.version = 12
             }
-            db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19).build()
+            db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20).build()
             assertEquals("Description", db.bookmarkDao().getBookmarkById("kept")!!.description)
-            assertEquals(19, db.openHelper.readableDatabase.version)
+            assertEquals(20, db.openHelper.readableDatabase.version)
             db.rssNotificationDao().putRun(RssNotificationRunEntity("run", "work", 100, true))
             assertEquals("run", db.rssNotificationDao().unfinishedRun("work")?.id)
         } finally { db.close(); context.deleteDatabase(name) }

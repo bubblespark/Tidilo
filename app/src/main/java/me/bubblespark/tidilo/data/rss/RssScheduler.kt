@@ -149,10 +149,16 @@ class RssScheduleReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            try { RssScheduler.reschedule(context, realignClock = true) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { Log.w("RssScheduleReceiver", "RSS reschedule failed", error) }
-            finally { pending.finish() }
+            try {
+                for (reconcile in listOf<suspend () -> Unit>(
+                    { RssScheduler.reschedule(context, realignClock = true) },
+                    { me.bubblespark.tidilo.data.maintenance.LibraryMaintenanceScheduler.reschedule(context, realignClock = true) }
+                )) {
+                    try { reconcile() }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (error: Exception) { Log.w("RssScheduleReceiver", "Schedule reconciliation failed", error) }
+                }
+            } finally { pending.finish() }
         }
     }
 }

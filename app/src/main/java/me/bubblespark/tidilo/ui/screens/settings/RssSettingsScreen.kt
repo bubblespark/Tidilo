@@ -84,7 +84,7 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
             onFetch = { model.fetchInitial(mobileNotice) }, onLater = model::dismissInitialFetch)
     }
     registration?.let {
-        RssRegistrationDialog(it.snapshot.savedCount, it.limit, busy, model::confirmRegistration, model::dismissRegistration)
+        RssRegistrationDialog(it.snapshot.savedCount, busy, model::confirmRegistration, model::dismissRegistration)
     }
 }
 
@@ -104,14 +104,13 @@ internal fun RssInitialFetchDialog(mobileNotice: Boolean, connected: Boolean, bu
 }
 
 @Composable
-internal fun RssRegistrationDialog(count: Int, limit: Int?, busy: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+internal fun RssRegistrationDialog(count: Int, busy: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = onDismiss, title = { Text(stringResource(R.string.rss_register_existing_title)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.rss_register_existing_count, count))
-            Text(if (limit == null) stringResource(R.string.rss_register_existing_unlimited)
-                else stringResource(R.string.rss_register_existing_limit, limit))
+            Text(stringResource(R.string.rss_retention_note))
         } },
         confirmButton = { TextButton(onClick = onConfirm, enabled = !busy) { Text(stringResource(R.string.rss_register)) } },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.rss_cancel)) } })
@@ -122,7 +121,7 @@ internal fun RssRegistrationDialog(count: Int, limit: Int?, busy: Boolean, onCon
 internal fun RssSettingsContent(
     feeds: StorageLoad<List<RssFeedEntity>>, settings: RssSettings, busy: Boolean, error: String?, wifi: Boolean?,
     onBack: () -> Unit, onRetry: () -> Unit, onSettings: (RssSettings) -> Unit,
-    onFeed: (RssFeedEntity?, String, Int?) -> Unit, onDelete: (String) -> Unit,
+    onFeed: (RssFeedEntity?, String) -> Unit, onDelete: (String) -> Unit,
     onFetch: () -> Unit, onDismissError: () -> Unit, onEnabled: (String, Boolean) -> Unit = { _, _ -> },
     manualFetch: ManualFetchStatus = ManualFetchStatus.Idle
 ) {
@@ -305,8 +304,8 @@ internal fun RssSettingsContent(
                 }
             }, dismissButton = { TextButton(onClick = { showTime = false }) { Text(stringResource(R.string.rss_cancel)) } })
     }
-    if (showEditor && (editingId == null || editing != null)) RssFeedEditor(editing, onDismiss = { showEditor = false }, onDelete = editing?.let { feed -> { showEditor = false; deletingId = feed.id } }) { url, limit ->
-        onFeed(editing, url, limit)
+    if (showEditor && (editingId == null || editing != null)) RssFeedEditor(editing, onDismiss = { showEditor = false }, onDelete = editing?.let { feed -> { showEditor = false; deletingId = feed.id } }) { url ->
+        onFeed(editing, url)
         showEditor = false
     }
     deleting?.let { feed ->
@@ -385,7 +384,7 @@ private fun RssFeedCard(feed: RssFeedEntity, busy: Boolean, onEdit: () -> Unit,
                 FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (label in listOf(stringResource(R.string.rss_direct_mode),
-                    feed.retentionLimit?.let { stringResource(R.string.rss_retention_compact, it) } ?: stringResource(R.string.rss_unlimited))) {
+                    stringResource(R.string.rss_retention_compact))) {
                     me.bubblespark.tidilo.ui.components.TidiloDisplayChip(role = SurfaceRole.STATUS_BADGE) {
                         Text(label, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall)
                     }
@@ -402,11 +401,8 @@ private fun RssFeedCard(feed: RssFeedEntity, busy: Boolean, onEdit: () -> Unit,
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDelete: (() -> Unit)? = null, onSave: (String, Int?) -> Unit) {
+internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDelete: (() -> Unit)? = null, onSave: (String) -> Unit) {
     var url by rememberSaveable(original?.id) { mutableStateOf(original?.url.orEmpty()) }
-    var unlimited by rememberSaveable(original?.id) { mutableStateOf(original != null && original.retentionLimit == null) }
-    var limit by rememberSaveable(original?.id) { mutableStateOf((original?.retentionLimit ?: 30).toString()) }
-    val validLimit = unlimited || limit.toIntOrNull()?.let { it in 10..500 } == true
     ModalBottomSheet(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.SHEET).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.SHEET).shape,onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -418,23 +414,14 @@ internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDe
                 OutlinedTextField(url, { url = it }, label = { Text(stringResource(R.string.rss_feed_url)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
                 HorizontalDivider()
-                Text(stringResource(R.string.rss_max_saved_items), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Row(Modifier.fillMaxWidth().toggleable(unlimited, role = Role.Switch,
-                    onValueChange = { unlimited = it }), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.rss_unlimited), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                    Switch(unlimited, null)
-                }
-                if (!unlimited) OutlinedTextField(limit, { limit = it },
-                    label = { Text(stringResource(R.string.rss_retention_input)) }, isError = !validLimit,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                 Text(stringResource(R.string.rss_retention_note), style = MaterialTheme.typography.bodySmall)
                 if (original != null && url.trim() != original.url) Text(stringResource(R.string.rss_url_change_note),
                     style = MaterialTheme.typography.bodySmall)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     if (onDelete != null) TextButton(onClick = onDelete) { Text(stringResource(R.string.rss_delete), color = MaterialTheme.colorScheme.error) }
                     Spacer(Modifier.weight(1f))
-                    Button(onClick = { onSave(url.trim(), if (unlimited) null else limit.toInt()) },
-                        enabled = url.isNotBlank() && validLimit) { Text(stringResource(R.string.rss_save)) }
+                    Button(onClick = { onSave(url.trim()) },
+                        enabled = url.isNotBlank()) { Text(stringResource(R.string.rss_save)) }
                 }
                 Spacer(Modifier.height(16.dp))
             }

@@ -8,7 +8,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssPolicyTest {
-    @Test fun newSubscriptionsDefaultToThirtySavedItems() {
+    @Test fun legacyCountFieldKeepsItsSchemaCompatibleDefault() {
         assertEquals(30, me.bubblespark.tidilo.data.db.RssFeedEntity("feed", "https://example.com/feed", "Feed").retentionLimit)
     }
     @Test fun midnightScheduleUsesLocalWallClockAcrossDst() {

@@ -117,7 +117,7 @@ class RssSharedPipelineTest {
             assertTrue(it.moveToFirst()); it.getString(0) to it.getString(1)
         }
         try {
-            repo.register("https://feed.example/feed", 30)
+            repo.register("https://feed.example/feed")
             assertEquals("https://images.example/icon.png" to "https://publisher.example/", saved())
             metadata = "<image><url>https://images.example/new.png</url></image><link>https://new.example/</link>"
             repo.fetchAll(1)
@@ -264,7 +264,7 @@ class RssSharedPipelineTest {
                 if (request.startsWith(url)) { articleCalls++; ArticleResponse(request, 200, html.toByteArray(), "text/html") }
                 else throw RssHttpFailure(404)
             })
-            val id = repo.register("https://fixture-feed.example/feed", 30)
+            val id = repo.register("https://fixture-feed.example/feed")
             assertEquals(1, xmlCalls)
             assertEquals(0, articleCalls)
             assertEquals(0, db.bookmarkDao().getCount())
@@ -287,7 +287,7 @@ class RssSharedPipelineTest {
         val db = database()
         try {
             val repo = repository(db, { request, _, _ -> RssHttpPage(200, request, xml()) })
-            repo.register("https://fixture-feed.example/feed", 30)
+            repo.register("https://fixture-feed.example/feed")
             assertTrue(repo.fetchAll(1))
             val bookmark = db.bookmarkDao().getBookmarkByUrl("$url/1")!!
             assertEquals("HTML title", bookmark.title)

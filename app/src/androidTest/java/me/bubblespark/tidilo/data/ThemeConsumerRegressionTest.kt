@@ -127,7 +127,7 @@ class ThemeConsumerRegressionTest {
             SurfaceRole.SETTINGS_GROUP to SurfaceStyleOverride(containerColor = Color.Cyan)))
         scene(preset, content = {
             RssSettingsContent(StorageLoad.Ready(emptyList()), RssSettings(), false, null, true,
-                onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _, _ -> },
+                onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
                 onDelete = {}, onFetch = {}, onDismissError = {})
         }) { host, activity ->
             val text = host.await(activity) { host.text(it, "Not set") }.boundsInWindow
@@ -140,7 +140,7 @@ class ThemeConsumerRegressionTest {
         val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
             SurfaceRole.DIALOG to SurfaceStyleOverride(containerColor = Color.Cyan)))
         scene(preset, content = {
-            RssRegistrationDialog(2, 3, false, onConfirm = {}, onDismiss = { dismissals.incrementAndGet() })
+            RssRegistrationDialog(2, false, onConfirm = {}, onDismiss = { dismissals.incrementAndGet() })
         }) { host, activity ->
             val title = host.await(activity) { host.text(it, "Resume this feed?") }
             var position = androidx.compose.ui.geometry.Offset.Zero

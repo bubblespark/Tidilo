@@ -8,8 +8,11 @@ Overlay backgrounds support optional surface-local frost with a theme-derived ti
 | Modal bottom sheets | `TidiloModalBottomSheet` |
 | Popup menus | `TidiloDropdownMenu` |
 | Library modal navigation rail | `LibraryNavigationRail` with the shared renderer |
+| Shared page headers | Body-only screen source and smootherstep mask in `FrostedHeaderContainer` |
+| Library Search | Opt-in `TidiloPrimaryActionSurface` background |
+| Detail floating toolbar and browser jump | Opt-in TOOLBAR and compact PRIMARY_ACTION backgrounds |
 
-OFF retains native theme drawing. Unsupported rendering or unavailable sources retain a readable opaque fallback. Ordinary cards, headers, toolbars, screen backgrounds, and OS-owned UI are not blur targets. See [Add a blur-enabled overlay](theme_development.md#add-a-blur-enabled-overlay) for source ownership, extension APIs, theme policies, and validation requirements.
+OFF retains native theme drawing. Unsupported rendering retains ordinary theme drawing; unavailable captured sources retain a readable fallback. Headers fade both blur and tint to transparency without a bottom outline; bounded floating controls use the theme tint and 1dp outline. Ordinary cards, other toolbars, screen backgrounds and OS-owned UI are not blur targets. Sheet/dialog title rows do not receive a second effect. See [overlay integration](theme_development.md#add-a-blur-enabled-overlay) and [screen chrome integration](theme_development.md#add-blur-to-in-window-screen-chrome) for ownership, extension APIs, policies and validation.
 
 Trash list rows, overflow actions and confirmations are specified in [Trash](trash.md). Rows have no tap action; they use the existing header and shared dialog/menu surface roles with explicit theme foreground colors.
 
@@ -525,4 +528,4 @@ Selected navigation labels, screen titles and enabled primary action labels can 
 
 Unit tests cover role resolution, zero elevation, semantic precedence, preset overrides, Material palette fallback and shape-scale propagation. Instrumentation fixtures use real components, actual painted-pixel assertions and theme switching with navigation/list/draft state. Building instrumentation does not prove visual parity: before/after capture, input, recreation and frame checks require a connected device. No whole-screen zero-overdraw or zero-GPU-cost guarantee is made.
 
-Backdrop blur is future work. This migration introduces no capture host, backend interface, external dependency or speculative blur state. Required integration changes will be handled with the actual blur feature.
+Backdrop blur uses Haze 2.1.0 with independent effective policy. The app-wide modal source captures composited content; separate screen-owned body sources serve in-window chrome without capturing its own output. Source sharing is an ownership boundary, not a guarantee of one GPU replay. Relative frame measurements and their limits are documented in [chrome performance](chrome_blur_performance.md).

@@ -107,6 +107,20 @@ Native anchored surfaces append movement, predictive-back/overscroll graphics la
 
 Validate the new family with Default/Modern, light/dark, both saved choices and synthetic fixed policies. Check busy backgrounds, full-surface outline and clipped corners, sharp text, source updates/loss, OFF parity, nested/sibling windows, back/outside dismissal, IME/draft retention, narrow layouts, large text, RTL anchoring, disabled actions, and interrupted/repeated opening and closing without retained registrations. Use `HeaderTestHost` instrumentation on a hardware-accelerated device; resolver tests and browser mockups do not prove Haze rendering.
 
+## Add blur to in-window screen chrome
+
+`TidiloScreenScaffold` owns a stable `ScreenBackdropScope` and a unique body source key. Its header and `overlay` slot are foreground siblings. A separate chrome Haze graph captures the stationary `TidiloBackground` at z=0 and bodies at z=1; each input selects only the canvas and its owner's body key. This includes the real background behind transparent content while excluding other destinations and every chrome output. Library Search already uses the overlay slot. Every shared page header uses the scaffold, including loading and unavailable states. Keep separate keys for simultaneously composed navigation destinations.
+
+Use `blurBackground = true` on `TidiloSurface` or `TidiloPrimaryActionSurface` only for a requested floating consumer. The default is false. The shared renderer replaces conflicting opaque fill while frost is active, retaining native click/ripple handling, theme decoration, shape and sharp content. Current opt-ins are Library Search, the Detail toolbar, and its compact browser-open action. A general PRIMARY_ACTION or TOOLBAR role alone does not enable blur.
+
+For a custom background slot, consume `ChromeBlurBackground` within the same screen scope and keep foreground content outside that background. If a standalone screen needs a scope, wrap its body and chrome in one `ScreenBackdropScope` and attach `screenBackdropSource` only to the body. Use the scaffold's `bodyModifier` for background painting that must enter capture, such as Detail's ambient light; keep geometry and caller modifiers on the scaffold root. Do not allocate a source per button. No-host/software/OFF rendering must retain the ordinary theme surface; a missing captured source clears onto readable fallback paint.
+
+Headers use the existing smootherstep stop table and measured fade geometry. Their mask attenuates the captured blur, fallback and tint; the tail reaches transparency, without a hard bottom outline. Do not blur the title/action column or add a second effect to a sheet title row. Mask paint and brushes are cached by geometry rather than rebuilt for each scroll offset.
+
+The app-wide modal graph remains separate and captures the composited body plus chrome. Never use that graph as an input for screen chrome: it contains the chrome's own output. Screen body sources remain attached across preference changes; Haze records on effect demand, and hidden/OFF consumers remove demand. Sharing source ownership does not guarantee one GPU replay across several effects. Keep Haze quality and experimental input-sharing defaults until profiling establishes a reason to change them.
+
+Validate underlying-body motion, foreground isolation, source loss, concurrent destinations, live policy changes and state retention. Check both themes, light/dark, ON/OFF, fixed policies, RTL, large fonts and disabled controls. Run hardware rendering tests and compare frame measurements with an identical real-screen harness; see [chrome performance](chrome_blur_performance.md) for the measured method and limits.
+
 ## Verify a change
 
 - Run `./gradlew testDebugUnitTest`. Use `AppThemeTest`, `AppConfigThemeTest`, `ThemeStringsTest`, `AppThemeStyleTest`, and `ThemeSurfaceResolverTest` for identity, persistence, labels, and resolved values. For a new resolver rule, check a representative role and the semantic state that could override it.

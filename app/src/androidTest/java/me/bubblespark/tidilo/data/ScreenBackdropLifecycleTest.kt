@@ -64,8 +64,13 @@ class ScreenBackdropLifecycleTest {
             assertNotSame(first, other)
             assertTrue(inputs.all { it })
             // Test-only inspection of pinned Haze demand; no production reflection is added.
-            fun demand(owner: ScreenBackdropState) = owner.haze.javaClass.methods
-                .single { it.name.startsWith("getHasSourceDemand") }.invoke(owner.haze) as Boolean
+            fun demand(owner: ScreenBackdropState): Boolean {
+                val areas = owner.haze.javaClass.methods.single { it.name.startsWith("getAreas") }.invoke(owner.haze) as List<*>
+                val area = areas.filterNotNull().firstOrNull { candidate ->
+                    candidate.javaClass.methods.single { it.name.startsWith("getKey") }.invoke(candidate) === owner.sourceKey
+                } ?: return false
+                return area.javaClass.methods.single { it.name.startsWith("getHasCaptureDemand") }.invoke(area) as Boolean
+            }
             suspend fun awaitDemand(expected: Boolean) = withTimeout(5000) {
                 var matches = false
                 while (!matches) {

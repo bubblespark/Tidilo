@@ -17,6 +17,12 @@ import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
+import me.bubblespark.tidilo.ui.components.TidiloBackground
+import me.bubblespark.tidilo.ui.components.LocalAmbientLighting
+import me.bubblespark.tidilo.ui.components.AmbientLightingState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
 import me.bubblespark.tidilo.ui.screens.library.*
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
@@ -58,7 +64,10 @@ class ChromeBlurPerformanceTest {
                 screen.setContent {
                     TidiloTheme(darkTheme = modern, dynamicColor = false,
                         theme = if (modern) AppTheme.MODERN else AppTheme.DEFAULT, blurEnabled = enabled) {
-                        CompositionLocalProvider(LocalBarsVisible provides bars) {
+                        val lighting = remember { AmbientLightingState() }
+                        CompositionLocalProvider(LocalBarsVisible provides bars, LocalAmbientLighting provides lighting) {
+                        Box(Modifier.fillMaxSize()) {
+                            TidiloBackground(Modifier.fillMaxSize())
                             if (detail) BookmarkDetailScreen(fixture.detailId, fixture.vm, { detail = false })
                             else LibraryScreen(fixture.vm, onNavigateToSearch = { detail = true }, onNavigateToDetail = { detail = true })
                             if (modal) TidiloAlertDialog(onDismissRequest = { modal = false }, confirmButton = {}, text = {
@@ -69,6 +78,7 @@ class ChromeBlurPerformanceTest {
                                     onDispose { collector?.let { dialogMetrics.add(it.stop()) } }
                                 }
                             })
+                        }
                         }
                     }
                 }

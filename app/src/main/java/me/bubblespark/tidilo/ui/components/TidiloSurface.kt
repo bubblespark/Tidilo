@@ -31,9 +31,10 @@ fun TidiloSurface(
     variant: SurfaceVariant = SurfaceVariant.STANDARD,
     state: ThemeSurfaceState = ThemeSurfaceState(),
     accent: Color = Color.Unspecified,
+    blurBackground: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    ResolvedTidiloSurface(currentThemeSurfaces().resolve(role, variant, state, accent), modifier, content)
+    ResolvedTidiloSurface(currentThemeSurfaces().resolve(role, variant, state, accent), modifier, blurBackground, content)
 }
 
 @Composable
@@ -47,40 +48,44 @@ fun TidiloSurface(
     accent: Color = Color.Unspecified,
     interactionSource: MutableInteractionSource? = null,
     onLongClick: (() -> Unit)? = null,
+    blurBackground: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val style = currentThemeSurfaces().resolve(role, variant, state, accent)
+    val frosted = blurBackground && rememberScreenBackdropInput() != null
     if (onLongClick != null) {
         Surface(
             modifier = modifier.decoration(style).shadow(style.materialElevation(), style.shape, clip = false)
                 .clip(style.shape).combinedClickable(
                 enabled = state.enabled, role = Role.Button, onClick = onClick, onLongClick = onLongClick,
                 interactionSource = interactionSource, indication = ripple()),
-            shape = style.shape, color = style.materialColor(), contentColor = style.contentColor,
-            shadowElevation = 0.dp, tonalElevation = style.tonalElevation,
+            shape = style.shape, color = if (frosted) Color.Transparent else style.materialColor(), contentColor = style.contentColor,
+            shadowElevation = 0.dp, tonalElevation = if (frosted) 0.dp else style.tonalElevation,
             border = style.materialBorder()
-        ) { SurfaceContent(style, content) }
+        ) { SurfaceContent(style, frosted, content) }
         return
     }
     Surface(
         onClick = onClick, modifier = modifier.decoration(style), enabled = state.enabled,
-        shape = style.shape, color = style.materialColor(), contentColor = style.contentColor,
-        shadowElevation = style.materialElevation(), tonalElevation = style.tonalElevation,
+        shape = style.shape, color = if (frosted) Color.Transparent else style.materialColor(), contentColor = style.contentColor,
+        shadowElevation = style.materialElevation(), tonalElevation = if (frosted) 0.dp else style.tonalElevation,
         border = style.materialBorder(), interactionSource = interactionSource
-    ) { SurfaceContent(style, content) }
+    ) { SurfaceContent(style, frosted, content) }
 }
 
 @Composable
 internal fun ResolvedTidiloSurface(
     style: ResolvedSurfaceStyle,
     modifier: Modifier = Modifier,
+    blurBackground: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val frosted = blurBackground && rememberScreenBackdropInput() != null
     Surface(
-        modifier = modifier.decoration(style), shape = style.shape, color = style.materialColor(),
+        modifier = modifier.decoration(style), shape = style.shape, color = if (frosted) Color.Transparent else style.materialColor(),
         contentColor = style.contentColor, shadowElevation = style.materialElevation(),
-        tonalElevation = style.tonalElevation, border = style.materialBorder()
-    ) { SurfaceContent(style, content) }
+        tonalElevation = if (frosted) 0.dp else style.tonalElevation, border = style.materialBorder()
+    ) { SurfaceContent(style, frosted, content) }
 }
 
 private fun ResolvedSurfaceStyle.materialColor() =
@@ -121,9 +126,11 @@ private fun rememberAccentBrush(gradient: SurfaceGradient): Brush = remember(gra
 }
 
 @Composable
-private fun SurfaceContent(style: ResolvedSurfaceStyle, content: @Composable () -> Unit) {
+private fun SurfaceContent(style: ResolvedSurfaceStyle, frosted: Boolean, content: @Composable () -> Unit) {
     Box(propagateMinConstraints = true) {
-        if (style.treatment == SurfaceTreatment.DECORATED) {
+        if (frosted) {
+            ChromeBlurBackground(style.shape, style.containerColor, Modifier.matchParentSize())
+        } else if (style.treatment == SurfaceTreatment.DECORATED) {
             Box(Modifier.matchParentSize().themeSurfaceBlur(style.selfBlurRadius, style.shape).drawWithCache {
                 val fill = style.gradient
                 val brush = if (fill != null) Brush.verticalGradient(listOf(fill.top, style.containerColor, fill.bottom)) else null
@@ -134,7 +141,7 @@ private fun SurfaceContent(style: ResolvedSurfaceStyle, content: @Composable () 
                 }
             })
         }
-        style.accentWash?.let { wash ->
+        if (!frosted) style.accentWash?.let { wash ->
             Box(Modifier.matchParentSize().themeSurfaceBlur(style.selfBlurRadius, style.shape)
                 .background(rememberAccentBrush(wash)))
         }
@@ -161,11 +168,11 @@ fun Modifier.themeNavigationIndicator(selected: Boolean, animatedColor: Color): 
 }
 
 @Composable
-fun TidiloPrimaryActionSurface(expanded: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun TidiloPrimaryActionSurface(expanded: Boolean, modifier: Modifier = Modifier, blurBackground: Boolean = false, content: @Composable () -> Unit) {
     val style = currentThemeSurfaces().resolve(SurfaceRole.PRIMARY_ACTION,
         if (expanded) SurfaceVariant.EMPHASIZED else SurfaceVariant.STANDARD)
     val elevation = androidx.compose.animation.core.animateDpAsState(style.elevation,
         androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
             stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow), label = "actionSurfaceElevation")
-    ResolvedTidiloSurface(style.copy(elevation = elevation.value), modifier, content)
+    ResolvedTidiloSurface(style.copy(elevation = elevation.value), modifier, blurBackground, content)
 }

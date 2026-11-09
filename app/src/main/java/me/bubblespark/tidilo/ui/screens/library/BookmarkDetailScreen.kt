@@ -278,8 +278,8 @@ fun BookmarkDetailScreen(
 
     TidiloScreenScaffold(
         modifier = modifier
-            .onGloballyPositioned { lightingHostOrigin.value = it.positionInRoot() }
-            .detailAmbientLight(detailAccent, bannerBounds, lightingHostOrigin, darkLighting, ogState.shouldShowFallback),
+            .onGloballyPositioned { lightingHostOrigin.value = it.positionInRoot() },
+        bodyModifier = Modifier.detailAmbientLight(detailAccent, bannerBounds, lightingHostOrigin, darkLighting, ogState.shouldShowFallback),
         hideHeaderOnScroll = false,
         header = {
             TidiloFrostedHeader(
@@ -366,7 +366,7 @@ fun BookmarkDetailScreen(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    TidiloSurface(role = SurfaceRole.TOOLBAR) {
+                    TidiloSurface(role = SurfaceRole.TOOLBAR, blurBackground = true) {
                         Box {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
@@ -402,6 +402,7 @@ fun BookmarkDetailScreen(
                     TidiloSurface(
                         onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
                         role = SurfaceRole.PRIMARY_ACTION,
+                        blurBackground = true,
                         variant = SurfaceVariant.COMPACT,
                         modifier = Modifier.size(54.dp)
                     ) {

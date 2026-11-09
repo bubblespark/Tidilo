@@ -15,12 +15,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -72,7 +76,9 @@ fun FrostedHeaderContainer(
         modifier = modifier.fillMaxWidth()
     ) {
         // Isolated background frosted layer with smootherstep attenuation and theme surface blur
-        Box(
+        if (rememberScreenBackdropInput() != null) {
+            HeaderBackdrop(bgColor.copy(alpha = contentAlpha), fadeHeight, decayOverlap, Modifier.matchParentSize())
+        } else Box(
             modifier = Modifier
                 .matchParentSize()
                 .themeSurfaceBlur(headerStyle.selfBlurRadius)
@@ -138,6 +144,23 @@ fun FrostedHeaderContainer(
             Spacer(modifier = Modifier.height(fadeHeight))
         }
     }
+}
+
+@Composable
+private fun HeaderBackdrop(color: Color, fadeHeight: Dp, decayOverlap: Dp, modifier: Modifier) {
+    var height by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val mask = remember(height, density, fadeHeight, decayOverlap) {
+        val total = height.toFloat()
+        val decayStart = with(density) { (total - fadeHeight.toPx() - decayOverlap.toPx()).coerceAtLeast(0f) }
+        val start = if (total > 0) (decayStart / total).coerceIn(0f, 1f) else 0f
+        val stops = buildList {
+            if (start > .001f) add(0f to Color.White)
+            SMOOTHERSTEP_CURVE.forEach { (t, factor) -> add((start + t * (1f - start)) to Color.White.copy(alpha = factor)) }
+        }
+        Brush.verticalGradient(*stops.toTypedArray(), endY = total.coerceAtLeast(1f))
+    }
+    ChromeBlurBackground(RectangleShape, color, modifier.onSizeChanged { height = it.height }, mask, outline = false)
 }
 
 /** Body animations must not make the header intercept title/button downs as immediate drags. */

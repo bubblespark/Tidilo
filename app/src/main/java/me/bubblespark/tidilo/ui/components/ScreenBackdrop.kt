@@ -55,7 +55,7 @@ internal fun rememberScreenBackdropInput(visible: Boolean = true): HazeInput.Sou
     val enabled = visible && state != null && LocalOverlayBlurController.current != null &&
         LocalOverlayBlurSetting.current.enabled && LocalView.current.isHardwareAccelerated
     return remember(state, enabled) {
-        if (!enabled || state == null) null
+        if (!enabled) null
         else HazeInput.Sources(state.haze,
             selection = HazeSourceSelection.All.where { it.key === state.sourceKey || it.key === ScreenCanvasSourceKey },
             retention = HazeSourceRetention.ClearWhenUnavailable)

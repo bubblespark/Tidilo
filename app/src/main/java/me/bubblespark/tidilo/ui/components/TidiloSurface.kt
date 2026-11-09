@@ -129,7 +129,7 @@ private fun rememberAccentBrush(gradient: SurfaceGradient): Brush = remember(gra
 private fun SurfaceContent(style: ResolvedSurfaceStyle, frosted: Boolean, content: @Composable () -> Unit) {
     Box(propagateMinConstraints = true) {
         if (frosted) {
-            ChromeBlurBackground(style.shape, style.containerColor, Modifier.matchParentSize())
+            ChromeBlurBackground(style.shape, style.containerColor.copy(alpha = style.containerColor.alpha * style.opacity), Modifier.matchParentSize())
         } else if (style.treatment == SurfaceTreatment.DECORATED) {
             Box(Modifier.matchParentSize().themeSurfaceBlur(style.selfBlurRadius, style.shape).drawWithCache {
                 val fill = style.gradient

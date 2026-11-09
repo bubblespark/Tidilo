@@ -12,6 +12,7 @@ class ChromePerformanceFixtureTest {
         val host = HeaderTestHost()
         val db = AppDatabase.getInstance(host.context)
         val journal = ChromeFixtureJournal(host.context)
+        journal.recover()
         val prefs = host.context.getSharedPreferences("tidilo_library_prefs", android.content.Context.MODE_PRIVATE)
         val keys = listOf("library_filter_mode", "library_view_mode")
         val original = keys.associateWith { prefs.getString(it, null) }
@@ -30,6 +31,25 @@ class ChromePerformanceFixtureTest {
         } finally {
             db.bookmarkDao().deleteById(ids[1]); db.bookmarkDao().deleteById(sentinel)
             journal.restorePreferences(original); journal.clear()
+        }
+    }
+
+    @Test fun recoveryScenarioPreservesAnEarlierPendingJournal() = runBlocking {
+        val host = HeaderTestHost()
+        val journal = ChromeFixtureJournal(host.context)
+        journal.recover()
+        val dao = AppDatabase.getInstance(host.context).bookmarkDao()
+        val prefs = host.context.getSharedPreferences("tidilo_library_prefs", android.content.Context.MODE_PRIVATE)
+        val original = listOf("library_filter_mode", "library_view_mode").associateWith { prefs.getString(it, null) }
+        val prefix = "chrome-${UUID.randomUUID()}"
+        val ids = (0 until 400).map { "$prefix-$it" }
+        try {
+            dao.insertOrUpdate(BookmarkEntity(ids[1], "Chrome fixture article 1", "https://chrome-frame-fixture.invalid/1", "Deterministic local summary 1", createdAt = 1001, updatedAt = 1))
+            journal.save(prefix, ids, original, pid = -1)
+            interruptedJournalRestoresPreferencesAndOnlyOwnedRecords()
+            assertNull("The earlier journal must be recovered before replacement", dao.getBookmarkById(ids[1]))
+        } finally {
+            dao.deleteById(ids[1]); journal.restorePreferences(original); journal.clear()
         }
     }
 

@@ -227,6 +227,24 @@ class ThemeConsumerRegressionTest {
         }
     }
 
+    @Test fun frostedSearchActionHonorsCustomOpacity() {
+        val blues = mutableListOf<Int>()
+        for (opacity in listOf(1f, .2f)) {
+            val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
+                SurfaceRole.PRIMARY_ACTION to SurfaceStyleOverride(containerColor = Color.Black, opacity = opacity)))
+            scene(preset, blurEnabled = true, content = {
+                TidiloScreenScaffold(header = {}, modifier = Modifier.size(220.dp), overlay = {
+                    LibrarySearchAction({}, Modifier.align(Alignment.Center))
+                }) { Box(Modifier.fillMaxSize().background(Color.Blue)) }
+            }) { host, activity ->
+                val action = tagged(host, activity, "library_search_action").boundsInWindow
+                delay(400)
+                blues += android.graphics.Color.blue(pixel(host, action.center.x, action.top + 9f * host.context.resources.displayMetrics.density))
+            }
+        }
+        assertTrue("Lower opacity must expose more captured blue: $blues", blues[1] > blues[0] + 60)
+    }
+
     @Test fun searchActionKeepsCustomEdgeFillAndOpacity() {
         val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
             SurfaceRole.PRIMARY_ACTION to SurfaceStyleOverride(containerColor = Color.Black,

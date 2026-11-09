@@ -38,11 +38,11 @@ internal fun rememberOverlayBlurLayer(visible: Boolean): OverlayBlurLayer? {
     val enabled = visible && controller?.enabled == true && LocalOverlayBlurSetting.current.enabled && LocalView.current.isHardwareAccelerated
     val token = remember(controller, visible) { if (visible) controller?.registry?.allocate() else null }
     DisposableEffect(controller, token, enabled) {
-        if (enabled && token != null) controller?.register(token)
-        onDispose { if (enabled && token != null) controller?.unregister(token) }
+        if (enabled && token != null) controller.register(token)
+        onDispose { if (enabled && token != null) controller.unregister(token) }
     }
     return remember(controller, token, enabled) {
-        if (!enabled || controller == null || token == null) null
+        if (!enabled || token == null) null
         else OverlayBlurLayer(token, Modifier.hazeSource(controller.state, token.toFloat(), token),
             HazeInput.Sources(controller.state,
                 selection = HazeSourceSelection.All.where { it.zIndex < token.toFloat() },

@@ -13,6 +13,9 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppTheme
@@ -38,7 +41,7 @@ class ChromeBlurPerformanceTest {
         if (args.getString("profile") == null) return@runBlocking
         val profile = requireNotNull(args.getString("profile"))
         require(profile in listOf("baseline", "on", "off"))
-        val cases = args.getString("case")?.split(",") ?: listOf("idle", "library", "detail", "jump", "header", "navigation", "modal", "toggle")
+        val cases = parseChromeBenchmarkCases(args.getString("case"))
         val repetitions = args.getString("repetitions")?.toInt() ?: 5
         val measureMs = args.getString("durationMs")?.toLong() ?: 10000L
         val modern = args.getString("theme") == "modern"
@@ -49,7 +52,9 @@ class ChromeBlurPerformanceTest {
         var enabled by mutableStateOf(profile != "off")
         var bars by mutableStateOf(true)
         var modal by mutableStateOf(false)
-        val dialogMetrics = mutableListOf<ChromeFrameSummary>()
+        val dialogMetrics = Collections.synchronizedList(mutableListOf<ChromeFrameSummary>())
+        val activeDialogCollectors = AtomicInteger()
+        val startedDialogCollectors = AtomicInteger()
         var collectDialog = false
         val monitor = Instrumentation.ActivityMonitor(IntentFilter(Intent.ACTION_VIEW).apply { addDataScheme("https") }, null, true)
         host.instrumentation.addMonitor(monitor)
@@ -76,7 +81,16 @@ class ChromeBlurPerformanceTest {
                                 val window = (LocalView.current.parent as? DialogWindowProvider)?.window
                                 DisposableEffect(window) {
                                     val collector = if (collectDialog && window != null) ChromeFrameMetrics(window).also { it.start() } else null
-                                    onDispose { collector?.let { dialogMetrics.add(it.stop()) } }
+                                    if (collector != null) {
+                                        activeDialogCollectors.incrementAndGet()
+                                        startedDialogCollectors.incrementAndGet()
+                                    }
+                                    onDispose {
+                                        collector?.let {
+                                            try { dialogMetrics.add(it.stop()) }
+                                            finally { activeDialogCollectors.decrementAndGet() }
+                                        }
+                                    }
                                 }
                             })
                         }
@@ -92,8 +106,12 @@ class ChromeBlurPerformanceTest {
                 delay(3000)
                 // Ensure paging/content is ready outside the timed interval.
                 host.await(screen) { node -> node.config.getOrNull(SemanticsActions.ScrollBy) != null }
-                dialogMetrics.clear()
-                collectDialog = true
+                check(activeDialogCollectors.get() == 0)
+                host.main {
+                    dialogMetrics.clear()
+                    startedDialogCollectors.set(0)
+                    collectDialog = true
+                }
                 val collector = ChromeFrameMetrics(screen.window)
                 collector.start()
                 val start = SystemClock.elapsedRealtime()
@@ -119,10 +137,13 @@ class ChromeBlurPerformanceTest {
                 }
                 val summary = collector.stop()
                 host.main { modal = false }
-                delay(100)
-                collectDialog = false
+                withTimeout(5000) { while (activeDialogCollectors.get() != 0) delay(25) }
+                host.main { collectDialog = false }
+                val completedDialogs = synchronized(dialogMetrics) { dialogMetrics.toList() }
+                check(completedDialogs.size == startedDialogCollectors.get()) { "Incomplete dialog metrics" }
+                if (case == "modal") check(completedDialogs.isNotEmpty()) { "No dialog collector started" }
                 val windows = JSONArray().put(summary.toJson("activity"))
-                dialogMetrics.forEachIndexed { index, frame -> windows.put(frame.toJson("dialog-$index")) }
+                completedDialogs.forEachIndexed { index, frame -> windows.put(frame.toJson("dialog-$index")) }
                 results.put(JSONObject().put("case", case).put("repetition", repetition).put("windows", windows))
             }
             val output = JSONObject().put("profile", profile).put("theme", if (modern) "modern-dark" else "default-light")
@@ -145,3 +166,10 @@ private fun ChromeFrameSummary.toJson(window: String): JSONObject = JSONObject()
     .put("p50Ns", p50Ns ?: JSONObject.NULL).put("p95Ns", p95Ns ?: JSONObject.NULL)
     .put("p99Ns", p99Ns ?: JSONObject.NULL).put("maxNs", maxNs ?: JSONObject.NULL)
     .put("missedDeadlines", missedDeadlines ?: JSONObject.NULL)
+
+internal fun parseChromeBenchmarkCases(argument: String?): List<String> {
+    val supported = listOf("idle", "library", "detail", "jump", "header", "navigation", "modal", "toggle")
+    val cases = argument?.split(",") ?: supported
+    require(cases.all { it in supported }) { "Unknown case in $cases" }
+    return cases
+}

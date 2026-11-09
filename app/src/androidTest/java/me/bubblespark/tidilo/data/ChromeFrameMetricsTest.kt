@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ChromeFrameMetricsTest {
+    @Test fun benchmarkCasesRejectInvalidNamesBeforeSetup() {
+        assertEquals(8, parseChromeBenchmarkCases(null).size)
+        assertEquals(listOf("modal", "idle"), parseChromeBenchmarkCases("modal,idle"))
+        for (invalid in listOf("", "typo", "idle,typo")) {
+            try { parseChromeBenchmarkCases(invalid); fail("Invalid case must be rejected") }
+            catch (expected: IllegalArgumentException) { assertTrue(requireNotNull(expected.message).contains("Unknown case")) }
+        }
+    }
+
     @Test fun emptyFramesAreUnavailableRatherThanZero() {
         val result = summarizeChromeFrames(longArrayOf(), longArrayOf(), 3)
         assertEquals(0, result.count)

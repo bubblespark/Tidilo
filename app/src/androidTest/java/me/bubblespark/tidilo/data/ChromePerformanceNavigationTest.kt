@@ -15,6 +15,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -38,12 +40,11 @@ class ChromePerformanceNavigationTest {
                 }
                 ChromePerformanceNavigation(detail, { Destination("library") }, { Destination("detail") })
             } }
-            delay(200)
+            host.awaitMain("Library must compose") { active == setOf("library") }
             host.main { detail = true }
-            delay(1200)
-            host.main { assertTrue("Navigate must render both destinations during the slide", overlap); overlap = false; detail = false }
-            delay(1200)
-            host.main { assertTrue("Pop must render both destinations during the slide", overlap) }
+            host.awaitMain("Navigate must overlap and settle") { overlap && active == setOf("detail") }
+            host.main { overlap = false; detail = false }
+            host.awaitMain("Pop must overlap and settle") { overlap && active == setOf("library") }
         } finally { host.main { activity.finish() } }
     }
 
@@ -53,10 +54,11 @@ class ChromePerformanceNavigationTest {
         var presses = 0
         var releases = 0
         var clicks = 0
+        var listening = false
         try {
             host.main { activity.setContent {
                 val interaction = remember { MutableInteractionSource() }
-                LaunchedEffect(interaction) { interaction.interactions.collect {
+                LaunchedEffect(interaction) { listening = true; interaction.interactions.collect {
                     if (it is PressInteraction.Press) presses++
                     if (it is PressInteraction.Release) releases++
                 } }
@@ -67,10 +69,23 @@ class ChromePerformanceNavigationTest {
             val node = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "benchmark-tap" }
             // Semantics can exist before the replacement content reaches the input window.
             host.instrumentation.waitForIdleSync()
-            delay(400)
+            host.awaitMain("Input window and interaction collector must be ready") {
+                listening && activity.hasWindowFocus() && node.layoutInfo.coordinates.isAttached
+            }
             host.chromeTap(node)
-            delay(200)
-            host.main { assertEquals("clicks", 1, clicks); assertEquals("presses", 1, presses); assertEquals("releases", 1, releases) }
+            host.awaitMain("Tap must deliver press, release and click") { clicks == 1 && presses == 1 && releases == 1 }
         } finally { host.main { activity.finish() } }
     }
+}
+
+private suspend fun HeaderTestHost.awaitMain(message: String, condition: () -> Boolean) {
+    try {
+        withTimeout(5000) {
+            var ready = false
+            while (!ready) {
+                main { ready = condition() }
+                if (!ready) delay(30)
+            }
+        }
+    } catch (failure: TimeoutCancellationException) { throw AssertionError(message, failure) }
 }

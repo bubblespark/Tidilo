@@ -1,5 +1,9 @@
 package me.bubblespark.tidilo.ui.screens.trash
 
+import me.bubblespark.tidilo.ui.components.TidiloDropdownMenu
+
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -97,7 +101,7 @@ fun TrashContent(state: TrashUiState, onBack: () -> Unit,
         val restore = target.action == TrashAction.Restore
         val canConfirm = !state.loading && !state.busy && !state.readFailed && row != null && (!restore || !row.duplicateInLibrary)
         val style = currentThemeSurfaces().resolve(SurfaceRole.DIALOG)
-        AlertDialog(onDismissRequest = { if (!state.busy) onDismissConfirmation() },
+        TidiloAlertDialog(onDismissRequest = { if (!state.busy) onDismissConfirmation() },
             containerColor = style.containerColor, shape = style.shape,
             title = { Text(stringResource(if (restore) R.string.trash_restore_title else R.string.trash_delete_title)) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -139,7 +143,7 @@ private fun TrashRow(row: TrashBookmarkRow, busy: Boolean, zone: ZoneId,
                 Icon(Icons.Default.MoreVert, stringResource(R.string.trash_more_actions), tint = MaterialTheme.colorScheme.onBackground)
             }
             val style = currentThemeSurfaces().resolve(SurfaceRole.MENU)
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = style.containerColor, shape = style.shape) {
+            TidiloDropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = style.containerColor, shape = style.shape) {
                 DropdownMenuItem(text = { Text(stringResource(R.string.trash_restore)) }, enabled = !busy && !row.duplicateInLibrary,
                     onClick = { menu = false; onRequestAction(row.item.id, TrashAction.Restore) })
                 DropdownMenuItem(text = { Text(stringResource(R.string.common_delete)) }, enabled = !busy,

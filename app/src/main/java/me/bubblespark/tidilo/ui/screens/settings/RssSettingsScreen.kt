@@ -1,5 +1,9 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import me.bubblespark.tidilo.ui.components.TidiloModalBottomSheet
+
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
+
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.components.TidiloSurface
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
@@ -91,7 +95,7 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
 @Composable
 internal fun RssInitialFetchDialog(mobileNotice: Boolean, connected: Boolean, busy: Boolean,
     onFetch: () -> Unit, onLater: () -> Unit) {
-    AlertDialog(
+    TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = { if (!busy) onLater() }, title = { Text(stringResource(R.string.rss_initial_title)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -105,7 +109,7 @@ internal fun RssInitialFetchDialog(mobileNotice: Boolean, connected: Boolean, bu
 
 @Composable
 internal fun RssRegistrationDialog(count: Int, busy: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
+    TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = onDismiss, title = { Text(stringResource(R.string.rss_register_existing_title)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -261,7 +265,7 @@ internal fun RssSettingsContent(
         LaunchedEffect(settings.triggerTimes, minute) {
             if (trigger !in settings.triggerTimes) deletingTriggerMinute = null
         }
-        if (trigger in settings.triggerTimes) AlertDialog(
+        if (trigger in settings.triggerTimes) TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
             onDismissRequest = { deletingTriggerMinute = null },
@@ -285,7 +289,7 @@ internal fun RssSettingsContent(
         LaunchedEffect(settings.triggerTimes, original) {
             if ((original != null && original !in settings.triggerTimes) || (original == null && settings.triggerTimes.size >= 3)) showTime = false
         }
-        AlertDialog(
+        TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = { showTime = false }, title = { Text(stringResource(R.string.rss_trigger_time)) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -309,7 +313,7 @@ internal fun RssSettingsContent(
         showEditor = false
     }
     deleting?.let { feed ->
-        AlertDialog(
+        TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = { deletingId = null }, title = { Text(stringResource(R.string.rss_delete)) },
             text = { Text(stringResource(R.string.rss_delete_note)) },
@@ -403,7 +407,7 @@ private fun RssFeedCard(feed: RssFeedEntity, busy: Boolean, onEdit: () -> Unit,
 @Composable
 internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDelete: (() -> Unit)? = null, onSave: (String) -> Unit) {
     var url by rememberSaveable(original?.id) { mutableStateOf(original?.url.orEmpty()) }
-    ModalBottomSheet(
+    TidiloModalBottomSheet(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.SHEET).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.SHEET).shape,onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

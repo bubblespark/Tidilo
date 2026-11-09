@@ -27,6 +27,7 @@ fun TidiloScreenScaffold(
     hideHeaderOnScroll: Boolean = false,
     headerVisible: Boolean = true,
     bottomContentPadding: Dp = 0.dp,
+    bodyModifier: Modifier = Modifier,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
     content: @Composable BoxScope.(PaddingValues) -> Unit
 ) {
@@ -36,15 +37,17 @@ fun TidiloScreenScaffold(
         top = HeaderDefaults.bodyTopPadding(),
         bottom = bottomContentPadding
     )
-    Box(modifier.fillMaxSize()) {
-        content(padding)
-        ScaffoldHeaderVisibility(
-            header = header,
-            hideHeaderOnScroll = hideHeaderOnScroll,
-            headerVisible = headerVisible,
-            modifier = Modifier.align(Alignment.TopCenter)
-        )
-        overlay?.invoke(this)
+    ScreenBackdropScope { backdrop ->
+        Box(modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().screenBackdropSource(backdrop).then(bodyModifier)) { content(padding) }
+            ScaffoldHeaderVisibility(
+                header = header,
+                hideHeaderOnScroll = hideHeaderOnScroll,
+                headerVisible = headerVisible,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+            overlay?.invoke(this)
+        }
     }
 }
 

@@ -1,5 +1,19 @@
 # UI Design & Material 3 Expressive Specification
 
+Overlay backgrounds support optional surface-local frost with a theme-derived tint and 1dp outline. Text and controls remain sharp, and the ordinary scrim remains outside the surface. The independent preference defaults to ON; theme policies can permit user choice or force either state without replacing the saved preference.
+
+| Overlay family | Shared integration |
+| --- | --- |
+| App-owned alert dialogs | `TidiloAlertDialog` |
+| Modal bottom sheets | `TidiloModalBottomSheet` |
+| Popup menus | `TidiloDropdownMenu` |
+| Library modal navigation rail | `LibraryNavigationRail` with the shared renderer |
+| Shared page headers | Body-only screen source and smootherstep mask in `FrostedHeaderContainer` |
+| Library Search | Opt-in `TidiloPrimaryActionSurface` background |
+| Detail floating toolbar and browser jump | Opt-in TOOLBAR and compact PRIMARY_ACTION backgrounds |
+
+OFF retains native theme drawing. Unsupported rendering retains ordinary theme drawing; unavailable captured sources retain a readable fallback. Headers fade both blur and tint to transparency without a bottom outline; bounded floating controls use the theme tint and 1dp outline. Ordinary cards, other toolbars, screen backgrounds and OS-owned UI are not blur targets. Sheet/dialog title rows do not receive a second effect. See [overlay integration](theme_development.md#add-a-blur-enabled-overlay) and [screen chrome integration](theme_development.md#add-blur-to-in-window-screen-chrome) for ownership, extension APIs, policies and validation.
+
 Trash list rows, overflow actions and confirmations are specified in [Trash](trash.md). Rows have no tap action; they use the existing header and shared dialog/menu surface roles with explicit theme foreground colors.
 
 The Collection library, prototype-derived horizontal cards, editor and bookmark assignment sheets are specified in [Manual Collections](collections.md).
@@ -269,7 +283,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 
 ### 6.9 `FrostedHeaderContainer`
 - **Purpose**: Eliminates the harsh, hard-edged cutoff line between the fixed/sliding header and scrolling list content in Edge-to-Edge screens.
-- **Single-Canvas Architecture**: Replaced separate stacked boxes with a single `Column` background draw pass (`Modifier.drawBehind`), completely removing any physical layout seams or derivative discontinuities between the header container and list content.
+- **Stationary Canvas and Foreground Chrome**: `TidiloBackground` draws the central canvas. Screen chrome selects that canvas and its own body source; its output remains outside capture. Header blur, fallback and tint are composited in one bounded background layer and masked once, keeping foreground content sharp and the fade continuous.
 - **14-Stop Smootherstep Attenuation Curve**:
   - Implements Ken Perlin's quintic smootherstep equation ($S(t) = 6t^5 - 15t^4 + 10t^3$, $\alpha(t) = 1 - S(t)$) sampled across 14 finely spaced gradient stops.
   - Because both first and second derivatives are zero at $t=0$ and $t=1$ ($d\alpha/dt = 0$, $d^2\alpha/dt^2 = 0$), the transition is optically seamless, entirely eliminating optical Mach banding.
@@ -514,4 +528,4 @@ Selected navigation labels, screen titles and enabled primary action labels can 
 
 Unit tests cover role resolution, zero elevation, semantic precedence, preset overrides, Material palette fallback and shape-scale propagation. Instrumentation fixtures use real components, actual painted-pixel assertions and theme switching with navigation/list/draft state. Building instrumentation does not prove visual parity: before/after capture, input, recreation and frame checks require a connected device. No whole-screen zero-overdraw or zero-GPU-cost guarantee is made.
 
-Backdrop blur is future work. This migration introduces no capture host, backend interface, external dependency or speculative blur state. Required integration changes will be handled with the actual blur feature.
+Backdrop blur uses Haze 2.1.0 with independent effective policy. The app-wide modal source captures composited content; separate screen-owned body sources serve in-window chrome without capturing its own output. Source sharing is an ownership boundary, not a guarantee of one GPU replay. Relative frame measurements and their limits are documented in [chrome performance](chrome_blur_performance.md).

@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.components.TidiloModalBottomSheet
+
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
@@ -94,7 +96,7 @@ internal fun CollectionMembershipContent(
             notifyClosed()
         }
     }
-    ModalBottomSheet(
+    TidiloModalBottomSheet(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.SHEET).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.SHEET).shape,onDismissRequest = { if (closing) notifyClosed() else if (!pending) onDismiss() },
         modifier = modifier, sheetState = sheetState, sheetGesturesEnabled = !pending && !closing) {

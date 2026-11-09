@@ -1,4 +1,7 @@
 <resources>
+    <string name="settings_blur_effects">ブラー効果</string>
+    <string name="settings_blur_fixed_on">このテーマでは常に有効です</string>
+    <string name="settings_blur_fixed_off">このテーマでは常に無効です</string>
     <string name="trash_title">ゴミ箱</string>
     <string name="trash_empty">ゴミ箱は空です</string>
     <string name="trash_load_failed">ゴミ箱を読み込めませんでした。</string>

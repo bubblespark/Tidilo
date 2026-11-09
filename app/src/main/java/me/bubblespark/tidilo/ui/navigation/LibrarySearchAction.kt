@@ -18,7 +18,7 @@ import me.bubblespark.tidilo.ui.components.TidiloPrimaryActionSurface
 
 @Composable
 fun LibrarySearchAction(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    TidiloPrimaryActionSurface(expanded = false, modifier = modifier.size(56.dp)) {
+    TidiloPrimaryActionSurface(expanded = false, modifier = modifier.size(56.dp), blurBackground = true) {
         Box(Modifier.size(56.dp).testTag("library_search_action").clickable(role = Role.Button, onClick = onClick),
             contentAlignment = Alignment.Center) {
             Icon(Icons.Default.Search, stringResource(R.string.nav_search), Modifier.size(28.dp))

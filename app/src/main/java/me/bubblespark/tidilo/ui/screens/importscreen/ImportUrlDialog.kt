@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.importscreen
 
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddLink
@@ -24,7 +26,7 @@ fun ImportUrlDialog(
     val isValid = remember(urlText) { ImportViewModel.isValidHttpUrl(urlText) }
     val isDirty = urlText.isNotBlank()
 
-    AlertDialog(
+    TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
         onDismissRequest = onDismiss,
         shape = themeCorner(ThemeCorner.SHEET),

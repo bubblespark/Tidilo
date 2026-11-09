@@ -68,6 +68,59 @@ Use `modernRaisedTextStyle` at eligible text call sites. Pass the existing text 
 - Layout, spacing, component-specific typography, assets, asymmetric image masks, and specialized lighting geometry belong to the owning component or shared layout. The current preset model exposes no general typography, spacing, or motion scale. A new parameter needs a resolver rule and a consumer that uses it.
 - Prefer an existing role and variant for a new consumer. Pass the semantic state and contextual accent to the resolver or the appropriate shared component. Use the resolved foreground with its container and preserve native input and accessibility semantics. Add a role when the design needs independent behavior, and record its consumers and supported attributes in the UI design coverage table.
 
+## Add a blur-enabled overlay
+
+Use `TidiloAlertDialog`, `TidiloModalBottomSheet`, or `TidiloDropdownMenu` from `ui/components` instead of their Material counterparts in screens. They retain native window, layout, dismissal, focus, scrolling, and gesture behavior. `LibraryNavigationRail` uses the same renderer on its native modal surface. Ordinary cards, headers, toolbars, screen backgrounds, OS dialogs, and keyboards are not blur targets.
+
+```kotlin
+TidiloAlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text(stringResource(R.string.common_delete)) },
+    confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.common_delete)) } },
+    shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
+    containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+)
+```
+
+`TidiloTheme` provides one `OverlayBlurHost`. MainActivity passes the saved `AppConfig.overlayBlurEnabled` value into the theme, which resolves the effective setting. Do not read preferences or check theme identity in individual overlays. A standalone consumer without a host uses ordinary drawing.
+
+The independent user preference defaults to true. Set `AppThemeStyle.overlayBlurPolicy` only when a preset requires another policy:
+
+| Policy | Result | Settings switch |
+| --- | --- | --- |
+| `USER_CHOICE` (default) | Saved preference | Editable |
+| `FORCE_ON` | Enabled | Checked, disabled, with explanation |
+| `FORCE_OFF` | Disabled | Unchecked, disabled, with explanation |
+
+Default and Modern use `USER_CHOICE`. Fixed policies never overwrite the saved choice; returning to a user-choice theme restores it. Theme authors do not implement Haze rendering or maintain separate blur palettes, but must still verify contrast in both modes with blur ON/OFF.
+
+For a new native overlay family, follow the existing adapters:
+
+1. Call `rememberOverlayBlurLayer(visible)` at a stable composition identity. Host-owned presentation order works across windows and composition siblings, including a sheet's confirmation. Keep the layer alive until the native closing animation ends; menus and the rail track native content presence for this reason.
+2. Attach `Modifier.overlayBlurBackground(layer, actualShape, originalContainerColor)` at the complete native surface boundary, including padding, actions, and drag handles. Inspect the native API's modifier placement. A background on only the content slot is insufficient. Retain caller sizing, shape, anchor, state objects, scroll state, foreground colors, shadows, scrims, and accessibility semantics.
+3. Pass transparent native fill and zero tonal elevation only while a non-null layer owns the whole background. With a null layer, retain original native drawing. Never apply opacity or own-content blur to foreground text and controls.
+4. Reuse the shared renderer: external native shadow, shape-clipped opaque fallback base, captured lower-source blur, local translucent theme tint, 1dp outline, then sharp foreground. The completed overlay becomes a source for higher overlays, while each effect excludes itself and higher sources. Do not add full-screen blur or change the scrim.
+5. Use explicit `HazeInput.Sources` and `ClearWhenUnavailable` across windows. Native backdrops cannot sample the activity behind a dialog or popup. Keep tint on the local surface. Do not enable experimental native backdrops, input sharing, or Glass.
+6. Keep the host's root source attached across window changes. Haze records only when effects request input; OFF removes effect demand. Late source attachment can leave the first cross-window capture unavailable. No-host/software rendering uses ordinary surfaces; disappearing sources clear onto the opaque base. A rendering fallback never changes the saved preference.
+
+Native anchored surfaces append movement, predictive-back/overscroll graphics layers, and clipping after the caller's modifier. The sheet and rail use `withNativeOverlayBackground` to keep those appended native elements outside the shared background when the final modifier chain is folded. This makes background and foreground inherit the same translation, scale, pivot, clipping, and RTL placement without recreating native animations or applying coordinate compensation. Use it only for native surface modifiers, not a content-slot modifier whose later padding must remain inside the background. Keep the folding-order unit test and the real native transform-order instrumentation test when changing this helper. Test short sheets, RTL rails, and moving/collapsing surfaces; no background or outline may remain on their scrim. Inspect the resolved Material3 version with dependency insight before relying on modifier placement.
+
+Validate the new family with Default/Modern, light/dark, both saved choices and synthetic fixed policies. Check busy backgrounds, full-surface outline and clipped corners, sharp text, source updates/loss, OFF parity, nested/sibling windows, back/outside dismissal, IME/draft retention, narrow layouts, large text, RTL anchoring, disabled actions, and interrupted/repeated opening and closing without retained registrations. Use `HeaderTestHost` instrumentation on a hardware-accelerated device; resolver tests and browser mockups do not prove Haze rendering.
+
+## Add blur to in-window screen chrome
+
+`TidiloScreenScaffold` owns a stable `ScreenBackdropScope` and a unique body source key. Its header and `overlay` slot are foreground siblings. A separate chrome Haze graph captures the stationary `TidiloBackground` at z=0 and bodies at z=1; each input selects only the canvas and its owner's body key. This includes the real background behind transparent content while excluding other destinations and every chrome output. Library Search already uses the overlay slot. Every shared page header uses the scaffold, including loading and unavailable states. Keep separate keys for simultaneously composed navigation destinations.
+
+Use `blurBackground = true` on `TidiloSurface` or `TidiloPrimaryActionSurface` only for a requested floating consumer. The default is false. The shared renderer replaces conflicting opaque fill while frost is active, retaining native click/ripple handling, theme decoration, shape and sharp content. Current opt-ins are Library Search, the Detail toolbar, and its compact browser-open action. A general PRIMARY_ACTION or TOOLBAR role alone does not enable blur.
+
+For a custom background slot, consume `ChromeBlurBackground` within the same screen scope and keep foreground content outside that background. If a standalone screen needs a scope, wrap its body and chrome in one `ScreenBackdropScope` and attach `screenBackdropSource` only to the body. Use the scaffold's `bodyModifier` for background painting that must enter capture, such as Detail's ambient light; keep geometry and caller modifiers on the scaffold root. Do not allocate a source per button. No-host/software/OFF rendering must retain the ordinary theme surface; a missing captured source clears onto readable fallback paint.
+
+Headers use the existing smootherstep stop table and draw-time fade geometry. A bounded background layer composites captured blur, fallback and tint before applying the mask exactly once; separately masking each paint would make the fade too opaque. The tail reaches transparency, without a hard bottom outline. Do not blur the title/action column or add a second effect to a sheet title row. A remembered ShaderBrush caches the actual draw size; do not send onSizeChanged values back into composition to build a first-frame mask. That introduces a delayed mask and an extra recomposition. Do not rebuild the brush for each scroll offset.
+
+The app-wide modal graph remains separate and captures the composited body plus chrome. Never use that graph as an input for screen chrome: it contains the chrome's own output. Screen body sources remain attached across preference changes; Haze records on effect demand, and hidden/OFF consumers remove demand. Sharing source ownership does not guarantee one GPU replay across several effects. Keep Haze quality and experimental input-sharing defaults until profiling establishes a reason to change them.
+
+Validate underlying-body motion, foreground isolation, source loss, concurrent destinations, live policy changes and state retention. Check both themes, light/dark, ON/OFF, fixed policies, RTL, large fonts and disabled controls. Run hardware rendering tests and compare frame measurements with an identical real-screen harness; see [chrome performance](chrome_blur_performance.md) for the measured method and limits.
+
 ## Verify a change
 
 - Run `./gradlew testDebugUnitTest`. Use `AppThemeTest`, `AppConfigThemeTest`, `ThemeStringsTest`, `AppThemeStyleTest`, and `ThemeSurfaceResolverTest` for identity, persistence, labels, and resolved values. For a new resolver rule, check a representative role and the semantic state that could override it.

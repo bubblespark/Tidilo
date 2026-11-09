@@ -51,7 +51,7 @@ fun TidiloBackground(
     val canvasColor = currentThemeSurfaces().canvasColor
 
     Box(
-        modifier = modifier
+        modifier = modifier.screenCanvasSource()
             .fillMaxSize()
             .background(canvasColor)
             .drawWithCache {

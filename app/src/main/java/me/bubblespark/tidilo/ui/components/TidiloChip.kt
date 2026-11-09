@@ -23,7 +23,7 @@ fun TidiloBadgeSurface(
 ) {
     val theme = currentThemeSurfaces()
     val style = theme.resolveBadge(role, colors, state)
-    ResolvedTidiloSurface(style, modifier, content)
+    ResolvedTidiloSurface(style, modifier, content = content)
 }
 
 /** Keeps the existing native detail-chip layout while isolating theme treatment selection. */

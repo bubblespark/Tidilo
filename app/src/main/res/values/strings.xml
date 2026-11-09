@@ -1,4 +1,7 @@
 <resources>
+    <string name="settings_blur_effects">Blur effects</string>
+    <string name="settings_blur_fixed_on">Enabled by this theme</string>
+    <string name="settings_blur_fixed_off">Disabled by this theme</string>
     <string name="trash_title">Trash</string>
     <string name="trash_empty">Trash is empty</string>
     <string name="trash_load_failed">Could not load Trash.</string>

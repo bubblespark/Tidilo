@@ -172,6 +172,7 @@ enum class ThemeColorRole {
  */
 data class AppThemeStyle(
     val theme: AppTheme,
+    val overlayBlurPolicy: OverlayBlurPolicy = OverlayBlurPolicy.USER_CHOICE,
     val colorRole: ThemeColorRole = ThemeColorRole.ACCENT,
     val surfacePalette: ThemeSurfacePalette = ThemeSurfacePalette.Default,
     val cardStyle: ThemeCardStyle = ThemeCardStyle.Default,

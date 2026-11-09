@@ -60,6 +60,7 @@ class ThemeConsumerRegressionTest {
         fontScale: Float = 1f,
         width: Dp = 320.dp,
         locale: Locale = Locale.ENGLISH,
+        blurEnabled: Boolean = false,
         content: @Composable () -> Unit,
         verify: suspend (HeaderTestHost, ComponentActivity) -> Unit
     ) = runBlocking {
@@ -71,7 +72,7 @@ class ThemeConsumerRegressionTest {
                     val context = LocalContext.current
                     val configuration = Configuration(LocalConfiguration.current).apply { setLocale(locale) }
                     val density = LocalDensity.current.density
-                    TidiloTheme(darkTheme = false, dynamicColor = false, theme = preset.theme) {
+                    TidiloTheme(darkTheme = false, dynamicColor = false, theme = preset.theme, blurEnabled = blurEnabled) {
                         val surfaces = resolveThemeSurfaces(preset.theme, false, MaterialTheme.colorScheme, preset)
                         CompositionLocalProvider(
                             LocalThemeSurfaces provides surfaces,
@@ -147,7 +148,10 @@ class ThemeConsumerRegressionTest {
             host.main {
                 position = title.layoutInfo.coordinates.localToScreen(androidx.compose.ui.geometry.Offset.Zero)
             }
-            assertEquals(Color.Cyan.toArgb(), pixel(host, position.x + 10f, position.y - 6f))
+            // Exact color comparisons must wait for the native window fade to finish.
+            withTimeout(5000) {
+                while (pixel(host, position.x + 10f, position.y - 6f) != Color.Cyan.toArgb()) delay(30)
+            }
             val cancel = host.await(activity) { host.text(it, "Cancel") }
             host.main {
                 val action = generateSequence(cancel) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
@@ -221,6 +225,24 @@ class ThemeConsumerRegressionTest {
             val toggle = host.await(activity) { it.config.getOrNull(SemanticsProperties.ToggleableState) != null }
             host.main { assertTrue(toggle.config[SemanticsActions.OnClick].action!!.invoke()) }
         }
+    }
+
+    @Test fun frostedSearchActionHonorsCustomOpacity() {
+        val blues = mutableListOf<Int>()
+        for (opacity in listOf(1f, .2f)) {
+            val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
+                SurfaceRole.PRIMARY_ACTION to SurfaceStyleOverride(containerColor = Color.Black, opacity = opacity)))
+            scene(preset, blurEnabled = true, content = {
+                TidiloScreenScaffold(header = {}, modifier = Modifier.size(220.dp), overlay = {
+                    LibrarySearchAction({}, Modifier.align(Alignment.Center))
+                }) { Box(Modifier.fillMaxSize().background(Color.Blue)) }
+            }) { host, activity ->
+                val action = tagged(host, activity, "library_search_action").boundsInWindow
+                delay(400)
+                blues += android.graphics.Color.blue(pixel(host, action.center.x, action.top + 9f * host.context.resources.displayMetrics.density))
+            }
+        }
+        assertTrue("Lower opacity must expose more captured blue: $blues", blues[1] > blues[0] + 60)
     }
 
     @Test fun searchActionKeepsCustomEdgeFillAndOpacity() {

@@ -152,7 +152,8 @@ class MainActivity : ComponentActivity() {
                 LocalContext provides localizedContext
             ) {
                 val selectedTheme by AppConfig.currentTheme.collectAsStateWithLifecycle()
-                TidiloTheme(theme = selectedTheme) {
+                val blurEnabled by AppConfig.overlayBlurEnabled.collectAsStateWithLifecycle()
+                TidiloTheme(theme = selectedTheme, blurEnabled = blurEnabled) {
                     TidiloApp(notificationRoute = notificationDestination.value, onNotificationConsumed = {
                         notificationDestination.value = null
                         intent.removeExtra(NotificationCoordinator.EXTRA_DESTINATION)

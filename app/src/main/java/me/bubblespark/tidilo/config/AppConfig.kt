@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.config
 
 import android.content.Context
+import android.content.SharedPreferences
 import me.bubblespark.tidilo.TidiloApplication
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,7 @@ object AppConfig {
     private const val PREFS_NAME = "tidilo_app_config_prefs"
     private const val KEY_LANGUAGE = "app_language"
     private const val KEY_APP_THEME = "app_theme"
+    private const val KEY_OVERLAY_BLUR_ENABLED = "overlay_blur_enabled"
     private const val KEY_NSFW_CONTENT_VISIBLE = "nsfw_content_visible"
     private const val KEY_NSFW_CONTENT_BOOKMARKABLE = "nsfw_content_bookmarkable"
     private const val KEY_AI_ANALYSIS_MODE = "ai_analysis_mode"
@@ -70,6 +72,19 @@ object AppConfig {
             prefs.edit().putString(KEY_APP_THEME, theme.code).apply()
         }
     }
+
+    private val _overlayBlurEnabled = MutableStateFlow(
+        runCatching { readOverlayBlurPreference(prefs) }.getOrDefault(true)
+    )
+    val overlayBlurEnabled: StateFlow<Boolean> = _overlayBlurEnabled.asStateFlow()
+
+    fun setOverlayBlurEnabled(enabled: Boolean) {
+        _overlayBlurEnabled.value = enabled
+        runCatching { prefs.edit().putBoolean(KEY_OVERLAY_BLUR_ENABLED, enabled).apply() }
+    }
+
+    internal fun readOverlayBlurPreference(preferences: SharedPreferences): Boolean =
+        runCatching { preferences.getBoolean(KEY_OVERLAY_BLUR_ENABLED, true) }.getOrDefault(true)
 
     // NSFW content visibility flag (default: true)
     private val _isNsfwContentVisible = MutableStateFlow(

@@ -4,6 +4,7 @@ import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
+import me.bubblespark.tidilo.ui.theme.LocalOverlayBlurSetting
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -67,6 +68,7 @@ fun SettingsScreen(
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val currentTheme by AppConfig.currentTheme.collectAsStateWithLifecycle()
+    val blurSetting = LocalOverlayBlurSetting.current
     val aiAnalysisMode by AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val launchContext = LocalView.current.context
@@ -201,7 +203,8 @@ fun SettingsScreen(
                 },
                 text = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
-                        Column(modifier = Modifier.selectableGroup()) {
+                        Column {
+                          Column(modifier = Modifier.selectableGroup()) {
                             AppTheme.entries.forEach { theme ->
                                 val isSelected = theme == currentTheme
                                 Row(
@@ -230,6 +233,8 @@ fun SettingsScreen(
                                     )
                                 }
                             }
+                          }
+                          ThemeBlurSetting(blurSetting, AppConfig::setOverlayBlurEnabled)
                         }
                     }
                 },

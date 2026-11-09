@@ -63,6 +63,7 @@ fun TidiloTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true, // Prioritize Material You / Dynamic Color on Pixel and compatible devices
     theme: AppTheme = AppTheme.DEFAULT,
+    blurEnabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val style = remember(theme) { AppThemeStyle.forTheme(theme) }
@@ -79,7 +80,8 @@ fun TidiloTheme(
     val surfaces = remember(theme, darkTheme, colorScheme, style) {
         resolveThemeSurfaces(theme, darkTheme, colorScheme, style)
     }
-    CompositionLocalProvider(LocalThemeSurfaces provides surfaces, LocalAppThemeStyle provides style) {
+    CompositionLocalProvider(LocalThemeSurfaces provides surfaces, LocalAppThemeStyle provides style,
+        LocalOverlayBlurSetting provides resolveOverlayBlur(style.overlayBlurPolicy, blurEnabled)) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

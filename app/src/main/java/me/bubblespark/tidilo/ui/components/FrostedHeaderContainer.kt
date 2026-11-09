@@ -15,7 +15,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -23,7 +22,11 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.Shader
+import androidx.compose.ui.graphics.LinearGradientShader
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
@@ -148,19 +151,26 @@ fun FrostedHeaderContainer(
 
 @Composable
 private fun HeaderBackdrop(color: Color, fadeHeight: Dp, decayOverlap: Dp, modifier: Modifier) {
-    var height by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
-    val mask = remember(height, density, fadeHeight, decayOverlap) {
-        val total = height.toFloat()
-        val decayStart = with(density) { (total - fadeHeight.toPx() - decayOverlap.toPx()).coerceAtLeast(0f) }
+    val mask = remember(density, fadeHeight, decayOverlap) {
+        with(density) { headerBackdropMask(fadeHeight.toPx(), decayOverlap.toPx()) }
+    }
+    ChromeBlurBackground(RectangleShape, color, modifier, mask, outline = false)
+}
+
+/** Resolve and cache geometry at draw time, without a layout-to-composition feedback frame. */
+internal fun headerBackdropMask(fadeHeightPx: Float, decayOverlapPx: Float): Brush = object : ShaderBrush() {
+    override fun createShader(size: Size): Shader {
+        val total = size.height
+        val decayStart = (total - fadeHeightPx - decayOverlapPx).coerceAtLeast(0f)
         val start = if (total > 0) (decayStart / total).coerceIn(0f, 1f) else 0f
         val stops = buildList {
             if (start > .001f) add(0f to Color.White)
             SMOOTHERSTEP_CURVE.forEach { (t, factor) -> add((start + t * (1f - start)) to Color.White.copy(alpha = factor)) }
         }
-        Brush.verticalGradient(*stops.toTypedArray(), endY = total.coerceAtLeast(1f))
+        return LinearGradientShader(Offset.Zero, Offset(0f, total.coerceAtLeast(1f)),
+            stops.map { it.second }, stops.map { it.first })
     }
-    ChromeBlurBackground(RectangleShape, color, modifier.onSizeChanged { height = it.height }, mask, outline = false)
 }
 
 /** Body animations must not make the header intercept title/button downs as immediate drags. */

@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import me.bubblespark.tidilo.config.AppTheme
+import me.bubblespark.tidilo.ui.components.OverlayBlurHost
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
@@ -86,7 +87,7 @@ fun TidiloTheme(
             colorScheme = colorScheme,
             typography = Typography,
             shapes = remember(style.shapeScale) { resolveMaterialShapes(style.shapeScale) },
-            content = content
+            content = { OverlayBlurHost(LocalOverlayBlurSetting.current.enabled, content) }
         )
     }
 }

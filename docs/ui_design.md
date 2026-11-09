@@ -283,7 +283,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 
 ### 6.9 `FrostedHeaderContainer`
 - **Purpose**: Eliminates the harsh, hard-edged cutoff line between the fixed/sliding header and scrolling list content in Edge-to-Edge screens.
-- **Single-Canvas Architecture**: Replaced separate stacked boxes with a single `Column` background draw pass (`Modifier.drawBehind`), completely removing any physical layout seams or derivative discontinuities between the header container and list content.
+- **Stationary Canvas and Foreground Chrome**: `TidiloBackground` draws the central canvas. Screen chrome selects that canvas and its own body source; its output remains outside capture. Header blur, fallback and tint are composited in one bounded background layer and masked once, keeping foreground content sharp and the fade continuous.
 - **14-Stop Smootherstep Attenuation Curve**:
   - Implements Ken Perlin's quintic smootherstep equation ($S(t) = 6t^5 - 15t^4 + 10t^3$, $\alpha(t) = 1 - S(t)$) sampled across 14 finely spaced gradient stops.
   - Because both first and second derivatives are zero at $t=0$ and $t=1$ ($d\alpha/dt = 0$, $d^2\alpha/dt^2 = 0$), the transition is optically seamless, entirely eliminating optical Mach banding.

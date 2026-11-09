@@ -15,7 +15,7 @@ internal class OverlayBlurController(val state: HazeState) {
     fun unregister(token: Long) { registry.unregister(token); activeCount = registry.activeCount }
 }
 
-private val LocalOverlayBlurController = staticCompositionLocalOf<OverlayBlurController?> { null }
+internal val LocalOverlayBlurController = staticCompositionLocalOf<OverlayBlurController?> { null }
 
 @Composable
 fun OverlayBlurHost(enabled: Boolean, content: @Composable () -> Unit) {
@@ -36,7 +36,7 @@ internal data class OverlayBlurLayer(val token: Long, val sourceModifier: Modifi
 internal fun rememberOverlayBlurLayer(visible: Boolean): OverlayBlurLayer? {
     val controller = LocalOverlayBlurController.current
     val enabled = visible && controller?.enabled == true && LocalOverlayBlurSetting.current.enabled && LocalView.current.isHardwareAccelerated
-    val token = remember(controller, visible) { controller?.registry?.allocate() }
+    val token = remember(controller, visible) { if (visible) controller?.registry?.allocate() else null }
     DisposableEffect(controller, token, enabled) {
         if (enabled && token != null) controller?.register(token)
         onDispose { if (enabled && token != null) controller?.unregister(token) }

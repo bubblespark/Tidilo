@@ -1,5 +1,7 @@
 # Tech Stack & Dependency Specification
 
+Overlay backdrop blur uses `dev.chrisbanes.haze:haze-blur:2.1.0`, pinned in the version catalog and attached to the app implementation configuration by the root build script. It uses explicit sources for cross-window rendering; experimental Glass, native backdrops, and input sharing are not enabled. See [theme development](theme_development.md#add-a-blur-enabled-overlay) for integration and validation.
+
 This document provides the canonical catalog of all programming languages, SDKs, tools, and third-party libraries used in **Tidilo**, along with exact version numbers and technical rationales.
 
 ---

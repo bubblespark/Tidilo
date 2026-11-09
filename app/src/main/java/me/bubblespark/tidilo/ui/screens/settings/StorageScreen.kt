@@ -30,7 +30,7 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material3.AlertDialog
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -357,7 +357,7 @@ internal fun StorageContent(
     }
 
     if (showClearCacheConfirmDialog) {
-        AlertDialog(
+        TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
             onDismissRequest = { showClearCacheConfirmDialog = false },

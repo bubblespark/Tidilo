@@ -34,7 +34,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
+import me.bubblespark.tidilo.ui.components.TidiloDropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -390,7 +390,7 @@ fun TagSelectionScreen(
                             )
                         }
 
-                        DropdownMenu(
+                        TidiloDropdownMenu(
                             expanded = isSortMenuExpanded,
                             onDismissRequest = { isSortMenuExpanded = false },
                             shape = currentThemeSurfaces().resolve(SurfaceRole.MENU).shape,

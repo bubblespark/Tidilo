@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.notifications
 
+import me.bubblespark.tidilo.ui.components.TidiloDropdownMenu
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -92,7 +94,7 @@ fun NotificationContent(items: List<NotificationListItem>, canClear: Boolean, bu
                             modifier = Modifier.testTag("notification_actions:${row.key}")) {
                             Icon(Icons.Default.MoreVert, stringResource(R.string.notification_more_actions))
                         }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        TidiloDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             DropdownMenuItem(text = { Text(stringResource(R.string.common_retry)) },
                                 enabled = row.key !in busyKeys, onClick = { menuOpen = false; onRetry(row) })
                             DropdownMenuItem(text = { Text(stringResource(R.string.common_delete)) },

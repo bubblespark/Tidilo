@@ -25,7 +25,7 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RssFeed
-import androidx.compose.material3.AlertDialog
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -128,7 +128,7 @@ fun SettingsScreen(
             LocalContext provides context,
             LocalConfiguration provides localConfig
         ) {
-            AlertDialog(
+            TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
                 onDismissRequest = { showLanguageDialog = false },
                 title = {
@@ -190,7 +190,7 @@ fun SettingsScreen(
             LocalContext provides context,
             LocalConfiguration provides localConfig
         ) {
-            AlertDialog(
+            TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
                 onDismissRequest = { showThemeDialog = false },
                 title = {

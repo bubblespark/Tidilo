@@ -32,7 +32,7 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AlertDialog
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -405,7 +405,7 @@ fun SettingsDebugScreen(
     }
 
     if (showClearConfirmDialog) {
-        AlertDialog(
+        TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
             onDismissRequest = { showClearConfirmDialog = false },
@@ -478,7 +478,7 @@ internal fun CrashLogDetailsDialog(
     onCopy: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    AlertDialog(
+    TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
         onDismissRequest = onDismiss,

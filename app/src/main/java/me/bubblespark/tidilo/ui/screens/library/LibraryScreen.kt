@@ -48,7 +48,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.DropdownMenu
+import me.bubblespark.tidilo.ui.components.TidiloDropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -440,7 +440,7 @@ fun LibraryScreen(
                         }
 
                         val menuWidth = 200.dp
-                        DropdownMenu(
+                        TidiloDropdownMenu(
                             expanded = isViewModeMenuExpanded,
                             onDismissRequest = { isViewModeMenuExpanded = false },
                             shape = themeCorner(ThemeCorner.IMAGE),

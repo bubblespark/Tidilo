@@ -17,6 +17,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.shape.RoundedCornerShape
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.ui.components.*
 import me.bubblespark.tidilo.ui.theme.*
 import org.junit.Assert.*
@@ -48,10 +49,10 @@ class OverlayBlurRenderingTest {
                 }
             } } }
             delay(500)
-            val before = host.instrumentation.uiAutomation.takeScreenshot()
+            val before = markerFrame(host)
             host.main { enabled = true }
             delay(600)
-            val after = host.instrumentation.uiAutomation.takeScreenshot()
+            val after = markerFrame(host, before)
             try {
                 val x = after.width / 2
                 val markerRows = (0 until before.height).filter { before.getPixel(x, it) == Color.Magenta.toArgb() }
@@ -68,5 +69,18 @@ class OverlayBlurRenderingTest {
                     before.getPixel(x + 80, y), after.getPixel(x + 80, y))
             } finally { before.recycle(); after.recycle() }
         } finally { host.main { activity.finish() } }
+    }
+
+    private suspend fun markerFrame(host: HeaderTestHost, changedFrom: android.graphics.Bitmap? = null): android.graphics.Bitmap = withTimeout(8000) {
+        var result: android.graphics.Bitmap? = null
+        while (result == null) {
+            val frame = host.instrumentation.uiAutomation.takeScreenshot()
+            val x = frame.width / 2
+            val rows = (0 until frame.height).filter { frame.getPixel(x, it) == Color.Magenta.toArgb() }
+            val y = if (rows.isEmpty()) 0 else (rows.first() + rows.last()) / 2
+            if (rows.isNotEmpty() && (changedFrom == null || frame.getPixel(x + 80, y) != changedFrom.getPixel(x + 80, y))) result = frame
+            else { frame.recycle(); delay(30) }
+        }
+        requireNotNull(result)
     }
 }

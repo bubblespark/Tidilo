@@ -1,5 +1,16 @@
 # UI Design & Material 3 Expressive Specification
 
+Overlay backgrounds support optional surface-local frost with a theme-derived tint and 1dp outline. Text and controls remain sharp, and the ordinary scrim remains outside the surface. The independent preference defaults to ON; theme policies can permit user choice or force either state without replacing the saved preference.
+
+| Overlay family | Shared integration |
+| --- | --- |
+| App-owned alert dialogs | `TidiloAlertDialog` |
+| Modal bottom sheets | `TidiloModalBottomSheet` |
+| Popup menus | `TidiloDropdownMenu` |
+| Library modal navigation rail | `LibraryNavigationRail` with the shared renderer |
+
+OFF retains native theme drawing. Unsupported rendering or unavailable sources retain a readable opaque fallback. Ordinary cards, headers, toolbars, screen backgrounds, and OS-owned UI are not blur targets. See [Add a blur-enabled overlay](theme_development.md#add-a-blur-enabled-overlay) for source ownership, extension APIs, theme policies, and validation requirements.
+
 Trash list rows, overflow actions and confirmations are specified in [Trash](trash.md). Rows have no tap action; they use the existing header and shared dialog/menu surface roles with explicit theme foreground colors.
 
 The Collection library, prototype-derived horizontal cards, editor and bookmark assignment sheets are specified in [Manual Collections](collections.md).

@@ -33,8 +33,8 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Tag
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
+import me.bubblespark.tidilo.ui.components.TidiloDropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -108,7 +108,7 @@ fun BookmarkTagEditDialog(
         selectedSubcategory?.let { Subcategory.toLocalized(it, context) } ?: ""
     }
 
-    AlertDialog(
+    TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
         onDismissRequest = onDismiss,
         title = {
@@ -162,7 +162,7 @@ fun BookmarkTagEditDialog(
                             }
                         }
 
-                        DropdownMenu(
+                        TidiloDropdownMenu(
                             expanded = isCategoryDropdownExpanded,
                             onDismissRequest = { isCategoryDropdownExpanded = false },
                             scrollState = categoryScrollState,
@@ -250,7 +250,7 @@ fun BookmarkTagEditDialog(
                             }
                         }
 
-                        DropdownMenu(
+                        TidiloDropdownMenu(
                             expanded = isSubcategoryDropdownExpanded,
                             onDismissRequest = { isSubcategoryDropdownExpanded = false },
                             scrollState = subcategoryScrollState,
@@ -512,7 +512,7 @@ fun AddEntityDialog(
     modifier: Modifier = Modifier,
     candidates: List<String> = emptyList()
 ) {
-    AlertDialog(
+    TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
         onDismissRequest = onDismiss,
         modifier = modifier,
@@ -707,7 +707,7 @@ fun EntityTagConflictDialog(
     onChoice: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    AlertDialog(
+    TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
         onDismissRequest = onDismiss,

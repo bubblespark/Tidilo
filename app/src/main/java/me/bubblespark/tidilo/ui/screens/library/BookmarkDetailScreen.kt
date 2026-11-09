@@ -77,7 +77,7 @@ import me.bubblespark.tidilo.ui.components.DomainWatermark
 import me.bubblespark.tidilo.ui.components.calculateOgAspectRatio
 import me.bubblespark.tidilo.ui.components.rememberOgImage
 import androidx.compose.ui.res.vectorResource
-import androidx.compose.material3.AlertDialog
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.foundation.layout.PaddingValues
@@ -419,7 +419,7 @@ fun BookmarkDetailScreen(
 
             // Discard changes confirmation dialog
             if (showDiscardConfirmDialog) {
-                AlertDialog(
+                TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
                     onDismissRequest = { showDiscardConfirmDialog = false; discardToCollections = false },
@@ -464,7 +464,7 @@ fun BookmarkDetailScreen(
 
             // Delete confirmation dialog
             if (showDeleteConfirmDialog) {
-                AlertDialog(
+                TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
                     onDismissRequest = { showDeleteConfirmDialog = false },
                     title = {

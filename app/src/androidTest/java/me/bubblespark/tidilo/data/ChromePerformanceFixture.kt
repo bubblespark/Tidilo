@@ -14,7 +14,7 @@ import java.util.UUID
 internal class ChromePerformanceFixture(private val host: HeaderTestHost) : AutoCloseable {
     private val db = AppDatabase.getInstance(host.context)
     private val prefix = "chrome-${UUID.randomUUID()}"
-    val domain = "$prefix.invalid"
+    val domain = "chrome-frame-fixture.invalid"
     val detailId = "$prefix-0"
     private val ids = (0 until 400).map { "$prefix-$it" }
     private val prefs = host.context.getSharedPreferences("tidilo_library_prefs", Context.MODE_PRIVATE)
@@ -28,6 +28,7 @@ internal class ChromePerformanceFixture(private val host: HeaderTestHost) : Auto
         private set
 
     fun prepare() = runBlocking {
+        require(domain !in db.bookmarkDao().distinctDomains()) { "Performance fixture domain already populated" }
         DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), true, false) }
         DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, true, false) }
         OgImageManager.imageDownloader = { null }

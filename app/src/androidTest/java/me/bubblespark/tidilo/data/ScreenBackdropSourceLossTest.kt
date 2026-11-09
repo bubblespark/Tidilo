@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -20,6 +21,32 @@ import org.junit.Test
 import me.bubblespark.tidilo.config.AppTheme
 
 class ScreenBackdropSourceLossTest {
+    @Test fun maskAttenuatesTheCompositedBackgroundExactlyOnce(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        var alpha by mutableStateOf(1f)
+        try {
+            host.main { activity.setContent { TidiloTheme(darkTheme = false, dynamicColor = false) {
+                ScreenBackdropScope { state ->
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxSize().screenBackdropSource(state).background(Color.Blue))
+                        val mask = remember(alpha) { Brush.verticalGradient(listOf(Color.White.copy(alpha = alpha), Color.White.copy(alpha = alpha))) }
+                        ChromeBlurBackground(RectangleShape, Color(0xFF808080), Modifier.size(220.dp), mask, outline = false)
+                    }
+                }
+            } } }
+            fun red(): Int {
+                val frame = host.instrumentation.uiAutomation.takeScreenshot()
+                return try { android.graphics.Color.red(frame.getPixel(frame.width / 2, frame.height / 2)) } finally { frame.recycle() }
+            }
+            delay(450)
+            val full = red()
+            host.main { alpha = .5f }
+            delay(350)
+            assertEquals("Mask must attenuate the final composite, not accumulate across layers", full * .5f, red().toFloat(), 2f)
+        } finally { host.main { activity.finish() } }
+    }
+
     @Test fun overlappingDestinationBodyIsExcludedFromChromeInput(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()

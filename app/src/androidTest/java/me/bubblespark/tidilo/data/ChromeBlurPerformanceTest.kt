@@ -68,8 +68,9 @@ class ChromeBlurPerformanceTest {
                         CompositionLocalProvider(LocalBarsVisible provides bars, LocalAmbientLighting provides lighting) {
                         Box(Modifier.fillMaxSize()) {
                             TidiloBackground(Modifier.fillMaxSize())
-                            if (detail) BookmarkDetailScreen(fixture.detailId, fixture.vm, { detail = false })
-                            else LibraryScreen(fixture.vm, onNavigateToSearch = { detail = true }, onNavigateToDetail = { detail = true })
+                            ChromePerformanceNavigation(detail,
+                                library = { LibraryScreen(fixture.vm, onNavigateToSearch = { detail = true }, onNavigateToDetail = { detail = true }) },
+                                bookmarkDetail = { BookmarkDetailScreen(fixture.detailId, fixture.vm, { detail = false }) })
                             if (modal) TidiloAlertDialog(onDismissRequest = { modal = false }, confirmButton = {}, text = {
                                 Text("Local measurement dialog")
                                 val window = (LocalView.current.parent as? DialogWindowProvider)?.window
@@ -86,6 +87,7 @@ class ChromeBlurPerformanceTest {
             delay(2000)
             val activationSummary = activation.stop()
             for (repetition in 1..repetitions) for (case in cases) {
+                check(!File(host.context.cacheDir, "chrome-performance-stop").exists()) { "Measurement stopped at a safe case boundary" }
                 host.main { detail = case in listOf("detail", "jump", "modal"); enabled = profile != "off"; modal = false; bars = true }
                 delay(3000)
                 // Ensure paging/content is ready outside the timed interval.
@@ -104,11 +106,7 @@ class ChromeBlurPerformanceTest {
                         }
                         "jump" -> {
                             val action = host.await(screen) { host.description(it, host.context.getString(R.string.bookmark_open_in_browser)) }
-                            host.main {
-                                var node = action
-                                while (node.config.getOrNull(SemanticsActions.OnClick) == null && node.parent != null) node = requireNotNull(node.parent)
-                                check(node.config[SemanticsActions.OnClick].action?.invoke() == true)
-                            }
+                            host.chromeTap(action)
                         }
                         "navigation" -> if (tick % 5 == 0) host.main { detail = !detail }
                         "modal" -> if (tick % 5 == 0) host.main { modal = !modal }
@@ -133,9 +131,11 @@ class ChromeBlurPerformanceTest {
                 .put("browserIntentsBlocked", monitor.hits).put("runs", results)
             File(host.context.filesDir, "chrome-performance-$profile-${if (modern) "modern" else "default"}.json").writeText(output.toString(2))
         } finally {
-            activity?.let { screen -> host.main { screen.setContent {}; screen.finish() } }
-            fixture.close()
-            host.instrumentation.removeMonitor(monitor)
+            try { activity?.let { screen -> host.main { screen.setContent {}; screen.finish() } } }
+            finally {
+                try { fixture.close() }
+                finally { host.instrumentation.removeMonitor(monitor) }
+            }
         }
     }
 }

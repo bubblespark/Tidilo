@@ -75,8 +75,8 @@ class ChromeBlurControlsTest {
                 on.indices.forEach { assertNotEquals("Real Detail consumer $it must sample its canvas for $preset/$night", on[it], changed[it]) }
             }
         } finally {
-            activity?.let { screen -> host.main { screen.setContent {}; screen.finish() } }
-            fixture.close()
+            try { activity?.let { screen -> host.main { screen.setContent {}; screen.finish() } } }
+            finally { fixture.close() }
         }
     }
 

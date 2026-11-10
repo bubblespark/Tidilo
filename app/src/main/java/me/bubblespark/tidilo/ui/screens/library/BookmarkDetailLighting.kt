@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -35,23 +36,7 @@ import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.OgImageManager
 import kotlin.math.ceil
 
-/**
- * Sampled edge and accent palette for the Seamless Hero Banner on [BookmarkDetailScreen].
- */
-@Immutable
-data class DetailHeroPalette(
-    val topEdgeColor: Color,
-    val bottomEdgeColor: Color,
-    val accentColor: Color
-) {
-    companion object {
-        val Transparent = DetailHeroPalette(
-            topEdgeColor = Color.Transparent,
-            bottomEdgeColor = Color.Transparent,
-            accentColor = Color.Transparent
-        )
-    }
-}
+typealias DetailHeroPalette = me.bubblespark.tidilo.data.DetailHeroPalette
 
 /**
  * Formats the plain-text Classification Breadcrumb displayed above the Bookmark Title:
@@ -85,20 +70,8 @@ fun formatClassificationBreadcrumb(
 /**
  * Samples representative top-edge (~15%), bottom-edge (~15%), and overall dominant accent colors from [bitmap].
  */
-internal fun extractDetailHeroPalette(bitmap: Bitmap, domain: String): DetailHeroPalette {
-    return try {
-        val sampleWidth = 32
-        val sampleHeight = 32
-        val scaled = Bitmap.createScaledBitmap(bitmap, sampleWidth, sampleHeight, true)
-        val pixels = IntArray(sampleWidth * sampleHeight)
-        scaled.getPixels(pixels, 0, sampleWidth, 0, 0, sampleWidth, sampleHeight)
-        if (scaled != bitmap) scaled.recycle()
-        extractDetailHeroPaletteFromPixels(pixels, sampleWidth, sampleHeight, domain)
-    } catch (_: Exception) {
-        val fallback = DomainIconManager.generateDomainAccentColor(domain)
-        DetailHeroPalette(fallback, fallback, fallback)
-    }
-}
+internal fun extractDetailHeroPalette(bitmap: Bitmap, domain: String): DetailHeroPalette =
+    me.bubblespark.tidilo.data.extractDetailHeroPalette(bitmap, domain)
 
 /**
  * Pure pixel-array extractor for top ~15% edge band, bottom ~15% edge band, and dominant accent color.
@@ -108,57 +81,12 @@ fun extractDetailHeroPaletteFromPixels(
     width: Int,
     height: Int,
     domain: String
-): DetailHeroPalette {
-    if (width <= 0 || height <= 0 || pixels.size < width * height) {
-        val fallback = DomainIconManager.generateDomainAccentColor(domain)
-        return DetailHeroPalette(fallback, fallback, fallback)
-    }
-    val bandRows = maxOf(1, (height * 0.15f).toInt())
-    val topEdge = sampleBandAverageColor(pixels, width, 0, bandRows)
-    val bottomEdge = sampleBandAverageColor(pixels, width, height - bandRows, height)
-    val accent = DomainIconManager.extractDominantColorFromPixels(pixels, domain)
-    return DetailHeroPalette(
-        topEdgeColor = topEdge ?: accent,
-        bottomEdgeColor = bottomEdge ?: accent,
-        accentColor = accent
-    )
-}
-
-private fun sampleBandAverageColor(
-    pixels: IntArray,
-    width: Int,
-    startRow: Int,
-    endRowExclusive: Int
-): Color? {
-    var rSum = 0f
-    var gSum = 0f
-    var bSum = 0f
-    var weightSum = 0f
-    for (y in startRow until endRowExclusive) {
-        val rowOffset = y * width
-        for (x in 0 until width) {
-            val pixel = pixels[rowOffset + x]
-            val alpha = (pixel ushr 24) and 0xFF
-            if (alpha == 0) continue
-            val w = alpha / 255f
-            rSum += ((pixel ushr 16) and 0xFF) / 255f * w
-            gSum += ((pixel ushr 8) and 0xFF) / 255f * w
-            bSum += (pixel and 0xFF) / 255f * w
-            weightSum += w
-        }
-    }
-    if (weightSum <= 0f) return null
-    return Color(
-        red = (rSum / weightSum).coerceIn(0f, 1f),
-        green = (gSum / weightSum).coerceIn(0f, 1f),
-        blue = (bSum / weightSum).coerceIn(0f, 1f),
-        alpha = 1f
-    )
-}
+): DetailHeroPalette =
+    me.bubblespark.tidilo.data.extractDetailHeroPaletteFromPixels(pixels, width, height, domain)
 
 /**
  * Calibrates a sampled edge color so status bar icons (top edge) and metadata/title text (bottom edge)
- * remain legible while preserving the hue and seamless transition of the artwork.
+ * achieve accessible relative luminance contrast while preserving the hue and seamless transition of the artwork.
  */
 fun calibrateDetailEdgeColor(
     color: Color,
@@ -181,6 +109,15 @@ fun calibrateDetailEdgeColor(
         if (value > maxVal) {
             value = maxVal
         }
+        val maxLum = if (isTopEdge) 0.12f else 0.16f
+        var candidate = Color.hsv(hue, sat.coerceIn(0f, 1f), value.coerceIn(0f, 1f))
+        var step = 0
+        while (candidate.luminance() > maxLum && step < 12) {
+            value *= 0.85f
+            candidate = Color.hsv(hue, sat.coerceIn(0f, 1f), value.coerceIn(0f, 1f))
+            step++
+        }
+        return candidate
     } else {
         if (isTopEdge) {
             val minVal = 0.60f
@@ -192,8 +129,17 @@ fun calibrateDetailEdgeColor(
                 sat *= 0.55f
             }
         }
+        val minLum = if (isTopEdge) 0.35f else 0.46f
+        var candidate = Color.hsv(hue, sat.coerceIn(0f, 1f), value.coerceIn(0f, 1f))
+        var step = 0
+        while (candidate.luminance() < minLum && step < 12) {
+            value = (value + (1f - value) * 0.35f).coerceAtMost(1f)
+            sat *= 0.75f
+            candidate = Color.hsv(hue, sat.coerceIn(0f, 1f), value.coerceIn(0f, 1f))
+            step++
+        }
+        return candidate
     }
-    return Color.hsv(hue, sat.coerceIn(0f, 1f), value.coerceIn(0f, 1f))
 }
 
 /** The bookmark key owns animation state so a new detail never inherits its predecessor's hue. */

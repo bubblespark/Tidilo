@@ -110,6 +110,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -300,7 +301,7 @@ fun BookmarkDetailScreen(
     val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
     val ogBitmap = ogState.bitmap
     val heroPaletteState = rememberDetailHeroPalette(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
-    val detailAccent = rememberDetailAccent(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
+    val detailAccent = remember(heroPaletteState) { derivedStateOf { heroPaletteState.value.accentColor } }
     val bannerBounds = remember(bookmark.id, ogBitmap) { mutableStateOf<Rect?>(null) }
     val lightingHostOrigin = remember { mutableStateOf(Offset.Zero) }
     val surfaces = currentThemeSurfaces()
@@ -627,18 +628,27 @@ fun BookmarkDetailScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(statusBarTopPadding)
-                                    .drawBehind {
-                                        val topEdge = heroPaletteState.value.topEdgeColor
-                                        if (topEdge != Color.Transparent) {
-                                            drawRect(
-                                                brush = Brush.verticalGradient(
-                                                    colorStops = arrayOf(
-                                                        0.0f to Color.Transparent,
-                                                        0.45f to topEdge.copy(alpha = 0.50f),
-                                                        1.0f to topEdge
-                                                    )
-                                                )
-                                            )
+                                    .drawWithCache {
+                                        var cachedTopColor = Color.Unspecified
+                                        var cachedBrush: Brush? = null
+                                        onDrawBehind {
+                                            val topEdge = heroPaletteState.value.topEdgeColor
+                                            if (topEdge != Color.Transparent) {
+                                                val existing = cachedBrush
+                                                val brush = if (topEdge != cachedTopColor || existing == null) {
+                                                    cachedTopColor = topEdge
+                                                    Brush.verticalGradient(
+                                                        colorStops = arrayOf(
+                                                            0.0f to Color.Transparent,
+                                                            0.45f to topEdge.copy(alpha = 0.50f),
+                                                            1.0f to topEdge
+                                                        )
+                                                    ).also { cachedBrush = it }
+                                                } else {
+                                                    existing
+                                                }
+                                                drawRect(brush = brush)
+                                            }
                                         }
                                     }
                             )
@@ -676,7 +686,8 @@ fun BookmarkDetailScreen(
                                                 canvasColor
                                             }
                                             if (topFeatherPx > 0f && topEdge != Color.Transparent) {
-                                                val topBrush = if (topEdge != cachedTopColor || cachedTopBrush == null) {
+                                                val existingTop = cachedTopBrush
+                                                val topBrush = if (topEdge != cachedTopColor || existingTop == null) {
                                                     cachedTopColor = topEdge
                                                     Brush.verticalGradient(
                                                         colors = listOf(topEdge, Color.Transparent),
@@ -684,7 +695,7 @@ fun BookmarkDetailScreen(
                                                         endY = topFeatherPx
                                                     ).also { cachedTopBrush = it }
                                                 } else {
-                                                    cachedTopBrush!!
+                                                    existingTop
                                                 }
                                                 drawRect(
                                                     brush = topBrush,
@@ -693,7 +704,8 @@ fun BookmarkDetailScreen(
                                             }
                                             val bottomEdge = palette.bottomEdgeColor
                                             if (bottomFeatherPx > 0f && bottomEdge != Color.Transparent) {
-                                                val bottomBrush = if (bottomEdge != cachedBottomColor || cachedBottomBrush == null) {
+                                                val existingBottom = cachedBottomBrush
+                                                val bottomBrush = if (bottomEdge != cachedBottomColor || existingBottom == null) {
                                                     cachedBottomColor = bottomEdge
                                                     Brush.verticalGradient(
                                                         colors = listOf(Color.Transparent, bottomEdge),
@@ -701,7 +713,7 @@ fun BookmarkDetailScreen(
                                                         endY = size.height
                                                     ).also { cachedBottomBrush = it }
                                                 } else {
-                                                    cachedBottomBrush!!
+                                                    existingBottom
                                                 }
                                                 drawRect(
                                                     brush = bottomBrush,
@@ -722,18 +734,27 @@ fun BookmarkDetailScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .drawBehind {
-                                val bottomEdge = heroPaletteState.value.bottomEdgeColor
-                                if (ogBitmap != null && bottomEdge != Color.Transparent) {
-                                    drawRect(
-                                        brush = Brush.verticalGradient(
-                                            colorStops = arrayOf(
-                                                0.0f to bottomEdge,
-                                                0.55f to bottomEdge.copy(alpha = 0.35f),
-                                                1.0f to Color.Transparent
-                                            )
-                                        )
-                                    )
+                            .drawWithCache {
+                                var cachedBottomColor = Color.Unspecified
+                                var cachedBrush: Brush? = null
+                                onDrawBehind {
+                                    val bottomEdge = heroPaletteState.value.bottomEdgeColor
+                                    if (ogBitmap != null && bottomEdge != Color.Transparent) {
+                                        val existing = cachedBrush
+                                        val brush = if (bottomEdge != cachedBottomColor || existing == null) {
+                                            cachedBottomColor = bottomEdge
+                                            Brush.verticalGradient(
+                                                colorStops = arrayOf(
+                                                    0.0f to bottomEdge,
+                                                    0.55f to bottomEdge.copy(alpha = 0.35f),
+                                                    1.0f to Color.Transparent
+                                                )
+                                            ).also { cachedBrush = it }
+                                        } else {
+                                            existing
+                                        }
+                                        drawRect(brush = brush)
+                                    }
                                 }
                             }
                             .padding(
@@ -1079,22 +1100,31 @@ private fun DetailFloatingHeaderOverlay(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(statusBarHeight + 8.dp)
-                .drawBehind {
-                    val provided = topScrimColorProvider()
-                    val scrimBase = if (provided != Color.Unspecified && provided != Color.Transparent) {
-                        provided
-                    } else {
-                        fallbackScrimColor
+                .drawWithCache {
+                    var cachedScrimBase = Color.Unspecified
+                    var cachedBrush: Brush? = null
+                    onDrawBehind {
+                        val provided = topScrimColorProvider()
+                        val scrimBase = if (provided != Color.Unspecified && provided != Color.Transparent) {
+                            provided
+                        } else {
+                            fallbackScrimColor
+                        }
+                        val existing = cachedBrush
+                        val brush = if (scrimBase != cachedScrimBase || existing == null) {
+                            cachedScrimBase = scrimBase
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.0f to scrimBase.copy(alpha = 0.68f),
+                                    0.72f to scrimBase.copy(alpha = 0.24f),
+                                    1.0f to Color.Transparent
+                                )
+                            ).also { cachedBrush = it }
+                        } else {
+                            existing
+                        }
+                        drawRect(brush = brush)
                     }
-                    drawRect(
-                        brush = Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.0f to scrimBase.copy(alpha = 0.68f),
-                                0.72f to scrimBase.copy(alpha = 0.24f),
-                                1.0f to Color.Transparent
-                            )
-                        )
-                    )
                 }
         )
 

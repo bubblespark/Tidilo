@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import androidx.compose.ui.graphics.luminance
 import me.bubblespark.tidilo.ui.navigation.Screen
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -527,6 +528,21 @@ class BookmarkDetailTest {
         // In light mode, a pure black bottom edge must be lightened so dark text over the gradient extension remains legible
         val lightBottomBrightness = (lightBottom.red + lightBottom.green + lightBottom.blue) / 3f
         assertTrue("Light-mode bottom edge should lift extreme black brightness: $lightBottomBrightness", lightBottomBrightness >= 0.65f)
+
+        // Saturated colors: pure green in dark mode is darkened to cap relative luminance,
+        // and pure red in light mode is lightened to meet foreground contrast requirements.
+        val pureGreen = androidx.compose.ui.graphics.Color(0f, 1f, 0f, 1f)
+        val pureRed = androidx.compose.ui.graphics.Color(1f, 0f, 0f, 1f)
+        val calibratedDarkGreen = calibrateDetailEdgeColor(pureGreen, isDark = true, isTopEdge = false)
+        val calibratedLightRed = calibrateDetailEdgeColor(pureRed, isDark = false, isTopEdge = false)
+        assertTrue(
+            "Dark-mode saturated green edge should cap luminance: ${calibratedDarkGreen.luminance()}",
+            calibratedDarkGreen.luminance() <= 0.17f
+        )
+        assertTrue(
+            "Light-mode saturated red edge should lift luminance: ${calibratedLightRed.luminance()}",
+            calibratedLightRed.luminance() >= 0.45f
+        )
     }
 
     @Test
@@ -549,19 +565,31 @@ class BookmarkDetailTest {
             formatClassificationBreadcrumb("Article", "", isNsfw = true)
         )
 
-        // 4. Subcategory only (no NSFW)
+        // 4. Category only (no NSFW)
+        assertEquals(
+            "Article",
+            formatClassificationBreadcrumb("Article", "  ", isNsfw = false)
+        )
+
+        // 5. Subcategory only + NSFW
+        assertEquals(
+            "Entertainment - NSFW",
+            formatClassificationBreadcrumb("", "Entertainment", isNsfw = true)
+        )
+
+        // 6. Subcategory only (no NSFW)
         assertEquals(
             "Entertainment",
             formatClassificationBreadcrumb("  ", "Entertainment", isNsfw = false)
         )
 
-        // 5. No Category, no Subcategory, NSFW = true
+        // 7. No Category, no Subcategory, NSFW = true
         assertEquals(
             "NSFW",
             formatClassificationBreadcrumb("", "", isNsfw = true)
         )
 
-        // 6. No Category, no Subcategory, NSFW = false -> null (omitted)
+        // 8. No Category, no Subcategory, NSFW = false -> null (omitted)
         assertNull(
             formatClassificationBreadcrumb("", "   ", isNsfw = false)
         )

@@ -89,7 +89,7 @@ class BookmarkDetailLightingTest {
             items.forEachIndexed { index, item ->
                 instrumentation.runOnMainSync { selected.value = item.id }
                 val density = context.resources.displayMetrics.density
-                val bannerHeight = (context.resources.displayMetrics.widthPixels / density) * 9f / 16f
+                val bannerHeight = minOf((context.resources.displayMetrics.widthPixels / density) * 9f / 16f, 300f)
                 val fallback = item.ogImageKey == null
                 val title = withTimeout(10000) {
                     var node: AccessibilityNodeInfo? = null

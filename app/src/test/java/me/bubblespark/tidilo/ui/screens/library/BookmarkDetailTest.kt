@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import me.bubblespark.tidilo.ui.navigation.Screen
 import org.junit.Assert.assertEquals
@@ -529,20 +531,75 @@ class BookmarkDetailTest {
         val lightBottomBrightness = (lightBottom.red + lightBottom.green + lightBottom.blue) / 3f
         assertTrue("Light-mode bottom edge should lift extreme black brightness: $lightBottomBrightness", lightBottomBrightness >= 0.65f)
 
-        // Saturated colors: pure green in dark mode is darkened to cap relative luminance,
-        // and pure red in light mode is lightened to meet foreground contrast requirements.
-        val pureGreen = androidx.compose.ui.graphics.Color(0f, 1f, 0f, 1f)
-        val pureRed = androidx.compose.ui.graphics.Color(1f, 0f, 0f, 1f)
-        val calibratedDarkGreen = calibrateDetailEdgeColor(pureGreen, isDark = true, isTopEdge = false)
-        val calibratedLightRed = calibrateDetailEdgeColor(pureRed, isDark = false, isTopEdge = false)
-        assertTrue(
-            "Dark-mode saturated green edge should cap luminance: ${calibratedDarkGreen.luminance()}",
-            calibratedDarkGreen.luminance() <= 0.17f
+        // Saturated colors: verify calibrated edge luminance and WCAG 4.5:1 contrast ratio
+        // against both Default and Modern theme onSurfaceVariant foregrounds and composited backgrounds.
+        val sampleEdges = listOf(
+            Color(0f, 1f, 0f, 1f), // pure green
+            Color(1f, 0f, 0f, 1f), // pure red
+            Color(1f, 1f, 0f, 1f), // pure yellow
+            Color(0f, 0f, 1f, 1f), // pure blue
+            Color(1f, 1f, 1f, 1f), // pure white
+            Color(0f, 0f, 0f, 1f)  // pure black
         )
-        assertTrue(
-            "Light-mode saturated red edge should lift luminance: ${calibratedLightRed.luminance()}",
-            calibratedLightRed.luminance() >= 0.45f
+        val darkForegrounds = listOf(
+            Color(0xFFCEC3B4), // ModernDarkColorScheme.onSurfaceVariant
+            Color(0xFFBFC8CA)  // OnSurfaceVariantDark
         )
+        val darkBackground = Color(0xFF121316)
+
+        val lightForegrounds = listOf(
+            Color(0xFF53443C), // ModernLightColorScheme.onSurfaceVariant
+            Color(0xFF3F484A)  // OnSurfaceVariantLight
+        )
+        val lightBackground = Color(0xFFF8F9FB)
+
+        for (edge in sampleEdges) {
+            for (fg in darkForegrounds) {
+                val calibratedDark = calibrateDetailEdgeColor(
+                    color = edge,
+                    isDark = true,
+                    isTopEdge = false,
+                    foregroundColor = fg,
+                    backgroundColor = darkBackground
+                )
+                val directContrast = detailContrastRatio(fg, calibratedDark)
+                val compositedContrast = detailContrastRatio(
+                    fg,
+                    calibratedDark.copy(alpha = 0.45f).compositeOver(darkBackground)
+                )
+                assertTrue(
+                    "Dark-mode bottom edge contrast must be >= 4.5:1 (was $directContrast for edge=$edge, fg=$fg, lum=${calibratedDark.luminance()})",
+                    directContrast >= 4.5f
+                )
+                assertTrue(
+                    "Dark-mode composited bottom edge contrast must be >= 4.5:1 (was $compositedContrast for edge=$edge, fg=$fg)",
+                    compositedContrast >= 4.5f
+                )
+            }
+
+            for (fg in lightForegrounds) {
+                val calibratedLight = calibrateDetailEdgeColor(
+                    color = edge,
+                    isDark = false,
+                    isTopEdge = false,
+                    foregroundColor = fg,
+                    backgroundColor = lightBackground
+                )
+                val directContrast = detailContrastRatio(fg, calibratedLight)
+                val compositedContrast = detailContrastRatio(
+                    fg,
+                    calibratedLight.copy(alpha = 0.45f).compositeOver(lightBackground)
+                )
+                assertTrue(
+                    "Light-mode bottom edge contrast must be >= 4.5:1 (was $directContrast for edge=$edge, fg=$fg, lum=${calibratedLight.luminance()})",
+                    directContrast >= 4.5f
+                )
+                assertTrue(
+                    "Light-mode composited bottom edge contrast must be >= 4.5:1 (was $compositedContrast for edge=$edge, fg=$fg)",
+                    compositedContrast >= 4.5f
+                )
+            }
+        }
     }
 
     @Test

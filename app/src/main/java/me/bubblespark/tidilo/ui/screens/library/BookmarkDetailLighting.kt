@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -85,13 +86,32 @@ fun extractDetailHeroPaletteFromPixels(
     me.bubblespark.tidilo.data.extractDetailHeroPaletteFromPixels(pixels, width, height, domain)
 
 /**
+ * Computes the WCAG 2.1 contrast ratio between [foreground] and [background].
+ */
+fun detailContrastRatio(foreground: Color, background: Color): Float {
+    val fgLum = foreground.luminance()
+    val bgLum = background.luminance()
+    val lighter = maxOf(fgLum, bgLum)
+    val darker = minOf(fgLum, bgLum)
+    return (lighter + 0.05f) / (darker + 0.05f)
+}
+
+/**
  * Calibrates a sampled edge color so status bar icons (top edge) and metadata/title text (bottom edge)
- * achieve accessible relative luminance contrast while preserving the hue and seamless transition of the artwork.
+ * achieve at least [minContrastRatio] against [foregroundColor] and its gradient composition over [backgroundColor],
+ * while preserving the hue and seamless transition of the artwork.
  */
 fun calibrateDetailEdgeColor(
     color: Color,
     isDark: Boolean,
-    isTopEdge: Boolean
+    isTopEdge: Boolean,
+    foregroundColor: Color = if (isDark) {
+        if (isTopEdge) Color(0xFFDEE3E4) else Color(0xFFCEC3B4)
+    } else {
+        if (isTopEdge) Color(0xFF191C1C) else Color(0xFF53443C)
+    },
+    backgroundColor: Color = if (isDark) Color(0xFF121316) else Color(0xFFF8F9FB),
+    minContrastRatio: Float = 4.5f
 ): Color {
     if (color == Color.Transparent) return Color.Transparent
     val argb = ((color.alpha * 255).toInt() shl 24) or
@@ -103,17 +123,24 @@ fun calibrateDetailEdgeColor(
     val hue = hsv[0]
     var sat = hsv[1]
     var value = hsv[2]
+    val fgLum = foregroundColor.luminance()
 
     if (isDark) {
         val maxVal = if (isTopEdge) 0.40f else 0.48f
         if (value > maxVal) {
             value = maxVal
         }
-        val maxLum = if (isTopEdge) 0.12f else 0.16f
+        val contrastLimit = ((fgLum + 0.05f) / minContrastRatio - 0.05f).coerceAtLeast(0.01f)
+        val maxLum = minOf(if (isTopEdge) 0.12f else 0.08f, contrastLimit)
         var candidate = Color.hsv(hue, sat.coerceIn(0f, 1f), value.coerceIn(0f, 1f))
         var step = 0
-        while (candidate.luminance() > maxLum && step < 12) {
-            value *= 0.85f
+        while (
+            (candidate.luminance() > maxLum ||
+                detailContrastRatio(foregroundColor, candidate) < minContrastRatio ||
+                detailContrastRatio(foregroundColor, candidate.copy(alpha = 0.45f).compositeOver(backgroundColor)) < minContrastRatio) &&
+            step < 16
+        ) {
+            value *= 0.82f
             candidate = Color.hsv(hue, sat.coerceIn(0f, 1f), value.coerceIn(0f, 1f))
             step++
         }
@@ -129,10 +156,16 @@ fun calibrateDetailEdgeColor(
                 sat *= 0.55f
             }
         }
-        val minLum = if (isTopEdge) 0.35f else 0.46f
+        val contrastLimit = ((fgLum + 0.05f) * minContrastRatio - 0.05f).coerceAtMost(0.92f)
+        val minLum = maxOf(if (isTopEdge) 0.35f else 0.48f, contrastLimit)
         var candidate = Color.hsv(hue, sat.coerceIn(0f, 1f), value.coerceIn(0f, 1f))
         var step = 0
-        while (candidate.luminance() < minLum && step < 12) {
+        while (
+            (candidate.luminance() < minLum ||
+                detailContrastRatio(foregroundColor, candidate) < minContrastRatio ||
+                detailContrastRatio(foregroundColor, candidate.copy(alpha = 0.45f).compositeOver(backgroundColor)) < minContrastRatio) &&
+            step < 16
+        ) {
             value = (value + (1f - value) * 0.35f).coerceAtMost(1f)
             sat *= 0.75f
             candidate = Color.hsv(hue, sat.coerceIn(0f, 1f), value.coerceIn(0f, 1f))
@@ -182,12 +215,24 @@ internal fun rememberDetailHeroPalette(
         Color.Transparent
     }
     val targetTop = if (rawPalette.topEdgeColor != Color.Transparent) {
-        calibrateDetailEdgeColor(rawPalette.topEdgeColor, isDark = isDark, isTopEdge = true)
+        calibrateDetailEdgeColor(
+            color = rawPalette.topEdgeColor,
+            isDark = isDark,
+            isTopEdge = true,
+            foregroundColor = colorScheme.onSurface,
+            backgroundColor = surfaces.canvasColor
+        )
     } else {
         Color.Transparent
     }
     val targetBottom = if (rawPalette.bottomEdgeColor != Color.Transparent) {
-        calibrateDetailEdgeColor(rawPalette.bottomEdgeColor, isDark = isDark, isTopEdge = false)
+        calibrateDetailEdgeColor(
+            color = rawPalette.bottomEdgeColor,
+            isDark = isDark,
+            isTopEdge = false,
+            foregroundColor = colorScheme.onSurfaceVariant,
+            backgroundColor = surfaces.canvasColor
+        )
     } else {
         Color.Transparent
     }

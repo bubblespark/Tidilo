@@ -28,9 +28,20 @@ class BookmarkDetailTagLayoutTest {
     @Test fun subcategoryOnlyTagsRetainTheClassificationLine() = verifyTags(subcategory = "Tech")
     @Test fun nsfwOnlyTagsRetainTheClassificationLine() = verifyTags(nsfw = true)
     @Test fun emptyTagsRetainTheSectionAndEditAction() = verifyTags()
+    @Test fun editingTagsUpdatesBreadcrumbAndEntitiesInMemoryAndEnablesSave() = verifyTags(
+        category = "Article",
+        subcategory = "Tech",
+        entities = listOf("InitialEntity"),
+        verifyInMemoryEdit = true
+    )
 
-    private fun verifyTags(category: String? = null, subcategory: String? = null, nsfw: Boolean = false,
-        entities: List<String> = emptyList()): Unit = runBlocking {
+    private fun verifyTags(
+        category: String? = null,
+        subcategory: String? = null,
+        nsfw: Boolean = false,
+        entities: List<String> = emptyList(),
+        verifyInMemoryEdit: Boolean = false
+    ): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val db = AppDatabase.getInstance(context)
@@ -48,38 +59,117 @@ class BookmarkDetailTagLayoutTest {
                 val vm = ViewModelProvider(host)[LibraryViewModel::class.java]
                 host.setContent { MaterialTheme { Surface { BookmarkDetailScreen(id, vm, {}) } } }
             }
-            fun find(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
-                if (node.text?.toString() == text) return node
-                repeat(node.childCount) { index -> node.getChild(index)?.let { find(it, text)?.let { return it } } }
+            fun findNode(node: AccessibilityNodeInfo, predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
+                if (predicate(node)) return node
+                repeat(node.childCount) { index -> node.getChild(index)?.let { findNode(it, predicate)?.let { return it } } }
                 return null
             }
-            suspend fun bounds(text: String): Rect = withTimeout(10000) {
+            suspend fun awaitNode(predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo = withTimeout(10000) {
                 var node: AccessibilityNodeInfo? = null
                 while (node == null) {
                     instrumentation.uiAutomation.clearCache()
-                    node = instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, text) }
+                    node = instrumentation.uiAutomation.rootInActiveWindow?.let { findNode(it, predicate) }
                     if (node == null) delay(20)
                 }
-                Rect().also(node::getBoundsInScreen)
+                node
             }
-            val firstText = when {
-                category != null -> Category.toLocalized(category, context)
-                subcategory != null -> Subcategory.toLocalized(subcategory, context)
-                nsfw -> "NSFW"
-                entities.isNotEmpty() -> entities.first()
-                else -> context.getString(R.string.detail_section_summary)
+            suspend fun boundsWhere(predicate: (AccessibilityNodeInfo) -> Boolean): Rect =
+                Rect().also(awaitNode(predicate)::getBoundsInScreen)
+            suspend fun bounds(text: String): Rect = boundsWhere { it.text?.toString() == text }
+            suspend fun boundsContaining(substring: String): Rect = boundsWhere { it.text?.toString()?.contains(substring) == true }
+            suspend fun clickNode(label: String) = withTimeout(10000) {
+                while (true) {
+                    instrumentation.uiAutomation.clearCache()
+                    var target = instrumentation.uiAutomation.rootInActiveWindow?.let {
+                        findNode(it) { n -> n.text?.toString() == label || n.contentDescription?.toString() == label }
+                    }
+                    while (target != null && !target.isClickable) target = target.parent
+                    if (target?.isEnabled == true && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) break
+                    delay(30)
+                }
+                delay(150)
             }
-            val entity = bounds(firstText)
-            val header = bounds(context.getString(R.string.detail_section_tags))
-            val gap = (entity.top - header.bottom) / context.resources.displayMetrics.density
-            val maxGap = if (category == null && subcategory == null && !nsfw && entities.isEmpty()) 60f else 26f
-            assertTrue("Header gap must exclude empty row and duplicate padding: $gap dp", gap in 8f..maxGap)
-            fun hasEdit(node: AccessibilityNodeInfo): Boolean {
-                if (node.contentDescription?.toString() == context.getString(R.string.detail_edit_tags)) return true
-                repeat(node.childCount) { index -> if (node.getChild(index)?.let(::hasEdit) == true) return true }
-                return false
+
+            val density = context.resources.displayMetrics.density
+            val domainBounds = boundsContaining("tag-$id.invalid")
+            val titleBounds = bounds("Entity-only spacing")
+            val localizedCategory = category?.let { Category.toLocalized(it, context) }.orEmpty()
+            val localizedSubcategory = subcategory?.let { Subcategory.toLocalized(it, context) }.orEmpty()
+            val expectedBreadcrumb = me.bubblespark.tidilo.ui.screens.library.formatClassificationBreadcrumb(
+                localizedCategory, localizedSubcategory, nsfw
+            )
+            if (expectedBreadcrumb != null) {
+                val breadcrumbBounds = bounds(expectedBreadcrumb)
+                assertTrue("Classification breadcrumb must sit between domain and title", breadcrumbBounds.top >= domainBounds.bottom - 2 && breadcrumbBounds.bottom <= titleBounds.top + 2)
+            } else {
+                val domainToTitleGap = (titleBounds.top - domainBounds.bottom) / density
+                assertTrue("When classification is empty, title pulls up directly beneath domain without an empty row gap: $domainToTitleGap dp", domainToTitleGap in 2f..18f)
             }
-            assertTrue("Tag editing remains available", instrumentation.uiAutomation.rootInActiveWindow?.let(::hasEdit) == true)
+
+            val belowTitleText = if (entities.isNotEmpty()) {
+                entities.first()
+            } else {
+                context.getString(R.string.detail_add_tags_placeholder)
+            }
+            val entityBounds = bounds(belowTitleText)
+            val titleToEntityGap = (entityBounds.top - titleBounds.bottom) / density
+            assertTrue("Entity row sits compactly below the title: $titleToEntityGap dp", titleToEntityGap in 6f..32f)
+
+            val editLabel = context.getString(R.string.detail_edit_tags)
+            assertTrue(
+                "Tag editing remains available",
+                instrumentation.uiAutomation.rootInActiveWindow?.let {
+                    findNode(it) { n -> n.contentDescription?.toString() == editLabel } != null
+                } == true
+            )
+
+            if (verifyInMemoryEdit) {
+                val saveLabel = context.getString(R.string.detail_save)
+                fun isSaveClickableEnabled(): Boolean {
+                    var target = instrumentation.uiAutomation.rootInActiveWindow?.let {
+                        findNode(it) { n -> n.contentDescription?.toString() == saveLabel }
+                    }
+                    while (target != null && !target.isClickable) target = target.parent
+                    return target?.isEnabled == true
+                }
+                assertTrue("Save button starts disabled before edits", !isSaveClickableEnabled())
+
+                clickNode(editLabel)
+                // Toggle NSFW switch inside BookmarkTagEditDialog
+                withTimeout(10000) {
+                    while (true) {
+                        instrumentation.uiAutomation.clearCache()
+                        val toggle = instrumentation.uiAutomation.rootInActiveWindow?.let {
+                            findNode(it) { n -> n.isCheckable && n.isClickable }
+                        }
+                        if (toggle != null && toggle.performAction(AccessibilityNodeInfo.ACTION_CLICK)) break
+                        delay(30)
+                    }
+                    delay(150)
+                }
+                // Add a new entity tag
+                clickNode(context.getString(R.string.detail_tag_add_entity))
+                val editable = awaitNode { it.isEditable }
+                val newEntity = "AddedEntity"
+                editable.performAction(
+                    AccessibilityNodeInfo.ACTION_SET_TEXT,
+                    android.os.Bundle().apply {
+                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, newEntity)
+                    }
+                )
+                clickNode(context.getString(R.string.common_ok))
+                // Confirm parent BookmarkTagEditDialog
+                clickNode(context.getString(R.string.common_ok))
+
+                val updatedBreadcrumb = me.bubblespark.tidilo.ui.screens.library.formatClassificationBreadcrumb(
+                    localizedCategory, localizedSubcategory, true
+                )!!
+                val updatedBreadcrumbBounds = bounds(updatedBreadcrumb)
+                assertTrue("Updated classification breadcrumb with NSFW appears above title", updatedBreadcrumbBounds.top < titleBounds.top)
+                val addedEntityBounds = bounds(newEntity)
+                assertTrue("Added entity chip appears below title", addedEntityBounds.top > titleBounds.bottom)
+                assertTrue("Floppy Save button is enabled after confirming tag edits", isSaveClickableEnabled())
+            }
         } finally {
             activity?.let { host -> instrumentation.runOnMainSync { host.finish() } }
             db.bookmarkDao().deleteById(id)

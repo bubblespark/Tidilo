@@ -164,6 +164,7 @@
     <string name="detail_dialog_delete_title">ブックマークの削除</string>
     <string name="detail_dialog_delete_message">このブックマークをごみ箱に移動しますか？\n(ごみ箱で30日間保持された後に完全削除されます)</string>
     <string name="detail_edit_tags">分類とタグを編集</string>
+    <string name="detail_add_tags_placeholder">+ タグを追加</string>
     <string name="detail_tag_dialog_title">分類 &amp; タグの編集</string>
     <string name="detail_tag_category_label">分類</string>
     <string name="detail_tag_subcategory_label">サブ分類</string>

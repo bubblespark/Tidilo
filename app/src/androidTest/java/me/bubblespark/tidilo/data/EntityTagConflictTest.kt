@@ -205,7 +205,8 @@ class EntityTagConflictTest {
     }
     @Test fun rapidSaveTapsCommitOnce() = verify {
         conflict(); click("Replace across all bookmarks"); accept()
-        val save = node { it.text?.toString() == "Save" }
+        val saveLabel = host.context.getString(R.string.detail_save)
+        val save = node { it.text?.toString() == saveLabel || it.contentDescription?.toString() == saveLabel }
         var button: AccessibilityNodeInfo? = save
         while (button != null && !button.isClickable) button = button.parent
         button?.performAction(AccessibilityNodeInfo.ACTION_CLICK)

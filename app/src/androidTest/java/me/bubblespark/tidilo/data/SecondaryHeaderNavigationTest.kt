@@ -125,7 +125,7 @@ class SecondaryHeaderNavigationTest {
             host.main {
                 assertTrue(note.config[SemanticsActions.SetText].action?.invoke(androidx.compose.ui.text.AnnotatedString("Saved from fixed header")) == true)
             }
-            val save = host.await(activity) { host.text(it, host.context.getString(R.string.detail_save)) }
+            val save = host.await(activity) { host.description(it, host.context.getString(R.string.detail_save)) }
             delay(100)
             host.main {
                 var node = save

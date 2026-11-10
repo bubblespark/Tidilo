@@ -82,14 +82,14 @@ class BookmarkDetailLightingTest {
                 }
             }
             fun find(node: AccessibilityNodeInfo, title: String): AccessibilityNodeInfo? {
-                if (node.text?.toString() == title) return node
+                if (node.text?.toString() == title || node.contentDescription?.toString() == title) return node
                 repeat(node.childCount) { index -> node.getChild(index)?.let { find(it, title)?.let { return it } } }
                 return null
             }
             items.forEachIndexed { index, item ->
                 instrumentation.runOnMainSync { selected.value = item.id }
                 val density = context.resources.displayMetrics.density
-                val bannerHeight = (context.resources.displayMetrics.widthPixels / density - 40) * 9f / 16f
+                val bannerHeight = (context.resources.displayMetrics.widthPixels / density) * 9f / 16f
                 val fallback = item.ogImageKey == null
                 val title = withTimeout(10000) {
                     var node: AccessibilityNodeInfo? = null
@@ -97,17 +97,17 @@ class BookmarkDetailLightingTest {
                         instrumentation.uiAutomation.clearCache()
                         node = instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, item.title) }
                         // The title exists before asynchronous image insertion; wait for its final geometry.
-                        if (!fallback && node != null && Rect().also(node::getBoundsInScreen).top < (bannerHeight + 100) * density) node = null
+                        if (!fallback && node != null && Rect().also(node::getBoundsInScreen).top < (bannerHeight + 16) * density) node = null
                         if (node == null) delay(20)
                     }
                     Rect().also(node::getBoundsInScreen)
                 }
-                // After scrolling, the new image-free title can sit beneath the frosted header.
-                // Sample beside the URL body instead, so this assertion measures ambient lighting.
+                // Sample inside the seamless gradient extension (or beside the title in fallback mode)
                 val sampleY = if (fallback) {
-                    val urlNode = requireNotNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, item.url) })
-                    Rect().also(urlNode::getBoundsInScreen).centerY()
-                } else title.top - ((16 + bannerHeight / 2) * density).roundToInt()
+                    title.centerY()
+                } else {
+                    (title.top - (8 * density).roundToInt()).coerceAtLeast(10)
+                }
                 val target = if (fallback) DomainIconManager.generateDomainAccentColor(domain)
                     else if (index == 0) Color(0xFFF5AA14) else Color(0xFF14BEF0)
                 val channels = listOf(target.red, target.green, target.blue)
@@ -137,9 +137,13 @@ class BookmarkDetailLightingTest {
                 } while (difference <= 5 && android.os.SystemClock.uptimeMillis() < deadline)
                 assertTrue("$dark ${item.title}: outside-banner glow must follow OG hue, delta=$difference", difference > 5)
                 if (index == 1) {
-                    val headerText = context.getString(R.string.detail_title)
-                    val headerBefore = Rect().also { rect ->
-                        requireNotNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, headerText) }).getBoundsInScreen(rect)
+                    val backLabel = context.getString(R.string.common_back)
+                    val saveLabel = context.getString(R.string.detail_save)
+                    val backBefore = Rect().also { rect ->
+                        requireNotNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, backLabel) }).getBoundsInScreen(rect)
+                    }
+                    val saveBefore = Rect().also { rect ->
+                        requireNotNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, saveLabel) }).getBoundsInScreen(rect)
                     }
                     val before = instrumentation.uiAutomation.takeScreenshot()
                     try {
@@ -167,10 +171,14 @@ class BookmarkDetailLightingTest {
                             }
                         }
                         instrumentation.waitForIdleSync()
-                        val headerAfter = Rect().also { rect ->
-                            requireNotNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, headerText) }).getBoundsInScreen(rect)
+                        val backAfter = Rect().also { rect ->
+                            requireNotNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, backLabel) }).getBoundsInScreen(rect)
                         }
-                        assertTrue("The independent header remains fixed while the image scrolls", headerBefore == headerAfter)
+                        val saveAfter = Rect().also { rect ->
+                            requireNotNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, saveLabel) }).getBoundsInScreen(rect)
+                        }
+                        assertTrue("The floating Back button remains fixed while the image scrolls", backBefore == backAfter)
+                        assertTrue("The floating Save button remains fixed while the image scrolls", saveBefore == saveAfter)
                         val after = instrumentation.uiAutomation.takeScreenshot()
                         try {
                             var changed = 0

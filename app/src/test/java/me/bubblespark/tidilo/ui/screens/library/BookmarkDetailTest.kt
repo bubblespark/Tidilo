@@ -475,6 +475,97 @@ class BookmarkDetailTest {
         assertFalse("Fallback must not be shown on cache hit", state.shouldShowFallback)
         assertFalse("DomainWatermark must not be shown on cache hit", state.shouldShowDomainWatermarkFallback)
     }
+
+    @Test
+    fun testDetailHeroPaletteExtractsDistinctTopAndBottomEdgeColors() {
+        val width = 20
+        val height = 20
+        val pixels = IntArray(width * height)
+        val topAmber = (0xFF shl 24) or (245 shl 16) or (170 shl 8) or 20
+        val bottomCyan = (0xFF shl 24) or (20 shl 16) or (190 shl 8) or 240
+        for (y in 0 until height) {
+            val color = if (y < height / 2) topAmber else bottomCyan
+            for (x in 0 until width) {
+                pixels[y * width + x] = color
+            }
+        }
+
+        val palette = extractDetailHeroPaletteFromPixels(pixels, width, height, "example.com")
+
+        assertTrue("Top edge color should be warm amber (red > blue)", palette.topEdgeColor.red > palette.topEdgeColor.blue + 0.3f)
+        assertTrue("Bottom edge color should be cool cyan (blue > red)", palette.bottomEdgeColor.blue > palette.bottomEdgeColor.red + 0.3f)
+        assertTrue("Accent color should be opaque", palette.accentColor.alpha > 0.9f)
+    }
+
+    @Test
+    fun testDetailHeroPaletteCalibratesExtremeWhiteAndBlackEdgesForThemeLegibility() {
+        val width = 16
+        val height = 16
+        val pixels = IntArray(width * height)
+        val pureWhite = (0xFF shl 24) or 0xFFFFFF
+        val pureBlack = (0xFF shl 24) or 0x000000
+        for (y in 0 until height) {
+            val color = if (y < height / 2) pureWhite else pureBlack
+            for (x in 0 until width) {
+                pixels[y * width + x] = color
+            }
+        }
+
+        val rawPalette = extractDetailHeroPaletteFromPixels(pixels, width, height, "example.com")
+        val darkTop = calibrateDetailEdgeColor(rawPalette.topEdgeColor, isDark = true, isTopEdge = true)
+        val darkBottom = calibrateDetailEdgeColor(rawPalette.bottomEdgeColor, isDark = true, isTopEdge = false)
+        val lightBottom = calibrateDetailEdgeColor(rawPalette.bottomEdgeColor, isDark = false, isTopEdge = false)
+
+        // In dark mode, a pure white top edge must be darkened so white status bar icons remain legible
+        val darkTopBrightness = (darkTop.red + darkTop.green + darkTop.blue) / 3f
+        assertTrue("Dark-mode top edge should cap extreme white brightness: $darkTopBrightness", darkTopBrightness <= 0.45f)
+
+        // In dark mode, a pure black bottom edge remains dark and valid
+        val darkBottomBrightness = (darkBottom.red + darkBottom.green + darkBottom.blue) / 3f
+        assertTrue("Dark-mode bottom edge stays dark: $darkBottomBrightness", darkBottomBrightness <= 0.35f)
+
+        // In light mode, a pure black bottom edge must be lightened so dark text over the gradient extension remains legible
+        val lightBottomBrightness = (lightBottom.red + lightBottom.green + lightBottom.blue) / 3f
+        assertTrue("Light-mode bottom edge should lift extreme black brightness: $lightBottomBrightness", lightBottomBrightness >= 0.65f)
+    }
+
+    @Test
+    fun testFormatClassificationBreadcrumbAllCombinations() {
+        // 1. Category + Subcategory + NSFW
+        assertEquals(
+            "Article > Entertainment - NSFW",
+            formatClassificationBreadcrumb("Article", "Entertainment", isNsfw = true)
+        )
+
+        // 2. Category + Subcategory (no NSFW)
+        assertEquals(
+            "Article > Entertainment",
+            formatClassificationBreadcrumb("Article", "Entertainment", isNsfw = false)
+        )
+
+        // 3. Category only + NSFW
+        assertEquals(
+            "Article - NSFW",
+            formatClassificationBreadcrumb("Article", "", isNsfw = true)
+        )
+
+        // 4. Subcategory only (no NSFW)
+        assertEquals(
+            "Entertainment",
+            formatClassificationBreadcrumb("  ", "Entertainment", isNsfw = false)
+        )
+
+        // 5. No Category, no Subcategory, NSFW = true
+        assertEquals(
+            "NSFW",
+            formatClassificationBreadcrumb("", "", isNsfw = true)
+        )
+
+        // 6. No Category, no Subcategory, NSFW = false -> null (omitted)
+        assertNull(
+            formatClassificationBreadcrumb("", "   ", isNsfw = false)
+        )
+    }
 }
 
 private class DummyImageBitmap : androidx.compose.ui.graphics.ImageBitmap {

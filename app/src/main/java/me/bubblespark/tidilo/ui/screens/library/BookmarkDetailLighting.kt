@@ -1,6 +1,12 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import android.graphics.Bitmap
+import me.bubblespark.tidilo.ui.theme.BackgroundDark
+import me.bubblespark.tidilo.ui.theme.BackgroundLight
+import me.bubblespark.tidilo.ui.theme.ModernDarkColorScheme
+import me.bubblespark.tidilo.ui.theme.ModernLightColorScheme
+import me.bubblespark.tidilo.ui.theme.OnSurfaceDark
+import me.bubblespark.tidilo.ui.theme.OnSurfaceLight
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.EaseOutCubic
@@ -106,11 +112,11 @@ fun calibrateDetailEdgeColor(
     isDark: Boolean,
     isTopEdge: Boolean,
     foregroundColor: Color = if (isDark) {
-        if (isTopEdge) Color(0xFFDEE3E4) else Color(0xFFCEC3B4)
+        if (isTopEdge) OnSurfaceDark else ModernDarkColorScheme.onSurfaceVariant
     } else {
-        if (isTopEdge) Color(0xFF191C1C) else Color(0xFF53443C)
+        if (isTopEdge) OnSurfaceLight else ModernLightColorScheme.onSurfaceVariant
     },
-    backgroundColor: Color = if (isDark) Color(0xFF121316) else Color(0xFFF8F9FB),
+    backgroundColor: Color = if (isDark) BackgroundDark else BackgroundLight,
     minContrastRatio: Float = 4.5f
 ): Color {
     if (color == Color.Transparent) return Color.Transparent

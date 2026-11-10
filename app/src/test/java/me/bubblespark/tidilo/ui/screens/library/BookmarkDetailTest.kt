@@ -1,6 +1,17 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import me.bubblespark.tidilo.ui.navigation.Screen
+import me.bubblespark.tidilo.ui.theme.BackgroundDark
+import me.bubblespark.tidilo.ui.theme.BackgroundLight
+import me.bubblespark.tidilo.ui.theme.ModernDarkColorScheme
+import me.bubblespark.tidilo.ui.theme.ModernLightColorScheme
+import me.bubblespark.tidilo.ui.theme.OnSurfaceDark
+import me.bubblespark.tidilo.ui.theme.OnSurfaceLight
+import me.bubblespark.tidilo.ui.theme.OnSurfaceVariantDark
+import me.bubblespark.tidilo.ui.theme.OnSurfaceVariantLight
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -474,6 +485,169 @@ class BookmarkDetailTest {
         assertTrue("State must be immediately resolved when cache hit occurs", state.resolved)
         assertFalse("Fallback must not be shown on cache hit", state.shouldShowFallback)
         assertFalse("DomainWatermark must not be shown on cache hit", state.shouldShowDomainWatermarkFallback)
+    }
+
+    @Test
+    fun testDetailHeroPaletteExtractsDistinctTopAndBottomEdgeColors() {
+        val width = 20
+        val height = 20
+        val pixels = IntArray(width * height)
+        val topAmber = (0xFF shl 24) or (245 shl 16) or (170 shl 8) or 20
+        val bottomCyan = (0xFF shl 24) or (20 shl 16) or (190 shl 8) or 240
+        for (y in 0 until height) {
+            val color = if (y < height / 2) topAmber else bottomCyan
+            for (x in 0 until width) {
+                pixels[y * width + x] = color
+            }
+        }
+
+        val palette = extractDetailHeroPaletteFromPixels(pixels, width, height, "example.com")
+
+        assertTrue("Top edge color should be warm amber (red > blue)", palette.topEdgeColor.red > palette.topEdgeColor.blue + 0.3f)
+        assertTrue("Bottom edge color should be cool cyan (blue > red)", palette.bottomEdgeColor.blue > palette.bottomEdgeColor.red + 0.3f)
+        assertTrue("Accent color should be opaque", palette.accentColor.alpha > 0.9f)
+    }
+
+    @Test
+    fun testDetailHeroPaletteCalibratesExtremeWhiteAndBlackEdgesForThemeLegibility() {
+        val width = 16
+        val height = 16
+        val pixels = IntArray(width * height)
+        val pureWhite = (0xFF shl 24) or 0xFFFFFF
+        val pureBlack = (0xFF shl 24) or 0x000000
+        for (y in 0 until height) {
+            val color = if (y < height / 2) pureWhite else pureBlack
+            for (x in 0 until width) {
+                pixels[y * width + x] = color
+            }
+        }
+
+        val rawPalette = extractDetailHeroPaletteFromPixels(pixels, width, height, "example.com")
+        val darkTop = calibrateDetailEdgeColor(rawPalette.topEdgeColor, isDark = true, isTopEdge = true)
+        val darkBottom = calibrateDetailEdgeColor(rawPalette.bottomEdgeColor, isDark = true, isTopEdge = false)
+        val lightBottom = calibrateDetailEdgeColor(rawPalette.bottomEdgeColor, isDark = false, isTopEdge = false)
+
+        // In dark mode, a pure white top edge must be darkened so white status bar icons remain legible
+        val darkTopBrightness = (darkTop.red + darkTop.green + darkTop.blue) / 3f
+        assertTrue("Dark-mode top edge should cap extreme white brightness: $darkTopBrightness", darkTopBrightness <= 0.45f)
+
+        // In dark mode, a pure black bottom edge remains dark and valid
+        val darkBottomBrightness = (darkBottom.red + darkBottom.green + darkBottom.blue) / 3f
+        assertTrue("Dark-mode bottom edge stays dark: $darkBottomBrightness", darkBottomBrightness <= 0.35f)
+
+        // In light mode, a pure black bottom edge must be lightened so dark text over the gradient extension remains legible
+        val lightBottomBrightness = (lightBottom.red + lightBottom.green + lightBottom.blue) / 3f
+        assertTrue("Light-mode bottom edge should lift extreme black brightness: $lightBottomBrightness", lightBottomBrightness >= 0.65f)
+
+        // Saturated and extreme colors: verify calibrated edge luminance and WCAG 4.5:1 contrast ratio
+        // across both top-edge (onSurface) and bottom-edge (onSurfaceVariant) paths using the exact
+        // Default and Modern theme foreground/canvas pairs supplied by rememberDetailHeroPalette.
+        val sampleEdges = listOf(
+            Color(0f, 1f, 0f, 1f), // pure green
+            Color(1f, 0f, 0f, 1f), // pure red
+            Color(1f, 1f, 0f, 1f), // pure yellow
+            Color(0f, 0f, 1f, 1f), // pure blue
+            Color(1f, 1f, 1f, 1f), // pure white
+            Color(0f, 0f, 0f, 1f)  // pure black
+        )
+
+        data class ThemeContrastSpec(
+            val name: String,
+            val isDark: Boolean,
+            val isTopEdge: Boolean,
+            val foreground: Color,
+            val background: Color
+        )
+
+        val specs = listOf(
+            // Default Dark
+            ThemeContrastSpec("DefaultDark-Top", isDark = true, isTopEdge = true, foreground = OnSurfaceDark, background = BackgroundDark),
+            ThemeContrastSpec("DefaultDark-Bottom", isDark = true, isTopEdge = false, foreground = OnSurfaceVariantDark, background = BackgroundDark),
+            // Modern Dark
+            ThemeContrastSpec("ModernDark-Top", isDark = true, isTopEdge = true, foreground = ModernDarkColorScheme.onSurface, background = ModernDarkColorScheme.background),
+            ThemeContrastSpec("ModernDark-Bottom", isDark = true, isTopEdge = false, foreground = ModernDarkColorScheme.onSurfaceVariant, background = ModernDarkColorScheme.background),
+            // Default Light
+            ThemeContrastSpec("DefaultLight-Top", isDark = false, isTopEdge = true, foreground = OnSurfaceLight, background = BackgroundLight),
+            ThemeContrastSpec("DefaultLight-Bottom", isDark = false, isTopEdge = false, foreground = OnSurfaceVariantLight, background = BackgroundLight),
+            // Modern Light
+            ThemeContrastSpec("ModernLight-Top", isDark = false, isTopEdge = true, foreground = ModernLightColorScheme.onSurface, background = ModernLightColorScheme.background),
+            ThemeContrastSpec("ModernLight-Bottom", isDark = false, isTopEdge = false, foreground = ModernLightColorScheme.onSurfaceVariant, background = ModernLightColorScheme.background)
+        )
+
+        for (edge in sampleEdges) {
+            for (spec in specs) {
+                val calibrated = calibrateDetailEdgeColor(
+                    color = edge,
+                    isDark = spec.isDark,
+                    isTopEdge = spec.isTopEdge,
+                    foregroundColor = spec.foreground,
+                    backgroundColor = spec.background
+                )
+                val directContrast = detailContrastRatio(spec.foreground, calibrated)
+                val compositedContrast = detailContrastRatio(
+                    spec.foreground,
+                    calibrated.copy(alpha = 0.45f).compositeOver(spec.background)
+                )
+                assertTrue(
+                    "${spec.name} direct contrast must be >= 4.5:1 (was $directContrast for edge=$edge, fg=${spec.foreground}, lum=${calibrated.luminance()})",
+                    directContrast >= 4.5f
+                )
+                assertTrue(
+                    "${spec.name} composited contrast must be >= 4.5:1 (was $compositedContrast for edge=$edge, fg=${spec.foreground}, bg=${spec.background})",
+                    compositedContrast >= 4.5f
+                )
+            }
+        }
+    }
+
+    @Test
+    fun testFormatClassificationBreadcrumbAllCombinations() {
+        // 1. Category + Subcategory + NSFW
+        assertEquals(
+            "Article > Entertainment - NSFW",
+            formatClassificationBreadcrumb("Article", "Entertainment", isNsfw = true)
+        )
+
+        // 2. Category + Subcategory (no NSFW)
+        assertEquals(
+            "Article > Entertainment",
+            formatClassificationBreadcrumb("Article", "Entertainment", isNsfw = false)
+        )
+
+        // 3. Category only + NSFW
+        assertEquals(
+            "Article - NSFW",
+            formatClassificationBreadcrumb("Article", "", isNsfw = true)
+        )
+
+        // 4. Category only (no NSFW)
+        assertEquals(
+            "Article",
+            formatClassificationBreadcrumb("Article", "  ", isNsfw = false)
+        )
+
+        // 5. Subcategory only + NSFW
+        assertEquals(
+            "Entertainment - NSFW",
+            formatClassificationBreadcrumb("", "Entertainment", isNsfw = true)
+        )
+
+        // 6. Subcategory only (no NSFW)
+        assertEquals(
+            "Entertainment",
+            formatClassificationBreadcrumb("  ", "Entertainment", isNsfw = false)
+        )
+
+        // 7. No Category, no Subcategory, NSFW = true
+        assertEquals(
+            "NSFW",
+            formatClassificationBreadcrumb("", "", isNsfw = true)
+        )
+
+        // 8. No Category, no Subcategory, NSFW = false -> null (omitted)
+        assertNull(
+            formatClassificationBreadcrumb("", "   ", isNsfw = false)
+        )
     }
 }
 

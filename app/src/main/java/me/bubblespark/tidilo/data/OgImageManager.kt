@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.annotation.VisibleForTesting
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -75,6 +76,7 @@ object OgImageManager {
     }
 
     private val ogDominantColorCache = LruCache<String, Color>(128)
+    private val ogHeroPaletteCache = LruCache<String, DetailHeroPalette>(128)
     private val dominantColorLock = Any()
     private class ColorSampling(val identity: String, var invalidated: Boolean = false)
     private val activeColorSampling = mutableSetOf<ColorSampling>()
@@ -88,31 +90,68 @@ object OgImageManager {
         }
     }
 
-    internal suspend fun resolveDominantColor(identity: String, extract: suspend () -> Color): Color? =
-        withContext(Dispatchers.Default) {
-            val sampling = synchronized(dominantColorLock) {
-                ogDominantColorCache.get(identity)?.let { return@withContext it }
-                ColorSampling(identity).also { activeColorSampling.add(it) }
-            }
-            try {
-                val color = extract()
-                val workContext = currentCoroutineContext()
-                synchronized(dominantColorLock) {
-                    workContext.ensureActive()
-                    if (sampling.invalidated) null else color.also { ogDominantColorCache.put(identity, it) }
-                }
-            } finally {
-                synchronized(dominantColorLock) { activeColorSampling.remove(sampling) }
-            }
+    /** Resolves the displayed image's top/bottom edge colors and dominant accent, returning null if invalidated while sampling. */
+    internal suspend fun getDetailHeroPalette(
+        domain: String,
+        imageKey: String?,
+        bitmap: ImageBitmap
+    ): DetailHeroPalette? {
+        val androidBitmap = bitmap.asAndroidBitmap()
+        val source = if (imageKey.isNullOrBlank()) fallbackCacheKey(domain) else cacheKey(domain, imageKey)
+        return resolveHeroPalette("$source|${androidBitmap.generationId}") {
+            extractDetailHeroPalette(androidBitmap, domain)
         }
+    }
+
+    internal suspend fun resolveHeroPalette(
+        identity: String,
+        extract: suspend () -> DetailHeroPalette
+    ): DetailHeroPalette? =
+        resolveSampledValue(identity, ogHeroPaletteCache, extract) { id, palette ->
+            ogHeroPaletteCache.put(id, palette)
+            ogDominantColorCache.put(id, palette.accentColor)
+        }
+
+    internal suspend fun resolveDominantColor(identity: String, extract: suspend () -> Color): Color? =
+        resolveSampledValue(identity, ogDominantColorCache, extract) { id, color ->
+            ogDominantColorCache.put(id, color)
+        }
+
+    private suspend fun <T : Any> resolveSampledValue(
+        identity: String,
+        cache: LruCache<String, T>,
+        extract: suspend () -> T,
+        store: (String, T) -> Unit
+    ): T? = withContext(Dispatchers.Default) {
+        val sampling = synchronized(dominantColorLock) {
+            cache.get(identity)?.let { return@withContext it }
+            ColorSampling(identity).also { activeColorSampling.add(it) }
+        }
+        try {
+            val value = extract()
+            val workContext = currentCoroutineContext()
+            synchronized(dominantColorLock) {
+                workContext.ensureActive()
+                if (sampling.invalidated) null else value.also { store(identity, it) }
+            }
+        } finally {
+            synchronized(dominantColorLock) { activeColorSampling.remove(sampling) }
+        }
+    }
 
     /** Also invalidates in-flight sampling, so clearing cannot repopulate stale entries. */
     internal fun invalidateDominantColors(source: String? = null) = synchronized(dominantColorLock) {
         activeColorSampling.filter { source == null || it.identity.substringBeforeLast('|') == source }
             .forEach { it.invalidated = true }
-        if (source == null) ogDominantColorCache.evictAll() else {
-            ogDominantColorCache.snapshot().keys.filter { it.substringBeforeLast('|') == source }
-                .forEach { ogDominantColorCache.remove(it) }
+        if (source == null) {
+            ogDominantColorCache.evictAll()
+            ogHeroPaletteCache.evictAll()
+        } else {
+            fun <T : Any> LruCache<String, T>.removeBySource(targetSource: String) {
+                snapshot().keys.filter { it.substringBeforeLast('|') == targetSource }.forEach { remove(it) }
+            }
+            ogDominantColorCache.removeBySource(source)
+            ogHeroPaletteCache.removeBySource(source)
         }
     }
 
@@ -770,4 +809,96 @@ object OgImageManager {
         val domain = extractDomain(pageUrl) ?: return false
         return loadOrFetchOgImage(context, pageUrl, domain, ogImageUrl, network) != null
     }
+}
+
+/**
+ * Sampled edge and accent palette for an `og:image` asset, cached in [OgImageManager].
+ */
+@Immutable
+data class DetailHeroPalette(
+    val topEdgeColor: Color,
+    val bottomEdgeColor: Color,
+    val accentColor: Color
+) {
+    companion object {
+        val Transparent = DetailHeroPalette(
+            topEdgeColor = Color.Transparent,
+            bottomEdgeColor = Color.Transparent,
+            accentColor = Color.Transparent
+        )
+    }
+}
+
+/**
+ * Samples representative top-edge (~15%), bottom-edge (~15%), and overall dominant accent colors from [bitmap].
+ */
+internal fun extractDetailHeroPalette(bitmap: Bitmap, domain: String): DetailHeroPalette {
+    return try {
+        val sampleWidth = 32
+        val sampleHeight = 32
+        val scaled = Bitmap.createScaledBitmap(bitmap, sampleWidth, sampleHeight, true)
+        val pixels = IntArray(sampleWidth * sampleHeight)
+        scaled.getPixels(pixels, 0, sampleWidth, 0, 0, sampleWidth, sampleHeight)
+        if (scaled != bitmap) scaled.recycle()
+        extractDetailHeroPaletteFromPixels(pixels, sampleWidth, sampleHeight, domain)
+    } catch (_: Exception) {
+        val fallback = DomainIconManager.generateDomainAccentColor(domain)
+        DetailHeroPalette(fallback, fallback, fallback)
+    }
+}
+
+/**
+ * Pure pixel-array extractor for top ~15% edge band, bottom ~15% edge band, and dominant accent color.
+ */
+fun extractDetailHeroPaletteFromPixels(
+    pixels: IntArray,
+    width: Int,
+    height: Int,
+    domain: String
+): DetailHeroPalette {
+    if (width <= 0 || height <= 0 || pixels.size < width * height) {
+        val fallback = DomainIconManager.generateDomainAccentColor(domain)
+        return DetailHeroPalette(fallback, fallback, fallback)
+    }
+    val bandRows = maxOf(1, (height * 0.15f).toInt())
+    val topEdge = sampleBandAverageColor(pixels, width, 0, bandRows)
+    val bottomEdge = sampleBandAverageColor(pixels, width, height - bandRows, height)
+    val accent = DomainIconManager.extractDominantColorFromPixels(pixels, domain)
+    return DetailHeroPalette(
+        topEdgeColor = topEdge ?: accent,
+        bottomEdgeColor = bottomEdge ?: accent,
+        accentColor = accent
+    )
+}
+
+private fun sampleBandAverageColor(
+    pixels: IntArray,
+    width: Int,
+    startRow: Int,
+    endRowExclusive: Int
+): Color? {
+    var rSum = 0f
+    var gSum = 0f
+    var bSum = 0f
+    var weightSum = 0f
+    for (y in startRow until endRowExclusive) {
+        val rowOffset = y * width
+        for (x in 0 until width) {
+            val pixel = pixels[rowOffset + x]
+            val alpha = (pixel ushr 24) and 0xFF
+            if (alpha == 0) continue
+            val w = alpha / 255f
+            rSum += ((pixel ushr 16) and 0xFF) / 255f * w
+            gSum += ((pixel ushr 8) and 0xFF) / 255f * w
+            bSum += (pixel and 0xFF) / 255f * w
+            weightSum += w
+        }
+    }
+    if (weightSum <= 0f) return null
+    return Color(
+        red = (rSum / weightSum).coerceIn(0f, 1f),
+        green = (gSum / weightSum).coerceIn(0f, 1f),
+        blue = (bSum / weightSum).coerceIn(0f, 1f),
+        alpha = 1f
+    )
 }

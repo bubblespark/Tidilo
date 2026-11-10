@@ -165,6 +165,7 @@
     <string name="detail_dialog_delete_title">Delete Bookmark</string>
     <string name="detail_dialog_delete_message">Move this bookmark to trash?\n(Kept for 30 days before permanent deletion)</string>
     <string name="detail_edit_tags">Edit category and tags</string>
+    <string name="detail_add_tags_placeholder">+ Add tags</string>
     <string name="detail_tag_dialog_title">Edit Category &amp; Tags</string>
     <string name="detail_tag_category_label">Category</string>
     <string name="detail_tag_subcategory_label">Subcategory</string>

@@ -350,42 +350,63 @@ fun BookmarkTagSection(
         }
 
         if (tag.entities.isNotEmpty()) {
-            val entityColors = resolveChipColors(
-                style = themeStyle.chipStyle,
-                categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f),
-                categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                fallbackContainerColor = chipNeutralContainer,
-                fallbackContentColor = chipEntityContent
+            BookmarkEntityChipsFlow(
+                entities = tag.entities,
+                tagKeywords = tagKeywords
             )
-            val matchedEntityColors = resolveChipColors(
-                style = themeStyle.chipStyle,
-                categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                fallbackContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                fallbackContentColor = MaterialTheme.colorScheme.onTertiaryContainer
-            )
+        }
+    }
+}
 
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                tag.entities.forEach { entity ->
-                    val cleanEntity = entity.removePrefix("#")
-                    val isEntityMatched = if (tagKeywords.isEmpty()) false else tagKeywords.any { it.equals(cleanEntity, ignoreCase = true) }
-                    CompactTagBadge(
-                        icon = Icons.Default.Tag,
-                        text = cleanEntity,
-                        role = SurfaceRole.ENTITY_CHIP,
-                        iconTint = currentThemeSurfaces().entityChipIconTint,
-                        isMatched = isEntityMatched,
-                        containerColor = entityColors.containerColor,
-                        contentColor = entityColors.contentColor,
-                        matchedContainerColor = matchedEntityColors.containerColor,
-                        matchedContentColor = matchedEntityColors.contentColor
-                    )
-                }
-            }
+/**
+ * Shared entity chips FlowRow used by both [BookmarkTagSection] and [BookmarkDetailScreen].
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun BookmarkEntityChipsFlow(
+    entities: List<String>,
+    modifier: Modifier = Modifier,
+    tagKeywords: List<String> = emptyList()
+) {
+    if (entities.isEmpty()) return
+    val surfaces = currentThemeSurfaces()
+    val themeStyle = surfaces.preset
+    val chipNeutralContainer = surfaces.resolve(SurfaceRole.CLASSIFICATION_CHIP).containerColor
+    val chipEntityContent = surfaces.resolve(SurfaceRole.ENTITY_CHIP).contentColor
+    val entityColors = resolveChipColors(
+        style = themeStyle.chipStyle,
+        categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f),
+        categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        fallbackContainerColor = chipNeutralContainer,
+        fallbackContentColor = chipEntityContent
+    )
+    val matchedEntityColors = resolveChipColors(
+        style = themeStyle.chipStyle,
+        categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        fallbackContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        fallbackContentColor = MaterialTheme.colorScheme.onTertiaryContainer
+    )
+
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        entities.forEach { entity ->
+            val cleanEntity = entity.removePrefix("#")
+            val isEntityMatched = if (tagKeywords.isEmpty()) false else tagKeywords.any { it.equals(cleanEntity, ignoreCase = true) }
+            CompactTagBadge(
+                icon = Icons.Default.Tag,
+                text = cleanEntity,
+                role = SurfaceRole.ENTITY_CHIP,
+                iconTint = surfaces.entityChipIconTint,
+                isMatched = isEntityMatched,
+                containerColor = entityColors.containerColor,
+                contentColor = entityColors.contentColor,
+                matchedContainerColor = matchedEntityColors.containerColor,
+                matchedContentColor = matchedEntityColors.contentColor
+            )
         }
     }
 }

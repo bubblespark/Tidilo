@@ -621,26 +621,25 @@ fun BookmarkDetailScreen(
                 Column(modifier = Modifier.fillMaxWidth()) {
                     val canvasColor = surfaces.canvasColor
                     if (ogBitmap != null) {
-                        // Top status-bar band colored with calibrated topEdgeColor (darkened at very top)
+                        // Upward gradient extension above the image (status bar band, mirroring downward extension)
                         if (statusBarTopPadding > 0.dp) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(statusBarTopPadding)
                                     .drawBehind {
-                                        val rawTop = heroPaletteState.value.topEdgeColor
-                                        val topEdge = if (rawTop != Color.Transparent) rawTop else canvasColor
-                                        val darkenedTop = Color(
-                                            red = (topEdge.red * 0.82f).coerceIn(0f, 1f),
-                                            green = (topEdge.green * 0.82f).coerceIn(0f, 1f),
-                                            blue = (topEdge.blue * 0.82f).coerceIn(0f, 1f),
-                                            alpha = 1f
-                                        )
-                                        drawRect(
-                                            brush = Brush.verticalGradient(
-                                                colors = listOf(darkenedTop, topEdge)
+                                        val topEdge = heroPaletteState.value.topEdgeColor
+                                        if (topEdge != Color.Transparent) {
+                                            drawRect(
+                                                brush = Brush.verticalGradient(
+                                                    colorStops = arrayOf(
+                                                        0.0f to Color.Transparent,
+                                                        0.45f to topEdge.copy(alpha = 0.50f),
+                                                        1.0f to topEdge
+                                                    )
+                                                )
                                             )
-                                        )
+                                        }
                                     }
                             )
                         }
@@ -660,8 +659,9 @@ fun BookmarkDetailScreen(
                                         bannerBounds.value = Rect(it.positionInRoot(), Size(it.size.width.toFloat(), it.size.height.toFloat()))
                                     }
                                     .drawWithCache {
-                                        val topFeatherPx = minOf(32.dp.toPx(), size.height * 0.25f)
-                                        val bottomFeatherPx = minOf(56.dp.toPx(), size.height * 0.38f)
+                                        // Minimal edge feathering: just enough to soften the 1px seam without covering the artwork
+                                        val topFeatherPx = minOf(12.dp.toPx(), size.height * 0.08f)
+                                        val bottomFeatherPx = minOf(14.dp.toPx(), size.height * 0.10f)
                                         val bottomStartY = size.height - bottomFeatherPx
                                         var cachedTopColor = Color.Unspecified
                                         var cachedTopBrush: Brush? = null
@@ -1074,11 +1074,11 @@ private fun DetailFloatingHeaderOverlay(
     val fallbackScrimColor = surfaces.canvasColor
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     Box(modifier = Modifier.fillMaxWidth()) {
-        // Permanent top status-bar protection gradient scrim
+        // Permanent top status-bar protection gradient scrim (confined to the status bar + 8dp soft edge)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(statusBarHeight + 36.dp)
+                .height(statusBarHeight + 8.dp)
                 .drawBehind {
                     val provided = topScrimColorProvider()
                     val scrimBase = if (provided != Color.Unspecified && provided != Color.Transparent) {
@@ -1089,8 +1089,8 @@ private fun DetailFloatingHeaderOverlay(
                     drawRect(
                         brush = Brush.verticalGradient(
                             colorStops = arrayOf(
-                                0.0f to scrimBase.copy(alpha = 0.78f),
-                                0.55f to scrimBase.copy(alpha = 0.36f),
+                                0.0f to scrimBase.copy(alpha = 0.68f),
+                                0.72f to scrimBase.copy(alpha = 0.24f),
                                 1.0f to Color.Transparent
                             )
                         )

@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
@@ -267,20 +268,45 @@ internal fun rememberDetailAccent(
     return rememberUpdatedState(palette.accentColor)
 }
 
-/** Bounds are measured in the same root coordinate space; scrolling only invalidates drawing. */
+/**
+ * Computes the center coordinates of the detail ambient light in the local draw space.
+ * Matches layout bounds mathematically without requiring per-frame onGloballyPositioned callbacks.
+ */
+internal fun calculateAmbientLightCenter(
+    bannerAspectRatio: Float?,
+    statusBarTopPx: Float,
+    containerWidth: Float,
+    scrollY: Float,
+    maxBannerHeightPx: Float
+): Offset {
+    return if (bannerAspectRatio != null) {
+        val bannerHeight = minOf(containerWidth / bannerAspectRatio, maxBannerHeightPx)
+        Offset(containerWidth / 2f, statusBarTopPx + bannerHeight / 2f - scrollY)
+    } else {
+        Offset(containerWidth, 0f - scrollY)
+    }
+}
+
+/** Draws ambient light gradients matching hero banner position during scroll in Draw phase. */
 internal fun Modifier.detailAmbientLight(
     color: State<Color>,
-    bannerBounds: State<Rect?>,
-    hostOrigin: State<Offset>,
     dark: Boolean,
-    showFallback: Boolean
+    showFallback: Boolean,
+    scrollYProvider: () -> Int,
+    bannerAspectRatio: Float?,
+    statusBarTopPadding: Dp
 ): Modifier = drawBehind {
+    if (bannerAspectRatio == null && !showFallback) return@drawBehind
+
     val accent = color.value
-    val banner = bannerBounds.value
-    val center = if (banner != null) banner.center - hostOrigin.value else {
-        if (!showFallback) return@drawBehind
-        Offset(size.width, 0f)
-    }
+    val scrollY = scrollYProvider().toFloat()
+    val center = calculateAmbientLightCenter(
+        bannerAspectRatio = bannerAspectRatio,
+        statusBarTopPx = statusBarTopPadding.toPx(),
+        containerWidth = size.width,
+        scrollY = scrollY,
+        maxBannerHeightPx = 300.dp.toPx()
+    )
     val strength = if (showFallback) {
         if (dark) 0.28f else 0.13f
     } else {

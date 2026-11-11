@@ -15,8 +15,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 
 /**
@@ -55,37 +57,43 @@ fun TidiloBackground(
             .fillMaxSize()
             .background(canvasColor)
             .drawWithCache {
-                val currentColor = animatedColor.value
-                if (currentColor.alpha > 0.001f) {
-                    val ambientBeam = Brush.linearGradient(
-                        colorStops = arrayOf(
-                            0.00f to currentColor.copy(alpha = currentColor.alpha * 0.32f),
-                            0.22f to currentColor.copy(alpha = currentColor.alpha * 0.22f),
-                            0.45f to currentColor.copy(alpha = currentColor.alpha * 0.13f),
-                            0.68f to currentColor.copy(alpha = currentColor.alpha * 0.05f),
-                            0.84f to currentColor.copy(alpha = currentColor.alpha * 0.015f),
-                            1.00f to Color.Transparent
-                        ),
-                        start = Offset(size.width * 1.05f, -size.height * 0.02f),
-                        end = Offset(-size.width * 0.15f, size.height * 0.90f)
-                    )
-                    val cornerGlow = Brush.radialGradient(
-                        colorStops = arrayOf(
-                            0.00f to currentColor.copy(alpha = currentColor.alpha * 0.22f),
-                            0.30f to currentColor.copy(alpha = currentColor.alpha * 0.13f),
-                            0.60f to currentColor.copy(alpha = currentColor.alpha * 0.05f),
-                            0.82f to currentColor.copy(alpha = currentColor.alpha * 0.012f),
-                            1.00f to Color.Transparent
-                        ),
-                        center = Offset(size.width, 0f),
-                        radius = size.height * 0.72f
-                    )
-                    onDrawBehind {
-                        drawRect(brush = ambientBeam)
-                        drawRect(brush = cornerGlow)
+                val ambientBeam = Brush.linearGradient(
+                    colorStops = arrayOf(
+                        0.00f to Color.White.copy(alpha = 0.32f),
+                        0.22f to Color.White.copy(alpha = 0.22f),
+                        0.45f to Color.White.copy(alpha = 0.13f),
+                        0.68f to Color.White.copy(alpha = 0.05f),
+                        0.84f to Color.White.copy(alpha = 0.015f),
+                        1.00f to Color.Transparent
+                    ),
+                    start = Offset(size.width * 1.05f, -size.height * 0.02f),
+                    end = Offset(-size.width * 0.15f, size.height * 0.90f)
+                )
+                val cornerGlow = Brush.radialGradient(
+                    colorStops = arrayOf(
+                        0.00f to Color.White.copy(alpha = 0.22f),
+                        0.30f to Color.White.copy(alpha = 0.13f),
+                        0.60f to Color.White.copy(alpha = 0.05f),
+                        0.82f to Color.White.copy(alpha = 0.012f),
+                        1.00f to Color.Transparent
+                    ),
+                    center = Offset(size.width, 0f),
+                    radius = size.height * 0.72f
+                )
+                var lastTintedColor = Color.Unspecified
+                var cachedFilter: ColorFilter? = null
+                onDrawBehind {
+                    val currentColor = animatedColor.value
+                    if (currentColor.alpha > 0.001f) {
+                        val filter = if (currentColor == lastTintedColor && cachedFilter != null) {
+                            cachedFilter!!
+                        } else {
+                            lastTintedColor = currentColor
+                            ColorFilter.tint(currentColor, BlendMode.SrcIn).also { cachedFilter = it }
+                        }
+                        drawRect(brush = ambientBeam, colorFilter = filter)
+                        drawRect(brush = cornerGlow, colorFilter = filter)
                     }
-                } else {
-                    onDrawBehind {}
                 }
             }
     )

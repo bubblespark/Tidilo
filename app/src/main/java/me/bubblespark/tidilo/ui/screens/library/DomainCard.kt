@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import android.content.Context
+
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.BorderStroke
@@ -67,9 +69,9 @@ data class DomainGroupItem(
 fun DomainCard(
     item: DomainGroupItem,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    context: Context = LocalContext.current
 ) {
-    val context = LocalContext.current
     val iconRefreshSignal by remember(item.domain) {
         DomainIconManager.observeIconUpdates(item.domain)
     }.collectAsStateWithLifecycle(initialValue = 0L)
@@ -92,7 +94,13 @@ fun DomainCard(
     }
 
     LibraryDeckCard(item, dominantColor, onClick, modifier) { watermarkModifier ->
-        DomainWatermark(domain = item.domain, size = 96.dp, alpha = 0.20f, modifier = watermarkModifier)
+        DomainWatermark(
+            domain = item.domain,
+            size = 96.dp,
+            alpha = 0.20f,
+            modifier = watermarkModifier,
+            context = context
+        )
     }
 }
 

@@ -124,6 +124,7 @@ fun LibraryScreen(
     onNavigateToDetail: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val filterMode by viewModel.filterMode.collectAsStateWithLifecycle()
     val selectedDomainFilter by viewModel.selectedDomainFilter.collectAsStateWithLifecycle()
@@ -143,7 +144,7 @@ fun LibraryScreen(
     val rssFeedGroups by viewModel.rssFeedGroups.collectAsStateWithLifecycle()
     val rssFeedGroupsLoading by viewModel.rssFeedGroupsLoading.collectAsStateWithLifecycle()
     val selectedFeed = rssFeedGroups.firstOrNull { it.feed.id == selectedRssFeedFilter?.id }?.feed ?: selectedRssFeedFilter
-    val selectedFeedIcon = if (selectedFeed != null) rememberFeedIcon(selectedFeed).value else null
+    val selectedFeedIcon = if (selectedFeed != null) rememberFeedIcon(selectedFeed, context = context).value else null
     val domainGroups by viewModel.domainGroups.collectAsStateWithLifecycle()
     val initializationFailure by viewModel.initializationFailure.collectAsStateWithLifecycle()
     val initialized by viewModel.isInitialized.collectAsStateWithLifecycle()
@@ -153,7 +154,6 @@ fun LibraryScreen(
         (filterMode == LibraryFilterMode.DOMAIN && domainGroupsLoading) ||
         (filterMode == LibraryFilterMode.RSS && rssFeedGroupsLoading) ||
         (filterMode == LibraryFilterMode.COLLECTION && collectionLoading)
-    val context = LocalContext.current
     val localConfig = LocalConfiguration.current
     val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
     var isViewModeMenuExpanded by remember { mutableStateOf(false) }
@@ -612,7 +612,7 @@ fun LibraryScreen(
                                 ) {
                                     if (rss) {
                                         items(items = rssFeedGroups, key = { it.feed.id }, contentType = { "rss_feed_card" }) { group ->
-                                            RssFeedCard(group, onClick = { viewModel.selectRssFeedFilter(group.feed) })
+                                            RssFeedCard(group, onClick = { viewModel.selectRssFeedFilter(group.feed) }, context = context)
                                         }
                                     } else items(
                                         items = domainGroups,
@@ -623,7 +623,8 @@ fun LibraryScreen(
                                             item = group,
                                             onClick = {
                                                 viewModel.selectDomainFilter(group.domain)
-                                            }
+                                            },
+                                            context = context
                                         )
                                     }
                                 }
@@ -636,7 +637,7 @@ fun LibraryScreen(
                             val feed = (state as? LibraryDisplayState.RssFeedDrillDown)?.feed?.let { snapshot ->
                                 rssFeedGroups.firstOrNull { it.feed.id == snapshot.id }?.feed ?: snapshot
                             }
-                            val feedIcon = if (feed != null) rememberFeedIcon(feed).value else null
+                            val feedIcon = if (feed != null) rememberFeedIcon(feed, context = context).value else null
                             val currentDomain = (state as? LibraryDisplayState.DomainDrillDown)?.domain
                                 ?: feed?.let(DomainIconManager::feedPublisherDomain).orEmpty()
                             val domainColor = collectionItem?.accentColor ?: feedIcon?.color ?: rememberDomainAccentColor(currentDomain)
@@ -686,6 +687,7 @@ fun LibraryScreen(
                                                                 wordKeywords = emptyList(),
                                                                 tagKeywords = emptyList(),
                                                                 currentLanguage = currentLanguage,
+                                                                context = context,
                                                                 onClick = { onNavigateToDetail(item.id) }
                                                             )
                                                         }
@@ -709,6 +711,7 @@ fun LibraryScreen(
                                                             BookmarkGridCard(
                                                                 onToggleLike = { viewModel.toggleLike(item.id) },
                                                                 bookmark = item,
+                                                                context = context,
                                                                 onClick = { onNavigateToDetail(item.id) },
                                                                 onLongClick = { peekBookmark = item; viewModel.recordSummaryPeek(item.id) }
                                                             )
@@ -754,11 +757,12 @@ fun LibraryScreen(
                                                 ) { index ->
                                                     val item = bookmarks[index] ?: return@items
                                                     BookmarkItemCard(
-                                                                onToggleLike = { viewModel.toggleLike(item.id) },
+                                                        onToggleLike = { viewModel.toggleLike(item.id) },
                                                         bookmark = item,
                                                         wordKeywords = emptyList(),
                                                         tagKeywords = emptyList(),
                                                         currentLanguage = currentLanguage,
+                                                        context = context,
                                                         onClick = { onNavigateToDetail(item.id) }
                                                     )
                                                 }
@@ -780,8 +784,9 @@ fun LibraryScreen(
                                                 ) { index ->
                                                     val item = bookmarks[index] ?: return@items
                                                     BookmarkGridCard(
-                                                                onToggleLike = { viewModel.toggleLike(item.id) },
+                                                        onToggleLike = { viewModel.toggleLike(item.id) },
                                                         bookmark = item,
+                                                        context = context,
                                                         onClick = { onNavigateToDetail(item.id) },
                                                         onLongClick = { peekBookmark = item; viewModel.recordSummaryPeek(item.id) }
                                                     )

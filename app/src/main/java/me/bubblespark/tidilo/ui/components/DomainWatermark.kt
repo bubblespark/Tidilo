@@ -1,7 +1,6 @@
 package me.bubblespark.tidilo.ui.components
 
-import me.bubblespark.tidilo.ui.theme.ThemeCorner
-import me.bubblespark.tidilo.ui.theme.themeCorner
+import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -12,8 +11,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.ui.theme.themeCorner
 
 /**
  * Reusable domain icon watermark component displayed in backgrounds (e.g. BookmarkItemCard).
@@ -30,11 +32,12 @@ fun DomainWatermark(
     size: Dp = 195.dp,
     saturation: Float = 0.50f,
     alpha: Float = 0.14f,
-    pageUrl: String? = null
+    pageUrl: String? = null,
+    context: Context = LocalContext.current
 ) {
     if (domain.isNullOrBlank()) return
 
-    val iconBitmap by rememberDomainIcon(domain, pageUrl)
+    val iconBitmap by rememberDomainIcon(domain, pageUrl, context = context)
 
     IconWatermark(iconBitmap, modifier, size, saturation, alpha)
 }

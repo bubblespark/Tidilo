@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import android.content.Context
+
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.background
@@ -71,10 +73,10 @@ fun BookmarkItemCard(
     wordKeywords: List<String> = emptyList(),
     tagKeywords: List<String> = emptyList(),
     currentLanguage: AppLanguage = AppLanguage.ENGLISH,
+    context: Context = LocalContext.current,
     onClick: () -> Unit = {},
     onToggleLike: () -> Unit = {}
 ) {
-    val context = LocalContext.current
     // Localized category and subcategory labels
     val localizedCategory = remember(bookmark.tag.category, context) {
         bookmark.tag.category?.let { Category.toLocalized(it, context) } ?: ""
@@ -117,7 +119,8 @@ fun BookmarkItemCard(
                 pageUrl = bookmark.url,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .offset(x = 36.dp, y = (-12).dp)
+                    .offset(x = 36.dp, y = (-12).dp),
+                context = context
             )
 
             Column(

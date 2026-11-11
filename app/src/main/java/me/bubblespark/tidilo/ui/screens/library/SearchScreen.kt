@@ -13,6 +13,7 @@ import androidx.compose.ui.layout.onPlaced
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -96,6 +97,7 @@ fun SearchScreen(
     modifier: Modifier = Modifier,
     onNavigateBack: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchHistory by viewModel.searchHistory.collectAsStateWithLifecycle()
@@ -436,6 +438,7 @@ fun SearchScreen(
                         if (showingGrid) {
                             BookmarkGridCard(
                                 bookmark = item,
+                                context = context,
                                 onToggleLike = { viewModel.toggleLike(item.id) },
                                 onLongClick = {
                                     peekBookmark = item
@@ -449,10 +452,11 @@ fun SearchScreen(
                         } else {
                             BookmarkItemCard(
                                 bookmark = item,
-                                onToggleLike = { viewModel.toggleLike(item.id) },
                                 wordKeywords = wordKeywords,
                                 tagKeywords = tagKeywords,
                                 currentLanguage = currentLanguage,
+                                context = context,
+                                onToggleLike = { viewModel.toggleLike(item.id) },
                                 onClick = {
                                     viewModel.addSearchHistory(searchQuery)
                                     onNavigateToDetail(item.id)

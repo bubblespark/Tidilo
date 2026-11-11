@@ -1,5 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import android.content.Context
+import androidx.compose.ui.platform.LocalContext
+
 import me.bubblespark.tidilo.ui.components.TidiloModalBottomSheet
 
 import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
@@ -129,6 +132,7 @@ internal fun RssSettingsContent(
     onFetch: () -> Unit, onDismissError: () -> Unit, onEnabled: (String, Boolean) -> Unit = { _, _ -> },
     manualFetch: ManualFetchStatus = ManualFetchStatus.Idle
 ) {
+    val context = LocalContext.current
     var showTime by rememberSaveable { mutableStateOf(false) }
     var timeToEdit by rememberSaveable { mutableStateOf<Int?>(null) }
     var deletingTriggerMinute by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -242,8 +246,14 @@ internal fun RssSettingsContent(
                 is StorageLoad.Ready -> {
                     if (ready.isEmpty()) item(key = "empty") { RssCard { Text(stringResource(R.string.rss_no_feeds)) } }
                     items(ready, key = { "feed:${it.id}" }, contentType = { "feed" }) { feed ->
-                            RssFeedCard(feed, busy, onEdit = { editingId = feed.id; showEditor = true },
-                                onDelete = { deletingId = feed.id }, onEnabled = { onEnabled(feed.id, it) })
+                            RssFeedCard(
+                                feed = feed,
+                                busy = busy,
+                                onEdit = { editingId = feed.id; showEditor = true },
+                                onDelete = { deletingId = feed.id },
+                                onEnabled = { onEnabled(feed.id, it) },
+                                context = context
+                            )
                     }
                 }
             }
@@ -355,9 +365,15 @@ private fun RssPreferenceIcon(icon: androidx.compose.ui.graphics.vector.ImageVec
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
-private fun RssFeedCard(feed: RssFeedEntity, busy: Boolean, onEdit: () -> Unit,
-    onDelete: () -> Unit, onEnabled: (Boolean) -> Unit) {
-    val icon by rememberFeedIcon(feed)
+private fun RssFeedCard(
+    feed: RssFeedEntity,
+    busy: Boolean,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onEnabled: (Boolean) -> Unit,
+    context: Context = LocalContext.current
+) {
+    val icon by rememberFeedIcon(feed, context = context)
     val enabledLabel = stringResource(R.string.rss_enabled)
     val deleteLabel = stringResource(R.string.rss_delete)
     Card(modifier = Modifier.fillMaxWidth().combinedClickable(enabled = !busy, onClick = onEdit, onLongClickLabel = deleteLabel,

@@ -76,7 +76,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
 import me.bubblespark.tidilo.data.DomainIconManager
@@ -654,7 +653,7 @@ fun BookmarkDetailScreen(
                         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                             val bannerHeight = minOf(
                                 maxWidth / calculateOgAspectRatio(ogBitmap.width, ogBitmap.height),
-                                300.dp
+                                DETAIL_HERO_MAX_BANNER_HEIGHT
                             )
                             Image(
                                 bitmap = ogBitmap,

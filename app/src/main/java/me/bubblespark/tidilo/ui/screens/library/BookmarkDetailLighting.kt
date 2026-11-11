@@ -25,7 +25,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -45,6 +44,8 @@ import me.bubblespark.tidilo.data.OgImageManager
 import kotlin.math.ceil
 
 typealias DetailHeroPalette = me.bubblespark.tidilo.data.DetailHeroPalette
+
+internal val DETAIL_HERO_MAX_BANNER_HEIGHT = 300.dp
 
 /**
  * Formats the plain-text Classification Breadcrumb displayed above the Bookmark Title:
@@ -305,7 +306,7 @@ internal fun Modifier.detailAmbientLight(
         statusBarTopPx = statusBarTopPadding.toPx(),
         containerWidth = size.width,
         scrollY = scrollY,
-        maxBannerHeightPx = 300.dp.toPx()
+        maxBannerHeightPx = DETAIL_HERO_MAX_BANNER_HEIGHT.toPx()
     )
     val strength = if (showFallback) {
         if (dark) 0.28f else 0.13f

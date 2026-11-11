@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import android.content.Context
+
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -71,12 +73,11 @@ import me.bubblespark.tidilo.ui.components.rememberOgImage
 fun BookmarkGridCard(
     bookmark: BookmarkItem,
     modifier: Modifier = Modifier,
+    context: Context = LocalContext.current,
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null,
     onToggleLike: () -> Unit = {}
 ) {
-    val context = LocalContext.current
-
     val domain = bookmark.domain
     val domainDisplayName = remember(domain) {
         domain?.let { DomainPolicyManager.getDisplayName(it) } ?: domain ?: ""
@@ -93,9 +94,9 @@ fun BookmarkGridCard(
     }.collectAsStateWithLifecycle(initialValue = 0L)
 
     // Track completion explicitly: a null bitmap alone cannot distinguish pending from failed.
-    val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
+    val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename, context = context)
     val ogBitmap = ogState.bitmap
-    val domainIconBitmap by rememberDomainIcon(domain, bookmark.url, ogState.shouldShowFallback)
+    val domainIconBitmap by rememberDomainIcon(domain, bookmark.url, ogState.shouldShowFallback, context = context)
 
     val primaryColor = MaterialTheme.colorScheme.primary
     val domainAccentColor = remember(domain, primaryColor, iconRefreshSignal) {

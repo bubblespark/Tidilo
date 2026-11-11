@@ -9,3 +9,8 @@ This document defines the canonical domain terms used across the Tidilo codebase
 - **Source Attribution Row**: The primary metadata line immediately above the bookmark title displaying the publisher's resolved human-readable domain name and relative creation timestamp (`Domain • 3 hours ago`), without a favicon or external browser-jump icon.
 - **Classification Breadcrumb**: The optional plain-text line directly beneath the Source Attribution Row and above the bookmark title that formats the bookmark's hierarchical classification and content-safety state (`Category > Subcategory - NSFW`) in the same subdued caption typography as the Source Attribution Row, collapsing with zero vertical gap when no classification or NSFW flag is set.
 - **Editorial Summary Callout**: The read-only summary container styled with a start-edge vertical accent bar and subtle horizontal tonal wash, visually distinguishing curated or extracted article summaries from the user's editable personal Note field.
+
+## Background and Theming Vocabulary
+
+- **Ambient Lighting Layer**: The root-level, stationary background layer that renders the active theme's canvas color and dynamic gradient beams/glows reflecting ambient hues across screen destinations without sliding during navigation transitions.
+

@@ -80,10 +80,17 @@ fun TidiloBackground(
                     center = Offset(size.width, 0f),
                     radius = size.height * 0.72f
                 )
+                var lastTintedColor = Color.Unspecified
+                var cachedFilter: ColorFilter? = null
                 onDrawBehind {
                     val currentColor = animatedColor.value
                     if (currentColor.alpha > 0.001f) {
-                        val filter = ColorFilter.tint(currentColor, BlendMode.SrcIn)
+                        val filter = if (currentColor == lastTintedColor && cachedFilter != null) {
+                            cachedFilter!!
+                        } else {
+                            lastTintedColor = currentColor
+                            ColorFilter.tint(currentColor, BlendMode.SrcIn).also { cachedFilter = it }
+                        }
                         drawRect(brush = ambientBeam, colorFilter = filter)
                         drawRect(brush = cornerGlow, colorFilter = filter)
                     }

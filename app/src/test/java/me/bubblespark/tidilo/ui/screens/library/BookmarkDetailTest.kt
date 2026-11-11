@@ -649,6 +649,83 @@ class BookmarkDetailTest {
             formatClassificationBreadcrumb("", "   ", isNsfw = false)
         )
     }
+
+    @Test
+    fun testAmbientLightCenterCalculationWithBanner() {
+        val containerWidth = 1080f
+        val statusBarTopPx = 100f
+        val maxBannerHeightPx = 600f
+        val aspectRatio = 2.0f // bannerHeight = 1080 / 2 = 540f (< 600f)
+
+        // At scroll = 0, center X is middle of container, center Y is statusBarTop + bannerHeight / 2
+        val centerScroll0 = calculateAmbientLightCenter(
+            bannerAspectRatio = aspectRatio,
+            statusBarTopPx = statusBarTopPx,
+            containerWidth = containerWidth,
+            scrollY = 0f,
+            maxBannerHeightPx = maxBannerHeightPx
+        )
+        assertEquals(540f, centerScroll0.x, 0.001f)
+        assertEquals(370f, centerScroll0.y, 0.001f)
+
+        // As user scrolls down by 120px, light center shifts upward by 120px
+        val centerScroll120 = calculateAmbientLightCenter(
+            bannerAspectRatio = aspectRatio,
+            statusBarTopPx = statusBarTopPx,
+            containerWidth = containerWidth,
+            scrollY = 120f,
+            maxBannerHeightPx = maxBannerHeightPx
+        )
+        assertEquals(540f, centerScroll120.x, 0.001f)
+        assertEquals(250f, centerScroll120.y, 0.001f)
+    }
+
+    @Test
+    fun testAmbientLightCenterCalculationWithMaxBannerHeightCap() {
+        val containerWidth = 1080f
+        val statusBarTopPx = 100f
+        val maxBannerHeightPx = 600f
+        val aspectRatio = 1.0f // uncapped 1080f capped at 600f
+
+        val center = calculateAmbientLightCenter(
+            bannerAspectRatio = aspectRatio,
+            statusBarTopPx = statusBarTopPx,
+            containerWidth = containerWidth,
+            scrollY = 0f,
+            maxBannerHeightPx = maxBannerHeightPx
+        )
+        // bannerHeight = 600f -> center Y = 100f + 300f = 400f
+        assertEquals(540f, center.x, 0.001f)
+        assertEquals(400f, center.y, 0.001f)
+    }
+
+    @Test
+    fun testAmbientLightCenterCalculationFallbackWithoutBanner() {
+        val containerWidth = 1080f
+        val statusBarTopPx = 100f
+
+        // At scroll = 0, fallback light originates at top right (width, 0)
+        val centerScroll0 = calculateAmbientLightCenter(
+            bannerAspectRatio = null,
+            statusBarTopPx = statusBarTopPx,
+            containerWidth = containerWidth,
+            scrollY = 0f,
+            maxBannerHeightPx = 600f
+        )
+        assertEquals(1080f, centerScroll0.x, 0.001f)
+        assertEquals(0f, centerScroll0.y, 0.001f)
+
+        // When scrolling down by 80px, fallback origin moves up with scroll
+        val centerScroll80 = calculateAmbientLightCenter(
+            bannerAspectRatio = null,
+            statusBarTopPx = statusBarTopPx,
+            containerWidth = containerWidth,
+            scrollY = 80f,
+            maxBannerHeightPx = 600f
+        )
+        assertEquals(1080f, centerScroll80.x, 0.001f)
+        assertEquals(-80f, centerScroll80.y, 0.001f)
+    }
 }
 
 private class DummyImageBitmap : androidx.compose.ui.graphics.ImageBitmap {

@@ -76,10 +76,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.vector.ImageVector
 import me.bubblespark.tidilo.data.DomainIconManager
 import androidx.compose.ui.layout.ContentScale
@@ -302,8 +299,7 @@ fun BookmarkDetailScreen(
     val ogBitmap = ogState.bitmap
     val heroPaletteState = rememberDetailHeroPalette(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
     val detailAccent = remember(heroPaletteState) { derivedStateOf { heroPaletteState.value.accentColor } }
-    val bannerBounds = remember(bookmark.id, ogBitmap) { mutableStateOf<Rect?>(null) }
-    val lightingHostOrigin = remember { mutableStateOf(Offset.Zero) }
+    val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val surfaces = currentThemeSurfaces()
     val darkLighting = surfaces.isDark
 
@@ -317,9 +313,15 @@ fun BookmarkDetailScreen(
     }
 
     TidiloScreenScaffold(
-        modifier = modifier
-            .onGloballyPositioned { lightingHostOrigin.value = it.positionInRoot() },
-        bodyModifier = Modifier.detailAmbientLight(detailAccent, bannerBounds, lightingHostOrigin, darkLighting, ogState.shouldShowFallback),
+        modifier = modifier,
+        bodyModifier = Modifier.detailAmbientLight(
+            color = detailAccent,
+            dark = darkLighting,
+            showFallback = ogState.shouldShowFallback,
+            scrollYProvider = { scrollState.value },
+            bannerAspectRatio = ogBitmap?.let { calculateOgAspectRatio(it.width, it.height) },
+            statusBarTopPadding = statusBarTopPadding
+        ),
         hideHeaderOnScroll = false,
         header = {
             DetailFloatingHeaderOverlay(
@@ -591,7 +593,6 @@ fun BookmarkDetailScreen(
             }
         }
     ) { _ ->
-        val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -605,11 +606,7 @@ fun BookmarkDetailScreen(
         ) {
             // Hero + Above-Title Metadata Container (full-bleed og:image or DomainWatermark fallback)
             Box(
-                modifier = Modifier.fillMaxWidth().onGloballyPositioned {
-                    if (ogBitmap == null) {
-                        bannerBounds.value = Rect(it.positionInRoot() + Offset(it.size.width.toFloat(), 0f), Size.Zero)
-                    }
-                }
+                modifier = Modifier.fillMaxWidth()
             ) {
                 // Upper right domain watermark (rendered only when og:image is unavailable and resolution completed)
                 if (ogState.shouldShowDomainWatermarkFallback) {
@@ -656,7 +653,7 @@ fun BookmarkDetailScreen(
                         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                             val bannerHeight = minOf(
                                 maxWidth / calculateOgAspectRatio(ogBitmap.width, ogBitmap.height),
-                                300.dp
+                                DETAIL_HERO_MAX_BANNER_HEIGHT
                             )
                             Image(
                                 bitmap = ogBitmap,
@@ -665,9 +662,6 @@ fun BookmarkDetailScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(bannerHeight)
-                                    .onGloballyPositioned {
-                                        bannerBounds.value = Rect(it.positionInRoot(), Size(it.size.width.toFloat(), it.size.height.toFloat()))
-                                    }
                                     .drawWithCache {
                                         // Minimal edge feathering: just enough to soften the 1px seam without covering the artwork
                                         val topFeatherPx = minOf(12.dp.toPx(), size.height * 0.08f)

@@ -9,7 +9,7 @@ import androidx.paging.LoadState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -68,7 +68,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -126,8 +125,6 @@ fun SearchScreen(
     var hadFocus by remember { mutableStateOf(false) }
 
     var inputAttachment by remember { mutableStateOf<Any?>(null) }
-    val density = LocalDensity.current
-    var searchInputHeight by remember { mutableStateOf(0.dp) }
     val currentQuery by rememberUpdatedState(searchQuery)
     val currentViewMode by rememberUpdatedState(viewMode)
     // Lazy input may be detached: bring its item back before requesting keyboard focus.
@@ -180,9 +177,8 @@ fun SearchScreen(
             onValueChange = { viewModel.onSearchQueryChanged(it) },
             modifier = Modifier
                 .fillMaxWidth()
-                .onGloballyPositioned {
+                .onPlaced {
                     inputAttachment = attachment
-                    searchInputHeight = with(density) { it.size.height.toDp() }
                 }
                 .focusRequester(focusRequester)
                 .onFocusChanged { focusState ->
@@ -426,7 +422,7 @@ fun SearchScreen(
                 } else if (feedback != null) {
                     item(key = "search_feedback", span = { GridItemSpan(maxLineSpan) }, contentType = "search_feedback") {
                         if (centerFeedback) {
-                            SearchResultFeedback(maxHeight, contentPadding, searchInputHeight, itemSpacing) { feedback() }
+                            SearchResultFeedback(maxHeight, contentPadding, SEARCH_INPUT_HEIGHT, itemSpacing) { feedback() }
                         } else {
                             feedback()
                         }

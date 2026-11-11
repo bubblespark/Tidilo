@@ -623,7 +623,8 @@ fun LibraryScreen(
                                             item = group,
                                             onClick = {
                                                 viewModel.selectDomainFilter(group.domain)
-                                            }
+                                            },
+                                            context = context
                                         )
                                     }
                                 }

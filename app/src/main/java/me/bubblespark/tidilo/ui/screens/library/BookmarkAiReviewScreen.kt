@@ -41,7 +41,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.AlertDialog
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -518,7 +518,7 @@ fun BookmarkAiReviewScreen(
 
     // Discard confirmation dialog
     if (showDiscardConfirmDialog) {
-        AlertDialog(
+        TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
             onDismissRequest = { showDiscardConfirmDialog = false },

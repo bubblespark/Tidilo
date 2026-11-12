@@ -4,6 +4,7 @@ import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
+import me.bubblespark.tidilo.ui.theme.LocalOverlayBlurSetting
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,7 +25,7 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RssFeed
-import androidx.compose.material3.AlertDialog
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -67,6 +68,7 @@ fun SettingsScreen(
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val currentTheme by AppConfig.currentTheme.collectAsStateWithLifecycle()
+    val blurSetting = LocalOverlayBlurSetting.current
     val aiAnalysisMode by AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val launchContext = LocalView.current.context
@@ -126,7 +128,7 @@ fun SettingsScreen(
             LocalContext provides context,
             LocalConfiguration provides localConfig
         ) {
-            AlertDialog(
+            TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
                 onDismissRequest = { showLanguageDialog = false },
                 title = {
@@ -188,7 +190,7 @@ fun SettingsScreen(
             LocalContext provides context,
             LocalConfiguration provides localConfig
         ) {
-            AlertDialog(
+            TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
                 onDismissRequest = { showThemeDialog = false },
                 title = {
@@ -201,7 +203,8 @@ fun SettingsScreen(
                 },
                 text = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
-                        Column(modifier = Modifier.selectableGroup()) {
+                        Column {
+                          Column(modifier = Modifier.selectableGroup()) {
                             AppTheme.entries.forEach { theme ->
                                 val isSelected = theme == currentTheme
                                 Row(
@@ -230,6 +233,8 @@ fun SettingsScreen(
                                     )
                                 }
                             }
+                          }
+                          ThemeBlurSetting(blurSetting, AppConfig::setOverlayBlurEnabled)
                         }
                     }
                 },

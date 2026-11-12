@@ -1,5 +1,19 @@
 # UI Design & Material 3 Expressive Specification
 
+Overlay backgrounds support optional surface-local frost with a theme-derived tint and 1dp outline. Text and controls remain sharp, and the ordinary scrim remains outside the surface. The independent preference defaults to ON; theme policies can permit user choice or force either state without replacing the saved preference.
+
+| Overlay family | Shared integration |
+| --- | --- |
+| App-owned alert dialogs | `TidiloAlertDialog` |
+| Modal bottom sheets | `TidiloModalBottomSheet` |
+| Popup menus | `TidiloDropdownMenu` |
+| Library modal navigation rail | `LibraryNavigationRail` with the shared renderer |
+| Shared page headers | Body-only screen source and smootherstep mask in `FrostedHeaderContainer` |
+| Library Search | Opt-in `TidiloPrimaryActionSurface` background |
+| Detail floating toolbar and browser jump | Opt-in TOOLBAR and compact PRIMARY_ACTION backgrounds |
+
+OFF retains native theme drawing. Unsupported rendering retains ordinary theme drawing; unavailable captured sources retain a readable fallback. Headers fade both blur and tint to transparency without a bottom outline; bounded floating controls use the theme tint and 1dp outline. Ordinary cards, other toolbars, screen backgrounds and OS-owned UI are not blur targets. Sheet/dialog title rows do not receive a second effect. See [overlay integration](theme_development.md#add-a-blur-enabled-overlay) and [screen chrome integration](theme_development.md#add-blur-to-in-window-screen-chrome) for ownership, extension APIs, policies and validation.
+
 Trash list rows, overflow actions and confirmations are specified in [Trash](trash.md). Rows have no tap action; they use the existing header and shared dialog/menu surface roles with explicit theme foreground colors.
 
 The Collection library, prototype-derived horizontal cards, editor and bookmark assignment sheets are specified in [Manual Collections](collections.md).
@@ -148,28 +162,36 @@ Library retains its title/subtitle, exposes only the existing dashboard/gear dis
 
 ### 6.4 `BookmarkDetailScreen` & Material 3 Toolbar
 - **Layout Hierarchy**:
-  - Root `TidiloScreenScaffold`: Hosts the full-screen scrollable body, fixed frosted header, and bottom-anchored toolbar.
-  - **Scroll Separation**: The toolbar is placed outside the scrollable `Column`.
-  - **Edge-to-Edge Status Bar Translucency & Scrim**:
-    - The scrollable `Column` extends edge-to-edge into the status bar area without root `statusBarsPadding()`.
-    - The shared header owns status-bar padding and the standard font-aware 80dp row. Back and Save remain visible while the body scrolls beneath it.
-    - The shared neutral frosted background protects the status bar and title area; a separate detail-only status-bar gradient is unnecessary. Body padding uses shared top clearance, while note editing retains navigation/IME avoidance and toolbar clearance.
-- **Top Header & `og:image` Banner with Domain Watermark Fallback**:
-  - **`og:image` Banner Placement**: Positioned directly beneath the Top Header Row and above the bookmark title, with 12dp above and 16dp below. A full-width `BoxWithConstraints` supplies the available width; the image height is explicitly `min(availableWidth / imageAspectRatio, 300.dp)`. `ContentScale.Crop` preserves image proportions and center-crops artwork that exceeds this ceiling, with `RoundedCornerShape(16.dp)` clipping (`contentDescription = null`). A 16:9 image fits without cropping up to approximately 533dp content width (573dp viewport width including horizontal margins); larger viewports and tall images retain intentional center cropping. Do not combine fixed full width, a 300dp height cap, and an image `aspectRatio` modifier: conflicting constraints can produce an oversized child that paints over adjacent content.
-  - **OG Radiant Lighting**: `BookmarkDetailLighting.kt` resolves the displayed bitmap's accent through `DomainIconManager.extractDominantColor` on `Dispatchers.Default`, with a 350ms `EaseOutCubic` color transition. `OgImageManager` retains at most 128 colors keyed by exact/fallback image source and bitmap content generation; color entries do not retain bitmaps. Image replacement/deletion and memory/full cache clearing invalidate derived colors and prevent older in-flight sampling from repopulating the cache.
-  - **Measured Light Source**: The ambient radial bloom has radius `screenWidth * 1.05` and follows the banner's actual root-space center through scrolling. A downward wash illuminates the title, URL, tags and summary. Root-space measurements account for the shared font-aware header and variable image height instead of fixed header/center offsets. Drawing observes the measurements directly, without resampling bitmap pixels during scrolling. OG-image ambient strength is 0.16 in dark schemes and 0.07 in light schemes, with the downwash starting at 0.40 of that strength, keeping the title background subdued. Image-free domain lighting retains its original 0.28/0.13 strengths and 0.65 downwash multiplier. Foreground text retains semantic theme colors and the frosted header stays neutral.
-  - **Banner Perimeter**: An 8dp tinted ambient/spot shadow (alpha 0.16/0.24) and approximately 24dp rounded outward bloom are painted outside image clipping. A uniform 1dp rim uses 0.60 accent alpha on all four edges and follows the 16dp corners. The image acts as the emissive source: its entire perimeter is gently defined rather than lit only along the upper edge. Outer diffusion retains the approved subdued intensity.
-    - Animated shadow colors are read inside `graphicsLayer`; the rim color is read only during drawing. Color updates repaint the banner without invalidating its composition. The rim matches `Modifier.border` pixel-rounded width and is inset by half its stroke width, preserving the approved inner perimeter and corner geometry.
+  - Root `TidiloScreenScaffold`: Hosts the full-screen scrollable body, fixed **Floating Header Actions** overlay (`DetailFloatingHeaderOverlay`), and bottom-anchored toolbar.
+  - **Scroll Separation**: Both the top Floating Header Actions and the bottom toolbar are placed outside the scrollable `Column` so they remain fixed during vertical scrolling.
+  - **Edge-to-Edge Status Bar Protection Scrim & Floating Top Actions**:
+    - `BookmarkDetailScreen` omits the full-width "Details" text header bar across loaded, loading, error, and not-found states.
+    - A permanent top status-bar protection gradient scrim (`statusBars` height + `8.dp` soft edge) blends from `topEdgeColor` (or theme `canvasColor` when no `og:image` is present) to transparent without intruding into the `og:image` body.
+    - Two persistent `48.dp` circular floating buttons sit at the top-left (**Back** arrow) and top-right (**Save** with a floppy-disk icon `R.drawable.ic_save`), backed by `TidiloSurface(..., blurBackground = true)` (`SurfaceRole.FLOATING_BAR` / `SurfaceRole.PRIMARY_ACTION`). The floppy Save button is always visible when a bookmark is loaded, uses disabled alpha (`0.38f`) when `!hasChanges`, switches to the active `PRIMARY_ACTION` tone when `hasChanges` is true, and displays a `CircularProgressIndicator` while `isSaving` is true.
+- **Seamless Hero Banner (`og:image` Mode & `DomainWatermark` Fallback)**:
+  - **Full-Bleed `og:image` Placement**: Spans the full viewport width (`fillMaxWidth()`, `0.dp` horizontal margin) directly below the status bar top band. A full-width `BoxWithConstraints` supplies the available width; the image height is `min(maxWidth / calculateOgAspectRatio(bitmap.width, bitmap.height), 300.dp)` (`1.91:1` standard aspect ratio preserved edge-to-edge, with a `300.dp` height ceiling for tall portrait images). Only the floating Back and Save buttons sit over the artwork; no 1dp border rim or rounded corner clipping is applied to the hero banner.
+  - **Dynamic Edge-Color Palette (`DetailHeroPalette`)**: `BookmarkDetailLighting.kt` and `OgImageManager` sample representative colors from the top ~15% band (`topEdgeColor`) and bottom ~15% band (`bottomEdgeColor`) alongside the dominant `accentColor` on `Dispatchers.Default`, calibrated via `calibrateDetailEdgeColor` for status bar and text legibility and animated with a 350ms `EaseOutCubic` transition. `OgImageManager` caches up to 128 palettes keyed by image source and bitmap generation and invalidates them on eviction or cache clearing.
+  - **Minimal Edge Feathering & Symmetric Upward/Downward Gradient Extensions**: Over the `og:image` itself, top and bottom feathering is kept minimal (`12.dp` top / `14.dp` bottom) so artwork remains unobstructed while eliminating hard 1px seams. Above the image, the status bar band extends `topEdgeColor` upward and fades into transparent (`Transparent` -> `topEdgeColor.copy(alpha = 0.50f)` -> `topEdgeColor`). Below the image, a downward gradient extension (`bottomEdgeColor` -> `bottomEdgeColor.copy(alpha = 0.35f)` -> `Transparent`) hosts the above-title metadata and Bookmark Title.
+  - **Measured Light Source**: The ambient radial bloom has radius `screenWidth * 1.05` and follows the banner's actual root-space center through scrolling, accompanied by a downward linear wash (`detailAmbientLight`).
   - **Reactive Cache & On-Demand Loading**: Integrated with `rememberOgImage` (`OgImageManager` cache observer and update notifications, triggering background on-demand fetching when uncached), unified across `BookmarkDetailScreen` and `BookmarkGridCard`.
   - **Domain Icon Watermark Fallback (`DomainWatermark`)**:
-    - When `og:image` is available, the banner is rendered and the background `DomainWatermark` is suppressed to prevent visual overlap.
-    - When `og:image` is absent (`ogImageUrl == null` or load fails) and image resolution has completed (`ogState.resolved`), no empty banner space is reserved; the layout seamlessly falls back to displaying `DomainWatermark` (`195dp`, 50% saturation, `0.14f` alpha, `RoundedCornerShape(20.dp)`) in the upper-right background (`Alignment.TopEnd`, `offset(x = 20.dp)`).
-    - The same resolved-only fallback uses the existing domain accent (deterministic domain color when no icon is available) for upper-right shoulder lighting anchored to the scrolling watermark region. Pending resolution is neutral. Each bookmark owns its color animation and measured anchor, preventing a newly opened bookmark from inheriting the previous image's lighting.
-- **Bottom toolbar**: A rounded bar contains Trash, AI Summary, an inert Collection placeholder, and Like in that order. A separate rounded-square browser action of matching height sits to the right. The bar is centered when both actions fit with side clearance; on narrower screens the entire group is centered instead. It retains its existing detail-screen positioning. Trash retains its confirmation; Like persists immediately and uses a red filled heart when selected, without changing its background. Save remains in the header.
-- **Entity Tags Multi-Line Spacing**:
-  - Wrapped in `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to avoid inflated chip spacing. The classification row exists only when category, subcategory or NSFW is present. Entity `FlowRow` has no additional top padding: the parent supplies 8dp between actual classification/entity rows, and wrapped entity rows retain 8dp spacing. Entity-only bookmarks have no empty classification row; the section header and edit action remain present even when all tags are empty.
+    - When `og:image` is available, the Seamless Hero Banner is rendered and the background `DomainWatermark` is suppressed.
+    - When `og:image` is absent (`ogImageUrl == null` or load fails) and image resolution has completed (`ogState.resolved`), top clearance (`statusBars + 72.dp`) is applied so the floating Back and Save buttons never overlap text, and `DomainWatermark` (`195dp`, 50% saturation, `0.14f` alpha, `RoundedCornerShape(20.dp)`) renders at `Alignment.TopEnd` with domain shoulder ambient lighting.
+- **Above-Title Metadata & Classification Breadcrumb**:
+  - Inside the downward gradient extension (padded by `20.dp` start/end) directly above the Bookmark Title:
+    1. **Source Attribution Row**: Displays `Domain • Relative Time` (`DomainPolicyManager.getDisplayName(domain) ?: domain` and `TimeFormatter.formatRelativeTime`) in `MaterialTheme.typography.labelMedium` (`12.sp`, `onSurfaceVariant`). No favicon and no browser-jump icon are rendered here.
+    2. **Classification Breadcrumb**: Immediately below the Source Attribution Row in the exact same `labelMedium` (`12.sp`) font size and `onSurfaceVariant` text color (plain text, no icons, no chip borders, no red highlight on NSFW), formatted via `formatClassificationBreadcrumb` as `Category > Subcategory - NSFW` (or subset). When Category, Subcategory, and NSFW are all empty/false, this line is completely omitted with zero vertical gap so the Bookmark Title pulls up directly beneath the Source Attribution Row.
+    3. **Bookmark Title**: `MaterialTheme.typography.titleLarge`, `FontWeight.Bold`, `color = MaterialTheme.colorScheme.onBackground`.
+- **Below-Title Entity-Only Tag Row**:
+  - Placed directly beneath the header block without a `# Category & Tags` section title or classification chips.
+  - Left (`weight(1f)`): `FlowRow` of `# Entity` chips (`BookmarkEntityChipsFlow` / `CompactTagBadge` in decorated themes, `AssistChip` in Material themes, wrapped in `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` with `6.dp` horizontal and `8.dp` vertical spacing). When `editedTag.entities` is empty, renders a subtle interactive `+ Add tags` placeholder chip (`R.string.detail_add_tags_placeholder`) that opens `BookmarkTagEditDialog`.
+  - Right: Compact `IconButton(Icons.Outlined.Edit)` (`contentDescription = stringResource(R.string.detail_edit_tags)`) that opens `BookmarkTagEditDialog`.
+- **Editorial Summary Callout**:
+  - The Summary section header uses a document/notes-style icon (`R.drawable.ic_summarize`) instead of an AI sparkle icon.
+  - The Summary body renders inside an **Editorial Summary Callout** container featuring a `3.dp` start-edge vertical accent bar (`detailAccent` or `primary`) and a subtle horizontal gradient wash (`surfaceVariant` `0.42f` -> `0.16f`).
+- **Bottom toolbar**: A rounded bar contains Trash, AI Summary, Collection membership star, and Like in that order. A separate rounded-square browser action of matching height sits to the right as the single canonical browser-launch trigger.
 - **Integrated Category & Tag Editing Workflow (Parent Dialog + Screen-Level Bottom Sheet)**:
-  - **Edit Action Trigger**: Positioned at the right end of the "Category & Tags" section header row via a borderless `IconButton(Icons.Outlined.Edit)`.
+  - **Edit Action Trigger**: Positioned at the right end of the entity tag row (and on the `+ Add tags` placeholder when entities are empty).
   - **Parent Modification Dialog (`BookmarkTagEditDialog`)**:
     - Centralized `AlertDialog` managing Category (7 options), Subcategory (11 options), NSFW status toggle, and assigned Entities in one place.
     - **Category & Subcategory Dropdowns**: Single-select dropdown menus displaying localized strings.
@@ -184,13 +206,14 @@ Library retains its title/subtitle, exposes only the existing dashboard/gear dis
     - **Bottom Section**: All unique entity tags across the library sorted A-Z (`compareEntityNames`), functioning as toggle buttons with highlighted ON/OFF states.
     - Dismissing or dragging down cleanly commits changes to the parent dialog's draft state.
   - **Two-Stage Persistence & In-Memory Preview**:
-    - Confirming the parent dialog updates `editedTag` and `editedIsNsfw` in memory, immediately previewing the changes on the Detail screen and activating the top-right "Save" button.
-    - Changes are atomically persisted to Room database and repository only when the user taps "Save". Save validates that the edited bookmark still exists, applies all staged replacements across active bookmarks (including hidden content), and saves the current fields in one transaction. Trash is excluded. A missing target or any failure commits nothing; repeated taps cannot submit overlapping saves.
+    - Confirming the parent dialog updates `editedTag` and `editedIsNsfw` in memory, immediately previewing the changes in both the above-title Classification Breadcrumb and the below-title entity row, and activating the top-right floppy Save button.
+    - Changes are atomically persisted to Room database and repository only when the user taps Save. Save validates that the edited bookmark still exists, applies all staged replacements across active bookmarks (including hidden content), and saves the current fields in one transaction. Trash is excluded. A missing target or any failure commits nothing; repeated taps cannot submit overlapping saves.
     - Manual variant entry compares skeleton identity against all active library tags, including hidden content, independently of Library filters. The lookup is collected only while manual entry or the entity picker is open, with lifecycle-aware cancellation. Closing both editors disposes the snapshot; reopening or retrying starts Loading and waits for a fresh snapshot. Detail viewing, note editing, and the parent tag dialog alone do not collect the library aggregate. Lookup loading or failure blocks confirmation; failure offers Retry.
     - A spelling conflict offers **Use existing tag** or **Replace across all bookmarks**, displays both spellings, and explains that replacement applies only after the detail screen Save. Dismissing the conflict changes nothing. Replacement choices remain in the parent editor until its confirmation; canceling that editor or discarding the screen never renames library tags.
     - The complete note, classification, entity, NSFW, replacement, and nested-dialog draft uses saved state for recreation. Automated restoration coverage remounts the SaveableStateRegistry; actual OS process death has not been exercised. Incoming Room updates preserve edits. Pending replacements alone enable Save, and failed Save retains all choices for retry. An explicit choice still applies if its last active occurrence disappears before Save; without an explicit replacement, a stale draft resolves the latest library spelling. Stored display spelling (including meaningful leading hashes) is rendered unchanged; the picker overlays pending spellings and shows each skeleton once.
-- **URL Interactive Row**:
-  - Bound via `combinedClickable`. Single tap launches external browser with fallback toast; long press performs haptic feedback (`HapticFeedbackType.LongPress`), copies the full URL to the clipboard via `LocalClipboardManager.setText`, and displays an immediate confirmation toast.
+- **Footer Full-URL & Timestamps**:
+  - The full `bookmark.url` is rendered at the bottom of the scrollable body directly above the `Created: yyyy/MM/dd HH:mm` and `Updated: yyyy/MM/dd HH:mm` lines in the same right-aligned muted style (`MaterialTheme.typography.labelSmall`, `onSurfaceVariant.copy(alpha = 0.45f)`).
+  - Bound via `combinedClickable` so tapping or long-pressing the footer URL performs haptic feedback (`HapticFeedbackType.LongPress`), copies the full URL to the clipboard, and displays the `detail_url_copied` toast. Browser launching is handled exclusively by the bottom toolbar's right-side square button.
 
 ---
 
@@ -228,8 +251,9 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
   - **NSFW Domain Management Section**:
     - Lists all registered domains with a `Checkbox` on the left and domain name (with cached favicon/watermark icon) on the right.
     - Interactive row tap toggles domain NSFW classification in `DomainPolicyManager`.
-- **Card & Detail NSFW Chip**:
-  - `BookmarkCard` & `BookmarkDetailScreen` display a prominent red-toned `NSFW` badge (`errorContainer` background, `onErrorContainer` text) immediately adjacent to the `[category] > [subcategory]` breadcrumb when `bookmark.isNsfw == true`.
+- **Card & Detail NSFW Indicator**:
+  - `BookmarkCard` displays a prominent red-toned `NSFW` badge (`errorContainer` background, `onErrorContainer` text) immediately adjacent to the `[category] > [subcategory]` chips when `bookmark.isNsfw == true`.
+  - `BookmarkDetailScreen` displays `NSFW` inside the plain-text Classification Breadcrumb (`Category > Subcategory - NSFW` or `NSFW`) above the Bookmark Title in `labelMedium` (`12.sp`, `onSurfaceVariant`) without high-emphasis color or chip borders.
 
 ### 6.8 `DomainCard` & Library Domain Filter Mode
 - **2-Column Grid Layout (`LazyVerticalGrid(GridCells.Fixed(2))`)**:
@@ -269,7 +293,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 
 ### 6.9 `FrostedHeaderContainer`
 - **Purpose**: Eliminates the harsh, hard-edged cutoff line between the fixed/sliding header and scrolling list content in Edge-to-Edge screens.
-- **Single-Canvas Architecture**: Replaced separate stacked boxes with a single `Column` background draw pass (`Modifier.drawBehind`), completely removing any physical layout seams or derivative discontinuities between the header container and list content.
+- **Stationary Canvas and Foreground Chrome**: `TidiloBackground` draws the central canvas. Screen chrome selects that canvas and its own body source; its output remains outside capture. Header blur, fallback and tint are composited in one bounded background layer and masked once, keeping foreground content sharp and the fade continuous.
 - **14-Stop Smootherstep Attenuation Curve**:
   - Implements Ken Perlin's quintic smootherstep equation ($S(t) = 6t^5 - 15t^4 + 10t^3$, $\alpha(t) = 1 - S(t)$) sampled across 14 finely spaced gradient stops.
   - Because both first and second derivatives are zero at $t=0$ and $t=1$ ($d\alpha/dt = 0$, $d^2\alpha/dt^2 = 0$), the transition is optically seamless, entirely eliminating optical Mach banding.
@@ -315,10 +339,9 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 - **Bookmark Card (`BookmarkCard.kt`)**:
   - Description text renders directly using `MaterialTheme.typography.bodyMedium` with keyword highlighting when search terms are present.
 - **Bookmark Detail Screen Spacing & Layout Rhythm (`BookmarkDetailScreen.kt`)**:
-  - Standard spacing rhythm: URL surface to Tags & Classification header is `24.dp`.
-  - Category & Tags edit `IconButton` and, under `AppTheme.DEFAULT`, tag chips (`AssistChip`, kept as the original layout) are scoped under `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to eliminate invisible accessibility touch-target inflation (which previously caused a 32dp gap), harmonizing the header-to-content gap across Category & Tags, Summary, and Note to a consistent `10.dp`.
-  - Under `AppTheme.MODERN` (`chipStyle.depth > 0.dp`), tags are rendered by the shared `BookmarkTagSection` composable (`CompactTagBadge`, 26dp tactile chips), identical to `BookmarkItemCard`.
-  - Direct bookmarks with no category or subcategory omit the classification row unless NSFW is set. Removing the entity row's redundant top padding preserves the 10dp section-header-to-content gap without a blank row; existing `None` classification labels remain unchanged.
+  - Above-title header metadata (`Source Attribution Row` and optional `Classification Breadcrumb`) sits inside the seamless downward gradient extension directly above the Bookmark Title. When `Classification Breadcrumb` is `null` (no category, subcategory, or NSFW), zero vertical spacer is added so the title pulls up directly beneath `Domain • Relative Time`.
+  - Below the title, the Entity-only tag row (`BookmarkEntityChipsFlow` under `AppTheme.MODERN` or `AssistChip` under `AppTheme.DEFAULT`, or the `+ Add tags` placeholder when entities are empty) and its right-aligned `Edit` `IconButton` are scoped under `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to eliminate invisible accessibility touch-target inflation.
+  - Standard vertical section spacing between the Entity tag row, Editorial Summary Callout, and Note section is `24.dp`, with `10.dp` between section headers and their content containers.
 
 ### 6.12 Tag Edit Dialog Dropdown Menu Specification (`BookmarkTagEditDialog.kt`)
 - **Full-Width Popup Anchoring**:
@@ -514,4 +537,4 @@ Selected navigation labels, screen titles and enabled primary action labels can 
 
 Unit tests cover role resolution, zero elevation, semantic precedence, preset overrides, Material palette fallback and shape-scale propagation. Instrumentation fixtures use real components, actual painted-pixel assertions and theme switching with navigation/list/draft state. Building instrumentation does not prove visual parity: before/after capture, input, recreation and frame checks require a connected device. No whole-screen zero-overdraw or zero-GPU-cost guarantee is made.
 
-Backdrop blur is future work. This migration introduces no capture host, backend interface, external dependency or speculative blur state. Required integration changes will be handled with the actual blur feature.
+Backdrop blur uses Haze 2.1.0 with independent effective policy. The app-wide modal source captures composited content; separate screen-owned body sources serve in-window chrome without capturing its own output. Source sharing is an ownership boundary, not a guarantee of one GPU replay. Relative frame measurements and their limits are documented in [chrome performance](chrome_blur_performance.md).

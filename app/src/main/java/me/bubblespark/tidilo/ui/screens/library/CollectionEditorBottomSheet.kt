@@ -1,5 +1,9 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import me.bubblespark.tidilo.ui.components.TidiloModalBottomSheet
+
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
+
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.SurfaceVariant
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
@@ -56,7 +60,7 @@ internal fun CollectionEditorContent(
     val canEdit = !state.pending && !state.loading && !state.missing && state.error != "load"
     val accent = CollectionColorPalette.getOrElse(draft.colorIndex) { CollectionColorPalette.first() }
     val sheetStyle = currentThemeSurfaces().resolve(SurfaceRole.SHEET, SurfaceVariant.EMPHASIZED)
-    ModalBottomSheet(
+    TidiloModalBottomSheet(
         shape = sheetStyle.shape,
         onDismissRequest = { if (!pending) onDismiss() },
         modifier = modifier,
@@ -131,7 +135,7 @@ internal fun CollectionEditorContent(
             }
         }
     }
-    if (state.confirmDelete) AlertDialog(
+    if (state.confirmDelete) TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = { onConfirmDelete(false) },
         title = { Text(stringResource(R.string.collection_delete_title)) },

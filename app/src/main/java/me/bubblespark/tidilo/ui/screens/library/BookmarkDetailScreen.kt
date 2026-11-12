@@ -5,10 +5,8 @@ import me.bubblespark.tidilo.data.EntityCandidateExtractor
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
-import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
-import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import kotlinx.coroutines.ensureActive
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.semantics.semantics
@@ -20,6 +18,18 @@ import me.bubblespark.tidilo.ui.components.TidiloIconButton
 import me.bubblespark.tidilo.ui.components.TidiloIconToggleButton
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.SurfaceVariant
+import me.bubblespark.tidilo.ui.theme.ThemeSurfaceState
+import me.bubblespark.tidilo.data.DomainPolicyManager
+import me.bubblespark.tidilo.ui.util.TimeFormatter
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.text.style.TextAlign
 
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -66,10 +76,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.vector.ImageVector
 import me.bubblespark.tidilo.data.DomainIconManager
 import androidx.compose.ui.layout.ContentScale
@@ -77,7 +84,7 @@ import me.bubblespark.tidilo.ui.components.DomainWatermark
 import me.bubblespark.tidilo.ui.components.calculateOgAspectRatio
 import me.bubblespark.tidilo.ui.components.rememberOgImage
 import androidx.compose.ui.res.vectorResource
-import androidx.compose.material3.AlertDialog
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.foundation.layout.PaddingValues
@@ -100,6 +107,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -166,8 +174,13 @@ fun BookmarkDetailScreen(
     if (detailState.loading || detailState.error != null || bookmark == null) {
         TidiloScreenScaffold(
             modifier = modifier,
-            // Top Header: Back Button + Title + Save Button
-        header = { TidiloPageHeader(stringResource(R.string.detail_title), onNavigateBack, raisedTitle = true) }
+            header = {
+                DetailFloatingHeaderOverlay(
+                    onBackClick = onNavigateBack,
+                    backEnabled = true,
+                    showSave = false
+                )
+            }
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 when {
@@ -267,90 +280,77 @@ fun BookmarkDetailScreen(
 
 
     val domain = remember(bookmark.url) { DomainIconManager.extractDomain(bookmark.url) }
+    val policies by DomainPolicyManager.policies.collectAsStateWithLifecycle()
+    val domainDisplayName = remember(domain, policies) {
+        domain?.let { DomainPolicyManager.getDisplayName(it) } ?: domain ?: ""
+    }
+    val relativeCreatedAt = remember(bookmark.createdAt, context) {
+        TimeFormatter.formatRelativeTime(bookmark.createdAt, context)
+    }
+    val sourceAttributionText = remember(domainDisplayName, relativeCreatedAt) {
+        if (domainDisplayName.isNotBlank()) "$domainDisplayName • $relativeCreatedAt" else relativeCreatedAt
+    }
+    val classificationBreadcrumb = remember(localizedCategory, localizedSubcategory, editedIsNsfw) {
+        formatClassificationBreadcrumb(localizedCategory, localizedSubcategory, editedIsNsfw)
+    }
 
     val ogFilename = bookmark.ogImageFilename
     val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
     val ogBitmap = ogState.bitmap
-    val detailAccent = rememberDetailAccent(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
-    val bannerBounds = remember(bookmark.id, ogBitmap) { mutableStateOf<Rect?>(null) }
-    val lightingHostOrigin = remember { mutableStateOf(Offset.Zero) }
-    val darkLighting = currentThemeSurfaces().isDark
+    val heroPaletteState = rememberDetailHeroPalette(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
+    val detailAccent = remember(heroPaletteState) { derivedStateOf { heroPaletteState.value.accentColor } }
+    val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val surfaces = currentThemeSurfaces()
+    val darkLighting = surfaces.isDark
+
+    fun openTagEditorDialog() {
+        draftCategory = editedTag.category
+        draftSubcategory = editedTag.subcategory
+        draftEntities = editedTag.entities
+        draftIsNsfw = editedIsNsfw
+        draftReplacements = pendingReplacements
+        showTagEditDialog = true
+    }
 
     TidiloScreenScaffold(
-        modifier = modifier
-            .onGloballyPositioned { lightingHostOrigin.value = it.positionInRoot() }
-            .detailAmbientLight(detailAccent, bannerBounds, lightingHostOrigin, darkLighting, ogState.shouldShowFallback),
+        modifier = modifier,
+        bodyModifier = Modifier.detailAmbientLight(
+            color = detailAccent,
+            dark = darkLighting,
+            showFallback = ogState.shouldShowFallback,
+            scrollYProvider = { scrollState.value },
+            bannerAspectRatio = ogBitmap?.let { calculateOgAspectRatio(it.width, it.height) },
+            statusBarTopPadding = statusBarTopPadding
+        ),
         hideHeaderOnScroll = false,
         header = {
-            TidiloFrostedHeader(
-                scrollState = scrollState,
-                title = {
-                    Text(
-                        text = stringResource(R.string.detail_title),
-                        style = modernRaisedTextStyle(MaterialTheme.typography.headlineMedium),
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            requestExit()
-                        },
-                        enabled = !isSaving,
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .size(48.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.common_back),
-                            tint = if (isSaving) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onBackground
-                        )
+            DetailFloatingHeaderOverlay(
+                onBackClick = { requestExit() },
+                backEnabled = !isSaving,
+                showSave = true,
+                saveEnabled = hasChanges && !isSaving,
+                isSaving = isSaving,
+                topScrimColorProvider = {
+                    val topEdge = heroPaletteState.value.topEdgeColor
+                    if (ogBitmap != null && topEdge != Color.Transparent) {
+                        topEdge
+                    } else {
+                        surfaces.canvasColor
                     }
                 },
-                actions = {
-                    Button(
-                        onClick = {
-                            if (hasChanges && !isSaving) {
-                                isSaving = true
-                                coroutineScope.launch {
-                                    try {
-                                        viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsNsfw, pendingReplacements)
-                                        onNavigateBack()
-                                    } catch (e: Exception) {
-                                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                                        Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
-                                    } finally {
-                                        isSaving = false
-                                    }
-                                }
+                onSaveClick = {
+                    if (hasChanges && !isSaving) {
+                        isSaving = true
+                        coroutineScope.launch {
+                            try {
+                                viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsNsfw, pendingReplacements)
+                                onNavigateBack()
+                            } catch (e: Exception) {
+                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
+                            } finally {
+                                isSaving = false
                             }
-                        },
-                        enabled = hasChanges && !isSaving,
-                        shape = CircleShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                            disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                        ),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
-                    ) {
-                        if (isSaving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        } else {
-                            Text(
-                                text = stringResource(R.string.detail_save),
-                                style = modernRaisedTextStyle(MaterialTheme.typography.labelLarge, hasChanges && !isSaving),
-                                fontWeight = FontWeight.Bold
-                            )
                         }
                     }
                 }
@@ -366,7 +366,7 @@ fun BookmarkDetailScreen(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    TidiloSurface(role = SurfaceRole.TOOLBAR) {
+                    TidiloSurface(role = SurfaceRole.TOOLBAR, blurBackground = true) {
                         Box {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
@@ -402,6 +402,7 @@ fun BookmarkDetailScreen(
                     TidiloSurface(
                         onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
                         role = SurfaceRole.PRIMARY_ACTION,
+                        blurBackground = true,
                         variant = SurfaceVariant.COMPACT,
                         modifier = Modifier.size(54.dp)
                     ) {
@@ -419,7 +420,7 @@ fun BookmarkDetailScreen(
 
             // Discard changes confirmation dialog
             if (showDiscardConfirmDialog) {
-                AlertDialog(
+                TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
                     onDismissRequest = { showDiscardConfirmDialog = false; discardToCollections = false },
@@ -464,7 +465,7 @@ fun BookmarkDetailScreen(
 
             // Delete confirmation dialog
             if (showDeleteConfirmDialog) {
-                AlertDialog(
+                TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
                     onDismissRequest = { showDeleteConfirmDialog = false },
                     title = {
@@ -591,7 +592,7 @@ fun BookmarkDetailScreen(
                 )
             }
         }
-    ) { contentPadding ->
+    ) { _ ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -602,56 +603,185 @@ fun BookmarkDetailScreen(
                     })
                 }
                 .verticalScroll(scrollState)
-                .padding(contentPadding)
         ) {
-                // Content container directly beneath HEADER (places DomainWatermark or og:image banner)
-                Box(
-                    modifier = Modifier.fillMaxWidth().onGloballyPositioned {
-                        if (ogBitmap == null) {
-                            bannerBounds.value = Rect(it.positionInRoot() + Offset(it.size.width.toFloat(), 0f), Size.Zero)
-                        }
-                    }
-                ) {
-                    // Upper right domain watermark (rendered only when og:image is unavailable and resolution completed)
-                    if (ogState.shouldShowDomainWatermarkFallback) {
-                        DomainWatermark(
-                            domain = domain,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = HeaderDefaults.HorizontalPadding) // Cancels scaffold horizontal padding to align with right screen edge
-                        )
-                    }
+            // Hero + Above-Title Metadata Container (full-bleed og:image or DomainWatermark fallback)
+            Box(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Upper right domain watermark (rendered only when og:image is unavailable and resolution completed)
+                if (ogState.shouldShowDomainWatermarkFallback) {
+                    DomainWatermark(
+                        domain = domain,
+                        modifier = Modifier.align(Alignment.TopEnd)
+                    )
+                }
 
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (ogBitmap != null) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                                val bannerHeight = minOf(
-                                    maxWidth / calculateOgAspectRatio(ogBitmap.width, ogBitmap.height),
-                                    300.dp
-                                )
-                                Image(
-                                    bitmap = ogBitmap,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(bannerHeight)
-                                        .onGloballyPositioned {
-                                            bannerBounds.value = Rect(it.positionInRoot(), Size(it.size.width.toFloat(), it.size.height.toFloat()))
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    val canvasColor = surfaces.canvasColor
+                    if (ogBitmap != null) {
+                        // Upward gradient extension above the image (status bar band, mirroring downward extension)
+                        if (statusBarTopPadding > 0.dp) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(statusBarTopPadding)
+                                    .drawWithCache {
+                                        var cachedTopColor = Color.Unspecified
+                                        var cachedBrush: Brush? = null
+                                        onDrawBehind {
+                                            val topEdge = heroPaletteState.value.topEdgeColor
+                                            if (topEdge != Color.Transparent) {
+                                                val existing = cachedBrush
+                                                val brush = if (topEdge != cachedTopColor || existing == null) {
+                                                    cachedTopColor = topEdge
+                                                    Brush.verticalGradient(
+                                                        colorStops = arrayOf(
+                                                            0.0f to Color.Transparent,
+                                                            0.45f to topEdge.copy(alpha = 0.50f),
+                                                            1.0f to topEdge
+                                                        )
+                                                    ).also { cachedBrush = it }
+                                                } else {
+                                                    existing
+                                                }
+                                                drawRect(brush = brush)
+                                            }
                                         }
-                                        .detailBannerLight(detailAccent)
-                                        .clip(themeCorner(ThemeCorner.IMAGE))
-                                )
+                                    }
+                            )
+                        }
+                        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                            val bannerHeight = minOf(
+                                maxWidth / calculateOgAspectRatio(ogBitmap.width, ogBitmap.height),
+                                DETAIL_HERO_MAX_BANNER_HEIGHT
+                            )
+                            Image(
+                                bitmap = ogBitmap,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(bannerHeight)
+                                    .drawWithCache {
+                                        // Minimal edge feathering: just enough to soften the 1px seam without covering the artwork
+                                        val topFeatherPx = minOf(12.dp.toPx(), size.height * 0.08f)
+                                        val bottomFeatherPx = minOf(14.dp.toPx(), size.height * 0.10f)
+                                        val bottomStartY = size.height - bottomFeatherPx
+                                        var cachedTopColor = Color.Unspecified
+                                        var cachedTopBrush: Brush? = null
+                                        var cachedBottomColor = Color.Unspecified
+                                        var cachedBottomBrush: Brush? = null
+                                        onDrawWithContent {
+                                            drawContent()
+                                            val palette = heroPaletteState.value
+                                            val topEdge = if (palette.topEdgeColor != Color.Transparent) {
+                                                palette.topEdgeColor
+                                            } else {
+                                                canvasColor
+                                            }
+                                            if (topFeatherPx > 0f && topEdge != Color.Transparent) {
+                                                val existingTop = cachedTopBrush
+                                                val topBrush = if (topEdge != cachedTopColor || existingTop == null) {
+                                                    cachedTopColor = topEdge
+                                                    Brush.verticalGradient(
+                                                        colors = listOf(topEdge, Color.Transparent),
+                                                        startY = 0f,
+                                                        endY = topFeatherPx
+                                                    ).also { cachedTopBrush = it }
+                                                } else {
+                                                    existingTop
+                                                }
+                                                drawRect(
+                                                    brush = topBrush,
+                                                    size = Size(size.width, topFeatherPx)
+                                                )
+                                            }
+                                            val bottomEdge = palette.bottomEdgeColor
+                                            if (bottomFeatherPx > 0f && bottomEdge != Color.Transparent) {
+                                                val existingBottom = cachedBottomBrush
+                                                val bottomBrush = if (bottomEdge != cachedBottomColor || existingBottom == null) {
+                                                    cachedBottomColor = bottomEdge
+                                                    Brush.verticalGradient(
+                                                        colors = listOf(Color.Transparent, bottomEdge),
+                                                        startY = bottomStartY,
+                                                        endY = size.height
+                                                    ).also { cachedBottomBrush = it }
+                                                } else {
+                                                    existingBottom
+                                                }
+                                                drawRect(
+                                                    brush = bottomBrush,
+                                                    topLeft = Offset(0f, bottomStartY),
+                                                    size = Size(size.width, bottomFeatherPx)
+                                                )
+                                            }
+                                        }
+                                    }
+                            )
+                        }
+                    } else {
+                        // Fallback top clearance so floating Back & Save buttons never overlap text
+                        Spacer(modifier = Modifier.height(statusBarTopPadding + 72.dp))
+                    }
+
+                    // Downward gradient extension (starts at bottomEdgeColor when og:image is present)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .drawWithCache {
+                                var cachedBottomColor = Color.Unspecified
+                                var cachedBrush: Brush? = null
+                                onDrawBehind {
+                                    val bottomEdge = heroPaletteState.value.bottomEdgeColor
+                                    if (ogBitmap != null && bottomEdge != Color.Transparent) {
+                                        val existing = cachedBrush
+                                        val brush = if (bottomEdge != cachedBottomColor || existing == null) {
+                                            cachedBottomColor = bottomEdge
+                                            Brush.verticalGradient(
+                                                colorStops = arrayOf(
+                                                    0.0f to bottomEdge,
+                                                    0.55f to bottomEdge.copy(alpha = 0.35f),
+                                                    1.0f to Color.Transparent
+                                                )
+                                            ).also { cachedBrush = it }
+                                        } else {
+                                            existing
+                                        }
+                                        drawRect(brush = brush)
+                                    }
+                                }
                             }
-                            Spacer(modifier = Modifier.height(16.dp))
-                        } else {
-                            Spacer(modifier = Modifier.height(20.dp))
+                            .padding(
+                                start = HeaderDefaults.HorizontalPadding,
+                                end = HeaderDefaults.HorizontalPadding,
+                                top = if (ogBitmap != null) 12.dp else 0.dp,
+                                bottom = 14.dp
+                            )
+                    ) {
+                        // Line 1: Source Attribution Row (Domain • Relative Time)
+                        Text(
+                            text = sourceAttributionText,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        // Line 2: Plain-Text Classification Breadcrumb (omitted with 0dp gap when empty)
+                        if (classificationBreadcrumb != null) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = classificationBreadcrumb,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
 
-                        // 2. Item Title
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Line 3: Bookmark Title
                         Text(
                             text = bookmark.title,
                             style = MaterialTheme.typography.titleLarge,
@@ -660,97 +790,85 @@ fun BookmarkDetailScreen(
                             lineHeight = MaterialTheme.typography.titleLarge.lineHeight * 1.15f,
                             modifier = Modifier.fillMaxWidth()
                         )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 3. URL (tap to launch browser, long press to copy to clipboard)
-                @OptIn(ExperimentalFoundationApi::class)
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(themeCorner(ThemeCorner.FIELD))
-                        .combinedClickable(
-                            onClick = {
-                                openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) }
-                            },
-                            onLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                coroutineScope.launch {
-                                    val clipData = ClipData.newPlainText("URL", bookmark.url)
-                                    clipboard.setClipEntry(clipData.toClipEntry())
-                                }
-                                Toast
-                                    .makeText(
-                                        context,
-                                        context.getString(R.string.detail_url_copied),
-                                        Toast.LENGTH_SHORT
-                                    )
-                                    .show()
-                            }
-                        ),
-                    shape = themeCorner(ThemeCorner.FIELD),
-                    color = Color.Transparent
-                ) {
-                    Row(
-                        modifier = Modifier.padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                            contentDescription = stringResource(R.string.detail_open_url),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = bookmark.url,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            textDecoration = TextDecoration.Underline,
-                            modifier = Modifier.weight(1f)
-                        )
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // 4. Section: Tags & Classification
+            // Below-Title Body Sections (padded by HorizontalPadding)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = HeaderDefaults.HorizontalPadding)
+            ) {
+                // 4. Below-Title Entity-Only Tag Row + Edit Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Tag,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = stringResource(R.string.detail_section_tags),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 12.dp)
+                    ) {
+                        if (editedTag.entities.isNotEmpty()) {
+                            TidiloClassificationContent(
+                                decorated = {
+                                    BookmarkEntityChipsFlow(entities = editedTag.entities)
+                                },
+                                material = {
+                                    CompositionLocalProvider(
+                                        LocalMinimumInteractiveComponentSize provides Dp.Unspecified
+                                    ) {
+                                        FlowRow(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            editedTag.entities.forEach { entity ->
+                                                AssistChip(
+                                                    onClick = {},
+                                                    label = { Text(entity) },
+                                                    leadingIcon = {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Tag,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    },
+                                                    colors = AssistChipDefaults.assistChipColors(
+                                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
+                                                        labelColor = MaterialTheme.colorScheme.onSurface
+                                                    ),
+                                                    shape = themeCorner(ThemeCorner.CONTROL)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            )
+                        } else {
+                            Surface(
+                                onClick = { openTagEditorDialog() },
+                                shape = themeCorner(ThemeCorner.CONTROL),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.detail_add_tags_placeholder),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
                     }
 
                     CompositionLocalProvider(
                         LocalMinimumInteractiveComponentSize provides Dp.Unspecified
                     ) {
                         IconButton(
-                            onClick = {
-                                draftCategory = editedTag.category
-                                draftSubcategory = editedTag.subcategory
-                                draftEntities = editedTag.entities
-                                draftIsNsfw = editedIsNsfw
-                                draftReplacements = pendingReplacements
-                                showTagEditDialog = true
-                            },
-                            modifier = Modifier.size(24.dp)
+                            onClick = { openTagEditorDialog() },
+                            modifier = Modifier.size(28.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Edit,
@@ -762,174 +880,14 @@ fun BookmarkDetailScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // [category] > [subcategory] newline [entities] (uniform 8.dp line spacing)
-                TidiloClassificationContent(decorated = {
-                    BookmarkTagSection(
-                        tag = editedTag,
-                        localizedCategory = localizedCategory,
-                        localizedSubcategory = localizedSubcategory,
-                        isNsfw = editedIsNsfw
-                    )
-                }, material = {
-                    CompositionLocalProvider(
-                        LocalMinimumInteractiveComponentSize provides Dp.Unspecified
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Line 1: [category] > [subcategory] (+ [NSFW])
-                            val hasCategoryLine = localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() || editedIsNsfw
-                            if (hasCategoryLine) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                            if (localizedCategory.isNotBlank() && localizedSubcategory.isNotBlank()) {
-                                // Category
-                                AssistChip(
-                                    onClick = {},
-                                    label = { Text(localizedCategory) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Folder,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    },
-                                    colors = AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                                        labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                    ),
-                                    shape = themeCorner(ThemeCorner.CONTROL)
-                                )
-
-                                Text(
-                                    text = ">",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-
-                                // Subcategory
-                                AssistChip(
-                                    onClick = {},
-                                    label = { Text(localizedSubcategory) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Folder,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    },
-                                    colors = AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                                        labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                    ),
-                                    shape = themeCorner(ThemeCorner.CONTROL)
-                                )
-                            } else if (localizedCategory.isNotBlank()) {
-                                AssistChip(
-                                    onClick = {},
-                                    label = { Text(localizedCategory) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Folder,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    },
-                                    colors = AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                                        labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                    ),
-                                    shape = themeCorner(ThemeCorner.CONTROL)
-                                )
-                            } else if (localizedSubcategory.isNotBlank()) {
-                                AssistChip(
-                                    onClick = {},
-                                    label = { Text(localizedSubcategory) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Folder,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    },
-                                    colors = AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                                        labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                    ),
-                                    shape = themeCorner(ThemeCorner.CONTROL)
-                                )
-                            }
-
-
-                            if (editedIsNsfw) {
-                                AssistChip(
-                                    onClick = {},
-                                    label = { Text("NSFW", fontWeight = FontWeight.Bold) },
-                                    colors = AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                                        labelColor = MaterialTheme.colorScheme.onErrorContainer
-                                    ),
-                                    shape = themeCorner(ThemeCorner.CONTROL)
-                                )
-                            }
-                        }
-
-                            }
-
-                        // Line 2: [entities] (disables LocalMinimumInteractiveComponentSize to compact multi-line height)
-                        if (editedTag.entities.isNotEmpty()) {
-                            CompositionLocalProvider(
-                                LocalMinimumInteractiveComponentSize provides Dp.Unspecified
-                            ) {
-                                FlowRow(
-                                    modifier = Modifier
-                                        .fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    editedTag.entities.forEach { entity ->
-                                        AssistChip(
-                                            onClick = {},
-                                            label = { Text(entity) },
-                                            leadingIcon = {
-                                                Icon(
-                                                    imageVector = Icons.Default.Tag,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                            },
-                                            colors = AssistChipDefaults.assistChipColors(
-                                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f),
-                                                labelColor = MaterialTheme.colorScheme.onSurface
-                                            ),
-                                            shape = themeCorner(ThemeCorner.CONTROL)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                })
-
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // 5. Section: Summary
+                // 5. Section: Summary (Note-like document icon + Editorial Summary Callout)
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = Icons.Default.AutoAwesome,
+                        imageVector = ImageVector.vectorResource(R.drawable.ic_summarize),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp)
@@ -945,20 +903,47 @@ fun BookmarkDetailScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = themeCorner(ThemeCorner.FIELD),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                val defaultSummaryAccent = MaterialTheme.colorScheme.primary
+                val summaryWashStart = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+                val summaryWashEnd = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.16f)
+                val summaryEndCorner = surfaces.preset.shapeScale.field
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min)
+                        .clip(
+                            RoundedCornerShape(
+                                topStart = 4.dp,
+                                bottomStart = 4.dp,
+                                topEnd = summaryEndCorner,
+                                bottomEnd = summaryEndCorner
+                            )
+                        )
+                        .drawWithCache {
+                            val washBrush = Brush.horizontalGradient(
+                                colors = listOf(summaryWashStart, summaryWashEnd)
+                            )
+                            onDrawBehind {
+                                drawRect(brush = washBrush)
+                            }
+                        }
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .width(3.dp)
+                            .fillMaxHeight()
+                            .drawBehind {
+                                val accent = detailAccent.value
+                                drawRect(color = if (accent != Color.Transparent) accent else defaultSummaryAccent)
+                            }
+                    )
                     Text(
                         text = bookmark.description,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.3f,
-                        modifier = Modifier.padding(14.dp)
+                        modifier = Modifier.padding(start = 16.dp, end = 14.dp, top = 14.dp, bottom = 14.dp)
                     )
                 }
 
@@ -1030,13 +1015,42 @@ fun BookmarkDetailScreen(
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                // 7. Date watermark (Created / Updated)
+                // 7. Footer Metadata: Full URL + Date watermark (Created / Updated)
+                val copyUrlToClipboard = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    coroutineScope.launch {
+                        val clipData = ClipData.newPlainText("URL", bookmark.url)
+                        clipboard.setClipEntry(clipData.toClipEntry())
+                    }
+                    Toast
+                        .makeText(
+                            context,
+                            context.getString(R.string.detail_url_copied),
+                            Toast.LENGTH_SHORT
+                        )
+                        .show()
+                }
+                @OptIn(ExperimentalFoundationApi::class)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 20.dp),
                     horizontalAlignment = Alignment.End
                 ) {
+                    Text(
+                        text = bookmark.url,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                        textAlign = TextAlign.End,
+                        modifier = Modifier
+                            .clip(themeCorner(ThemeCorner.SMALL))
+                            .combinedClickable(
+                                onClick = copyUrlToClipboard,
+                                onLongClick = copyUrlToClipboard
+                            )
+                            .padding(vertical = 2.dp)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = stringResource(R.string.detail_created_at, formattedCreatedAt),
                         style = MaterialTheme.typography.labelSmall,
@@ -1049,15 +1063,134 @@ fun BookmarkDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
                     )
                 }
+            } // End of below-title body Column
 
-                } // End of inner content Column beneath Header
-            } // End of content Box beneath Header
-
-                // Bottom spacer to prevent overlap with the toolbar
-                Spacer(modifier = Modifier.height(96.dp))
+            // Bottom spacer to prevent overlap with the toolbar
+            Spacer(modifier = Modifier.height(96.dp))
         }
     } // End of shared screen scaffold
 } // End of BookmarkDetailScreen
+
+/**
+ * Persistent top overlay for [BookmarkDetailScreen] providing a status-bar protection gradient scrim
+ * and fixed circular floating **Back** (top-left) and **Save** (top-right, floppy-disk icon) actions.
+ */
+@Composable
+private fun DetailFloatingHeaderOverlay(
+    onBackClick: () -> Unit,
+    backEnabled: Boolean,
+    showSave: Boolean,
+    saveEnabled: Boolean = false,
+    isSaving: Boolean = false,
+    topScrimColorProvider: () -> Color = { Color.Unspecified },
+    onSaveClick: () -> Unit = {}
+) {
+    val surfaces = currentThemeSurfaces()
+    val fallbackScrimColor = surfaces.canvasColor
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    Box(modifier = Modifier.fillMaxWidth()) {
+        // Permanent top status-bar protection gradient scrim (confined to the status bar + 8dp soft edge)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(statusBarHeight + 8.dp)
+                .drawWithCache {
+                    var cachedScrimBase = Color.Unspecified
+                    var cachedBrush: Brush? = null
+                    onDrawBehind {
+                        val provided = topScrimColorProvider()
+                        val scrimBase = if (provided != Color.Unspecified && provided != Color.Transparent) {
+                            provided
+                        } else {
+                            fallbackScrimColor
+                        }
+                        val existing = cachedBrush
+                        val brush = if (scrimBase != cachedScrimBase || existing == null) {
+                            cachedScrimBase = scrimBase
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.0f to scrimBase.copy(alpha = 0.68f),
+                                    0.72f to scrimBase.copy(alpha = 0.24f),
+                                    1.0f to Color.Transparent
+                                )
+                            ).also { cachedBrush = it }
+                        } else {
+                            existing
+                        }
+                        drawRect(brush = brush)
+                    }
+                }
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(
+                    start = HeaderDefaults.HorizontalPadding,
+                    end = HeaderDefaults.HorizontalPadding,
+                    top = 10.dp,
+                    bottom = 8.dp
+                ),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TidiloSurface(
+                onClick = onBackClick,
+                role = SurfaceRole.FLOATING_BAR,
+                state = ThemeSurfaceState(enabled = backEnabled),
+                blurBackground = true,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.common_back),
+                        tint = if (!backEnabled) {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+
+            if (showSave) {
+                TidiloSurface(
+                    onClick = onSaveClick,
+                    role = if (saveEnabled || isSaving) SurfaceRole.PRIMARY_ACTION else SurfaceRole.FLOATING_BAR,
+                    state = ThemeSurfaceState(enabled = saveEnabled, selected = saveEnabled),
+                    blurBackground = true,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = LocalContentColor.current
+                            )
+                        } else {
+                            Icon(
+                                imageVector = ImageVector.vectorResource(R.drawable.ic_save),
+                                contentDescription = stringResource(R.string.detail_save),
+                                tint = if (saveEnabled) {
+                                    LocalContentColor.current
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                },
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                Spacer(modifier = Modifier.size(48.dp))
+            }
+        }
+    }
+}
 /** Disposes the lookup with its editors and resets the snapshot on reopen or retry. */
 @Composable
 internal fun rememberEntityLibraryState(

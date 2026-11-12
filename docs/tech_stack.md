@@ -26,6 +26,7 @@ This document provides the canonical catalog of all programming languages, SDKs,
 | :--- | :--- | :--- | :--- |
 | **Compose BOM** | `2026.09.00` | `androidx-compose-bom` | Dependency management across Compose UI modules. |
 | **Compose UI & Foundation** | BOM managed | `androidx-ui`, `androidx-ui-graphics` | Declarative UI rendering, touch handling, layout primitives. |
+| **Haze backdrop blur** | `2.1.0` | `haze-blur` | Source-backed overlay and screen chrome frost. |
 | **Compose Material 3** | BOM managed (`1.4.0`) | `androidx-material3` | Material 3 components and design tokens. |
 | **Material Icons Extended** | BOM managed | `androidx-material-icons-extended` | Material icons (Search, History, OpenInNew, Tag, Folder, etc.). |
 | **Navigation Compose** | `2.10.2` | `androidx-navigation-compose` | In-app screen routing, type-safe arguments, animated transitions. |
@@ -37,6 +38,10 @@ This document provides the canonical catalog of all programming languages, SDKs,
 | **Room** | `2.8.5` | `androidx-room-runtime`, `androidx-room-ktx`, `androidx-room-compiler` | SQLite persistence, reactive DAOs, and flow queries. |
 | **WorkManager** | `2.12.0` | `androidx-work-runtime-ktx` | RSS daily/manual acquisition, transport-aware network constraints, persisted retries. |
 | **Core KTX** | `1.19.1` | `androidx-core-ktx` | Kotlin extensions for core Android platform APIs. |
+
+### Overlay blur
+
+Overlay backdrop blur uses `dev.chrisbanes.haze:haze-blur:2.1.0`, pinned in the version catalog and attached to the app implementation configuration by the root build script. It uses explicit sources for cross-window rendering; experimental Glass, native backdrops, and input sharing are not enabled. See [theme development](theme_development.md#add-a-blur-enabled-overlay) for integration and validation.
 
 ---
 

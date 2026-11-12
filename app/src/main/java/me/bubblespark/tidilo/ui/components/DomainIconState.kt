@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.components
 
+import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -17,9 +18,11 @@ import me.bubblespark.tidilo.data.DomainIconManager
 /** Keeps completion observations separate from the lifetime of a shared icon request. */
 @Composable
 internal fun rememberDomainIcon(
-    domain: String?, pageUrl: String? = null, allowNetwork: Boolean = true
+    domain: String?,
+    pageUrl: String? = null,
+    allowNetwork: Boolean = true,
+    context: Context = LocalContext.current
 ): State<ImageBitmap?> {
-    val context = LocalContext.current
     val generation by DomainIconManager.cacheGenerationState.collectAsStateWithLifecycle()
     return key(context, domain, pageUrl, generation, allowNetwork) {
         val cached = domain?.let { DomainIconManager.getCachedIconBitmap(it) }

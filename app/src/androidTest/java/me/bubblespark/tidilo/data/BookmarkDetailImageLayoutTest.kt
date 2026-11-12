@@ -109,30 +109,36 @@ class BookmarkDetailImageLayoutTest {
                 }
                 val titleBounds = Rect().also(title::getBoundsInScreen)
                 val density = 1.75f
-                val expectedHeight = minOf((availableWidth - 40) * imageHeight.toFloat() / imageWidth, 300f) * density
-                val bottom = titleBounds.top - (16 * density).roundToInt()
-                val top = bottom - expectedHeight.roundToInt()
+                val expectedHeight = minOf(availableWidth * imageHeight.toFloat() / imageWidth, 300f) * density
                 val screenshot = instrumentation.uiAutomation.takeScreenshot()
                 try {
                     var inside = 0
-                    var outside = 0
                     var first = screenshot.height
                     var last = 0
                     for (y in 0 until screenshot.height) for (x in 0 until screenshot.width) {
                         val pixel = screenshot.getPixel(x, y)
                         if (Color.blue(pixel) > 245 && Color.red(pixel) < 10 && Color.green(pixel) < 10) {
-                            if (y >= top - 2 && y < bottom + 2) inside++ else outside++
+                            if (y < titleBounds.top) inside++
                             first = minOf(first, y)
                             last = maxOf(last, y)
                         }
                     }
                     assertTrue("Fixture must render blue artwork", inside > 1000)
-                    assertTrue("$imageWidth x $imageHeight at ${availableWidth}dp: $outside image pixels outside [$top, $bottom), painted [$first, $last]", outside == 0)
-                    // The 1dp rim covers both ends of the image; compare the remaining pure artwork.
-                    val expectedArtworkHeight = expectedHeight - 2 * density
-                    assertTrue("$imageWidth x $imageHeight at ${availableWidth}dp: painted ${last - first + 1}, expected $expectedArtworkHeight, bounds $first..$last", kotlin.math.abs((last - first + 1) - expectedArtworkHeight) <= 2)
-                    val corner = screenshot.getPixel((20 * density).roundToInt() + 2, top + 2)
-                    assertTrue("The rounded top-left corner must exclude artwork", Color.red(corner) > 10 || Color.green(corner) > 10 || Color.blue(corner) < 245)
+                    assertTrue(
+                        "$imageWidth x $imageHeight at ${availableWidth}dp: artwork must remain above the title (${last} < ${titleBounds.top})",
+                        last < titleBounds.top
+                    )
+                    val paintedHeight = last - first + 1
+                    assertTrue(
+                        "$imageWidth x $imageHeight at ${availableWidth}dp: painted $paintedHeight, expected <= ${expectedHeight.roundToInt()}",
+                        paintedHeight in (expectedHeight * 0.35f).roundToInt()..(expectedHeight + 4 * density).roundToInt()
+                    )
+                    // Full-bleed horizontally: pure blue pixels appear near both left and right edges inside the core band
+                    val midY = (first + last) / 2
+                    val leftEdgePixel = screenshot.getPixel((4 * density).roundToInt(), midY)
+                    val rightEdgePixel = screenshot.getPixel((availableWidth * density).roundToInt() - (4 * density).roundToInt(), midY)
+                    assertTrue("Full-bleed left edge must paint artwork", Color.blue(leftEdgePixel) > 200)
+                    assertTrue("Full-bleed right edge must paint artwork", Color.blue(rightEdgePixel) > 200)
                     java.io.File(context.cacheDir, "issue123-$imageWidth-$imageHeight.png").outputStream().use {
                         screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
                     }

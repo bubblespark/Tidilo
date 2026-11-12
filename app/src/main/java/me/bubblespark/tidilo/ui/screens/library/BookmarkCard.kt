@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import android.content.Context
+
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.background
@@ -71,10 +73,10 @@ fun BookmarkItemCard(
     wordKeywords: List<String> = emptyList(),
     tagKeywords: List<String> = emptyList(),
     currentLanguage: AppLanguage = AppLanguage.ENGLISH,
+    context: Context = LocalContext.current,
     onClick: () -> Unit = {},
     onToggleLike: () -> Unit = {}
 ) {
-    val context = LocalContext.current
     // Localized category and subcategory labels
     val localizedCategory = remember(bookmark.tag.category, context) {
         bookmark.tag.category?.let { Category.toLocalized(it, context) } ?: ""
@@ -117,7 +119,8 @@ fun BookmarkItemCard(
                 pageUrl = bookmark.url,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .offset(x = 36.dp, y = (-12).dp)
+                    .offset(x = 36.dp, y = (-12).dp),
+                context = context
             )
 
             Column(
@@ -350,42 +353,63 @@ fun BookmarkTagSection(
         }
 
         if (tag.entities.isNotEmpty()) {
-            val entityColors = resolveChipColors(
-                style = themeStyle.chipStyle,
-                categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f),
-                categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                fallbackContainerColor = chipNeutralContainer,
-                fallbackContentColor = chipEntityContent
+            BookmarkEntityChipsFlow(
+                entities = tag.entities,
+                tagKeywords = tagKeywords
             )
-            val matchedEntityColors = resolveChipColors(
-                style = themeStyle.chipStyle,
-                categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                fallbackContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                fallbackContentColor = MaterialTheme.colorScheme.onTertiaryContainer
-            )
+        }
+    }
+}
 
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                tag.entities.forEach { entity ->
-                    val cleanEntity = entity.removePrefix("#")
-                    val isEntityMatched = if (tagKeywords.isEmpty()) false else tagKeywords.any { it.equals(cleanEntity, ignoreCase = true) }
-                    CompactTagBadge(
-                        icon = Icons.Default.Tag,
-                        text = cleanEntity,
-                        role = SurfaceRole.ENTITY_CHIP,
-                        iconTint = currentThemeSurfaces().entityChipIconTint,
-                        isMatched = isEntityMatched,
-                        containerColor = entityColors.containerColor,
-                        contentColor = entityColors.contentColor,
-                        matchedContainerColor = matchedEntityColors.containerColor,
-                        matchedContentColor = matchedEntityColors.contentColor
-                    )
-                }
-            }
+/**
+ * Shared entity chips FlowRow used by both [BookmarkTagSection] and [BookmarkDetailScreen].
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun BookmarkEntityChipsFlow(
+    entities: List<String>,
+    modifier: Modifier = Modifier,
+    tagKeywords: List<String> = emptyList()
+) {
+    if (entities.isEmpty()) return
+    val surfaces = currentThemeSurfaces()
+    val themeStyle = surfaces.preset
+    val chipNeutralContainer = surfaces.resolve(SurfaceRole.CLASSIFICATION_CHIP).containerColor
+    val chipEntityContent = surfaces.resolve(SurfaceRole.ENTITY_CHIP).contentColor
+    val entityColors = resolveChipColors(
+        style = themeStyle.chipStyle,
+        categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f),
+        categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        fallbackContainerColor = chipNeutralContainer,
+        fallbackContentColor = chipEntityContent
+    )
+    val matchedEntityColors = resolveChipColors(
+        style = themeStyle.chipStyle,
+        categoryContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        categoryContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        fallbackContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        fallbackContentColor = MaterialTheme.colorScheme.onTertiaryContainer
+    )
+
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        entities.forEach { entity ->
+            val cleanEntity = entity.removePrefix("#")
+            val isEntityMatched = if (tagKeywords.isEmpty()) false else tagKeywords.any { it.equals(cleanEntity, ignoreCase = true) }
+            CompactTagBadge(
+                icon = Icons.Default.Tag,
+                text = cleanEntity,
+                role = SurfaceRole.ENTITY_CHIP,
+                iconTint = surfaces.entityChipIconTint,
+                isMatched = isEntityMatched,
+                containerColor = entityColors.containerColor,
+                contentColor = entityColors.contentColor,
+                matchedContainerColor = matchedEntityColors.containerColor,
+                matchedContentColor = matchedEntityColors.contentColor
+            )
         }
     }
 }

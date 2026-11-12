@@ -30,7 +30,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import me.bubblespark.tidilo.ui.components.TidiloModalBottomSheet
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.SurfaceVariant
 import me.bubblespark.tidilo.ui.theme.ThemeSurfaceState
@@ -72,7 +72,7 @@ fun EntityTagPickerBottomSheet(
         allEntities.distinct().sortedWith { a, b -> compareEntityNames(a, b) }
     }
 
-    ModalBottomSheet(
+    TidiloModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),

@@ -12,8 +12,8 @@ android {
         applicationId = "me.bubblespark.tidilo"
         minSdk = 34
         targetSdk = 36
-        versionCode = 60
-        versionName = "0.5.29"
+        versionCode = 61
+        versionName = "0.5.30"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

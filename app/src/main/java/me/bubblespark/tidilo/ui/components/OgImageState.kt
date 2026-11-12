@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.components
 
+import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.State
@@ -66,9 +67,9 @@ fun rememberOgImage(
     url: String,
     domain: String?,
     ogImageUrl: String?,
-    ogFilename: String?
+    ogFilename: String?,
+    context: Context = LocalContext.current
 ): State<OgImageState> {
-    val context = LocalContext.current
     val cacheGeneration by OgImageManager.cacheGenerationState.collectAsStateWithLifecycle()
 
     return key(context, url, domain, ogFilename, cacheGeneration) {

@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.components
 
+import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -21,8 +22,10 @@ internal data class FeedIconVisual(val bitmap: ImageBitmap?, val color: Color)
 
 /** Completion updates do not cancel the shared request; eviction changes producer identity. */
 @Composable
-internal fun rememberFeedIcon(feed: RssFeedEntity): State<FeedIconVisual> {
-    val context = LocalContext.current
+internal fun rememberFeedIcon(
+    feed: RssFeedEntity,
+    context: Context = LocalContext.current
+): State<FeedIconVisual> {
     val generation by DomainIconManager.cacheGenerationState.collectAsStateWithLifecycle()
     val identity = DomainIconManager.feedIconKey(feed)
     val publisher = DomainIconManager.feedPublisherDomain(feed)

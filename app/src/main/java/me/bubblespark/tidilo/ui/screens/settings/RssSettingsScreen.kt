@@ -1,5 +1,12 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import android.content.Context
+import androidx.compose.ui.platform.LocalContext
+
+import me.bubblespark.tidilo.ui.components.TidiloModalBottomSheet
+
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
+
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.components.TidiloSurface
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
@@ -91,7 +98,7 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
 @Composable
 internal fun RssInitialFetchDialog(mobileNotice: Boolean, connected: Boolean, busy: Boolean,
     onFetch: () -> Unit, onLater: () -> Unit) {
-    AlertDialog(
+    TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = { if (!busy) onLater() }, title = { Text(stringResource(R.string.rss_initial_title)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -105,7 +112,7 @@ internal fun RssInitialFetchDialog(mobileNotice: Boolean, connected: Boolean, bu
 
 @Composable
 internal fun RssRegistrationDialog(count: Int, busy: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
+    TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = onDismiss, title = { Text(stringResource(R.string.rss_register_existing_title)) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -125,6 +132,7 @@ internal fun RssSettingsContent(
     onFetch: () -> Unit, onDismissError: () -> Unit, onEnabled: (String, Boolean) -> Unit = { _, _ -> },
     manualFetch: ManualFetchStatus = ManualFetchStatus.Idle
 ) {
+    val context = LocalContext.current
     var showTime by rememberSaveable { mutableStateOf(false) }
     var timeToEdit by rememberSaveable { mutableStateOf<Int?>(null) }
     var deletingTriggerMinute by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -238,8 +246,14 @@ internal fun RssSettingsContent(
                 is StorageLoad.Ready -> {
                     if (ready.isEmpty()) item(key = "empty") { RssCard { Text(stringResource(R.string.rss_no_feeds)) } }
                     items(ready, key = { "feed:${it.id}" }, contentType = { "feed" }) { feed ->
-                            RssFeedCard(feed, busy, onEdit = { editingId = feed.id; showEditor = true },
-                                onDelete = { deletingId = feed.id }, onEnabled = { onEnabled(feed.id, it) })
+                            RssFeedCard(
+                                feed = feed,
+                                busy = busy,
+                                onEdit = { editingId = feed.id; showEditor = true },
+                                onDelete = { deletingId = feed.id },
+                                onEnabled = { onEnabled(feed.id, it) },
+                                context = context
+                            )
                     }
                 }
             }
@@ -261,7 +275,7 @@ internal fun RssSettingsContent(
         LaunchedEffect(settings.triggerTimes, minute) {
             if (trigger !in settings.triggerTimes) deletingTriggerMinute = null
         }
-        if (trigger in settings.triggerTimes) AlertDialog(
+        if (trigger in settings.triggerTimes) TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
             onDismissRequest = { deletingTriggerMinute = null },
@@ -285,7 +299,7 @@ internal fun RssSettingsContent(
         LaunchedEffect(settings.triggerTimes, original) {
             if ((original != null && original !in settings.triggerTimes) || (original == null && settings.triggerTimes.size >= 3)) showTime = false
         }
-        AlertDialog(
+        TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = { showTime = false }, title = { Text(stringResource(R.string.rss_trigger_time)) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -309,7 +323,7 @@ internal fun RssSettingsContent(
         showEditor = false
     }
     deleting?.let { feed ->
-        AlertDialog(
+        TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,onDismissRequest = { deletingId = null }, title = { Text(stringResource(R.string.rss_delete)) },
             text = { Text(stringResource(R.string.rss_delete_note)) },
@@ -351,9 +365,15 @@ private fun RssPreferenceIcon(icon: androidx.compose.ui.graphics.vector.ImageVec
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
-private fun RssFeedCard(feed: RssFeedEntity, busy: Boolean, onEdit: () -> Unit,
-    onDelete: () -> Unit, onEnabled: (Boolean) -> Unit) {
-    val icon by rememberFeedIcon(feed)
+private fun RssFeedCard(
+    feed: RssFeedEntity,
+    busy: Boolean,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onEnabled: (Boolean) -> Unit,
+    context: Context = LocalContext.current
+) {
+    val icon by rememberFeedIcon(feed, context = context)
     val enabledLabel = stringResource(R.string.rss_enabled)
     val deleteLabel = stringResource(R.string.rss_delete)
     Card(modifier = Modifier.fillMaxWidth().combinedClickable(enabled = !busy, onClick = onEdit, onLongClickLabel = deleteLabel,
@@ -403,7 +423,7 @@ private fun RssFeedCard(feed: RssFeedEntity, busy: Boolean, onEdit: () -> Unit,
 @Composable
 internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDelete: (() -> Unit)? = null, onSave: (String) -> Unit) {
     var url by rememberSaveable(original?.id) { mutableStateOf(original?.url.orEmpty()) }
-    ModalBottomSheet(
+    TidiloModalBottomSheet(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.SHEET).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.SHEET).shape,onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -20,8 +20,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -81,6 +79,7 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 /**
@@ -263,7 +262,7 @@ fun SearchScreen(
         filteredBookmarks.itemCount == 0 -> ({ EmptySearchResult(query = searchQuery) })
         else -> null
     }
-    TidiloScreenScaffold(
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), avoidIme = true,
         modifier = modifier.clickable(
             interactionSource = remember { MutableInteractionSource() }, indication = null
         ) { focusManager.clearFocus() },
@@ -302,7 +301,7 @@ fun SearchScreen(
         }) },
         overlay = { BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null } }
     ) { contentPadding ->
-        BoxWithConstraints(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
             val showingHistory = searchQuery.isBlank()
             val showingGrid = !showingHistory && viewMode == LibraryViewMode.GRID
             val itemSpacing = if (showingHistory) 4.dp else if (showingGrid) 10.dp else 16.dp
@@ -446,6 +445,8 @@ fun SearchScreen(
                                 },
                                 onClick = {
                                     viewModel.addSearchHistory(searchQuery)
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
                                     onNavigateToDetail(item.id)
                                 }
                             )
@@ -459,6 +460,8 @@ fun SearchScreen(
                                 onToggleLike = { viewModel.toggleLike(item.id) },
                                 onClick = {
                                     viewModel.addSearchHistory(searchQuery)
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
                                     onNavigateToDetail(item.id)
                                 }
                             )
@@ -468,7 +471,7 @@ fun SearchScreen(
             }
             boundaryFeedback(filteredBookmarks.loadState.prepend, filteredBookmarks.loadState.append)?.let { state ->
                 PagingFeedback(state, filteredBookmarks::retry,
-                    Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
+                    Modifier.align(Alignment.BottomCenter).padding(bottom = contentPadding.calculateBottomPadding()))
             }
         }
     }

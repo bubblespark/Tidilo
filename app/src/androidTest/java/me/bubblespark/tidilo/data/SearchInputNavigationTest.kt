@@ -189,6 +189,7 @@ class SearchInputNavigationTest {
         }
         lateinit var vm: LibraryViewModel
         var contentReady = false
+        var phase = "launch"
         try {
             host.main {
                 vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
@@ -202,6 +203,7 @@ class SearchInputNavigationTest {
             withTimeout(3000) { while (!contentReady) delay(20) }
 
             // 1. Taps the library_search_action button, awaits SearchScreen, and asserts input is focused
+            phase = "library search action"
             val searchAction = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_search_action" }
             host.main { click(searchAction) }
             val searchInput1 = host.await(activity) {
@@ -210,6 +212,7 @@ class SearchInputNavigationTest {
             assertNotNull(searchInput1)
 
             // 2. Taps the Tag Selection button, awaits TagSelectionScreen, taps Back button, and asserts input is focused again
+            phase = "tag selection"
             val tagSelectionBtn = host.await(activity) {
                 host.description(it, host.context.getString(R.string.search_tag_selection_content_desc))
             }
@@ -219,30 +222,51 @@ class SearchInputNavigationTest {
                 host.description(it, host.context.getString(R.string.tag_selection_back_and_apply))
             }
             host.main { click(backFromTags) }
+            phase = "search after tags"
             val searchInput2 = host.await(activity) {
                 it.config.getOrNull(SemanticsProperties.EditableText) != null && it.config.getOrNull(SemanticsProperties.Focused) == true
             }
             assertNotNull(searchInput2)
 
             // 3. Navigates back to Library, opens the Navigation Rail, taps Search item, and asserts input is focused
+            phase = "back to Library"
             val backToLibrary = host.await(activity) {
                 host.description(it, host.context.getString(R.string.common_back))
             }
             host.main { click(backToLibrary) }
+            phase = "open rail"
             val railOpen = host.await(activity) {
                 host.description(it, host.context.getString(R.string.navigation_open))
             }
             host.main { click(railOpen) }
-            val railSearch = host.await(activity) {
+            phase = "rail search"
+            host.await(activity) {
                 host.text(it, host.context.getString(R.string.nav_search))
             }
-            host.main { click(railSearch) }
+            // Semantic actions bypass native animation gating; wait for the rail item to settle.
+            withTimeout(5000) {
+                var previous = androidx.compose.ui.geometry.Rect.Zero
+                var stable = 0
+                while (stable < 4) {
+                    host.main {
+                        val current = host.nodes(activity).lastOrNull { host.text(it, host.context.getString(R.string.nav_search)) }
+                        val bounds = current?.boundsInWindow ?: androidx.compose.ui.geometry.Rect.Zero
+                        stable = if (bounds.height > 0 && bounds == previous) stable + 1 else 0
+                        previous = bounds
+                    }
+                    delay(40)
+                }
+            }
+            val settledRailSearch = host.await(activity) { host.text(it, host.context.getString(R.string.nav_search)) }
+            host.main { click(settledRailSearch) }
+            phase = "search after rail"
             val searchInput3 = host.await(activity) {
                 it.config.getOrNull(SemanticsProperties.EditableText) != null && it.config.getOrNull(SemanticsProperties.Focused) == true
             }
             assertNotNull(searchInput3)
 
             // 4. Bookmark Detail round-trip: scroll search results, open detail, navigate back, and verify scroll position is restored, focus is NOT requested, and IME remains hidden
+            phase = "detail fixtures"
             val db = AppDatabase.getInstance(host.context)
             val prefix = "search-detail-${UUID.randomUUID()}"
             val fixtureIds = (0..15).map { "$prefix-$it" }
@@ -286,7 +310,8 @@ class SearchInputNavigationTest {
                     host.description(it, host.context.getString(R.string.common_back))
                 }
                 host.main { click(backFromDetail) }
-                val restored = host.await(activity) { host.text(it, visibleTitle) }
+                phase = "detail return"
+            val restored = host.await(activity) { host.text(it, visibleTitle) && it.boundsInRoot.top > 0f && it.boundsInRoot.height > 0f }
                 assertEquals("Back from Detail must restore the same bookmark position", visibleTop, restored.boundsInRoot.top, 2f)
 
                 val inputAfterDetail = host.nodes(activity).firstOrNull {
@@ -306,6 +331,8 @@ class SearchInputNavigationTest {
             } finally {
                 fixtureIds.forEach { db.bookmarkDao().deleteById(it) }
             }
+        } catch (error: Throwable) {
+            throw AssertionError("Search route phase: $phase", error)
         } finally {
             host.main {
                 activity.setContent { }

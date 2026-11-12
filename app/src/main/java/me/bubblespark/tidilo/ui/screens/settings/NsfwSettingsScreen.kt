@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.ui.screens.settings
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 import kotlinx.coroutines.launch
@@ -18,7 +19,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -77,7 +77,7 @@ fun NsfwSettingsScreen(
         DomainPolicyManager.syncDomains(domains)
     }
 
-    TidiloScreenScaffold(
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), 
         modifier = modifier,
         hideHeaderOnScroll = false,
         // Header with Back button
@@ -91,7 +91,7 @@ fun NsfwSettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
+                
                 .verticalScroll(rememberScrollState())
                 .padding(contentPadding)
         ) {

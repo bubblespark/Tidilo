@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -45,6 +44,7 @@ import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.AiCoreAvailability
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 /** Availability restricts selection without changing the user's persisted mode. */
@@ -87,11 +87,11 @@ internal fun AiAnalysisContent(
     onNavigateToSafety: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    TidiloScreenScaffold(modifier = modifier, header = {
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), modifier = modifier, header = {
         TidiloPageHeader(title = stringResource(R.string.settings_ai_analysis_title), onNavigateBack = onNavigateBack)
     }) { contentPadding ->
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding)
-            .navigationBarsPadding().padding(bottom = 32.dp)) {
+            .padding(bottom = 32.dp)) {
             SettingsSectionTitle(stringResource(R.string.settings_ai_analysis_using_model_title))
             AiModelChoices(mode, available, onModeChange)
             AnimatedVisibility(visible = mode == AiAnalysisMode.AICORE,

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -55,6 +54,7 @@ import me.bubblespark.tidilo.config.AppLanguage
 import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 @Composable
@@ -76,11 +76,11 @@ fun SettingsScreen(
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
 
-    TidiloScreenScaffold(modifier = modifier, header = {
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), modifier = modifier, header = {
         TidiloPageHeader(title = stringResource(R.string.settings_title), onNavigateBack = onNavigateBack)
     }) { contentPadding ->
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding)
-            .navigationBarsPadding().padding(bottom = 32.dp)) {
+            .padding(bottom = 32.dp)) {
             SettingsSectionTitle(stringResource(R.string.settings_section_general))
             SettingsGroup {
                 SettingsNavigationRow(stringResource(R.string.settings_language_title), currentLanguage.displayName,

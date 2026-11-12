@@ -14,6 +14,8 @@ import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
+import me.bubblespark.tidilo.ui.components.screenActionInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 
@@ -144,7 +146,7 @@ internal fun RssSettingsContent(
     val editing = readyFeeds.firstOrNull { it.id == editingId }
     val deleting = readyFeeds.firstOrNull { it.id == deletingId }
     val listState = rememberLazyListState()
-    TidiloScreenScaffold(
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), bottomContentPadding = HeaderDefaults.RssActionClearance, 
         hideHeaderOnScroll = false,
         header = {
             TidiloPageHeader(
@@ -152,12 +154,23 @@ internal fun RssSettingsContent(
                 onNavigateBack = onBack,
                 scrollState = listState
             )
+        },
+        overlay = {
+        FloatingActionButton(onClick = { if (!busy) { editingId = null; showEditor = true } },
+            modifier = Modifier.align(Alignment.BottomEnd).screenActionInsets()
+                .padding(end = HeaderDefaults.HorizontalPadding + 16.dp, bottom = 16.dp).size(HeaderDefaults.RssActionSize)
+                .semantics { if (busy) disabled() },
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp)) {
+            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.rss_add_feed))
+        }
         }
     ) { contentPadding ->
         Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize().navigationBarsPadding(), state = listState,
-            contentPadding = PaddingValues(start = HeaderDefaults.HorizontalPadding, end = HeaderDefaults.HorizontalPadding,
-                top = contentPadding.calculateTopPadding(), bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState,
+            contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item(key = "schedule-heading") {
             Text(stringResource(R.string.rss_schedule), style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
@@ -258,16 +271,7 @@ internal fun RssSettingsContent(
                 }
             }
         }
-        FloatingActionButton(onClick = { if (!busy) { editingId = null; showEditor = true } },
-            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
-                .padding(end = HeaderDefaults.HorizontalPadding + 16.dp, bottom = 16.dp)
-                .semantics { if (busy) disabled() },
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            shape = CircleShape,
-            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp)) {
-            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.rss_add_feed))
-        }
+
         }
     }
     deletingTriggerMinute?.let { minute ->

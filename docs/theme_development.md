@@ -127,3 +127,10 @@ Validate underlying-body motion, foreground isolation, source loss, concurrent d
 - Build the debug and instrumentation APKs with `./gradlew assembleDebug assembleDebugAndroidTest`. Follow the project emulator workflow to install the debug build with app data retained. AICore-dependent verification requires a supported physical device.
 - Use `ThemeSurfaceParityTest` to capture the component catalogue and `ThemeSurfaceDrawingTest` and `ThemeConsumerRegressionTest` to check real rendering and consumer behavior. `ThemeSwitchLifecycleTest` covers persisted selection and state retention during theme changes. A resolver assertion checks values only. Inspect the rendered consumer when changing contrast, alpha, shape, or drawing.
 - Check light and dark mode, selected and disabled states, content contrast, large text and narrow layouts, and overlays where the affected roles are used. For a visual preservation claim, capture before and after on the same device with the same theme, wallpaper, font scale, and fixture data. The catalogue produces captures for inspection. Pixel comparison and frame profiling are separate checks.
+
+
+## Preserve adaptive screen geometry
+
+Screen backgrounds and chrome capture sources stay full-window. Opt screen bodies into `TidiloScreenScaffold` system/cutout insets and pass its padding into lazy `contentPadding` or inside ordinary scrolling content. `bottomContentPadding` is app-only spacing; do not pass an already-inset value. Input bodies set `avoidIme = true` and leave keyboard padding to the scaffold. Its single `imePadding` owner avoids the lateral-transition narrowing observed with an IME ruler.
+
+Apply `screenActionInsets` independently to floating controls. The shared header protects its foreground row while frost/gradient backgrounds remain full width. Detail artwork remains full bleed; only its text and controls receive safe margins. Native overlay windows keep Material3's own inset handling and must not inherit screen content padding. Verify Default/Modern, light/dark, both navigation modes, portrait/landscape, large text, IME show/hide, and blur ON/OFF without changing native overlay modifier order.

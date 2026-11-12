@@ -1,8 +1,6 @@
 package me.bubblespark.tidilo.ui.components
 
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalDensity
@@ -17,7 +15,15 @@ object HeaderDefaults {
     val DecayOverlap = 6.dp
     val ClearanceGap = 6.dp
     val HorizontalPadding = 20.dp
-    val BottomNavigationPadding = 140.dp
+    val LibraryActionSize = 56.dp
+    val LibraryActionClearance = LibraryActionSize + 24.dp + 24.dp
+    val AiReviewActionSize = 86.dp
+    val AiReviewActionClearance = AiReviewActionSize + 16.dp + 16.dp
+    val DetailActionSize = 54.dp
+    fun detailToolbarOffset(windowWidth: Dp, horizontalInsets: Dp): Dp = if (windowWidth - horizontalInsets >= 368.dp) 32.dp else 0.dp
+    val DetailActionClearance = DetailActionSize + 31.dp + 16.dp
+    val RssActionSize = 56.dp
+    val RssActionClearance = RssActionSize + 16.dp + 16.dp
 
     @Composable
     fun rowHeight(): Dp {
@@ -30,6 +36,6 @@ object HeaderDefaults {
     }
 
     @Composable
-    fun bodyTopPadding(): Dp = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+    fun bodyTopPadding(): Dp = screenSystemInsets().asPaddingValues().calculateTopPadding() +
         rowHeight() + FadeHeight + ClearanceGap
 }

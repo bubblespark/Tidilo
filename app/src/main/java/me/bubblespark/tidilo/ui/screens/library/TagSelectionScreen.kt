@@ -7,6 +7,7 @@ import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
@@ -22,7 +23,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -216,7 +216,7 @@ fun TagSelectionScreen(
         applyAndNavigateBack()
     }
 
-    TidiloScreenScaffold(
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), avoidIme = true,
         modifier = modifier,
         hideHeaderOnScroll = false,
         header = {
@@ -276,7 +276,7 @@ fun TagSelectionScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
+
                 .verticalScroll(rememberScrollState())
                 .padding(contentPadding)
         ) {

@@ -29,6 +29,8 @@ import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.db.TrashBookmarkRow
 import me.bubblespark.tidilo.data.db.TrashMutationResult
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
+import me.bubblespark.tidilo.ui.components.screenActionInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
@@ -65,7 +67,7 @@ fun TrashScreen(onNavigateBack: () -> Unit,
     Box(modifier.fillMaxSize()) {
         TrashContent(state, onNavigateBack, viewModel::requestAction,
             viewModel::dismissConfirmation, viewModel::confirmAction, viewModel::retry)
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).screenActionInsets())
     }
 }
 
@@ -75,8 +77,8 @@ fun TrashContent(state: TrashUiState, onBack: () -> Unit,
     onConfirm: () -> Unit, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     LocalConfiguration.current
     val zone = ZoneId.systemDefault()
-    TidiloScreenScaffold(header = { TidiloPageHeader(stringResource(R.string.trash_title), onBack, raisedTitle = true) },
-        modifier = modifier, bottomContentPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp) { padding ->
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), header = { TidiloPageHeader(stringResource(R.string.trash_title), onBack, raisedTitle = true) },
+        modifier = modifier, bottomContentPadding = 24.dp) { padding ->
         when {
             state.loading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             state.error != null && state.confirmation == null -> Column(

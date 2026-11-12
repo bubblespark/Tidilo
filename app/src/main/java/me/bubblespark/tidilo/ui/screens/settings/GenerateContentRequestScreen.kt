@@ -8,6 +8,7 @@ import me.bubblespark.tidilo.ui.theme.ThemeSurfaceState
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 import androidx.compose.foundation.layout.Arrangement
@@ -17,7 +18,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -71,7 +71,7 @@ fun GenerateContentRequestScreen(
     var showResetConfirmDialog by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
-    TidiloScreenScaffold(
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), avoidIme = true,
         modifier = modifier,
         hideHeaderOnScroll = false,
         // Top Header: Back Button, Title, Default Button
@@ -97,7 +97,7 @@ fun GenerateContentRequestScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
+
         ) {
             // Parameter Items List (1 parameter 2 lines)
             LazyColumn(

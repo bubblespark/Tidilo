@@ -6,6 +6,10 @@ import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
+import me.bubblespark.tidilo.ui.components.screenActionInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import kotlinx.coroutines.ensureActive
 import androidx.compose.material.icons.filled.Star
@@ -23,9 +27,8 @@ import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.ui.util.TimeFormatter
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
@@ -47,7 +50,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -70,8 +72,6 @@ import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
@@ -172,7 +172,7 @@ fun BookmarkDetailScreen(
         }
     }
     if (detailState.loading || detailState.error != null || bookmark == null) {
-        TidiloScreenScaffold(
+        TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(),
             modifier = modifier,
             header = {
                 DetailFloatingHeaderOverlay(
@@ -299,7 +299,7 @@ fun BookmarkDetailScreen(
     val ogBitmap = ogState.bitmap
     val heroPaletteState = rememberDetailHeroPalette(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
     val detailAccent = remember(heroPaletteState) { derivedStateOf { heroPaletteState.value.accentColor } }
-    val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBarTopPadding = screenSystemInsets().asPaddingValues().calculateTopPadding()
     val surfaces = currentThemeSurfaces()
     val darkLighting = surfaces.isDark
 
@@ -312,8 +312,10 @@ fun BookmarkDetailScreen(
         showTagEditDialog = true
     }
 
-    TidiloScreenScaffold(
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(),
         modifier = modifier,
+        avoidIme = true,
+        bottomContentPadding = if (isImeVisible) 0.dp else HeaderDefaults.DetailActionClearance,
         bodyModifier = Modifier.detailAmbientLight(
             color = detailAccent,
             dark = darkLighting,
@@ -357,10 +359,14 @@ fun BookmarkDetailScreen(
             )
         },
         overlay = {
+            if (!isImeVisible) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val toolbarOffset = if (maxWidth >= 368.dp) 32.dp else 0.dp
+                val safePadding = screenSystemInsets().asPaddingValues()
+                val layoutDirection = LocalLayoutDirection.current
+                val horizontalInsets = safePadding.calculateLeftPadding(layoutDirection) + safePadding.calculateRightPadding(layoutDirection)
+                val toolbarOffset = HeaderDefaults.detailToolbarOffset(maxWidth, horizontalInsets)
                 Row(
-                    modifier = Modifier.fillMaxSize().navigationBarsPadding()
+                    modifier = Modifier.fillMaxSize().screenActionInsets()
                         .padding(start = 12.dp, end = 12.dp, bottom = 31.dp)
                         .offset(x = toolbarOffset),
                     horizontalArrangement = Arrangement.Center,
@@ -369,25 +375,25 @@ fun BookmarkDetailScreen(
                     TidiloSurface(role = SurfaceRole.TOOLBAR, blurBackground = true) {
                         Box {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(54.dp)) {
+                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(HeaderDefaults.DetailActionSize)) {
                                     Icon(ImageVector.vectorResource(R.drawable.ic_delete),
                                         contentDescription = stringResource(R.string.detail_action_delete),
                                         tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
                                 }
-                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { onNavigateToAiReview(bookmark.id) }, modifier = Modifier.size(54.dp)) {
+                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { onNavigateToAiReview(bookmark.id) }, modifier = Modifier.size(HeaderDefaults.DetailActionSize)) {
                                     Icon(Icons.Default.AutoAwesome,
                                         contentDescription = stringResource(R.string.detail_action_ai_summary),
                                         modifier = Modifier.size(22.dp))
                                 }
                                 TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showCollectionMembership = true },
-                                    modifier = Modifier.size(54.dp).semantics { selected = hasCollection }) {
+                                    modifier = Modifier.size(HeaderDefaults.DetailActionSize).semantics { selected = hasCollection }) {
                                     Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
                                         contentDescription = stringResource(R.string.bookmark_collection_action),
                                         tint = if (hasCollection) collectionMembershipColor(MaterialTheme.colorScheme.surfaceContainerHighest)
                                             else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(22.dp))
                                 }
-                                TidiloIconToggleButton(role = SurfaceRole.LIKE_ACTION, checked = bookmark.isLiked, onCheckedChange = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(54.dp)) {
+                                TidiloIconToggleButton(role = SurfaceRole.LIKE_ACTION, checked = bookmark.isLiked, onCheckedChange = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(HeaderDefaults.DetailActionSize)) {
                                     Icon(
                                         imageVector = if (bookmark.isLiked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
                                         contentDescription = stringResource(if (bookmark.isLiked) R.string.bookmark_unlike else R.string.bookmark_like),
@@ -404,7 +410,7 @@ fun BookmarkDetailScreen(
                         role = SurfaceRole.PRIMARY_ACTION,
                         blurBackground = true,
                         variant = SurfaceVariant.COMPACT,
-                        modifier = Modifier.size(54.dp)
+                        modifier = Modifier.size(HeaderDefaults.DetailActionSize)
                     ) {
                         Box(modifier = Modifier.fillMaxSize()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -416,6 +422,8 @@ fun BookmarkDetailScreen(
                         }
                     }
                 }
+            }
+
             }
 
             // Discard changes confirmation dialog
@@ -592,11 +600,10 @@ fun BookmarkDetailScreen(
                 )
             }
         }
-    ) { _ ->
+    ) { contentPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
                 .pointerInput(Unit) {
                     detectTapGestures(onTap = {
                         focusManager.clearFocus()
@@ -751,6 +758,7 @@ fun BookmarkDetailScreen(
                                     }
                                 }
                             }
+                            .padding(screenSystemInsets().only(WindowInsetsSides.Horizontal).asPaddingValues())
                             .padding(
                                 start = HeaderDefaults.HorizontalPadding,
                                 end = HeaderDefaults.HorizontalPadding,
@@ -798,6 +806,7 @@ fun BookmarkDetailScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(screenSystemInsets().only(WindowInsetsSides.Horizontal).asPaddingValues())
                     .padding(horizontal = HeaderDefaults.HorizontalPadding)
             ) {
                 // 4. Below-Title Entity-Only Tag Row + Edit Button
@@ -1066,7 +1075,7 @@ fun BookmarkDetailScreen(
             } // End of below-title body Column
 
             // Bottom spacer to prevent overlap with the toolbar
-            Spacer(modifier = Modifier.height(96.dp))
+            Spacer(modifier = Modifier.height(contentPadding.calculateBottomPadding()))
         }
     } // End of shared screen scaffold
 } // End of BookmarkDetailScreen
@@ -1087,7 +1096,7 @@ private fun DetailFloatingHeaderOverlay(
 ) {
     val surfaces = currentThemeSurfaces()
     val fallbackScrimColor = surfaces.canvasColor
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBarHeight = screenSystemInsets().asPaddingValues().calculateTopPadding()
     Box(modifier = Modifier.fillMaxWidth()) {
         // Permanent top status-bar protection gradient scrim (confined to the status bar + 8dp soft edge)
         Box(
@@ -1125,7 +1134,7 @@ private fun DetailFloatingHeaderOverlay(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
+                .windowInsetsPadding(screenSystemInsets().only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .padding(
                     start = HeaderDefaults.HorizontalPadding,
                     end = HeaderDefaults.HorizontalPadding,

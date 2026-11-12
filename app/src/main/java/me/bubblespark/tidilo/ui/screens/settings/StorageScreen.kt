@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -68,6 +67,7 @@ import me.bubblespark.tidilo.data.CacheStorageSnapshot
 import me.bubblespark.tidilo.data.CollectionCounts
 import me.bubblespark.tidilo.data.formatCacheBytes
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 @Composable
@@ -105,7 +105,7 @@ internal fun StorageContent(
     val context = LocalContext.current
     var showClearCacheConfirmDialog by rememberSaveable { mutableStateOf(false) }
 
-    TidiloScreenScaffold(
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), 
         hideHeaderOnScroll = false,
         header = {
             TidiloPageHeader(
@@ -117,7 +117,7 @@ internal fun StorageContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
+                
                 .verticalScroll(rememberScrollState())
                 .padding(contentPadding)
                 .padding(vertical = 8.dp),

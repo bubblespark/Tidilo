@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
+import me.bubblespark.tidilo.ui.components.screenActionInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
 import java.time.ZoneId
@@ -42,7 +44,7 @@ fun NotificationScreen(viewModel: ImportViewModel, onNavigateBack: () -> Unit,
                 val notification = row.notification
                 viewModel.findBookmarkIdByUrl(notification.url) { id -> id?.let(onNavigateToDetail) }
             })
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).screenActionInsets())
     }
 }
 
@@ -52,11 +54,11 @@ fun NotificationContent(items: List<NotificationListItem>, canClear: Boolean, bu
     onDelete: (NotificationListItem) -> Unit, onOpen: (NotificationListItem.History) -> Unit) {
     LocalConfiguration.current
     val zone = ZoneId.systemDefault()
-    TidiloScreenScaffold(header = {
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), header = {
         TidiloPageHeader(stringResource(R.string.settings_notification_title), onBack, actions = {
             TextButton(onClick = onClear, enabled = canClear) { Text(stringResource(R.string.common_clear)) }
         })
-    }, bottomContentPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp) { padding ->
+    }, bottomContentPadding = 24.dp) { padding ->
         if (items.isEmpty()) Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
             Text(stringResource(R.string.notification_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {

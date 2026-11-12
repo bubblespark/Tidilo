@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -45,7 +47,7 @@ fun TidiloFrostedHeader(
     val haptic = LocalHapticFeedback.current
     FrostedHeaderContainer(modifier, scrollState = scrollState) {
         Row(
-            Modifier.fillMaxWidth().statusBarsPadding()
+            Modifier.fillMaxWidth().windowInsetsPadding(screenSystemInsets().only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .height(HeaderDefaults.rowHeight())
                 .padding(horizontal = HeaderDefaults.HorizontalPadding),
             verticalAlignment = Alignment.CenterVertically

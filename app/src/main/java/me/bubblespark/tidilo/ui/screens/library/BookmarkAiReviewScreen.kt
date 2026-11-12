@@ -6,6 +6,9 @@ import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.HeaderDefaults
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
+import me.bubblespark.tidilo.ui.components.screenActionInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import kotlinx.coroutines.launch
@@ -25,7 +28,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -114,7 +116,7 @@ fun BookmarkAiReviewScreen(
     val detailState by detailFlow.collectAsStateWithLifecycle(initialValue = BookmarkDetailState())
     val bookmark = detailState.bookmark
     if (detailState.loading || detailState.error != null || bookmark == null) {
-        TidiloScreenScaffold(
+        TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), 
             modifier = modifier,
             header = { TidiloPageHeader(stringResource(R.string.ai_review_title), onNavigateBack, raisedTitle = true) }
         ) { padding ->
@@ -156,8 +158,9 @@ fun BookmarkAiReviewScreen(
         )
     }
 
-    TidiloScreenScaffold(
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), 
         modifier = modifier,
+        bottomContentPadding = if (uiState is AiReviewUiState.Success) HeaderDefaults.AiReviewActionClearance else 0.dp,
         hideHeaderOnScroll = false,
         header = {
             TidiloFrostedHeader(
@@ -200,7 +203,7 @@ fun BookmarkAiReviewScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .navigationBarsPadding()
+                        .screenActionInsets()
                         .padding(bottom = 16.dp, end = 16.dp),
                     contentAlignment = Alignment.BottomEnd
                 ) {
@@ -247,7 +250,7 @@ fun BookmarkAiReviewScreen(
                                 }
                             }
                         },
-                        modifier = Modifier.size(86.dp),
+                        modifier = Modifier.size(HeaderDefaults.AiReviewActionSize),
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.primaryContainer,
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -510,7 +513,7 @@ fun BookmarkAiReviewScreen(
                     }
 
                     // Space for floating check button
-                    Spacer(modifier = Modifier.height(130.dp))
+                    
                 }
             }
         }

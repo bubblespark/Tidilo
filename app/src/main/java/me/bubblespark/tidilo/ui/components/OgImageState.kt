@@ -4,12 +4,10 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.State
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineStart
@@ -68,10 +66,9 @@ fun rememberOgImage(
     domain: String?,
     ogImageUrl: String?,
     ogFilename: String?,
-    context: Context = LocalContext.current
+    context: Context = LocalContext.current,
+    cacheGeneration: Long = LocalOgImageCacheGeneration.current
 ): State<OgImageState> {
-    val cacheGeneration by OgImageManager.cacheGenerationState.collectAsStateWithLifecycle()
-
     return key(context, url, domain, ogFilename, cacheGeneration) {
         val cached = if (domain != null && ogFilename != null) OgImageManager.getCachedOgImageBitmap(domain, ogFilename) else null
         produceState(initialValue = initialOgImageState(cached, ogFilename)) {

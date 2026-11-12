@@ -5,6 +5,7 @@ import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 import android.content.ClipData
@@ -19,7 +20,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -89,7 +89,7 @@ fun SettingsDebugScreen(
     var selectedLog by remember { mutableStateOf<CrashLogEntry?>(null) }
     var showClearConfirmDialog by remember { mutableStateOf(false) }
 
-    TidiloScreenScaffold(
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), avoidIme = true,
         modifier = modifier,
         hideHeaderOnScroll = false,
         // Top Header
@@ -112,7 +112,7 @@ fun SettingsDebugScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
+
                 .verticalScroll(rememberScrollState())
                 .padding(contentPadding)
         ) {

@@ -19,6 +19,8 @@ object HeaderDefaults {
     val LibraryActionClearance = LibraryActionSize + 24.dp + 24.dp
     val AiReviewActionSize = 86.dp
     val AiReviewActionClearance = AiReviewActionSize + 16.dp + 16.dp
+    val DetailActionSize = 54.dp
+    val DetailActionClearance = DetailActionSize + 31.dp + 16.dp
     val RssActionSize = 56.dp
     val RssActionClearance = RssActionSize + 16.dp + 16.dp
 

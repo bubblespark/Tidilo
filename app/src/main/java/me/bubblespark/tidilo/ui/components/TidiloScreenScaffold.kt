@@ -13,14 +13,13 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.exclude
-import androidx.compose.foundation.layout.fitInside
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.onConsumedWindowInsetsChanged
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.layout.WindowInsetsRulers
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.PaddingValues
@@ -65,7 +64,7 @@ fun TidiloScreenScaffold(
         Box(modifier.fillMaxSize().onConsumedWindowInsetsChanged { consumedInsets = it }) {
             Box(Modifier.fillMaxSize().screenBackdropSource(backdrop).then(bodyModifier)) {
                 Box(Modifier.fillMaxSize()
-                    .then(if (avoidIme) Modifier.fitInside(WindowInsetsRulers.Ime.current) else Modifier)
+                    .then(if (avoidIme) Modifier.imePadding() else Modifier)
                     .consumeWindowInsets(bodyInsets)) { content(padding) }
             }
             ScaffoldHeaderVisibility(

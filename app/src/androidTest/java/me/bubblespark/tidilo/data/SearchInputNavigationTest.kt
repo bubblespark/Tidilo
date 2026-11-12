@@ -311,7 +311,7 @@ class SearchInputNavigationTest {
                 }
                 host.main { click(backFromDetail) }
                 phase = "detail return"
-            val restored = host.await(activity) { host.text(it, visibleTitle) }
+            val restored = host.await(activity) { host.text(it, visibleTitle) && it.boundsInRoot.top > 0f && it.boundsInRoot.height > 0f }
                 assertEquals("Back from Detail must restore the same bookmark position", visibleTop, restored.boundsInRoot.top, 2f)
 
                 val inputAfterDetail = host.nodes(activity).firstOrNull {

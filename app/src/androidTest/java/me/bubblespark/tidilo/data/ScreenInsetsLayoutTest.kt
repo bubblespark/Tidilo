@@ -49,6 +49,27 @@ class ScreenInsetsLayoutTest {
             }
         } finally { host.main { activity.finish() } }
     }
+    @Test fun consumedTopInsetDoesNotAddDuplicateClearance(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        try {
+            for (consumed in listOf(0, 100)) {
+                var top = 0f
+                var chrome = 0f
+                host.main { activity.setContent { MaterialTheme {
+                    val density = LocalDensity.current
+                    chrome = with(density) { (HeaderDefaults.rowHeight() + HeaderDefaults.FadeHeight + HeaderDefaults.ClearanceGap).toPx() }
+                    Box(Modifier.fillMaxSize().consumeWindowInsets(WindowInsets(top = consumed))) {
+                        TidiloScreenScaffold(header = {}, contentWindowInsets = WindowInsets(top = 100)) { padding ->
+                            Box(Modifier.fillMaxSize().padding(padding).onGloballyPositioned { top = it.boundsInWindow().top })
+                        }
+                    }
+                } } }
+                delay(400)
+                host.main { assertEquals(chrome + 100 - consumed, top, 1f) }
+            }
+        } finally { host.main { activity.finish() } }
+    }
     @Test fun lazyContentKeepsFullViewportAndClearsCaptionAndNavigationAreas(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()

@@ -49,17 +49,17 @@ fun TidiloScreenScaffold(
     val remaining = contentWindowInsets.exclude(consumedInsets)
     val bodyInsets = if (avoidIme) remaining.exclude(WindowInsets.ime) else remaining
     val safePadding = bodyInsets.asPaddingValues()
-    val legacyTop = HeaderDefaults.bodyTopPadding()
+    val legacyInsets = screenSystemInsets().exclude(consumedInsets).asPaddingValues()
     val headerClearance = HeaderDefaults.rowHeight() + HeaderDefaults.FadeHeight + HeaderDefaults.ClearanceGap
     // Keep inset reads in layout, and never consume app-specific header or action spacing.
-    val padding = object : PaddingValues {
+    val padding = remember(safePadding, legacyInsets, headerClearance, bottomContentPadding) { object : PaddingValues {
         override fun calculateLeftPadding(layoutDirection: LayoutDirection) =
             HeaderDefaults.HorizontalPadding + safePadding.calculateLeftPadding(layoutDirection)
         override fun calculateRightPadding(layoutDirection: LayoutDirection) =
             HeaderDefaults.HorizontalPadding + safePadding.calculateRightPadding(layoutDirection)
-        override fun calculateTopPadding() = maxOf(legacyTop, headerClearance + safePadding.calculateTopPadding())
+        override fun calculateTopPadding() = headerClearance + maxOf(legacyInsets.calculateTopPadding(), safePadding.calculateTopPadding())
         override fun calculateBottomPadding() = bottomContentPadding + safePadding.calculateBottomPadding()
-    }
+    } }
     ScreenBackdropScope { backdrop ->
         Box(modifier.fillMaxSize().onConsumedWindowInsetsChanged { consumedInsets = it }) {
             Box(Modifier.fillMaxSize().screenBackdropSource(backdrop).then(bodyModifier)) {

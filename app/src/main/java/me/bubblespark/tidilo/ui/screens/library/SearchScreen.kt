@@ -471,7 +471,7 @@ fun SearchScreen(
             }
             boundaryFeedback(filteredBookmarks.loadState.prepend, filteredBookmarks.loadState.append)?.let { state ->
                 PagingFeedback(state, filteredBookmarks::retry,
-                    Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
+                    Modifier.align(Alignment.BottomCenter).padding(bottom = contentPadding.calculateBottomPadding()))
             }
         }
     }

@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -98,6 +97,8 @@ import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.RememberAmbientLighting
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
+import me.bubblespark.tidilo.ui.components.screenSystemInsets
+import me.bubblespark.tidilo.ui.components.screenActionInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.rememberFeedIcon
 import me.bubblespark.tidilo.data.db.RssFeedEntity
@@ -298,15 +299,15 @@ fun LibraryScreen(
         }
     }
 
-    TidiloScreenScaffold(
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), 
         modifier = modifier,
         hideHeaderOnScroll = true,
-        bottomContentPadding = HeaderDefaults.BottomNavigationPadding,
+        bottomContentPadding = HeaderDefaults.LibraryActionClearance,
         headerVisible = peekBookmark == null,
         overlay = {
             if (peekBookmark == null && !showCollectionEditorSheet) {
                 me.bubblespark.tidilo.ui.navigation.LibrarySearchAction(onNavigateToSearch,
-                    Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 24.dp, bottom = 24.dp))
+                    Modifier.align(Alignment.BottomEnd).screenActionInsets().padding(end = 24.dp, bottom = 24.dp))
             }
             BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null }
             if (showCollectionEditorSheet) {

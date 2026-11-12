@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
@@ -86,6 +87,22 @@ class ScreenInsetsLayoutTest {
             host.await(activity) { host.text(it, "Inset row 29") }
             delay(200)
             host.main { assertEquals(root.bottom - 80 - 8 * density, last.bottom, 1f) }
+        } finally { host.main { activity.finish() } }
+    }
+    @Test fun storageScrollViewportExtendsBehindNavigationBar(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        try {
+            host.main { activity.setContent { MaterialTheme {
+                me.bubblespark.tidilo.ui.screens.settings.StorageContent(
+                    me.bubblespark.tidilo.ui.screens.settings.StorageLoad.Loading,
+                    me.bubblespark.tidilo.ui.screens.settings.StorageLoad.Loading, {})
+            } } }
+            val scroll = host.await(activity) {
+                it.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) != null && it.boundsInWindow.height > 100f
+            }
+            delay(200)
+            host.main { val current = host.nodes(activity).first { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) != null && it.boundsInWindow.height > 100f }; assertEquals(activity.window.decorView.height.toFloat(), current.boundsInWindow.height, 1f) }
         } finally { host.main { activity.finish() } }
     }
 }

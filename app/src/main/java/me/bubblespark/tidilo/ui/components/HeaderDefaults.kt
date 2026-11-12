@@ -15,7 +15,12 @@ object HeaderDefaults {
     val DecayOverlap = 6.dp
     val ClearanceGap = 6.dp
     val HorizontalPadding = 20.dp
-    val BottomNavigationPadding = 140.dp
+    val LibraryActionSize = 56.dp
+    val LibraryActionClearance = LibraryActionSize + 24.dp + 24.dp
+    val AiReviewActionSize = 86.dp
+    val AiReviewActionClearance = AiReviewActionSize + 16.dp + 16.dp
+    val RssActionSize = 56.dp
+    val RssActionClearance = RssActionSize + 16.dp + 16.dp
 
     @Composable
     fun rowHeight(): Dp {

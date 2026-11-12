@@ -154,6 +154,18 @@ internal fun RssSettingsContent(
                 onNavigateBack = onBack,
                 scrollState = listState
             )
+        },
+        overlay = {
+        FloatingActionButton(onClick = { if (!busy) { editingId = null; showEditor = true } },
+            modifier = Modifier.align(Alignment.BottomEnd).screenActionInsets()
+                .padding(end = HeaderDefaults.HorizontalPadding + 16.dp, bottom = 16.dp).size(HeaderDefaults.RssActionSize)
+                .semantics { if (busy) disabled() },
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            shape = CircleShape,
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp)) {
+            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.rss_add_feed))
+        }
         }
     ) { contentPadding ->
         Box(Modifier.fillMaxSize()) {
@@ -259,16 +271,7 @@ internal fun RssSettingsContent(
                 }
             }
         }
-        FloatingActionButton(onClick = { if (!busy) { editingId = null; showEditor = true } },
-            modifier = Modifier.align(Alignment.BottomEnd).screenActionInsets()
-                .padding(end = HeaderDefaults.HorizontalPadding + 16.dp, bottom = 16.dp).size(HeaderDefaults.RssActionSize)
-                .semantics { if (busy) disabled() },
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            shape = CircleShape,
-            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 8.dp)) {
-            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.rss_add_feed))
-        }
+
         }
     }
     deletingTriggerMinute?.let { minute ->

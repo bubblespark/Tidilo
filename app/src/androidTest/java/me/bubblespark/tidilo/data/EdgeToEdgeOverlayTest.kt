@@ -80,12 +80,15 @@ class EdgeToEdgeOverlayTest {
                     }
                 }
                 delay(400)
+                var needsActionScroll = false
+                var imeTop = 0
                 host.main {
                     val window = modalWindow()
                     val insets = requireNotNull(ViewCompat.getRootWindowInsets(window))
                     val origin = IntArray(2)
                     window.getLocationOnScreen(origin)
                     val bottom = activity.window.decorView.height - insets.getInsets(WindowInsetsCompat.Type.ime()).bottom - origin[1]
+                    imeTop = bottom
                     val current = host.nodes(activity).first {
                         it.config.getOrNull(SemanticsProperties.EditableText) != null &&
                             it.config.getOrNull(SemanticsProperties.Focused) == true && it.boundsInWindow.height > 0
@@ -94,7 +97,14 @@ class EdgeToEdgeOverlayTest {
                     val label = host.nodes(activity).first { host.text(it, host.context.getString(actionRes)) }
                     var action = label
                     while (action.parent != null && action.config.getOrNull(SemanticsActions.OnClick) == null) action = requireNotNull(action.parent)
-                    assertTrue("$theme action ${action.boundsInWindow} must fit above IME $bottom", action.boundsInWindow.bottom <= bottom + 1)
+                    needsActionScroll = action.fullWindowBounds().bottom > bottom + 1
+                }
+                if (needsActionScroll) { host.scroll(activity, 100000f); delay(300) }
+                host.main {
+                    var action = host.nodes(activity).first { host.text(it, host.context.getString(actionRes)) }
+                    while (action.parent != null && action.config.getOrNull(SemanticsActions.OnClick) == null) action = requireNotNull(action.parent)
+                    val bounds = action.fullWindowBounds()
+                    assertTrue("$theme action $bounds must be reachable above IME $imeTop", bounds.width > 0 && bounds.height > 0 && bounds.top >= 0 && bounds.bottom <= imeTop + 1)
                 }
             } catch (error: Throwable) {
                 host.capture("overlay-input-failure-$actionRes")

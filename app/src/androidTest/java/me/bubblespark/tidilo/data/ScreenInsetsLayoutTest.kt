@@ -105,4 +105,27 @@ class ScreenInsetsLayoutTest {
             host.main { val current = host.nodes(activity).first { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) != null && it.boundsInWindow.height > 100f }; assertEquals(activity.window.decorView.height.toFloat(), current.boundsInWindow.height, 1f) }
         } finally { host.main { activity.finish() } }
     }
+    @Test fun rssFloatingActionAvoidsNavigationBars(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        try {
+            host.main { activity.setContent { MaterialTheme {
+                me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent(
+                    me.bubblespark.tidilo.ui.screens.settings.StorageLoad.Ready(emptyList()),
+                    me.bubblespark.tidilo.data.rss.RssSettings(), false, null, true,
+                    {}, {}, {}, { _, _ -> }, {}, {}, {})
+            } } }
+            host.await(activity) { host.description(it, host.context.getString(me.bubblespark.tidilo.R.string.rss_add_feed)) }
+            delay(400)
+            host.main {
+                var action = host.nodes(activity).first { host.description(it, host.context.getString(me.bubblespark.tidilo.R.string.rss_add_feed)) }
+                while (action.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick) == null) action = requireNotNull(action.parent)
+                val nav = requireNotNull(androidx.core.view.ViewCompat.getRootWindowInsets(activity.window.decorView)).getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
+                val bounds = action.fullWindowBounds()
+                assertEquals(true, bounds.width > 0f && bounds.height > 0f &&
+                    bounds.left >= nav.left - 1f && bounds.right <= activity.window.decorView.width - nav.right + 1f &&
+                    bounds.bottom <= activity.window.decorView.height - nav.bottom + 1f)
+            }
+        } finally { host.main { activity.setContent {}; activity.finish() } }
+    }
 }

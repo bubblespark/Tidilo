@@ -258,7 +258,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 ### 6.8 `DomainCard` & Library Domain Filter Mode
 - **2-Column Grid Layout (`LazyVerticalGrid(GridCells.Fixed(2))`)**:
   - Horizontal/vertical arrangement with `12.dp` spacing, `20.dp` screen horizontal padding.
-  - Content padding comes from the shared screen scaffold: normally `statusBars + 104dp` at the top and `140dp` at the bottom.
+  - Content padding comes from the shared screen scaffold: the safe top inset plus the measured header row/fade/gap at the top, and the safe bottom inset plus `104dp` of Search-action clearance at the bottom.
 - **Card Design (`DomainCard.kt`)**:
   - Layout: Top-right diagonal stacked deck structure with a fixed 2-layer background stack (`168.dp` total height, `154.dp` card height).
     - Deepest Layer (Layer 2): `surfaceContainerLow` container with `padding(start = 14.dp)`, `154.dp` height, top offset `0.dp`, peeking towards top-right (`x = TotalWidth - 7..TotalWidth`, `y = 0..7dp`), and subtle border (`dominantColor.copy(alpha = 0.18f)`).
@@ -538,3 +538,16 @@ Selected navigation labels, screen titles and enabled primary action labels can 
 Unit tests cover role resolution, zero elevation, semantic precedence, preset overrides, Material palette fallback and shape-scale propagation. Instrumentation fixtures use real components, actual painted-pixel assertions and theme switching with navigation/list/draft state. Building instrumentation does not prove visual parity: before/after capture, input, recreation and frame checks require a connected device. No whole-screen zero-overdraw or zero-GPU-cost guarantee is made.
 
 Backdrop blur uses Haze 2.1.0 with independent effective policy. The app-wide modal source captures composited content; separate screen-owned body sources serve in-window chrome without capturing its own output. Source sharing is an ownership boundary, not a guarantee of one GPU replay. Relative frame measurements and their limits are documented in [chrome performance](chrome_blur_performance.md).
+
+
+### Adaptive screen insets
+
+`TidiloScreenScaffold` accepts explicit `contentWindowInsets = screenSystemInsets()` (system bars plus display cutout) and `avoidIme` for input screens. Its root/background/body capture source remain full-window. It subtracts ancestor consumption, provides safe horizontal margins and matching header clearance, and adds the remaining safe bottom inset to app-only `bottomContentPadding`. Lazy layouts use returned `contentPadding`; ordinary scrolling columns apply the returned padding after `verticalScroll`. Only the system-inset portion is consumed, not the header or action clearance.
+
+Input bodies use one `imePadding` owner before their scrolling content. The preferred IME ruler was evaluated, but lateral navigation produced a narrowed Search body; the padding alternative preserves stable transition geometry. Body content insets exclude the part already covered by IME, restoring navigation clearance when the keyboard closes. `safeGesturesPadding` alone does not protect an input from IME. Backgrounds and headers are not fitted to the keyboard.
+
+Shared header foreground rows avoid top and horizontal system/cutout regions while their frost remains full width. Floating actions use independent `screenActionInsets`. Library reserves 56dp action + 24dp margin + 24dp gap; AI Review Success reserves 86dp + 16dp + 16dp; RSS reserves 56dp + 16dp + 16dp. These app clearances are additional to safe system insets; loading/error states without a floating action do not reserve it.
+
+Detail retains full-width hero artwork and independently safe text/control geometry. Its lower 54dp toolbar uses 31dp bottom margin and 16dp content gap. While IME is visible, lower actions are hidden and their reserve is removed; top Back/Save remain available. After dismissal, lower actions and clearance return. Search clears its focus/IME when opening Detail so returning does not reopen the keyboard.
+
+Material3 sheets/dialogs retain native inset and IME ownership. Do not remove padding based on modifier coexistence alone, nor pass the Activity's content padding into another window. The current screen shell has no bottom app bar, so navigation contrast enforcement remains at its native default. MainActivity retains ComponentActivity `enableEdgeToEdge` and `adjustResize`; the non-visual share receiver does not compose a screen.

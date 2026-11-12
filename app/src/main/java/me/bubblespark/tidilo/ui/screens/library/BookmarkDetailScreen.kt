@@ -27,6 +27,7 @@ import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.ui.util.TimeFormatter
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.drawBehind
@@ -360,7 +361,10 @@ fun BookmarkDetailScreen(
         overlay = {
             if (!isImeVisible) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val toolbarOffset = if (maxWidth >= 368.dp) 32.dp else 0.dp
+                val safePadding = screenSystemInsets().asPaddingValues()
+                val layoutDirection = LocalLayoutDirection.current
+                val horizontalInsets = safePadding.calculateLeftPadding(layoutDirection) + safePadding.calculateRightPadding(layoutDirection)
+                val toolbarOffset = HeaderDefaults.detailToolbarOffset(maxWidth, horizontalInsets)
                 Row(
                     modifier = Modifier.fillMaxSize().screenActionInsets()
                         .padding(start = 12.dp, end = 12.dp, bottom = 31.dp)

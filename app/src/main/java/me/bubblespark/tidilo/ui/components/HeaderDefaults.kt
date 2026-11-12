@@ -1,8 +1,6 @@
 package me.bubblespark.tidilo.ui.components
 
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalDensity
@@ -30,6 +28,6 @@ object HeaderDefaults {
     }
 
     @Composable
-    fun bodyTopPadding(): Dp = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+    fun bodyTopPadding(): Dp = screenSystemInsets().asPaddingValues().calculateTopPadding() +
         rowHeight() + FadeHeight + ClearanceGap
 }

@@ -10,6 +10,19 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.fitInside
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.onConsumedWindowInsetsChanged
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.WindowInsetsRulers
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -29,17 +42,32 @@ fun TidiloScreenScaffold(
     bottomContentPadding: Dp = 0.dp,
     bodyModifier: Modifier = Modifier,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
+    contentWindowInsets: WindowInsets = WindowInsets(0, 0, 0, 0),
+    avoidIme: Boolean = false,
     content: @Composable BoxScope.(PaddingValues) -> Unit
 ) {
-    val padding = PaddingValues(
-        start = HeaderDefaults.HorizontalPadding,
-        end = HeaderDefaults.HorizontalPadding,
-        top = HeaderDefaults.bodyTopPadding(),
-        bottom = bottomContentPadding
-    )
+    var consumedInsets by remember { mutableStateOf<WindowInsets>(WindowInsets(0, 0, 0, 0)) }
+    val remaining = contentWindowInsets.exclude(consumedInsets)
+    val bodyInsets = if (avoidIme) remaining.exclude(WindowInsets.ime) else remaining
+    val safePadding = bodyInsets.asPaddingValues()
+    val legacyTop = HeaderDefaults.bodyTopPadding()
+    val headerClearance = HeaderDefaults.rowHeight() + HeaderDefaults.FadeHeight + HeaderDefaults.ClearanceGap
+    // Keep inset reads in layout, and never consume app-specific header or action spacing.
+    val padding = object : PaddingValues {
+        override fun calculateLeftPadding(layoutDirection: LayoutDirection) =
+            HeaderDefaults.HorizontalPadding + safePadding.calculateLeftPadding(layoutDirection)
+        override fun calculateRightPadding(layoutDirection: LayoutDirection) =
+            HeaderDefaults.HorizontalPadding + safePadding.calculateRightPadding(layoutDirection)
+        override fun calculateTopPadding() = maxOf(legacyTop, headerClearance + safePadding.calculateTopPadding())
+        override fun calculateBottomPadding() = bottomContentPadding + safePadding.calculateBottomPadding()
+    }
     ScreenBackdropScope { backdrop ->
-        Box(modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize().screenBackdropSource(backdrop).then(bodyModifier)) { content(padding) }
+        Box(modifier.fillMaxSize().onConsumedWindowInsetsChanged { consumedInsets = it }) {
+            Box(Modifier.fillMaxSize().screenBackdropSource(backdrop).then(bodyModifier)) {
+                Box(Modifier.fillMaxSize()
+                    .then(if (avoidIme) Modifier.fitInside(WindowInsetsRulers.Ime.current) else Modifier)
+                    .consumeWindowInsets(bodyInsets)) { content(padding) }
+            }
             ScaffoldHeaderVisibility(
                 header = header,
                 hideHeaderOnScroll = hideHeaderOnScroll,

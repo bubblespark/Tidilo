@@ -26,8 +26,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.BookmarkRepository
+import me.bubblespark.tidilo.data.TrashMutationResult
 import me.bubblespark.tidilo.data.db.TrashBookmarkRow
-import me.bubblespark.tidilo.data.db.TrashMutationResult
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.screenActionInsets

@@ -1,12 +1,43 @@
 package me.bubblespark.tidilo.data
 
+import androidx.paging.PagingSource
+import androidx.room.DatabaseConfiguration
+import androidx.room.InvalidationTracker
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.SupportSQLiteQuery
+import java.lang.reflect.Proxy
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.config.AppLanguage
+import me.bubblespark.tidilo.data.db.BookmarkCollectionCrossRef
+import me.bubblespark.tidilo.data.db.BookmarkDao
+import me.bubblespark.tidilo.data.db.BookmarkEntity
+import me.bubblespark.tidilo.data.db.BookmarkEntityOccurrence
+import me.bubblespark.tidilo.data.db.BookmarkEntitySpelling
+import me.bubblespark.tidilo.data.db.BookmarkEntityTagUpdate
+import me.bubblespark.tidilo.data.db.BookmarkEntityTags
+import me.bubblespark.tidilo.data.db.CollectionDao
+import me.bubblespark.tidilo.data.db.DomainCount
+import me.bubblespark.tidilo.data.db.ImportNotificationDao
+import me.bubblespark.tidilo.data.db.ImportTaskDao
+import me.bubblespark.tidilo.data.db.RssDao
+import me.bubblespark.tidilo.data.db.RssNotificationDao
+import me.bubblespark.tidilo.data.db.TagCount
+import me.bubblespark.tidilo.data.db.TrashBookmarkRow
+import me.bubblespark.tidilo.data.db.TrashDao
+import me.bubblespark.tidilo.data.db.TrashedBookmarkEntity
 import me.bubblespark.tidilo.service.GeminiTaggingService
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.Tag
 import me.bubblespark.tidilo.ui.screens.library.TrashedBookmarkItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -437,5 +468,353 @@ class BookmarkRepositoryTest {
         assertEquals("Updated both", updatedBoth.description)
         assertEquals(newTag, updatedBoth.tag)
         assertEquals("My personal note", updatedBoth.note)
+    }
+
+    private class InMemoryBookmarkDao : BookmarkDao() {
+        val rows = linkedMapOf<String, BookmarkEntity>()
+        val occurrences = linkedMapOf<String, List<BookmarkEntityOccurrence>>()
+
+        override suspend fun toggleLike(id: String, now: Long) = Unit
+        override suspend fun recordBrowserOpen(id: String, now: Long) = Unit
+        override suspend fun recordDetailView(id: String, now: Long) = Unit
+        override suspend fun recordSummaryPeek(id: String, now: Long) = Unit
+        override fun observeCollectionCounts(): Flow<CollectionCounts> = emptyFlow()
+        override fun observeCount(query: SupportSQLiteQuery): Flow<Int> = emptyFlow()
+        override suspend fun getBookmarkById(id: String): BookmarkEntity? = rows[id]
+        override suspend fun getBookmarkByUrl(url: String): BookmarkEntity? = rows.values.firstOrNull { it.url == url }
+        override suspend fun clearRssFeedId(id: String) = Unit
+        override suspend fun insertRow(bookmark: BookmarkEntity) { rows[bookmark.id] = bookmark }
+        override suspend fun insertRows(bookmarks: List<BookmarkEntity>) { bookmarks.forEach { rows[it.id] = it } }
+        override suspend fun insertOccurrences(rows: List<BookmarkEntityOccurrence>) {
+            rows.groupBy { it.bookmarkId }.forEach { (id, list) ->
+                occurrences[id] = (occurrences[id].orEmpty() + list).sortedBy { it.position }
+            }
+        }
+        override suspend fun deleteOccurrences(id: String) { occurrences.remove(id) }
+        override suspend fun deleteOccurrencesForBookmarks(bookmarkIds: List<String>) {
+            bookmarkIds.forEach { occurrences.remove(it) }
+        }
+        override suspend fun canonicalEntityValue(skeletonKey: String): String? =
+            occurrences.values.flatten().firstOrNull { entitySkeletonKey(it.value) == skeletonKey }?.value
+        override suspend fun findSpellingsForKeys(keys: List<String>): List<BookmarkEntitySpelling> = emptyList()
+        override suspend fun collectionsForReplacement(id: String, url: String): List<String> = emptyList()
+        override suspend fun insertCollectionMembership(row: BookmarkCollectionCrossRef) = Unit
+        override suspend fun entityRowsForReplacement(skeletonKey: String, afterId: String?): List<BookmarkEntityTags> =
+            rows.values
+                .filter { row -> occurrences[row.id].orEmpty().any { entitySkeletonKey(it.value) == skeletonKey } }
+                .filter { afterId == null || it.id > afterId }
+                .sortedBy { it.id }
+                .take(500)
+                .map { BookmarkEntityTags(it.id, it.entities) }
+        override suspend fun updateEntityRows(rows: List<BookmarkEntityTagUpdate>) {
+            rows.forEach { update ->
+                val current = this.rows[update.id] ?: return@forEach
+                this.rows[update.id] = current.copy(entities = update.entities, updatedAt = update.updatedAt)
+            }
+        }
+        override suspend fun updateNote(id: String, note: String, updatedAt: Long) = Unit
+        override suspend fun deleteById(id: String) {
+            rows.remove(id)
+            occurrences.remove(id)
+        }
+        override suspend fun deleteByIdOrUrl(id: String, url: String) {
+            val removed = rows.values.filter { it.id == id || it.url == url }.map { it.id }
+            removed.forEach {
+                rows.remove(it)
+                occurrences.remove(it)
+            }
+        }
+        override suspend fun getCount(): Int = rows.size
+        override suspend fun deleteAll() {
+            rows.clear()
+            occurrences.clear()
+        }
+        override fun timeline(showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = error("unused")
+        override fun byDomain(domain: String, showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = error("unused")
+        override fun search(query: SupportSQLiteQuery): PagingSource<Int, BookmarkEntity> = error("unused")
+        override fun tagCounts(query: SupportSQLiteQuery): Flow<List<TagCount>> = emptyFlow()
+        override fun observeById(id: String): Flow<BookmarkEntity?> = emptyFlow()
+        override fun domainCounts(showNsfw: Boolean, source: Int): Flow<List<DomainCount>> = emptyFlow()
+        override suspend fun distinctDomains(): List<String> = emptyList()
+        override fun observeDistinctDomains(): Flow<List<String>> = emptyFlow()
+        override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) {
+            rows.replaceAll { _, entity ->
+                if (entity.domain == domain) entity.copy(isNsfw = isNsfw) else entity
+            }
+        }
+    }
+
+    private class InMemoryTrashDao : TrashDao {
+        val rows = linkedMapOf<String, TrashedBookmarkEntity>()
+        val conflictingUrls = mutableSetOf<String>()
+        override fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> = emptyFlow()
+        override suspend fun getById(id: String): TrashedBookmarkEntity? = rows[id]
+        override suspend fun deleteByIdCounted(id: String): Int = if (rows.remove(id) != null) 1 else 0
+        override suspend fun hasConflictingImport(url: String): Boolean = url in conflictingUrls
+        override suspend fun getAllTrash(): List<TrashedBookmarkEntity> = rows.values.sortedByDescending { it.trashedAt }
+        override suspend fun insert(item: TrashedBookmarkEntity) { rows[item.id] = item }
+        override suspend fun insertAll(items: List<TrashedBookmarkEntity>) { items.forEach { rows[it.id] = it } }
+        override suspend fun deleteById(id: String) { rows.remove(id) }
+        override suspend fun purgeExpired(cutoff: Long): Int = 0
+        override suspend fun enforceCapacity(maxCapacity: Int) {
+            val keep = rows.values.sortedByDescending { it.trashedAt }.take(maxCapacity).map { it.id }.toSet()
+            rows.keys.retainAll(keep)
+        }
+        override suspend fun getCount(): Int = rows.size
+        override suspend fun deleteAll() { rows.clear() }
+    }
+
+    private inline fun <reified T> unusedProxy(): T = Proxy.newProxyInstance(
+        T::class.java.classLoader,
+        arrayOf(T::class.java)
+    ) { _, method, _ ->
+        when (method.name) {
+            "toString" -> "UnusedProxy(${T::class.java.simpleName})"
+            else -> error("Unexpected call: ${T::class.java.simpleName}.${method.name}")
+        }
+    } as T
+
+    private fun testRepository(
+        bookmarkDao: InMemoryBookmarkDao,
+        trashDao: InMemoryTrashDao,
+        scope: CoroutineScope,
+        transactionRunner: TransactionRunner = object : TransactionRunner {
+            override suspend fun <R> run(block: suspend () -> R): R = block()
+        }
+    ): BookmarkRepository {
+        val db = object : me.bubblespark.tidilo.data.db.AppDatabase() {
+            override fun collectionDao(): CollectionDao = unusedProxy()
+            override fun rssDao(): RssDao = unusedProxy()
+            override fun bookmarkDao(): BookmarkDao = bookmarkDao
+            override fun trashDao(): TrashDao = trashDao
+            override fun importTaskDao(): ImportTaskDao = unusedProxy()
+            override fun importNotificationDao(): ImportNotificationDao = unusedProxy()
+            override fun rssNotificationDao(): RssNotificationDao = unusedProxy()
+            override fun createInvalidationTracker(): InvalidationTracker =
+                InvalidationTracker(this, emptyMap(), emptyMap(), "bookmarks", "trashed_bookmarks")
+            @Deprecated("Deprecated in Java")
+            override fun createOpenHelper(config: DatabaseConfiguration): SupportSQLiteOpenHelper = error("unused")
+            @Deprecated("Deprecated in Java")
+            override fun clearAllTables() = Unit
+        }
+        return BookmarkRepository(
+            database = db,
+            transactionRunner = transactionRunner,
+            repositoryScope = scope,
+            autoInitialize = false
+        )
+    }
+
+    @Test
+    fun moveToTrashMovesRowClearsLikeAndEnforcesCapacity() = runBlocking {
+        val bookmarkDao = InMemoryBookmarkDao()
+        val trashDao = InMemoryTrashDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val repository = testRepository(bookmarkDao, trashDao, scope)
+            bookmarkDao.rows["b1"] = BookmarkEntity(
+                id = "b1", title = "First", url = "https://example.com/1", description = "Desc",
+                createdAt = 1L, updatedAt = 1L, isLiked = true
+            )
+            bookmarkDao.rows["b2"] = BookmarkEntity(
+                id = "b2", title = "Second", url = "https://example.com/2", description = "Desc",
+                createdAt = 2L, updatedAt = 2L, isLiked = false
+            )
+
+            assertFalse(repository.moveToTrash("missing", now = 10L, capacity = 1))
+            assertTrue(repository.moveToTrash("b1", now = 10L, capacity = 1))
+            assertNull(bookmarkDao.rows["b1"])
+            assertFalse(trashDao.rows.getValue("b1").isLiked)
+
+            assertTrue(repository.moveToTrash("b2", now = 20L, capacity = 1))
+            assertEquals(setOf("b2"), trashDao.rows.keys)
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun restoreFromTrashCoversAllGuardAndSuccessOutcomes() = runBlocking {
+        val bookmarkDao = InMemoryBookmarkDao()
+        val trashDao = InMemoryTrashDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val repository = testRepository(bookmarkDao, trashDao, scope)
+            assertEquals(TrashMutationResult.Missing, repository.restoreFromTrash("absent"))
+
+            val trashed = TrashedBookmarkEntity(
+                id = "t1", title = "Saved", url = "https://example.com/saved", description = "Summary",
+                category = "Article", subcategory = "Tech", entities = listOf("Kotlin"),
+                createdAt = 1L, updatedAt = 1L, note = "memo", isNsfw = false, isLiked = true, trashedAt = 10L
+            )
+            trashDao.rows["t1"] = trashed
+
+            bookmarkDao.rows["other"] = BookmarkEntity(
+                id = "other", title = "Other", url = "https://example.com/saved", description = "",
+                createdAt = 1L, updatedAt = 1L
+            )
+            assertEquals(TrashMutationResult.DuplicateInLibrary, repository.restoreFromTrash("t1"))
+            bookmarkDao.rows.clear()
+
+            bookmarkDao.rows["t1"] = BookmarkEntity(
+                id = "t1", title = "SameId", url = "https://example.com/different", description = "",
+                createdAt = 1L, updatedAt = 1L
+            )
+            assertEquals(TrashMutationResult.IdentityConflict, repository.restoreFromTrash("t1"))
+            bookmarkDao.rows.clear()
+
+            trashDao.conflictingUrls += "https://example.com/saved"
+            assertEquals(TrashMutationResult.ImportPending, repository.restoreFromTrash("t1"))
+            trashDao.conflictingUrls.clear()
+
+            assertEquals(TrashMutationResult.Restored, repository.restoreFromTrash("t1"))
+            assertNull(trashDao.rows["t1"])
+            val restored = bookmarkDao.rows["t1"]
+            assertEquals("memo", restored?.note)
+            assertFalse(restored?.isLiked ?: true)
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun deleteFromTrashReturnsDeletedOrMissing() = runBlocking {
+        val bookmarkDao = InMemoryBookmarkDao()
+        val trashDao = InMemoryTrashDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val repository = testRepository(bookmarkDao, trashDao, scope)
+            trashDao.rows["t1"] = TrashedBookmarkEntity(
+                id = "t1", title = "Saved", url = "https://example.com/1", description = "",
+                createdAt = 1L, updatedAt = 1L, note = "", isNsfw = false, trashedAt = 10L
+            )
+            assertEquals(TrashMutationResult.Deleted, repository.deleteFromTrash("t1"))
+            assertNull(trashDao.rows["t1"])
+            assertEquals(TrashMutationResult.Missing, repository.deleteFromTrash("t1"))
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun updateBookmarkDetailsReplacesSpellingsAndSyncsOccurrences() = runBlocking {
+        val bookmarkDao = InMemoryBookmarkDao()
+        val trashDao = InMemoryTrashDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val repository = testRepository(bookmarkDao, trashDao, scope)
+            bookmarkDao.insertAll(
+                listOf(
+                    BookmarkEntity(
+                        id = "b1", title = "One", url = "https://example.com/1", description = "Desc 1",
+                        category = "Article", subcategory = "Tech", entities = listOf("GitHub"),
+                        createdAt = 1L, updatedAt = 1L
+                    ),
+                    BookmarkEntity(
+                        id = "b2", title = "Two", url = "https://example.com/2", description = "Desc 2",
+                        category = "Article", subcategory = "Tech", entities = listOf("GitHub"),
+                        createdAt = 2L, updatedAt = 2L
+                    )
+                )
+            )
+
+            repository.updateBookmarkDetails(
+                id = "b1",
+                note = "Updated note",
+                tag = Tag("Tool", "Tech", listOf("GitHub", "Android")),
+                isNsfw = true,
+                replacements = mapOf("github" to "git-hub"),
+                updatedAt = 99L
+            )
+
+            val b1 = bookmarkDao.rows.getValue("b1")
+            assertEquals("Updated note", b1.note)
+            assertEquals("Tool", b1.category)
+            assertTrue(b1.isNsfw)
+            assertEquals(99L, b1.updatedAt)
+            assertEquals(listOf("git-hub", "Android"), b1.entities)
+            assertEquals(listOf("git-hub", "Android"), bookmarkDao.occurrences.getValue("b1").map { it.value })
+            assertEquals(listOf("git-hub"), bookmarkDao.rows.getValue("b2").entities)
+            assertEquals(listOf("git-hub"), bookmarkDao.occurrences.getValue("b2").map { it.value })
+
+            val missingError = runCatching {
+                repository.updateBookmarkDetails("missing", "", Tag(), false, updatedAt = 100L)
+            }.exceptionOrNull()
+            assertTrue(missingError is IllegalArgumentException)
+
+            var transactionCount = 0
+            val rollbackRepository = testRepository(
+                bookmarkDao,
+                trashDao,
+                scope,
+                transactionRunner = object : TransactionRunner {
+                    override suspend fun <R> run(block: suspend () -> R): R {
+                        transactionCount++
+                        val rowsSnapshot = LinkedHashMap(bookmarkDao.rows)
+                        val occurrencesSnapshot = LinkedHashMap(bookmarkDao.occurrences)
+                        return try {
+                            block()
+                        } catch (t: Throwable) {
+                            bookmarkDao.rows.clear()
+                            bookmarkDao.rows.putAll(rowsSnapshot)
+                            bookmarkDao.occurrences.clear()
+                            bookmarkDao.occurrences.putAll(occurrencesSnapshot)
+                            throw t
+                        }
+                    }
+                }
+            )
+            val invalidReplacement = runCatching {
+                rollbackRepository.updateBookmarkDetails(
+                    id = "b1",
+                    note = "Should rollback",
+                    tag = Tag("Tool", "Tech", listOf("git-hub")),
+                    isNsfw = false,
+                    replacements = mapOf("github" to "Different"),
+                    updatedAt = 101L
+                )
+            }.exceptionOrNull()
+            assertTrue(invalidReplacement is IllegalArgumentException)
+            assertEquals(1, transactionCount)
+            assertEquals("Updated note", bookmarkDao.rows.getValue("b1").note)
+            assertEquals(listOf("git-hub", "Android"), bookmarkDao.occurrences.getValue("b1").map { it.value })
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun updateBookmarksNsfwForDomainNormalizesDomainAndPropagatesPolicyFailure() = runBlocking {
+        val bookmarkDao = InMemoryBookmarkDao()
+        val trashDao = InMemoryTrashDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val repository = testRepository(bookmarkDao, trashDao, scope)
+            bookmarkDao.rows["b1"] = BookmarkEntity(
+                id = "b1", title = "One", url = "https://example.com/1", description = "",
+                createdAt = 1L, updatedAt = 1L, isNsfw = false
+            )
+            bookmarkDao.rows["b2"] = BookmarkEntity(
+                id = "b2", title = "Two", url = "https://other.com/2", description = "",
+                createdAt = 2L, updatedAt = 2L, isNsfw = false
+            )
+
+            var policyPersisted = false
+            repository.updateBookmarksNsfwForDomain(" EXAMPLE.COM ", true) {
+                policyPersisted = true
+            }
+            assertTrue(policyPersisted)
+            assertTrue(bookmarkDao.rows.getValue("b1").isNsfw)
+            assertFalse(bookmarkDao.rows.getValue("b2").isNsfw)
+
+            val failure = IllegalStateException("policy write failed")
+            val thrown = runCatching {
+                repository.updateBookmarksNsfwForDomain("example.com", false) { throw failure }
+            }.exceptionOrNull()
+            assertTrue(thrown is IllegalStateException)
+            assertEquals("policy write failed", thrown?.message)
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
     }
 }

@@ -15,7 +15,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.AppDatabase
-import me.bubblespark.tidilo.data.db.updateBookmarkDetails
 import me.bubblespark.tidilo.ui.screens.library.Tag
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.ui.screens.library.BookmarkDetailScreen
@@ -233,7 +232,7 @@ class EntityTagConflictTest {
     }
     @Test fun noteOnlySaveResolvesLatestExternalSpelling() = verify {
         note("My note")
-        db.updateBookmarkDetails(other, "", Tag.fromDisplayValues(null, null, listOf(canonical)), true, mapOf(entitySkeletonKey(canonical) to variant), 9)
+        BookmarkRepository(db, autoInitialize = false).updateBookmarkDetails(other, "", Tag.fromDisplayValues(null, null, listOf(canonical)), true, mapOf(entitySkeletonKey(canonical) to variant), 9)
         delay(250); save(); await { navigations() == 1 }
         assertEquals(variant, spelling(id))
         assertEquals("My note", requireNotNull(db.bookmarkDao().getBookmarkById(id)).note)

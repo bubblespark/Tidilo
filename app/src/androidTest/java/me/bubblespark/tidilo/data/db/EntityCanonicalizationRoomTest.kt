@@ -5,6 +5,7 @@ import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.ui.screens.library.Tag
 import org.junit.Assert.*
 import org.junit.Test
@@ -12,6 +13,7 @@ import org.junit.Test
 class EntityCanonicalizationRoomTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private fun database() = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+    private fun repo(db: AppDatabase) = BookmarkRepository(db, autoInitialize = false)
     private fun row(id: String, vararg entities: String) = BookmarkEntity(id, id, "https://example.com/$id", "Description", entities = entities.toList(), createdAt = 1, updatedAt = 1)
     private fun assertStored(db: AppDatabase, id: String, expected: List<String>) = runBlocking {
         assertEquals(expected, db.bookmarkDao().getBookmarkById(id)?.entities)
@@ -43,7 +45,7 @@ class EntityCanonicalizationRoomTest {
             assertEquals(2, dao.observeCount(BookmarkQueries.count("#GitHub", true)).first())
             assertEquals(0, dao.observeCount(BookmarkQueries.count("#git-hub", true)).first())
             assertEquals(listOf(TagCount("GitHub", 2)), dao.tagCounts(BookmarkQueries.tags(emptySet(), true, TagKind.ENTITY)).first())
-            db.updateBookmarkDetails("current", "", Tag("Tool", "Tech", listOf("GitHub")), false,
+            repo(db).updateBookmarkDetails("current", "", Tag("Tool", "Tech", listOf("GitHub")), false,
                 mapOf("github" to "git-hub"), 2)
             for (showNsfw in listOf(false, true)) {
                 val expected = if (showNsfw) 2 else 1
@@ -70,7 +72,7 @@ class EntityCanonicalizationRoomTest {
             assertNull(dao.canonicalEntityValue("github"))
             assertNull(dao.canonicalEntityValue("#c"))
 
-            db.updateBookmarkDetails("current", "Saved draft", draft, false,
+            repo(db).updateBookmarkDetails("current", "Saved draft", draft, false,
                 mapOf("github" to "git-hub", "#c" to "#C"), 3)
 
             assertStored(db, "current", listOf("Before", "git-hub", "#C", "C", "After"))
@@ -110,7 +112,7 @@ class EntityCanonicalizationRoomTest {
         try {
             val hidden = row("hidden", "Before", "GitHub", "After").copy(isNsfw = true, note = "Keep note", rssFeedId = "feed", rssPublishedAt = 77)
             db.bookmarkDao().insertAll(listOf(row("current", "GitHub", "# C", "C"), hidden, row("unrelated", "Other")))
-            db.updateBookmarkDetails("current", "Saved note", Tag("Tool", "Tech", listOf("git-hub", "GIT_HUB", "# C", "C")), false,
+            repo(db).updateBookmarkDetails("current", "Saved note", Tag("Tool", "Tech", listOf("git-hub", "GIT_HUB", "# C", "C")), false,
                 mapOf("github" to "git-hub", "#c" to requireNotNull(me.bubblespark.tidilo.data.EntityTagPolicy.clean("##C"))), 5)
             assertStored(db, "current", listOf("git-hub", "#C", "C"))
             assertStored(db, "hidden", listOf("Before", "git-hub", "After"))
@@ -126,7 +128,7 @@ class EntityCanonicalizationRoomTest {
             db.bookmarkDao().insertAll(listOf(row("current", "GitHub"), row("hidden", "GitHub").copy(isNsfw = true)))
             try {
                 db.withTransaction {
-                    db.updateBookmarkDetails("current", "Changed", Tag("Tool", "Tech", listOf("GitHub")), true, mapOf("github" to "git-hub"), 9)
+                    repo(db).updateBookmarkDetails("current", "Changed", Tag("Tool", "Tech", listOf("GitHub")), true, mapOf("github" to "git-hub"), 9)
                     error("Forced failure after replacement")
                 }
                 fail("Expected failure")
@@ -145,11 +147,11 @@ class EntityCanonicalizationRoomTest {
         try {
             db.bookmarkDao().insertOrUpdate(row("kept", "GitHub"))
             try {
-                db.updateBookmarkDetails("deleted", "", Tag(), false, mapOf("github" to "git-hub"), 4)
+                repo(db).updateBookmarkDetails("deleted", "", Tag(), false, mapOf("github" to "git-hub"), 4)
                 fail("Missing target must fail")
             } catch (_: IllegalArgumentException) { }
             try {
-                db.updateBookmarkDetails("kept", "", Tag(), false, mapOf("github" to "Different"), 4)
+                repo(db).updateBookmarkDetails("kept", "", Tag(), false, mapOf("github" to "Different"), 4)
                 fail("Mismatched key must fail")
             } catch (_: IllegalArgumentException) { }
             assertStored(db, "kept", listOf("GitHub"))
@@ -161,11 +163,11 @@ class EntityCanonicalizationRoomTest {
         try {
             db.bookmarkDao().insertAll(listOf(row("first", "GitHub"), row("stale", "GitHub")))
             val draft = requireNotNull(db.bookmarkDao().getBookmarkById("stale")).toBookmarkItem().tag
-            db.updateBookmarkDetails("first", "", draft, false, mapOf("github" to "git-hub"), 2)
-            db.updateBookmarkDetails("stale", "Stale saved", draft, false, emptyMap(), 3)
+            repo(db).updateBookmarkDetails("first", "", draft, false, mapOf("github" to "git-hub"), 2)
+            repo(db).updateBookmarkDetails("stale", "Stale saved", draft, false, emptyMap(), 3)
             assertStored(db, "stale", listOf("git-hub"))
             val choices = linkedMapOf("github" to "Git Hub").apply { put("github", "GIT_HUB") }
-            db.updateBookmarkDetails("stale", "", draft, false, choices, 4)
+            repo(db).updateBookmarkDetails("stale", "", draft, false, choices, 4)
             assertStored(db, "first", listOf("GIT_HUB"))
             assertStored(db, "stale", listOf("GIT_HUB"))
         } finally { db.close() }
@@ -182,7 +184,7 @@ class EntityCanonicalizationRoomTest {
                 val first = async(Dispatchers.IO) {
                     db.withTransaction {
                         if (importFirst) db.bookmarkDao().insertOrUpdate(row("import", "git.hub"))
-                        else db.updateBookmarkDetails("current", "", Tag("Tool", "Tech", listOf("GitHub")), false, mapOf("github" to "git-hub"), 2)
+                        else repo(db).updateBookmarkDetails("current", "", Tag("Tool", "Tech", listOf("GitHub")), false, mapOf("github" to "git-hub"), 2)
                         entered.complete(Unit)
                         release.await()
                     }
@@ -190,7 +192,7 @@ class EntityCanonicalizationRoomTest {
                 entered.await()
                 val second = async(Dispatchers.IO) {
                     secondStarted.complete(Unit)
-                    if (importFirst) db.updateBookmarkDetails("current", "", Tag("Tool", "Tech", listOf("GitHub")), false, mapOf("github" to "git-hub"), 3)
+                    if (importFirst) repo(db).updateBookmarkDetails("current", "", Tag("Tool", "Tech", listOf("GitHub")), false, mapOf("github" to "git-hub"), 3)
                     else db.bookmarkDao().insertOrUpdate(row("import", "git.hub"))
                 }
                 secondStarted.await()
@@ -208,7 +210,7 @@ class EntityCanonicalizationRoomTest {
         val db = database()
         try {
             db.bookmarkDao().insertAll((0..1001).map { row("id$it", "GitHub", "Other") })
-            db.updateBookmarkDetails("id0", "", Tag("Tool", "Tech", listOf("GitHub", "Other")), false, mapOf("github" to "git-hub"), 8)
+            repo(db).updateBookmarkDetails("id0", "", Tag("Tool", "Tech", listOf("GitHub", "Other")), false, mapOf("github" to "git-hub"), 8)
             for (id in listOf("id0", "id499", "id500", "id999", "id1001")) assertStored(db, id, listOf("git-hub", "Other"))
             db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM bookmark_entities WHERE skeletonKey = 'github' AND value = 'git-hub'").use {
                 assertTrue(it.moveToFirst()); assertEquals(1002, it.getInt(0))

@@ -11,7 +11,6 @@ import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.RssFeedEntity
-import me.bubblespark.tidilo.data.db.moveBookmarkToTrash
 import me.bubblespark.tidilo.data.rss.RssIngestionStore
 import me.bubblespark.tidilo.parser.RssEntry
 import org.junit.Assert.*
@@ -103,7 +102,7 @@ class RssIngestionTest {
             db.bookmarkDao().insertOrUpdate(bookmark)
             val key = OgImageManager.computeImageKey(image)
             assertTrue(db.rssDao().imageReferenced(key))
-            db.moveBookmarkToTrash(bookmark.id, 100, 100)
+            BookmarkRepository(db, autoInitialize = false).moveToTrash(bookmark.id, 100, 100)
             assertTrue(db.rssDao().imageReferenced(key))
             db.trashDao().deleteById(bookmark.id)
             assertFalse(db.rssDao().imageReferenced(key))

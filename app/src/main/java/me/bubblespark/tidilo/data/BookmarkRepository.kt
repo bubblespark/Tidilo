@@ -3,20 +3,19 @@ package me.bubblespark.tidilo.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.room.withTransaction
-import me.bubblespark.tidilo.data.db.updateBookmarkDetails
 import me.bubblespark.tidilo.data.db.logicalBookmarkTag
-import me.bubblespark.tidilo.data.db.moveBookmarkToTrash
-import me.bubblespark.tidilo.data.db.restoreTrashedBookmark
-import me.bubblespark.tidilo.data.db.deleteTrashedBookmark
 import me.bubblespark.tidilo.data.db.TrashBookmarkRow
-import me.bubblespark.tidilo.data.db.TrashMutationResult
-import me.bubblespark.tidilo.data.db.updateDomainNsfwWithPolicy
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.map
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import me.bubblespark.tidilo.data.db.BookmarkQueries
 import me.bubblespark.tidilo.data.db.TagKind
 import me.bubblespark.tidilo.data.db.normalizeTagCounts
@@ -43,15 +42,29 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-class BookmarkRepository private constructor(context: Context) {
+enum class TrashMutationResult { Restored, Deleted, DuplicateInLibrary, ImportPending, Missing, IdentityConflict }
 
-    private val appContext: Context = context.applicationContext
-    private val prefs: SharedPreferences =
-        appContext.getSharedPreferences("tidilo_bookmark_prefs", Context.MODE_PRIVATE)
+internal interface TransactionRunner {
+    suspend fun <R> run(block: suspend () -> R): R
+}
 
-    private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+internal interface LegacyBookmarkAdapter {
+    fun readLegacyBookmarksJson(): String?
+    fun readLegacyTrashJson(): String?
+    fun preloadDomainIcons(domains: List<String>)
+}
 
-    private val database: AppDatabase = AppDatabase.getInstance(appContext)
+class BookmarkRepository internal constructor(
+    private val database: AppDatabase,
+    private val legacyAdapter: LegacyBookmarkAdapter? = null,
+    private val transactionRunner: TransactionRunner = object : TransactionRunner {
+        override suspend fun <R> run(block: suspend () -> R): R = database.withTransaction(block)
+    },
+    private val repositoryScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    autoInitialize: Boolean = true,
+    private val clock: () -> Long = System::currentTimeMillis
+) {
+
     private val bookmarkDao = database.bookmarkDao()
     private val trashDao = database.trashDao()
 
@@ -74,25 +87,27 @@ class BookmarkRepository private constructor(context: Context) {
         initializationJob = repositoryScope.launch {
             _initializationFailure.value = null
             try {
+                val adapter = legacyAdapter
                 val count = bookmarkDao.getCount()
                 if (count == 0) {
-                    // Check legacy SharedPreferences JSON or populate initial samples
-                    val legacyJson = prefs.getString("bookmarks_list", null)
-                    val initialList = if (!legacyJson.isNullOrBlank()) {
-                        val parsed = parseBookmarks(legacyJson)
-                        if (parsed.isNotEmpty()) parsed else getInitialSampleBookmarks()
-                    } else {
-                        getInitialSampleBookmarks()
+                    if (adapter != null) {
+                        val legacyJson = adapter.readLegacyBookmarksJson()
+                        val initialList = if (!legacyJson.isNullOrBlank()) {
+                            val parsed = parseBookmarks(legacyJson)
+                            if (parsed.isNotEmpty()) parsed else getInitialSampleBookmarks()
+                        } else {
+                            getInitialSampleBookmarks()
+                        }
+                        bookmarkDao.insertAll(initialList.map { BookmarkEntity.fromBookmarkItem(it) })
+                        warmUpDomainIconsAsync(initialList)
                     }
-                    bookmarkDao.insertAll(initialList.map { BookmarkEntity.fromBookmarkItem(it) })
-                    warmUpDomainIconsAsync(initialList)
                 } else {
                     warmUpDomainIconsAsync()
                 }
 
                 // Check legacy trash in SharedPreferences
-                if (trashDao.getCount() == 0) {
-                    val legacyTrashJson = prefs.getString("trashed_bookmarks_list", null)
+                if (adapter != null && trashDao.getCount() == 0) {
+                    val legacyTrashJson = adapter.readLegacyTrashJson()
                     if (!legacyTrashJson.isNullOrBlank()) {
                         val parsedTrash = parseTrash(legacyTrashJson)
                         if (parsedTrash.isNotEmpty()) {
@@ -101,7 +116,7 @@ class BookmarkRepository private constructor(context: Context) {
                     }
                 }
 
-                trashDao.purgeExpired(System.currentTimeMillis() - TRASH_RETENTION_MS)
+                trashDao.purgeExpired(clock() - TRASH_RETENTION_MS)
                 _isInitialized.value = true
             } catch (e: CancellationException) {
                 throw e
@@ -119,7 +134,9 @@ class BookmarkRepository private constructor(context: Context) {
     }
 
     init {
-        retryInitialization()
+        if (autoInitialize) {
+            retryInitialization()
+        }
     }
 
     /** Persists a bookmark before returning, retaining any existing record if replacement fails. */
@@ -128,7 +145,7 @@ class BookmarkRepository private constructor(context: Context) {
         val resolvedItem = if (DomainPolicyManager.isNsfwDomain(domain) && !item.isNsfw) {
             item.copy(isNsfw = true)
         } else item
-        val savedItem = database.withTransaction {
+        val savedItem = transactionRunner.run {
             val existing = bookmarkDao.getBookmarkByUrl(resolvedItem.url)
                 ?: bookmarkDao.getBookmarkById(resolvedItem.id)
             val finalItem = if (existing != null) {
@@ -170,16 +187,20 @@ class BookmarkRepository private constructor(context: Context) {
 
     /**
      * Updates the isNsfw flag for all bookmarks belonging to the specified domain.
+     * A failed policy write rolls back each row's original flag without a full-library snapshot.
      */
     suspend fun updateBookmarksNsfwForDomain(
         domain: String, isNsfw: Boolean, persistPolicy: suspend () -> Unit
     ) = withContext(Dispatchers.IO) {
-        database.updateDomainNsfwWithPolicy(domain.trim().lowercase(), isNsfw, persistPolicy)
+        transactionRunner.run {
+            bookmarkDao.updateDomainNsfw(domain.trim().lowercase(), isNsfw)
+            persistPolicy()
+        }
     }
 
     /** Updates the durable row by ID; no loaded page is required. */
     suspend fun updateBookmarkNote(id: String, note: String) = withContext(Dispatchers.IO) {
-        bookmarkDao.updateNote(id, note, System.currentTimeMillis())
+        bookmarkDao.updateNote(id, note, clock())
     }
 
     suspend fun toggleLike(id: String, now: Long) = withContext(Dispatchers.IO) {
@@ -200,48 +221,89 @@ class BookmarkRepository private constructor(context: Context) {
 
     /** Applies optional fields atomically against the current durable row. */
     suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) = withContext(Dispatchers.IO) {
-        database.withTransaction {
-            val target = bookmarkDao.getBookmarkById(id) ?: return@withTransaction
+        transactionRunner.run {
+            val target = bookmarkDao.getBookmarkById(id) ?: return@run
             bookmarkDao.updateFields(id, description ?: target.description,
                 tag?.category ?: if (tag == null) target.category else null,
                 tag?.subcategory ?: if (tag == null) target.subcategory else null,
-                tag?.entities ?: target.entities, System.currentTimeMillis())
+                tag?.entities ?: target.entities, clock())
         }
     }
 
     /**
      * Updates note, tag, and NSFW status of a bookmark and persists the change atomically.
+     * Applies explicit library spellings before re-resolving a possibly stale display-value draft.
      */
     suspend fun updateBookmarkDetails(
         id: String,
         note: String,
         tag: Tag,
         isNsfw: Boolean,
-        replacements: Map<String, String> = emptyMap()
+        replacements: Map<String, String> = emptyMap(),
+        updatedAt: Long = clock()
     ) = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-
-        database.updateBookmarkDetails(id, note, tag, isNsfw, replacements, now)
+        transactionRunner.run {
+            requireNotNull(bookmarkDao.getBookmarkById(id)) { "Bookmark no longer exists" }
+            bookmarkDao.replaceEntitySpellings(replacements, updatedAt)
+            val entities = tag.entities.map { replacements[entitySkeletonKey(it)] ?: it }
+            bookmarkDao.updateNoteAndTag(id, note, tag.category, tag.subcategory, entities, isNsfw, updatedAt)
+        }
     }
 
     /**
      * Moves a bookmark to the trash.
      * - Excludes the item from the active bookmark list.
-     * - Retains in trash up to MAX_TRASH_CAPACITY (evicting oldest items beyond limit).
+     * - Retains in trash up to [capacity] (evicting oldest items beyond limit).
      */
-    suspend fun moveToTrash(bookmarkId: String): Boolean = withContext(Dispatchers.IO) {
-        database.moveBookmarkToTrash(bookmarkId, System.currentTimeMillis(), MAX_TRASH_CAPACITY)
+    suspend fun moveToTrash(
+        bookmarkId: String,
+        now: Long = clock(),
+        capacity: Int = MAX_TRASH_CAPACITY
+    ): Boolean = withContext(Dispatchers.IO) {
+        transactionRunner.run {
+            val bookmark = bookmarkDao.getBookmarkById(bookmarkId) ?: return@run false
+            trashDao.insert(
+                TrashedBookmarkEntity.fromTrashedBookmarkItem(
+                    TrashedBookmarkItem(bookmark.copy(isLiked = false).toBookmarkItem(), now)
+                )
+            )
+            bookmarkDao.deleteById(bookmarkId)
+            trashDao.enforceCapacity(capacity)
+            true
+        }
     }
 
+    /** Trash consumers own their error UI and must not wait forever on a failed startup/read. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> =
-        trashBookmarkQuery(isInitialized, initializationFailure) { trashDao.observeTrash(showNsfw) }
+        combine(isInitialized, initializationFailure) { initialized, error -> initialized to error }
+            .flatMapLatest { (initialized, error) ->
+                when {
+                    error != null -> flow { throw error }
+                    initialized -> trashDao.observeTrash(showNsfw)
+                    else -> emptyFlow()
+                }
+            }
 
+    /** Never replace an active URL owner; the snapshot and its removal commit together. */
     suspend fun restoreFromTrash(id: String): TrashMutationResult = withContext(Dispatchers.IO) {
-        database.restoreTrashedBookmark(id)
+        transactionRunner.run {
+            val snapshot = trashDao.getById(id) ?: return@run TrashMutationResult.Missing
+            if (bookmarkDao.getBookmarkByUrl(snapshot.url) != null) return@run TrashMutationResult.DuplicateInLibrary
+            if (bookmarkDao.getBookmarkById(id) != null) return@run TrashMutationResult.IdentityConflict
+            if (trashDao.hasConflictingImport(snapshot.url)) return@run TrashMutationResult.ImportPending
+            val bookmark = snapshot.toTrashedBookmarkItem().bookmark.copy(isLiked = false)
+            bookmarkDao.insertOrUpdate(BookmarkEntity.fromBookmarkItem(bookmark))
+            trashDao.deleteById(id)
+            TrashMutationResult.Restored
+        }
     }
 
+    /** A stale Trash action cannot remove the restored bookmark or shared image files. */
     suspend fun deleteFromTrash(id: String): TrashMutationResult = withContext(Dispatchers.IO) {
-        database.deleteTrashedBookmark(id)
+        transactionRunner.run {
+            if (trashDao.deleteByIdCounted(id) == 0) TrashMutationResult.Missing else TrashMutationResult.Deleted
+        }
     }
 
     /**
@@ -252,7 +314,7 @@ class BookmarkRepository private constructor(context: Context) {
             val domains = items?.mapNotNull { DomainIconManager.extractDomain(it.url) }?.distinct()
                 ?: bookmarkDao.distinctDomains()
             DomainPolicyManager.syncDomains(domains)
-            DomainIconManager.preloadIcons(appContext, domains)
+            legacyAdapter?.preloadDomainIcons(domains)
         }
     }
 
@@ -294,8 +356,16 @@ class BookmarkRepository private constructor(context: Context) {
             .map { rows -> rows.associate { entitySkeletonKey(it.value) to it.value } }
     }
 
+    /** Keeps failed observers retryable and prevents reads racing database initialization. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private fun <T> observeSafely(query: () -> Flow<T>): Flow<T> =
-        recoverableBookmarkQuery(isInitialized, queryRetry, { _initializationFailure.value = it }, query)
+        combine(isInitialized, queryRetry) { initialized, attempt -> initialized to attempt }
+            .flatMapLatest { (initialized, _) ->
+                if (!initialized) emptyFlow() else flow { emitAll(query()) }.catch {
+                    if (it is CancellationException) throw it
+                    _initializationFailure.value = it
+                }
+            }
 
     companion object {
         const val TRASH_RETENTION_DAYS = 30L
@@ -307,8 +377,24 @@ class BookmarkRepository private constructor(context: Context) {
 
         fun getInstance(context: Context = TidiloApplication.instance): BookmarkRepository {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: BookmarkRepository(context.applicationContext).also { INSTANCE = it }
+                INSTANCE ?: createProductionInstance(context.applicationContext).also { INSTANCE = it }
             }
+        }
+
+        private fun createProductionInstance(appContext: Context): BookmarkRepository {
+            val prefs: SharedPreferences =
+                appContext.getSharedPreferences("tidilo_bookmark_prefs", Context.MODE_PRIVATE)
+            val adapter = object : LegacyBookmarkAdapter {
+                override fun readLegacyBookmarksJson(): String? = prefs.getString("bookmarks_list", null)
+                override fun readLegacyTrashJson(): String? = prefs.getString("trashed_bookmarks_list", null)
+                override fun preloadDomainIcons(domains: List<String>) {
+                    DomainIconManager.preloadIcons(appContext, domains)
+                }
+            }
+            return BookmarkRepository(
+                database = AppDatabase.getInstance(appContext),
+                legacyAdapter = adapter
+            )
         }
 
         fun serializeBookmarkToObj(item: BookmarkItem): JSONObject {

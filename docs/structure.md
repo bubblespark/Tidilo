@@ -1,6 +1,6 @@
 # Directory Structure & Module Responsibilities
 
-Trash list/state ownership lives in `ui/screens/trash/`; transactional operations and live row projections live in `data/db/Trash*`, with initialization-aware observation in `data/TrashQuery`. There is no Trash Detail route or renderer. See [Trash](trash.md).
+Trash list/state ownership lives in `ui/screens/trash/`; live row projections and DAO queries live in `data/db/Trash*`, while initialization-aware trash observation and transactional trash mutations live in `data/BookmarkRepository`. There is no Trash Detail route or renderer. See [Trash](trash.md).
 
 Manual collection persistence lives in `data/db/Collection*` and `BookmarkCollectionCrossRef`; validation and transactional APIs live in `data/CollectionPolicy` and `CollectionRepository`. Collection cards, editor/membership sheets, their state holders, and sheet-scoped model ownership live in `ui/screens/library/`; palette tokens live in `ui/theme/CollectionColors`. See [Manual Collections](collections.md).
 
@@ -26,7 +26,7 @@ app/src/main/java/com/ykgudev/tidilo/
 │   ├── BookmarkSource.kt                # Explicit ALL/MANUAL/RSS SQL query scope
 │   ├── rss/                             # Feed acquisition, transactional ingestion, retention, preferences, scheduling
 │   ├── notifications/                   # OS channels, Ready-threshold policy, RSS result publishing, destination intents
-│   ├── BookmarkRepository.kt            # Bookmark CRUD, Trash lifecycle (30-day, 100-cap), JSON serialization
+│   ├── BookmarkRepository.kt            # Bookmark CRUD, query recovery, detail persistence, Trash lifecycle (30-day, 100-cap)
 │   ├── DomainIconManager.kt             # Shared on-demand domain icon recovery, caching, color, and transparency
 │   ├── DomainIconResolver.kt            # Prioritized HTML discovery and short-circuit icon selection
 │   ├── EntityCandidateExtractor.kt      # Candidate key & 1-token suggestion extraction from title and description

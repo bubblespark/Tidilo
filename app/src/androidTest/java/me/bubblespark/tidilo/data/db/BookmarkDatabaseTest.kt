@@ -18,6 +18,7 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.removeStandardClassificationColumns
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
@@ -472,12 +473,13 @@ class BookmarkDatabaseTest {
     fun trashMoveRollsBackOnFailureAndWorksWithoutLoadingTheLibrary() = runBlocking {
         val name = "issue81-trash-${UUID.randomUUID()}.db"
         val db = database(name)
+        val repository = BookmarkRepository(db, autoInitialize = false)
         try {
             db.bookmarkDao().insertOrUpdate(BookmarkEntity("off-page", "Original", "https://example.com", "kept",
                 entities = listOf("Retained"), createdAt = 1, updatedAt = 1, note = "important"))
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER reject_trash BEFORE INSERT ON trashed_bookmarks BEGIN SELECT RAISE(ABORT,'disk failure'); END")
             try {
-                db.moveBookmarkToTrash("off-page", 10, 100)
+                repository.moveToTrash("off-page", 10, 100)
                 fail("Failed insertion must not report success")
             } catch (_: android.database.sqlite.SQLiteException) {
                 assertEquals("important", db.bookmarkDao().getBookmarkById("off-page")?.note)
@@ -485,10 +487,10 @@ class BookmarkDatabaseTest {
                 assertEquals(0, db.trashDao().getCount())
             }
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER reject_trash")
-            assertTrue(db.moveBookmarkToTrash("off-page", 11, 100))
+            assertTrue(repository.moveToTrash("off-page", 11, 100))
             assertNull(db.bookmarkDao().getBookmarkById("off-page"))
             assertEquals("important", db.trashDao().getAllTrash().single().note)
-            assertFalse(db.moveBookmarkToTrash("missing", 12, 100))
+            assertFalse(repository.moveToTrash("missing", 12, 100))
         } finally { db.close(); context.deleteDatabase(name) }
     }
 
@@ -639,6 +641,7 @@ class BookmarkDatabaseTest {
     fun failedPolicySaveRollsBackMixedBookmarkFlagsAndSuccessfulRetryCommits() = runBlocking {
         val name = "issue85-domain-rollback-${UUID.randomUUID()}.db"
         val db = database(name)
+        val repository = BookmarkRepository(db, autoInitialize = false)
         val rows = listOf(
             BookmarkEntity("safe", "Safe", "https://rollback.invalid/a", "", createdAt = 1, updatedAt = 1, isNsfw = false),
             BookmarkEntity("adult", "Adult", "https://rollback.invalid/b", "", createdAt = 2, updatedAt = 2, isNsfw = true),
@@ -649,7 +652,7 @@ class BookmarkDatabaseTest {
             for (desired in listOf(true, false)) {
                 val failure = java.io.IOException("Policy write failed")
                 try {
-                    db.updateDomainNsfwWithPolicy("rollback.invalid", desired) {
+                    repository.updateBookmarksNsfwForDomain("rollback.invalid", desired) {
                         assertEquals(desired, db.bookmarkDao().getBookmarkById("safe")!!.isNsfw)
                         assertEquals(desired, db.bookmarkDao().getBookmarkById("adult")!!.isNsfw)
                         throw failure
@@ -659,7 +662,7 @@ class BookmarkDatabaseTest {
                 for (row in rows) assertEquals(row.withSearchFields(), db.bookmarkDao().getBookmarkById(row.id))
             }
             var persisted = false
-            db.updateDomainNsfwWithPolicy("rollback.invalid", true) { persisted = true }
+            repository.updateBookmarksNsfwForDomain("rollback.invalid", true) { persisted = true }
             assertTrue(persisted)
             assertTrue(db.bookmarkDao().getBookmarkById("safe")!!.isNsfw)
             assertTrue(db.bookmarkDao().getBookmarkById("adult")!!.isNsfw)

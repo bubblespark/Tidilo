@@ -258,7 +258,7 @@ class OgImageRetentionTest {
     @Test fun trashReferencesAndTemporaryFilesArePreserved() = runBlocking { fixture { context, db, repo ->
         val file = image(context, "https://cache-fixture.invalid/shared.webp", 8)
         db.bookmarkDao().insertOrUpdate(bookmark("trash", 20))
-        db.moveBookmarkToTrash("trash", now, 100)
+        BookmarkRepository(db, autoInitialize = false).moveToTrash("trash", now, 100)
         val temporary = File(file.parentFile, "og-fixture.tmp").apply {
             writeText("temporary"); setLastModified(now - 8 * day)
         }

@@ -201,14 +201,15 @@ Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt
 
 ## 6. Persistence & Serialization Schemas
 
-All persistence is managed via **Room Database** (`AppDatabase` v18) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
+All persistence is managed via **Room Database** (`AppDatabase` v21) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
 
 1. **Room Database (`AppDatabase`)**:
    - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, `domain`, and `ogImageUrl` / `ogImageKey` linking to specific cached OG image assets. Bulk writes (`insertAll`) execute in chunked batches of 500 with per-chunk ID deduplication.
    - **`trashed_bookmarks` table (`TrashedBookmarkEntity`)**: Managed by `TrashDao`, storing trashed items with retention tracking and `ogImageUrl`.
    - **`import_tasks` table (`ImportTaskEntity`)**: Managed by `ImportTaskDao`, storing `QUEUED`, `PROCESSING`, and `ERROR` tasks with reactive `Flow<List<ImportTaskEntity>>` observation and status index.
+   - **`domain_policies` table (`DomainPolicyEntity`)**: Added in Room 21 (`MIGRATION_20_21`), managed by `DomainPolicyDao` and `DomainPolicyStore`, storing `(domain, isNsfw, displayName)` with primary key `domain`. Legacy `filesDir/domain_policies.json` entries are idempotently merged once inside a Room transaction and deleted only after commit.
    - **Safe Migration & Database Decoupling (v6)**: In version 6, obsolete image BLOB storage (`og_images` table) was cleanly dropped via `MIGRATION_5_6`, liberating database file size while preserving 100% of bookmark, tag, and note data.
-   - **Import Persistence**: A recovered direct save commits its bookmark, any RSS retention and notification updates, and task deletion together. A failed save retains a retryable error.
+   - **Import Persistence**: `ImportRepository` executes direct saves via a single flat Room transaction (`TransactionRunner` / `BookmarkDao.insertReplacingUrl`), committing the bookmark, entity occurrences, RSS retention/notification updates, and task deletion together without nested transactions; post-commit domain/media side effects run through injected adapters. A failed save rolls back cleanly and retains a retryable error.
    - **Concurrency**: Room persists queued and interrupted direct saves. Import observes active and failed work, and recovery rechecks each task before saving.
 2. **`tidilo_library_prefs` (`search_history`)**:
    Array of up to 10 strings representing complete queries, ordered latest-first.
@@ -248,13 +249,13 @@ Located in `config/AppTheme.kt`:
 
 ## 8. Domain Policy & NSFW Architecture
 
-### 8.1 `DomainPolicyManager`
-Located in `data/DomainPolicyManager.kt`:
-- **Persistence**: Persisted to `domain_policies.json` in `filesDir`.
+### 8.1 `DomainPolicyStore` & `DomainPolicyManager`
+Located in `data/DomainPolicyStore.kt` (backed by `data/db/DomainPolicyEntity.kt` and `DomainPolicyDao.kt`), with a lightweight compatibility facade in `data/DomainPolicyManager.kt`:
+- **Persistence**: Persisted in Room's `domain_policies` table (`AppDatabase` v21), with a one-time idempotent merge from legacy `domain_policies.json` (plus `.pending` cleanup) after commit. `DomainPolicyManager` delegates to `DomainPolicyStore` when an Android context is active and falls back to an in-memory map in context-free JVM unit tests.
 - **Policy Record**: `DomainPolicy(domain: String, isNsfw: Boolean, displayName: String = "")`.
 - **Display Name (`og:site_name`)**: Extracted from page HTML meta tags (`og:site_name`) during web page parsing or favicon discovery (`DomainIconManager.findHtmlIconUrls`), and stored as the human-readable display name for the domain.
 - **Auto-Registration**: When new domains are enqueued or bookmarked, they are automatically registered with `isNsfw = false` and their display name if available.
-- **Domain Verification**: Checked domains are designated as NSFW domains. Any bookmark from a checked domain is tagged as `isNsfw = true`.
+- **Atomic Domain NSFW Toggle**: `DomainPolicyStore.setDomainNsfwAndAwait` updates `domain_policies` and `bookmarks.isNsfw` in a single Room transaction on `storeScope`, avoiding any circular dependency with `BookmarkRepository`. Checked domains are designated as NSFW domains; any bookmark from a checked domain is tagged as `isNsfw = true`.
 
 ### 8.2 NSFW Detection Signals (`WebPageParser.kt`)
 Web page fetching uses Desktop Chrome User-Agent (`Windows NT 10.0; Win64; x64`, `sec-ch-ua-mobile: ?0`) to ensure platforms like Pixiv return complete desktop SSR HTML with standard metadata rather than stripped mobile touch SPAs. Programmatic detection extracts:

@@ -56,7 +56,7 @@ import me.bubblespark.tidilo.data.BookmarkRepository
 import android.content.Context
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicy
-import me.bubblespark.tidilo.data.DomainPolicyManager
+import me.bubblespark.tidilo.data.DomainPolicyStore
 
 @Composable
 fun NsfwSettingsScreen(
@@ -64,17 +64,18 @@ fun NsfwSettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val domainPolicyStore = remember(context) { DomainPolicyStore.getInstance(context) }
     val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
     val isNsfwBookmarkable by AppConfig.isNsfwContentBookmarkable.collectAsStateWithLifecycle()
-    val policies by DomainPolicyManager.policies.collectAsStateWithLifecycle()
+    val policies by domainPolicyStore.policies.collectAsStateWithLifecycle()
 
     // Ensure all domains from current bookmarks are synced
     val bookmarkRepo = remember { BookmarkRepository.getInstance(context) }
     val initializationFailure by bookmarkRepo.initializationFailure.collectAsStateWithLifecycle()
     val domains by remember(bookmarkRepo) { bookmarkRepo.observeDomains() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    androidx.compose.runtime.LaunchedEffect(domains) {
-        DomainPolicyManager.syncDomains(domains)
+    androidx.compose.runtime.LaunchedEffect(domains, domainPolicyStore) {
+        domainPolicyStore.syncDomains(domains)
     }
 
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), 
@@ -257,6 +258,7 @@ fun NsfwSettingsScreen(
                         policies.forEachIndexed { index, policy ->
                             NsfwDomainPolicyItem(
                                 policy = policy,
+                                domainPolicyStore = domainPolicyStore,
                                 context = context
                             )
 
@@ -281,6 +283,7 @@ fun NsfwSettingsScreen(
 @Composable
 private fun NsfwDomainPolicyItem(
     policy: DomainPolicy,
+    domainPolicyStore: DomainPolicyStore,
     context: Context,
     modifier: Modifier = Modifier
 ) {
@@ -288,7 +291,7 @@ private fun NsfwDomainPolicyItem(
     val updatePolicy: (Boolean) -> Unit = { checked ->
         persistenceScope.launch {
             try {
-                DomainPolicyManager.setDomainNsfwAndAwait(policy.domain, checked)
+                domainPolicyStore.setDomainNsfwAndAwait(policy.domain, checked)
             } catch (e: Exception) {
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 android.widget.Toast.makeText(context, context.getString(R.string.common_save_failed), android.widget.Toast.LENGTH_LONG).show()

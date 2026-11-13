@@ -46,21 +46,43 @@ class PagedQueryRecoveryTest {
     fun cancellingTheSettingsCallerStillPublishesAnAlreadyStartedPolicyChange() = runBlocking {
         val owner = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + owner)
+        val policyDao = InMemoryDomainPolicyDao()
+        val bookmarkDao = object : StubBookmarkDao() {
+            var updatedDomain: String? = null
+            var updatedNsfw: Boolean? = null
+            override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) {
+                updatedDomain = domain
+                updatedNsfw = isNsfw
+            }
+        }
         val committed = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
-        val published = CompletableDeferred<Unit>()
+        var gateUpdates = false
+        val store = DomainPolicyStore(
+            database = fakeAppDatabase(bookmarkDao = bookmarkDao, domainPolicyDao = policyDao),
+            transactionRunner = TransactionRunner { block ->
+                if (gateUpdates) {
+                    committed.complete(Unit)
+                    release.await()
+                }
+                block()
+            },
+            storeScope = scope
+        )
+        store.awaitReady()
+        gateUpdates = true
         val caller = launch {
-            completeDomainPolicyChange(scope, { publish ->
-                committed.complete(Unit)
-                release.await()
-                publish()
-            }, { published.complete(Unit) })
+            store.setDomainNsfwAndAwait("example.com", true)
         }
         try {
             withTimeout(5000) { committed.await() }
             caller.cancelAndJoin()
             release.complete(Unit)
-            withTimeout(5000) { published.await() }
+            withTimeout(5000) {
+                store.policies.first { list -> list.any { it.domain == "example.com" && it.isNsfw } }
+            }
+            assertEquals("example.com", bookmarkDao.updatedDomain)
+            assertEquals(true, bookmarkDao.updatedNsfw)
         } finally { owner.cancelAndJoin() }
     }
 }

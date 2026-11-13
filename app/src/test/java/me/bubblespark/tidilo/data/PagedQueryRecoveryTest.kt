@@ -60,12 +60,14 @@ class PagedQueryRecoveryTest {
         var gateUpdates = false
         val store = DomainPolicyStore(
             database = fakeAppDatabase(bookmarkDao = bookmarkDao, domainPolicyDao = policyDao),
-            transactionRunner = TransactionRunner { block ->
-                if (gateUpdates) {
-                    committed.complete(Unit)
-                    release.await()
+            transactionRunner = object : TransactionRunner {
+                override suspend fun <R> run(block: suspend () -> R): R {
+                    if (gateUpdates) {
+                        committed.complete(Unit)
+                        release.await()
+                    }
+                    return block()
                 }
-                block()
             },
             storeScope = scope
         )

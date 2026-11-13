@@ -739,19 +739,21 @@ class BookmarkRepositoryTest {
         val policyDao = InMemoryDomainPolicyDao()
         val scope = CoroutineScope(coroutineContext + SupervisorJob())
         var failNextTx = false
-        val atomicRunner = TransactionRunner { block ->
-            val policySnapshot = LinkedHashMap(policyDao.rows)
-            val bookmarkSnapshot = LinkedHashMap(bookmarkDao.rows)
-            try {
-                val result = block()
-                if (failNextTx) throw IllegalStateException("policy write failed")
-                result
-            } catch (e: Throwable) {
-                policyDao.rows.clear()
-                policyDao.rows.putAll(policySnapshot)
-                bookmarkDao.rows.clear()
-                bookmarkDao.rows.putAll(bookmarkSnapshot)
-                throw e
+        val atomicRunner = object : TransactionRunner {
+            override suspend fun <R> run(block: suspend () -> R): R {
+                val policySnapshot = LinkedHashMap(policyDao.rows)
+                val bookmarkSnapshot = LinkedHashMap(bookmarkDao.rows)
+                return try {
+                    val result = block()
+                    if (failNextTx) throw IllegalStateException("policy write failed")
+                    result
+                } catch (e: Throwable) {
+                    policyDao.rows.clear()
+                    policyDao.rows.putAll(policySnapshot)
+                    bookmarkDao.rows.clear()
+                    bookmarkDao.rows.putAll(bookmarkSnapshot)
+                    throw e
+                }
             }
         }
         try {
@@ -769,10 +771,10 @@ class BookmarkRepositoryTest {
             )
             policyStore.setDomainNsfwAndAwait(" EXAMPLE.COM ", true)
             repository.addBookmarkAndAwait(
-                BookmarkItem(id = "b1", title = "One", url = "https://example.com/1", description = "", isNsfw = false)
+                BookmarkItem(id = "b1", title = "One", url = "https://example.com/1", description = "", tag = defaultTag, isNsfw = false)
             )
             repository.addBookmarkAndAwait(
-                BookmarkItem(id = "b2", title = "Two", url = "https://other.com/2", description = "", isNsfw = false)
+                BookmarkItem(id = "b2", title = "Two", url = "https://other.com/2", description = "", tag = defaultTag, isNsfw = false)
             )
 
             assertTrue(bookmarkDao.rows.getValue("b1").isNsfw)

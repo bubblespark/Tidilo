@@ -51,6 +51,7 @@ internal data class ResolvedTarget(
 private val ACTIVE_QUEUE_STATUSES = setOf("QUEUED", "PROCESSING", "ERROR")
 
 internal interface ImportDomainPolicyAdapter {
+    suspend fun awaitReady() = Unit
     fun isNsfwDomain(domain: String?): Boolean
     fun registerDomain(domain: String?, isNsfw: Boolean = false, displayName: String = "")
 
@@ -461,6 +462,7 @@ class ImportRepository internal constructor(
             }
             var pendingSaveTarget: ImportTask? = null
             try {
+                domainPolicyAdapter.awaitReady()
                 // Pre-Fetch Check (Primary Gate) - atomic duplicate check & mutation in database transaction
                 val earlyResolution = runInDbOrLock(normalized) {
                     val preCheck = checkDuplicate(normalized)
@@ -863,6 +865,7 @@ class ImportRepository internal constructor(
             taskDao.rejectUnavailablePreparedRss(target.id)
             return
         }
+        domainPolicyAdapter.awaitReady()
         if (!target.articlePrepared && target.rssFeedId == null) {
             val alreadySaved = runInDbOrLock(target.url) {
                 val existing = bookmarkDao?.getBookmarkByUrl(target.url) ?: return@runInDbOrLock false
@@ -1049,6 +1052,9 @@ class ImportRepository internal constructor(
                 notificationDao = db.importNotificationDao(),
                 database = db,
                 domainPolicyAdapter = object : ImportDomainPolicyAdapter {
+                    override suspend fun awaitReady() =
+                        DomainPolicyStore.getInstance(appContext).awaitReady()
+
                     override fun isNsfwDomain(domain: String?): Boolean =
                         DomainPolicyStore.getInstance(appContext).isNsfwDomain(domain)
 

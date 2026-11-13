@@ -28,7 +28,9 @@ import java.util.concurrent.ConcurrentHashMap
 class DomainPolicyStore internal constructor(
     private val database: AppDatabase,
     private val legacyJsonFile: File? = null,
-    private val transactionRunner: TransactionRunner = TransactionRunner { block -> database.withTransaction { block() } },
+    private val transactionRunner: TransactionRunner = object : TransactionRunner {
+        override suspend fun <R> run(block: suspend () -> R): R = database.withTransaction(block)
+    },
     private val storeScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) {
     private val domainPolicyDao = database.domainPolicyDao()
@@ -321,7 +323,8 @@ class DomainPolicyStore internal constructor(
                 domainPolicyDao.getAll()
             }
             if (loaded != null) {
-                replaceCacheFromEntities(loaded)
+                loaded.forEach { domainMap[it.domain] = it.toDomainPolicy() }
+                notifyStateUpdated()
             }
         }
     }

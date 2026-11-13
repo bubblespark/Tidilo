@@ -649,8 +649,8 @@ class BookmarkDatabaseTest {
             db.domainPolicyDao().upsert(DomainPolicyEntity("issue85.invalid", isNsfw = false, displayName = ""))
 
             var failFirst = true
-            val runner = me.bubblespark.tidilo.data.TransactionRunner { block ->
-                db.withTransaction {
+            val runner = object : me.bubblespark.tidilo.data.TransactionRunner {
+                override suspend fun <R> run(block: suspend () -> R): R = db.withTransaction {
                     val result = block()
                     if (failFirst) throw java.io.IOException("Simulated commit failure")
                     result
@@ -696,8 +696,8 @@ class BookmarkDatabaseTest {
         var failNext = false
         val store = me.bubblespark.tidilo.data.DomainPolicyStore(
             database = db,
-            transactionRunner = me.bubblespark.tidilo.data.TransactionRunner { block ->
-                db.withTransaction {
+            transactionRunner = object : me.bubblespark.tidilo.data.TransactionRunner {
+                override suspend fun <R> run(block: suspend () -> R): R = db.withTransaction {
                     val result = block()
                     if (failNext) throw java.io.IOException("Policy write failed")
                     result

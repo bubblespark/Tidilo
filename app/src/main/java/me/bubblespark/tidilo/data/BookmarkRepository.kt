@@ -45,7 +45,7 @@ import org.json.JSONObject
 
 enum class TrashMutationResult { Restored, Deleted, DuplicateInLibrary, ImportPending, Missing, IdentityConflict }
 
-internal fun interface TransactionRunner {
+internal interface TransactionRunner {
     suspend fun <R> run(block: suspend () -> R): R
 }
 
@@ -58,7 +58,9 @@ internal interface LegacyBookmarkAdapter {
 class BookmarkRepository internal constructor(
     private val database: AppDatabase,
     private val legacyAdapter: LegacyBookmarkAdapter? = null,
-    private val transactionRunner: TransactionRunner = TransactionRunner { block -> database.withTransaction(block) },
+    private val transactionRunner: TransactionRunner = object : TransactionRunner {
+        override suspend fun <R> run(block: suspend () -> R): R = database.withTransaction(block)
+    },
     private val repositoryScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     autoInitialize: Boolean = true,
     private val clock: () -> Long = System::currentTimeMillis,

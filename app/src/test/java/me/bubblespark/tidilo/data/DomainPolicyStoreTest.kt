@@ -108,20 +108,22 @@ class DomainPolicyStoreTest {
 
         var shouldFail = false
         var transactionCount = 0
-        val atomicRunner = TransactionRunner { block ->
-            transactionCount++
-            val policySnapshot = LinkedHashMap(policyDao.rows)
-            val bookmarkSnapshot = LinkedHashMap(bookmarkDao.rows)
-            try {
-                val result = block()
-                if (shouldFail) throw IllegalStateException("disk full")
-                result
-            } catch (e: Throwable) {
-                policyDao.rows.clear()
-                policyDao.rows.putAll(policySnapshot)
-                bookmarkDao.rows.clear()
-                bookmarkDao.rows.putAll(bookmarkSnapshot)
-                throw e
+        val atomicRunner = object : TransactionRunner {
+            override suspend fun <R> run(block: suspend () -> R): R {
+                transactionCount++
+                val policySnapshot = LinkedHashMap(policyDao.rows)
+                val bookmarkSnapshot = LinkedHashMap(bookmarkDao.rows)
+                return try {
+                    val result = block()
+                    if (shouldFail) throw IllegalStateException("disk full")
+                    result
+                } catch (e: Throwable) {
+                    policyDao.rows.clear()
+                    policyDao.rows.putAll(policySnapshot)
+                    bookmarkDao.rows.clear()
+                    bookmarkDao.rows.putAll(bookmarkSnapshot)
+                    throw e
+                }
             }
         }
         val scope = CoroutineScope(coroutineContext + SupervisorJob())
@@ -178,16 +180,18 @@ class DomainPolicyStoreTest {
             policyDao.rows["merge.example"] = DomainPolicyEntity("merge.example", isNsfw = false, displayName = "")
 
             var failMigration = true
-            val runner = TransactionRunner { block ->
-                val snapshot = LinkedHashMap(policyDao.rows)
-                try {
-                    val result = block()
-                    if (failMigration) throw IllegalStateException("transient db failure")
-                    result
-                } catch (e: Throwable) {
-                    policyDao.rows.clear()
-                    policyDao.rows.putAll(snapshot)
-                    throw e
+            val runner = object : TransactionRunner {
+                override suspend fun <R> run(block: suspend () -> R): R {
+                    val snapshot = LinkedHashMap(policyDao.rows)
+                    return try {
+                        val result = block()
+                        if (failMigration) throw IllegalStateException("transient db failure")
+                        result
+                    } catch (e: Throwable) {
+                        policyDao.rows.clear()
+                        policyDao.rows.putAll(snapshot)
+                        throw e
+                    }
                 }
             }
 

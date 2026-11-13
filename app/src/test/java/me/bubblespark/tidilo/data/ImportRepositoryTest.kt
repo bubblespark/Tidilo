@@ -712,6 +712,10 @@ class ImportRepositoryTest {
         var ogDuringInsert = false
 
         val domainPolicyAdapter = object : ImportDomainPolicyAdapter {
+            override suspend fun awaitReady() {
+                events.add("awaitReady")
+            }
+
             override fun isNsfwDomain(domain: String?): Boolean {
                 events.add("isNsfwDomain:$domain")
                 return domain == "nsfw.example"
@@ -795,6 +799,7 @@ class ImportRepositoryTest {
             val outcome = withTimeout(5000) { done.await() }.getOrThrow()
             assertTrue(outcome is ImportOutcome.BookmarkSaved)
             assertTrue(bookmarkDao.getBookmarkByUrl("https://nsfw.example/post")!!.isNsfw)
+            assertTrue(events.indexOf("awaitReady") in 0 until events.indexOf("isNsfwDomain:nsfw.example"))
             assertFalse(registerDuringInsert)
             assertFalse(fetchIconDuringInsert)
             assertFalse(ogDuringInsert)
@@ -806,7 +811,7 @@ class ImportRepositoryTest {
             }
 
             // 2. Invalid URL delegates error to ImportNotificationAdapter
-            assertTrue(repository.importUrl("not-a-url").isFailure)
+            assertTrue(repository.importUrl("https://").isFailure)
             assertTrue(events.contains("importError:Invalid HTTP/HTTPS URL"))
 
             // 3. Unprepared RSS error retry delegates to ImportRssAdapter.retryAcquisition

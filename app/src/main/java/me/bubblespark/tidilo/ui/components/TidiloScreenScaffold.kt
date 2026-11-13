@@ -10,29 +10,25 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.exclude
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.onConsumedWindowInsetsChanged
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import me.bubblespark.tidilo.data.DomainIconManager
-import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
 
 /** Edge-to-edge body, independent header, then optional foreground overlays. */
@@ -64,28 +60,20 @@ fun TidiloScreenScaffold(
         override fun calculateTopPadding() = headerClearance + maxOf(legacyInsets.calculateTopPadding(), safePadding.calculateTopPadding())
         override fun calculateBottomPadding() = bottomContentPadding + safePadding.calculateBottomPadding()
     } }
-    val domainIconGeneration by DomainIconManager.cacheGenerationState.collectAsStateWithLifecycle()
-    val ogImageGeneration by OgImageManager.cacheGenerationState.collectAsStateWithLifecycle()
-
-    CompositionLocalProvider(
-        LocalDomainIconCacheGeneration provides domainIconGeneration,
-        LocalOgImageCacheGeneration provides ogImageGeneration
-    ) {
-        ScreenBackdropScope { backdrop ->
-            Box(modifier.fillMaxSize().onConsumedWindowInsetsChanged { consumedInsets = it }) {
-                Box(Modifier.fillMaxSize().screenBackdropSource(backdrop).then(bodyModifier)) {
-                    Box(Modifier.fillMaxSize()
-                        .then(if (avoidIme) Modifier.imePadding() else Modifier)
-                        .consumeWindowInsets(bodyInsets)) { content(padding) }
-                }
-                ScaffoldHeaderVisibility(
-                    header = header,
-                    hideHeaderOnScroll = hideHeaderOnScroll,
-                    headerVisible = headerVisible,
-                    modifier = Modifier.align(Alignment.TopCenter)
-                )
-                overlay?.invoke(this)
+    ScreenBackdropScope { backdrop ->
+        Box(modifier.fillMaxSize().onConsumedWindowInsetsChanged { consumedInsets = it }) {
+            Box(Modifier.fillMaxSize().screenBackdropSource(backdrop).then(bodyModifier)) {
+                Box(Modifier.fillMaxSize()
+                    .then(if (avoidIme) Modifier.imePadding() else Modifier)
+                    .consumeWindowInsets(bodyInsets)) { content(padding) }
             }
+            ScaffoldHeaderVisibility(
+                header = header,
+                hideHeaderOnScroll = hideHeaderOnScroll,
+                headerVisible = headerVisible,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+            overlay?.invoke(this)
         }
     }
 }

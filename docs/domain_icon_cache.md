@@ -24,7 +24,7 @@ Clearing icon caches cancels shared work, advances the generation, and clears bi
 
 ## UI behavior
 
-`rememberDomainIcon` owns the icon producer by identity and cache generation (propagated via `LocalDomainIconCacheGeneration` collected at `TidiloScreenScaffold`), while completion notifications only update its bitmap. Multiple visible consumers share a fetch without cancelling each other on completion. Watermarks pass their article URL when available, and domain cards use the root.
+`rememberDomainIcon` owns the icon producer by identity and cache generation, while completion notifications only update its bitmap. Multiple visible consumers share a fetch without cancelling each other on completion. Watermarks pass their article URL when available, and domain cards use the root.
 
 Grid cards distinguish pending OG resolution from a completed miss. During OG loading they may display a cached domain icon, but perform disk-only icon lookup. They start icon network recovery only when the OG URL is absent or OG resolution completes without an image. An OG success starts no icon network request from that grid card. The final Link placeholder is unchanged.
 
@@ -38,4 +38,4 @@ Imports pass the complete candidate list extracted from the already obtained HTM
 
 `loadOrFetchFeedIcon` first tries the persisted feed image under a separate `rss_` SHA-256 identity derived from feed ID and metadata URLs. It shares domain_icons storage, bitmap/color LRU caches, the four-worker coordinator, atomic PNG processing, failure backoff, and generation clearing. A declared image is downloaded directly, including small valid icons, without XML/HTML discovery. Only a miss falls back to `siteUrl` domain or feed URL domain using normal domain recovery. A feed cache key never overwrites a publisher-domain icon. Changed metadata selects a new identity; old files remain disposable cache entries until eviction/clear.
 
-`rememberFeedIcon` observes both feed and publisher completion events without restarting in-flight work on each notification. Global generation changes (propagated via `LocalDomainIconCacheGeneration`) reset its bitmap and color before recovery. Feed deck cards and drill-down backgrounds share the same image/color state and Domain presentation. Registration only stores metadata; UI-triggered recovery uses ordinary visible-icon networking and does not borrow scheduled RSS mobile permissions.
+`rememberFeedIcon` observes both feed and publisher completion events without restarting in-flight work on each notification. Global generation changes reset its bitmap and color before recovery. Feed deck cards and drill-down backgrounds share the same image/color state and Domain presentation. Registration only stores metadata; UI-triggered recovery uses ordinary visible-icon networking and does not borrow scheduled RSS mobile permissions.

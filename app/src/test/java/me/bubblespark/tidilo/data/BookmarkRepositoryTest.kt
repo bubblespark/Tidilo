@@ -1,35 +1,15 @@
 package me.bubblespark.tidilo.data
 
-import androidx.paging.PagingSource
-import androidx.room.DatabaseConfiguration
-import androidx.room.InvalidationTracker
-import androidx.sqlite.db.SupportSQLiteOpenHelper
-import androidx.sqlite.db.SupportSQLiteQuery
-import java.lang.reflect.Proxy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.config.AppLanguage
-import me.bubblespark.tidilo.data.db.BookmarkCollectionCrossRef
-import me.bubblespark.tidilo.data.db.BookmarkDao
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.BookmarkEntityOccurrence
-import me.bubblespark.tidilo.data.db.BookmarkEntitySpelling
 import me.bubblespark.tidilo.data.db.BookmarkEntityTagUpdate
 import me.bubblespark.tidilo.data.db.BookmarkEntityTags
-import me.bubblespark.tidilo.data.db.CollectionDao
-import me.bubblespark.tidilo.data.db.DomainCount
-import me.bubblespark.tidilo.data.db.ImportNotificationDao
-import me.bubblespark.tidilo.data.db.ImportTaskDao
-import me.bubblespark.tidilo.data.db.RssDao
-import me.bubblespark.tidilo.data.db.RssNotificationDao
-import me.bubblespark.tidilo.data.db.TagCount
-import me.bubblespark.tidilo.data.db.TrashBookmarkRow
-import me.bubblespark.tidilo.data.db.TrashDao
 import me.bubblespark.tidilo.data.db.TrashedBookmarkEntity
 import me.bubblespark.tidilo.service.GeminiTaggingService
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
@@ -470,19 +450,12 @@ class BookmarkRepositoryTest {
         assertEquals("My personal note", updatedBoth.note)
     }
 
-    private class InMemoryBookmarkDao : BookmarkDao() {
+    private class InMemoryBookmarkDao : StubBookmarkDao() {
         val rows = linkedMapOf<String, BookmarkEntity>()
         val occurrences = linkedMapOf<String, List<BookmarkEntityOccurrence>>()
 
-        override suspend fun toggleLike(id: String, now: Long) = Unit
-        override suspend fun recordBrowserOpen(id: String, now: Long) = Unit
-        override suspend fun recordDetailView(id: String, now: Long) = Unit
-        override suspend fun recordSummaryPeek(id: String, now: Long) = Unit
-        override fun observeCollectionCounts(): Flow<CollectionCounts> = emptyFlow()
-        override fun observeCount(query: SupportSQLiteQuery): Flow<Int> = emptyFlow()
         override suspend fun getBookmarkById(id: String): BookmarkEntity? = rows[id]
         override suspend fun getBookmarkByUrl(url: String): BookmarkEntity? = rows.values.firstOrNull { it.url == url }
-        override suspend fun clearRssFeedId(id: String) = Unit
         override suspend fun insertRow(bookmark: BookmarkEntity) { rows[bookmark.id] = bookmark }
         override suspend fun insertRows(bookmarks: List<BookmarkEntity>) { bookmarks.forEach { rows[it.id] = it } }
         override suspend fun insertOccurrences(rows: List<BookmarkEntityOccurrence>) {
@@ -496,9 +469,6 @@ class BookmarkRepositoryTest {
         }
         override suspend fun canonicalEntityValue(skeletonKey: String): String? =
             occurrences.values.flatten().firstOrNull { entitySkeletonKey(it.value) == skeletonKey }?.value
-        override suspend fun findSpellingsForKeys(keys: List<String>): List<BookmarkEntitySpelling> = emptyList()
-        override suspend fun collectionsForReplacement(id: String, url: String): List<String> = emptyList()
-        override suspend fun insertCollectionMembership(row: BookmarkCollectionCrossRef) = Unit
         override suspend fun entityRowsForReplacement(skeletonKey: String, afterId: String?): List<BookmarkEntityTags> =
             rows.values
                 .filter { row -> occurrences[row.id].orEmpty().any { entitySkeletonKey(it.value) == skeletonKey } }
@@ -512,7 +482,6 @@ class BookmarkRepositoryTest {
                 this.rows[update.id] = current.copy(entities = update.entities, updatedAt = update.updatedAt)
             }
         }
-        override suspend fun updateNote(id: String, note: String, updatedAt: Long) = Unit
         override suspend fun deleteById(id: String) {
             rows.remove(id)
             occurrences.remove(id)
@@ -529,14 +498,6 @@ class BookmarkRepositoryTest {
             rows.clear()
             occurrences.clear()
         }
-        override fun timeline(showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = error("unused")
-        override fun byDomain(domain: String, showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = error("unused")
-        override fun search(query: SupportSQLiteQuery): PagingSource<Int, BookmarkEntity> = error("unused")
-        override fun tagCounts(query: SupportSQLiteQuery): Flow<List<TagCount>> = emptyFlow()
-        override fun observeById(id: String): Flow<BookmarkEntity?> = emptyFlow()
-        override fun domainCounts(showNsfw: Boolean, source: Int): Flow<List<DomainCount>> = emptyFlow()
-        override suspend fun distinctDomains(): List<String> = emptyList()
-        override fun observeDistinctDomains(): Flow<List<String>> = emptyFlow()
         override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) {
             rows.replaceAll { _, entity ->
                 if (entity.domain == domain) entity.copy(isNsfw = isNsfw) else entity
@@ -544,10 +505,9 @@ class BookmarkRepositoryTest {
         }
     }
 
-    private class InMemoryTrashDao : TrashDao {
+    private class InMemoryTrashDao : StubTrashDao() {
         val rows = linkedMapOf<String, TrashedBookmarkEntity>()
         val conflictingUrls = mutableSetOf<String>()
-        override fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> = emptyFlow()
         override suspend fun getById(id: String): TrashedBookmarkEntity? = rows[id]
         override suspend fun deleteByIdCounted(id: String): Int = if (rows.remove(id) != null) 1 else 0
         override suspend fun hasConflictingImport(url: String): Boolean = url in conflictingUrls
@@ -555,7 +515,6 @@ class BookmarkRepositoryTest {
         override suspend fun insert(item: TrashedBookmarkEntity) { rows[item.id] = item }
         override suspend fun insertAll(items: List<TrashedBookmarkEntity>) { items.forEach { rows[it.id] = it } }
         override suspend fun deleteById(id: String) { rows.remove(id) }
-        override suspend fun purgeExpired(cutoff: Long): Int = 0
         override suspend fun enforceCapacity(maxCapacity: Int) {
             val keep = rows.values.sortedByDescending { it.trashedAt }.take(maxCapacity).map { it.id }.toSet()
             rows.keys.retainAll(keep)
@@ -564,46 +523,17 @@ class BookmarkRepositoryTest {
         override suspend fun deleteAll() { rows.clear() }
     }
 
-    private inline fun <reified T> unusedProxy(): T = Proxy.newProxyInstance(
-        T::class.java.classLoader,
-        arrayOf(T::class.java)
-    ) { _, method, _ ->
-        when (method.name) {
-            "toString" -> "UnusedProxy(${T::class.java.simpleName})"
-            else -> error("Unexpected call: ${T::class.java.simpleName}.${method.name}")
-        }
-    } as T
-
     private fun testRepository(
         bookmarkDao: InMemoryBookmarkDao,
         trashDao: InMemoryTrashDao,
         scope: CoroutineScope,
-        transactionRunner: TransactionRunner = object : TransactionRunner {
-            override suspend fun <R> run(block: suspend () -> R): R = block()
-        }
-    ): BookmarkRepository {
-        val db = object : me.bubblespark.tidilo.data.db.AppDatabase() {
-            override fun collectionDao(): CollectionDao = unusedProxy()
-            override fun rssDao(): RssDao = unusedProxy()
-            override fun bookmarkDao(): BookmarkDao = bookmarkDao
-            override fun trashDao(): TrashDao = trashDao
-            override fun importTaskDao(): ImportTaskDao = unusedProxy()
-            override fun importNotificationDao(): ImportNotificationDao = unusedProxy()
-            override fun rssNotificationDao(): RssNotificationDao = unusedProxy()
-            override fun createInvalidationTracker(): InvalidationTracker =
-                InvalidationTracker(this, emptyMap(), emptyMap(), "bookmarks", "trashed_bookmarks")
-            @Deprecated("Deprecated in Java")
-            override fun createOpenHelper(config: DatabaseConfiguration): SupportSQLiteOpenHelper = error("unused")
-            @Deprecated("Deprecated in Java")
-            override fun clearAllTables() = Unit
-        }
-        return BookmarkRepository(
-            database = db,
-            transactionRunner = transactionRunner,
-            repositoryScope = scope,
-            autoInitialize = false
-        )
-    }
+        transactionRunner: TransactionRunner = directTransactionRunner()
+    ): BookmarkRepository = BookmarkRepository(
+        database = fakeAppDatabase(bookmarkDao = bookmarkDao, trashDao = trashDao),
+        transactionRunner = transactionRunner,
+        repositoryScope = scope,
+        autoInitialize = false
+    )
 
     @Test
     fun moveToTrashMovesRowClearsLikeAndEnforcesCapacity() = runBlocking {

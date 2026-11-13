@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -73,15 +74,17 @@ class BookmarkRepository internal constructor(
 
     private val _initializationFailure = MutableStateFlow<Throwable?>(null)
     val initializationFailure: StateFlow<Throwable?> = _initializationFailure.asStateFlow()
+    @Volatile
     private var initializationJob: Job? = null
     private val queryRetry = MutableStateFlow(0)
 
     /** Retry startup reads without depending on an eager full-library emission. */
+    @Synchronized
     fun retryInitialization() {
         if (initializationJob?.isActive == true) return
         if (_isInitialized.value) {
             _initializationFailure.value = null
-            queryRetry.value++
+            queryRetry.update { it + 1 }
             return
         }
         initializationJob = repositoryScope.launch {

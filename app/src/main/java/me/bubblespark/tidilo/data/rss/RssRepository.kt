@@ -14,7 +14,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.DomainIconManager
-import me.bubblespark.tidilo.data.DomainPolicyManager
+import me.bubblespark.tidilo.data.DomainPolicyStore
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -30,7 +30,8 @@ internal class RssRepository internal constructor(private val context: Context,
     private val enqueueInitial: suspend (String, String, Boolean) -> Unit = { feedId, operationId, mobile ->
         RssScheduler.fetchInitial(context, feedId, operationId, mobile)
     },
-    private val elapsedMillis: () -> Long = { android.os.SystemClock.elapsedRealtime() }
+    private val elapsedMillis: () -> Long = { android.os.SystemClock.elapsedRealtime() },
+    private val domainPolicyStore: DomainPolicyStore = DomainPolicyStore.getInstance(context.applicationContext)
 ) {
     private val dao = db.rssDao()
     private val preferences = RssPreferences.getInstance(context)
@@ -67,7 +68,7 @@ internal class RssRepository internal constructor(private val context: Context,
         }
     }
     private val operation = Mutex()
-    private val store = RssIngestionStore(db)
+    private val store = RssIngestionStore(db, domainPolicyStore)
     val feeds = dao.observeFeeds()
     val settings = preferences.state
 
@@ -290,7 +291,7 @@ internal class RssRepository internal constructor(private val context: Context,
             val classification = me.bubblespark.tidilo.parser.classifyStandardMetadata(parsed)
             if (!store.complete(feed, task, article, runId, classification)) return
             val domain = DomainIconManager.extractDomain(article.url)
-            DomainPolicyManager.registerDomain(domain, false, article.siteName)
+            domainPolicyStore.registerDomain(domain, false, article.siteName)
             if (article.isNsfw && !AppConfig.isNsfwContentBookmarkable.value) return
             // Optional enrichment cannot turn a committed article into an acquisition error.
             try {

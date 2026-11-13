@@ -29,9 +29,11 @@ app/src/main/java/com/ykgudev/tidilo/
 │   ├── BookmarkRepository.kt            # Bookmark CRUD, query recovery, detail persistence, Trash lifecycle (30-day, 100-cap)
 │   ├── DomainIconManager.kt             # Shared on-demand domain icon recovery, caching, color, and transparency
 │   ├── DomainIconResolver.kt            # Prioritized HTML discovery and short-circuit icon selection
+│   ├── DomainPolicyManager.kt           # Compatibility facade delegating to DomainPolicyStore (in-memory fallback for pure JVM tests)
+│   ├── DomainPolicyStore.kt             # Room-backed per-domain NSFW policy & display-name store with atomic bookmark updates
+│   ├── ImportRepository.kt              # Direct URL import queue, duplicate resolution, and flat transactional bookmark persistence
 │   ├── EntityCandidateExtractor.kt      # Candidate key & 1-token suggestion extraction from title and description
 │   ├── EntityTagPolicy.kt               # Shared entity-tag normalization, deduplication, and bounds policy
-│   ├── QueueRepository.kt               # Queue state machine (Running, Queuing, Error, Completed), Mutex
 │   ├── Taxonomy.kt                      # 7 Top-Level Categories & 11 Subcategories definition and i18n
 │   └── TextSegmenter.kt                 # ICU/standard BreakIterator word token segmenter for entity matching
 │

@@ -7,12 +7,15 @@ import me.bubblespark.tidilo.parser.RssEntry
 import java.util.UUID
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.DomainIconManager
-import me.bubblespark.tidilo.data.DomainPolicyManager
+import me.bubblespark.tidilo.data.DomainPolicyStore
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.data.db.RssSeenItemEntity
 
-internal class RssIngestionStore(private val database: AppDatabase) {
+internal class RssIngestionStore(
+    private val database: AppDatabase,
+    private val domainPolicyStore: DomainPolicyStore? = null
+) {
     private val rss = database.rssDao()
 
     suspend fun registrationSnapshot(url: String): RssRegistrationSnapshot? = database.withTransaction {
@@ -60,7 +63,9 @@ internal class RssIngestionStore(private val database: AppDatabase) {
     suspend fun complete(feed: RssFeedEntity, task: ImportTaskEntity,
         article: me.bubblespark.tidilo.parser.PreparedArticle,
         runId: String? = null,
-        classification: me.bubblespark.tidilo.parser.StandardClassification? = null): Boolean = database.withTransaction {
+        classification: me.bubblespark.tidilo.parser.StandardClassification? = null): Boolean {
+        domainPolicyStore?.awaitReady()
+        return database.withTransaction {
         val current = rss.feed(feed.id) ?: return@withTransaction false
         if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
         val actual = database.importTaskDao().getTaskById(task.id) ?: return@withTransaction false
@@ -71,7 +76,7 @@ internal class RssIngestionStore(private val database: AppDatabase) {
         val subcategory = if (classification == null) {
             actual.standardSubcategory.takeIf { actual.standardClassificationEvaluated }
         } else classification.subcategory?.id
-        val nsfw = article.isNsfw || DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(article.url))
+        val nsfw = article.isNsfw || (domainPolicyStore?.isNsfwDomain(DomainIconManager.extractDomain(article.url)) == true)
         if ((!nsfw || AppConfig.isNsfwContentBookmarkable.value) && !rss.rssWriteConflict(article.url, task.id)) {
             val bookmarks = database.bookmarkDao()
             if (bookmarks.getBookmarkById(task.id) == null) {
@@ -90,6 +95,7 @@ internal class RssIngestionStore(private val database: AppDatabase) {
         rss.recordSeen(RssSeenItemEntity(feed.id, task.rssItemKey ?: task.url, task.url))
         if (article.url != task.url) rss.recordSeen(RssSeenItemEntity(feed.id, "url:${article.url}", article.url))
         true
+        }
     }
 
     suspend fun failArticle(feed: RssFeedEntity, task: ImportTaskEntity, error: Exception, retryable: Boolean,

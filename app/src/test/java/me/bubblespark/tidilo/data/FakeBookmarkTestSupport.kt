@@ -18,6 +18,8 @@ import me.bubblespark.tidilo.data.db.BookmarkEntityTagUpdate
 import me.bubblespark.tidilo.data.db.BookmarkEntityTags
 import me.bubblespark.tidilo.data.db.CollectionDao
 import me.bubblespark.tidilo.data.db.DomainCount
+import me.bubblespark.tidilo.data.db.DomainPolicyDao
+import me.bubblespark.tidilo.data.db.DomainPolicyEntity
 import me.bubblespark.tidilo.data.db.ImportNotificationDao
 import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.RssDao
@@ -83,6 +85,43 @@ internal open class StubTrashDao : TrashDao {
     override suspend fun deleteAll() = Unit
 }
 
+/** Minimal [DomainPolicyDao] test double returning empty results for unexercised queries. */
+internal open class StubDomainPolicyDao : DomainPolicyDao {
+    override fun observeAll(): Flow<List<DomainPolicyEntity>> = emptyFlow()
+    override suspend fun getAll(): List<DomainPolicyEntity> = emptyList()
+    override suspend fun getByDomain(domain: String): DomainPolicyEntity? = null
+    override suspend fun upsert(policy: DomainPolicyEntity) = Unit
+    override suspend fun upsertAll(policies: List<DomainPolicyEntity>) = Unit
+    override suspend fun insertIgnore(policy: DomainPolicyEntity): Long = 1L
+    override suspend fun insertAllIgnore(policies: List<DomainPolicyEntity>) = Unit
+    override suspend fun deleteAll() = Unit
+}
+
+/** In-memory [DomainPolicyDao] for JVM unit tests. */
+internal open class InMemoryDomainPolicyDao : StubDomainPolicyDao() {
+    val rows = linkedMapOf<String, DomainPolicyEntity>()
+
+    override suspend fun getAll(): List<DomainPolicyEntity> = rows.values.sortedBy { it.domain }
+    override suspend fun getByDomain(domain: String): DomainPolicyEntity? = rows[domain]
+    override suspend fun upsert(policy: DomainPolicyEntity) {
+        rows[policy.domain] = policy
+    }
+    override suspend fun upsertAll(policies: List<DomainPolicyEntity>) {
+        policies.forEach { rows[it.domain] = it }
+    }
+    override suspend fun insertIgnore(policy: DomainPolicyEntity): Long {
+        if (rows.containsKey(policy.domain)) return -1L
+        rows[policy.domain] = policy
+        return 1L
+    }
+    override suspend fun insertAllIgnore(policies: List<DomainPolicyEntity>) {
+        policies.forEach { rows.putIfAbsent(it.domain, it) }
+    }
+    override suspend fun deleteAll() {
+        rows.clear()
+    }
+}
+
 internal inline fun <reified T> unusedDaoProxy(): T = Proxy.newProxyInstance(
     T::class.java.classLoader,
     arrayOf(T::class.java)
@@ -95,7 +134,8 @@ internal inline fun <reified T> unusedDaoProxy(): T = Proxy.newProxyInstance(
 
 internal fun fakeAppDatabase(
     bookmarkDao: BookmarkDao = StubBookmarkDao(),
-    trashDao: TrashDao = StubTrashDao()
+    trashDao: TrashDao = StubTrashDao(),
+    domainPolicyDao: DomainPolicyDao = StubDomainPolicyDao()
 ): AppDatabase = object : AppDatabase() {
     override fun collectionDao(): CollectionDao = unusedDaoProxy()
     override fun rssDao(): RssDao = unusedDaoProxy()
@@ -104,8 +144,9 @@ internal fun fakeAppDatabase(
     override fun importTaskDao(): ImportTaskDao = unusedDaoProxy()
     override fun importNotificationDao(): ImportNotificationDao = unusedDaoProxy()
     override fun rssNotificationDao(): RssNotificationDao = unusedDaoProxy()
+    override fun domainPolicyDao(): DomainPolicyDao = domainPolicyDao
     override fun createInvalidationTracker(): InvalidationTracker =
-        InvalidationTracker(this, emptyMap(), emptyMap(), "bookmarks", "trashed_bookmarks")
+        InvalidationTracker(this, emptyMap(), emptyMap(), "bookmarks", "trashed_bookmarks", "domain_policies")
     @Deprecated("Deprecated in Java")
     override fun createOpenHelper(config: DatabaseConfiguration): SupportSQLiteOpenHelper = error("unused")
     @Deprecated("Deprecated in Java")

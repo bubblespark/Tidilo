@@ -45,7 +45,7 @@ import org.json.JSONObject
 
 enum class TrashMutationResult { Restored, Deleted, DuplicateInLibrary, ImportPending, Missing, IdentityConflict }
 
-internal interface TransactionRunner {
+internal fun interface TransactionRunner {
     suspend fun <R> run(block: suspend () -> R): R
 }
 
@@ -58,12 +58,11 @@ internal interface LegacyBookmarkAdapter {
 class BookmarkRepository internal constructor(
     private val database: AppDatabase,
     private val legacyAdapter: LegacyBookmarkAdapter? = null,
-    private val transactionRunner: TransactionRunner = object : TransactionRunner {
-        override suspend fun <R> run(block: suspend () -> R): R = database.withTransaction(block)
-    },
+    private val transactionRunner: TransactionRunner = TransactionRunner { block -> database.withTransaction(block) },
     private val repositoryScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     autoInitialize: Boolean = true,
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val domainPolicyStore: DomainPolicyStore? = null
 ) {
 
     private val bookmarkDao = database.bookmarkDao()
@@ -91,12 +90,14 @@ class BookmarkRepository internal constructor(
             _initializationFailure.value = null
             try {
                 val adapter = legacyAdapter
+                val nsfwLookup: (String?) -> Boolean = { domainPolicyStore?.isNsfwDomain(it) == true }
                 val count = bookmarkDao.getCount()
                 if (count == 0) {
                     if (adapter != null) {
+                        domainPolicyStore?.awaitReady()
                         val legacyJson = adapter.readLegacyBookmarksJson()
                         val initialList = if (!legacyJson.isNullOrBlank()) {
-                            val parsed = parseBookmarks(legacyJson)
+                            val parsed = parseBookmarks(legacyJson, isNsfwDomain = nsfwLookup)
                             if (parsed.isNotEmpty()) parsed else getInitialSampleBookmarks()
                         } else {
                             getInitialSampleBookmarks()
@@ -110,9 +111,10 @@ class BookmarkRepository internal constructor(
 
                 // Check legacy trash in SharedPreferences
                 if (adapter != null && trashDao.getCount() == 0) {
+                    domainPolicyStore?.awaitReady()
                     val legacyTrashJson = adapter.readLegacyTrashJson()
                     if (!legacyTrashJson.isNullOrBlank()) {
-                        val parsedTrash = parseTrash(legacyTrashJson)
+                        val parsedTrash = parseTrash(legacyTrashJson, isNsfwDomain = nsfwLookup)
                         if (parsedTrash.isNotEmpty()) {
                             trashDao.insertAll(parsedTrash.map { TrashedBookmarkEntity.fromTrashedBookmarkItem(it) })
                         }
@@ -144,8 +146,9 @@ class BookmarkRepository internal constructor(
 
     /** Persists a bookmark before returning, retaining any existing record if replacement fails. */
     suspend fun addBookmarkAndAwait(item: BookmarkItem) = withContext(Dispatchers.IO) {
+        domainPolicyStore?.awaitReady()
         val domain = DomainIconManager.extractDomain(item.url)
-        val resolvedItem = if (DomainPolicyManager.isNsfwDomain(domain) && !item.isNsfw) {
+        val resolvedItem = if (domainPolicyStore?.isNsfwDomain(domain) == true && !item.isNsfw) {
             item.copy(isNsfw = true)
         } else item
         val savedItem = transactionRunner.run {
@@ -183,21 +186,8 @@ class BookmarkRepository internal constructor(
         }
         // Room publishes the committed bookmark; auxiliary cache work cannot fail the save.
         repositoryScope.launch {
-            DomainPolicyManager.registerDomain(domain)
+            domainPolicyStore?.registerDomain(domain)
             warmUpDomainIconsAsync(listOf(savedItem))
-        }
-    }
-
-    /**
-     * Updates the isNsfw flag for all bookmarks belonging to the specified domain.
-     * A failed policy write rolls back each row's original flag without a full-library snapshot.
-     */
-    suspend fun updateBookmarksNsfwForDomain(
-        domain: String, isNsfw: Boolean, persistPolicy: suspend () -> Unit
-    ) = withContext(Dispatchers.IO) {
-        transactionRunner.run {
-            bookmarkDao.updateDomainNsfw(domain.trim().lowercase(), isNsfw)
-            persistPolicy()
         }
     }
 
@@ -316,7 +306,7 @@ class BookmarkRepository internal constructor(
         repositoryScope.launch {
             val domains = items?.mapNotNull { DomainIconManager.extractDomain(it.url) }?.distinct()
                 ?: bookmarkDao.distinctDomains()
-            DomainPolicyManager.syncDomains(domains)
+            domainPolicyStore?.syncDomains(domains)
             legacyAdapter?.preloadDomainIcons(domains)
         }
     }
@@ -396,7 +386,8 @@ class BookmarkRepository internal constructor(
             }
             return BookmarkRepository(
                 database = AppDatabase.getInstance(appContext),
-                legacyAdapter = adapter
+                legacyAdapter = adapter,
+                domainPolicyStore = DomainPolicyStore.getInstance(appContext)
             )
         }
 
@@ -421,7 +412,10 @@ class BookmarkRepository internal constructor(
             }
         }
 
-        fun parseBookmarkFromObj(obj: JSONObject): BookmarkItem {
+        fun parseBookmarkFromObj(
+            obj: JSONObject,
+            isNsfwDomain: (String?) -> Boolean = { false }
+        ): BookmarkItem {
             val id = obj.getString("id")
             val url = obj.getString("url")
             val tagObj = obj.optJSONObject("tag")
@@ -441,7 +435,7 @@ class BookmarkRepository internal constructor(
             val updatedAt = obj.optLong("updatedAt", createdAt)
             val note = obj.optString("note", "")
             val isNsfw = obj.optBoolean("isNsfw", false) ||
-                DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(url))
+                isNsfwDomain(DomainIconManager.extractDomain(url))
             return BookmarkItem(
                 id = id,
                 title = obj.getString("title"),
@@ -475,7 +469,10 @@ class BookmarkRepository internal constructor(
             return array.toString()
         }
 
-        fun parseTrash(json: String): List<TrashedBookmarkItem> {
+        fun parseTrash(
+            json: String,
+            isNsfwDomain: (String?) -> Boolean = { false }
+        ): List<TrashedBookmarkItem> {
             return runCatching {
                 val array = JSONArray(json)
                 val list = mutableListOf<TrashedBookmarkItem>()
@@ -483,7 +480,7 @@ class BookmarkRepository internal constructor(
                     val obj = array.getJSONObject(i)
                     val trashedAt = obj.getLong("trashedAt")
                     val bookmarkObj = obj.getJSONObject("bookmark")
-                    val bookmark = parseBookmarkFromObj(bookmarkObj)
+                    val bookmark = parseBookmarkFromObj(bookmarkObj, isNsfwDomain)
                     list.add(TrashedBookmarkItem(bookmark, trashedAt))
                 }
                 list
@@ -493,7 +490,8 @@ class BookmarkRepository internal constructor(
         fun parseBookmarks(
             json: String,
             sampleBookmarks: List<BookmarkItem> = emptyList(),
-            queueTagsMap: Map<String, Tag> = emptyMap()
+            queueTagsMap: Map<String, Tag> = emptyMap(),
+            isNsfwDomain: (String?) -> Boolean = { false }
         ): List<BookmarkItem> {
             return runCatching {
                 val array = JSONArray(json)
@@ -540,7 +538,7 @@ class BookmarkRepository internal constructor(
                     val updatedAt = obj.optLong("updatedAt", createdAt)
                     val note = obj.optString("note", "")
                     val isNsfw = obj.optBoolean("isNsfw", false) ||
-                        DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(url))
+                        isNsfwDomain(DomainIconManager.extractDomain(url))
                     list.add(
                         BookmarkItem(
                             id = id,

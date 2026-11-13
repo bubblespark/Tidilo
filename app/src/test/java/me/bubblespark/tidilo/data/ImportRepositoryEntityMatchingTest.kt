@@ -26,7 +26,6 @@ import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.data.db.TagCount
 import me.bubblespark.tidilo.parser.ParsedWebPage
 import me.bubblespark.tidilo.service.AiCoreExecutionException
-import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -300,7 +299,6 @@ class ImportRepositoryEntityMatchingTest {
             )
         )
 
-        val savedItems = mutableListOf<BookmarkItem>()
         val repository = ImportRepository(
             taskDao = tasks,
             bookmarkDao = bookmarks,
@@ -311,10 +309,6 @@ class ImportRepositoryEntityMatchingTest {
                     jsonLdScripts = listOf("""{"@context":"https://schema.org","@type":"TechArticle","url":"$it"}""")
                 )
             },
-            persistFallback = {
-                savedItems.add(it)
-                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
-            },
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
         )
 
@@ -323,9 +317,6 @@ class ImportRepositoryEntityMatchingTest {
 
         val outcome = withTimeout(5000) { outcomeDeferred.await() }.getOrThrow()
         assertTrue(outcome is ImportOutcome.BookmarkSaved)
-
-        assertEquals(1, savedItems.size)
-        assertEquals(listOf("Kotlin", "Android"), savedItems.first().tag.entities)
 
         val persisted = bookmarks.getBookmarkByUrl("https://example.com/learn")
         assertNotNull(persisted)
@@ -347,16 +338,11 @@ class ImportRepositoryEntityMatchingTest {
             )
         )
 
-        val savedItems = mutableListOf<BookmarkItem>()
         val repository = ImportRepository(
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
             articleAcquirer = { createFakeParsedPage(it, title = "Learn Kotlin and Android") },
-            persistFallback = {
-                savedItems.add(it)
-                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
-            },
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
         )
 
@@ -365,8 +351,8 @@ class ImportRepositoryEntityMatchingTest {
 
         withTimeout(5000) { outcomeDeferred.await() }.getOrThrow()
 
-        assertEquals(1, savedItems.size)
-        assertTrue(savedItems.first().tag.entities.isEmpty())
+        val persisted = bookmarks.getBookmarkByUrl("https://example.com/learn")!!
+        assertTrue(persisted.entities.isEmpty())
     }
 
     @Test
@@ -385,16 +371,11 @@ class ImportRepositoryEntityMatchingTest {
         )
 
         val title = tagNames.joinToString(" ")
-        val savedItems = mutableListOf<BookmarkItem>()
         val repository = ImportRepository(
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
             articleAcquirer = { createFakeParsedPage(it, title = title) },
-            persistFallback = {
-                savedItems.add(it)
-                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
-            },
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
         )
 
@@ -403,9 +384,9 @@ class ImportRepositoryEntityMatchingTest {
 
         withTimeout(5000) { outcomeDeferred.await() }.getOrThrow()
 
-        assertEquals(1, savedItems.size)
         val expected = (1..10).map { "Tag%02d".format(it) }
-        assertEquals(expected, savedItems.first().tag.entities)
+        val persisted = bookmarks.getBookmarkByUrl("https://example.com/tags-test")!!
+        assertEquals(expected, persisted.entities)
     }
 
     @Test
@@ -421,16 +402,11 @@ class ImportRepositoryEntityMatchingTest {
             )
         )
 
-        val savedItems = mutableListOf<BookmarkItem>()
         val repository = ImportRepository(
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
             articleAcquirer = { createFakeParsedPage(it, title = "Unrelated Title", description = "Article covering Kotlin development") },
-            persistFallback = {
-                savedItems.add(it)
-                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
-            },
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
         )
 
@@ -439,8 +415,8 @@ class ImportRepositoryEntityMatchingTest {
 
         withTimeout(5000) { outcomeDeferred.await() }.getOrThrow()
 
-        assertEquals(1, savedItems.size)
-        assertEquals(listOf("Kotlin"), savedItems.first().tag.entities)
+        val persisted = bookmarks.getBookmarkByUrl("https://example.com/desc-test")!!
+        assertEquals(listOf("Kotlin"), persisted.entities)
     }
 
     @Test
@@ -449,16 +425,11 @@ class ImportRepositoryEntityMatchingTest {
         val tasks = TestImportTaskDao()
         bookmarks.spellingsOverride = { throw IllegalStateException("Database disk image is malformed") }
 
-        val savedItems = mutableListOf<BookmarkItem>()
         val repository = ImportRepository(
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
             articleAcquirer = { createFakeParsedPage(it, title = "Learn Kotlin") },
-            persistFallback = {
-                savedItems.add(it)
-                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
-            },
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
         )
 
@@ -467,8 +438,8 @@ class ImportRepositoryEntityMatchingTest {
 
         val outcome = withTimeout(5000) { outcomeDeferred.await() }.getOrThrow()
         assertTrue(outcome is ImportOutcome.BookmarkSaved)
-        assertEquals(1, savedItems.size)
-        assertTrue(savedItems.first().tag.entities.isEmpty())
+        val persisted = bookmarks.getBookmarkByUrl("https://example.com/dao-failure")!!
+        assertTrue(persisted.entities.isEmpty())
     }
 
     @Test
@@ -481,16 +452,11 @@ class ImportRepositoryEntityMatchingTest {
             override fun segment(text: String): List<String> = throw RuntimeException("Segmentation crashed")
         }
 
-        val savedItems = mutableListOf<BookmarkItem>()
         val repository = ImportRepository(
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
             articleAcquirer = { createFakeParsedPage(it, title = "Learn Kotlin") },
-            persistFallback = {
-                savedItems.add(it)
-                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
-            },
             candidateExtractor = EntityCandidateExtractor(throwingSegmenter)
         )
 
@@ -499,8 +465,8 @@ class ImportRepositoryEntityMatchingTest {
 
         val outcome = withTimeout(5000) { outcomeDeferred.await() }.getOrThrow()
         assertTrue(outcome is ImportOutcome.BookmarkSaved)
-        assertEquals(1, savedItems.size)
-        assertTrue(savedItems.first().tag.entities.isEmpty())
+        val persisted = bookmarks.getBookmarkByUrl("https://example.com/extractor-failure")!!
+        assertTrue(persisted.entities.isEmpty())
     }
 
     @Test
@@ -509,16 +475,11 @@ class ImportRepositoryEntityMatchingTest {
         val tasks = TestImportTaskDao()
         bookmarks.spellingsOverride = { throw CancellationException("Operation cancelled by user") }
 
-        val savedItems = mutableListOf<BookmarkItem>()
         val repository = ImportRepository(
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
             articleAcquirer = { createFakeParsedPage(it, title = "Learn Kotlin") },
-            persistFallback = {
-                savedItems.add(it)
-                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
-            },
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
         )
 
@@ -526,7 +487,6 @@ class ImportRepositoryEntityMatchingTest {
         repository.importUrl("https://example.com/cancel-test") { callbackInvoked = true }
 
         // Cancellation should stop persistence cleanly; no bookmark is saved, no error task created
-        assertEquals(0, savedItems.size)
         assertEquals(0, bookmarks.getCount())
         assertEquals(0, tasks.getCount())
         assertTrue(!callbackInvoked)
@@ -536,13 +496,11 @@ class ImportRepositoryEntityMatchingTest {
     fun nullDaoReturnsEmptyTag() = runBlocking {
         val tasks = TestImportTaskDao()
 
-        val savedItems = mutableListOf<BookmarkItem>()
         val repository = ImportRepository(
             taskDao = tasks,
             bookmarkDao = null,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
             articleAcquirer = { createFakeParsedPage(it, title = "Learn Kotlin") },
-            persistFallback = { savedItems.add(it) },
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
         )
 
@@ -551,8 +509,7 @@ class ImportRepositoryEntityMatchingTest {
 
         val outcome = withTimeout(5000) { outcomeDeferred.await() }.getOrThrow()
         assertTrue(outcome is ImportOutcome.BookmarkSaved)
-        assertEquals(1, savedItems.size)
-        assertTrue(savedItems.first().tag.entities.isEmpty())
+        assertEquals(0, tasks.getCount())
     }
 
     @Test
@@ -561,16 +518,11 @@ class ImportRepositoryEntityMatchingTest {
         val tasks = TestImportTaskDao()
         bookmarks.insertRow(createBookmarkEntity(id = "b1", title = "Compose", url = "https://example.com/c", entities = listOf("Compose")))
 
-        val savedItems = mutableListOf<BookmarkItem>()
         val repository = ImportRepository(
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
             articleAcquirer = { createFakeParsedPage(it, title = "Jetpack Compose Tutorial") },
-            persistFallback = {
-                savedItems.add(it)
-                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
-            },
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
         )
 
@@ -579,8 +531,8 @@ class ImportRepositoryEntityMatchingTest {
 
         val outcome = withTimeout(5000) { outcomeDeferred.await() }.getOrThrow()
         assertTrue(outcome is ImportOutcome.BookmarkSaved)
-        assertEquals(1, savedItems.size)
-        assertEquals(listOf("Compose"), savedItems.first().tag.entities)
+        val persisted = bookmarks.getBookmarkByUrl("https://example.com/compose-tutorial")!!
+        assertEquals(listOf("Compose"), persisted.entities)
     }
 
     @Test
@@ -603,16 +555,11 @@ class ImportRepositoryEntityMatchingTest {
             )
         )
 
-        val savedItems = mutableListOf<BookmarkItem>()
         val repository = ImportRepository(
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
             articleAcquirer = { createFakeParsedPage(it, title = "Android 15 Features") },
-            persistFallback = {
-                savedItems.add(it)
-                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
-            },
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
         )
 
@@ -622,8 +569,8 @@ class ImportRepositoryEntityMatchingTest {
         val outcome = withTimeout(5000) { outcomeDeferred.await() }.getOrThrow()
         assertTrue(outcome is ImportOutcome.BookmarkSaved)
         assertEquals("rss-task-1", (outcome as ImportOutcome.BookmarkSaved).bookmarkId)
-        assertEquals(1, savedItems.size)
-        assertEquals(listOf("Android"), savedItems.first().tag.entities)
+        val persisted = bookmarks.getBookmarkById("rss-task-1")!!
+        assertEquals(listOf("Android"), persisted.entities)
         assertEquals(0, tasks.getCount())
     }
 
@@ -644,15 +591,10 @@ class ImportRepositoryEntityMatchingTest {
         )
         tasks.insertOrUpdate(ImportTaskEntity.fromImportTask(task))
 
-        val savedItems = mutableListOf<BookmarkItem>()
         val repository = ImportRepository(
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            persistFallback = {
-                savedItems.add(it)
-                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
-            },
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
         )
 
@@ -664,8 +606,8 @@ class ImportRepositoryEntityMatchingTest {
             }
         }
 
-        assertEquals(1, savedItems.size)
-        assertEquals(listOf("Room"), savedItems.first().tag.entities)
+        val persisted = bookmarks.getBookmarkById("direct-1")!!
+        assertEquals(listOf("Room"), persisted.entities)
     }
 
     @Test
@@ -674,16 +616,11 @@ class ImportRepositoryEntityMatchingTest {
         val tasks = TestImportTaskDao()
         bookmarks.insertRow(createBookmarkEntity(id = "b1", title = "Kotlin", url = "https://example.com/k", entities = listOf("Kotlin")))
 
-        val savedItems = mutableListOf<BookmarkItem>()
         val repository = ImportRepository(
             taskDao = tasks,
             bookmarkDao = bookmarks,
             repositoryScope = CoroutineScope(Dispatchers.Unconfined),
             articleAcquirer = { createFakeParsedPage(it, title = "Kotlin Guide") },
-            persistFallback = {
-                savedItems.add(it)
-                bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it))
-            },
             candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
         )
 
@@ -694,7 +631,7 @@ class ImportRepositoryEntityMatchingTest {
         val directOutcome = withTimeout(5000) { directDeferred.await() }.getOrThrow()
         assertTrue(directOutcome is ImportOutcome.BookmarkSaved)
         val directSaved = directOutcome as ImportOutcome.BookmarkSaved
-        assertEquals(directSaved.bookmarkId, savedItems[0].id)
+        assertNotNull(bookmarks.getBookmarkById(directSaved.bookmarkId))
         assertEquals(1, bookmarks.findCanonicalEntitySpellingsInvocations)
 
         // 2. RSS promotion via MovedFromRssToReady branch
@@ -720,7 +657,7 @@ class ImportRepositoryEntityMatchingTest {
         assertTrue(promoOutcome is ImportOutcome.BookmarkSaved)
         val promoSaved = promoOutcome as ImportOutcome.BookmarkSaved
         assertEquals("rss-task-2", promoSaved.bookmarkId)
-        assertEquals(promoSaved.bookmarkId, savedItems[1].id)
+        assertNotNull(bookmarks.getBookmarkById(promoSaved.bookmarkId))
         assertEquals(1, bookmarks.findCanonicalEntitySpellingsInvocations)
     }
 }

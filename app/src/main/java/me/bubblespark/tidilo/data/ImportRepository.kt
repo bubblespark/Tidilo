@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +20,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import me.bubblespark.tidilo.TidiloApplication
-import me.bubblespark.tidilo.config.AppConfig
 import kotlinx.coroutines.flow.flowOf
 import androidx.room.withTransaction
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -31,7 +31,6 @@ import me.bubblespark.tidilo.data.db.NotificationType
 import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
 
-import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.parser.ArticleAcquirer
 import me.bubblespark.tidilo.parser.ParsedWebPage
@@ -51,9 +50,127 @@ internal data class ResolvedTarget(
 
 private val ACTIVE_QUEUE_STATUSES = setOf("QUEUED", "PROCESSING", "ERROR")
 
-private class DirectBookmarkSaveFailure(val target: ImportTask, cause: Exception) : Exception(cause)
+internal interface ImportDomainPolicyAdapter {
+    fun isNsfwDomain(domain: String?): Boolean
+    fun registerDomain(domain: String?, isNsfw: Boolean = false, displayName: String = "")
+
+    companion object {
+        val NO_OP: ImportDomainPolicyAdapter = object : ImportDomainPolicyAdapter {
+            override fun isNsfwDomain(domain: String?): Boolean = false
+            override fun registerDomain(domain: String?, isNsfw: Boolean, displayName: String) = Unit
+        }
+    }
+}
+
+internal interface ImportMediaCacheAdapter {
+    fun hasDomainIcon(domain: String): Boolean
+    suspend fun fetchDomainIcon(
+        url: String,
+        appleTouchIconUrl: String?,
+        faviconUrl: String?,
+        knownCandidates: List<DomainIconCandidate>?
+    )
+    suspend fun cacheOgImage(url: String, ogImageUrl: String, rssFeedId: String?)
+
+    companion object {
+        val NO_OP: ImportMediaCacheAdapter = object : ImportMediaCacheAdapter {
+            override fun hasDomainIcon(domain: String): Boolean = false
+            override suspend fun fetchDomainIcon(
+                url: String,
+                appleTouchIconUrl: String?,
+                faviconUrl: String?,
+                knownCandidates: List<DomainIconCandidate>?
+            ) = Unit
+            override suspend fun cacheOgImage(url: String, ogImageUrl: String, rssFeedId: String?) = Unit
+        }
+    }
+}
+
+internal interface ImportRssAdapter {
+    suspend fun resumeAcquisitions()
+    suspend fun retryAcquisition(taskId: String)
+    suspend fun restoreTask(entity: ImportTaskEntity)
+    suspend fun validateRssWrite(url: String, bookmarkId: String, feedId: String, isNsfw: Boolean)
+    suspend fun recordRecoveredDirectSave(taskId: String)
+}
+
+internal interface ImportNotificationAdapter {
+    fun importError(error: Throwable)
+    suspend fun publishCompletedRssRuns()
+
+    companion object {
+        val NO_OP: ImportNotificationAdapter = object : ImportNotificationAdapter {
+            override fun importError(error: Throwable) = Unit
+            override suspend fun publishCompletedRssRuns() = Unit
+        }
+    }
+}
+
+private sealed class DuplicateResolution {
+    data object NotHandled : DuplicateResolution()
+    data class Handled(val postCommitTask: ImportTask? = null) : DuplicateResolution()
+}
+
+private sealed class FinalSaveResult {
+    data object NotHandled : FinalSaveResult()
+    data class HandledDuplicate(val postCommitTask: ImportTask?) : FinalSaveResult()
+    data class Inserted(val savedTask: ImportTask) : FinalSaveResult()
+}
 
 private fun defaultCandidateExtractor(): EntityCandidateExtractor = EntityCandidateExtractor.default()
+
+private fun defaultTransactionRunner(database: AppDatabase?): TransactionRunner {
+    val fallbackMutex = Mutex()
+    return object : TransactionRunner {
+        override suspend fun <R> run(block: suspend () -> R): R =
+            if (database != null) {
+                database.withTransaction { block() }
+            } else {
+                fallbackMutex.withLock { block() }
+            }
+    }
+}
+
+private fun defaultRssAdapter(
+    database: AppDatabase?,
+    taskDao: ImportTaskDao,
+    isNsfwContentBookmarkable: () -> Boolean,
+    onResumeAcquisitions: suspend () -> Unit = {},
+    onRetryAcquisition: suspend (String) -> Unit = {},
+    onRestoreTask: (suspend (ImportTaskEntity) -> Unit)? = null
+): ImportRssAdapter = object : ImportRssAdapter {
+    override suspend fun resumeAcquisitions() {
+        onResumeAcquisitions()
+    }
+
+    override suspend fun retryAcquisition(taskId: String) {
+        onRetryAcquisition(taskId)
+    }
+
+    override suspend fun restoreTask(entity: ImportTaskEntity) {
+        if (onRestoreTask != null) {
+            onRestoreTask(entity)
+        } else if (database != null) {
+            me.bubblespark.tidilo.data.rss.RssIngestionStore(database).restoreTask(entity)
+        } else {
+            taskDao.insertOrUpdate(entity)
+        }
+    }
+
+    override suspend fun validateRssWrite(url: String, bookmarkId: String, feedId: String, isNsfw: Boolean) {
+        val db = database ?: return
+        val rssDao = db.rssDao()
+        val feed = rssDao.feed(feedId)
+        val blocked = rssDao.rssWriteConflict(url, bookmarkId)
+        if (feed == null || feed.deleted || blocked || (isNsfw && !isNsfwContentBookmarkable())) {
+            throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
+        }
+    }
+
+    override suspend fun recordRecoveredDirectSave(taskId: String) {
+        database?.rssNotificationDao()?.recordRecoveredDirectSave(taskId)
+    }
+}
 
 class ImportRepository internal constructor(
     context: Context? = null,
@@ -64,16 +181,17 @@ class ImportRepository internal constructor(
     private val database: AppDatabase? = context?.let { AppDatabase.getInstance(it) },
     private val repositoryScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     private val articleAcquirer: suspend (String) -> ParsedWebPage = { ArticleAcquirer.acquire(it) },
-    private val persistFallback: suspend (BookmarkItem) -> Unit = {
-        BookmarkRepository.getInstance().addBookmarkAndAwait(it)
-    },
-    private val reportImportError: (Throwable) -> Unit = { error -> context?.let {
-        me.bubblespark.tidilo.data.notifications.NotificationCoordinator.getInstance(it).importError(error)
-    } },
-    private val candidateExtractor: EntityCandidateExtractor = defaultCandidateExtractor()
+    private val candidateExtractor: EntityCandidateExtractor = defaultCandidateExtractor(),
+    private val transactionRunner: TransactionRunner = defaultTransactionRunner(database),
+    private val domainPolicyAdapter: ImportDomainPolicyAdapter = ImportDomainPolicyAdapter.NO_OP,
+    private val mediaCacheAdapter: ImportMediaCacheAdapter = ImportMediaCacheAdapter.NO_OP,
+    private val isNsfwContentBookmarkable: () -> Boolean = { true },
+    private val rssAdapter: ImportRssAdapter = defaultRssAdapter(database, taskDao, isNsfwContentBookmarkable),
+    private val notificationAdapter: ImportNotificationAdapter = ImportNotificationAdapter.NO_OP,
+    private val reportImportError: (Throwable) -> Unit = { error -> notificationAdapter.importError(error) },
+    private val legacyQueuePrefsProvider: () -> SharedPreferences? = { null }
 ) {
 
-    private val appContext: Context? = context?.applicationContext
     private val directExecutionMutex = Mutex()
 
     private val _processingTasks = MutableStateFlow<List<ImportTask>>(emptyList())
@@ -107,7 +225,6 @@ class ImportRepository internal constructor(
         return bookmarkDao?.getBookmarkByUrl(url)?.id
     }
 
-    private val importMutex = Mutex()
     internal val inFlightResolvedUrls = java.util.concurrent.ConcurrentHashMap<String, ResolvedTarget>()
     private val pendingDuplicateNotificationJobs = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<Job>>()
     internal var onEnteringTransaction: (suspend (url: String) -> Unit)? = null
@@ -118,19 +235,16 @@ class ImportRepository internal constructor(
         if (url != null) {
             onEnteringTransaction?.invoke(url)
         }
-        return if (database != null) {
-            database.withTransaction { block() }
-        } else {
-            importMutex.withLock { block() }
-        }
+        return transactionRunner.run(block)
     }
+
     init {
-        context?.let {
+        if (context != null) {
             repositoryScope.launch {
                 if (taskDao.getCount() == 0) {
                     migrateFromLegacyPrefs()
                 }
-                me.bubblespark.tidilo.data.rss.RssRepository.getInstance(it).resumeAcquisitions()
+                rssAdapter.resumeAcquisitions()
                 resumeDirectImports()
             }
         }
@@ -172,11 +286,12 @@ class ImportRepository internal constructor(
         result: DuplicateCheckResult,
         importingId: String?,
         onImported: ((Result<ImportOutcome>) -> Unit)?,
-        preparedImport: ImportTask? = null
-    ): Boolean {
+        preparedImport: ImportTask? = null,
+        onBeforeDirectSave: ((ImportTask) -> Unit)? = null
+    ): DuplicateResolution {
         val domain = DomainIconManager.extractDomain(url) ?: url
         when (result) {
-            is DuplicateCheckResult.NoDuplicate -> return false
+            is DuplicateCheckResult.NoDuplicate -> return DuplicateResolution.NotHandled
 
             is DuplicateCheckResult.PromotedFromRssToLibrary -> {
                 bookmarkDao?.clearRssFeedId(result.bookmark.id)
@@ -193,22 +308,22 @@ class ImportRepository internal constructor(
                     )
                 )
                 onImported?.invoke(Result.success(ImportOutcome.BookmarkSaved(result.bookmark.id, url)))
-                return true
+                return DuplicateResolution.Handled()
             }
 
             is DuplicateCheckResult.MovedFromRssToDirect -> {
-                if (!result.task.articlePrepared && preparedImport == null) return false
+                if (!result.task.articlePrepared && preparedImport == null) return DuplicateResolution.NotHandled
                 val target = preparedImport?.copy(id = result.task.id, createdAt = result.task.createdAt)
                     ?: result.task.copy(rssFeedId = null).toImportTask()
+                onBeforeDirectSave?.invoke(target)
                 val bookmark = skippedBookmark(target)
-                persistDirectBookmark(target, bookmark)
+                val saved = persistDirectBookmarkInTransaction(bookmark)
                 taskDao.deleteById(target.id)
                 notificationDao?.insert(ImportNotificationEntity(type = NotificationType.INFO.name, domain = domain,
-                    url = url, message = "Promoted from RSS to Library", existingBookmarkId = bookmark.id))
-                cacheDirectOgImage(target)
+                    url = url, message = "Promoted from RSS to Library", existingBookmarkId = saved.id))
                 importingId?.let { id -> _importingTasks.update { list -> list.filter { it.id != id } } }
-                onImported?.invoke(Result.success(ImportOutcome.BookmarkSaved(bookmark.id, url)))
-                return true
+                onImported?.invoke(Result.success(ImportOutcome.BookmarkSaved(saved.id, saved.url)))
+                return DuplicateResolution.Handled(postCommitTask = target.copy(id = saved.id, url = saved.url))
             }
 
             is DuplicateCheckResult.DuplicateInLibrary -> {
@@ -225,7 +340,7 @@ class ImportRepository internal constructor(
                     )
                 )
                 onImported?.invoke(Result.failure(DuplicateUrlException("Duplicate URL (Already in Library)")))
-                return true
+                return DuplicateResolution.Handled()
             }
 
             is DuplicateCheckResult.DuplicateInQueue -> {
@@ -242,7 +357,7 @@ class ImportRepository internal constructor(
                     )
                 )
                 onImported?.invoke(Result.failure(DuplicateUrlException("Duplicate URL (Already in Queue)")))
-                return true
+                return DuplicateResolution.Handled()
             }
         }
     }
@@ -344,14 +459,25 @@ class ImportRepository internal constructor(
                 duplicateOutcome?.let { reportOutcome(it) }
                 duplicateOutcome = null
             }
+            var pendingSaveTarget: ImportTask? = null
             try {
                 // Pre-Fetch Check (Primary Gate) - atomic duplicate check & mutation in database transaction
-                val isEarlyHandled = runInDbOrLock(normalized) {
+                val earlyResolution = runInDbOrLock(normalized) {
                     val preCheck = checkDuplicate(normalized)
-                    handleDuplicateOrConflict(normalized, preCheck, importing.id, recordDuplicateOutcome)
+                    handleDuplicateOrConflict(
+                        url = normalized,
+                        result = preCheck,
+                        importingId = importing.id,
+                        onImported = recordDuplicateOutcome,
+                        onBeforeDirectSave = { pendingSaveTarget = it }
+                    )
                 }
+                pendingSaveTarget = null
                 reportCommittedDuplicate()
-                if (isEarlyHandled) {
+                if (earlyResolution is DuplicateResolution.Handled) {
+                    earlyResolution.postCommitTask?.let { promoted ->
+                        runPostCommitMediaAndPolicy(promoted, parsed = null)
+                    }
                     return@launch
                 }
 
@@ -363,7 +489,7 @@ class ImportRepository internal constructor(
                 val realUrl = WebPageParser.normalizeUrl(prepared.url) ?: prepared.url
                 // Post-Redirect Check (handles redirects) - atomic duplicate check & mutation in database transaction
                 if (realUrl != normalized) {
-                    val isRedirectHandled = runInDbOrLock(realUrl) {
+                    val redirectResolution = runInDbOrLock(realUrl) {
                         val redirectDomain = DomainIconManager.extractDomain(realUrl).orEmpty()
                         inFlightResolvedUrls[normalized] = ResolvedTarget(
                             importingId = importing.id,
@@ -376,10 +502,20 @@ class ImportRepository internal constructor(
                             domain = redirectDomain
                         )
                         val postCheck = checkDuplicate(realUrl)
-                        handleDuplicateOrConflict(realUrl, postCheck, importing.id, recordDuplicateOutcome)
+                        handleDuplicateOrConflict(
+                            url = realUrl,
+                            result = postCheck,
+                            importingId = importing.id,
+                            onImported = recordDuplicateOutcome,
+                            onBeforeDirectSave = { pendingSaveTarget = it }
+                        )
                     }
+                    pendingSaveTarget = null
                     reportCommittedDuplicate()
-                    if (isRedirectHandled) {
+                    if (redirectResolution is DuplicateResolution.Handled) {
+                        redirectResolution.postCommitTask?.let { promoted ->
+                            runPostCommitMediaAndPolicy(promoted, parsed = parsed)
+                        }
                         return@launch
                     }
                 }
@@ -388,25 +524,13 @@ class ImportRepository internal constructor(
                 val realTitle = if (hasCustomTitle) title.trim() else prepared.title
                 val domain = DomainIconManager.extractDomain(realUrl)
                 val siteName = prepared.siteName
-                DomainPolicyManager.registerDomain(domain, false, siteName)
-                val isNsfw = parsed.isNsfwSignal || DomainPolicyManager.isNsfwDomain(domain)
-
-                // 2. Fetch and save domain icon (resolving watermark icon)
-                if (appContext != null && domain != null && !DomainIconManager.hasIcon(appContext, domain)) {
-                    DomainIconManager.fetchAndSaveDomainIcon(
-                        context = appContext,
-                        url = realUrl,
-                        appleTouchIconUrl = parsed.appleTouchIconUrl,
-                        faviconUrl = parsed.faviconUrl,
-                        knownCandidates = parsed.iconCandidates
-                    )
-                }
+                val isNsfw = parsed.isNsfwSignal || domainPolicyAdapter.isNsfwDomain(domain)
 
                 val description = prepared.description
                 val bodySnippet = prepared.bodySnippet
                 val ogImageUrl = prepared.ogImageUrl
 
-                // 3. Create fully pre-parsed ImportTask and save into database
+                // 2. Create fully pre-parsed ImportTask and save atomically in one flat transaction
                 val newItem = ImportTask(
                     url = realUrl,
                     title = realTitle,
@@ -423,41 +547,66 @@ class ImportRepository internal constructor(
                     standardClassificationEvaluated = true
                 )
 
-                val isInserted = runInDbOrLock(realUrl) {
+                val commitResult = runInDbOrLock(realUrl) {
                     val finalRecheck = checkDuplicate(realUrl)
                     if (finalRecheck !is DuplicateCheckResult.NoDuplicate) {
-                        handleDuplicateOrConflict(realUrl, finalRecheck, importing.id, recordDuplicateOutcome, newItem)
-                        false
+                        val resolution = handleDuplicateOrConflict(
+                            url = realUrl,
+                            result = finalRecheck,
+                            importingId = importing.id,
+                            onImported = recordDuplicateOutcome,
+                            preparedImport = newItem,
+                            onBeforeDirectSave = { pendingSaveTarget = it }
+                        )
+                        if (resolution is DuplicateResolution.Handled) {
+                            FinalSaveResult.HandledDuplicate(resolution.postCommitTask)
+                        } else {
+                            FinalSaveResult.NotHandled
+                        }
                     } else {
-                        persistDirectBookmark(newItem, skippedBookmark(newItem))
-                        true
+                        pendingSaveTarget = newItem
+                        val saved = persistDirectBookmarkInTransaction(skippedBookmark(newItem))
+                        FinalSaveResult.Inserted(newItem.copy(id = saved.id, url = saved.url))
                     }
                 }
+                pendingSaveTarget = null
                 reportCommittedDuplicate()
-                if (!isInserted) {
-                    return@launch
+                when (commitResult) {
+                    is FinalSaveResult.NotHandled -> return@launch
+                    is FinalSaveResult.HandledDuplicate -> {
+                        commitResult.postCommitTask?.let { promoted ->
+                            runPostCommitMediaAndPolicy(promoted, parsed = parsed)
+                        }
+                        return@launch
+                    }
+                    is FinalSaveResult.Inserted -> {
+                        val savedTask = commitResult.savedTask
+                        runPostCommitMediaAndPolicy(savedTask, parsed = parsed)
+                        reportOutcome(Result.success(ImportOutcome.BookmarkSaved(savedTask.id, savedTask.url)))
+                    }
                 }
-                cacheDirectOgImage(newItem)
-                reportOutcome(Result.success(ImportOutcome.BookmarkSaved(newItem.id, newItem.url)))
             } catch (e: DuplicateUrlException) {
                 // Handled in handleDuplicateOrConflict; ignore
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: DirectBookmarkSaveFailure) {
-                // A failed nested Room transaction invalidates its outer transaction. Recover only after rollback.
-                runInDbOrLock(e.target.url) {
-                    val existingTask = taskDao.getTaskByUrl(e.target.url)
-                    if (bookmarkDao?.getBookmarkByUrl(e.target.url) == null &&
-                        (existingTask == null || existingTask.id == e.target.id)) {
-                        retainDirectSaveError(e.target, e.cause ?: e)
-                    }
-                }
-                reportOutcome(Result.failure(e.cause ?: e))
             } catch (e: Exception) {
                 duplicateOutcome = null
+                val failedSaveTarget = pendingSaveTarget
+                if (failedSaveTarget != null) {
+                    // A failed flat Room transaction rolls back cleanly. Recover only after rollback.
+                    runInDbOrLock(failedSaveTarget.url) {
+                        val existingTask = taskDao.getTaskByUrl(failedSaveTarget.url)
+                        if (bookmarkDao?.getBookmarkByUrl(failedSaveTarget.url) == null &&
+                            (existingTask == null || existingTask.id == failedSaveTarget.id)) {
+                            retainDirectSaveError(failedSaveTarget, e)
+                        }
+                    }
+                    reportOutcome(Result.failure(e))
+                    return@launch
+                }
                 // Fallback: If network/parsing throws, create fallback task with basic details
                 val domain = DomainIconManager.extractDomain(normalized)
-                val isDomainNsfw = DomainPolicyManager.isNsfwDomain(domain)
+                val isDomainNsfw = domainPolicyAdapter.isNsfwDomain(domain)
                 val fallbackItem = ImportTask(
                     url = normalized,
                     title = title?.trim()?.takeIf { it.isNotBlank() } ?: extractHostOrTitle(normalized),
@@ -510,7 +659,7 @@ class ImportRepository internal constructor(
         if (targetEntity.status != "ERROR") return@withContext
         val target = targetEntity.toImportTask()
         if (target.rssFeedId != null && !target.articlePrepared) {
-            appContext?.let { me.bubblespark.tidilo.data.rss.RssRepository.getInstance(it).retryAcquisition(taskId) }
+            rssAdapter.retryAcquisition(taskId)
             return@withContext
         }
         if (target.rssFeedId == null && target.errorMessage == me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE) {
@@ -556,10 +705,12 @@ class ImportRepository internal constructor(
     }
 
     private suspend fun restoreTask(task: ImportTask) {
-        if (task.rssFeedId != null && appContext != null) {
-            me.bubblespark.tidilo.data.rss.RssIngestionStore(AppDatabase.getInstance(appContext))
-                .restoreTask(ImportTaskEntity.fromImportTask(task))
-        } else taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(task))
+        val entity = ImportTaskEntity.fromImportTask(task)
+        if (task.rssFeedId != null) {
+            rssAdapter.restoreTask(entity)
+        } else {
+            taskDao.insertOrUpdate(entity)
+        }
     }
 
     fun onAppBecameActive() {
@@ -588,9 +739,7 @@ class ImportRepository internal constructor(
                 Log.w("ImportRepository", "Could not read the direct import queue", error)
             }
             try {
-                appContext?.let {
-                    me.bubblespark.tidilo.data.notifications.NotificationCoordinator.getInstance(it).publishCompletedRssRuns()
-                }
+                notificationAdapter.publishCompletedRssRuns()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -633,24 +782,73 @@ class ImportRepository internal constructor(
         rssPublishedAt = target.rssPublishedAt
     )
 
+    private suspend fun runPostCommitMediaAndPolicy(task: ImportTask, parsed: ParsedWebPage?) {
+        val domain = DomainIconManager.extractDomain(task.url)
+        domainPolicyAdapter.registerDomain(domain, false, task.siteName)
+        if (domain != null && !mediaCacheAdapter.hasDomainIcon(domain)) {
+            try {
+                mediaCacheAdapter.fetchDomainIcon(
+                    url = task.url,
+                    appleTouchIconUrl = parsed?.appleTouchIconUrl,
+                    faviconUrl = parsed?.faviconUrl,
+                    knownCandidates = parsed?.iconCandidates
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                /* Optional cache recovery remains independent of the durable save. */
+            }
+        }
+        cacheDirectOgImage(task)
+    }
+
     private fun cacheDirectOgImage(target: ImportTask) {
-        val context = appContext ?: return
         val ogImage = target.ogImageUrl?.takeIf { it.isNotBlank() } ?: return
         repositoryScope.launch {
             try {
-                OgImageManager.processAndSaveOgImage(context, target.url, ogImage,
-                    network = if (target.rssFeedId != null) me.bubblespark.tidilo.data.rss.RssRepository.getInstance(context).articleNetwork() else null)
-            } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { /* Optional cache recovery remains independent of the durable save. */ }
+                mediaCacheAdapter.cacheOgImage(target.url, ogImage, target.rssFeedId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                /* Optional cache recovery remains independent of the durable save. */
+            }
         }
     }
 
-    private suspend fun persistDirectBookmark(target: ImportTask, bookmark: BookmarkItem) {
-        try {
-            persistFallback(bookmark)
-        } catch (e: CancellationException) { throw e }
-        catch (e: me.bubblespark.tidilo.data.rss.RssImportSkipped) { throw e }
-        catch (e: Exception) { throw DirectBookmarkSaveFailure(target, e) }
+    private suspend fun persistDirectBookmarkInTransaction(item: BookmarkItem): BookmarkItem {
+        val domain = DomainIconManager.extractDomain(item.url)
+        val resolvedItem = if (domainPolicyAdapter.isNsfwDomain(domain) && !item.isNsfw) {
+            item.copy(isNsfw = true)
+        } else {
+            item
+        }
+        val existing = bookmarkDao?.getBookmarkByUrl(resolvedItem.url)
+            ?: bookmarkDao?.getBookmarkById(resolvedItem.id)
+        val finalItem = if (existing != null) {
+            val existingTag = existing.logicalTag()
+            resolvedItem.copy(
+                id = existing.id,
+                tag = Tag(
+                    category = resolvedItem.tag.category ?: existingTag.category,
+                    subcategory = resolvedItem.tag.subcategory ?: existingTag.subcategory,
+                    entities = resolvedItem.tag.entities.ifEmpty { existingTag.entities }
+                ),
+                note = if (resolvedItem.note.isNotBlank()) resolvedItem.note else existing.note,
+                createdAt = existing.createdAt,
+                isLiked = existing.isLiked,
+                browserOpenCount = existing.browserOpenCount,
+                detailViewCount = existing.detailViewCount,
+                summaryPeekCount = existing.summaryPeekCount,
+                lastInteractedAt = existing.lastInteractedAt
+            )
+        } else {
+            resolvedItem
+        }
+        if (finalItem.rssFeedId != null) {
+            rssAdapter.validateRssWrite(finalItem.url, finalItem.id, finalItem.rssFeedId, finalItem.isNsfw)
+        }
+        bookmarkDao?.insertReplacingUrl(BookmarkEntity.fromBookmarkItem(finalItem))
+        return finalItem
     }
 
     private suspend fun retainDirectSaveError(target: ImportTask, error: Throwable) {
@@ -674,15 +872,17 @@ class ImportRepository internal constructor(
             }
             if (alreadySaved) return
         }
+        var acquiredParsed: ParsedWebPage? = null
         try {
             if (!target.articlePrepared) {
                 val parsed = articleAcquirer(target.url)
+                acquiredParsed = parsed
                 val article = ArticlePreparation.prepare(parsed)
                 val classification = classifyStandardMetadata(parsed)
                 target = target.copy(url = WebPageParser.normalizeUrl(article.url) ?: article.url,
                     title = if (isRawUrlOrHost(target.title, target.url)) article.title else target.title,
                     siteName = article.siteName, description = article.description, bodySnippet = article.bodySnippet,
-                    ogImageUrl = article.ogImageUrl, isNsfw = article.isNsfw || DomainPolicyManager.isNsfwDomain(DomainIconManager.extractDomain(article.url)),
+                    ogImageUrl = article.ogImageUrl, isNsfw = article.isNsfw || domainPolicyAdapter.isNsfwDomain(DomainIconManager.extractDomain(article.url)),
                     articlePrepared = true, status = TaskStatus.PROCESSING, errorMessage = null,
                     standardCategory = classification.category?.id,
                     standardSubcategory = classification.subcategory?.id,
@@ -690,15 +890,6 @@ class ImportRepository internal constructor(
                 val current = taskDao.getTaskById(target.id) ?: return
                 if (current.status != "PROCESSING") return
                 taskDao.update(ImportTaskEntity.fromImportTask(target))
-                val context = appContext
-                val domain = DomainIconManager.extractDomain(target.url)
-                if (context != null && domain != null) repositoryScope.launch {
-                    try {
-                        DomainIconManager.fetchAndSaveDomainIcon(context, target.url, parsed.appleTouchIconUrl,
-                            parsed.faviconUrl, parsed.iconCandidates)
-                    } catch (e: CancellationException) { throw e }
-                    catch (_: Exception) { /* Optional enrichment. */ }
-                }
             }
         } catch (e: CancellationException) {
             throw e
@@ -706,6 +897,7 @@ class ImportRepository internal constructor(
             taskDao.updateStatus(target.id, "ERROR", "Article acquisition failed", e.message)
             return
         }
+        var savedBookmark: BookmarkItem? = null
         try {
             runInDbOrLock(target.url) {
                 if (taskDao.getTaskById(target.id)?.status != "PROCESSING") return@runInDbOrLock
@@ -713,28 +905,50 @@ class ImportRepository internal constructor(
                 if (existing != null) {
                     if (target.rssFeedId == null && existing.rssFeedId != null) bookmarkDao.clearRssFeedId(existing.id)
                 } else {
-                    persistDirectBookmark(target, skippedBookmark(target))
-                    val feedId = target.rssFeedId
-                    if (feedId != null && database != null) {
-                        database.rssNotificationDao().recordRecoveredDirectSave(target.id)
+                    val saved = persistDirectBookmarkInTransaction(skippedBookmark(target))
+                    savedBookmark = saved
+                    if (target.rssFeedId != null) {
+                        rssAdapter.recordRecoveredDirectSave(target.id)
                     }
                 }
                 taskDao.deleteById(target.id)
             }
-        } catch (e: CancellationException) { throw e }
-        catch (e: me.bubblespark.tidilo.data.rss.RssImportSkipped) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: me.bubblespark.tidilo.data.rss.RssImportSkipped) {
             taskDao.deleteById(target.id)
             return
-        }
-        catch (e: Exception) {
+        } catch (e: Exception) {
+            savedBookmark = null
             runInDbOrLock(target.url) {
                 if (taskDao.getTaskById(target.id)?.status == "PROCESSING") {
-                    retainDirectSaveError(target, e.cause ?: e)
+                    retainDirectSaveError(target, e)
                 }
             }
             return
         }
-        if (taskDao.getTaskById(target.id) == null) {
+        val committedSaved = savedBookmark
+        if (committedSaved != null) {
+            val domain = DomainIconManager.extractDomain(committedSaved.url)
+            domainPolicyAdapter.registerDomain(domain, false, target.siteName)
+            if (domain != null && !mediaCacheAdapter.hasDomainIcon(domain)) {
+                repositoryScope.launch {
+                    try {
+                        mediaCacheAdapter.fetchDomainIcon(
+                            url = committedSaved.url,
+                            appleTouchIconUrl = acquiredParsed?.appleTouchIconUrl,
+                            faviconUrl = acquiredParsed?.faviconUrl,
+                            knownCandidates = acquiredParsed?.iconCandidates
+                        )
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        /* Optional enrichment. */
+                    }
+                }
+            }
+            cacheDirectOgImage(target.copy(id = committedSaved.id, url = committedSaved.url))
+        } else if (taskDao.getTaskById(target.id) == null) {
             if (target.rssFeedId == null || bookmarkDao?.getBookmarkById(target.id) != null) {
                 cacheDirectOgImage(target)
             }
@@ -742,7 +956,7 @@ class ImportRepository internal constructor(
     }
 
     private suspend fun migrateFromLegacyPrefs() {
-        val legacyPrefs = appContext?.getSharedPreferences("tidilo_queue_prefs", Context.MODE_PRIVATE) ?: return
+        val legacyPrefs = legacyQueuePrefsProvider() ?: return
         val runningJson = legacyPrefs.getString("running_items", null)
         val queuingJson = legacyPrefs.getString("queuing_items", null)
         val errorJson = legacyPrefs.getString("error_items", null)
@@ -819,8 +1033,91 @@ class ImportRepository internal constructor(
 
         fun getInstance(context: Context = TidiloApplication.instance): ImportRepository {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: ImportRepository(context.applicationContext).also { INSTANCE = it }
+                INSTANCE ?: createProductionInstance(context.applicationContext).also { INSTANCE = it }
             }
+        }
+
+        private fun createProductionInstance(appContext: Context): ImportRepository {
+            val db = AppDatabase.getInstance(appContext)
+            val isNsfwBookmarkable: () -> Boolean = {
+                me.bubblespark.tidilo.config.AppConfig.isNsfwContentBookmarkable.value
+            }
+            return ImportRepository(
+                context = appContext,
+                taskDao = db.importTaskDao(),
+                bookmarkDao = db.bookmarkDao(),
+                notificationDao = db.importNotificationDao(),
+                database = db,
+                domainPolicyAdapter = object : ImportDomainPolicyAdapter {
+                    override fun isNsfwDomain(domain: String?): Boolean =
+                        DomainPolicyStore.getInstance(appContext).isNsfwDomain(domain)
+
+                    override fun registerDomain(domain: String?, isNsfw: Boolean, displayName: String) {
+                        DomainPolicyStore.getInstance(appContext).registerDomain(domain, isNsfw, displayName)
+                    }
+                },
+                mediaCacheAdapter = object : ImportMediaCacheAdapter {
+                    override fun hasDomainIcon(domain: String): Boolean =
+                        DomainIconManager.hasIcon(appContext, domain)
+
+                    override suspend fun fetchDomainIcon(
+                        url: String,
+                        appleTouchIconUrl: String?,
+                        faviconUrl: String?,
+                        knownCandidates: List<DomainIconCandidate>?
+                    ) {
+                        DomainIconManager.fetchAndSaveDomainIcon(
+                            context = appContext,
+                            url = url,
+                            appleTouchIconUrl = appleTouchIconUrl,
+                            faviconUrl = faviconUrl,
+                            knownCandidates = knownCandidates
+                        )
+                    }
+
+                    override suspend fun cacheOgImage(url: String, ogImageUrl: String, rssFeedId: String?) {
+                        OgImageManager.processAndSaveOgImage(
+                            context = appContext,
+                            pageUrl = url,
+                            ogImageUrl = ogImageUrl,
+                            network = if (rssFeedId != null) {
+                                me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).articleNetwork()
+                            } else {
+                                null
+                            }
+                        )
+                    }
+                },
+                isNsfwContentBookmarkable = isNsfwBookmarkable,
+                rssAdapter = defaultRssAdapter(
+                    database = db,
+                    taskDao = db.importTaskDao(),
+                    isNsfwContentBookmarkable = isNsfwBookmarkable,
+                    onResumeAcquisitions = {
+                        me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).resumeAcquisitions()
+                    },
+                    onRetryAcquisition = { taskId ->
+                        me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).retryAcquisition(taskId)
+                    },
+                    onRestoreTask = { entity ->
+                        me.bubblespark.tidilo.data.rss.RssIngestionStore(db).restoreTask(entity)
+                    }
+                ),
+                notificationAdapter = object : ImportNotificationAdapter {
+                    override fun importError(error: Throwable) {
+                        me.bubblespark.tidilo.data.notifications.NotificationCoordinator.getInstance(appContext)
+                            .importError(error)
+                    }
+
+                    override suspend fun publishCompletedRssRuns() {
+                        me.bubblespark.tidilo.data.notifications.NotificationCoordinator.getInstance(appContext)
+                            .publishCompletedRssRuns()
+                    }
+                },
+                legacyQueuePrefsProvider = {
+                    appContext.getSharedPreferences("tidilo_queue_prefs", Context.MODE_PRIVATE)
+                }
+            )
         }
 
         fun isValidHttpUrl(url: String?): Boolean {

@@ -41,13 +41,13 @@ class ImportDuplicateRejectionTest {
         val original = BookmarkEntity("existing", "Keep title", canonical, "Keep Description", createdAt = 1,
             updatedAt = 1, note = "Keep note")
         bookmarks.insertRow(original)
+        bookmarks.onInsertRow = { error("Must retain existing bookmark") }
         tasks.insertOrUpdate(ImportTaskEntity.fromImportTask(ImportTask(id = "retry", url = "https://short.example/retry",
             title = "short.example", status = TaskStatus.ERROR, statusText = "Article acquisition failed")))
         try {
             val repository = ImportRepository(taskDao = tasks, bookmarkDao = bookmarks,
                 repositoryScope = CoroutineScope(coroutineContext + job),
-
-                articleAcquirer = { createFakeParsedPage(it, canonical) }, persistFallback = { error("Must retain existing bookmark") })
+                articleAcquirer = { createFakeParsedPage(it, canonical) })
             repository.retryErrorTask("retry")
             kotlinx.coroutines.withTimeout(5000) { while (tasks.getCount() != 0) delay(5) }
             assertEquals(original, bookmarks.getBookmarkByUrl(canonical))
@@ -62,6 +62,7 @@ class ImportDuplicateRejectionTest {
         val release = kotlinx.coroutines.CompletableDeferred<Unit>()
         var fetches = 0
         var saves = 0
+        bookmarks.onInsertRow = { saves++ }
         val canonical = "https://example.com/canonical"
         try {
             val repository = ImportRepository(taskDao = tasks, bookmarkDao = bookmarks, repositoryScope = scope,
@@ -69,9 +70,6 @@ class ImportDuplicateRejectionTest {
                     if (++fetches == 2) started.complete(Unit)
                     release.await()
                     createFakeParsedPage(url, canonical)
-                }, persistFallback = { bookmark ->
-                    saves++
-                    bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(bookmark))
                 })
             val first = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
             val second = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
@@ -101,8 +99,7 @@ class ImportDuplicateRejectionTest {
         try {
             val repository = ImportRepository(taskDao = tasks, bookmarkDao = bookmarks,
                 repositoryScope = CoroutineScope(coroutineContext + job),
-                articleAcquirer = { createFakeParsedPage(it).copy(standardMetaTags = mapOf("description" to "HTML Description")) },
-                persistFallback = { bookmarks.insertRow(BookmarkEntity.fromBookmarkItem(it)) })
+                articleAcquirer = { createFakeParsedPage(it).copy(standardMetaTags = mapOf("description" to "HTML Description")) })
             val done = kotlinx.coroutines.CompletableDeferred<Result<ImportOutcome>>()
             repository.importUrl(url) { done.complete(it) }
             assertTrue(kotlinx.coroutines.withTimeout(5000) { done.await() }.getOrThrow() is ImportOutcome.BookmarkSaved)
@@ -122,6 +119,7 @@ class ImportDuplicateRejectionTest {
         override suspend fun recordDetailView(id: String, now: Long) = Unit
         override suspend fun recordSummaryPeek(id: String, now: Long) = Unit
         val bookmarks = mutableMapOf<String, BookmarkEntity>()
+        var onInsertRow: ((BookmarkEntity) -> Unit)? = null
 
         override suspend fun getBookmarkByUrl(url: String): BookmarkEntity? =
             bookmarks.values.firstOrNull { it.url == url }
@@ -149,6 +147,7 @@ class ImportDuplicateRejectionTest {
         }
 
         public override suspend fun insertRow(bookmark: BookmarkEntity) {
+            onInsertRow?.invoke(bookmark)
             bookmarks[bookmark.id] = bookmark
         }
 
@@ -511,8 +510,7 @@ class ImportDuplicateRejectionTest {
             taskDao = taskDao,
             bookmarkDao = bookmarkDao,
             notificationDao = notificationDao,
-            repositoryScope = CoroutineScope(Dispatchers.Unconfined),
-            persistFallback = { bookmarkDao.insertRow(BookmarkEntity.fromBookmarkItem(it)) }
+            repositoryScope = CoroutineScope(Dispatchers.Unconfined)
         )
 
         // When: User manually imports the URL
@@ -733,7 +731,6 @@ class ImportDuplicateRejectionTest {
             bookmarkDao = bookmarkDao,
             notificationDao = notificationDao,
             repositoryScope = CoroutineScope(Dispatchers.IO),
-            persistFallback = { bookmarkDao.insertRow(BookmarkEntity.fromBookmarkItem(it)) },
             articleAcquirer = { url ->
                 acquirerGate.await()
                 createFakeParsedPage(url = url, finalUrl = resolvedUrl)
@@ -800,7 +797,6 @@ class ImportDuplicateRejectionTest {
             bookmarkDao = bookmarkDao,
             notificationDao = notificationDao,
             repositoryScope = CoroutineScope(Dispatchers.IO),
-            persistFallback = { bookmarkDao.insertRow(BookmarkEntity.fromBookmarkItem(it)) },
             articleAcquirer = { url ->
                 acquirerGate.await()
                 createFakeParsedPage(url = url, finalUrl = resolvedUrl)
@@ -859,7 +855,6 @@ class ImportDuplicateRejectionTest {
             bookmarkDao = bookmarkDao,
             notificationDao = notificationDao,
             repositoryScope = CoroutineScope(Dispatchers.IO),
-            persistFallback = { bookmarkDao.insertRow(BookmarkEntity.fromBookmarkItem(it)) },
             articleAcquirer = { url ->
                 if (url == aliasUrl && currentTarget == canonicalUrl2) {
                     acquirerGate.await()
@@ -951,7 +946,6 @@ class ImportDuplicateRejectionTest {
             bookmarkDao = bookmarkDao,
             notificationDao = notificationDao,
             repositoryScope = CoroutineScope(Dispatchers.IO),
-            persistFallback = { bookmarkDao.insertRow(BookmarkEntity.fromBookmarkItem(it)) },
             articleAcquirer = { url ->
                 acquirerGate.await()
                 createFakeParsedPage(url = url, finalUrl = canonicalUrl)

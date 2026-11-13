@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.ui.screens.trash
 import androidx.lifecycle.SavedStateHandle
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import me.bubblespark.tidilo.data.TrashMutationResult
 import me.bubblespark.tidilo.data.db.*
 import org.junit.Assert.*
 import org.junit.Test

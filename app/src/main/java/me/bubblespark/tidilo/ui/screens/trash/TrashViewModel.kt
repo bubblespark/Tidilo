@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import me.bubblespark.tidilo.data.BookmarkRepository
-import me.bubblespark.tidilo.data.db.TrashMutationResult
+import me.bubblespark.tidilo.data.TrashMutationResult
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TrashViewModel(

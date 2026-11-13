@@ -8,11 +8,14 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import me.bubblespark.tidilo.data.BookmarkRepository
+import me.bubblespark.tidilo.data.TrashMutationResult
 import org.junit.Assert.*
 import org.junit.Test
 
 class TrashPersistenceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private fun repo(db: AppDatabase) = BookmarkRepository(db, autoInitialize = false)
     private suspend fun fixture(block: suspend (AppDatabase) -> Unit) {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try { block(db) } finally { db.close() }
@@ -27,15 +30,15 @@ class TrashPersistenceTest {
 
     private suspend fun trash(db: AppDatabase, row: BookmarkEntity = bookmark(), at: Long = 30) {
         db.bookmarkDao().insertOrUpdate(row)
-        assertTrue(db.moveBookmarkToTrash(row.id, at, 100))
+        assertTrue(repo(db).moveToTrash(row.id, at, 100))
     }
 
     @Test fun restorePreservesSnapshotAndSearchIndex() = runBlocking { fixture { db ->
         db.collectionDao().insert(CollectionEntity("collection", "Saved", "", "folder", null, 0, 1, 1))
         db.bookmarkDao().insertOrUpdate(bookmark())
         db.collectionDao().insertMembership(BookmarkCollectionCrossRef("old", "collection"))
-        assertTrue(db.moveBookmarkToTrash("old", 30, 100))
-        assertEquals(TrashMutationResult.Restored, db.restoreTrashedBookmark("old"))
+        assertTrue(repo(db).moveToTrash("old", 30, 100))
+        assertEquals(TrashMutationResult.Restored, repo(db).restoreFromTrash("old"))
         val restored = requireNotNull(db.bookmarkDao().getBookmarkById("old"))
         assertEquals(bookmark().copy(isLiked = false).toBookmarkItem(), restored.toBookmarkItem())
         assertNull(db.trashDao().getById("old"))
@@ -49,7 +52,7 @@ class TrashPersistenceTest {
         trash(db)
         val existing = bookmark("existing").copy(isNsfw = true, note = "new memo")
         db.bookmarkDao().insertOrUpdate(existing)
-        assertEquals(TrashMutationResult.DuplicateInLibrary, db.restoreTrashedBookmark("old"))
+        assertEquals(TrashMutationResult.DuplicateInLibrary, repo(db).restoreFromTrash("old"))
         assertEquals("new memo", db.bookmarkDao().getBookmarkById("existing")?.note)
         assertNotNull(db.trashDao().getById("old"))
         assertTrue(db.trashDao().observeTrash(false).first().single().duplicateInLibrary)
@@ -58,7 +61,7 @@ class TrashPersistenceTest {
     @Test fun sameUrlTrashRowsRestoreOnlyOne() = runBlocking { fixture { db ->
         trash(db); trash(db, bookmark("second"), 31)
         assertEquals(listOf("second", "old"), db.trashDao().observeTrash(true).first().map { it.item.id })
-        val results = coroutineScope { listOf("old", "second").map { async { db.restoreTrashedBookmark(it) } }.awaitAll() }
+        val results = coroutineScope { listOf("old", "second").map { async { repo(db).restoreFromTrash(it) } }.awaitAll() }
         assertEquals(1, results.count { it == TrashMutationResult.Restored })
         assertEquals(1, results.count { it == TrashMutationResult.DuplicateInLibrary })
         assertEquals(1, db.bookmarkDao().getCount())
@@ -70,16 +73,16 @@ class TrashPersistenceTest {
         db.importTaskDao().insertOrUpdate(ImportTaskEntity(id = "complete", url = bookmark().url, status = "COMPLETED", statusText = "", title = "", createdAt = 1))
         for (status in listOf("QUEUED", "PROCESSING", "ERROR")) {
             db.importTaskDao().insertOrUpdate(ImportTaskEntity(id = "pending", url = bookmark().url, status = status, statusText = "", title = "", createdAt = 2))
-            assertEquals(TrashMutationResult.ImportPending, db.restoreTrashedBookmark("old"))
+            assertEquals(TrashMutationResult.ImportPending, repo(db).restoreFromTrash("old"))
             assertNotNull(db.trashDao().getById("old"))
         }
         db.importTaskDao().deleteById("pending")
-        assertEquals(TrashMutationResult.Restored, db.restoreTrashedBookmark("old"))
+        assertEquals(TrashMutationResult.Restored, repo(db).restoreFromTrash("old"))
     } }
 
     @Test fun restoreDeleteRaceNeverDeletesActiveRow() = runBlocking { fixture { db ->
         trash(db)
-        val results = coroutineScope { listOf(async { db.restoreTrashedBookmark("old") }, async { db.deleteTrashedBookmark("old") }).awaitAll() }
+        val results = coroutineScope { listOf(async { repo(db).restoreFromTrash("old") }, async { repo(db).deleteFromTrash("old") }).awaitAll() }
         assertTrue(results.contains(TrashMutationResult.Missing))
         assertEquals(0, db.trashDao().getCount())
         if (results.contains(TrashMutationResult.Restored)) assertNotNull(db.bookmarkDao().getBookmarkById("old"))
@@ -88,10 +91,10 @@ class TrashPersistenceTest {
     @Test fun idCollisionAndMissingTargetAreSafe() = runBlocking { fixture { db ->
         trash(db)
         db.bookmarkDao().insertOrUpdate(bookmark(url = "https://example.com/different"))
-        assertEquals(TrashMutationResult.IdentityConflict, db.restoreTrashedBookmark("old"))
-        assertEquals(TrashMutationResult.Missing, db.restoreTrashedBookmark("absent"))
-        assertEquals(TrashMutationResult.Deleted, db.deleteTrashedBookmark("old"))
-        assertEquals(TrashMutationResult.Missing, db.deleteTrashedBookmark("old"))
+        assertEquals(TrashMutationResult.IdentityConflict, repo(db).restoreFromTrash("old"))
+        assertEquals(TrashMutationResult.Missing, repo(db).restoreFromTrash("absent"))
+        assertEquals(TrashMutationResult.Deleted, repo(db).deleteFromTrash("old"))
+        assertEquals(TrashMutationResult.Missing, repo(db).deleteFromTrash("old"))
         assertEquals("https://example.com/different", db.bookmarkDao().getBookmarkById("old")?.url)
     } }
 
@@ -99,7 +102,7 @@ class TrashPersistenceTest {
         trash(db)
         db.openHelper.writableDatabase.execSQL("CREATE TRIGGER reject_restore BEFORE INSERT ON bookmarks BEGIN SELECT RAISE(ABORT, 'injected'); END")
         var failed = false
-        try { db.restoreTrashedBookmark("old") } catch (_: android.database.sqlite.SQLiteException) { failed = true }
+        try { repo(db).restoreFromTrash("old") } catch (_: android.database.sqlite.SQLiteException) { failed = true }
         assertTrue(failed)
         assertNotNull(db.trashDao().getById("old"))
         assertEquals(0, db.bookmarkDao().getCount())
@@ -112,7 +115,7 @@ class TrashPersistenceTest {
         withTimeout(5_000) { assertTrue(db.trashDao().observeTrash(true).first { it.single().duplicateInLibrary }.single().duplicateInLibrary) }
         db.bookmarkDao().deleteById("existing")
         withTimeout(5_000) { assertFalse(db.trashDao().observeTrash(true).first { !it.single().duplicateInLibrary }.single().duplicateInLibrary) }
-        db.deleteTrashedBookmark("old")
+        repo(db).deleteFromTrash("old")
         assertTrue(db.trashDao().observeTrash(true).first().isEmpty())
     } }
 

@@ -17,7 +17,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
-import me.bubblespark.tidilo.data.db.moveBookmarkToTrash
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -62,7 +61,7 @@ class ApplicationSummaryTest {
                 val changed = async {
                     withTimeout(5000) { dao.observeCollectionCounts().first { it == CollectionCounts(1, 1) } }
                 }
-                database.moveBookmarkToTrash("adult", 3, 100)
+                BookmarkRepository(database, autoInitialize = false).moveToTrash("adult", 3, 100)
                 assertEquals(CollectionCounts(1, 1), changed.await())
             }
             database.trashDao().deleteById("adult")

@@ -1,8 +1,8 @@
 package me.bubblespark.tidilo.ui.screens.trash
 
 import kotlinx.coroutines.flow.Flow
+import me.bubblespark.tidilo.data.TrashMutationResult
 import me.bubblespark.tidilo.data.db.TrashBookmarkRow
-import me.bubblespark.tidilo.data.db.TrashMutationResult
 
 enum class TrashAction { Restore, Delete }
 data class TrashConfirmation(val id: String, val action: TrashAction)

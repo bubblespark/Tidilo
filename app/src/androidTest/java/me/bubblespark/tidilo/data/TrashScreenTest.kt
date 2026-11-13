@@ -63,14 +63,15 @@ class TrashScreenTest {
         var screen: ComponentActivity? = null
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         try {
+            val repository = BookmarkRepository(db, autoInitialize = false)
             for (id in listOf("one", "two")) {
                 db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Deleted $id", "https://example.com/$id", "Summary", createdAt = 1, updatedAt = 1))
-                db.moveBookmarkToTrash(id, if (id == "one") 3 else 2, 100)
+                repository.moveToTrash(id, if (id == "one") 3 else 2, 100)
             }
             val store = object : TrashStore {
                 override fun observe(showNsfw: Boolean) = db.trashDao().observeTrash(showNsfw)
-                override suspend fun restore(id: String) = db.restoreTrashedBookmark(id)
-                override suspend fun delete(id: String) = db.deleteTrashedBookmark(id)
+                override suspend fun restore(id: String) = repository.restoreFromTrash(id)
+                override suspend fun delete(id: String) = repository.deleteFromTrash(id)
                 override suspend fun retry() = Unit
             }
             screen = host.launch()

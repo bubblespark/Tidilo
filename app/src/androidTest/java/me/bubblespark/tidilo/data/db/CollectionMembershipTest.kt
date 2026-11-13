@@ -7,6 +7,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.CollectionRepository
 import org.junit.Assert.*
 import org.junit.Test
@@ -44,7 +45,7 @@ class CollectionMembershipTest {
     } }
 
     @Test fun trashClearsMembershipsAndLikedAtomically() = runBlocking { fixture { db ->
-        assertTrue(db.moveBookmarkToTrash("one", 9, 100))
+        assertTrue(BookmarkRepository(db, autoInitialize = false).moveToTrash("one", 9, 100))
         assertTrue(db.collectionDao().observeMembershipIds("one").first().isEmpty())
         val trash = db.trashDao().getAllTrash().single()
         assertFalse(trash.isLiked)

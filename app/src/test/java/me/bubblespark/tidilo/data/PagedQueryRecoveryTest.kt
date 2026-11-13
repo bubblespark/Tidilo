@@ -8,26 +8,38 @@ import org.junit.Test
 class PagedQueryRecoveryTest {
     @Test
     fun readsWaitForInitializationAndCanRetryAfterFailure() = runBlocking {
-        val ready = MutableStateFlow(false)
-        val retry = MutableStateFlow(0)
-        val failed = CompletableDeferred<Unit>()
-        val received = CompletableDeferred<Int>()
         var attempts = 0
+        val dao = object : StubBookmarkDao() {
+            override fun observeDistinctDomains(): Flow<List<String>> = flow {
+                if (++attempts == 1) error("Read failed") else emit(listOf("example.com"))
+            }
+        }
+        val repoScope = CoroutineScope(coroutineContext + SupervisorJob())
+        val repository = BookmarkRepository(
+            database = fakeAppDatabase(dao),
+            transactionRunner = directTransactionRunner(),
+            repositoryScope = repoScope,
+            autoInitialize = false
+        )
+        val received = CompletableDeferred<List<String>>()
         val observer = launch(start = CoroutineStart.UNDISPATCHED) {
-            recoverableBookmarkQuery(ready, retry, { failed.complete(Unit) }) {
-                flow { if (++attempts == 1) error("Read failed") else emit(42) }
-            }.collect { received.complete(it) }
+            repository.observeDomains().collect { received.complete(it) }
         }
         try {
             yield()
             assertEquals(0, attempts)
-            ready.value = true
-            withTimeout(5000) { failed.await() }
+            repository.retryInitializationAndAwait()
+            withTimeout(5000) {
+                repository.initializationFailure.filterNotNull().first()
+            }
             assertTrue(observer.isActive)
-            retry.value++
-            assertEquals(42, withTimeout(5000) { received.await() })
+            repository.retryInitialization()
+            assertEquals(listOf("example.com"), withTimeout(5000) { received.await() })
             assertEquals(2, attempts)
-        } finally { observer.cancelAndJoin() }
+        } finally {
+            observer.cancelAndJoin()
+            repoScope.coroutineContext[Job]?.cancelAndJoin()
+        }
     }
 
     @Test

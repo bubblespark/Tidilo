@@ -24,7 +24,8 @@ This document defines the strict engineering standards, naming conventions, Comp
 
 ### 2.1 State Observation & `CompositionLocal` Scoping
 - **Always use `collectAsStateWithLifecycle()`**: Never use standard `collectAsState()` for observing ViewModel or global state flows in UI composables. `collectAsStateWithLifecycle()` automatically cancels flow collection when the app is in the background, conserving battery and system memory.
-- **State Hoisting & Producer Consolidation**: Keep reusable components stateless by passing data models and event callbacks (`() -> Unit` or `(T) -> Unit`) rather than ViewModel instances. Additionally, when multiple UI consumers in the same screen or card depend on the same asynchronous visual key (e.g., domain artwork for a watermark and its dominant accent color for lighting), hoist a single state producer in the common parent scope and share the resolved immutable value object and already-read `CompositionLocal` instances downward instead of opening duplicate observers inside child helpers.
+- **State Hoisting & Producer Consolidation**: Keep reusable and row-level components stateless by passing immutable values and event callbacks (`() -> Unit` or `(T) -> Unit`) rather than ViewModel, repository, `DomainPolicyStore`, `CoroutineScope`, or `Context` instances (e.g., for `Toast` feedback). Additionally, when multiple UI consumers in the same screen or card depend on the same asynchronous visual key (e.g., domain artwork for a watermark and its dominant accent color for lighting), hoist a single state producer in the common parent scope and share the resolved immutable value object and already-read `CompositionLocal` instances downward instead of opening duplicate observers inside child helpers.
+- **Compound Toggle & Selection Rows (Accessibility)**: For settings or list rows combining descriptive text with a trailing `Switch` or `Checkbox`, attach `Modifier.toggleable(value = ..., role = Role.Switch, onValueChange = ...)` (or `Role.Checkbox`) to the enclosing `Row` and set `onCheckedChange = null` on the trailing control. Never wire `onCheckedChange` solely to the trailing `Switch` when descriptive labels live in sibling `Text` nodes; the enclosing `Row` owns the semantics and full-width touch target.
 - **Localize High-Frequency `CompositionLocal` Reads**: Never read frequently toggling `CompositionLocal` values (such as `LocalBarsVisible.current`) at the root of large screen composables (`LibraryScreen`, `SearchScreen`, `ImportScreen`), as this invalidates and recomposes the entire screen on every scroll direction change. Always encapsulate the read inside a dedicated, narrow child wrapper composable (e.g., `LibraryHeaderAnimatedVisibility`).
 
 ### 2.2 Lazy Layouts Optimization
@@ -54,6 +55,9 @@ This document defines the strict engineering standards, naming conventions, Comp
   - **Same-Key Room Invalidations**: When database updates (e.g., background RSS direct ingestion, bookmark tagging, or batch writes) invalidate Room's `PagingSource` under the same active filter or search query, `loadState.refresh` transitions to `Loading` while existing items remain in memory (`itemCount > 0`). In this case, keep the rendered list mounted and do not trigger placeholders, allowing Paging 3 to diff and update items seamlessly in place.
   - **Changed Query / Filter Keys & Presentation Synchronization**: Search exports a unified `PagingGeneration(key, flow)` StateFlow and collects its matching flow. Library collects an immutable domain/feed/mode Pager inside each animated destination, with session leases keeping outgoing cache scopes alive through exit. Loading/error/empty branches belong inside the transition host, so loading never disposes the navigation animation. Keep same-key Room invalidations mounted when items remain. Key library destination caches by Private Content visibility so changing visibility immediately disposes stale content.
   - **Generation Cache Scoping & Cancellation**: Never cache transient Pager flows directly in unconstrained `viewModelScope`. Search cancels its previous dedicated generation scope when replacing it. Library retains one selected session in a dedicated child scope across detail navigation; AnimatedContent compositions lease their sessions through DisposableEffect. Nonselected sessions cancel when their last exit is disposed. A SideEffect reactivates a selected session even when a rapid A-to-B-to-A transition reuses its composition. Replacing an unused retained session cancels its scope. Do not cancel an outgoing library Pager merely because global selection changed, and do not retain an unbounded map of per-filter scopes.
+
+### 2.5 Responsive Chip Rows & Large-Font Tolerance
+- **Wrap Multi-Badge & Localized Tag Rows with `FlowRow`**: Never lay out variable-length classification tags, localized category labels, and icon-prefixed status badges (such as `BookmarkTagSection`) inside a single-line `Row` without wrapping. Always use `FlowRow` with `itemVerticalAlignment = Alignment.CenterVertically` so badges stay single-line on standard screens while wrapping cleanly on narrow grid cards or `2f` system font scaling without right-edge clipping.
 
 ---
 
@@ -99,6 +103,9 @@ This document defines the strict engineering standards, naming conventions, Comp
   - Never define expensive URL normalization or SHA-256 hashing inside a custom `get()` property on a UI data class or recompute them inside composable item cards.
 - **Bilingual Substring Search (`instr`) vs. Default FTS**:
   - Retain SQLite `instr()` over normalized comparison columns (`searchTitle`, `searchDescription`, `searchUrl`, `searchValue`) for bilingual (Japanese/English) and arbitrary URL substring queries. Do not replace with default `@Fts4`/`FTS5` whitespace tokenizers (`simple`/`unicode61`) or trigram tokenizers without fallback, as they break unsegmented Japanese words and 1–2 character queries.
+- **Room Schema Upgrades & Cross-Test Migration Synchronization**:
+  - Whenever incrementing `AppDatabase` version, adding a `Migration`, or renaming/dropping columns or indexes, search `app/src/androidTest/` for all `addMigrations(`, `sql.version =`, previous version assertions (`assertEquals(<oldVersion>`), and `fingerprint(` usages across all test packages (including sibling suites such as `BookmarkDatabaseTest`, `CollectionDatabaseTest`, and `NotificationRoomTest`).
+  - Register the new `Migration` in every test builder, rewind each pre-migration fixture cleanly to the exact legacy schema and columns before setting `sql.version`, map renamed columns before calling `fingerprint()`, and extract shared SQL rewind helpers into a single `internal` test helper instead of duplicating SQL statements across test files.
 
 ### 3.5 Lifecycle Re-Entry & Symmetric Producer Testing
 - **Cover Full Lifecycle Cycles Across Sibling Producers**: For reactive cache/state producers, unit tests must exercise not only the forward `pending -> resolved` transition, but also lifecycle re-entry paths—post-resolution eviction, invalidation, and generation resets (`resolved -> pending -> reloaded or fallback`). Apply this coverage symmetrically across all sibling flows sharing the same visual or cache contract.
@@ -147,6 +154,12 @@ This document defines the strict engineering standards, naming conventions, Comp
    - Mask hash codes with `hashCode() and 0x7FFFFFFF` (or `mod(n)`) instead of `kotlin.math.abs(hashCode())` to avoid negative `Int.MIN_VALUE` overflow.
    - Always validate or sanitize external strings (e.g., domains, keys) against a strict allowlist regex before constructing `File(cacheDir, name)` paths.
 
+6. **Single Helper Boundary for Legacy Compatibility**:
+   - Do not duplicate legacy field, JSON key, or preference fallback logic across multiple call sites. Encapsulate each backward-compatibility rule in one shared `internal` helper or extension function (such as `JSONObject.readLegacyCompatiblePrivateFlag()` or `AppConfig.readBooleanPreferenceWithLegacyFallback(...)`) covered by focused unit tests.
+
+7. **JVM-Safe Evaluation of Lazy Android Dependencies**:
+   - Singletons referenced during JVM unit tests (such as `AppConfig`) may define `by lazy` properties backed by `TidiloApplication.instance`, which throw `UninitializedPropertyAccessException` when evaluated outside Android. Always keep an outer `runCatching` (or deferred provider lambda) around eager property initialization sites that pass lazy Android dependencies like `prefs` as function arguments, and comment the guard so refactoring does not accidentally strip it.
+
 ---
 
 ## 6. Git Commit Workflow & Rules
@@ -155,9 +168,10 @@ This document defines the strict engineering standards, naming conventions, Comp
 - **Strict Rule**: Every AI agent and developer **MUST commit all changes upon completing each user instruction or task**.
 - Never leave uncommitted changes at the end of an interaction turn.
 - Before committing:
-  1. Verify the build and tests pass (`./gradlew testDebugUnitTest`).
-  2. Ensure documentation and relevant logs are up to date.
-  3. Stage all modified and newly created files (`git add .`).
+  1. Verify the build and tests pass (`./gradlew testDebugUnitTest`). When Room schemas, migrations, or UI navigation/semantics change, also run the relevant `androidTest` suites on a connected device/emulator (`adb devices`) because `testDebugUnitTest` and `assembleDebugAndroidTest` do not execute Room SQLite migrations or Compose UI semantics at runtime.
+  2. When adding or moving navigation routes or settings entries, add or update corresponding route assertions in UI instrumentation tests (such as `SettingsRedesignTest`) alongside the code change.
+  3. Ensure documentation and relevant logs are up to date, verifying that screen item ordering, layout containers, and Material tokens described in `docs/ui_design.md` match the implementation.
+  4. Stage all modified and newly created files cleanly.
 
 ### 6.2 Conventional Commit Messages
 - Use standard Conventional Commits format:

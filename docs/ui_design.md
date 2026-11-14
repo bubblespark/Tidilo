@@ -151,7 +151,7 @@ Library retains its title/subtitle, exposes only the existing dashboard/gear dis
   1. Title (with keyword highlighting when searching) + Like button.
   2. URL (1 line, ellipsis).
   3. Description (AI-synthesized one- or two-sentence summary).
-  4. Tag row: `[Category] > [Subcategory]`.
+  4. Tag row: `FlowRow` of `[Category] > [Subcategory]` (+ `Lock` `Private` badge when `isPrivate == true`), wrapping cleanly on narrow widths or large font scales.
   5. Entity tags: FlowRow of `CompactTagBadge` chips with `#` icon.
 
 ### 6.3 `CompactTagBadge`
@@ -246,7 +246,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
   - Accessed directly from `SettingsScreen` -> `General` -> `Private Content` (`Icons.Default.Lock`).
   - Clean top bar with `Icons.AutoMirrored.Filled.ArrowBack`.
   - Top options configured as 20dp rounded cards (`surfaceContainerHigh`):
-    - Layout: Flattened `Row` structure (`Surface(Icon, 40.dp, primaryContainer/onPrimaryContainer)` + `Spacer(12.dp)` + `Column(Modifier.weight(1f))` + `Spacer(12.dp)` + `Switch`), with `padding(horizontal = 16.dp, vertical = 14.dp)` to maximize usable text width and eliminate mid-character line wraps before the Switch toggle.
+    - Layout: Flattened `Row` structure (`Surface(Icon, 40.dp, primaryContainer/onPrimaryContainer)` + `Spacer(12.dp)` + `Column(Modifier.weight(1f))` + `Spacer(12.dp)` + `Switch`), with `Modifier.toggleable(value = checked, role = Role.Switch, onValueChange = ...)` on the enclosing `Row`, `Switch(..., onCheckedChange = null)` for full-row tap and TalkBack label association, and `padding(horizontal = 16.dp, vertical = 14.dp)` to maximize usable text width and eliminate mid-character line wraps before the Switch toggle.
     - **"Show Private Content" Switch**: Controls `AppConfig.isPrivateContentVisible`. Default ON.
     - **"Bookmark Private Content" Switch**: Controls `AppConfig.isPrivateContentBookmarkable`. Default ON.
   - **Domain Management Section**:

@@ -4,19 +4,10 @@ This document defines the strict engineering standards, naming conventions, Comp
 
 ---
 
-## 1. Naming & Formatting Conventions
+## 1. Naming & File Layout
 
-### 1.1 Identifiers
-- **Classes, Objects, Interfaces, Enums**: `PascalCase` (e.g., `BookmarkRepository`, `QueueItemStatus`).
-- **Composable Functions**: `PascalCase` matching UI components (e.g., `BookmarkItemCard`, `LibraryScreen`).
-- **Standard Functions & Methods**: `camelCase` (e.g., `filterBookmarks`, `addBookmark`).
-- **Properties & Variables**: `camelCase` (e.g., `filteredBookmarks`, `isBarsVisible`).
-- **Constants**: `SCREAMING_SNAKE_CASE` (e.g., `DEFAULT_TAG`, `TIMEOUT_MS`).
-- **Backing Properties**: Leading underscore for private state flows (e.g., `private val _bookmarks = MutableStateFlow(...)`, `val bookmarks: StateFlow<...> = _bookmarks.asStateFlow()`).
-
-### 1.2 File Naming
-- Each file must match the primary class or composable defined within it (e.g., `LibraryScreen.kt`, `BookmarkRepository.kt`).
-- Small, tightly coupled helper composables (e.g., `CompactTagBadge`) may reside in the same file as their parent widget (`BookmarkCard.kt`).
+- **Kotlin Identifiers & Backing Properties**: Follow standard Kotlin casing (`PascalCase` types and `@Composable` functions, `camelCase` functions and properties, `SCREAMING_SNAKE_CASE` constants), and prefix private mutable backing `StateFlow` properties with `_` (`private val _bookmarks = MutableStateFlow(...)`, `val bookmarks: StateFlow<...> = _bookmarks.asStateFlow()`).
+- **File Naming**: Match each file to its primary class or composable (`LibraryScreen.kt`, `BookmarkRepository.kt`); small, tightly coupled helper composables (e.g., `CompactTagBadge`) may reside in their parent file (`BookmarkCard.kt`).
 
 ---
 
@@ -24,7 +15,8 @@ This document defines the strict engineering standards, naming conventions, Comp
 
 ### 2.1 State Observation & `CompositionLocal` Scoping
 - **Always use `collectAsStateWithLifecycle()`**: Never use standard `collectAsState()` for observing ViewModel or global state flows in UI composables. `collectAsStateWithLifecycle()` automatically cancels flow collection when the app is in the background, conserving battery and system memory.
-- **State Hoisting & Producer Consolidation**: Keep reusable components stateless by passing data models and event callbacks (`() -> Unit` or `(T) -> Unit`) rather than ViewModel instances. Additionally, when multiple UI consumers in the same screen or card depend on the same asynchronous visual key (e.g., domain artwork for a watermark and its dominant accent color for lighting), hoist a single state producer in the common parent scope and share the resolved immutable value object and already-read `CompositionLocal` instances downward instead of opening duplicate observers inside child helpers.
+- **State Hoisting & Producer Consolidation**: Keep reusable and row-level components stateless by passing immutable values and event callbacks (`() -> Unit` or `(T) -> Unit`) rather than ViewModel, repository, `DomainPolicyStore`, `CoroutineScope`, or `Context` instances (e.g., for `Toast` feedback). Additionally, when multiple UI consumers in the same screen or card depend on the same asynchronous visual key (e.g., domain artwork for a watermark and its dominant accent color for lighting), hoist a single state producer in the common parent scope and share the resolved immutable value object and already-read `CompositionLocal` instances downward instead of opening duplicate observers inside child helpers.
+- **Compound Toggle & Selection Rows (Accessibility)**: For settings or list rows combining descriptive text with a trailing `Switch` or `Checkbox`, attach `Modifier.toggleable(value = ..., role = Role.Switch, onValueChange = ...)` (or `Role.Checkbox`) to the enclosing `Row` and set `onCheckedChange = null` on the trailing control. Never wire `onCheckedChange` solely to the trailing `Switch` when descriptive labels live in sibling `Text` nodes; the enclosing `Row` owns the semantics and full-width touch target.
 - **Localize High-Frequency `CompositionLocal` Reads**: Never read frequently toggling `CompositionLocal` values (such as `LocalBarsVisible.current`) at the root of large screen composables (`LibraryScreen`, `SearchScreen`, `ImportScreen`), as this invalidates and recomposes the entire screen on every scroll direction change. Always encapsulate the read inside a dedicated, narrow child wrapper composable (e.g., `LibraryHeaderAnimatedVisibility`).
 
 ### 2.2 Lazy Layouts Optimization
@@ -49,11 +41,12 @@ This document defines the strict engineering standards, naming conventions, Comp
   - Always use `Modifier.drawWithCache { val brush = ...; onDrawBehind { drawRect(brush) } }` so gradient objects are allocated only when layout dimensions or color dependencies change, and hoist static curve tables (such as `SMOOTHERSTEP_CURVE`) to top-level constants.
 - **Keyword Precomputation**: In `SearchScreen`, word tokens and tag tokens are parsed once at the screen level using `remember(searchQuery)` and passed down as immutable lists, completely eliminating per-item tokenization during scroll.
 
-### 2.4 Paging 3 Load State & Skeleton Placeholders
-- **Distinguish Same-Key Invalidation from Changed Query/Filter Keys**: When observing `LazyPagingItems`, never replace the rendered list or grid with a full-screen skeleton or loading indicator solely on `loadState.refresh is LoadState.Loading`.
-  - **Same-Key Room Invalidations**: When database updates (e.g., background RSS direct ingestion, bookmark tagging, or batch writes) invalidate Room's `PagingSource` under the same active filter or search query, `loadState.refresh` transitions to `Loading` while existing items remain in memory (`itemCount > 0`). In this case, keep the rendered list mounted and do not trigger placeholders, allowing Paging 3 to diff and update items seamlessly in place.
-  - **Changed Query / Filter Keys & Presentation Synchronization**: Search exports a unified `PagingGeneration(key, flow)` StateFlow and collects its matching flow. Library collects an immutable domain/feed/mode Pager inside each animated destination, with session leases keeping outgoing cache scopes alive through exit. Loading/error/empty branches belong inside the transition host, so loading never disposes the navigation animation. Keep same-key Room invalidations mounted when items remain. Key library destination caches by Private Content visibility so changing visibility immediately disposes stale content.
-  - **Generation Cache Scoping & Cancellation**: Never cache transient Pager flows directly in unconstrained `viewModelScope`. Search cancels its previous dedicated generation scope when replacing it. Library retains one selected session in a dedicated child scope across detail navigation; AnimatedContent compositions lease their sessions through DisposableEffect. Nonselected sessions cancel when their last exit is disposed. A SideEffect reactivates a selected session even when a rapid A-to-B-to-A transition reuses its composition. Replacing an unused retained session cancels its scope. Do not cancel an outgoing library Pager merely because global selection changed, and do not retain an unbounded map of per-filter scopes.
+### 2.4 Paging 3 Load State & Scope Lifecycle
+- **Same-Key Room Invalidations**: When observing `LazyPagingItems`, never replace a populated list or grid (`itemCount > 0`) with a full-screen skeleton solely because `loadState.refresh is LoadState.Loading`; let Paging 3 diff Room invalidations in place. Keep loading, error, and empty branches inside transition hosts so loading states never cancel navigation animations.
+- **Generation & Session Scope Leases**: Never cache transient `Pager` flows in unconstrained `viewModelScope` or in an unbounded map of per-filter scopes. Bind Pager lifecycles to replaceable generation scopes or destination-owned leases (e.g., `DisposableEffect` exit disposal and `SideEffect` reactivation when returning via rapid transitions) and invalidate stale caches immediately on Private Content visibility changes. See [UI Design §6.16](ui_design.md#616-paged-bookmark-results) for `Search` and `Library` behavior.
+
+### 2.5 Responsive Chip Rows & Large-Font Tolerance
+- **Wrap Multi-Badge & Localized Tag Rows with `FlowRow`**: Never lay out variable-length classification tags, localized category labels, and icon-prefixed status badges (such as `BookmarkTagSection`) inside a single-line `Row` without wrapping. Always use `FlowRow` with `itemVerticalAlignment = Alignment.CenterVertically` so badges stay single-line on standard screens while wrapping cleanly on narrow grid cards or `2f` system font scaling without right-edge clipping.
 
 ---
 
@@ -99,6 +92,9 @@ This document defines the strict engineering standards, naming conventions, Comp
   - Never define expensive URL normalization or SHA-256 hashing inside a custom `get()` property on a UI data class or recompute them inside composable item cards.
 - **Bilingual Substring Search (`instr`) vs. Default FTS**:
   - Retain SQLite `instr()` over normalized comparison columns (`searchTitle`, `searchDescription`, `searchUrl`, `searchValue`) for bilingual (Japanese/English) and arbitrary URL substring queries. Do not replace with default `@Fts4`/`FTS5` whitespace tokenizers (`simple`/`unicode61`) or trigram tokenizers without fallback, as they break unsegmented Japanese words and 1–2 character queries.
+- **Room Schema Upgrades & Cross-Test Migration Synchronization**:
+  - Whenever incrementing `AppDatabase` version, adding a `Migration`, or renaming/dropping columns or indexes, search `app/src/androidTest/` for all `addMigrations(`, `sql.version =`, previous version assertions (`assertEquals(<oldVersion>`), and `fingerprint(` usages across all test packages (including sibling suites such as `BookmarkDatabaseTest`, `CollectionDatabaseTest`, and `NotificationRoomTest`).
+  - Register the new `Migration` in every test builder, rewind each pre-migration fixture cleanly to the exact legacy schema and columns before setting `sql.version`, map renamed columns before calling `fingerprint()`, and extract shared SQL rewind helpers into a single `internal` test helper instead of duplicating SQL statements across test files.
 
 ### 3.5 Lifecycle Re-Entry & Symmetric Producer Testing
 - **Cover Full Lifecycle Cycles Across Sibling Producers**: For reactive cache/state producers, unit tests must exercise not only the forward `pending -> resolved` transition, but also lifecycle re-entry paths—post-resolution eviction, invalidation, and generation resets (`resolved -> pending -> reloaded or fallback`). Apply this coverage symmetrically across all sibling flows sharing the same visual or cache contract.
@@ -108,13 +104,8 @@ This document defines the strict engineering standards, naming conventions, Comp
 ## 4. Static Allocations, HTML Parsing, Build & Privacy Hygiene
 
 ### 4.1 Single-Pass HTML DOM Parsing & Safe Mutation Ordering
-- **Parse Once per URL**: Never parse the same HTML payload into a Jsoup `Document` multiple times during URL ingestion (`WebPageParser.kt`, `DomainIconResolver.kt`).
-- **Respect Destructive DOM Mutators**: Because `Readability4J.parse()` and `extractJsoupCleanText()` destructively remove elements from the Jsoup `Document`, execute operations in strict order:
-  1. Run non-destructive metadata and icon candidate extraction (`DomainIconResolver.parseHtml(doc, finalUrl)`) on `doc` first.
-  2. Pass `doc.clone()` to Readability4J to preserve the original debug extraction.
-  3. Remove common ad blocks, including `af_box`, from the body using the shared filter, preserving structural content roots. Extract Readability from a fresh clone only if blocks were removed and text remains; otherwise reuse the original extraction or retain an empty result.
-  4. Run `extractJsoupCleanText(doc)` last on `doc` directly without an extra clone. Store the filtered Readability/Jsoup choice separately for production and debug body inspection.
-- **Avoid Byte Array Re-Encoding**: Measure raw HTML payload size via Jsoup's `response.bodyAsBytes().size` instead of calling `rawHtml.toByteArray(Charsets.UTF_8).size`.
+- **Parse Once per URL**: Never parse the same HTML payload into a Jsoup `Document` multiple times during ingestion (`WebPageParser.kt`, `DomainIconResolver.kt`), and measure byte size via Jsoup's `response.bodyAsBytes().size` instead of `rawHtml.toByteArray(Charsets.UTF_8).size`.
+- **Respect Destructive DOM Mutators**: Because `Readability4J.parse()` and `extractJsoupCleanText()` destructively strip elements from a Jsoup `Document`, always execute non-destructive metadata/icon extraction (`DomainIconResolver.parseHtml(doc, finalUrl)`) first, pass `doc.clone()` to Readability4J (re-running on a filtered clone only if ad-block filtering removes elements per [AICore §3](aicore.md#3-web-content-preprocessing-pipeline)), and run `extractJsoupCleanText(doc)` last on `doc` while storing production and debug body fields separately.
 
 ### 4.2 Hoisting `Regex`, `DateTimeFormatter`, and Enum Lookup Maps
 - **Pre-Compiled Regular Expressions**: Never instantiate `Regex(...)` or `"pattern".toRegex()` inside `@Composable` functions, loops, or hot parsing paths. Always declare fixed patterns as top-level or `companion object` `private val` constants (`SCREAMING_SNAKE_CASE`).
@@ -129,42 +120,29 @@ This document defines the strict engineering standards, naming conventions, Comp
 
 ## 5. Error Handling & Defensive Coding
 
-1. **Defensive Parsing**:
-   - Always wrap JSON parsing, URI parsing, and date parsing with `runCatching { ... }.getOrElse { ... }` or `getOrDefault(...)`.
-   - Never allow a malformed HTTP response or corrupted cache file to crash the app.
-
-2. **Strict HTTP Validation**:
-   - The AI tagging pipeline requires HTTP 200 responses. Non-200 responses (e.g., HTTP 404, 500) must throw explicit exceptions that route items to the `Error` group with human-readable error messages.
-
-3. **AICore Failure Handling**:
-   - Catch specific exceptions (`RESOURCE_EXHAUSTED`, `UNAVAILABLE`) and categorize them cleanly into system busy states or fallback responses.
-
-4. **Preserving Code Integrity**:
-   - Maintain all existing comments and documentation unless explicitly modifying or refactoring that specific feature.
-   - Do not remove fallback mechanisms or sample data repair routines.
-
-5. **Non-Negative Hashing & Cache Path Sanitization**:
-   - Mask hash codes with `hashCode() and 0x7FFFFFFF` (or `mod(n)`) instead of `kotlin.math.abs(hashCode())` to avoid negative `Int.MIN_VALUE` overflow.
-   - Always validate or sanitize external strings (e.g., domains, keys) against a strict allowlist regex before constructing `File(cacheDir, name)` paths.
+- **Defensive Parsing**: Wrap JSON, URI, and date parsing in `runCatching { ... }.getOrElse { ... }` or `getOrDefault(...)`; never allow malformed HTTP responses or corrupted cache files to crash the app.
+- **Strict HTTP Validation**: The AI tagging pipeline requires HTTP 200; non-200 responses (e.g., 404, 500) must throw explicit exceptions routing items to the `Error` group with human-readable messages.
+- **AICore Failure Handling**: Catch specific exceptions (`RESOURCE_EXHAUSTED`, `UNAVAILABLE`) and map them cleanly to system busy states or fallback responses (see [AICore §8](aicore.md#8-error-handling--rate-limiting)).
+- **Preserving Code Integrity**: Retain unrelated comments, documentation, fallback mechanisms, and sample data repair routines.
+- **Non-Negative Hashing & Cache Path Sanitization**: Mask hash codes with `hashCode() and 0x7FFFFFFF` (or `mod(n)`) instead of `kotlin.math.abs(hashCode())` to avoid `Int.MIN_VALUE` overflow, and sanitize external path segments against a strict allowlist regex before building `File(cacheDir, name)` paths.
+- **Single Helper Boundary for Legacy Compatibility**: Encapsulate each backward-compatibility rule (legacy JSON keys, fields, or preference fallbacks) in one shared `internal` helper/extension (e.g., `JSONObject.readLegacyCompatiblePrivateFlag()`, `AppConfig.readBooleanPreferenceWithLegacyFallback(...)`) with focused unit tests instead of duplicating fallback checks across callers.
+- **JVM-Safe Evaluation of Lazy Android Dependencies**: Singletons referenced in JVM unit tests (such as `AppConfig`) may hold `by lazy` properties backed by `TidiloApplication.instance`, which throw `UninitializedPropertyAccessException` outside Android. Keep an outer `runCatching` or deferred provider lambda around eager initialization sites passing lazy Android dependencies like `prefs`, and comment the guard so refactoring does not remove it.
 
 ---
 
-## 6. Git Commit Workflow & Rules
+## 6. Verification & Commit Conventions
 
-### 6.1 Mandatory Commit for Every Instruction
-- **Strict Rule**: Every AI agent and developer **MUST commit all changes upon completing each user instruction or task**.
-- Never leave uncommitted changes at the end of an interaction turn.
-- Before committing:
-  1. Verify the build and tests pass (`./gradlew testDebugUnitTest`).
-  2. Ensure documentation and relevant logs are up to date.
-  3. Stage all modified and newly created files (`git add .`).
+### 6.1 Pre-Commit Quality Gates
+See [Coding Workflow (Phase 2)](../.agents/coding/workflow.md) for branching, approval gates, and commit lifecycle rules. Before committing code changes:
+- **Unit & Instrumentation Verification**: Ensure `./gradlew testDebugUnitTest` passes 100%. Whenever Room schemas, migrations, or UI navigation/semantics change, also assemble `assembleDebugAndroidTest` and run the affected `androidTest` suites on a connected device/emulator (`testDebugUnitTest` and compilation alone do not verify SQLite migrations or Compose runtime semantics).
+- **Navigation Route & Doc Parity**: Update UI route assertions (such as `SettingsRedesignTest`) when adding or moving routes/settings entries, and keep `docs/ui_design.md` (screen order, containers, Material tokens) synchronized with the implementation.
 
 ### 6.2 Conventional Commit Messages
-- Use standard Conventional Commits format:
-  - `feat(<scope>)`: New user-facing or architectural features.
-  - `fix(<scope>)`: Bug fixes and behavioral repairs.
-  - `perf(<scope>)`: Performance optimizations (recomposition, I/O dispatching, memory).
-  - `refactor(<scope>)`: Code refactoring without behavior change.
-  - `docs(<scope>)`: Creating or updating documentation and specifications.
-  - `test(<scope>)`: Adding or updating unit/integration tests.
-  - `chore(<scope>)`: Maintenance, Gradle scripts, configuration tweaks.
+Use standard Conventional Commits in English:
+- `feat(<scope>)`: New user-facing or architectural features.
+- `fix(<scope>)`: Bug fixes and behavioral repairs.
+- `perf(<scope>)`: Performance optimizations (recomposition, I/O dispatching, memory).
+- `refactor(<scope>)`: Code refactoring without behavior change.
+- `docs(<scope>)`: Documentation and specification changes.
+- `test(<scope>)`: Unit or instrumentation tests.
+- `chore(<scope>)`: Maintenance, Gradle scripts, or configuration tweaks.

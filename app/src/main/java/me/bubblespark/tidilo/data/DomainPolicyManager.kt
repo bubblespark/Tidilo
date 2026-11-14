@@ -8,12 +8,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 data class DomainPolicy(
     val domain: String,
-    val isNsfw: Boolean = false,
+    val isPrivate: Boolean = false,
     val displayName: String = ""
 )
 
 /**
- * Compatibility facade for domain-level policies (NSFW flags and domain display names).
+ * Compatibility facade for domain-level policies (Private flags and domain display names).
  * Delegates to Room-backed [DomainPolicyStore] when an Android application context is active,
  * and falls back to a lightweight in-memory map in context-free JVM unit tests.
  */
@@ -35,20 +35,20 @@ object DomainPolicyManager {
     }
 
     /**
-     * Registers a new domain. If it does not exist, registers with default isNsfw (false).
+     * Registers a new domain. If it does not exist, registers with default isPrivate (false).
      * If displayName is provided and existing domain has no displayName, updates it.
      */
     @Synchronized
-    fun registerDomain(domain: String?, isNsfw: Boolean = false, displayName: String = "") {
+    fun registerDomain(domain: String?, isPrivate: Boolean = false, displayName: String = "") {
         activeStoreOrNull()?.let {
-            it.registerDomain(domain, isNsfw, displayName)
+            it.registerDomain(domain, isPrivate, displayName)
             return
         }
         if (domain.isNullOrBlank()) return
         val normalized = domain.trim().lowercase()
         val existing = fallbackDomainMap[normalized]
         if (existing == null) {
-            fallbackDomainMap[normalized] = DomainPolicy(normalized, isNsfw, displayName.trim())
+            fallbackDomainMap[normalized] = DomainPolicy(normalized, isPrivate, displayName.trim())
             notifyFallbackUpdated()
         } else if (displayName.isNotBlank() && existing.displayName.isBlank()) {
             fallbackDomainMap[normalized] = existing.copy(displayName = displayName.trim())
@@ -126,38 +126,38 @@ object DomainPolicyManager {
     }
 
     /**
-     * Updates the NSFW flag of a specific domain and its bookmarks.
+     * Updates the Private flag of a specific domain and its bookmarks.
      */
-    suspend fun setDomainNsfwAndAwait(domain: String, isNsfw: Boolean) {
+    suspend fun setDomainPrivateAndAwait(domain: String, isPrivate: Boolean) {
         val store = activeStoreOrNull()
         if (store != null) {
-            store.setDomainNsfwAndAwait(domain, isNsfw)
+            store.setDomainPrivateAndAwait(domain, isPrivate)
             return
         }
-        setDomainNsfw(domain, isNsfw)
+        setDomainPrivate(domain, isPrivate)
     }
 
     @Synchronized
-    fun setDomainNsfw(domain: String, isNsfw: Boolean) {
+    fun setDomainPrivate(domain: String, isPrivate: Boolean) {
         activeStoreOrNull()?.let {
-            it.setDomainNsfw(domain, isNsfw)
+            it.setDomainPrivate(domain, isPrivate)
             return
         }
         val normalized = domain.trim().lowercase()
         if (normalized.isBlank()) return
         val existing = fallbackDomainMap[normalized]
-        fallbackDomainMap[normalized] = existing?.copy(isNsfw = isNsfw) ?: DomainPolicy(normalized, isNsfw, "")
+        fallbackDomainMap[normalized] = existing?.copy(isPrivate = isPrivate) ?: DomainPolicy(normalized, isPrivate, "")
         notifyFallbackUpdated()
     }
 
     /**
-     * Checks if the given domain is marked as NSFW.
+     * Checks if the given domain is marked as Private.
      */
-    fun isNsfwDomain(domain: String?): Boolean {
-        activeStoreOrNull()?.let { return it.isNsfwDomain(domain) }
+    fun isPrivateDomain(domain: String?): Boolean {
+        activeStoreOrNull()?.let { return it.isPrivateDomain(domain) }
         if (domain.isNullOrBlank()) return false
         val normalized = domain.trim().lowercase()
-        return fallbackDomainMap[normalized]?.isNsfw ?: false
+        return fallbackDomainMap[normalized]?.isPrivate ?: false
     }
 
     /**

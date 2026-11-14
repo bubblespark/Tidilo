@@ -46,16 +46,17 @@ internal val DETAIL_HERO_MAX_BANNER_HEIGHT = 300.dp
 
 /**
  * Formats the plain-text Classification Breadcrumb displayed above the Bookmark Title:
- * - Category + Subcategory + NSFW -> `"Category > Subcategory - NSFW"`
+ * - Category + Subcategory + Private -> `"Category > Subcategory - Private"`
  * - Category + Subcategory -> `"Category > Subcategory"`
- * - Single Category or Subcategory (+ optional `" - NSFW"`)
- * - NSFW only -> `"NSFW"`
+ * - Single Category or Subcategory (+ optional `" - Private"`)
+ * - Private only -> `"Private"`
  * - None present -> `null` (omits the row with zero vertical gap)
  */
 fun formatClassificationBreadcrumb(
     localizedCategory: String,
     localizedSubcategory: String,
-    isNsfw: Boolean
+    isPrivate: Boolean,
+    privateLabel: String = "Private"
 ): String? {
     val cat = localizedCategory.trim()
     val sub = localizedSubcategory.trim()
@@ -66,9 +67,9 @@ fun formatClassificationBreadcrumb(
         else -> ""
     }
     return when {
-        hierarchy.isNotEmpty() && isNsfw -> "$hierarchy - NSFW"
+        hierarchy.isNotEmpty() && isPrivate -> "$hierarchy - $privateLabel"
         hierarchy.isNotEmpty() -> hierarchy
-        isNsfw -> "NSFW"
+        isPrivate -> privateLabel
         else -> null
     }
 }

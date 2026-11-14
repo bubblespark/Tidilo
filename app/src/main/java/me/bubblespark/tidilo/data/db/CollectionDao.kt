@@ -12,9 +12,9 @@ import kotlinx.coroutines.flow.Flow
 interface CollectionDao {
     @Query("""SELECT c.*, COUNT(b.id) AS count FROM collections c
         LEFT JOIN bookmark_collection_cross_ref r ON r.collectionId = c.id
-        LEFT JOIN bookmarks b ON b.id = r.bookmarkId AND (:showNsfw OR NOT b.isNsfw)
+        LEFT JOIN bookmarks b ON b.id = r.bookmarkId AND (:showPrivate OR NOT b.isPrivate)
         GROUP BY c.id ORDER BY c.createdAt DESC, c.id DESC""")
-    fun observeCollections(showNsfw: Boolean): Flow<List<CollectionWithCount>>
+    fun observeCollections(showPrivate: Boolean): Flow<List<CollectionWithCount>>
 
     @Query("SELECT * FROM collections WHERE id = :id")
     fun observeCollection(id: String): Flow<CollectionEntity?>
@@ -28,13 +28,13 @@ interface CollectionDao {
     suspend fun delete(id: String): Int
 
     @Query("""SELECT b.* FROM bookmarks b JOIN bookmark_collection_cross_ref r ON b.id = r.bookmarkId
-        WHERE r.collectionId = :collectionId AND (:showNsfw OR NOT b.isNsfw)
+        WHERE r.collectionId = :collectionId AND (:showPrivate OR NOT b.isPrivate)
         ORDER BY b.createdAt DESC, b.id DESC""")
-    fun bookmarks(collectionId: String, showNsfw: Boolean): PagingSource<Int, BookmarkEntity>
+    fun bookmarks(collectionId: String, showPrivate: Boolean): PagingSource<Int, BookmarkEntity>
 
     @Query("""SELECT COUNT(*) FROM bookmarks b JOIN bookmark_collection_cross_ref r ON b.id = r.bookmarkId
-        WHERE r.collectionId = :collectionId AND (:showNsfw OR NOT b.isNsfw)""")
-    fun observeCount(collectionId: String, showNsfw: Boolean): Flow<Int>
+        WHERE r.collectionId = :collectionId AND (:showPrivate OR NOT b.isPrivate)""")
+    fun observeCount(collectionId: String, showPrivate: Boolean): Flow<Int>
 
     @Query("SELECT collectionId FROM bookmark_collection_cross_ref WHERE bookmarkId = :bookmarkId ORDER BY collectionId")
     fun observeMembershipIds(bookmarkId: String): Flow<List<String>>

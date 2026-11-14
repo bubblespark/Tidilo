@@ -14,7 +14,7 @@ The first `PER_APP_BATTERY_USE_QUOTA_EXCEEDED` (27) detected for each start date
 
 ## Collection counts
 
-`BookmarkDao.observeCollectionCounts()` obtains active and trashed counts in one SQL statement and observes both tables. `BookmarkRepository` gates observation on initialization and supports retry after failures. Counts include manual and RSS sources, NSFW, and other filtered items; active bookmarks exclude trash. The trash denominator is the existing `MAX_TRASH_CAPACITY` (100). No complete collection is loaded for these totals. Storage dashboard itself adds no Room tables; RSS uses schema9 as described in [RSS subscriptions](rss.md).
+`BookmarkDao.observeCollectionCounts()` obtains active and trashed counts in one SQL statement and observes both tables. `BookmarkRepository` gates observation on initialization and supports retry after failures. Counts include manual and RSS sources, Private bookmarks, and other filtered items; active bookmarks exclude trash. The trash denominator is the existing `MAX_TRASH_CAPACITY` (100). No complete collection is loaded for these totals. Storage dashboard itself adds no Room tables; RSS uses schema9 as described in [RSS subscriptions](rss.md).
 
 ## Cache storage
 

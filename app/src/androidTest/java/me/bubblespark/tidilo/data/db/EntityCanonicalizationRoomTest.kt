@@ -31,7 +31,7 @@ class EntityCanonicalizationRoomTest {
         val db = database()
         try {
             val dao = db.bookmarkDao()
-            dao.insertAll(listOf(row("current", "GitHub"), row("hidden", "GitHub").copy(isNsfw = true)))
+            dao.insertAll(listOf(row("current", "GitHub"), row("hidden", "GitHub").copy(isPrivate = true)))
             val sql = db.openHelper.readableDatabase
             for (query in listOf(
                 "SELECT value FROM bookmark_entities WHERE skeletonKey = 'github' ORDER BY bookmarkId, position LIMIT 1",
@@ -47,17 +47,17 @@ class EntityCanonicalizationRoomTest {
             assertEquals(listOf(TagCount("GitHub", 2)), dao.tagCounts(BookmarkQueries.tags(emptySet(), true, TagKind.ENTITY)).first())
             repo(db).updateBookmarkDetails("current", "", Tag("Tool", "Tech", listOf("GitHub")), false,
                 mapOf("github" to "git-hub"), 2)
-            for (showNsfw in listOf(false, true)) {
-                val expected = if (showNsfw) 2 else 1
+            for (showPrivate in listOf(false, true)) {
+                val expected = if (showPrivate) 2 else 1
                 for ((query, count) in listOf("#GitHub" to 0, "#git-hub" to expected)) {
-                    val results = BookmarkQueries.results(query, showNsfw)
+                    val results = BookmarkQueries.results(query, showPrivate)
                     sql.query(results).use { assertEquals(count, it.count) }
-                    assertEquals(count, dao.observeCount(BookmarkQueries.count(query, showNsfw)).first())
+                    assertEquals(count, dao.observeCount(BookmarkQueries.count(query, showPrivate)).first())
                 }
-                val tags = dao.tagCounts(BookmarkQueries.tags(emptySet(), showNsfw, TagKind.ENTITY)).first()
+                val tags = dao.tagCounts(BookmarkQueries.tags(emptySet(), showPrivate, TagKind.ENTITY)).first()
                 assertEquals(listOf(TagCount("git-hub", expected)), tags)
-                assertEquals(expected, dao.tagCounts(BookmarkQueries.tags(setOf("git-hub"), showNsfw, TagKind.ENTITY)).first().sumOf { it.count })
-                assertTrue(dao.tagCounts(BookmarkQueries.tags(setOf("GitHub"), showNsfw, TagKind.ENTITY)).first().isEmpty())
+                assertEquals(expected, dao.tagCounts(BookmarkQueries.tags(setOf("git-hub"), showPrivate, TagKind.ENTITY)).first().sumOf { it.count })
+                assertTrue(dao.tagCounts(BookmarkQueries.tags(setOf("GitHub"), showPrivate, TagKind.ENTITY)).first().isEmpty())
             }
         } finally { db.close() }
     }
@@ -110,7 +110,7 @@ class EntityCanonicalizationRoomTest {
     @Test fun detailSaveReplacesHiddenRowsAndPreservesUnrelatedFieldsAndOrder() = runBlocking {
         val db = database()
         try {
-            val hidden = row("hidden", "Before", "GitHub", "After").copy(isNsfw = true, note = "Keep note", rssFeedId = "feed", rssPublishedAt = 77)
+            val hidden = row("hidden", "Before", "GitHub", "After").copy(isPrivate = true, note = "Keep note", rssFeedId = "feed", rssPublishedAt = 77)
             db.bookmarkDao().insertAll(listOf(row("current", "GitHub", "# C", "C"), hidden, row("unrelated", "Other")))
             repo(db).updateBookmarkDetails("current", "Saved note", Tag("Tool", "Tech", listOf("git-hub", "GIT_HUB", "# C", "C")), false,
                 mapOf("github" to "git-hub", "#c" to requireNotNull(me.bubblespark.tidilo.data.EntityTagPolicy.clean("##C"))), 5)
@@ -125,7 +125,7 @@ class EntityCanonicalizationRoomTest {
     @Test fun failingOuterTransactionRollsBackEveryReplacementAndOccurrence() = runBlocking {
         val db = database()
         try {
-            db.bookmarkDao().insertAll(listOf(row("current", "GitHub"), row("hidden", "GitHub").copy(isNsfw = true)))
+            db.bookmarkDao().insertAll(listOf(row("current", "GitHub"), row("hidden", "GitHub").copy(isPrivate = true)))
             try {
                 db.withTransaction {
                     repo(db).updateBookmarkDetails("current", "Changed", Tag("Tool", "Tech", listOf("GitHub")), true, mapOf("github" to "git-hub"), 9)

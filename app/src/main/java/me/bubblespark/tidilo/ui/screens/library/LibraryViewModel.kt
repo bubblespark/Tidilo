@@ -151,7 +151,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     fun selectCollectionFilter(id: String?) { savedState["selectedCollectionId"] = id }
     private val collectionReload = MutableStateFlow(0)
     fun retryCollections() { collectionReload.value++ }
-    val collectionState = combine(AppConfig.isNsfwContentVisible, collectionReload) { visible, _ -> visible }
+    val collectionState = combine(AppConfig.isPrivateContentVisible, collectionReload) { visible, _ -> visible }
         .flatMapLatest { visible -> collections.observeCollections(visible)
             .map { CollectionLibraryState(rows = it, loading = false) }
             .onStart { emit(CollectionLibraryState()) }
@@ -195,7 +195,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
 
     private val _rssFeedGroupsLoading = MutableStateFlow(true)
     val rssFeedGroupsLoading = _rssFeedGroupsLoading.asStateFlow()
-    val rssFeedGroups = AppConfig.isNsfwContentVisible.flatMapLatest { visible ->
+    val rssFeedGroups = AppConfig.isPrivateContentVisible.flatMapLatest { visible ->
         bookmarkRepository.observeRssFeedGroups(visible).onStart { _rssFeedGroupsLoading.value = true }
     }.map { groups ->
         val collator = Collator.getInstance(Locale.JAPANESE)
@@ -213,7 +213,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val domainGroups: StateFlow<List<DomainGroupItem>> =
-        combine(AppConfig.isNsfwContentVisible.flatMapLatest { bookmarkRepository.observeDomainCounts(it, BookmarkSource.MANUAL).onStart { _domainGroupsLoading.value = true } }, domainPolicyStore.policies) { counts, _ ->
+        combine(AppConfig.isPrivateContentVisible.flatMapLatest { bookmarkRepository.observeDomainCounts(it, BookmarkSource.MANUAL).onStart { _domainGroupsLoading.value = true } }, domainPolicyStore.policies) { counts, _ ->
             _domainGroupsLoading.value = false
             val countMap = counts.associate { it.domain to it.count }
             val collator = Collator.getInstance(Locale.JAPANESE)
@@ -282,7 +282,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         val selectedKey = buildLibraryFilterKey(mode,
             _selectedDomainFilter.value.takeIf { mode == LibraryFilterMode.DOMAIN },
             _selectedRssFeedFilter.value?.id.takeIf { mode == LibraryFilterMode.RSS },
-            AppConfig.isNsfwContentVisible.value,
+            AppConfig.isPrivateContentVisible.value,
             selectedCollectionId.value.takeIf { mode == LibraryFilterMode.COLLECTION })
         if (session.users == 0 && session.key != selectedKey) {
             session.cacheScope.cancel()
@@ -320,7 +320,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
      */
     val searchGeneration: StateFlow<PagingGeneration> = combine(
         debouncedSearchQuery,
-        AppConfig.isNsfwContentVisible,
+        AppConfig.isPrivateContentVisible,
         bookmarkRepository.isInitialized
     ) { query, visible, ready ->
         Triple(query, visible, ready)
@@ -340,7 +340,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = run {
             val query = _searchQuery.value
-            val visible = AppConfig.isNsfwContentVisible.value
+            val visible = AppConfig.isPrivateContentVisible.value
             val ready = bookmarkRepository.isInitialized.value
             activeSearchReady = ready
             buildSearchGeneration(query, visible, ready).also {
@@ -355,7 +355,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
             if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL,
             rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS })
 
-    val searchCount = combine(debouncedSearchQuery, AppConfig.isNsfwContentVisible) { query, visible -> query to visible }
+    val searchCount = combine(debouncedSearchQuery, AppConfig.isPrivateContentVisible) { query, visible -> query to visible }
         .flatMapLatest { (query, visible) -> bookmarkRepository.observeCount(query, null, visible) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
@@ -389,7 +389,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         .onStart { emit(BookmarkDetailState()) }
 
     internal fun tagCounts(selected: Set<String>, kind: TagKind): Flow<Map<String, Int>> =
-        AppConfig.isNsfwContentVisible.flatMapLatest { visible ->
+        AppConfig.isPrivateContentVisible.flatMapLatest { visible ->
             bookmarkRepository.observeTagCounts(selected, visible, kind)
         }.map { rows -> rows.associate { it.value to it.count } }
 
@@ -403,8 +403,8 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) =
         bookmarkRepository.updateBookmarkFields(id, description, tag)
 
-    suspend fun updateBookmarkDetails(id: String, note: String, tag: Tag, isNsfw: Boolean, replacements: Map<String, String> = emptyMap()) =
-        bookmarkRepository.updateBookmarkDetails(id, note, tag, isNsfw, replacements)
+    suspend fun updateBookmarkDetails(id: String, note: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String> = emptyMap()) =
+        bookmarkRepository.updateBookmarkDetails(id, note, tag, isPrivate, replacements)
 
     suspend fun deleteBookmark(id: String): Boolean = bookmarkRepository.moveToTrash(id)
 

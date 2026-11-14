@@ -200,11 +200,11 @@ abstract class BookmarkDao {
     @Transaction
     open suspend fun updateNoteAndTag(
         id: String, note: String, category: String?, subcategory: String?,
-        entities: List<String>, isNsfw: Boolean, updatedAt: Long
+        entities: List<String>, isPrivate: Boolean, updatedAt: Long
     ) {
         val current = getBookmarkById(id) ?: return
         insertOrUpdate(current.copy(note = note, category = category, subcategory = subcategory,
-            entities = entities, isNsfw = isNsfw, updatedAt = updatedAt))
+            entities = entities, isPrivate = isPrivate, updatedAt = updatedAt))
     }
 
     @Query("DELETE FROM bookmarks WHERE id = :id")
@@ -218,11 +218,11 @@ abstract class BookmarkDao {
 
     @Query("DELETE FROM bookmarks")
     abstract suspend fun deleteAll()
-    @Query("SELECT * FROM bookmarks WHERE (:showNsfw OR NOT isNsfw) ORDER BY createdAt DESC, id DESC")
-    abstract fun timeline(showNsfw: Boolean): PagingSource<Int, BookmarkEntity>
+    @Query("SELECT * FROM bookmarks WHERE (:showPrivate OR NOT isPrivate) ORDER BY createdAt DESC, id DESC")
+    abstract fun timeline(showPrivate: Boolean): PagingSource<Int, BookmarkEntity>
 
-    @Query("SELECT * FROM bookmarks WHERE domain = :domain AND (:showNsfw OR NOT isNsfw) ORDER BY createdAt DESC, id DESC")
-    abstract fun byDomain(domain: String, showNsfw: Boolean): PagingSource<Int, BookmarkEntity>
+    @Query("SELECT * FROM bookmarks WHERE domain = :domain AND (:showPrivate OR NOT isPrivate) ORDER BY createdAt DESC, id DESC")
+    abstract fun byDomain(domain: String, showPrivate: Boolean): PagingSource<Int, BookmarkEntity>
 
     @RawQuery(observedEntities = [BookmarkEntity::class, BookmarkEntityOccurrence::class])
     abstract fun search(query: SupportSQLiteQuery): PagingSource<Int, BookmarkEntity>
@@ -233,8 +233,8 @@ abstract class BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE id = :id")
     abstract fun observeById(id: String): Flow<BookmarkEntity?>
 
-    @Query("SELECT domain, COUNT(*) AS count FROM bookmarks WHERE domain IS NOT NULL AND (:showNsfw OR NOT isNsfw) AND (:source=0 OR (:source=1 AND rssFeedId IS NULL) OR (:source=2 AND rssFeedId IS NOT NULL)) GROUP BY domain")
-    abstract fun domainCounts(showNsfw: Boolean, source: Int = 0): Flow<List<DomainCount>>
+    @Query("SELECT domain, COUNT(*) AS count FROM bookmarks WHERE domain IS NOT NULL AND (:showPrivate OR NOT isPrivate) AND (:source=0 OR (:source=1 AND rssFeedId IS NULL) OR (:source=2 AND rssFeedId IS NOT NULL)) GROUP BY domain")
+    abstract fun domainCounts(showPrivate: Boolean, source: Int = 0): Flow<List<DomainCount>>
 
     @Query("SELECT DISTINCT domain FROM bookmarks WHERE domain IS NOT NULL ORDER BY domain")
     abstract suspend fun distinctDomains(): List<String>
@@ -242,8 +242,8 @@ abstract class BookmarkDao {
     @Query("SELECT DISTINCT domain FROM bookmarks WHERE domain IS NOT NULL ORDER BY domain")
     abstract fun observeDistinctDomains(): Flow<List<String>>
 
-    @Query("UPDATE bookmarks SET isNsfw = :isNsfw WHERE domain = :domain")
-    abstract suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean)
+    @Query("UPDATE bookmarks SET isPrivate = :isPrivate WHERE domain = :domain")
+    abstract suspend fun updateDomainPrivate(domain: String, isPrivate: Boolean)
 
 }
 

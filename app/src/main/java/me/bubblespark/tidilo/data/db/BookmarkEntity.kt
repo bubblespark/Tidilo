@@ -20,7 +20,7 @@ import me.bubblespark.tidilo.ui.screens.library.Tag
         Index(value = ["createdAt"]),
         Index(value = ["category"]),
         Index(value = ["subcategory"]),
-        Index(value = ["isNsfw"]),
+        Index(value = ["isPrivate"]),
         Index(value = ["domain"])
     ]
 )
@@ -36,7 +36,7 @@ data class BookmarkEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val note: String = "",
-    val isNsfw: Boolean = false,
+    val isPrivate: Boolean = false,
     @ColumnInfo(defaultValue = "0") val isLiked: Boolean = false,
     @ColumnInfo(defaultValue = "0") val browserOpenCount: Int = 0,
     @ColumnInfo(defaultValue = "0") val detailViewCount: Int = 0,
@@ -77,7 +77,7 @@ data class BookmarkEntity(
             createdAt = createdAt,
             updatedAt = updatedAt,
             note = note,
-            isNsfw = isNsfw,
+            isPrivate = isPrivate,
             isLiked = isLiked,
             browserOpenCount = browserOpenCount,
             detailViewCount = detailViewCount,
@@ -104,7 +104,7 @@ data class BookmarkEntity(
                 createdAt = item.createdAt,
                 updatedAt = item.updatedAt,
                 note = item.note,
-                isNsfw = item.isNsfw,
+                isPrivate = item.isPrivate,
                 isLiked = item.isLiked,
                 browserOpenCount = item.browserOpenCount,
                 detailViewCount = item.detailViewCount,

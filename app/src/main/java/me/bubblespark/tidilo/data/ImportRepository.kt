@@ -52,14 +52,14 @@ private val ACTIVE_QUEUE_STATUSES = setOf("QUEUED", "PROCESSING", "ERROR")
 
 internal interface ImportDomainPolicyAdapter {
     suspend fun awaitReady() = Unit
-    fun isNsfwDomain(domain: String?): Boolean
-    suspend fun isNsfwDomainCommitted(domain: String?): Boolean = isNsfwDomain(domain)
-    fun registerDomain(domain: String?, isNsfw: Boolean = false, displayName: String = "")
+    fun isPrivateDomain(domain: String?): Boolean
+    suspend fun isPrivateDomainCommitted(domain: String?): Boolean = isPrivateDomain(domain)
+    fun registerDomain(domain: String?, isPrivate: Boolean = false, displayName: String = "")
 
     companion object {
         val NO_OP: ImportDomainPolicyAdapter = object : ImportDomainPolicyAdapter {
-            override fun isNsfwDomain(domain: String?): Boolean = false
-            override fun registerDomain(domain: String?, isNsfw: Boolean, displayName: String) = Unit
+            override fun isPrivateDomain(domain: String?): Boolean = false
+            override fun registerDomain(domain: String?, isPrivate: Boolean, displayName: String) = Unit
         }
     }
 }
@@ -92,7 +92,7 @@ internal interface ImportRssAdapter {
     suspend fun resumeAcquisitions()
     suspend fun retryAcquisition(taskId: String)
     suspend fun restoreTask(entity: ImportTaskEntity)
-    suspend fun validateRssWrite(url: String, bookmarkId: String, feedId: String, isNsfw: Boolean)
+    suspend fun validateRssWrite(url: String, bookmarkId: String, feedId: String, isPrivate: Boolean)
     suspend fun recordRecoveredDirectSave(taskId: String)
 }
 
@@ -136,7 +136,7 @@ private fun defaultTransactionRunner(database: AppDatabase?): TransactionRunner 
 private fun defaultRssAdapter(
     database: AppDatabase?,
     taskDao: ImportTaskDao,
-    isNsfwContentBookmarkable: () -> Boolean,
+    isPrivateContentBookmarkable: () -> Boolean,
     onResumeAcquisitions: suspend () -> Unit = {},
     onRetryAcquisition: suspend (String) -> Unit = {},
     onRestoreTask: (suspend (ImportTaskEntity) -> Unit)? = null
@@ -159,12 +159,12 @@ private fun defaultRssAdapter(
         }
     }
 
-    override suspend fun validateRssWrite(url: String, bookmarkId: String, feedId: String, isNsfw: Boolean) {
+    override suspend fun validateRssWrite(url: String, bookmarkId: String, feedId: String, isPrivate: Boolean) {
         val db = database ?: return
         val rssDao = db.rssDao()
         val feed = rssDao.feed(feedId)
         val blocked = rssDao.rssWriteConflict(url, bookmarkId)
-        if (feed == null || feed.deleted || blocked || (isNsfw && !isNsfwContentBookmarkable())) {
+        if (feed == null || feed.deleted || blocked || (isPrivate && !isPrivateContentBookmarkable())) {
             throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
         }
     }
@@ -187,8 +187,8 @@ class ImportRepository internal constructor(
     private val transactionRunner: TransactionRunner = defaultTransactionRunner(database),
     private val domainPolicyAdapter: ImportDomainPolicyAdapter = ImportDomainPolicyAdapter.NO_OP,
     private val mediaCacheAdapter: ImportMediaCacheAdapter = ImportMediaCacheAdapter.NO_OP,
-    private val isNsfwContentBookmarkable: () -> Boolean = { true },
-    private val rssAdapter: ImportRssAdapter = defaultRssAdapter(database, taskDao, isNsfwContentBookmarkable),
+    private val isPrivateContentBookmarkable: () -> Boolean = { true },
+    private val rssAdapter: ImportRssAdapter = defaultRssAdapter(database, taskDao, isPrivateContentBookmarkable),
     private val notificationAdapter: ImportNotificationAdapter = ImportNotificationAdapter.NO_OP,
     private val reportImportError: (Throwable) -> Unit = { error -> notificationAdapter.importError(error) },
     private val legacyQueuePrefsProvider: () -> SharedPreferences? = { null }
@@ -527,7 +527,7 @@ class ImportRepository internal constructor(
                 val realTitle = if (hasCustomTitle) title.trim() else prepared.title
                 val domain = DomainIconManager.extractDomain(realUrl)
                 val siteName = prepared.siteName
-                val isNsfw = parsed.isNsfwSignal || domainPolicyAdapter.isNsfwDomain(domain)
+                val isPrivate = parsed.isPrivateSignal || domainPolicyAdapter.isPrivateDomain(domain)
 
                 val description = prepared.description
                 val bodySnippet = prepared.bodySnippet
@@ -539,7 +539,7 @@ class ImportRepository internal constructor(
                     title = realTitle,
                     status = TaskStatus.QUEUED,
                     statusText = "",
-                    isNsfw = isNsfw,
+                    isPrivate = isPrivate,
                     siteName = siteName,
                     description = description,
                     bodySnippet = bodySnippet,
@@ -609,14 +609,14 @@ class ImportRepository internal constructor(
                 }
                 // Fallback: If network/parsing throws, create fallback task with basic details
                 val domain = DomainIconManager.extractDomain(normalized)
-                val isDomainNsfw = domainPolicyAdapter.isNsfwDomain(domain)
+                val isDomainPrivate = domainPolicyAdapter.isPrivateDomain(domain)
                 val fallbackItem = ImportTask(
                     url = normalized,
                     title = title?.trim()?.takeIf { it.isNotBlank() } ?: extractHostOrTitle(normalized),
                     status = TaskStatus.ERROR,
                     statusText = "Article acquisition failed",
                     errorMessage = e.message,
-                    isNsfw = isDomainNsfw
+                    isPrivate = isDomainPrivate
                 )
                 val isFallbackInserted = runInDbOrLock(normalized) {
                     val fallbackCheck = checkDuplicate(normalized)
@@ -778,7 +778,7 @@ class ImportRepository internal constructor(
             category = target.standardCategory.takeIf { target.standardClassificationEvaluated },
             subcategory = target.standardSubcategory.takeIf { target.standardClassificationEvaluated }
         ),
-        isNsfw = target.isNsfw,
+        isPrivate = target.isPrivate,
         ogImageUrl = target.ogImageUrl?.takeIf { it.isNotBlank() },
         createdAt = if (target.rssFeedId != null) target.createdAt else System.currentTimeMillis(),
         rssFeedId = target.rssFeedId,
@@ -822,9 +822,9 @@ class ImportRepository internal constructor(
         persistMergedBookmarkInTransaction(
             item = item,
             bookmarkDao = bookmarkDao,
-            isNsfwDomain = domainPolicyAdapter::isNsfwDomainCommitted,
+            isPrivateDomain = domainPolicyAdapter::isPrivateDomainCommitted,
             validateRssWrite = { finalItem, feedId ->
-                rssAdapter.validateRssWrite(finalItem.url, finalItem.id, feedId, finalItem.isNsfw)
+                rssAdapter.validateRssWrite(finalItem.url, finalItem.id, feedId, finalItem.isPrivate)
             }
         )
 
@@ -871,7 +871,7 @@ class ImportRepository internal constructor(
                 target = target.copy(url = WebPageParser.normalizeUrl(article.url) ?: article.url,
                     title = if (isRawUrlOrHost(target.title, target.url)) article.title else target.title,
                     siteName = article.siteName, description = article.description, bodySnippet = article.bodySnippet,
-                    ogImageUrl = article.ogImageUrl, isNsfw = article.isNsfw || domainPolicyAdapter.isNsfwDomain(DomainIconManager.extractDomain(article.url)),
+                    ogImageUrl = article.ogImageUrl, isPrivate = article.isPrivate || domainPolicyAdapter.isPrivateDomain(DomainIconManager.extractDomain(article.url)),
                     articlePrepared = true, status = TaskStatus.PROCESSING, errorMessage = null,
                     standardCategory = classification.category?.id,
                     standardSubcategory = classification.subcategory?.id,
@@ -991,7 +991,7 @@ class ImportRepository internal constructor(
                         tagsList.add(arr.getString(j))
                     }
                 }
-                val isNsfw = obj.optBoolean("isNsfw", false)
+                val isPrivate = obj.readLegacyCompatiblePrivateFlag()
 
                 list.add(
                     ImportTask(
@@ -1003,7 +1003,7 @@ class ImportRepository internal constructor(
                         errorMessage = obj.optString("errorMessage", "").takeIf { it.isNotBlank() },
                         assignedTags = tagsList,
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                        isNsfw = isNsfw,
+                        isPrivate = isPrivate,
                         siteName = obj.optString("siteName", ""),
                         description = obj.optString("description", ""),
                         bodySnippet = obj.optString("bodySnippet", "")
@@ -1028,8 +1028,8 @@ class ImportRepository internal constructor(
 
         private fun createProductionInstance(appContext: Context): ImportRepository {
             val db = AppDatabase.getInstance(appContext)
-            val isNsfwBookmarkable: () -> Boolean = {
-                me.bubblespark.tidilo.config.AppConfig.isNsfwContentBookmarkable.value
+            val isPrivateBookmarkable: () -> Boolean = {
+                me.bubblespark.tidilo.config.AppConfig.isPrivateContentBookmarkable.value
             }
             return ImportRepository(
                 context = appContext,
@@ -1041,14 +1041,14 @@ class ImportRepository internal constructor(
                     override suspend fun awaitReady() =
                         DomainPolicyStore.getInstance(appContext).awaitReady()
 
-                    override fun isNsfwDomain(domain: String?): Boolean =
-                        DomainPolicyStore.getInstance(appContext).isNsfwDomain(domain)
+                    override fun isPrivateDomain(domain: String?): Boolean =
+                        DomainPolicyStore.getInstance(appContext).isPrivateDomain(domain)
 
-                    override suspend fun isNsfwDomainCommitted(domain: String?): Boolean =
-                        DomainPolicyStore.getInstance(appContext).isNsfwDomainCommitted(domain)
+                    override suspend fun isPrivateDomainCommitted(domain: String?): Boolean =
+                        DomainPolicyStore.getInstance(appContext).isPrivateDomainCommitted(domain)
 
-                    override fun registerDomain(domain: String?, isNsfw: Boolean, displayName: String) {
-                        DomainPolicyStore.getInstance(appContext).registerDomain(domain, isNsfw, displayName)
+                    override fun registerDomain(domain: String?, isPrivate: Boolean, displayName: String) {
+                        DomainPolicyStore.getInstance(appContext).registerDomain(domain, isPrivate, displayName)
                     }
                 },
                 mediaCacheAdapter = object : ImportMediaCacheAdapter {
@@ -1083,11 +1083,11 @@ class ImportRepository internal constructor(
                         )
                     }
                 },
-                isNsfwContentBookmarkable = isNsfwBookmarkable,
+                isPrivateContentBookmarkable = isPrivateBookmarkable,
                 rssAdapter = defaultRssAdapter(
                     database = db,
                     taskDao = db.importTaskDao(),
-                    isNsfwContentBookmarkable = isNsfwBookmarkable,
+                    isPrivateContentBookmarkable = isPrivateBookmarkable,
                     onResumeAcquisitions = {
                         me.bubblespark.tidilo.data.rss.RssRepository.getInstance(appContext).resumeAcquisitions()
                     },

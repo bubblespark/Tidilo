@@ -63,27 +63,27 @@ internal fun isSearchQueryChanging(rawQuery: String, activeKey: String, loadedKe
 
 /**
  * Builds the unique tracking key for a library filter generation, incorporating filter mode,
- * specific domain or RSS feed filter, and NSFW content visibility.
+ * specific domain or RSS feed filter, and Private content visibility.
  */
 internal fun buildLibraryFilterKey(
     filterMode: LibraryFilterMode,
     selectedDomainFilter: String?,
     selectedFeedId: String?,
-    isNsfwVisible: Boolean,
+    isPrivateVisible: Boolean,
     collectionId: String? = null
-): String = "$filterMode/${selectedDomainFilter.orEmpty()}/${selectedFeedId.orEmpty()}/$isNsfwVisible/${collectionId.orEmpty()}"
+): String = "$filterMode/${selectedDomainFilter.orEmpty()}/${selectedFeedId.orEmpty()}/$isPrivateVisible/${collectionId.orEmpty()}"
 
 /**
  * Builds the unique tracking key for a search query generation, incorporating normalized query
- * and NSFW content visibility. Preserves NSFW visibility even for blank queries to ensure
+ * and Private content visibility. Preserves Private visibility even for blank queries to ensure
  * generation differentiation when content visibility toggles under an empty search field.
  */
 internal fun buildSearchQueryKey(
     searchQuery: String,
-    isNsfwVisible: Boolean
+    isPrivateVisible: Boolean
 ): String {
     val trimmed = searchQuery.trim()
-    return "$trimmed/$isNsfwVisible"
+    return "$trimmed/$isPrivateVisible"
 }
 
 /**

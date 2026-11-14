@@ -32,8 +32,10 @@ object AppConfig {
     private const val KEY_LANGUAGE = "app_language"
     private const val KEY_APP_THEME = "app_theme"
     private const val KEY_OVERLAY_BLUR_ENABLED = "overlay_blur_enabled"
-    private const val KEY_NSFW_CONTENT_VISIBLE = "nsfw_content_visible"
-    private const val KEY_NSFW_CONTENT_BOOKMARKABLE = "nsfw_content_bookmarkable"
+    private const val KEY_PRIVATE_CONTENT_VISIBLE = "private_content_visible"
+    private const val KEY_LEGACY_NSFW_CONTENT_VISIBLE = "nsfw_content_visible"
+    private const val KEY_PRIVATE_CONTENT_BOOKMARKABLE = "private_content_bookmarkable"
+    private const val KEY_LEGACY_NSFW_CONTENT_BOOKMARKABLE = "nsfw_content_bookmarkable"
     private const val KEY_AI_ANALYSIS_MODE = "ai_analysis_mode"
 
     private val prefs by lazy {
@@ -86,31 +88,62 @@ object AppConfig {
     internal fun readOverlayBlurPreference(preferences: SharedPreferences): Boolean =
         runCatching { preferences.getBoolean(KEY_OVERLAY_BLUR_ENABLED, true) }.getOrDefault(true)
 
-    // NSFW content visibility flag (default: true)
-    private val _isNsfwContentVisible = MutableStateFlow(
-        runCatching { prefs.getBoolean(KEY_NSFW_CONTENT_VISIBLE, true) }
-            .getOrDefault(true)
-    )
-    val isNsfwContentVisible: StateFlow<Boolean> = _isNsfwContentVisible.asStateFlow()
+    internal fun readBooleanPreferenceWithLegacyFallback(
+        preferences: SharedPreferences,
+        key: String,
+        legacyKey: String,
+        defaultValue: Boolean = true
+    ): Boolean = runCatching {
+        when {
+            preferences.contains(key) -> preferences.getBoolean(key, defaultValue)
+            preferences.contains(legacyKey) -> {
+                val migrated = preferences.getBoolean(legacyKey, defaultValue)
+                preferences.edit().putBoolean(key, migrated).remove(legacyKey).apply()
+                migrated
+            }
+            else -> defaultValue
+        }
+    }.getOrDefault(defaultValue)
 
-    fun setNsfwContentVisible(visible: Boolean) {
-        _isNsfwContentVisible.value = visible
+    // Private content visibility flag (default: true).
+    // Outer runCatching guards lazy `prefs` evaluation when TidiloApplication.instance is uninitialized in JVM tests.
+    private val _isPrivateContentVisible = MutableStateFlow(
         runCatching {
-            prefs.edit().putBoolean(KEY_NSFW_CONTENT_VISIBLE, visible).apply()
+            readBooleanPreferenceWithLegacyFallback(
+                prefs,
+                KEY_PRIVATE_CONTENT_VISIBLE,
+                KEY_LEGACY_NSFW_CONTENT_VISIBLE,
+                true
+            )
+        }.getOrDefault(true)
+    )
+    val isPrivateContentVisible: StateFlow<Boolean> = _isPrivateContentVisible.asStateFlow()
+
+    fun setPrivateContentVisible(visible: Boolean) {
+        _isPrivateContentVisible.value = visible
+        runCatching {
+            prefs.edit().putBoolean(KEY_PRIVATE_CONTENT_VISIBLE, visible).apply()
         }
     }
 
-    // NSFW content bookmarking allowed flag (default: true)
-    private val _isNsfwContentBookmarkable = MutableStateFlow(
-        runCatching { prefs.getBoolean(KEY_NSFW_CONTENT_BOOKMARKABLE, true) }
-            .getOrDefault(true)
-    )
-    val isNsfwContentBookmarkable: StateFlow<Boolean> = _isNsfwContentBookmarkable.asStateFlow()
-
-    fun setNsfwContentBookmarkable(bookmarkable: Boolean) {
-        _isNsfwContentBookmarkable.value = bookmarkable
+    // Private content bookmarking allowed flag (default: true).
+    // Outer runCatching guards lazy `prefs` evaluation when TidiloApplication.instance is uninitialized in JVM tests.
+    private val _isPrivateContentBookmarkable = MutableStateFlow(
         runCatching {
-            prefs.edit().putBoolean(KEY_NSFW_CONTENT_BOOKMARKABLE, bookmarkable).apply()
+            readBooleanPreferenceWithLegacyFallback(
+                prefs,
+                KEY_PRIVATE_CONTENT_BOOKMARKABLE,
+                KEY_LEGACY_NSFW_CONTENT_BOOKMARKABLE,
+                true
+            )
+        }.getOrDefault(true)
+    )
+    val isPrivateContentBookmarkable: StateFlow<Boolean> = _isPrivateContentBookmarkable.asStateFlow()
+
+    fun setPrivateContentBookmarkable(bookmarkable: Boolean) {
+        _isPrivateContentBookmarkable.value = bookmarkable
+        runCatching {
+            prefs.edit().putBoolean(KEY_PRIVATE_CONTENT_BOOKMARKABLE, bookmarkable).apply()
         }
     }
 

@@ -77,21 +77,21 @@ internal class RssIngestionStore(
             actual.standardSubcategory.takeIf { actual.standardClassificationEvaluated }
         } else classification.subcategory?.id
         val domain = DomainIconManager.extractDomain(article.url)
-        val domainNsfw = if (domainPolicyStore != null) {
-            domainPolicyStore.isNsfwDomainCommitted(domain)
+        val domainPrivate = if (domainPolicyStore != null) {
+            domainPolicyStore.isPrivateDomainCommitted(domain)
         } else {
             DomainPolicyStore.normalizeDomain(domain)?.let {
-                database.domainPolicyDao().getByDomain(it)?.isNsfw == true
+                database.domainPolicyDao().getByDomain(it)?.isPrivate == true
             } ?: false
         }
-        val nsfw = article.isNsfw || domainNsfw
-        if ((!nsfw || AppConfig.isNsfwContentBookmarkable.value) && !rss.rssWriteConflict(article.url, task.id)) {
+        val isPrivate = article.isPrivate || domainPrivate
+        if ((!isPrivate || AppConfig.isPrivateContentBookmarkable.value) && !rss.rssWriteConflict(article.url, task.id)) {
             val bookmarks = database.bookmarkDao()
             if (bookmarks.getBookmarkById(task.id) == null) {
                 bookmarks.insertOrUpdate(BookmarkEntity(task.id, article.title, article.url, article.description,
                     category = category, subcategory = subcategory,
                     entities = actual.assignedTags, createdAt = task.createdAt,
-                    updatedAt = System.currentTimeMillis(), isNsfw = nsfw,
+                    updatedAt = System.currentTimeMillis(), isPrivate = isPrivate,
                     ogImageUrl = article.ogImageUrl, rssFeedId = feed.id, rssPublishedAt = task.rssPublishedAt))
             }
             database.importTaskDao().deleteById(task.id)

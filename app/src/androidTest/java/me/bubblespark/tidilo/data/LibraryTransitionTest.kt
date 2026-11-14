@@ -160,7 +160,7 @@ class LibraryTransitionTest {
                 vm = ViewModelProvider(store, ViewModelProvider.NewInstanceFactory())[LibraryViewModel::class.java]
                 oldMode = vm.filterMode.value
                 vm.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
-                val visible = AppConfig.isNsfwContentVisible.value
+                val visible = AppConfig.isPrivateContentVisible.value
                 val first = vm.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, visible)
                 first.users++
                 vm.releaseLibraryPages(first)

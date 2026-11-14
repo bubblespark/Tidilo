@@ -6,7 +6,7 @@ Room 16 adds user-curated collections and many-to-many membership without replac
 
 Room 13 adds local RSS notification run/item accounting, including atomic article outcomes and completion-time Ready snapshots. `MIGRATION_12_13` preserves all existing bookmark, subscription, queue, and in-app notification tables. See [Android OS Notifications](notifications.md).
 
-Room 14 adds the non-null `bookmark_entities.skeletonKey` and its index. Occurrence constructors derive this identity from display spelling; substring search still uses the separate `searchValue`. `MIGRATION_13_14` elects canonical spellings across all active bookmarks, including hidden NSFW rows, by distinct-bookmark frequency, earliest containing bookmark creation time, then SQLite binary spelling order. It reads raw stored entity lists before deduplication or truncation, resolves representatives in original entity order, removes duplicate keys, and retains at most ten entities. Only active entity JSON and derived fields change; classification, timestamps, notes, flags, URLs, images, RSS metadata, and trash are preserved. Reads use bounded scalar batches, with votes aggregated in a temporary SQLite table. Election runs only during migration. Elected spellings are already cleaned: key-based deduplication and derived repair preserve remaining leading hash characters (for example, raw `##C` becomes canonical `#C`, distinct from `C`) without stripping another prefix. Version 14 derived repair trusts canonical entity JSON; historical occurrence schemas still clean raw legacy values. The existing derived-format repair rebuilds keys without electing spellings on open, and retains compatibility with the historical four-column occurrence schema used by migration 6 to 7.
+Room 14 adds the non-null `bookmark_entities.skeletonKey` and its index. Occurrence constructors derive this identity from display spelling; substring search still uses the separate `searchValue`. `MIGRATION_13_14` elects canonical spellings across all active bookmarks, including hidden Private rows, by distinct-bookmark frequency, earliest containing bookmark creation time, then SQLite binary spelling order. It reads raw stored entity lists before deduplication or truncation, resolves representatives in original entity order, removes duplicate keys, and retains at most ten entities. Only active entity JSON and derived fields change; classification, timestamps, notes, flags, URLs, images, RSS metadata, and trash are preserved. Reads use bounded scalar batches, with votes aggregated in a temporary SQLite table. Election runs only during migration. Elected spellings are already cleaned: key-based deduplication and derived repair preserve remaining leading hash characters (for example, raw `##C` becomes canonical `#C`, distinct from `C`) without stripping another prefix. Version 14 derived repair trusts canonical entity JSON; historical occurrence schemas still clean raw legacy values. The existing derived-format repair rebuilds keys without electing spellings on open, and retains compatibility with the historical four-column occurrence schema used by migration 6 to 7.
 
 Room 15 adds local engagement state to active and trashed bookmarks without replacing existing tables. `MIGRATION_14_15` initializes Like and counts to zero and the last interaction timestamp to null. Atomic updates record successful browser opens, detail entries, and grid summary peeks; liking updates the timestamp, while unliking preserves it. Edits, replacement, RSS promotion, and trash transfer preserve these fields.
 
@@ -32,7 +32,7 @@ data class BookmarkItem(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val note: String = "",
-    val isNsfw: Boolean = false,
+    val isPrivate: Boolean = false,
     val isLiked: Boolean = false,
     val browserOpenCount: Int = 0,
     val detailViewCount: Int = 0,
@@ -79,13 +79,13 @@ Shared non-UI policy for normalizing, deduplicating, and bounding entity tags ac
 
 ### Active entity identity and write contract (Room 14)
 
-All active occurrences of one skeleton use one display spelling, including hidden NSFW bookmarks. Migration elects that spelling once using the rules above. Future saves reuse the current indexed occurrence spelling; a new key establishes its first saved spelling. Election is never repeated on open.
+All active occurrences of one skeleton use one display spelling, including hidden Private bookmarks. Migration elects that spelling once using the rules above. Future saves reuse the current indexed occurrence spelling; a new key establishes its first saved spelling. Election is never repeated on open.
 
-`BookmarkDao` is the canonicalizing boundary for single writes, URL replacement, bulk insertion, field updates, AI review, RSS Direct ingestion, initial import, and restored bookmarks. Raw row and occurrence writes are protected. Bulk resolution retains a transaction-local key map across 500-row chunks; URL replacement resolves before deleting the previous owner. JSON and ordered occurrence rows are refreshed in the same transaction. Note-only, NSFW-only, and RSS ownership updates preserve entity values.
+`BookmarkDao` is the canonicalizing boundary for single writes, URL replacement, bulk insertion, field updates, AI review, RSS Direct ingestion, initial import, and restored bookmarks. Raw row and occurrence writes are protected. Bulk resolution retains a transaction-local key map across 500-row chunks; URL replacement resolves before deleting the previous owner. JSON and ordered occurrence rows are refreshed in the same transaction. Note-only, Private-only, and RSS ownership updates preserve entity values.
 
-Detail Save accepts already-cleaned display values and a replacement map keyed by skeleton. Each replacement must be trimmed, have a nonempty matching key, and retain meaningful punctuation. Save verifies the target still exists, applies replacements to every matching active bookmark through the skeleton index in bounded batches, overlays explicit spellings onto the draft, then saves note, classification, entities, and NSFW atomically. The overlay preserves an explicit choice even if the last occurrence disappeared while the editor was open. Only entity JSON and `updatedAt` change on other affected bookmarks; unrelated fields and trash remain untouched. Any failure rolls back the entire operation. A stale draft without a replacement resolves the latest spelling; serialized concurrent saves/imports share that spelling, with the last explicit replacement taking effect.
+Detail Save accepts already-cleaned display values and a replacement map keyed by skeleton. Each replacement must be trimmed, have a nonempty matching key, and retain meaningful punctuation. Save verifies the target still exists, applies replacements to every matching active bookmark through the skeleton index in bounded batches, overlays explicit spellings onto the draft, then saves note, classification, entities, and Private state atomically. The overlay preserves an explicit choice even if the last occurrence disappeared while the editor was open. Only entity JSON and `updatedAt` change on other affected bookmarks; unrelated fields and trash remain untouched. Any failure rolls back the entire operation. A stale draft without a replacement resolves the latest spelling; serialized concurrent saves/imports share that spelling, with the last explicit replacement taking effect.
 
-`bookmark_entities.skeletonKey` supports identity lookup and bulk replacement only. Literal tag selection, substring search, and counts continue to use `searchValue` and canonical display values; global text search does not adopt skeleton matching. Room invalidation refreshes results and aggregates after a rename. The conflict lookup independently observes all active entities, regardless of Library source, query, or NSFW visibility.
+`bookmark_entities.skeletonKey` supports identity lookup and bulk replacement only. Literal tag selection, substring search, and counts continue to use `searchValue` and canonical display values; global text search does not adopt skeleton matching. Room invalidation refreshes results and aggregates after a rename. The conflict lookup independently observes all active entities, regardless of Library source, query, or Private Content visibility.
 
 ### Non-AI save entity matching via skeleton keys
 
@@ -201,20 +201,20 @@ Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt
 
 ## 6. Persistence & Serialization Schemas
 
-All persistence is managed via **Room Database** (`AppDatabase` v21) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
+All persistence is managed via **Room Database** (`AppDatabase` v22) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
 
 1. **Room Database (`AppDatabase`)**:
-   - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, `domain`, and `ogImageUrl` / `ogImageKey` linking to specific cached OG image assets. Bulk writes (`insertAll`) execute in chunked batches of 500 with per-chunk ID deduplication.
+   - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, `domain`, `isPrivate`, and `ogImageUrl` / `ogImageKey` linking to specific cached OG image assets. Bulk writes (`insertAll`) execute in chunked batches of 500 with per-chunk ID deduplication.
    - **`trashed_bookmarks` table (`TrashedBookmarkEntity`)**: Managed by `TrashDao`, storing trashed items with retention tracking and `ogImageUrl`.
    - **`import_tasks` table (`ImportTaskEntity`)**: Managed by `ImportTaskDao`, storing `QUEUED`, `PROCESSING`, and `ERROR` tasks with reactive `Flow<List<ImportTaskEntity>>` observation and status index.
-   - **`domain_policies` table (`DomainPolicyEntity`)**: Added in Room 21 (`MIGRATION_20_21`), managed by `DomainPolicyDao` and `DomainPolicyStore`, storing `(domain, isNsfw, displayName)` with primary key `domain`. Legacy `filesDir/domain_policies.json` entries are idempotently merged once inside a Room transaction and deleted only after commit.
+   - **`domain_policies` table (`DomainPolicyEntity`)**: Added in Room 21 (`MIGRATION_20_21`) and updated in Room 22 (`MIGRATION_21_22` renaming the legacy privacy column/index across `bookmarks`, `trashed_bookmarks`, `import_tasks`, and `domain_policies` to `isPrivate` and `index_bookmarks_isPrivate`), managed by `DomainPolicyDao` and `DomainPolicyStore`, storing `(domain, isPrivate, displayName)` with primary key `domain`. Legacy `filesDir/domain_policies.json` entries (including historical privacy JSON keys) are idempotently merged once inside a Room transaction and deleted only after commit.
    - **Safe Migration & Database Decoupling (v6)**: In version 6, obsolete image BLOB storage (`og_images` table) was cleanly dropped via `MIGRATION_5_6`, liberating database file size while preserving 100% of bookmark, tag, and note data.
    - **Import Persistence**: `ImportRepository` executes direct saves via a single flat Room transaction (`TransactionRunner` / `BookmarkDao.insertReplacingUrl`), committing the bookmark, entity occurrences, RSS retention/notification updates, and task deletion together without nested transactions; post-commit domain/media side effects run through injected adapters. A failed save rolls back cleanly and retains a retryable error.
    - **Concurrency**: Room persists queued and interrupted direct saves. Import observes active and failed work, and recovery rechecks each task before saving.
 2. **`tidilo_library_prefs` (`search_history`)**:
    Array of up to 10 strings representing complete queries, ordered latest-first.
 3. **`tidilo_app_config_prefs`**:
-   Application language, NSFW visibility, and AI model settings.
+   Application language, Private Content visibility/bookmarkability (with one-way read fallback from legacy preference keys), and AI model settings.
 
 ---
 
@@ -247,19 +247,19 @@ Located in `config/AppTheme.kt`:
 
 ---
 
-## 8. Domain Policy & NSFW Architecture
+## 8. Domain Policy & Private Content Architecture
 
 ### 8.1 `DomainPolicyStore` & `DomainPolicyManager`
 Located in `data/DomainPolicyStore.kt` (backed by `data/db/DomainPolicyEntity.kt` and `DomainPolicyDao.kt`), with a lightweight compatibility facade in `data/DomainPolicyManager.kt`:
-- **Persistence**: Persisted in Room's `domain_policies` table (`AppDatabase` v21), with a one-time idempotent merge from legacy `domain_policies.json` (plus `.pending` cleanup) after commit. `DomainPolicyManager` delegates to `DomainPolicyStore` when an Android context is active and falls back to an in-memory map in context-free JVM unit tests.
-- **Policy Record**: `DomainPolicy(domain: String, isNsfw: Boolean, displayName: String = "")`.
+- **Persistence**: Persisted in Room's `domain_policies` table (`AppDatabase` v22), with a one-time idempotent merge from legacy `domain_policies.json` (plus `.pending` cleanup) after commit. `DomainPolicyManager` delegates to `DomainPolicyStore` when an Android context is active and falls back to an in-memory map in context-free JVM unit tests.
+- **Policy Record**: `DomainPolicy(domain: String, isPrivate: Boolean, displayName: String = "")`.
 - **Display Name (`og:site_name`)**: Extracted from page HTML meta tags (`og:site_name`) during web page parsing or favicon discovery (`DomainIconManager.findHtmlIconUrls`), and stored as the human-readable display name for the domain.
-- **Auto-Registration**: When new domains are enqueued or bookmarked, they are automatically registered with `isNsfw = false` and their display name if available.
-- **Atomic Domain NSFW Toggle**: `DomainPolicyStore.setDomainNsfwAndAwait` updates `domain_policies` and `bookmarks.isNsfw` in a single Room transaction on `storeScope`, avoiding any circular dependency with `BookmarkRepository`. Checked domains are designated as NSFW domains; any bookmark from a checked domain is tagged as `isNsfw = true`.
+- **Auto-Registration**: When new domains are enqueued or bookmarked, they are automatically registered with `isPrivate = false` and their display name if available.
+- **Atomic Domain Private Toggle**: `DomainPolicyStore.setDomainPrivateAndAwait` updates `domain_policies` and `bookmarks.isPrivate` in a single Room transaction on `storeScope`, avoiding any circular dependency with `BookmarkRepository`. Checked domains are designated as Private domains; any bookmark from a checked domain is tagged as `isPrivate = true`.
 
-### 8.2 NSFW Detection Signals (`WebPageParser.kt`)
+### 8.2 Private Content Detection Signals (`WebPageParser.kt`)
 Web page fetching uses Desktop Chrome User-Agent (`Windows NT 10.0; Win64; x64`, `sec-ch-ua-mobile: ?0`) to ensure platforms like Pixiv return complete desktop SSR HTML with standard metadata rather than stripped mobile touch SPAs. Programmatic detection extracts:
-1. **Domain NSFW Policy (`DomainPolicyManager.isNsfwDomain(domain)`)**: If designated as NSFW in domain management, NSFW is unconditionally granted (`isNsfwSignal = true`) regardless of tags or metadata.
+1. **Domain Private Policy (`DomainPolicyManager.isPrivateDomain(domain)`)**: If designated as Private in domain management, Private classification is unconditionally granted (`isPrivateSignal = true`) regardless of tags or metadata.
 2. **Title / OGP Title Keywords**: `"R-18"`, `"R18"`, and localized adult rating terms.
 3. **Meta Rating Standards (`<meta name="rating">`)**: `"R-18"`, `"R18"`, `"18+"`, `"RTA-5042-1996-1400-1577-RTA"`, `"adult"`, `"mature"`
 4. **Schema.org / JSON-LD Properties**:
@@ -268,9 +268,9 @@ Web page fetching uses Desktop Chrome User-Agent (`Windows NT 10.0; Win64; x64`,
    - `typicalAgeRange`: `"18+"`
 
 ### 8.3 Display Control & Dynamic Count Aggregation
-- **Global Toggle**: `AppConfig.isNsfwContentVisible` (persisted in `tidilo_app_config_prefs`).
-- **Reactive Filter**: `AppConfig.isNsfwContentVisible` switches Paging generations and SQL aggregate queries. NSFW filtering happens in SQLite before paging or counting, including all tag-selection candidates.
-- **Visual Badge**: Both `BookmarkCard` and `BookmarkDetailScreen` render a prominent `NSFW` pill chip beside the `[category] > [subcategory]` breadcrumb when `bookmark.isNsfw == true`.
+- **Global Toggle**: `AppConfig.isPrivateContentVisible` (persisted in `tidilo_app_config_prefs`).
+- **Reactive Filter**: `AppConfig.isPrivateContentVisible` switches Paging generations and SQL aggregate queries. Private Content filtering happens in SQLite before paging or counting, including all tag-selection candidates.
+- **Visual Indicator**: `BookmarkCard` renders a compact `Private` pill badge (`Icons.Default.Lock` + `Private` label, `SurfaceTone.NORMAL`, resolved via `resolveChipColors`) beside the `[category] > [subcategory]` chips when `bookmark.isPrivate == true`, while `BookmarkDetailScreen` appends `Private` as plain `labelMedium` text inside the `Category > Subcategory - Private` breadcrumb.
 
 ---
 
@@ -316,7 +316,7 @@ rows transactionally; deletion cascades to those rows. Trash has no domain colum
 `MIGRATION_6_7` adds the domain index and backfills only derived fields and child
 rows in stable-ID batches of 256. It completes before Room readers are exposed.
 Supported v1-v6 upgrade paths are registered explicitly; destructive fallback is
-removed. Paging and aggregate queries apply NSFW filtering before fetching or
+removed. Paging and aggregate queries apply Private Content filtering before fetching or
 counting, and bookmark result order is `createdAt DESC, id DESC`. Entity matching
 uses individual child values, never serialized JSON substrings.
 
@@ -337,7 +337,7 @@ format once, before readers, without changing Room's user_version or raw fields.
 
 Aggregate/trash reads wait for initialization. Failed reads publish a recoverable
 state and restart on explicit retry. Trash moves and capacity enforcement share
-one transaction. Domain NSFW changes await the SQL update and policy publication
+one transaction. Domain Private changes await the SQL update and policy publication
 in the application scope so navigating away cannot interrupt those two steps.
 
 Domain policy failure handling: the domain-wide SQL flag update and policy-save

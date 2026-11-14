@@ -76,7 +76,7 @@ class EntityTagConflictTest {
                 category = if (classified) "Tool" else null, subcategory = if (classified) "Tech" else null,
                 entities = if (currentHasEntity) listOf(canonical) else emptyList(), createdAt = 1, updatedAt = 1))
             db.bookmarkDao().insertOrUpdate(BookmarkEntity(other, "Hidden", "https://$other.invalid", "Summary",
-                entities = listOf(canonical), isNsfw = true, createdAt = 2, updatedAt = 2))
+                entities = listOf(canonical), isPrivate = true, createdAt = 2, updatedAt = 2))
             val activity = host.launch().also { launchedActivity = it }
             host.main {
                 val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
@@ -218,15 +218,15 @@ class EntityTagConflictTest {
         conflict(); click("Replace across all bookmarks")
         click("Select Category"); click("Tool")
         click("Select Subcategory"); click("Tech")
-        val nsfw = node { it.isCheckable }
-        assertTrue(nsfw.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+        val privateSwitch = node { it.isCheckable }
+        assertTrue(privateSwitch.performAction(AccessibilityNodeInfo.ACTION_CLICK))
         restore(); accept(); restore()
         val row = requireNotNull(db.bookmarkDao().getBookmarkById(id))
         db.bookmarkDao().insertOrUpdate(row.copy(note = "External note", updatedAt = 5))
         delay(250); save(); await { navigations() == 1 }
         val saved = requireNotNull(db.bookmarkDao().getBookmarkById(id))
         assertEquals("My unsaved note", saved.note)
-        assertTrue(saved.isNsfw)
+        assertTrue(saved.isPrivate)
         assertEquals("Tool", saved.category); assertEquals("Tech", saved.subcategory)
         assertEquals(variant, spelling(id))
     }

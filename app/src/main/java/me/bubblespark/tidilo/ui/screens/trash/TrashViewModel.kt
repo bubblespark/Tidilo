@@ -103,7 +103,7 @@ class TrashViewModel(
 }
 
 internal class RepositoryTrashStore(private val repository: BookmarkRepository) : TrashStore {
-    override fun observe(showNsfw: Boolean) = repository.observeTrash(showNsfw)
+    override fun observe(showPrivate: Boolean) = repository.observeTrash(showPrivate)
     override suspend fun restore(id: String) = repository.restoreFromTrash(id)
     override suspend fun delete(id: String) = repository.deleteFromTrash(id)
     override suspend fun retry() = repository.retryInitializationAndAwait()

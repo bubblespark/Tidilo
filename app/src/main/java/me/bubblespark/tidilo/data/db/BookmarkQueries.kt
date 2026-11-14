@@ -7,18 +7,18 @@ import me.bubblespark.tidilo.data.Subcategory
 
 /** Compiles bound, literal substring predicates shared by results and tag aggregates. */
 internal object BookmarkQueries {
-    fun count(query: String, showNsfw: Boolean, domain: String? = null, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): SimpleSQLiteQuery {
-        val (where, args) = predicate(query, showNsfw, domain, emptySet(), source, rssFeedId)
+    fun count(query: String, showPrivate: Boolean, domain: String? = null, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): SimpleSQLiteQuery {
+        val (where, args) = predicate(query, showPrivate, domain, emptySet(), source, rssFeedId)
         return SimpleSQLiteQuery("SELECT COUNT(*) FROM bookmarks b WHERE $where", args.toTypedArray())
     }
-    fun results(query: String, showNsfw: Boolean, domain: String? = null, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): SimpleSQLiteQuery {
-        val (where, args) = predicate(query, showNsfw, domain, emptySet(), source, rssFeedId)
+    fun results(query: String, showPrivate: Boolean, domain: String? = null, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): SimpleSQLiteQuery {
+        val (where, args) = predicate(query, showPrivate, domain, emptySet(), source, rssFeedId)
         return SimpleSQLiteQuery("SELECT b.* FROM bookmarks b WHERE $where ORDER BY b.createdAt DESC, b.id DESC", args.toTypedArray())
     }
 
     /** Counts occurrences over the AND-selected active set, without loading bookmark objects. */
-    fun tags(selected: Set<String>, showNsfw: Boolean, kind: TagKind): SimpleSQLiteQuery {
-        val (where, args) = predicate("", showNsfw, null, selected)
+    fun tags(selected: Set<String>, showPrivate: Boolean, kind: TagKind): SimpleSQLiteQuery {
+        val (where, args) = predicate("", showPrivate, null, selected)
         val sql = when (kind) {
             TagKind.CATEGORY -> "SELECT COALESCE(b.category,'None') AS value, COUNT(*) AS count FROM bookmarks b WHERE $where AND b.searchCategory IS NOT NULL GROUP BY b.category, b.searchCategory"
             TagKind.SUBCATEGORY -> "SELECT COALESCE(b.subcategory,'None') AS value, COUNT(*) AS count FROM bookmarks b WHERE $where AND b.searchSubcategory IS NOT NULL GROUP BY b.subcategory, b.searchSubcategory"
@@ -27,7 +27,7 @@ internal object BookmarkQueries {
         return SimpleSQLiteQuery(sql, args.toTypedArray())
     }
 
-    private fun predicate(query: String, showNsfw: Boolean, domain: String?, selected: Set<String>, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): Pair<String, MutableList<Any>> {
+    private fun predicate(query: String, showPrivate: Boolean, domain: String?, selected: Set<String>, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): Pair<String, MutableList<Any>> {
         val clauses = mutableListOf<String>()
         val args = mutableListOf<Any>()
         when (source) {
@@ -35,7 +35,7 @@ internal object BookmarkQueries {
             BookmarkSource.RSS -> clauses.add("b.rssFeedId IS NOT NULL")
             BookmarkSource.ALL -> Unit
         }
-        if (!showNsfw) clauses.add("b.isNsfw=0")
+        if (!showPrivate) clauses.add("b.isPrivate=0")
         if (domain != null) { clauses.add("b.domain=?"); args.add(domain) }
         if (rssFeedId != null) { clauses.add("b.rssFeedId=?"); args.add(rssFeedId) }
         for (tag in selected) {

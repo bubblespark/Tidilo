@@ -5,25 +5,25 @@ import androidx.room.PrimaryKey
 import me.bubblespark.tidilo.data.DomainPolicy
 
 /**
- * Room entity storing per-domain NSFW policy and display name.
+ * Room entity storing per-domain Private Content policy and display name.
  */
 @Entity(tableName = "domain_policies")
 data class DomainPolicyEntity(
     @PrimaryKey
     val domain: String,
-    val isNsfw: Boolean = false,
+    val isPrivate: Boolean = false,
     val displayName: String = ""
 ) {
     fun toDomainPolicy(): DomainPolicy = DomainPolicy(
         domain = domain,
-        isNsfw = isNsfw,
+        isPrivate = isPrivate,
         displayName = displayName
     )
 
     companion object {
         fun fromDomainPolicy(policy: DomainPolicy): DomainPolicyEntity = DomainPolicyEntity(
             domain = policy.domain,
-            isNsfw = policy.isNsfw,
+            isPrivate = policy.isPrivate,
             displayName = policy.displayName
         )
     }

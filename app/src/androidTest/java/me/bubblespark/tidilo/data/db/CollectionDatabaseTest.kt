@@ -13,9 +13,9 @@ import java.util.UUID
 class CollectionDatabaseTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private fun collection(id: String) = CollectionEntity(id, id, "", "folder", null, 0, 1, 1)
-    private fun bookmark(id: String, nsfw: Boolean = false, feed: String? = null) = BookmarkEntity(
+    private fun bookmark(id: String, isPrivate: Boolean = false, feed: String? = null) = BookmarkEntity(
         id, id, "https://example.com/$id", "", createdAt = 1, updatedAt = 1,
-        isNsfw = nsfw, rssFeedId = feed, isLiked = true)
+        isPrivate = isPrivate, rssFeedId = feed, isLiked = true)
 
     @Test fun emptyCollectionsRemainVisible() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()

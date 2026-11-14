@@ -17,8 +17,8 @@ class RssFeedLibraryTest {
             db.rssDao().putFeed(RssFeedEntity("a", "https://same.example/a", "Alpha", deleted = true))
             db.rssDao().putFeed(RssFeedEntity("b", "https://same.example/b", "Beta", enabled = false))
             db.rssDao().putFeed(RssFeedEntity("empty", "https://same.example/empty", "Empty"))
-            fun row(id: String, feed: String?, nsfw: Boolean = false) = BookmarkEntity(id, id,
-                "https://article.example/$id", "", createdAt = 1, updatedAt = 1, rssFeedId = feed, isNsfw = nsfw)
+            fun row(id: String, feed: String?, isPrivate: Boolean = false) = BookmarkEntity(id, id,
+                "https://article.example/$id", "", createdAt = 1, updatedAt = 1, rssFeedId = feed, isPrivate = isPrivate)
             db.bookmarkDao().insertAll(listOf(row("one", "a"), row("two", "a", true), row("three", "b", true), row("manual", null)))
             val visible = db.rssDao().observeLibraryGroups(false).first()
             assertEquals(listOf("a"), visible.map { it.feed.id })

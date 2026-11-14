@@ -82,7 +82,7 @@ internal fun ThemeSurfaceCatalogue(
                 }
                 2 -> {
                     TidiloFrostedHeader(title = { Text("Fixture header") })
-                    BookmarkTagSection(Tag("Article", "Tech", listOf("Compose")), "Article", "Tech", isNsfw = true)
+                    BookmarkTagSection(Tag("Article", "Tech", listOf("Compose")), "Article", "Tech", isPrivate = true)
                     TidiloIconToggleButton(true, {}, SurfaceRole.LIKE_ACTION) { Text("Like") }
                 }
                 3 -> RssSettingsContent(StorageLoad.Ready(emptyList()), RssSettings(), false, null, true,

@@ -83,15 +83,20 @@ class SettingsRedesignTest {
                                         if (page == "settings") SettingsScreen({}, {}, onNavigateToDebug = { finalClicks++ })
                                         else AiAnalysisContent(
                                             mode = if (page == "ai") AiAnalysisMode.AICORE else AiAnalysisMode.DISABLE,
-                                            available = page == "ai", onNavigateBack = {}, onModeChange = {},
-                                            onNavigateToParameters = {}, onNavigateToSafety = { finalClicks++ })
+                                            available = page == "ai", onNavigateBack = {},
+                                            onModeChange = { if (page == "disabled") finalClicks++ },
+                                            onNavigateToParameters = { if (page == "ai") finalClicks++ })
                                     } }
                                 }
                             }
                         }
                     } } }
                     withTimeout(5000) { rendered.await() }
-                    val finalLabel = host.context.getString(if (page == "settings") R.string.settings_debug_title else R.string.settings_nsfw_title)
+                    val finalLabel = host.context.getString(when (page) {
+                        "settings" -> R.string.settings_debug_title
+                        "ai" -> R.string.settings_generate_content_title
+                        else -> R.string.settings_ai_analysis_disable
+                    })
                     host.await(activity) { host.text(it, finalLabel) }
                     host.instrumentation.waitForIdleSync()
                     scrollToBoundary(activity, bottom = false)

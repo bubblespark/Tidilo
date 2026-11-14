@@ -60,7 +60,7 @@ data class ParsedWebPage(
     val resolvedUrl: String = finalUrl,
     val appleTouchIconUrl: String? = null,
     val faviconUrl: String? = null,
-    val isNsfwSignal: Boolean = false,
+    val isPrivateSignal: Boolean = false,
     val iconCandidates: List<me.bubblespark.tidilo.data.DomainIconCandidate>? = null,
     val imageBaseUrl: String = finalUrl,
     val cleanedBodyText: String? = null,

@@ -37,7 +37,6 @@
     <string name="settings_ai_analysis_aicore_desc">端末内のGemini Nanoで要約とタグ付けを行います</string>
     <string name="settings_ai_analysis_disable_desc">AI解析を行わずに直接ブックマークを保存します</string>
     <string name="settings_section_aicore_parameters">AICore パラメータ</string>
-    <string name="settings_section_content_safety">コンテンツ安全性</string>
     <!-- App & Navigation -->
     <string name="app_name">Tidilo</string>
     <string name="nav_library">Library</string>
@@ -51,7 +50,7 @@
     <string name="title_bookmark_ai_review">AI Review</string>
     <string name="title_tag_selection">Tag Selection</string>
     <string name="title_generate_content_request">GenerateContentRequest</string>
-    <string name="title_nsfw_contents">NSFW Contents</string>
+    <string name="title_private_content">Private Content</string>
 
     <!-- Common Actions & Labels -->
     <string name="common_ok">OK</string>
@@ -168,8 +167,8 @@
     <string name="detail_tag_dialog_title">分類 &amp; タグの編集</string>
     <string name="detail_tag_category_label">分類</string>
     <string name="detail_tag_subcategory_label">サブ分類</string>
-    <string name="detail_tag_nsfw_label">NSFW</string>
-    <string name="detail_tag_nsfw_hidden_warning">「ON」で保存すると、そのブックマークは非表示になります（設定の「NSFW Contents」を参照）。</string>
+    <string name="detail_tag_private_label">Private</string>
+    <string name="detail_tag_private_hidden_warning">「ON」で保存すると、そのブックマークは非表示になります（設定の「Private Content」を参照）。</string>
     <string name="detail_tag_entity_label">固有タグ</string>
     <string name="detail_tag_add_entity">タグを追加</string>
     <string name="detail_tag_select_entities">既存タグから選択</string>
@@ -210,22 +209,22 @@
     <string name="settings_language_dialog_title">言語を選択</string>
     <string name="settings_generate_content_title">GenerateContentRequest</string>
     <string name="settings_generate_content_subtitle">AICoreリクエストパラメータの設定</string>
-    <string name="settings_nsfw_title">NSFW Contents</string>
-    <string name="settings_nsfw_subtitle">表示設定とドメイン管理</string>
+    <string name="settings_private_title">Private Content</string>
+    <string name="settings_private_subtitle">表示設定とドメイン管理</string>
     <string name="settings_section_data">データ管理</string>
     <string name="settings_clear_image_cache_done">画像キャッシュを削除しました</string>
     <string name="settings_section_debug">Debug</string>
     <string name="settings_debug_title">Debug</string>
     <string name="settings_debug_subtitle">システム情報 &amp; AI診断</string>
 
-    <!-- NSFW Settings Screen -->
-    <string name="nsfw_show_content_title">NSFWコンテンツの表示</string>
-    <string name="nsfw_show_content_subtitle">ライブラリや検索でNSFWブックマークを表示または非表示にします</string>
-    <string name="nsfw_bookmark_content_title">NSFWコンテンツのブックマーク</string>
-    <string name="nsfw_bookmark_content_subtitle">NSFWページのキュー登録とブックマークを許可（準備中機能）</string>
-    <string name="nsfw_domain_management_title">NSFW ドメイン管理</string>
-    <string name="nsfw_domain_management_subtitle">チェックを入れたドメインはNSFW配信元として扱われます</string>
-    <string name="nsfw_no_domains">ドメインがありません</string>
+    <!-- Private Settings Screen -->
+    <string name="private_show_content_title">プライベートコンテンツの表示</string>
+    <string name="private_show_content_subtitle">ライブラリや検索でプライベートブックマークを表示または非表示にします</string>
+    <string name="private_bookmark_content_title">プライベートコンテンツのブックマーク</string>
+    <string name="private_bookmark_content_subtitle">プライベートページのキュー登録とブックマークを許可（準備中機能）</string>
+    <string name="private_domain_management_title">プライベートドメイン管理</string>
+    <string name="private_domain_management_subtitle">チェックを入れたドメインはプライベート配信元として扱われます</string>
+    <string name="private_no_domains">ドメインがありません</string>
 
     <!-- GenerateContentRequest Screen -->
     <string name="gcr_reset_default_content_desc">デフォルトに戻す</string>

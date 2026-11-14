@@ -58,15 +58,15 @@ class BookmarkDaoBulkTest {
         override suspend fun deleteByIdOrUrl(id: String, url: String) {}
         override suspend fun getCount(): Int = 0
         override suspend fun deleteAll() {}
-        override fun timeline(showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = error("unused")
-        override fun byDomain(domain: String, showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = error("unused")
+        override fun timeline(showPrivate: Boolean): PagingSource<Int, BookmarkEntity> = error("unused")
+        override fun byDomain(domain: String, showPrivate: Boolean): PagingSource<Int, BookmarkEntity> = error("unused")
         override fun search(query: SupportSQLiteQuery): PagingSource<Int, BookmarkEntity> = error("unused")
         override fun tagCounts(query: SupportSQLiteQuery): Flow<List<TagCount>> = emptyFlow()
         override fun observeById(id: String): Flow<BookmarkEntity?> = emptyFlow()
-        override fun domainCounts(showNsfw: Boolean, source: Int): Flow<List<DomainCount>> = emptyFlow()
+        override fun domainCounts(showPrivate: Boolean, source: Int): Flow<List<DomainCount>> = emptyFlow()
         override suspend fun distinctDomains(): List<String> = emptyList()
         override fun observeDistinctDomains(): Flow<List<String>> = emptyFlow()
-        override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) {}
+        override suspend fun updateDomainPrivate(domain: String, isPrivate: Boolean) {}
         override suspend fun clearRssFeedId(id: String) {}
     }
 

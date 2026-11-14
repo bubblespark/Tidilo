@@ -4,11 +4,11 @@ Trash is a secondary destination opened from the Library navigation rail immedia
 
 ## List and actions
 
-The single-column, text-only list shows each deleted bookmark's title, URL and deletion time. Rows sort by deletion time descending, with descending ID as a stable tie-breaker. Time is displayed as `yyyy/MM/dd HH:mm` in the current device time zone. Existing NSFW visibility settings apply.
+The single-column, text-only list shows each deleted bookmark's title, URL and deletion time. Rows sort by deletion time descending, with descending ID as a stable tie-breaker. Time is displayed as `yyyy/MM/dd HH:mm` in the current device time zone. Existing Private Content visibility settings apply.
 
 Rows have no tap action and do not open Detail. The trailing overflow menu contains Restore and Delete. Both require a confirmation dialog; cancelling performs no writes. Delete permanently removes only that Trash record. There are no bulk actions. Title and overflow icon colors explicitly follow the theme foreground, including when the parent has transparent content.
 
-A small Already in Library label marks URLs present in the active bookmarks table, across manual and RSS sources and including hidden NSFW records. Restore is disabled for those rows. Matching uses exact stored URL equality, following existing ingestion normalization; no new URL equivalence rules are introduced. Other Trash rows alone do not count as active duplicates.
+A small Already in Library label marks URLs present in the active bookmarks table, across manual and RSS sources and including hidden Private Content records. Restore is disabled for those rows. Matching uses exact stored URL equality, following existing ingestion normalization; no new URL equivalence rules are introduced. Other Trash rows alone do not count as active duplicates.
 
 ## Persistence and restoration
 
@@ -18,7 +18,7 @@ Restore re-reads the selected row and checks active URL and ID ownership in the 
 
 A successful restoration inserts the saved ID using the canonical bookmark DAO, rebuilds derived search/tag fields, and removes its Trash row atomically. It never invokes URL replacement, HTML acquisition, or AI analysis. Failed inserts/deletes roll back. Stale actions and concurrent Restore/Delete cannot remove an active bookmark.
 
-The saved content, note, classification, entity identities, NSFW setting, original times, engagement counters, last interaction, image references and RSS metadata are preserved. Entity display spelling follows the existing canonical persistence policy. Like remains false and Collection memberships are not restored because the existing Trash producer clears them. RSS ownership is retained even for disabled/deleted feeds; restoration does not reactivate subscriptions or reset article age. Subsequent RSS retention still applies.
+The saved content, note, classification, entity identities, Private setting, original times, engagement counters, last interaction, image references and RSS metadata are preserved. Entity display spelling follows the existing canonical persistence policy. Like remains false and Collection memberships are not restored because the existing Trash producer clears them. RSS ownership is retained even for disabled/deleted feeds; restoration does not reactivate subscriptions or reset article age. Subsequent RSS retention still applies.
 
 Permanent deletion removes only the selected Trash row and does not delete shared cache files or matching active bookmarks. Existing independent cache maintenance remains responsible for unused files.
 

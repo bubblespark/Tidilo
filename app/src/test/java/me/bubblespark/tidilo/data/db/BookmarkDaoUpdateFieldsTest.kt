@@ -44,15 +44,15 @@ class BookmarkDaoUpdateFieldsTest {
         override suspend fun getCount(): Int = 0
         override suspend fun deleteAll() {}
         override suspend fun clearRssFeedId(id: String) {}
-        override fun timeline(showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = throw UnsupportedOperationException()
-        override fun byDomain(domain: String, showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = throw UnsupportedOperationException()
+        override fun timeline(showPrivate: Boolean): PagingSource<Int, BookmarkEntity> = throw UnsupportedOperationException()
+        override fun byDomain(domain: String, showPrivate: Boolean): PagingSource<Int, BookmarkEntity> = throw UnsupportedOperationException()
         override fun search(query: SupportSQLiteQuery): PagingSource<Int, BookmarkEntity> = throw UnsupportedOperationException()
         override fun tagCounts(query: SupportSQLiteQuery): Flow<List<TagCount>> = emptyFlow()
         override fun observeById(id: String): Flow<BookmarkEntity?> = emptyFlow()
-        override fun domainCounts(showNsfw: Boolean, source: Int): Flow<List<DomainCount>> = emptyFlow()
+        override fun domainCounts(showPrivate: Boolean, source: Int): Flow<List<DomainCount>> = emptyFlow()
         override suspend fun distinctDomains(): List<String> = emptyList()
         override fun observeDistinctDomains(): Flow<List<String>> = emptyFlow()
-        override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) {}
+        override suspend fun updateDomainPrivate(domain: String, isPrivate: Boolean) {}
     }
 
     private fun sampleEntity(id: String): BookmarkEntity = BookmarkEntity(

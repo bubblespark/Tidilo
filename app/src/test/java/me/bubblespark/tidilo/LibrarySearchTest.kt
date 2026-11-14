@@ -235,24 +235,24 @@ class LibrarySearchTest {
     }
 
     @Test
-    fun testNsfwContentsScreenRoute() {
-        assertEquals("settings_nsfw", me.bubblespark.tidilo.ui.navigation.Screen.NsfwContents.route)
-        assertEquals("NSFW Contents", me.bubblespark.tidilo.ui.navigation.Screen.NsfwContents.title)
+    fun testPrivateContentScreenRoute() {
+        assertEquals("settings_private", me.bubblespark.tidilo.ui.navigation.Screen.PrivateContent.route)
+        assertEquals("Private Content", me.bubblespark.tidilo.ui.navigation.Screen.PrivateContent.title)
     }
 
     @Test
-    fun testNsfwFilteringLogic() {
+    fun testPrivateFilteringLogic() {
         val mixedBookmarks = listOf(
-            BookmarkItem(id = "1", title = "Clean Tech", url = "https://example.com/1", description = "", tag = Tag.create("Tech", "Tech"), isNsfw = false),
-            BookmarkItem(id = "2", title = "Adult Doujin", url = "https://example.com/2", description = "", tag = Tag.create("Media", "Adult"), isNsfw = true)
+            BookmarkItem(id = "1", title = "Clean Tech", url = "https://example.com/1", description = "", tag = Tag.create("Tech", "Tech"), isPrivate = false),
+            BookmarkItem(id = "2", title = "Adult Doujin", url = "https://example.com/2", description = "", tag = Tag.create("Media", "Adult"), isPrivate = true)
         )
 
-        // When NSFW is visible
+        // When Private content is visible
         val visibleWhenTrue = mixedBookmarks.filter { true }
         assertEquals(2, visibleWhenTrue.size)
 
-        // When NSFW is hidden
-        val visibleWhenFalse = mixedBookmarks.filter { !it.isNsfw }
+        // When Private content is hidden
+        val visibleWhenFalse = mixedBookmarks.filter { !it.isPrivate }
         assertEquals(1, visibleWhenFalse.size)
         assertEquals("Clean Tech", visibleWhenFalse[0].title)
     }

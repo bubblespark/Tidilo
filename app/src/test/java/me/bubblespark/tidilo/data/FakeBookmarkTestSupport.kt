@@ -58,20 +58,20 @@ internal open class StubBookmarkDao(
     override suspend fun deleteByIdOrUrl(id: String, url: String) = Unit
     override suspend fun getCount(): Int = onGetCount()
     override suspend fun deleteAll() = Unit
-    override fun timeline(showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = error("unused")
-    override fun byDomain(domain: String, showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = error("unused")
+    override fun timeline(showPrivate: Boolean): PagingSource<Int, BookmarkEntity> = error("unused")
+    override fun byDomain(domain: String, showPrivate: Boolean): PagingSource<Int, BookmarkEntity> = error("unused")
     override fun search(query: SupportSQLiteQuery): PagingSource<Int, BookmarkEntity> = error("unused")
     override fun tagCounts(query: SupportSQLiteQuery): Flow<List<TagCount>> = emptyFlow()
     override fun observeById(id: String): Flow<BookmarkEntity?> = emptyFlow()
-    override fun domainCounts(showNsfw: Boolean, source: Int): Flow<List<DomainCount>> = emptyFlow()
+    override fun domainCounts(showPrivate: Boolean, source: Int): Flow<List<DomainCount>> = emptyFlow()
     override suspend fun distinctDomains(): List<String> = emptyList()
     override fun observeDistinctDomains(): Flow<List<String>> = emptyFlow()
-    override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) = Unit
+    override suspend fun updateDomainPrivate(domain: String, isPrivate: Boolean) = Unit
 }
 
 /** Minimal [TrashDao] test double returning empty results for unexercised queries. */
 internal open class StubTrashDao : TrashDao {
-    override fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> = emptyFlow()
+    override fun observeTrash(showPrivate: Boolean): Flow<List<TrashBookmarkRow>> = emptyFlow()
     override suspend fun getById(id: String): TrashedBookmarkEntity? = null
     override suspend fun deleteByIdCounted(id: String): Int = 0
     override suspend fun hasConflictingImport(url: String): Boolean = false

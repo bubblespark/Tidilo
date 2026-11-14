@@ -23,11 +23,11 @@ class TrashQueryTest {
     private fun trashDao(
         onObserve: (Boolean) -> Flow<List<TrashBookmarkRow>>
     ): TrashDao = object : StubTrashDao() {
-        override fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> = onObserve(showNsfw)
+        override fun observeTrash(showPrivate: Boolean): Flow<List<TrashBookmarkRow>> = onObserve(showPrivate)
     }
 
     private fun sampleRow(id: String = "t1") = TrashBookmarkRow(
-        item = TrashedBookmarkEntity(id, "Saved", "https://example.com/$id", "", createdAt = 1, updatedAt = 1, note = "", isNsfw = false, trashedAt = 2),
+        item = TrashedBookmarkEntity(id, "Saved", "https://example.com/$id", "", createdAt = 1, updatedAt = 1, note = "", isPrivate = false, trashedAt = 2),
         duplicateInLibrary = false
     )
 

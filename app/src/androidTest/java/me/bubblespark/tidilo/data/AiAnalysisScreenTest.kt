@@ -54,7 +54,7 @@ class AiAnalysisScreenTest {
                     delay(30)
                 }
             }
-            host.await(activity) { host.text(it, "NSFW Contents") }
+            host.await(activity) { host.text(it, "Disable") }
 
             click(activity, "AICore")
             awaitMode(AiAnalysisMode.AICORE)
@@ -69,7 +69,7 @@ class AiAnalysisScreenTest {
             host.await(activity) { host.text(it, "AICore is currently unavailable.") }
             host.main { activity.setContent { MaterialTheme {
                 AiAnalysisScreen(onNavigateBack = { backs++ }, onNavigateToGenerateContentRequest = {},
-                    onNavigateToNsfwContents = {}, checkAiCoreAvailable = { ++checks > 1 })
+                    checkAiCoreAvailable = { ++checks > 1 })
             } } }
             host.await(activity) { host.text(it, "Summarize and categorize bookmarks using on-device Gemini Nano") }
             assertNull(radio(activity, "AICore").config.getOrNull(SemanticsProperties.Disabled))
@@ -81,17 +81,14 @@ class AiAnalysisScreenTest {
         }
     }
 
-    @Test fun parameterAndSafetyRowsKeepTheirDestinations(): Unit = runBlocking {
+    @Test fun parameterRowKeepsItsDestination(): Unit = runBlocking {
         var parameters = 0
-        var safety = 0
-        withScreen({ true }, onParameters = { parameters++ }, onSafety = { safety++ }) { activity ->
+        withScreen({ true }, onParameters = { parameters++ }) { activity ->
             host.await(activity) { host.text(it, "GenerateContentRequest") }
             click(activity, "GenerateContentRequest")
             assertEquals(1, parameters)
             click(activity, "Disable")
             awaitMode(AiAnalysisMode.DISABLE)
-            click(activity, "NSFW Contents")
-            assertEquals(1, safety)
         }
     }
 
@@ -115,7 +112,6 @@ class AiAnalysisScreenTest {
         checkAvailable: suspend () -> Boolean,
         onBack: () -> Unit = {},
         onParameters: () -> Unit = {},
-        onSafety: () -> Unit = {},
         block: suspend (ComponentActivity) -> Unit
     ) {
         val mode = AppConfig.aiAnalysisMode.value
@@ -130,7 +126,7 @@ class AiAnalysisScreenTest {
             activity = launched
             host.main { launched.setContent { MaterialTheme {
                 AiAnalysisScreen(onNavigateBack = onBack, onNavigateToGenerateContentRequest = onParameters,
-                    onNavigateToNsfwContents = onSafety, checkAiCoreAvailable = checkAvailable)
+                    checkAiCoreAvailable = checkAvailable)
             } } }
             block(launched)
         } finally {

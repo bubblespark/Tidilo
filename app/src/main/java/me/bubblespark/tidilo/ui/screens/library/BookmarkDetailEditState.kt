@@ -9,13 +9,13 @@ import androidx.compose.runtime.saveable.Saver
 
 /** Saves the accepted screen draft and the unaccepted nested editor as one unit. */
 @Stable
-internal class BookmarkDetailEditState(initialNote: String, initialTag: Tag, initialNsfw: Boolean) {
+internal class BookmarkDetailEditState(initialNote: String, initialTag: Tag, initialPrivate: Boolean) {
     var originalNote by mutableStateOf(initialNote)
     var originalTag by mutableStateOf(initialTag)
-    var originalNsfw by mutableStateOf(initialNsfw)
+    var originalPrivate by mutableStateOf(initialPrivate)
     val noteText = mutableStateOf(originalNote)
     val editedTag = mutableStateOf(originalTag)
-    val editedIsNsfw = mutableStateOf(originalNsfw)
+    val editedIsPrivate = mutableStateOf(originalPrivate)
     val pendingReplacements = mutableStateOf<Map<String, String>>(emptyMap())
     val showTagEditDialog = mutableStateOf(false)
     val showAddEntityDialog = mutableStateOf(false)
@@ -23,7 +23,7 @@ internal class BookmarkDetailEditState(initialNote: String, initialTag: Tag, ini
     val draftCategory = mutableStateOf<String?>(null)
     val draftSubcategory = mutableStateOf<String?>(null)
     val draftEntities = mutableStateOf<List<String>>(emptyList())
-    val draftIsNsfw = mutableStateOf(false)
+    val draftIsPrivate = mutableStateOf(false)
     val draftReplacements = mutableStateOf<Map<String, String>>(emptyMap())
     val entityInput = mutableStateOf("")
     val conflictInput = mutableStateOf<String?>(null)
@@ -37,12 +37,12 @@ internal class BookmarkDetailEditState(initialNote: String, initialTag: Tag, ini
         if (editedTag.value == originalTag) {
             editedTag.value = bookmark.tag
         }
-        if (editedIsNsfw.value == originalNsfw) {
-            editedIsNsfw.value = bookmark.isNsfw
+        if (editedIsPrivate.value == originalPrivate) {
+            editedIsPrivate.value = bookmark.isPrivate
         }
         originalNote = bookmark.note
         originalTag = bookmark.tag
-        originalNsfw = bookmark.isNsfw
+        originalPrivate = bookmark.isPrivate
     }
 
     companion object {
@@ -50,25 +50,25 @@ internal class BookmarkDetailEditState(initialNote: String, initialTag: Tag, ini
             save = { state -> Bundle().apply {
                 putString("originalNote", state.originalNote)
                 putTag("originalTag", state.originalTag)
-                putBoolean("originalNsfw", state.originalNsfw)
+                putBoolean("originalPrivate", state.originalPrivate)
                 putString("note", state.noteText.value)
                 putTag("tag", state.editedTag.value)
-                putBoolean("nsfw", state.editedIsNsfw.value)
+                putBoolean("private", state.editedIsPrivate.value)
                 putMap("pending", state.pendingReplacements.value)
                 putBoolean("editor", state.showTagEditDialog.value)
                 putBoolean("add", state.showAddEntityDialog.value)
                 putBoolean("picker", state.showEntityBottomSheet.value)
                 putTag("draft", Tag(state.draftCategory.value, state.draftSubcategory.value, state.draftEntities.value))
-                putBoolean("draftNsfw", state.draftIsNsfw.value)
+                putBoolean("draftPrivate", state.draftIsPrivate.value)
                 putMap("draftPending", state.draftReplacements.value)
                 putString("input", state.entityInput.value)
                 putString("conflictInput", state.conflictInput.value)
                 putString("conflictExisting", state.conflictExisting.value)
             } },
-            restore = { saved -> BookmarkDetailEditState(saved.getString("originalNote").orEmpty(), saved.tag("originalTag"), saved.getBoolean("originalNsfw")).apply {
+            restore = { saved -> BookmarkDetailEditState(saved.getString("originalNote").orEmpty(), saved.tag("originalTag"), saved.getBoolean("originalPrivate")).apply {
                 noteText.value = saved.getString("note").orEmpty()
                 editedTag.value = saved.tag("tag")
-                editedIsNsfw.value = saved.getBoolean("nsfw")
+                editedIsPrivate.value = saved.getBoolean("private")
                 pendingReplacements.value = saved.map("pending")
                 showTagEditDialog.value = saved.getBoolean("editor")
                 showAddEntityDialog.value = saved.getBoolean("add")
@@ -77,7 +77,7 @@ internal class BookmarkDetailEditState(initialNote: String, initialTag: Tag, ini
                 draftCategory.value = draft.category
                 draftSubcategory.value = draft.subcategory
                 draftEntities.value = draft.entities
-                draftIsNsfw.value = saved.getBoolean("draftNsfw")
+                draftIsPrivate.value = saved.getBoolean("draftPrivate")
                 draftReplacements.value = saved.map("draftPending")
                 entityInput.value = saved.getString("input").orEmpty()
                 conflictInput.value = saved.getString("conflictInput")

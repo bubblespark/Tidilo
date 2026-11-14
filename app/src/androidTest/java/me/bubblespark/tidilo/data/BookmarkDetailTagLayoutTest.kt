@@ -26,7 +26,7 @@ class BookmarkDetailTagLayoutTest {
     @Test fun entityOnlyTagsHaveNoEmptyClassificationGap() = verifyTags(entities = listOf("UniqueEntity"))
     @Test fun categoryOnlyTagsRetainTheClassificationLine() = verifyTags(category = "Article")
     @Test fun subcategoryOnlyTagsRetainTheClassificationLine() = verifyTags(subcategory = "Tech")
-    @Test fun nsfwOnlyTagsRetainTheClassificationLine() = verifyTags(nsfw = true)
+    @Test fun privateOnlyTagsRetainTheClassificationLine() = verifyTags(isPrivate = true)
     @Test fun emptyTagsRetainTheSectionAndEditAction() = verifyTags()
     @Test fun editingTagsUpdatesBreadcrumbAndEntitiesInMemoryAndEnablesSave() = verifyTags(
         category = "Article",
@@ -38,7 +38,7 @@ class BookmarkDetailTagLayoutTest {
     private fun verifyTags(
         category: String? = null,
         subcategory: String? = null,
-        nsfw: Boolean = false,
+        isPrivate: Boolean = false,
         entities: List<String> = emptyList(),
         verifyInMemoryEdit: Boolean = false
     ): Unit = runBlocking {
@@ -47,7 +47,7 @@ class BookmarkDetailTagLayoutTest {
         val db = AppDatabase.getInstance(context)
         val id = UUID.randomUUID().toString()
         val item = BookmarkEntity(id, "Entity-only spacing", "https://tag-$id.invalid/article", "Summary",
-            category = category, subcategory = subcategory, isNsfw = nsfw,
+            category = category, subcategory = subcategory, isPrivate = isPrivate,
             entities = entities, createdAt = 1, updatedAt = 1)
         var activity: ComponentActivity? = null
         try {
@@ -95,8 +95,9 @@ class BookmarkDetailTagLayoutTest {
             val titleBounds = bounds("Entity-only spacing")
             val localizedCategory = category?.let { Category.toLocalized(it, context) }.orEmpty()
             val localizedSubcategory = subcategory?.let { Subcategory.toLocalized(it, context) }.orEmpty()
+            val privateLabel = context.getString(R.string.detail_tag_private_label)
             val expectedBreadcrumb = me.bubblespark.tidilo.ui.screens.library.formatClassificationBreadcrumb(
-                localizedCategory, localizedSubcategory, nsfw
+                localizedCategory, localizedSubcategory, isPrivate, privateLabel
             )
             if (expectedBreadcrumb != null) {
                 val breadcrumbBounds = bounds(expectedBreadcrumb)
@@ -135,7 +136,7 @@ class BookmarkDetailTagLayoutTest {
                 assertTrue("Save button starts disabled before edits", !isSaveClickableEnabled())
 
                 clickNode(editLabel)
-                // Toggle NSFW switch inside BookmarkTagEditDialog
+                // Toggle Private switch inside BookmarkTagEditDialog
                 withTimeout(10000) {
                     while (true) {
                         instrumentation.uiAutomation.clearCache()
@@ -162,10 +163,10 @@ class BookmarkDetailTagLayoutTest {
                 clickNode(context.getString(R.string.common_ok))
 
                 val updatedBreadcrumb = me.bubblespark.tidilo.ui.screens.library.formatClassificationBreadcrumb(
-                    localizedCategory, localizedSubcategory, true
+                    localizedCategory, localizedSubcategory, true, privateLabel
                 )!!
                 val updatedBreadcrumbBounds = bounds(updatedBreadcrumb)
-                assertTrue("Updated classification breadcrumb with NSFW appears above title", updatedBreadcrumbBounds.top < titleBounds.top)
+                assertTrue("Updated classification breadcrumb with Private appears above title", updatedBreadcrumbBounds.top < titleBounds.top)
                 val addedEntityBounds = bounds(newEntity)
                 assertTrue("Added entity chip appears below title", addedEntityBounds.top > titleBounds.bottom)
                 assertTrue("Floppy Save button is enabled after confirming tag edits", isSaveClickableEnabled())

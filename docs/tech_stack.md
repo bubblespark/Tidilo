@@ -36,12 +36,12 @@ This document provides the canonical catalog of all programming languages, SDKs,
 | **Lifecycle ViewModel Compose** | `2.11.0` | `androidx-lifecycle-viewmodel-compose` | Compose integration for ViewModel instantiation (`viewModel()`). |
 | **Activity Compose** | `1.13.0` | `androidx-activity-compose` | `ComponentActivity.setContent`, `enableEdgeToEdge()`, `BackHandler`. |
 | **Room** | `2.8.5` | `androidx-room-runtime`, `androidx-room-ktx`, `androidx-room-compiler` | SQLite persistence, reactive DAOs, and flow queries. |
+| **Room Paging** | `2.8.5` | `androidx-room-paging` | Room `PagingSource` adapter matching Room runtime/compiler. |
+| **Paging Runtime & Compose** | `3.5.3` | `androidx-paging-runtime`, `androidx-paging-compose` | Incremental database-backed Library and Search pagination. |
 | **WorkManager** | `2.12.0` | `androidx-work-runtime-ktx` | RSS daily/manual acquisition, transport-aware network constraints, persisted retries. |
 | **Core KTX** | `1.19.1` | `androidx-core-ktx` | Kotlin extensions for core Android platform APIs. |
 
-### Overlay blur
-
-Overlay backdrop blur uses `dev.chrisbanes.haze:haze-blur:2.1.0`, pinned in the version catalog and attached to the app implementation configuration by the root build script. It uses explicit sources for cross-window rendering; experimental Glass, native backdrops, and input sharing are not enabled. See [theme development](theme_development.md#add-a-blur-enabled-overlay) for integration and validation.
+Overlay backdrop blur uses `dev.chrisbanes.haze:haze-blur:2.1.0` with explicit sources for cross-window rendering; experimental Glass, native backdrops, and input sharing remain disabled. See [Developing app themes](theme_development.md#add-a-blur-enabled-overlay).
 
 ---
 
@@ -61,12 +61,5 @@ Overlay backdrop blur uses `dev.chrisbanes.haze:haze-blur:2.1.0`, pinned in the 
 | :--- | :--- | :--- |
 | **JUnit 4** | `4.13.2` | Core JVM unit testing framework for repositories, ViewModels, parsers. |
 | **org.json** | `20240303` | Mock JSON implementations for pure JVM unit tests without Android runtime stubs. |
-
-## Issue #81 database paging dependencies
-
-- Paging runtime and Compose: `3.5.3`, pinned through the version catalog.
-- Room Paging adapter: `2.8.5`, matching the existing Room runtime/compiler.
-- Android integration test runner: `1.7.0`; AndroidX JUnit extension: `1.3.0`.
-- [Paging release notes](https://developer.android.com/jetpack/androidx/releases/paging)
-  document the selected release. Actual dependency resolution, debug compilation,
-  and connected Android SQLite tests pass with the project's current toolchain.
+| **AndroidX Test Runner** | `1.7.0` | Instrumentation runner (`androidx.test:runner`) for connected Android SQLite and UI tests. |
+| **AndroidX JUnit Extension** | `1.3.0` | JUnit 4 Android test rules and assertions (`androidx.test.ext:junit`). |

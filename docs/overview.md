@@ -25,29 +25,32 @@ flowchart TD
     subgraph UI_Layer ["Presentation Layer (Jetpack Compose)"]
         Activity["MainActivity / ShareReceiverActivity"]
         NavGraph["TidiloNavGraph (Navigation Compose)"]
-        Screens["Screens: LibraryScreen, SearchScreen, QueueScreen, etc."]
-        ViewModels["ViewModels: LibraryViewModel, QueueViewModel, etc."]
+        Screens["Screens: LibraryScreen, SearchScreen, BookmarkDetailScreen, SettingsScreen, etc."]
+        ViewModels["ViewModels: LibraryViewModel, ImportViewModel, etc."]
     end
 
     subgraph Service_Layer ["Domain / Processing Pipeline"]
-        Scraper["WebPageParser (Jsoup + Readability4J)"]
+        Scraper["WebPageParser & ArticleAcquirer (Jsoup + Readability4J)"]
+        Classifier["StandardBookmarkClassifier (JSON-LD / Open Graph)"]
         AICoreService["GeminiTaggingService (ML Kit GenAI Prompt SDK)"]
         TaxonomyEngine["Taxonomy Validation & Normalization"]
     end
 
     subgraph Data_Layer ["Data & Persistence Layer"]
         BRepo["BookmarkRepository (Room Paging + targeted queries)"]
-        QRepo["QueueRepository (StateFlow + Mutex + SharedPreferences)"]
-        Config["AppConfig (Language, Debug Flags)"]
+        IRepo["ImportRepository & RssRepository (Direct save & RSS ingestion)"]
+        Config["AppConfig (Language, Theme, AI Preference)"]
     end
 
     Activity --> NavGraph
     NavGraph --> Screens
     Screens <--> ViewModels
     ViewModels <--> BRepo
-    ViewModels <--> QRepo
-    QRepo --> Scraper
-    QRepo --> AICoreService
+    ViewModels <--> IRepo
+    IRepo --> Scraper
+    IRepo --> Classifier
+    IRepo --> BRepo
+    Screens --> AICoreService
     AICoreService --> Scraper
     AICoreService --> TaxonomyEngine
     AICoreService --> BRepo
@@ -61,7 +64,7 @@ flowchart TD
 - Saved data lives on the device and is readable without a connection. Network access is needed only to fetch pages, images, and feeds that the user adds.
 - Bookmark and trash records are persisted in a robust local SQLite database via AndroidX Room (`AppDatabase`, `BookmarkEntity`, `TrashedBookmarkEntity`).
 - Indexed queries on URL, creation timestamp, category, subcategory, Private status, and domain support targeted reads; transactions preserve durable write integrity.
-- Room migration 16 to 17 stages nullable standard category and subcategory IDs and an evaluation marker on prepared imports. Existing queued rows keep their data and start without staged classification.
+- Direct imports stage standard category and subcategory classification from Schema.org JSON-LD and Open Graph metadata via [`StandardBookmarkClassifier`](bookmark_classification.md); detail-owned manual AI review remains optional.
 - Room is the source of truth. Writes are awaited by ID/domain; Room invalidation refreshes Paging and aggregate observers. Active bookmarks are never cached as an unbounded application-wide list.
 - An automatic migration bridge on startup safely ingests legacy `SharedPreferences` JSON caches into Room on first launch with an empty database.
 - Disposable OG previews remain in `cacheDir/og_images`. Imports and grid cards share exact-image recovery with four concurrent workers, reference-counted cancellation, generation-safe clearing, and failure backoff. See [Bookmark Preview Cache](og_image_cache.md).
@@ -83,4 +86,4 @@ flowchart TD
 | **Compile & Target SDK** | `compileSdk 37` (Android 17), `targetSdk 36` (Android 16) | Full support for modern edge-to-edge system insets and Predictive Back gestures. |
 | **JVM Target** | Java 21 | Modern language features, pattern matching, optimized runtime compilation. |
 | **Target Hardware** | Any device on Android 14+. AI Analysis additionally requires support for the **Prompt API** of the ML Kit GenAI API. | Hardware NPU capability is required only for on-device LLM inference (AI Analysis). |
-| **Form Factor** | Modern Android smartphones & foldable devices | Edge-to-edge layout, responsive container width (75% floating bar), dynamic system bars. |
+| **Form Factor** | Modern Android smartphones & foldable devices | Edge-to-edge layout, dismissible modal navigation rail, adaptive container width, dynamic system bars. |

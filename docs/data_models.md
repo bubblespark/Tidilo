@@ -1,36 +1,33 @@
 # Data Models, State Flows, & Persistence Interfaces
 
-Trash restoration, live duplicate projection and snapshot preservation are specified in [Trash](trash.md). The feature uses existing tables without a schema migration.
+This document specifies Tidilo's core domain models, entity-tag normalization, import state machine, taxonomy, domain policies, reactive streams, and Room (`AppDatabase` v22) persistence contracts.
 
-Room 16 adds user-curated collections and many-to-many membership without replacing existing tables. See [Manual Collections](collections.md) for schema, visibility, atomic update/replacement behavior, and trash clearing rules.
-
-Room 13 adds local RSS notification run/item accounting, including atomic article outcomes and completion-time Ready snapshots. `MIGRATION_12_13` preserves all existing bookmark, subscription, queue, and in-app notification tables. See [Android OS Notifications](notifications.md).
-
-Room 14 adds the non-null `bookmark_entities.skeletonKey` and its index. Occurrence constructors derive this identity from display spelling; substring search still uses the separate `searchValue`. `MIGRATION_13_14` elects canonical spellings across all active bookmarks, including hidden Private rows, by distinct-bookmark frequency, earliest containing bookmark creation time, then SQLite binary spelling order. It reads raw stored entity lists before deduplication or truncation, resolves representatives in original entity order, removes duplicate keys, and retains at most ten entities. Only active entity JSON and derived fields change; classification, timestamps, notes, flags, URLs, images, RSS metadata, and trash are preserved. Reads use bounded scalar batches, with votes aggregated in a temporary SQLite table. Election runs only during migration. Elected spellings are already cleaned: key-based deduplication and derived repair preserve remaining leading hash characters (for example, raw `##C` becomes canonical `#C`, distinct from `C`) without stripping another prefix. Version 14 derived repair trusts canonical entity JSON; historical occurrence schemas still clean raw legacy values. The existing derived-format repair rebuilds keys without electing spellings on open, and retains compatibility with the historical four-column occurrence schema used by migration 6 to 7.
-
-Room 15 adds local engagement state to active and trashed bookmarks without replacing existing tables. `MIGRATION_14_15` initializes Like and counts to zero and the last interaction timestamp to null. Atomic updates record successful browser opens, detail entries, and grid summary peeks; liking updates the timestamp, while unliking preserves it. Edits, replacement, RSS promotion, and trash transfer preserve these fields.
-
-This document specifies all core domain models, state transition machines, serialization schemas, and reactive data streams used throughout Tidilo.
+## Related Specifications
+| Domain / Feature | Specification |
+| :--- | :--- |
+| **Trash & Duplicate Detection** | [trash.md](trash.md) |
+| **Manual Collections** | [collections.md](collections.md) |
+| **RSS/Atom Subscriptions & Maintenance** | [rss.md](rss.md), [library_maintenance.md](library_maintenance.md) |
+| **Notifications & In-App History** | [notifications.md](notifications.md), [library_navigation.md](library_navigation.md) |
+| **Standard Classification & Storage Stats** | [bookmark_classification.md](bookmark_classification.md), [application_summary.md](application_summary.md) |
+| **Preview & Domain Icon Caches** | [og_image_cache.md](og_image_cache.md), [domain_icon_cache.md](domain_icon_cache.md) |
 
 ---
 
 ## 1. Domain Data Models
 
-`parser/ParsedWebPage` is a transient extraction result, separate from persisted bookmarks and queue items. It retains the original `readabilityArticle` for inspection and a nullable `cleanedBodyText` for the full ad-filtered Readability/Jsoup result. `promptBodyText` selects that cleaned result, including an intentionally empty result; only legacy callers without it use the original Readability/Jsoup fallback. Debug displays the full body, while ArticlePreparation truncates it to the existing 800-character snippet. No database migration is required.
-
-### 1.1 `BookmarkItem` & `Tag`
-Located in `ui/screens/library/BookmarkItem.kt`:
+### 1.1 `BookmarkItem` & `Tag` (`ui/screens/library/BookmarkItem.kt`)
 
 ```kotlin
 @Immutable
 data class BookmarkItem(
-    val id: String = UUID.randomUUID().toString(),
+    val id: String,
     val title: String,
     val url: String,
     val description: String,
-    val tag: Tag = Tag(),
+    val tag: Tag,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = createdAt,
     val note: String = "",
     val isPrivate: Boolean = false,
     val isLiked: Boolean = false,
@@ -50,67 +47,31 @@ data class BookmarkItem(
 
 @Immutable
 data class Tag(
-    val category: String? = DEFAULT_TAG,       // 1 of 7 Top-Level Categories, "None", or null
+    val category: String? = DEFAULT_TAG,       // 1 of 7 Categories, "None", or null
     val subcategory: String? = DEFAULT_TAG,    // 1 of 11 Subcategories, "None", or null
-    val entities: List<String> = emptyList()   // Keyword strings
+    val entities: List<String> = emptyList()
 ) {
     companion object {
         const val DEFAULT_TAG = "None"
-        const val MAX_ENTITIES = EntityTagPolicy.MAX_ENTITIES
+        const val MAX_ENTITIES = EntityTagPolicy.MAX_ENTITIES // 10
         fun create(category: String?, subcategory: String?, entities: List<String> = emptyList()): Tag
+        fun fromDisplayValues(category: String?, subcategory: String?, entities: List<String> = emptyList()): Tag
         fun createEmpty(): Tag = Tag(category = null, subcategory = null, entities = emptyList())
         fun addEntity(current: List<String>, newEntity: String): List<String>
         fun toggleEntity(current: List<String>, entity: String): List<String>
     }
 }
 ```
+- **Engagement Contract**: Atomic updates increment `browserOpenCount`, `detailViewCount`, and `summaryPeekCount` and refresh `lastInteractedAt`; liking updates `lastInteractedAt`, while unliking preserves it. Edits, URL replacement, and RSS promotion preserve engagement fields; moving to/restoring from Trash sets `isLiked = false` while keeping counters and `lastInteractedAt`.
 
-### 1.2 `EntityTagPolicy`
-Managed in `data/EntityTagPolicy.kt`:
+### 1.2 `EntityTagPolicy`, Canonical Identity & Suggestions (`data/EntityTagPolicy.kt`)
+- **Cleaning & Skeleton Key**: `clean` trims whitespace and removes a single leading `#` (so raw `##C` becomes display `#C`, distinct from `C`, without double-stripping via `Tag.fromDisplayValues` or `toggleDisplayEntity`); blanks are dropped. `entitySkeletonKey` applies NFKC normalization and Unicode case folding, then removes whitespace, `.`, `_`, and `-` while keeping meaningful symbols (`+`, `#`). Caps at `MAX_ENTITIES = 10`.
+- **Canonical Write Contract (`BookmarkDao`)**: All active bookmarks (including hidden Private rows) share one canonical display spelling per `skeletonKey`. `BookmarkDao` canonicalizes single writes, URL replacements (resolved before deleting the previous owner), 500-row bulk chunks (transaction-local key map), AI review, RSS ingestion, initial import, and Trash restoration, refreshing JSON and ordered `bookmark_entities` rows in one transaction. Note-only, Private-only, and RSS-ownership writes keep existing entities intact.
+- **Detail Save & Conflict Lookup**: Detail Save applies staged skeleton replacements across all matching active bookmarks (bounded batches updating only entity JSON and `updatedAt`), overlays explicit draft choices (even if the last occurrence vanished), and commits note, tags, and Private state atomically with full rollback on failure. Substring search/counts continue using literal `searchValue`; conflict lookup queries all active entities regardless of Library source, query, or Private visibility.
+- **Non-AI Auto-Matching (`EntityCandidateExtractor` + `TextSegmenter`)**: Extracts word tokens via ICU `BreakIterator` (`ULocale.ROOT`, Java fallback in JVM tests), slides `1..6` token windows (`MAX_DESCRIPTION_CHARS = 1000`, `MAX_TOKENS_PER_SECTION = 300`, `MAX_CANDIDATE_KEYS = 500`), queries `BookmarkDao.findCanonicalEntitySpellings` in 500-key chunks (`title` before `description`, longer windows first, earliest `bookmarkId, position` wins), and falls back to `Tag.createEmpty()` on error. Symbol-bearing tags (`C++`, `C#`, `.NET`) cannot match in full because `BreakIterator` discards non-alphanumeric tokens.
+- **Detail Entity Suggestions (`extractSuggestionTokens`)**: Uses the same `TextSegmenter` bounds to emit deduplicated 1-token chips (`title` first). `appendEntitySuggestion` inserts a space only between two ASCII alphanumeric characters (`code < 128 && isLetterOrDigit()`).
 
-Shared non-UI policy for normalizing, deduplicating, and bounding entity tags across parser, ingestion, and UI layers:
-- Trims whitespace and strips a single leading `#` prefix.
-- Ignores blank entries.
-- Uses `entitySkeletonKey`: NFKC normalization, the existing Unicode case key, then removal of whitespace, dot, underscore, and hyphen. Meaningful punctuation such as `+` and `#` remains significant; no semantic aliases are inferred. Deduplication retains the first display spelling and insertion order.
-- Caps the maximum number of tags at `MAX_ENTITIES` (10).
-- `Tag.addEntity`, `Tag.toggleEntity`, and `Tag.MAX_ENTITIES` delegate directly to `EntityTagPolicy`.
-- Raw input is cleaned once. `Tag.create` cleans raw entities without prematurely deduplicating or truncating; persistence resolves canonical spellings and distinct keys before applying the ten-entity limit.
-- Stored/display values use `Tag.fromDisplayValues`, entity mappings, and `toggleDisplayEntity` without stripping a second hash. Raw `##C` becomes display `#C`, which remains distinct from `C` on reading, editing, serialization, and saving.
-
-### Active entity identity and write contract (Room 14)
-
-All active occurrences of one skeleton use one display spelling, including hidden Private bookmarks. Migration elects that spelling once using the rules above. Future saves reuse the current indexed occurrence spelling; a new key establishes its first saved spelling. Election is never repeated on open.
-
-`BookmarkDao` is the canonicalizing boundary for single writes, URL replacement, bulk insertion, field updates, AI review, RSS Direct ingestion, initial import, and restored bookmarks. Raw row and occurrence writes are protected. Bulk resolution retains a transaction-local key map across 500-row chunks; URL replacement resolves before deleting the previous owner. JSON and ordered occurrence rows are refreshed in the same transaction. Note-only, Private-only, and RSS ownership updates preserve entity values.
-
-Detail Save accepts already-cleaned display values and a replacement map keyed by skeleton. Each replacement must be trimmed, have a nonempty matching key, and retain meaningful punctuation. Save verifies the target still exists, applies replacements to every matching active bookmark through the skeleton index in bounded batches, overlays explicit spellings onto the draft, then saves note, classification, entities, and Private state atomically. The overlay preserves an explicit choice even if the last occurrence disappeared while the editor was open. Only entity JSON and `updatedAt` change on other affected bookmarks; unrelated fields and trash remain untouched. Any failure rolls back the entire operation. A stale draft without a replacement resolves the latest spelling; serialized concurrent saves/imports share that spelling, with the last explicit replacement taking effect.
-
-`bookmark_entities.skeletonKey` supports identity lookup and bulk replacement only. Literal tag selection, substring search, and counts continue to use `searchValue` and canonical display values; global text search does not adopt skeleton matching. Room invalidation refreshes results and aggregates after a rename. The conflict lookup independently observes all active entities, regardless of Library source, query, or Private Content visibility.
-
-### Non-AI save entity matching via skeleton keys
-
-When a direct URL import saves a bookmark, existing entity tags already present in the library are automatically attached based on exact skeleton-key matching against the bookmark's title and description:
-
-- **Candidate extraction**: Uses ICU `BreakIterator` (word instance with `ULocale.ROOT`, falling back to Java `BreakIterator` in non-Android JVM test environments) via `TextSegmenter`. Whitespace and punctuation tokens are dropped, retaining only tokens containing letters or digits. Sliding windows spanning 1 to 6 tokens (`MAX_WINDOW = 6`) are concatenated without delimiters (`joinToString("")`) and mapped to skeleton keys via `entitySkeletonKey`.
-- **Extraction bounds**: Title and description text are truncated to the first 1,000 characters (`MAX_DESCRIPTION_CHARS = 1000`). Tokenization is bounded to at most 300 tokens per section (`MAX_TOKENS_PER_SECTION = 300`) for title and description. Candidate key generation terminates as soon as 500 distinct candidate keys (`MAX_CANDIDATE_KEYS = 500`) are collected.
-- **Chunked indexed lookup**: Candidate skeleton keys are queried against the indexed `bookmark_entities.skeletonKey` table using `BookmarkDao.findCanonicalEntitySpellings` in chunks of 500 keys, avoiding SQLite parameter limits.
-- **Determinism & ordering**: Candidates are evaluated in deterministic priority order: title tokens are processed before description tokens; at each token start position, longer windows (6 down to 1) take precedence over shorter windows. For each matching skeleton key, the canonical display spelling is resolved from the earliest occurrence in the library (`ORDER BY bookmarkId, position`, first row wins). Matched tags are deduplicated and bounded to at most 10 entities via `EntityTagPolicy.normalizeEntities`. Category and subcategory remain `null` (when unclassified).
-- **Graceful degradation**: If candidate extraction or database lookup encounters an exception, the error is logged and the bookmark is safely saved without entities (`Tag.createEmpty()`).
-- **Known limitation**: Symbol-bearing tags (such as `C++`, `C#`, or `.NET`) are not matched by their full text. ICU `BreakIterator` discards their symbol tokens before sliding-window concatenation, so text such as `C++` can instead match an existing `C` tag.
-
-#### 1.2.1 Detail Screen Entity Tag Suggestions
-
-When manually adding an entity tag on the Bookmark Detail screen (`BookmarkTagEditDialog` -> `AddEntityDialog`), `EntityCandidateExtractor.extractSuggestionTokens` extracts 1-token word candidates from `bookmark.title` and `bookmark.description` to display as interactive suggestion chips:
-
-- **1-token word extraction**: Uses `TextSegmenter` (ICU `BreakIterator` in production, falling back to Java `BreakIterator` in pure JVM tests). Whitespace and punctuation tokens are omitted, retaining only tokens containing letters or digits.
-- **Surface spelling & deduplication**: Each token is cleaned via `EntityTagPolicy.clean`. De-duplication uses `entitySkeletonKey`, keeping the original surface spelling and case from the first-seen occurrence (`title` first, then `description`).
-- **Extraction bounds**: Uses the same bounds (`MAX_DESCRIPTION_CHARS = 1000`, `MAX_TOKENS_PER_SECTION = 300`, and `MAX_CANDIDATE_KEYS = 500`).
-- **Chip input concatenation**: Tapping chips invokes `appendEntitySuggestion`, which inserts a single space only when both boundary characters are ASCII alphanumeric (`code < 128 && isLetterOrDigit()`), and concatenates directly otherwise (e.g., CJK tokens).
-
-
-### 1.3 `TrashedBookmarkItem`
-Located in `ui/screens/library/BookmarkItem.kt`:
-
+### 1.3 `TrashedBookmarkItem` & Trash Lifecycle
 ```kotlin
 @Immutable
 data class TrashedBookmarkItem(
@@ -118,107 +79,36 @@ data class TrashedBookmarkItem(
     val trashedAt: Long = System.currentTimeMillis()
 )
 ```
-
-### 1.4 Disposable Image Caching & URL-Distinct Identity (`cacheDir`)
-Managed in `data/OgImageManager.kt` and `data/DomainIconManager.kt`:
-
-#### Trash Retention & Lifecycle Rules
-- **Physical Exclusion**: Trashed items are physically excluded from normal bookmarks list, search feeds, and category queries.
-- **Persistence**: Stored in the Room SQLite `trashed_bookmarks` table (managed via `TrashDao`). The legacy `trashed_bookmarks_list` in `tidilo_bookmark_prefs.xml` serves only as a one-time startup migration source if the Room database is empty.
-- **Retention Period**: Kept for 30 days (`TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000L`). Expired items are purged on application launch via `trashDao.purgeExpired()`.
-- **Maximum Capacity**: Capped at 100 items (`MAX_TRASH_CAPACITY = 100`). When a 101st item is trashed, the oldest item (closest to the 30-day limit) is permanently deleted automatically.
-
-#### Self-Repair Guarantee
-If old or corrupted JSON data lacks valid category/subcategory tags, `BookmarkRepository.parseBookmarks` automatically restores them using fallback sample references, queue completion cache, or domain mapping rules to guarantee no item permanently remains `None`.
+- Persisted in `trashed_bookmarks` (`TrashDao`); physically excluded from normal lists, search, and counts (no `domain` column). Purged after 30 days (`TRASH_RETENTION_MS`) and capped at `MAX_TRASH_CAPACITY = 100` (oldest evicted). See [Trash](trash.md) for restore duplicate checks and snapshot behavior.
+- For legacy JSON cache ingestion, `BookmarkRepository.parseBookmarks` retains fallback category/subcategory repair. For `cacheDir` image/icon lifecycles, see [og_image_cache.md](og_image_cache.md) and [domain_icon_cache.md](domain_icon_cache.md).
 
 ---
 
-## 2. Taxonomy System
-
-Located in `data/Taxonomy.kt`:
-
-### 2.1 The 7 Top-Level Categories
-| ID | Definition |
-| :--- | :--- | :--- |
-| `Article` | Articles, blog posts, editorials, news, technical explainers, opinions. |
-| `Media` | Illustrations, photos, video content, music, audiobooks (Pixiv, YouTube, Vimeo). |
-| `Tool` | Web applications, utilities, SaaS, code repositories, productivity tools (GitHub, Figma). |
-| `Commerce` | E-commerce, online shops, product sales, pricing pages (Amazon, online stores). |
-| `Community` | Social networks, forums, Q&A boards, online communities (X/Twitter, Reddit, Discord). |
-| `Official` | Official portals, corporate homepages, brand landings. |
-| `Reference` | Technical documentation, API references, dictionaries, wikis, standards (MDN, Android Docs). |
-
-### 2.2 The 11 Subcategories
-| ID |
-| :--- |
-| `Tech` |
-| `Business` |
-| `Society` |
-| `Life` |
-| `Food` |
-| `Travel` |
-| `Game` |
-| `Entertainment` |
-| `Hobby` |
-| `Adult` |
-| `Education` |
-
-Both `Category` and `Subcategory` provide bidirectional constant-time $O(1)$ resolution via `fromId(query)` backed by pre-computed case-insensitive `LOOKUP_MAP` tables matching against canonical IDs and localized labels.
+## 2. Taxonomy System (`data/Taxonomy.kt`)
+- **7 Categories**: `Article`, `Media`, `Tool`, `Commerce`, `Community`, `Official`, `Reference`.
+- **11 Subcategories**: `Tech`, `Business`, `Society`, `Life`, `Food`, `Travel`, `Game`, `Entertainment`, `Hobby`, `Adult`, `Education`.
+- Constant-time $O(1)$ case-insensitive lookup via `fromId(query)` (`LOOKUP_MAP` matching canonical IDs and localized labels).
 
 ---
 
-## 3. Import Task State Machine & Models
+## 3. Import Task State Machine, Web Analysis & AI Config
 
-Manual URL entry, sharing, and RSS acquisition save bookmarks directly. Persisted work uses `QUEUED`, `PROCESSING`, and `ERROR`. A successful save consumes its task. Retryable failures preserve the source URL and any prepared article data. Import shows active work and errors.
-
-Room 18 maps legacy `READY`, `WAITING_AI`, and `PROCESSING_AI` rows to `QUEUED` and preserves RSS provenance, metadata, and retry deadlines. Startup resumes prepared and interrupted saves. Existing RSS acquisition policies apply when a fetch is still required. The saved bookmark's Detail screen owns manual AI review.
-
-## 4. Web Page Analysis Models
-
-Located in `parser/WebPageData.kt`:
-
-- `ParsedWebPage`: Comprehensive snapshot including `requestedUrl`, `finalUrl`, `resolvedUrl` (unwrapped Google share link), `statusCode`, `ogpTags`, `twitterTags`, `standardMetaTags`, `jsonLdList`, `h1List`, `h2List`, `readabilityArticle`, and `jsoupBodyText`.
-- `WebMetaTag`: Generic key-value wrapper for meta attributes (`charset`, `name`, `property`, `http-equiv`, `itemprop`).
-- `JsonLdItem`: Structured Schema.org entity metadata.
-- `ExtractedArticle`: Cleaned article content from Mozilla Readability algorithm (`title`, `byline`, `excerpt`, `textContent`, `charCount`).
+- **Import Tasks (`import_tasks`)**: Manual URL entry, Share intent, and RSS ingestion save bookmarks directly. Tasks transition across `QUEUED`, `PROCESSING`, and `ERROR`. Successful saves delete the task; retryable failures retain URL, `articlePrepared`, `intendedMode`, `rssItemKey`, `acquisitionAttempts`, `acquisitionRetryAt`, and standard classification (`standardCategory`, `standardSubcategory`, `standardClassificationEvaluated`). Startup resumes prepared and interrupted direct saves; manual AI review runs from Bookmark Detail.
+- **Web Page Analysis (`parser/WebPageData.kt`)**: `ParsedWebPage` (transient extraction snapshot holding `requestedUrl`, `finalUrl`, `resolvedUrl`, `statusCode`, meta/OGP/Twitter/JSON-LD lists, headings, `readabilityArticle`, `jsoupBodyText`, nullable `cleanedBodyText`, and `promptBodyText` preferring full ad-filtered text), `WebMetaTag`, `JsonLdItem`, `ExtractedArticle`.
+- **Gemini Configuration (`ui/screens/settings/GenerateContentRequestViewModel.kt`)**: Runtime overrides for `generateContentRequest`—`cachedContextName` (`""`), `candidateCount` (`1`), `enableThinking` (`false`), `maxOutputTokens` (`4096`, overridden to `256` in tagging), `seed` (`0`), `temperature` (`0.0f` in `0.0f..1.0f`), `topK` (`3`).
 
 ---
 
-## 5. Gemini Generation Configuration Model
+## 4. Domain Policy, Private Content & Library Grouping
 
-Located in `ui/screens/settings/GenerateContentRequestViewModel.kt`:
-
-Controls runtime LLM generation options passed to `com.google.mlkit.genai.prompt.generateContentRequest`:
-- `cachedContextName` (`String`, default `""` / disabled)
-- `candidateCount` (`Int`, default `1`, enabled)
-- `enableThinking` (`Boolean`, default `false` / disabled)
-- `maxOutputTokens` (`Int`, default `4096`, disabled; overridden to `256` in tagging pipeline)
-- `seed` (`Int`, default `0` / disabled)
-- `temperature` (`Float`, range `0.0f..1.0f` in `0.1` steps, default `0.0f`, enabled)
-- `topK` (`Int`, default `3` / disabled)
+- **`DomainPolicyStore` & `DomainPolicyManager`**: Room-backed `domain_policies` table storing `DomainPolicy(domain, isPrivate, displayName)` populated automatically on enqueue/bookmark using `og:site_name`. `DomainPolicyManager` delegates to `DomainPolicyStore` on Android and falls back to an in-memory map in JVM tests. `setDomainPrivateAndAwait` updates `domain_policies` and `bookmarks.isPrivate` atomically in one transaction on `storeScope` (no circular `BookmarkRepository` call).
+- **Private Content Detection (`WebPageParser.kt`)**: Fetches with Desktop Chrome UA (`Windows NT 10.0; Win64; x64`, `sec-ch-ua-mobile: ?0`) and classifies as `isPrivateSignal = true` on: Private domain policy, title `"R-18"`/`"R18"`/localized adult keywords, `<meta name="rating">` (`R-18`, `R18`, `18+`, `RTA-5042-1996-1400-1577-RTA`, `adult`, `mature`), or Schema.org `isFamilyFriendly: false` / `contentRating` / `typicalAgeRange: "18+"`.
+- **Visibility & Indicators**: `AppConfig.isPrivateContentVisible` filters SQLite queries prior to paging/counting (including tag candidates). See [ui_library.md](ui_library.md) and [ui_bookmark_detail.md](ui_bookmark_detail.md) for Private indicators.
+- **Library Grouping (`LibraryViewModel.kt`, `DomainCard.kt`)**: `LibraryFilterMode` (`DOMAIN`, `NEWEST_FIRST`, `COLLECTION`, `RSS`, persisted in `tidilo_library_prefs`). `DomainGroupItem(domain, displayName, count)` sorts ASCII alphanumeric first, then Japanese kana/kanji via `Collator.getInstance(Locale.JAPANESE)`.
 
 ---
 
-## 6. Persistence & Serialization Schemas
-
-All persistence is managed via **Room Database** (`AppDatabase` v22) for robust relational and high-volume data, complemented by Android `SharedPreferences` for user configurations and transient search history:
-
-1. **Room Database (`AppDatabase`)**:
-   - **`bookmarks` table (`BookmarkEntity`)**: Managed by `BookmarkDao`, storing bookmarked items with indexed URL, creation timestamp, `domain`, `isPrivate`, and `ogImageUrl` / `ogImageKey` linking to specific cached OG image assets. Bulk writes (`insertAll`) execute in chunked batches of 500 with per-chunk ID deduplication.
-   - **`trashed_bookmarks` table (`TrashedBookmarkEntity`)**: Managed by `TrashDao`, storing trashed items with retention tracking and `ogImageUrl`.
-   - **`import_tasks` table (`ImportTaskEntity`)**: Managed by `ImportTaskDao`, storing `QUEUED`, `PROCESSING`, and `ERROR` tasks with reactive `Flow<List<ImportTaskEntity>>` observation and status index.
-   - **`domain_policies` table (`DomainPolicyEntity`)**: Added in Room 21 (`MIGRATION_20_21`) and updated in Room 22 (`MIGRATION_21_22` renaming the legacy privacy column/index across `bookmarks`, `trashed_bookmarks`, `import_tasks`, and `domain_policies` to `isPrivate` and `index_bookmarks_isPrivate`), managed by `DomainPolicyDao` and `DomainPolicyStore`, storing `(domain, isPrivate, displayName)` with primary key `domain`. Legacy `filesDir/domain_policies.json` entries (including historical privacy JSON keys) are idempotently merged once inside a Room transaction and deleted only after commit.
-   - **Safe Migration & Database Decoupling (v6)**: In version 6, obsolete image BLOB storage (`og_images` table) was cleanly dropped via `MIGRATION_5_6`, liberating database file size while preserving 100% of bookmark, tag, and note data.
-   - **Import Persistence**: `ImportRepository` executes direct saves via a single flat Room transaction (`TransactionRunner` / `BookmarkDao.insertReplacingUrl`), committing the bookmark, entity occurrences, RSS retention/notification updates, and task deletion together without nested transactions; post-commit domain/media side effects run through injected adapters. A failed save rolls back cleanly and retains a retryable error.
-   - **Concurrency**: Room persists queued and interrupted direct saves. Import observes active and failed work, and recovery rechecks each task before saving.
-2. **`tidilo_library_prefs` (`search_history`)**:
-   Array of up to 10 strings representing complete queries, ordered latest-first.
-3. **`tidilo_app_config_prefs`**:
-   Application language, Private Content visibility/bookmarkability (with one-way read fallback from legacy preference keys), and AI model settings.
-
----
-
-## 7. Reactive StateFlow Architecture
+## 5. Reactive StateFlow & Paging Flow
 
 ```mermaid
 sequenceDiagram
@@ -235,149 +125,22 @@ sequenceDiagram
     DB-->>VM: Committed write or exception
     DB-->>UI: Invalidation refreshes affected queries
 ```
-
-### 7.1 Application Theme State (`AppTheme`)
-Located in `config/AppTheme.kt`:
-- **Enum Values**:
-  - `DEFAULT("default", R.string.settings_theme_default)`: Stock Material 3 expressive dynamic theming.
-  - `MODERN("modern", R.string.settings_theme_modern)`: Dark-leaning tactile skeuomorphic styling with extrusion bevels and calibrated ambient surfaces.
-- **Safe Parsing**: `AppTheme.fromCode(code: String?)` provides case-insensitive resolution with fallback to `AppTheme.DEFAULT`.
-- **Persistence**: Managed via `AppConfig.KEY_APP_THEME` in SharedPreferences.
-- **Reactive Flow**: Exposed as `AppConfig.currentTheme: StateFlow<AppTheme>` with unidirectional data flow into the UI composition tree.
+- **Paging & Read Guarantees**: `BookmarkRepository` exposes no eager full-library collection; Paging uses `pageSize = 30`, `initialLoadSize = 60`, `prefetchDistance = 10`, `maxSize = 150`, placeholders disabled, ordered `createdAt DESC, id DESC`, switching generations via `flatMapLatest` before `cachedIn`. Aggregate/trash reads await initialization and surface explicit retry on failure.
+- **`AppTheme` (`config/AppTheme.kt`)**: `DEFAULT("default", R.string.settings_theme_default)` and `MODERN("modern", R.string.settings_theme_modern)`, persisted via `AppConfig.KEY_APP_THEME`, parsed case-insensitively with `DEFAULT` fallback, exposed as `AppConfig.currentTheme: StateFlow<AppTheme>`.
 
 ---
 
-## 8. Domain Policy & Private Content Architecture
+## 6. Persistence & Room Schema (`AppDatabase` v22)
 
-### 8.1 `DomainPolicyStore` & `DomainPolicyManager`
-Located in `data/DomainPolicyStore.kt` (backed by `data/db/DomainPolicyEntity.kt` and `DomainPolicyDao.kt`), with a lightweight compatibility facade in `data/DomainPolicyManager.kt`:
-- **Persistence**: Persisted in Room's `domain_policies` table (`AppDatabase` v22), with a one-time idempotent merge from legacy `domain_policies.json` (plus `.pending` cleanup) after commit. `DomainPolicyManager` delegates to `DomainPolicyStore` when an Android context is active and falls back to an in-memory map in context-free JVM unit tests.
-- **Policy Record**: `DomainPolicy(domain: String, isPrivate: Boolean, displayName: String = "")`.
-- **Display Name (`og:site_name`)**: Extracted from page HTML meta tags (`og:site_name`) during web page parsing or favicon discovery (`DomainIconManager.findHtmlIconUrls`), and stored as the human-readable display name for the domain.
-- **Auto-Registration**: When new domains are enqueued or bookmarked, they are automatically registered with `isPrivate = false` and their display name if available.
-- **Atomic Domain Private Toggle**: `DomainPolicyStore.setDomainPrivateAndAwait` updates `domain_policies` and `bookmarks.isPrivate` in a single Room transaction on `storeScope`, avoiding any circular dependency with `BookmarkRepository`. Checked domains are designated as Private domains; any bookmark from a checked domain is tagged as `isPrivate = true`.
-
-### 8.2 Private Content Detection Signals (`WebPageParser.kt`)
-Web page fetching uses Desktop Chrome User-Agent (`Windows NT 10.0; Win64; x64`, `sec-ch-ua-mobile: ?0`) to ensure platforms like Pixiv return complete desktop SSR HTML with standard metadata rather than stripped mobile touch SPAs. Programmatic detection extracts:
-1. **Domain Private Policy (`DomainPolicyManager.isPrivateDomain(domain)`)**: If designated as Private in domain management, Private classification is unconditionally granted (`isPrivateSignal = true`) regardless of tags or metadata.
-2. **Title / OGP Title Keywords**: `"R-18"`, `"R18"`, and localized adult rating terms.
-3. **Meta Rating Standards (`<meta name="rating">`)**: `"R-18"`, `"R18"`, `"18+"`, `"RTA-5042-1996-1400-1577-RTA"`, `"adult"`, `"mature"`
-4. **Schema.org / JSON-LD Properties**:
-   - `isFamilyFriendly: false`
-   - `contentRating`: `"R18"`, `"R-18"`, `"18+"`
-   - `typicalAgeRange`: `"18+"`
-
-### 8.3 Display Control & Dynamic Count Aggregation
-- **Global Toggle**: `AppConfig.isPrivateContentVisible` (persisted in `tidilo_app_config_prefs`).
-- **Reactive Filter**: `AppConfig.isPrivateContentVisible` switches Paging generations and SQL aggregate queries. Private Content filtering happens in SQLite before paging or counting, including all tag-selection candidates.
-- **Visual Indicator**: `BookmarkCard` renders a compact `Private` pill badge (`Icons.Default.Lock` + `Private` label, `SurfaceTone.NORMAL`, resolved via `resolveChipColors`) beside the `[category] > [subcategory]` chips when `bookmark.isPrivate == true`, while `BookmarkDetailScreen` appends `Private` as plain `labelMedium` text inside the `Category > Subcategory - Private` breadcrumb.
-
----
-
-## 9. Library Filter & Domain Grouping Models
-
-Located in `ui/screens/library/DomainCard.kt` and `ui/screens/library/LibraryViewModel.kt`:
-
-### 9.1 `LibraryFilterMode`
-```kotlin
-enum class LibraryFilterMode {
-    NEWEST_FIRST,
-    DOMAIN
-}
-```
-Persisted in `tidilo_library_prefs.xml` under key `library_filter_mode`.
-
-### 9.2 `DomainGroupItem`
-```kotlin
-@Immutable
-data class DomainGroupItem(
-    val domain: String,
-    val displayName: String,
-    val count: Int
-)
-```
-- **Sorting Rule**: Sorted by `displayName` (fallback to `domain` if empty). ASCII alphanumeric (A–Z, 0–9) characters are ordered first, followed by Japanese kana/kanji ordered via `Collator.getInstance(Locale.JAPANESE)`.
-
-
-## Historical database v7 derived bookmark data
-
-Version 7 introduced the following derived-data contract; Room 14 supersedes its
-raw occurrence and duplicate behavior with the canonical entity contract above.
-
-Active bookmarks carry nullable `domain` plus Unicode comparison keys for title,
-description, URL, category, and subcategory. `BookmarkEntity.fromBookmarkItem`
-and transactional DAO writes compute these fields with the existing domain
-normalizer and `bookmarkSearchKey`. Original user fields remain unchanged.
-`bookmark_entities` stores `(bookmarkId, position, value, searchValue)` with a
-cascading foreign key, preserving duplicate entity occurrences and original-case
-count buckets. Replacements, field/tag edits, and bulk writes refresh the child
-rows transactionally; deletion cascades to those rows. Trash has no domain column.
-
-`MIGRATION_6_7` adds the domain index and backfills only derived fields and child
-rows in stable-ID batches of 256. It completes before Room readers are exposed.
-Supported v1-v6 upgrade paths are registered explicitly; destructive fallback is
-removed. Paging and aggregate queries apply Private Content filtering before fetching or
-counting, and bookmark result order is `createdAt DESC, id DESC`. Entity matching
-uses individual child values, never serialized JSON substrings.
-
-The Repository has no eager active-bookmark collection. Timeline, domain results,
-and search expose bounded PagingData; details observe one ID independently of
-loaded pages. Domain/tag counts and settings use SQL aggregates. Page size is 30,
-initial load 60, prefetch 10, max size 150, with placeholders disabled. Generations
-switch with flatMapLatest before cachedIn(viewModelScope).
-
-Derived tags mirror Tag.create, including null/blank defaults, leading # removal,
-trimmed entity values, duplicate occurrences, and truly empty AI-skipped tags.
-Original persisted fields remain untouched. Category/subcategory aggregate
-buckets merge normalized spellings while preserving original case. Comparison
-keys follow the running String ignoreCase implementation, including Android's
-UTF-16 treatment of supplementary letters. The reserved SQLite application_id
-marks the derived format; an onOpen transaction repairs an older prerelease
-format once, before readers, without changing Room's user_version or raw fields.
-
-Aggregate/trash reads wait for initialization. Failed reads publish a recoverable
-state and restart on explicit retry. Trash moves and capacity enforcement share
-one transaction. Domain Private changes await the SQL update and policy publication
-in the application scope so navigating away cannot interrupt those two steps.
-
-Domain policy failure handling: the domain-wide SQL flag update and policy-save
-callback execute inside one Room transaction. A policy-file exception rolls back
-each original flag automatically, including mixed values, without collecting all
-bookmarks. The policy manager stages the proposed entry and publishes it only
-after file persistence succeeds. Policy mutation/file-writing sections are
-serialized; writes use a sibling temporary file and atomic replacement. The
-operation retains application-scope ownership when its UI caller is cancelled.
-Room and the JSON file still cannot provide a crash-atomic transaction across
-stores: process death or a DB commit failure after a successful file replacement
-is outside this handled policy-write failure boundary.
-
-
-## Application Summary Statistics
-
-`AiUsageSnapshot` contains local daily aggregates, recording start date, and the last quota benchmark. `DailyAiUsage` reconciles success, failed, cancelled, interrupted, and pending outcomes, with a debug subtotal. `AiCoreUsageRepository` commits a dedicated versioned SharedPreferences snapshot without content identifiers; abandoned pending records become interrupted after process restart. `CollectionCounts(active, trash)` is an observed atomic SQL projection, not a new table. `CacheStorageSnapshot` records physical category bytes, PNG/WebP counts, and measurement time. No Room migration is required. See [Application Summary](application_summary.md).
-
-## RSS Source and Receipt Persistence
-
-Room9 source fields, receipt transactions, indexed image references, queue claims, and count retention are specified in [RSS and Atom Subscriptions](rss.md). Manual records retain null RSS ownership; trash mappings and targeted bookmark edits preserve ownership and publication time. Source-aware Library queries use MANUAL or RSS; search/tag queries use ALL.
-
-## Shared ingestion preparation (Room10)
-
-Import tasks persist `articlePrepared`, `intendedMode`, `rssItemKey`, `acquisitionAttempts`, and `acquisitionRetryAt`. Room migration 16 to 17 adds nullable `standardCategory` and `standardSubcategory` plus `standardClassificationEvaluated`, which distinguishes an evaluated task with no labels from a task whose metadata was never evaluated. See [Standards-based bookmark classification](bookmark_classification.md). Nonblank XML content never proves HTML preparation. Failed or unprepared RSS acquisitions must acquire article content before direct save. Feed entities persist `acquisitionId`, `acquisitionMobileOverride`, `acquisitionXmlDone`, and `acquisitionRequestedAt` for interruption-safe continuation. `enabled=false` plus `error=XML_FETCH_FAILED` represents automatic disabling after a feed XML failure; disabling does not delete content or consumed receipts. Migration9-to10 preserves existing rows and configured retention.
-
-## RSS feed metadata and library groups (Room12)
-
-`RssFeedEntity.iconUrl` and `siteUrl` are nullable persisted HTTP(S) metadata added by `MIGRATION_11_12`, after the notification schema's unchanged `MIGRATION_10_11`. Migration 11 to 12 also supports the earlier RSS-only v11 development build: it creates the notification table/index if absent and adds only missing RSS metadata columns, preserving existing metadata and user data. Registration and 200 XML responses update metadata; 304 preserves it. `RssFeedGroup(feed, count)` is an observed SQL join/aggregate over rss_feeds and visible active bookmarks, including disabled/deleted subscriptions. Bookmark query builders accept an optional bound rssFeedId for both Paging results and counts. Feed grouping never materializes all bookmarks, and search/tag source scope remains unchanged. See [RSS and Atom Subscriptions](rss.md).
-
-## Notification List Projection
-
-The Notification screen combines existing `import_notifications`, ERROR `import_tasks`, and non-deleted `rss_feeds` with a persisted error and failed-attempt timestamp. Stable UI keys are prefixed history/task/feed IDs. History uses createdAt, import errors use task.createdAt, and XML errors use lastAttemptAt. The date is formatted in the current device time zone to second precision. This projection adds no Room tables or migration and keeps the existing 50-row history limit.
-
-Clear removes saved history while preserving unresolved tasks/feed errors. Item deletion awaits the import-task write, or clears only a matching feed revision and lastAttemptAt. Explicit XML Retry replaces an errored acquisition with a new operation and no inherited mobile override. See [Library Navigation](library_navigation.md).
-
-## Import Notifications and Duplicate Resolution (Room11)
-
-Room version 11 introduces `import_notifications` for tracking duplicate import rejections, RSS article promotions, and import warnings:
-- Table: `import_notifications` with fields `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `type` (TEXT: `INFO`, `WARNING`, `ERROR`), `domain` (TEXT), `url` (TEXT), `message` (TEXT), `existingBookmarkId` (TEXT), `isRead` (INTEGER), and `createdAt` (INTEGER).
-- Indexed on `createdAt DESC` for fast notification history retrieval.
-- DAO provides reactive flows `observeNotifications()` and `observeUnreadCount()`, plus `markAllAsRead()` and `deleteAll()`.
-- Migration 10 to 11 preserves all existing tables and creates the `import_notifications` table and index.
+- **Room Tables (13 entities in `AppDatabase` v22)**:
+  - Core & derived: `bookmarks`, `bookmark_entities` (`bookmarkId, position, value, searchValue, skeletonKey`), `trashed_bookmarks`, `domain_policies` (`domain, isPrivate, displayName`), `import_tasks`.
+  - Collections & RSS: `collections`, `bookmark_collection_cross_ref`, `rss_feeds` (including `iconUrl`, `siteUrl`), `rss_seen_items`, `rss_image_cleanup`.
+  - Notifications: `import_notifications` (`50`-row history limit, indexed `createdAt DESC`), `rss_notification_runs`, `rss_notification_items`. The Notification screen projects `import_notifications` + `ERROR` `import_tasks` + errored `rss_feeds` with prefixed stable UI keys (`createdAt` / `lastAttemptAt`).
+- **Transaction & Query Scope**: `ImportRepository` commits direct saves (bookmark, entity occurrences, RSS receipts/notifications, task deletion) in one flat `TransactionRunner` transaction without nested transactions. Active bookmarks persist derived `domain` and `BookmarkSearchKey` columns (`searchTitle`, `searchDescription`, `searchUrl`, `searchValue`) maintained by DAO transactions. Library source filters use `BookmarkSource` (`MANUAL` / `RSS`); search, tag selection, and storage counts use `ALL`.
+- **SharedPreferences**: `tidilo_library_prefs` (`search_history` up to 10 queries, `library_filter_mode`), `tidilo_app_config_prefs` (language, Private flags with one-way legacy key fallback, theme, AI config), `tidilo_ai_usage` (see [application_summary.md](application_summary.md)), `tidilo_rss` (see [rss.md](rss.md)).
+- **Non-Obvious Migration & Repair Invariants (`AppDatabase.kt`)**:
+  - `DERIVED_DATA_CALLBACK` (`onOpen`): Checks `PRAGMA application_id` (`BOOKMARK_DERIVED_FORMAT`) to rebuild derived search/entity columns once for prerelease v7 databases before publishing queries.
+  - `MIGRATION_9_10`: Leaves legacy RSS XML snippets as `articlePrepared = 0` and routes RSS `ERROR` rows to `acquisitionRetryAt = Long.MAX_VALUE`.
+  - `MIGRATION_11_12`: Invokes `MIGRATION_10_11` and checks `PRAGMA table_info(rss_feeds)` defensively to upgrade prerelease RSS-only v11 builds without losing existing columns.
+  - `MIGRATION_13_14` & `MIGRATION_14_15`: `13→14` elects one canonical display spelling per `skeletonKey` once (distinct bookmark frequency → earliest `createdAt` → SQLite binary order, aggregated in bounded batches via temp SQLite vote table; never re-elected on open). `14→15` backfills `13→14` if `skeletonKey` is absent before adding engagement defaults (`0` / `null`).
+  - `MIGRATION_17_18`: Maps legacy `READY`, `WAITING_AI`, `PROCESSING_AI`, and awaiting-acquisition `ERROR` tasks to `QUEUED` and resets modes to `DIRECT`.

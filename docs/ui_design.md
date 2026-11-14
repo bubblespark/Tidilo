@@ -82,7 +82,7 @@ Supports **Material You Dynamic Color** (Android 12+) with fallback M3 Expressiv
 - **Title Bar Standardization (`TidiloFrostedHeader`, `TidiloPageHeader`)**:
   - `20.dp` horizontal screen margin; `headlineMedium` Bold (`onBackground`); `48.dp` interactive navigation/action slots (`4.dp` trailing spacing -> `72.dp` title start when leading button exists, `20.dp` otherwise); `Icons.AutoMirrored.Filled.ArrowBack`.
   - Optional `onTitleClick` (`TextHandleMove` haptic, no ripple) on the weighted title column; Library scrolls the active list/grid to `0` and cancels pending scrolls on state changes.
-  - Sub-screens with Back: `Search`, `Notification`, `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `PrivateSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `StorageScreen`, `RssSettingsScreen`, `BookmarkAiReviewScreen`, plus Domain/RSS/Collection drill-downs.
+  - Sub-screens with Back: `Search`, `Notification`, `BookmarkDetailScreen`, `TagSelectionScreen`, `TrashScreen`, `SettingsScreen`, `AiAnalysisScreen`, `PrivateSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `StorageScreen`, `RssSettingsScreen`, `BookmarkAiReviewScreen`, plus Domain/RSS/Collection drill-downs.
 - **Visibility & Draw Order**: Draw content first, header second, overlays last. Only Library and Search enable `hideHeaderOnScroll` via narrow `ScaffoldHeaderVisibility` (`LocalBarsVisible`); header disappearance never collapses body top clearance.
 
 ---

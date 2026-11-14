@@ -28,10 +28,9 @@
 
 ## 3. AI Analysis Settings (`SettingsScreen` -> `AI Analysis`)
 
-- **Sections**: `Using AI Model`, `Automation`, `AICore error fallback`, and `AICore parameters` inside a fixed-header secondary page.
+- **Sections**: `Using AI Model` and conditional `AICore parameters` inside a fixed-header secondary page.
 - **Model Selector**: Inline `AICore` and `Disable` radio rows (`>= 48.dp` high). Fresh installs default to `AICore` only when initial readiness returns `AVAILABLE` (else `Disable`); manual choices persist. Re-entering checks readiness without writing mode, downloading models, generating content, or recording usage; while checking/unavailable, `AICore` is disabled (`0.38` alpha) with status/error guidance while `Disable` stays enabled.
-- **Conditional Sections**: `Automation` (single `Switch` row), `AICore error fallback` (`Disable`, `If the quota is exceeded`, `All AICore errors`), and request parameters appear only when `AICore` is selected. Switching to `Disable` animates them out (sliding upward 1/3 height, fading, shrinking vertically with `NoBouncy` / `MediumLow` springs) while preserving saved preferences; rows expand cleanly on large fonts above navigation clearance.
-- **RSS Modal Coupling**: In RSS feed add/edit dialogs, both mode radios remain selectable even when global AI Analysis is `Disable`, displaying a `MaterialTheme.colorScheme.error` explanation directly beneath the radio group (hidden when global `AICore` is active).
+- **Conditional Section**: `AICore parameters` appears only when `AICore` is selected. Switching to `Disable` animates it out (sliding upward 1/3 height, fading, shrinking vertically with `NoBouncy` / `MediumLow` springs) while preserving saved preferences; rows expand cleanly on large fonts above navigation clearance.
 
 ---
 

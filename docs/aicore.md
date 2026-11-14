@@ -137,14 +137,16 @@ val response = model.generateContent(request)
 
 ### Parameter Reference & Production Settings
 
-| Parameter | Production Value | Debug Configurable | Purpose & Rationale |
+| Parameter | Production Value | Debug Configurable (`GenerateContentRequestViewModel`) | Purpose & Rationale |
 | :--- | :--- | :--- | :--- |
-| **`maxOutputTokens`** | `256` | Yes (1–2048) | Default token budget for the summary and structured tags; configurable independently of summary length guidance. |
-| **`temperature`** | *Default (0.0)* | Yes (0.0–2.0) | Defaults to greedy deterministic decoding (0.0) to strictly enforce JSON formatting and taxonomy adherence without hallucination. |
-| **`topK`** | *Default (40)* | Yes (1–100) | Restricts candidate tokens to top probable cluster. |
-| **`candidateCount`** | `1` | Yes (1–4) | Single candidate generation minimizes memory pressure and execution time on mobile NPUs. |
-| **`seed`** | *Unset* | Yes (Long) | Optional seed for reproducibility during debugging and diagnostic testing. |
-| **`cachedContextName`**| *Unset* | Yes (String) | Context caching identifier for reuse across consecutive requests if enabled by system. |
+| **`maxOutputTokens`** | `256` | Yes (`Int`, default `4096`, disabled, numeric) | Production sets `256` for the summary and structured tags; debug screen overrides without UI range clamping. |
+| **`temperature`** | *Unset (SDK default)* | Yes (`Float`, default `0.0`, enabled, slider `0.0..1.0`, `0.1` step) | Greedy deterministic decoding (`0.0` default in debug) enforces JSON formatting and taxonomy adherence. |
+| **`topK`** | *Unset (SDK default)* | Yes (`Int`, default `3`, disabled, numeric) | Restricts candidate tokens when enabled in debug diagnostics. |
+| **`candidateCount`** | *Unset (SDK default)* | Yes (`Int`, default `1`, enabled, numeric) | Single candidate minimizes memory pressure and execution time on mobile NPUs. |
+| **`seed`** | *Unset* | Yes (`Int`, default `0`, disabled, numeric) | Optional seed for reproducible debug diagnostic testing. |
+| **`cachedContextName`** | *Unset* | Yes (`String`, default `""`, disabled) | Context caching identifier when provided in debug diagnostics. |
+
+`GenerateContentRequestViewModel` also persists `enableThinking` (`Boolean`, default `false`, disabled), which `DebugPromptTester` does not currently forward to `generateContentRequest`. Production tagging (`GeminiTaggingService.runNanoInference`) sets only `maxOutputTokens = 256`.
 
 ## 7. Output Parsing & Error Resilience Pipeline
 

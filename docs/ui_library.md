@@ -15,10 +15,11 @@
 ## 2. `BookmarkItemCard` (`BookmarkCard.kt`)
 
 - **Shape & Container**: `RoundedCornerShape(24.dp)`. Light mode uses pure white with zero tonal elevation as an intentional lighting exception; dark mode preserves `surfaceContainerHigh`.
-- **Shared Bookmark Lighting (`BookmarkCardStyle.kt`)**: 1dp accent rim and 4dp shadow shared across list and grid cards (including Search). Incident lighting sweeps top-right (`Offset(Float.POSITIVE_INFINITY, 0f)`) to bottom-left (`Offset(0f, Float.POSITIVE_INFINITY)`) without neutral outline blending:
-  - **Light**: rim alpha `0.38` → `0.04`, inner wash `0.045` → `0`, ambient shadow `0.25` (brand), spot shadow `0.10` (black).
-  - **Dark**: rim alpha `0.65` → `0.05`, no inner wash, ambient shadow `0.25` (brand), spot shadow `0.50` (brand). Follows the applied scheme luminance, including theme overrides.
-- **Drawing Order & Scoped Accent**: Shadows draw outside rounded clipping, wash behind content, and rim over content so images never obscure the illuminated edge. Domain/RSS drill-downs pass their beam `domainColor` via `LocalCardAccentColor` scoped inside each animated destination; unspecified destinations default to `MaterialTheme.colorScheme.primary`.
+- **Shared Bookmark Lighting (`ThemeSurfaces.kt`, `TidiloSurface.kt`, `BookmarkCardStyle.kt`)**: `ThemeSurfaces.kt` (`SurfaceRole.BOOKMARK_CARD`) and `TidiloSurface.kt` (`rememberAccentBrush`) implement the 1dp accent rim and 4dp shadow shared across list and grid cards (including Search), sweeping top-right (`Offset(Float.POSITIVE_INFINITY, 0f)`) to bottom-left (`Offset(0f, Float.POSITIVE_INFINITY)`) without neutral outline blending:
+  - **Light (`Default`, non-decorated)**: rim alpha `0.38` → `0.04`, inner wash `0.045` → `0`, ambient shadow `0.25` (brand), spot shadow `0.10` (black).
+  - **Dark (`Default`, non-decorated)**: rim alpha `0.65` → `0.05`, no inner wash, ambient shadow `0.25` (brand), spot shadow `0.50` (brand).
+  - **`Modern` (`SurfaceTreatment.DECORATED`, `showAccentRim = false`)**: omits the rim, inner wash, and 4dp accent ambient shadow on unspecified cards; when a scoped `accent` is supplied (Domain/RSS drill-downs), draws the tactile rim (`0.45` → `0.04` Light / `0.70` → `0.08` Dark) without inner wash.
+- **Drawing Order & Scoped Accent**: Shadows draw outside rounded clipping, wash behind content, and rim over content so images never obscure the illuminated edge. Domain/RSS drill-downs pass their beam `domainColor` via `LocalCardAccentColor` (`BookmarkCardStyle.kt`) scoped inside each animated destination; unspecified destinations default to `MaterialTheme.colorScheme.primary`.
 - **Interactions**: `800ms` click debounce + `Lifecycle.State.RESUMED` navigation gate in `TidiloNavGraph` prevents duplicate Detail entries. Each card exposes a `20.dp` Like toggle inside a `48.dp` touch target without navigating to Detail.
 - **Hierarchy**:
   1. Title (keyword-highlighted in Search) + Like button.
@@ -40,7 +41,7 @@
 ## 4. `BookmarkGridCard` & Summary Peek (`BookmarkGridCard.kt`, `TimeFormatter.kt`)
 
 - **2-Column Grid**: `LazyVerticalGrid(GridCells.Fixed(2))` with `20.dp` screen horizontal padding, `8.dp` inter-column gap, and `10.dp` vertical row spacing.
-- **Card Container**: `Surface` (`RoundedCornerShape(16.dp)`, `tonalElevation = 0.dp`, white in Light / `surfaceContainer` in Dark) with shared bookmark lighting (§2) and `combinedClickable(onClick, onLongClick)`.
+- **Card Container**: `TidiloSurface(role = SurfaceRole.BOOKMARK_CARD, variant = SurfaceVariant.COMPACT, accent = LocalCardAccentColor.current)` (`RoundedCornerShape(16.dp)`, white in Light / `surfaceContainer` in Dark in `Default`) with shared bookmark lighting (§2) and `combinedClickable(onClick, onLongClick)`.
 - **Top Preview (`16f / 9f`)**: Clipped to top `16.dp` corners using `ContentScale.Crop`.
   - Cached OG image: decodes local WebP via `rememberOgImage`. Missing/corrupt previews with an OG URL recover on demand via shared 4-worker-limited background requests (see [OG Image Cache](og_image_cache.md)).
   - Absent/pending preview: domain accent gradient with cached domain icon (`36.dp`) or fallback rounded link icon (`24.dp` inside `36.dp` container), defaulting to theme `primary` when no domain exists. Icon network recovery waits for a completed OG miss (or starts immediately if no OG URL exists).

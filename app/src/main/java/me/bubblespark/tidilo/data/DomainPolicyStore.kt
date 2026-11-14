@@ -19,6 +19,7 @@ import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.DomainPolicyEntity
 import org.json.JSONArray
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -32,7 +33,10 @@ class DomainPolicyStore internal constructor(
     private val transactionRunner: TransactionRunner = object : TransactionRunner {
         override suspend fun <R> run(block: suspend () -> R): R = database.withTransaction(block)
     },
-    private val storeScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val storeScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    private val isLegacyMigrationCompleted: () -> Boolean = { false },
+    private val markLegacyMigrationCompleted: () -> Unit = {},
+    private val readFileText: (File) -> String = { it.readText(Charsets.UTF_8) }
 ) {
     private val domainPolicyDao = database.domainPolicyDao()
     private val bookmarkDao = database.bookmarkDao()
@@ -69,10 +73,15 @@ class DomainPolicyStore internal constructor(
         withContext(Dispatchers.IO) {
             readyMutex.withLock {
                 if (isReady) return@withLock
-                val (legacyPolicies, parsedCleanly) = readLegacyJsonPolicies(legacyJsonFile)
+                val alreadyMigrated = isLegacyMigrationCompleted()
+                val (legacyPolicies, parsedCleanly) = if (alreadyMigrated) {
+                    emptyList<DomainPolicy>() to true
+                } else {
+                    readLegacyJsonPolicies(legacyJsonFile)
+                }
                 val loaded = transactionRunner.run {
                     val existingList = domainPolicyDao.getAll()
-                    if (legacyPolicies.isNotEmpty()) {
+                    if (!alreadyMigrated && legacyPolicies.isNotEmpty()) {
                         val existingByDomain = existingList.associateBy { it.domain }
                         val merged = legacyPolicies.map { legacy ->
                             val existing = existingByDomain[legacy.domain]
@@ -95,6 +104,9 @@ class DomainPolicyStore internal constructor(
                     }
                 }
                 if (parsedCleanly) {
+                    if (!alreadyMigrated) {
+                        markLegacyMigrationCompleted()
+                    }
                     deleteLegacyFiles(legacyJsonFile)
                 }
                 mergeLoadedEntitiesIntoCache(loaded)
@@ -107,7 +119,7 @@ class DomainPolicyStore internal constructor(
         if (file == null || !file.exists()) return emptyList<DomainPolicy>() to true
         if (file.length() == 0L) return emptyList<DomainPolicy>() to true
         return try {
-            val content = file.readText(Charsets.UTF_8)
+            val content = readFileText(file)
             val jsonArray = JSONArray(content)
             val mergedByDomain = LinkedHashMap<String, DomainPolicy>()
             for (i in 0 until jsonArray.length()) {
@@ -127,6 +139,8 @@ class DomainPolicyStore internal constructor(
                 }
             }
             mergedByDomain.values.toList() to true
+        } catch (e: IOException) {
+            throw e
         } catch (_: Exception) {
             emptyList<DomainPolicy>() to false
         }
@@ -182,6 +196,11 @@ class DomainPolicyStore internal constructor(
         return domainMap[normalized]?.isNsfw ?: false
     }
 
+    internal suspend fun isNsfwDomainCommitted(domain: String?): Boolean {
+        val normalized = normalizeDomain(domain) ?: return false
+        return domainPolicyDao.getByDomain(normalized)?.isNsfw == true
+    }
+
     fun getDisplayName(domain: String?): String {
         val normalized = normalizeDomain(domain) ?: return ""
         val stored = domainMap[normalized]?.displayName
@@ -198,18 +217,6 @@ class DomainPolicyStore internal constructor(
     fun registerDomain(domain: String?, isNsfw: Boolean = false, displayName: String = "") {
         val normalized = normalizeDomain(domain) ?: return
         val cleanName = displayName.trim()
-        updateCache { map ->
-            val existing = map[normalized]
-            if (existing == null) {
-                map[normalized] = DomainPolicy(normalized, isNsfw, cleanName)
-                true
-            } else if (cleanName.isNotBlank() && existing.displayName.isBlank()) {
-                map[normalized] = existing.copy(displayName = cleanName)
-                true
-            } else {
-                false
-            }
-        }
         storeScope.launch {
             try {
                 registerDomainAndAwait(normalized, isNsfw, cleanName)
@@ -256,16 +263,6 @@ class DomainPolicyStore internal constructor(
         val normalized = normalizeDomain(domain) ?: return
         val cleanName = displayName.trim()
         if (cleanName.isBlank()) return
-        updateCache { map ->
-            val existing = map[normalized]
-            if (existing == null || existing.displayName != cleanName) {
-                map[normalized] = existing?.copy(displayName = cleanName)
-                    ?: DomainPolicy(normalized, false, cleanName)
-                true
-            } else {
-                false
-            }
-        }
         storeScope.launch {
             try {
                 setDomainDisplayNameAndAwait(normalized, cleanName)
@@ -314,16 +311,6 @@ class DomainPolicyStore internal constructor(
     fun syncDomains(domains: Collection<String?>) {
         val normalizedDomains = domains.mapNotNull { normalizeDomain(it) }.distinct()
         if (normalizedDomains.isEmpty()) return
-        updateCache { map ->
-            var hasNew = false
-            normalizedDomains.forEach { normalized ->
-                if (!map.containsKey(normalized)) {
-                    map[normalized] = DomainPolicy(normalized, false, "")
-                    hasNew = true
-                }
-            }
-            hasNew
-        }
         storeScope.launch {
             try {
                 syncDomainsAndAwait(normalizedDomains)
@@ -412,6 +399,8 @@ class DomainPolicyStore internal constructor(
 
     companion object {
         private const val LEGACY_FILE_NAME = "domain_policies.json"
+        private const val PREFS_NAME = "domain_policy_store_prefs"
+        private const val KEY_LEGACY_MIGRATED = "legacy_json_migrated"
         private const val BULK_BATCH_SIZE = 500
 
         @Volatile
@@ -424,13 +413,18 @@ class DomainPolicyStore internal constructor(
         }
 
         private fun createProductionInstance(appContext: Context): DomainPolicyStore {
+            val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             return DomainPolicyStore(
                 database = AppDatabase.getInstance(appContext),
-                legacyJsonFile = File(appContext.filesDir, LEGACY_FILE_NAME)
+                legacyJsonFile = File(appContext.filesDir, LEGACY_FILE_NAME),
+                isLegacyMigrationCompleted = { prefs.getBoolean(KEY_LEGACY_MIGRATED, false) },
+                markLegacyMigrationCompleted = {
+                    prefs.edit().putBoolean(KEY_LEGACY_MIGRATED, true).commit()
+                }
             )
         }
 
-        private fun normalizeDomain(domain: String?): String? {
+        internal fun normalizeDomain(domain: String?): String? {
             return domain?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
         }
     }

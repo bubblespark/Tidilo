@@ -76,7 +76,15 @@ internal class RssIngestionStore(
         val subcategory = if (classification == null) {
             actual.standardSubcategory.takeIf { actual.standardClassificationEvaluated }
         } else classification.subcategory?.id
-        val nsfw = article.isNsfw || (domainPolicyStore?.isNsfwDomain(DomainIconManager.extractDomain(article.url)) == true)
+        val domain = DomainIconManager.extractDomain(article.url)
+        val domainNsfw = if (domainPolicyStore != null) {
+            domainPolicyStore.isNsfwDomainCommitted(domain)
+        } else {
+            DomainPolicyStore.normalizeDomain(domain)?.let {
+                database.domainPolicyDao().getByDomain(it)?.isNsfw == true
+            } ?: false
+        }
+        val nsfw = article.isNsfw || domainNsfw
         if ((!nsfw || AppConfig.isNsfwContentBookmarkable.value) && !rss.rssWriteConflict(article.url, task.id)) {
             val bookmarks = database.bookmarkDao()
             if (bookmarks.getBookmarkById(task.id) == null) {

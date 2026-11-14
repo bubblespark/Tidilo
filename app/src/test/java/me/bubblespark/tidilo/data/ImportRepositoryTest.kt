@@ -858,6 +858,50 @@ class ImportRepositoryTest {
         }
     }
 
+    @Test
+    fun directTaskRetainsErrorWhenPolicyReadinessFailsAfterClaim() = runBlocking {
+        val taskDao = FakeImportTaskDao()
+        val bookmarkDao = FakeBookmarkDao()
+        val job = SupervisorJob()
+        taskDao.insertOrUpdate(
+            ImportTaskEntity.fromImportTask(
+                ImportTask(
+                    id = "ready-fail",
+                    url = "https://example.com/item",
+                    title = "Pending Item",
+                    status = TaskStatus.QUEUED,
+                    statusText = "Waiting"
+                )
+            )
+        )
+        val failingPolicyAdapter = object : ImportDomainPolicyAdapter {
+            override suspend fun awaitReady() {
+                throw IllegalStateException("policy init failed")
+            }
+
+            override fun isNsfwDomain(domain: String?): Boolean = false
+            override fun registerDomain(domain: String?, isNsfw: Boolean, displayName: String) = Unit
+        }
+        try {
+            val repository = ImportRepository(
+                taskDao = taskDao,
+                bookmarkDao = bookmarkDao,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                domainPolicyAdapter = failingPolicyAdapter
+            )
+            repository.onAppBecameActive()
+            withTimeout(5000) {
+                while (taskDao.getTaskById("ready-fail")?.status != "ERROR") delay(10)
+            }
+            val failed = taskDao.getTaskById("ready-fail")!!
+            assertEquals("ERROR", failed.status)
+            assertEquals("Save failed", failed.statusText)
+            assertTrue(failed.errorMessage.orEmpty().contains("policy init failed"))
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
+
     private class FakeBookmarkDao : StubBookmarkDao(onGetCount = { 0 }) {
         val bookmarks = linkedMapOf<String, BookmarkEntity>()
         val occurrences = linkedMapOf<String, MutableList<BookmarkEntityOccurrence>>()

@@ -21,6 +21,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.util.concurrent.Executors
 
@@ -385,6 +386,133 @@ class DomainPolicyStoreTest {
                 assertEquals(idx % 2 == 0, store.isNsfwDomain(domain))
                 assertEquals("Updated $idx", store.getDisplayName(domain))
             }
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun legacyMigrationCompletionPreventsReimportOfRetainedJsonOverUserEdits() = runBlocking {
+        val dir = Files.createTempDirectory("domain-policy-retained-json").toFile()
+        try {
+            val jsonContent = """[{"domain":"legacy.example","isNsfw":true,"displayName":"Legacy"}]"""
+            val jsonFile = File(dir, "domain_policies.json")
+            jsonFile.writeText(jsonContent, Charsets.UTF_8)
+            val policyDao = InMemoryDomainPolicyDao()
+            var migrated = false
+
+            val scope1 = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            try {
+                val store1 = DomainPolicyStore(
+                    database = fakeAppDatabase(domainPolicyDao = policyDao),
+                    legacyJsonFile = jsonFile,
+                    transactionRunner = directTransactionRunner(),
+                    storeScope = scope1,
+                    isLegacyMigrationCompleted = { migrated },
+                    markLegacyMigrationCompleted = { migrated = true }
+                )
+                store1.awaitReady()
+                assertTrue(migrated)
+                assertTrue(store1.isNsfwDomain("legacy.example"))
+
+                store1.setDomainNsfwAndAwait("legacy.example", false)
+                assertFalse(store1.isNsfwDomain("legacy.example"))
+            } finally {
+                scope1.coroutineContext[Job]?.cancelAndJoin()
+            }
+
+            // Simulate retained legacy file after a failed cleanup on previous startup.
+            jsonFile.writeText(jsonContent, Charsets.UTF_8)
+
+            val scope2 = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            try {
+                val store2 = DomainPolicyStore(
+                    database = fakeAppDatabase(domainPolicyDao = policyDao),
+                    legacyJsonFile = jsonFile,
+                    transactionRunner = directTransactionRunner(),
+                    storeScope = scope2,
+                    isLegacyMigrationCompleted = { migrated },
+                    markLegacyMigrationCompleted = { migrated = true }
+                )
+                store2.awaitReady()
+
+                assertFalse(store2.isNsfwDomain("legacy.example"))
+                assertFalse(policyDao.rows.getValue("legacy.example").isNsfw)
+                assertFalse("Subsequent startup should still clean up retained legacy file", jsonFile.exists())
+            } finally {
+                scope2.coroutineContext[Job]?.cancelAndJoin()
+            }
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun legacyJsonIoExceptionLeavesStoreNotReadyAndRetriesOnNextAwaitReady() = runBlocking {
+        val dir = Files.createTempDirectory("domain-policy-io-retry").toFile()
+        try {
+            val jsonFile = File(dir, "domain_policies.json")
+            jsonFile.writeText("""[{"domain":"retry.example","isNsfw":true,"displayName":"Retry"}]""", Charsets.UTF_8)
+            val policyDao = InMemoryDomainPolicyDao()
+            var failRead = true
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            try {
+                val store = DomainPolicyStore(
+                    database = fakeAppDatabase(domainPolicyDao = policyDao),
+                    legacyJsonFile = jsonFile,
+                    transactionRunner = directTransactionRunner(),
+                    storeScope = scope,
+                    readFileText = { file ->
+                        if (failRead) throw IOException("transient read failure")
+                        file.readText(Charsets.UTF_8)
+                    }
+                )
+
+                val thrown = runCatching { store.awaitReady() }.exceptionOrNull()
+                assertTrue(thrown is IOException)
+                assertFalse(store.isNsfwDomain("retry.example"))
+
+                failRead = false
+                store.awaitReady()
+                assertTrue(store.isNsfwDomain("retry.example"))
+                assertEquals("Retry", store.getDisplayName("retry.example"))
+            } finally {
+                scope.coroutineContext[Job]?.cancelAndJoin()
+            }
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun nonNsfwMutationsDoNotPublishCacheWhenPersistenceFails() = runBlocking {
+        val policyDao = InMemoryDomainPolicyDao()
+        var failWrite = false
+        val runner = object : TransactionRunner {
+            override suspend fun <R> run(block: suspend () -> R): R {
+                val result = block()
+                if (failWrite) throw IllegalStateException("write failed")
+                return result
+            }
+        }
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        try {
+            val store = DomainPolicyStore(
+                database = fakeAppDatabase(domainPolicyDao = policyDao),
+                transactionRunner = runner,
+                storeScope = scope
+            )
+            store.awaitReady()
+
+            failWrite = true
+            store.registerDomain("reg-fail.example", isNsfw = false, displayName = "Reg Fail")
+            store.setDomainDisplayName("name-fail.example", "Unsaved Name")
+            store.syncDomains(listOf("sync-fail.example"))
+            scope.coroutineContext[Job]?.children?.toList()?.joinAll()
+
+            assertTrue(store.policies.value.isEmpty())
+            assertEquals("name-fail.example", store.getDisplayName("name-fail.example"))
+            assertEquals("", store.getDomainDisplayName("name-fail.example"))
         } finally {
             scope.coroutineContext[Job]?.cancelAndJoin()
         }

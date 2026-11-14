@@ -53,6 +53,7 @@ private val ACTIVE_QUEUE_STATUSES = setOf("QUEUED", "PROCESSING", "ERROR")
 internal interface ImportDomainPolicyAdapter {
     suspend fun awaitReady() = Unit
     fun isNsfwDomain(domain: String?): Boolean
+    suspend fun isNsfwDomainCommitted(domain: String?): Boolean = isNsfwDomain(domain)
     fun registerDomain(domain: String?, isNsfw: Boolean = false, displayName: String = "")
 
     companion object {
@@ -821,7 +822,7 @@ class ImportRepository internal constructor(
         persistMergedBookmarkInTransaction(
             item = item,
             bookmarkDao = bookmarkDao,
-            isNsfwDomain = domainPolicyAdapter::isNsfwDomain,
+            isNsfwDomain = domainPolicyAdapter::isNsfwDomainCommitted,
             validateRssWrite = { finalItem, feedId ->
                 rssAdapter.validateRssWrite(finalItem.url, finalItem.id, feedId, finalItem.isNsfw)
             }
@@ -839,7 +840,18 @@ class ImportRepository internal constructor(
             taskDao.rejectUnavailablePreparedRss(target.id)
             return
         }
-        domainPolicyAdapter.awaitReady()
+        try {
+            domainPolicyAdapter.awaitReady()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            runInDbOrLock(target.url) {
+                if (taskDao.getTaskById(target.id)?.status == "PROCESSING") {
+                    retainDirectSaveError(target, e)
+                }
+            }
+            return
+        }
         if (!target.articlePrepared && target.rssFeedId == null) {
             val alreadySaved = runInDbOrLock(target.url) {
                 val existing = bookmarkDao?.getBookmarkByUrl(target.url) ?: return@runInDbOrLock false
@@ -1031,6 +1043,9 @@ class ImportRepository internal constructor(
 
                     override fun isNsfwDomain(domain: String?): Boolean =
                         DomainPolicyStore.getInstance(appContext).isNsfwDomain(domain)
+
+                    override suspend fun isNsfwDomainCommitted(domain: String?): Boolean =
+                        DomainPolicyStore.getInstance(appContext).isNsfwDomainCommitted(domain)
 
                     override fun registerDomain(domain: String?, isNsfw: Boolean, displayName: String) {
                         DomainPolicyStore.getInstance(appContext).registerDomain(domain, isNsfw, displayName)

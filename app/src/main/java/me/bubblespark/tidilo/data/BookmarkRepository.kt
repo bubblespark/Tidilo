@@ -155,7 +155,7 @@ class BookmarkRepository internal constructor(
             persistMergedBookmarkInTransaction(
                 item = item,
                 bookmarkDao = bookmarkDao,
-                isNsfwDomain = { domainPolicyStore?.isNsfwDomain(it) == true },
+                isNsfwDomain = { domainPolicyStore?.isNsfwDomainCommitted(it) == true },
                 validateRssWrite = { finalItem, feedId ->
                     val feed = database.rssDao().feed(feedId)
                     val blocked = database.rssDao().rssWriteConflict(finalItem.url, finalItem.id)
@@ -562,11 +562,11 @@ class BookmarkRepository internal constructor(
  * row matched by URL or ID, validates RSS writes when applicable, and persists via
  * [BookmarkDao.insertReplacingUrl].
  */
-internal suspend inline fun persistMergedBookmarkInTransaction(
+internal suspend fun persistMergedBookmarkInTransaction(
     item: BookmarkItem,
     bookmarkDao: BookmarkDao?,
-    isNsfwDomain: (String?) -> Boolean,
-    validateRssWrite: (BookmarkItem, String) -> Unit
+    isNsfwDomain: suspend (String?) -> Boolean,
+    validateRssWrite: suspend (BookmarkItem, String) -> Unit
 ): BookmarkItem {
     val domain = DomainIconManager.extractDomain(item.url)
     val resolvedItem = if (!item.isNsfw && isNsfwDomain(domain)) {

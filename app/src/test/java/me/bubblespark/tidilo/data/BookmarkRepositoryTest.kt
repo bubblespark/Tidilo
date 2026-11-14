@@ -792,4 +792,49 @@ class BookmarkRepositoryTest {
             scope.coroutineContext[Job]?.cancelAndJoin()
         }
     }
+
+    @Test
+    fun addBookmarkReadsCommittedNsfwPolicyFromDbEvenWhenCacheIsStale() = runBlocking {
+        val bookmarkDao = InMemoryBookmarkDao()
+        val trashDao = InMemoryTrashDao()
+        val policyDao = InMemoryDomainPolicyDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val policyStore = DomainPolicyStore(
+                database = fakeAppDatabase(bookmarkDao = bookmarkDao, domainPolicyDao = policyDao),
+                transactionRunner = directTransactionRunner(),
+                storeScope = scope
+            )
+            policyStore.awaitReady()
+            // Simulate a policy committed to DB before the store's in-memory cache is published.
+            policyDao.rows["stale-cache.example"] = me.bubblespark.tidilo.data.db.DomainPolicyEntity(
+                domain = "stale-cache.example",
+                isNsfw = true,
+                displayName = ""
+            )
+            assertFalse(policyStore.isNsfwDomain("stale-cache.example"))
+
+            val repository = testRepository(
+                bookmarkDao = bookmarkDao,
+                trashDao = trashDao,
+                scope = scope,
+                transactionRunner = directTransactionRunner(),
+                domainPolicyStore = policyStore
+            )
+            repository.addBookmarkAndAwait(
+                BookmarkItem(
+                    id = "b-stale",
+                    title = "Stale Cache",
+                    url = "https://stale-cache.example/post",
+                    description = "",
+                    tag = defaultTag,
+                    isNsfw = false
+                )
+            )
+
+            assertTrue(bookmarkDao.rows.getValue("b-stale").isNsfw)
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
 }

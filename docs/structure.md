@@ -1,186 +1,107 @@
 # Directory Structure & Module Responsibilities
 
-Trash list/state ownership lives in `ui/screens/trash/`; live row projections and DAO queries live in `data/db/Trash*`, while initialization-aware trash observation and transactional trash mutations live in `data/BookmarkRepository`. There is no Trash Detail route or renderer. See [Trash](trash.md).
-
-Manual collection persistence lives in `data/db/Collection*` and `BookmarkCollectionCrossRef`; validation and transactional APIs live in `data/CollectionPolicy` and `CollectionRepository`. Collection cards, editor/membership sheets, their state holders, and sheet-scoped model ownership live in `ui/screens/library/`; palette tokens live in `ui/theme/CollectionColors`. See [Manual Collections](collections.md).
-
-This document defines the physical directory layout of the Tidilo codebase and outlines strict architectural responsibilities and component placement rules.
-
----
+This document defines the physical directory layout of the Tidilo codebase, package responsibilities, and component placement rules.
 
 ## 1. Directory Layout
 
 ```
-app/src/main/java/com/ykgudev/tidilo/
-├── MainActivity.kt                      # Main host Activity, Edge-to-Edge setup, bottom bar & scrim
+app/src/main/java/me/bubblespark/tidilo/
+├── MainActivity.kt                      # Main host Activity, Edge-to-Edge setup, TidiloBackground & scrim
 ├── ShareReceiverActivity.kt             # Transparent receiver for Android system share intents (ACTION_SEND)
-├── TidiloApplication.kt                # Application singleton instance provider
+├── TidiloApplication.kt                 # Application singleton instance provider
 │
-├── config/                              # Global runtime configuration and user preferences
-│   └── AppConfig.kt                     # Language (JA/EN), shared prefs
+├── config/                              # Global preferences, theme & AI mode settings
+│   ├── AiAnalysisMode.kt / AiAnalysisPreference.kt
+│   └── AppConfig.kt / AppTheme.kt
 │
-├── data/                                # Data layer & local storage
-│   ├── AiCoreUsageRepository.kt         # Durable local inference usage aggregates and SDK attempt tracking
-│   ├── CacheStorageRepository.kt        # Physical cache measurement via MediaCacheLayout and binary-unit formatting
-│   ├── CollectionCounts.kt              # Atomic active/trash count projection
-│   ├── BookmarkSource.kt                # Explicit ALL/MANUAL/RSS SQL query scope
-│   ├── cache/                           # Unified File-rooted media cache subsystem
-│   │   ├── MediaCacheStore.kt           # MediaCacheStore, MediaCacheLayout, and MediaCacheRevisionBus
-│   │   ├── OgImageStore.kt              # Bounded WebP OG preview store, codecs, and expiration/orphan cleanup
-│   │   ├── DomainIconStore.kt           # Domain/feed icon recovery, PNG transparency, negative markers, and site-name callbacks
-│   │   └── MediaColorPalette.kt         # Pure-Kotlin pixel dominant accent and DetailHeroPalette edge extraction
-│   ├── rss/                             # Feed acquisition, transactional ingestion, retention, preferences, scheduling
-│   ├── notifications/                   # OS channels, Ready-threshold policy, RSS result publishing, destination intents
-│   ├── BookmarkRepository.kt            # Bookmark CRUD, query recovery, detail persistence, Trash lifecycle (30-day, 100-cap)
-│   ├── DomainIconManager.kt             # Part A compatibility facade delegating icon operations to MediaCacheStore
-│   ├── DomainIconResolver.kt            # Prioritized HTML discovery and short-circuit icon selection
-│   ├── OgImageManager.kt                # Part A compatibility facade delegating OG image operations to MediaCacheStore
-│   ├── OgImageFetchCoordinator.kt       # Generalized CoalescedFetchCoordinator<T> and OG compatibility aliases
-│   ├── DomainPolicyManager.kt           # Compatibility facade delegating to DomainPolicyStore (in-memory fallback for pure JVM tests)
-│   ├── DomainPolicyStore.kt             # Room-backed per-domain Private policy & display-name store with atomic bookmark updates
-│   ├── ImportRepository.kt              # Direct URL import queue, duplicate resolution, and flat transactional bookmark persistence
-│   ├── EntityCandidateExtractor.kt      # Candidate key & 1-token suggestion extraction from title and description
-│   ├── EntityTagPolicy.kt               # Shared entity-tag normalization, deduplication, and bounds policy
-│   ├── Taxonomy.kt                      # 7 Top-Level Categories & 11 Subcategories definition and i18n
-│   └── TextSegmenter.kt                 # ICU/standard BreakIterator word token segmenter for entity matching
+├── data/                                # Data layer, repositories & local persistence
+│   ├── AiCoreAvailability.kt / AiCoreUsageRepository.kt
+│   ├── BookmarkRepository.kt            # Bookmark CRUD, query recovery, detail persistence, Trash lifecycle
+│   ├── BookmarkSource.kt / CollectionCounts.kt / CollectionPolicy.kt / CollectionRepository.kt
+│   ├── CacheStorageRepository.kt        # Physical cache measurement and binary-unit formatting
+│   ├── DomainIconManager.kt / DomainIconResolver.kt / OgImageManager.kt / OgImageFetchCoordinator.kt
+│   ├── DomainPolicyManager.kt / DomainPolicyStore.kt
+│   ├── ImportOutcome.kt / ImportRepository.kt / ImportTask.kt
+│   ├── EntityCandidateExtractor.kt / EntitySkeletonKey.kt / EntityTagPolicy.kt
+│   ├── Taxonomy.kt / TextSegmenter.kt
+│   ├── cache/                           # MediaCacheStore, OgImageStore, DomainIconStore, MediaColorPalette
+│   ├── db/                              # AppDatabase, DAOs (Bookmark/Collection/DomainPolicy/Import*/Rss*/Trash), Entities, BookmarkQueries, Migrations
+│   ├── debug/                           # CrashLogManager
+│   ├── maintenance/                     # RetentionPolicy, LibraryMaintenanceRepository, Scheduler, Worker
+│   ├── notifications/                   # NotificationCoordinator, NotificationErrorDetail, RssNotificationRunPolicy
+│   └── rss/                             # RssRepository, RssIngestionStore, RssFeedFetcher, RssFetchWorker, RssHttpClient, RssPolicy, RssPreferences, RssScheduler, RssTriggerTimePolicy
 │
-├── parser/                              # Web extraction and DOM analysis engine
-│   ├── WebPageData.kt                   # Data models: ParsedWebPage, WebMetaTag, JsonLdItem, ExtractedArticle
-│   ├── RssFeedParser.kt                 # RSS2/Atom/RDF XML and normalized publisher metadata
-│   └── WebPageParser.kt                 # Jsoup scraper, Readability4J integration, URL normalization
+├── parser/                              # HTML/RSS extraction & standard metadata classification
+│   ├── ArticleAcquirer.kt               # Default or request-scoped HTML acquisition
+│   ├── ArticlePreparation.kt            # Source-independent metadata & prompt snippet preparation
+│   ├── RssFeedParser.kt                 # RSS2/Atom/RDF XML parsing
+│   ├── StandardBookmarkClassifier.kt    # Schema.org JSON-LD / Open Graph taxonomy classification
+│   └── WebPageData.kt / WebPageParser.kt
 │
 ├── service/                             # Foundation model integration & AI pipelines
-│   └── GeminiTaggingService.kt          # AICore client, prompt synthesis, strict JSON parsing, fallback logic
+│   └── GeminiTaggingService.kt          # AICore client, prompt synthesis, JSON parsing, metadata fallback
 │
 └── ui/                                  # Presentation layer (100% Jetpack Compose)
-    ├── components/                      # Shared reusable UI elements
-    │   ├── HeaderDefaults.kt            # Shared font-aware header geometry and body clearance
-    │   ├── TidiloFrostedHeader.kt        # Independent slot-based toolbar and secondary-page header
-    │   ├── TidiloScreenScaffold.kt       # Body/header/overlay layers and optional scroll-linked header visibility
-    │   ├── CacheVisualSource.kt         # Root-level visual cache interface, SingletonCacheVisualAdapter, and LocalCacheVisualSource
-    │   ├── DomainWatermark.kt           # Shared 195dp, 50% saturation, 0.14 alpha domain icon watermark
-    │   └── DomainIconState.kt           # Generation-scoped icon & accent color producer (DomainIconVisual, rememberDomainVisual)
+    ├── components/                      # Shared scaffolds, surfaces, headers, chips, watermarks, blur & image state
+    │   ├── TidiloScreenScaffold.kt / TidiloFrostedHeader.kt / FrostedHeaderContainer.kt / HeaderDefaults.kt
+    │   ├── TidiloSurface.kt / TidiloBackground.kt / ScreenBackdrop.kt / AmbientLighting.kt
+    │   ├── TidiloChip.kt / TidiloIconButton.kt / TidiloAlertDialog.kt / TidiloDropdownMenu.kt / TidiloModalBottomSheet.kt
+    │   ├── ChromeBlurBackground.kt / OverlayBlurBackground.kt / OverlayBlurHost.kt / OverlayLayerRegistry.kt / NativeOverlayModifier.kt / ScreenInsets.kt
+    │   └── CacheVisualSource.kt / DomainWatermark.kt / DomainIconState.kt / FeedIconState.kt / OgImageState.kt
     │
-    ├── icons/                           # Custom SVG / Vector icon assets and definitions
+    ├── navigation/                      # Root navigation graph & Library rail shell
+    │   ├── BarsState.kt / LibraryNavigationRail.kt / LibrarySearchAction.kt / Screen.kt / TidiloNavGraph.kt
     │
-    ├── navigation/                      # Navigation and root shell components
-    │   ├── BarsState.kt                 # CompositionLocal for scroll-based bar visibility (LocalBarsVisible)
-    │   ├── Screen.kt                    # Sealed route classes, titles, icons, deep-link templates
-    │   ├── LibraryNavigationRail.kt   # Library-only modal rail with a fixed header and scrolling utilities
-    │   ├── LibrarySearchAction.kt     # Fixed compact Search action
-    │   └── TidiloNavGraph.kt           # NavHost graph, screen declarations, spring transition animations
+    ├── screens/                         # Feature screens and ViewModels
+    │   ├── debug/                       # DebugPromptTester.kt, WebParserTestSection.kt
+    │   ├── importscreen/                # ImportUrlDialog.kt, ImportViewModel.kt
+    │   ├── library/                     # LibraryScreen, LibraryViewModel, SearchScreen, BookmarkDetailScreen, BookmarkAiReviewScreen, BookmarkCard, BookmarkGridCard, BookmarkItem, BookmarkTagEditDialog, EntityTagPickerBottomSheet, CollectionCard, CollectionEditorBottomSheet, CollectionMembershipBottomSheet, DomainCard, RssFeedCard, TagSelectionScreen, PagingFeedback
+    │   ├── notifications/               # NotificationListItem.kt, NotificationScreen.kt
+    │   ├── settings/                    # SettingsScreen, AiAnalysisScreen, PrivateSettingsScreen, RssSettingsScreen, StorageScreen, GenerateContentRequestScreen, SettingsDebugScreen, SettingsComponents, ThemeBlurSetting
+    │   └── trash/                       # TrashScreen.kt, TrashUiState.kt, TrashViewModel.kt
     │
-    ├── screens/                         # Feature screens and screen-scoped ViewModels
-    │   ├── debug/                       # Developer inspection tools (used by SettingsDebugScreen)
-    │   │   ├── DebugPromptTester.kt     # Interactive prompt builder and test runner
-    │   │   └── WebParserTestSection.kt  # URL input & DOM/OGP inspection workbench
-    │   │
-    │   ├── library/                     # Primary bookmark collection & search features
-    │   │   ├── BookmarkCard.kt          # BookmarkItemCard, CompactTagBadge, keyword highlighting, skeletons
-    │   │   ├── BookmarkDetailScreen.kt  # Bookmark inspection, browser launch, inline notes editing
-    │   │   ├── BookmarkItem.kt          # BookmarkItem & Tag immutable data models
-    │   │   ├── LibraryScreen.kt         # Infinite vertical feed of saved bookmarks, animated header, rail entry and fixed Search action
-    │   │   ├── LibraryViewModel.kt      # Bookmark filtering, tokenized AND search logic, history tracking
-    │   │   ├── SearchScreen.kt          # Secondary search page: Back header, history and live results
-    │   │   └── TagSelectionScreen.kt    # Mutual AND multi-tag selection dialog matrix
-    │   │
-    │   ├── importscreen/                # Direct-ingestion presentation adapter and URL entry
-    │   │   ├── ImportUrlDialog.kt       # Validated, saveable manual URL draft
-    │   │   └── ImportViewModel.kt       # Import, history and notification action state
-    │   │
-    │   ├── notifications/               # Combined local history and actionable errors
-    │   │   ├── NotificationListItem.kt  # Stable row projection and date formatting
-    │   │   └── NotificationScreen.kt    # Back/Clear header and per-error action menus
-    │   │
-    │   └── settings/                    # User preferences & LLM inference parameters
-    │       ├── AiAnalysisScreen.kt                # Inline AI model, automation, fallback, and parameter settings
-    │       ├── PrivateSettingsScreen.kt           # Private Content visibility, bookmarking, and domain policy settings
-    │       ├── SettingsComponents.kt              # Grouped cards and accessible settings rows
-    │       ├── GenerateContentRequestScreen.kt    # Fine-grained tuning for Gemini Nano inference
-    │       ├── GenerateContentRequestViewModel.kt # State management for inference parameters
-    │       ├── SettingsDebugScreen.kt             # Diagnostics: AICore prompt API tests & Web Parser workbench
-    │       ├── StorageScreen.kt                   # Storage dashboard, bookmark metrics, cache bar, and clearance
-    │       ├── StorageViewModel.kt                # Collection counts, physical cache scanning, and cache clearing
-    │       ├── RssSettingsScreen.kt               # Subscription editor, daily time and Wi-Fi-only controls
-    │       ├── RssSettingsViewModel.kt            # Feed/settings state and lifecycle network observation
-    │       └── SettingsScreen.kt                  # Grouped General, Data Management, and Debug navigation
+    ├── theme/                           # M3 Expressive tokens, surface roles, shapes & blur policy
+    │   ├── AppThemeStyle.kt / CollectionColors.kt / Color.kt / ModernColors.kt / OverlayBlurPolicy.kt
+    │   └── Shape.kt / Theme.kt / ThemeModifiers.kt / ThemeShapeScale.kt / ThemeSurfaces.kt / ThemeTextDepth.kt / Type.kt
     │
-    └── theme/                           # Design tokens & Material 3 theme styling
-        ├── Color.kt                     # M3 light/dark palette, primary/secondary/container colors
-        ├── Shape.kt                     # Expressive rounding (8dp, 12dp, 20dp, 28dp, 36dp)
-        ├── Theme.kt                     # Dynamic color (Pixel/Material You) provider and fallback
-        └── Type.kt                      # Expressive typography scale
+    └── util/                            # TimeFormatter.kt
 ```
-
----
 
 ## 2. Package Responsibilities
 
 ### `me.bubblespark.tidilo.config`
-- Manages application-wide settings that affect multiple independent layers (e.g., UI language, whether developer debug tabs are exposed).
-- Backed by Android `SharedPreferences`.
+- Manages application-wide settings (`AppConfig`, `AppTheme`, `AiAnalysisMode`, `AiAnalysisPreference`) backed by `SharedPreferences`.
 
 ### `me.bubblespark.tidilo.data`
-- Single source of truth for all business entities (`BookmarkItem`, `QueueItem`).
-- Owns persistent storage operations, in-memory caching via `StateFlow`, concurrency synchronization (`Mutex`), and schema migrations.
-- `AiProcessingWorker.kt` owns the persistent sequential import worker, retained wake-up signals, and session resource lifecycle; `ImportRepository` supplies Room task selection, inference, and error recovery.
-- `TextSegmenter.kt` and `EntityCandidateExtractor.kt` extract candidate skeleton keys via ICU `BreakIterator` sliding windows for non-AI import matching, and provide 1-token interactive word suggestions for manual entity tag entry in the Bookmark Detail screen.
+- Owns persistent domain state (`BookmarkItem`, `ImportTask`, collections, feeds, trash), reactive flows, synchronization, and Room schema migrations.
+- `BookmarkRepository` owns active library queries, detail persistence, and Trash lifecycle; live row projections and DAO queries live in `data/db/Trash*`. See [Trash](trash.md).
+- `ImportRepository` owns direct URL import, duplicate resolution, and Room-backed task persistence/error recovery.
+- `CollectionPolicy` and `CollectionRepository` (with `data/db/Collection*` & `BookmarkCollectionCrossRef`) own manual collection validation and transactions. See [Manual Collections](collections.md).
+- `rss/` handles feed fetching (`RssFeedFetcher`, `RssFetchWorker`), transactional staging/completion receipts (`RssIngestionStore`), and bounded acquisition/retention (`RssRepository`). See [RSS](rss.md).
+- `maintenance/` (`RetentionPolicy`, `LibraryMaintenanceRepository`, `LibraryMaintenanceScheduler`, `LibraryMaintenanceWorker`) schedules and executes network-independent daily RSS expiration and orphan file cleanup via `MediaCacheStore` / `MediaCacheLayout`. See [Daily Library Maintenance](library_maintenance.md).
+- `cache/` (`MediaCacheStore`, `OgImageStore`, `DomainIconStore`, `MediaColorPalette`) owns unified file-rooted media caching, color extraction, and domain/feed artwork surfaced through `OgImageManager` / `DomainIconManager`.
+- `TextSegmenter.kt` and `EntityCandidateExtractor.kt` extract candidate skeleton keys and 1-token word suggestions.
 - **Rule**: Repositories must never reference Compose APIs or Android Activities.
 
 ### `me.bubblespark.tidilo.parser`
-- Handles HTTP/HTTPS web fetching, URL normalization, redirect following, and DOM extraction.
-- Completely isolated from UI and AI inference logic. Pure I/O and text processing.
+- Pure I/O and text processing isolated from UI and AI inference: `ArticleAcquirer` (HTML acquisition), `ArticlePreparation` (source-independent metadata prep), `StandardBookmarkClassifier` (Schema.org/OG classification), `WebPageParser`, and `RssFeedParser`.
 
 ### `me.bubblespark.tidilo.service`
-- Encapsulates interaction with the Google ML Kit GenAI Prompt API and AICore.
-- Converts parsed web documents into prompt strings, issues requests to Gemini Nano, parses raw output into structured JSON, and performs graceful fallback.
+- Encapsulates ML Kit GenAI Prompt API / AICore calls in `GeminiTaggingService` (prompt construction, JSON extraction/validation, metadata fallback).
 
 ### `me.bubblespark.tidilo.ui`
-- Responsible for all user-facing pixels and input handling.
-- Divided into:
-  - `navigation/`: Root navigation graph, Library header state, modal rail and fixed Search action.
-  - `screens/`: Feature modules. Each feature folder contains its Composable screens, screen-specific widgets, and associated `ViewModel`.
-  - `theme/`: Styling tokens ensuring consistent Material 3 Expressive aesthetics.
-
----
+- Responsible for all user-facing UI and interaction:
+  - `components/` & `navigation/`: Shared scaffolds (`TidiloScreenScaffold`), headers (`TidiloFrostedHeader`), surfaces (`TidiloSurface`, `TidiloChip`, `TidiloIconButton`), backdrop blur layers, feed/domain artwork observers (`FeedIconState`, `DomainIconState`), `TidiloNavGraph`, modal navigation rail, and Search action.
+  - `screens/`: Feature modules (`library/` owns bookmark/domain/collection/RSS views, `RssFeedGroup` + `RssDao` feed presentation via `LibraryViewModel` and `RssFeedCard` ➔ `LibraryDeckCard` in `DomainCard.kt`, detail/AI review, and collection sheets; `trash/` owns the Trash list with no Trash Detail route; `importscreen/`, `notifications/`, `settings/`, `debug/`).
+  - `theme/`: `ThemeSurfaces`, `ThemeShapeScale`, `AppThemeStyle`, and `Theme` coordinate Material and extended surface tokens (`BookmarkCardStyle.kt` holds only scoped accent input). Component catalogue checks live in Android test sources; see [UI design](ui_design.md#73-resolved-theme-and-shared-surface-contract) and [Developing app themes](theme_development.md).
 
 ## 3. Component Creation Rules
 
 1. **Adding a New Screen**:
-   - Create a subpackage under `ui/screens/<feature_name>/`.
-   - Define a new entry in `ui/navigation/Screen.kt` with its route, title, and icons.
-   - Register the route in `ui/navigation/TidiloNavGraph.kt`.
-   - Never inject `NavController` directly deep into sub-composables; expose lambda callbacks (e.g., `onNavigateBack`, `onNavigateToDetail`).
-
+   - Create a subpackage under `ui/screens/<feature_name>/`, define its route in `ui/navigation/Screen.kt`, and register it in `ui/navigation/TidiloNavGraph.kt`.
+   - Expose lambda callbacks (e.g., `onNavigateBack`) instead of passing `NavController` into child composables.
 2. **Adding a New Repository or Data Source**:
-   - Place in `data/`.
-   - Expose immutable `StateFlow<List<T>>` for reactive data streams.
-   - Run serialization and disk writes in background coroutines (`Dispatchers.IO`).
-   - Implement thread-safe singleton pattern using double-checked locking (`@Volatile INSTANCE`).
-
+   - Place in `data/`, expose immutable `StateFlow` / `Flow` streams, run I/O on `Dispatchers.IO`, and use double-checked locking (`@Volatile INSTANCE`) for singletons.
 3. **Adding a New UI Component / Widget**:
-   - If screen-specific, place in the corresponding `ui/screens/<feature>/` file.
-   - If reusable across multiple screens (e.g., cards, chips, dialogs), place in a shared file or `ui/screens/library/BookmarkCard.kt`.
-   - Annotate composables with `@Composable` and accept a standard `modifier: Modifier = Modifier` parameter.
-
-## Shared article acquisition
-
-`parser/ArticleAcquirer.kt` owns HTML acquisition through default or request-scoped transport; `parser/ArticlePreparation.kt` defines source-independent metadata preparation. RSS XML parsing remains in `RssFeedParser`; `RssIngestionStore` owns transactional staging/completion/receipts and feed-failure disabling. `RssRepository` coordinates bounded acquisition, durable retry, and optional image enrichment. Foreground AI remains owned by `ImportRepository`.
-
-## RSS Library presentation
-
-`data/db/RssFeedGroup.kt` defines the feed/count SQL projection, and `RssDao` observes visible saved groups. `LibraryViewModel` owns feed selection, ordering, and feed-scoped Paging/count queries. `ui/screens/library/RssFeedCard.kt` supplies feed content to the shared `LibraryDeckCard` in DomainCard.kt. `ui/components/FeedIconState.kt` observes on-demand feed/publisher artwork and dominant colors; `DomainIconStore` (surfaced through `DomainIconManager` in Part A) owns storage, processing, fallback, and cache generation. RSS and Domain drill-downs share LibraryScreen's bookmark layouts and ambient background.
-
-
-## Shared theme surface responsibilities
-
-`ui/theme/ThemeSurfaces.kt` resolves semantic roles and existing drawing defaults; `ThemeShapeScale.kt` supplies the named shape scale and Material shape mapping. `AppThemeStyle.kt` stores presets and overrides, while `Theme.kt` supplies both Material and extended values from the selected theme.
-
-`ui/components/TidiloSurface.kt` owns shared background/edge/shadow rendering and Material coordination. `TidiloChip.kt` integrates display badge semantics; `TidiloIconButton.kt` preserves native icon/toggle input behavior while sharing optional plate decoration. Existing feature components retain their content, layout and data/state ownership. `BookmarkCardStyle.kt` now contains only the scoped accent input, not a parallel rendering system.
-
-The component catalogue and rendering/lifecycle checks live in Android test sources. There is no production catalogue screen or future backdrop-blur infrastructure. See [UI design](ui_design.md#83-resolved-theme-and-shared-surface-contract) for the coverage contract and native Material inheritance limits.
-For instructions on adding or tuning a preset, see [Developing app themes](theme_development.md).
-
-## Daily library maintenance
-
-`data/maintenance/RetentionPolicy.kt` defines the RSS and OG cache age predicates. `LibraryMaintenanceRepository.kt` owns bounded Room expiration and reference-safe file cleanup through `MediaCacheStore` and `MediaCacheLayout`. `LibraryMaintenanceScheduler.kt` and `LibraryMaintenanceWorker.kt` schedule one network-independent daily maintenance cycle. Startup and the existing time-change receiver reconcile it separately from RSS acquisition. See [Daily Library Maintenance](library_maintenance.md).
+   - Place screen-specific widgets under `ui/screens/<feature>/` and cross-screen reusable components under `ui/components/`.
+   - Annotate with `@Composable` and accept `modifier: Modifier = Modifier`.

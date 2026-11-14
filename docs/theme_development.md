@@ -1,6 +1,6 @@
 # Developing app themes
 
-Use this guide to add a selectable preset, tune an existing preset, or connect a component to the theme. See [UI design](ui_design.md#83-resolved-theme-and-shared-surface-contract) for the visual contract and component coverage.
+Use this guide to add a selectable preset, tune an existing preset, or connect a component to the theme. See [UI design](ui_design.md#73-resolved-theme-and-shared-surface-contract) for the visual contract and component coverage.
 
 ## Choose the editing point
 
@@ -27,7 +27,7 @@ The saved selection flows from `AppConfig` to `TidiloTheme`. The provider select
 
 ## Tune an existing preset
 
-Start with an affected component and identify its role, variant, state, and rendering path. Section 8.4 of [UI design](ui_design.md#84-component-coverage-and-supported-parameters) maps the component families to their roles. Search for the role at the call site and trace which fields it consumes before changing a preset.
+Start with an affected component and identify its role, variant, state, and rendering path. Section 7.4 of [UI design](ui_design.md#74-component-coverage-and-supported-parameters) maps the component families to their roles. Search for the role at the call site and trace which fields it consumes before changing a preset.
 
 | Preset setting | What it controls |
 | --- | --- |

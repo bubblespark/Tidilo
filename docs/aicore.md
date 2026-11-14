@@ -1,23 +1,19 @@
 # AICore & Gemini Nano Architecture and Prompt Design Specification
 
-This document details the optional on-device AI integration (AI Analysis can be disabled; see below), prompt engineering architecture, generation configuration parameters, and output parsing pipeline for Tidilo.
-
----
+This document details optional on-device AI integration (AI Analysis can be disabled), prompt engineering architecture, generation configuration parameters, and output parsing for Tidilo.
 
 ## 1. Overview & On-Device AI Architecture
 
 ### Manual analysis
 
-Manual URL entry, sharing, and RSS acquisition save directly. After saving, the Detail screen opens the existing AI review for the selected bookmark. Generation uses on-device Gemini Nano. Applying a proposal updates the bookmark, and closing review preserves the stored record. Model availability checks do not run inference.
+Manual URL entry, sharing, and RSS acquisition save directly without blocking on AI ([direct import & metadata preparation](bookmark_classification.md)). From Bookmark Detail, the user can trigger on-demand AI review (`BookmarkAiReviewScreen`) independently from the saved URL; applying a proposal updates the bookmark, while closing review preserves the stored record. Model availability checks do not run inference.
 
 ### Key Technical Attributes
 - **Library Coordinate**: `com.google.mlkit:genai-prompt:1.0.0-beta2`
 - **Underlying Engine**: Google AICore System Service powering **Gemini Nano**.
 - **Execution Target**: Dedicated hardware NPU (e.g., Google Tensor G3 / G4 on Pixel 8 / 9 / 10 / 11 devices).
 - **Execution Thread**: `Dispatchers.IO` for all model preparation, IPC dispatch, and post-processing.
-- **Resource Lifecycle**: Every `GenerativeModel` instance created via `Generation.getClient()` must be explicitly released using `model.close()` inside a `finally` block to release system binder tokens and GPU/NPU memory.
-
-The manual review owns its generation lifecycle and closes the model when finished.
+- **Resource Lifecycle**: Every `GenerativeModel` instance created via `Generation.getClient()` must be explicitly released via `model.close()` inside a `finally` block (including manual review) to free binder tokens and GPU/NPU memory.
 
 ## 2. Device Readiness & Status Checking
 
@@ -39,9 +35,7 @@ try {
 ```
 
 ### Background Model Download
-The ML Kit GenAI SDK provides `model.download()`, which returns a `Flow<DownloadStatus>` emitting download progress and completion states when `status == FeatureStatus.DOWNLOADABLE`. In Tidilo, model delivery and updates are managed by the Android AICore system service without exposing an in-app download flow; the application detects availability via `checkStatus()` and guides users to system settings if the model is not ready.
-
----
+Although ML Kit exposes `model.download()` returning `Flow<DownloadStatus>` when `status == FeatureStatus.DOWNLOADABLE`, Tidilo relies on the Android AICore system service for model delivery and guides users to system settings when not ready.
 
 ## 3. Web Content Preprocessing Pipeline
 
@@ -54,14 +48,9 @@ To fit within the limited context window of on-device LLMs and minimize inferenc
 2. **Metadata Description**:
    - `og:description` or `<meta name="description">`.
 3. **Body Text Normalization**:
-   - Keep the original Readability extraction for debug comparison. After metadata and icon extraction, remove elements whose class or ID contains a case-insensitive, whitespace/hyphen/underscore-delimited `ad`, `ads`, `advert`, `advertisement`, `advertising`, or `adsbygoogle` token, plus common `af_box` class/ID widgets. Preserve `html`, `body`, `main`, and `article` roots.
-   - This common filter has no site-specific rules. Substring matches such as `download` and `af_boxed` remain untouched; product names, prices, and purchase links alone do not trigger removal. Reuse Readability when no blocks were removed; otherwise extract again from the filtered DOM, falling back only to filtered Jsoup text. An empty filtered result never falls back to the original ads.
-   - Extracted using Readability4J (main article content cleaner) with fallback to Jsoup body text.
-   - Cleaned of excessive whitespace and line breaks (`replace("\n", " ")`).
-   - **Context Window Ceiling**: Hard truncated to the first **800 characters** (`bodySnippet.take(800)`).
-The debug web parser's Body Text panel offers Readability4J, Jsoup Clean, and Prompt modes. Readability4J shows the original extraction; Prompt displays and copies only the full ad-filtered body before the 800-character limit, without instructions or metadata. Both the preview and ArticlePreparation consume ParsedWebPage.promptBodyText; production applies its existing truncation and newline replacement afterward. HTTP error bodies remain inspectable without preparing an inference request. The preview reflects the current parse, not a previously queued snippet; existing prepared tasks and saved tags are not rewritten by the filter.
-
----
+   - **Ad-Block DOM Filter**: After metadata and icon extraction, remove elements whose class or ID contains a case-insensitive, whitespace/hyphen/underscore-delimited `ad`, `ads`, `advert`, `advertisement`, `advertising`, or `adsbygoogle` token, plus `af_box` class/ID widgets, while preserving `html`, `body`, `main`, and `article` roots. Substring matches (e.g., `download`, `af_boxed`), product names, prices, and purchase links remain untouched.
+   - **Extraction & Normalization**: Reuse Readability when no blocks were removed; otherwise re-extract from the filtered DOM, falling back only to filtered Jsoup text (never original ads). Clean newlines (`replace("\n", " ")`) and hard-truncate to the first **800 characters** (`bodySnippet.take(800)`).
+   - **Prompt Preview Contract**: Both `ArticlePreparation` and the Debug Web Parser Prompt mode consume `ParsedWebPage.promptBodyText` (full ad-filtered body before 800-char truncation/newline normalization). Filtering updates neither staged snippets nor saved tags, and HTTP error bodies remain inspectable without preparing inference. See [Debug Web Parser UI](ui_settings.md#4-debug-web-parser).
 
 ## 4. Prompt Engineering Architecture
 
@@ -126,23 +115,14 @@ Description: <description>
 Content: <bodySnippet (up to 800 chars)>
 ```
 
----
-
 ## 5. Summary Rules Design (JA vs. EN)
 
-The summary instruction is conditioned on `AppConfig.currentLanguage`:
+The summary instruction adapts to `AppConfig.currentLanguage`, focusing strictly on what the page introduces, explains, or provides (no dictionary definitions, sales talk, or subjective opinions):
 
-### Japanese (`AppLanguage.JAPANESE`)
-- **Length**: One or two concise sentences (**approximately 50-100 characters**).
-- **Core Directive**: Focus on what this web page **introduces, explains, or provides**, NOT the dictionary definition of the subject.
-- **Tone**: Strictly objective facts; no promotional sales talk or subjective opinions.
-
-### English (`AppLanguage.ENGLISH`)
-- **Length**: One or two concise sentences (**under 200 characters**, approx. 15–40 words).
-- **Core Directive**: Focus on what this web page **introduces, explains, or provides**, NOT the dictionary definition of the subject.
-- **Tone**: Strictly objective facts; no marketing hype.
-
----
+| Language | Length Guidance |
+| :--- | :--- |
+| **Japanese (`AppLanguage.JAPANESE`)** | 1–2 concise sentences (~50–100 characters). |
+| **English (`AppLanguage.ENGLISH`)** | 1–2 concise sentences (< 200 characters, ~15–40 words). |
 
 ## 6. Model Parameters & Hyperparameter Configuration
 
@@ -157,79 +137,48 @@ val response = model.generateContent(request)
 
 ### Parameter Reference & Production Settings
 
-| Parameter | Production Value | Debug Configurable | Purpose & Rationale |
+| Parameter | Production Value | Debug Configurable (`GenerateContentRequestViewModel`) | Purpose & Rationale |
 | :--- | :--- | :--- | :--- |
-| **`maxOutputTokens`** | `256` | Yes (1–2048) | Default token budget for the summary and structured tags; configurable independently of summary length guidance. |
-| **`temperature`** | *Default (0.0)* | Yes (0.0–2.0) | Defaults to greedy deterministic decoding (0.0) to strictly enforce JSON formatting and taxonomy adherence without hallucination. |
-| **`topK`** | *Default (40)* | Yes (1–100) | Restricts candidate tokens to top probable cluster. |
-| **`candidateCount`** | `1` | Yes (1–4) | Single candidate generation minimizes memory pressure and execution time on mobile NPUs. |
-| **`seed`** | *Unset* | Yes (Long) | Optional seed for reproducibility during debugging and diagnostic testing. |
-| **`cachedContextName`**| *Unset* | Yes (String) | Context caching identifier for reuse across consecutive requests if enabled by system. |
+| **`maxOutputTokens`** | `256` | Yes (`Int`, default `4096`, disabled, numeric) | Production sets `256` for the summary and structured tags; debug screen overrides without UI range clamping. |
+| **`temperature`** | *Unset (SDK default)* | Yes (`Float`, default `0.0`, enabled, slider `0.0..1.0`, `0.1` step) | Greedy deterministic decoding (`0.0` default in debug) enforces JSON formatting and taxonomy adherence. |
+| **`topK`** | *Unset (SDK default)* | Yes (`Int`, default `3`, disabled, numeric) | Restricts candidate tokens when enabled in debug diagnostics. |
+| **`candidateCount`** | *Unset (SDK default)* | Yes (`Int`, default `1`, enabled, numeric) | Single candidate minimizes memory pressure and execution time on mobile NPUs. |
+| **`seed`** | *Unset* | Yes (`Int`, default `0`, disabled, numeric) | Optional seed for reproducible debug diagnostic testing. |
+| **`cachedContextName`** | *Unset* | Yes (`String`, default `""`, disabled) | Context caching identifier when provided in debug diagnostics. |
 
----
+`GenerateContentRequestViewModel` also persists `enableThinking` (`Boolean`, default `false`, disabled), which `DebugPromptTester` does not currently forward to `generateContentRequest`. Production tagging (`GeminiTaggingService.runNanoInference`) sets only `maxOutputTokens = 256`.
 
 ## 7. Output Parsing & Error Resilience Pipeline
 
-On-device SLMs (Small Language Models) can occasionally produce conversational preambles (e.g., `Here is the JSON:`) or wrap output in markdown code fences. `GeminiTaggingService` employs multi-layered sanitization:
+On-device SLMs can occasionally emit conversational preambles or markdown fences. `GeminiTaggingService` applies four defensive stages:
 
-```
-[Raw AI Output String]
-          │
-          ▼
-[extractJsonSubstring] ──> Extracts between first '{' and last '}'
-          │
-          ▼
-[JSONObject Parsing]   ──> Extracts "summary", "category", "subcategory", "entities"
-          │
-          ├─► validateCategory(): Strict match against 7 Category enum IDs (fallback: Article)
-          │
-          ├─► validateSubcategory(): Strict match against 11 Subcategory enum IDs (fallback: Tech)
-          │
-          └─► isCleanEntity(): Filters prohibited temporal terms, noise, and deduplicates (min 2, max 5)
-          │
-          ▼ (On any JSON or runtime error)
-[Full Metadata Fallback] ──> og:description, og:site_name, default taxonomy keys
-```
-
-### Prohibited Entity Guard
-`isCleanEntity()` verifies keywords against noise tokens:
-- **Forbidden Years**: `"2024"`, `"2025"`, `"2026"`, `"2027"`.
-- **Forbidden Noise Terms**: `"latest"`, `"最新"`, `"最強"`, `"まとめ"`, `"入門"`, `"おすすめ"`, `"guide"`.
-
----
+1. **`extractJsonSubstring`**: Extracts between the first `'{'` and last `'}'`.
+2. **`JSONObject` Parsing**: Extracts `"summary"`, `"category"`, `"subcategory"`, and `"entities"`.
+3. **Taxonomy & Entity Guards**: `validateCategory()` (fallback: `Article`), `validateSubcategory()` (fallback: `Tech`), and `isCleanEntity()` (deduplicated; forbids years `"2024"`–`"2027"` and noise terms `"latest"`, `"最新"`, `"最強"`, `"まとめ"`, `"入門"`, `"おすすめ"`, `"guide"`).
+4. **Full Metadata Fallback**: On any JSON or runtime error, falls back to `og:description`, `og:site_name`, and default taxonomy keys.
 
 ## 8. Error Handling & Rate Limiting
 
-Manual review displays generation failures in the review UI. Acquisition and persistence failures remain in the direct import queue for retry.
+Manual review displays generation failures in the review UI. Acquisition and persistence failures remain in the direct import task list for retry.
 
 ## 9. Diagnostic & Test Tooling
 
-Developers and QA can test and inspect AICore behavior using:
-- **`DebugPromptTester.kt`**: Low-level status checker (`checkStatus()`) and single-shot raw prompt tester with custom hyperparameter overrides.
-- **Settings ➔ Debug ➔ ML Kit GenAI Prompt API Test**: Live UI in `SettingsDebugScreen.kt` to test latency, status codes, and model responses on physical Pixel devices.
+- **`DebugPromptTester.kt`**: Low-level status checker (`checkStatus()`) and raw single-shot prompt tester with custom hyperparameter overrides.
+- **Settings ➔ Debug ➔ ML Kit GenAI Prompt API Test**: Live UI in `SettingsDebugScreen.kt` to verify latency, status codes, and model output on physical Pixel devices.
 
 ### Release SDK initialization and shrinking
 
-ML Kit discovers `CommonComponentRegistrar` from manifest metadata and instantiates it through its public no-argument constructor. Keep that constructor in `app/proguard-rules.pro`; keeping the class name alone is insufficient with the current release toolchain. Keep R8 minification and resource shrinking enabled.
+ML Kit discovers `CommonComponentRegistrar` from manifest metadata and instantiates it via its public no-argument constructor. Keep that constructor explicitly in `app/proguard-rules.pro` (keeping the class name alone is stripped by R8, causing `NoSuchMethodException` and a message-less `NullPointerException` in `Generation.getClient()`), while keeping R8 minification and resource shrinking enabled.
 
-Issue #113 was reproduced before inference: the minified APK removed this constructor, component discovery logged `NoSuchMethodException`, and `SharedPrefManager` was never registered. `Generation.getClient()` then threw a message-less `NullPointerException` inside SDK logger initialization. This affected both imports and the diagnostic status/test paths. The generic UI error text alone does not identify the failing stage.
-
-After building the release APK, check its actual manifest and DEX rather than only checking source rules:
+Verify the actual release manifest and DEX after shrinking:
 
 ```sh
 ./gradlew assembleRelease
 python tools/verify_mlkit_release.py
 ```
 
-The verifier requires Android SDK Command-Line Tools (`apkanalyzer`) and uses `ANDROID_HOME` or `ANDROID_SDK_ROOT`. Override paths with `--apkanalyzer` and `--apk` if necessary. It checks that every registrar declared by the ML Kit discovery service retains its public no-argument constructor. It does not run inference or establish device/model readiness.
+`verify_mlkit_release.py` requires Android SDK Command-Line Tools (`apkanalyzer` via `ANDROID_HOME` or `ANDROID_SDK_ROOT`; override via `--apkanalyzer` / `--apk`). It confirms every declared ML Kit registrar keeps its public no-arg constructor, but does not validate device/model readiness; confirm `Check Status`, `Run Test`, and detail-screen AI Review on a supported physical Pixel device using the signed release APK.
 
-For #113, the verifier failed on the original minified APK and passed after the targeted keep rule. A separate local instrumentation probe also changed from a client-construction `NullPointerException` to successful construction and closure without invoking AICore. Confirm `Check Status`, `Run Test`, and AI Review from a saved bookmark’s Detail screen on a supported physical device using the signed release build; emulator initialization checks do not validate inference.
+## 10. Local Inference Usage Accounting
 
-
-## Local Inference Usage Accounting
-
-The production `GeminiTaggingService.runNanoInference` and debug `DebugPromptTester` SDK calls are wrapped by `AiCoreUsageRepository`. Counting occurs at the SDK attempt boundary, including retries; setup, parsing, and persistence are excluded. Results and cancellation retain their original behavior even if statistics cannot be saved. AiCoreUsageRepository tracks daily outcomes and the first quota-27 detection benchmark per start date, without suggesting a fixed quota or midnight reset. See [Application Summary](application_summary.md) for the complete contract.
-
-## Direct import preparation
-
-Manual and RSS acquisition share article preparation and standard metadata classification. Inference input for manual review is prepared independently from the selected bookmark URL.
+`GeminiTaggingService.runNanoInference` and `DebugPromptTester` SDK calls are wrapped by `AiCoreUsageRepository` at the SDK attempt boundary (including retries; setup, parsing, and persistence excluded). Results and cancellation retain original behavior if stats persistence fails. `AiCoreUsageRepository` tracks daily outcomes and the first quota-27 benchmark per start date. See [Application Summary](application_summary.md).

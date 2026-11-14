@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class OgImageFetchCoordinatorTest {
     @Test
     fun tenRequestsShareFourPermits() = runBlocking {
-        val coordinator = OgImageFetchCoordinator<Int>()
+        val coordinator = CoalescedFetchCoordinator<Int>()
         val entered = Channel<Unit>(Channel.UNLIMITED)
         val release = Channel<Unit>(Channel.UNLIMITED)
         val active = AtomicInteger()
@@ -32,7 +32,7 @@ class OgImageFetchCoordinatorTest {
 
     @Test
     fun oneCancelledWaiterDoesNotCancelSharedSuccess() = runBlocking {
-        val coordinator = OgImageFetchCoordinator<Int>()
+        val coordinator = CoalescedFetchCoordinator<Int>()
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val calls = AtomicInteger()
@@ -49,7 +49,7 @@ class OgImageFetchCoordinatorTest {
 
     @Test
     fun lastCancellationStopsWorkAndAllowsImmediateRetry() = runBlocking {
-        val coordinator = OgImageFetchCoordinator<Int>()
+        val coordinator = CoalescedFetchCoordinator<Int>()
         val entered = CompletableDeferred<Unit>()
         val stopped = CompletableDeferred<Unit>()
         val first = async { coordinator.fetch("same", 0) {
@@ -64,7 +64,7 @@ class OgImageFetchCoordinatorTest {
 
     @Test
     fun cancelledQueuedRequestNeverRunsOrPoisonsRetries() = runBlocking {
-        val coordinator = OgImageFetchCoordinator<Int>()
+        val coordinator = CoalescedFetchCoordinator<Int>()
         val entered = Channel<Unit>(Channel.UNLIMITED)
         val release = CompletableDeferred<Unit>()
         val busy = (0 until 4).map { async { coordinator.fetch("busy$it", 0) {
@@ -83,12 +83,12 @@ class OgImageFetchCoordinatorTest {
     @Test
     fun transientFailuresExpireAndPermanentFailuresResetOnClear() = runBlocking {
         var now = 0L
-        val coordinator = OgImageFetchCoordinator<Int>(nowMillis = { now })
+        val coordinator = CoalescedFetchCoordinator<Int>(nowMillis = { now })
         assertNull(coordinator.fetch("temporary", 0) { throw IOException("Offline") })
         assertNull(coordinator.fetch("temporary", 0) { error("Backoff bypassed") })
         now = 60_000
         assertEquals(5, coordinator.fetch("temporary", 0) { 5 })
-        assertNull(coordinator.fetch("invalid", 0) { throw PermanentOgImageFailure() })
+        assertNull(coordinator.fetch("invalid", 0) { throw PermanentFetchFailure() })
         now = 120_000
         assertNull(coordinator.fetch("invalid", 0) { error("Permanent failure retried") })
         coordinator.clear()
@@ -97,12 +97,12 @@ class OgImageFetchCoordinatorTest {
 
     @Test
     fun clearingCancelsOldWorkAndRejectsItsFailure() = runBlocking {
-        val coordinator = OgImageFetchCoordinator<Int>()
+        val coordinator = CoalescedFetchCoordinator<Int>()
         val entered = CompletableDeferred<Unit>()
         val old = async { coordinator.fetch("same", 0) {
             entered.complete(Unit)
             withContext(NonCancellable) { delay(20) }
-            throw PermanentOgImageFailure()
+            throw PermanentFetchFailure()
         } }
         entered.await()
         coordinator.clear()
@@ -113,7 +113,7 @@ class OgImageFetchCoordinatorTest {
 
     @Test
     fun callerCancellationStillPropagatesWhenCacheIsCleared() = runBlocking {
-        val coordinator = OgImageFetchCoordinator<Int>()
+        val coordinator = CoalescedFetchCoordinator<Int>()
         val entered = CompletableDeferred<Unit>()
         val caller = async { coordinator.fetch("same", 0) {
             entered.complete(Unit)
@@ -128,5 +128,14 @@ class OgImageFetchCoordinatorTest {
         } catch (_: CancellationException) {
             assertTrue(caller.isCancelled)
         }
+    }
+
+    @Test
+    fun compatibilityAliasesResolveToCoalescedFetchCoordinator() = runBlocking {
+        val coordinator = OgImageFetchCoordinator<Int>()
+        assertNull(coordinator.fetch("alias-permanent", 0) { throw PermanentOgImageFailure() })
+        assertNull(coordinator.fetch("alias-permanent", 0) { 1 })
+        coordinator.clear()
+        assertEquals(3, coordinator.fetch("alias-permanent", 1) { 3 })
     }
 }

@@ -14,12 +14,16 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
-internal class PermanentOgImageFailure : IOException()
+internal class PermanentFetchFailure : IOException()
 
-internal class OgImageFetchCoordinator<T : Any>(
-    private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000 }
+internal typealias PermanentOgImageFailure = PermanentFetchFailure
+
+internal typealias OgImageFetchCoordinator<T> = CoalescedFetchCoordinator<T>
+
+internal class CoalescedFetchCoordinator<T : Any>(
+    private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000 },
+    val generation: AtomicLong = AtomicLong(0)
 ) {
-    val generation = AtomicLong(0)
     private val lock = Any()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val downloadSemaphore = Semaphore(4)
@@ -50,7 +54,7 @@ internal class OgImageFetchCoordinator<T : Any>(
                             // Last-caller cancellation uses this same lock; check after acquiring it.
                             workContext.ensureActive()
                             if (generation.get() == startGeneration) {
-                                if (failure is PermanentOgImageFailure) failedImageKeys.add(key)
+                                if (failure is PermanentFetchFailure) failedImageKeys.add(key)
                                 else retryAfter[key] = nowMillis() + 60_000
                             }
                         }

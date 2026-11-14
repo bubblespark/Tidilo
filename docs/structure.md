@@ -21,14 +21,21 @@ app/src/main/java/com/ykgudev/tidilo/
 │
 ├── data/                                # Data layer & local storage
 │   ├── AiCoreUsageRepository.kt         # Durable local inference usage aggregates and SDK attempt tracking
-│   ├── CacheStorageRepository.kt        # Physical cache measurement and binary-unit formatting
+│   ├── CacheStorageRepository.kt        # Physical cache measurement via MediaCacheLayout and binary-unit formatting
 │   ├── CollectionCounts.kt              # Atomic active/trash count projection
 │   ├── BookmarkSource.kt                # Explicit ALL/MANUAL/RSS SQL query scope
+│   ├── cache/                           # Unified File-rooted media cache subsystem
+│   │   ├── MediaCacheStore.kt           # MediaCacheStore, MediaCacheLayout, and MediaCacheRevisionBus
+│   │   ├── OgImageStore.kt              # Bounded WebP OG preview store, codecs, and expiration/orphan cleanup
+│   │   ├── DomainIconStore.kt           # Domain/feed icon recovery, PNG transparency, negative markers, and site-name callbacks
+│   │   └── MediaColorPalette.kt         # Pure-Kotlin pixel dominant accent and DetailHeroPalette edge extraction
 │   ├── rss/                             # Feed acquisition, transactional ingestion, retention, preferences, scheduling
 │   ├── notifications/                   # OS channels, Ready-threshold policy, RSS result publishing, destination intents
 │   ├── BookmarkRepository.kt            # Bookmark CRUD, query recovery, detail persistence, Trash lifecycle (30-day, 100-cap)
-│   ├── DomainIconManager.kt             # Shared on-demand domain icon recovery, caching, color, and transparency
+│   ├── DomainIconManager.kt             # Part A compatibility facade delegating icon operations to MediaCacheStore
 │   ├── DomainIconResolver.kt            # Prioritized HTML discovery and short-circuit icon selection
+│   ├── OgImageManager.kt                # Part A compatibility facade delegating OG image operations to MediaCacheStore
+│   ├── OgImageFetchCoordinator.kt       # Generalized CoalescedFetchCoordinator<T> and OG compatibility aliases
 │   ├── DomainPolicyManager.kt           # Compatibility facade delegating to DomainPolicyStore (in-memory fallback for pure JVM tests)
 │   ├── DomainPolicyStore.kt             # Room-backed per-domain NSFW policy & display-name store with atomic bookmark updates
 │   ├── ImportRepository.kt              # Direct URL import queue, duplicate resolution, and flat transactional bookmark persistence
@@ -160,7 +167,7 @@ app/src/main/java/com/ykgudev/tidilo/
 
 ## RSS Library presentation
 
-`data/db/RssFeedGroup.kt` defines the feed/count SQL projection, and `RssDao` observes visible saved groups. `LibraryViewModel` owns feed selection, ordering, and feed-scoped Paging/count queries. `ui/screens/library/RssFeedCard.kt` supplies feed content to the shared `LibraryDeckCard` in DomainCard.kt. `ui/components/FeedIconState.kt` observes on-demand feed/publisher artwork and dominant colors; DomainIconManager owns storage, processing, fallback, and cache generation. RSS and Domain drill-downs share LibraryScreen's bookmark layouts and ambient background.
+`data/db/RssFeedGroup.kt` defines the feed/count SQL projection, and `RssDao` observes visible saved groups. `LibraryViewModel` owns feed selection, ordering, and feed-scoped Paging/count queries. `ui/screens/library/RssFeedCard.kt` supplies feed content to the shared `LibraryDeckCard` in DomainCard.kt. `ui/components/FeedIconState.kt` observes on-demand feed/publisher artwork and dominant colors; `DomainIconStore` (surfaced through `DomainIconManager` in Part A) owns storage, processing, fallback, and cache generation. RSS and Domain drill-downs share LibraryScreen's bookmark layouts and ambient background.
 
 
 ## Shared theme surface responsibilities
@@ -174,4 +181,4 @@ For instructions on adding or tuning a preset, see [Developing app themes](theme
 
 ## Daily library maintenance
 
-`data/maintenance/RetentionPolicy.kt` defines the RSS and OG cache age predicates. `LibraryMaintenanceRepository.kt` owns bounded Room expiration and reference-safe file cleanup through OgImageManager. `LibraryMaintenanceScheduler.kt` and `LibraryMaintenanceWorker.kt` schedule one network-independent daily maintenance cycle. Startup and the existing time-change receiver reconcile it separately from RSS acquisition. See [Daily Library Maintenance](library_maintenance.md).
+`data/maintenance/RetentionPolicy.kt` defines the RSS and OG cache age predicates. `LibraryMaintenanceRepository.kt` owns bounded Room expiration and reference-safe file cleanup through `MediaCacheStore` and `MediaCacheLayout`. `LibraryMaintenanceScheduler.kt` and `LibraryMaintenanceWorker.kt` schedule one network-independent daily maintenance cycle. Startup and the existing time-change receiver reconcile it separately from RSS acquisition. See [Daily Library Maintenance](library_maintenance.md).

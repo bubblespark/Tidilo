@@ -4,901 +4,193 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.annotation.VisibleForTesting
-import androidx.compose.runtime.Immutable
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.collection.LruCache
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
+import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.onSubscription
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.net.URI
-import java.security.MessageDigest
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
-import java.net.HttpURLConnection
-import java.net.URL
-import java.io.IOException
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import me.bubblespark.tidilo.data.cache.AndroidOgImageCodec
+import me.bubblespark.tidilo.data.cache.CompressedOgImage
+import me.bubblespark.tidilo.data.cache.MediaCacheLayout
+import me.bubblespark.tidilo.data.cache.MediaCacheRevisionBus
+import me.bubblespark.tidilo.data.cache.MediaCacheStore
+import me.bubblespark.tidilo.data.cache.MediaColorPalette
+import me.bubblespark.tidilo.data.cache.OgImageStore
+import me.bubblespark.tidilo.parser.ArticleNetwork
+import java.io.File
 
 /**
- * Manager for downloading, downsampling, compressing, and caching og:image assets in cacheDir.
- *
- * - Downloads og:image during import and on-demand when a grid card needs it.
- * - Extracts a URL-distinct SHA-256 hash identity (preserving query parameters, removing fragments).
- * - Downsamples safely using BitmapFactory.Options.inSampleSize to avoid OOM errors.
- * - Constrains maximum dimension to 640px while preserving original aspect ratio.
- * - Encodes as WebP lossy, ensuring the final byte array is under 50KB.
- * - Stores disposable image files under context.cacheDir/og_images.
- * - Supports generation token-based in-app cache clearing without affecting bookmark data.
+ * Compatibility facade delegating OG image caching, palette extraction, and invalidation
+ * to [MediaCacheStore] while preserving Part A UI / instrumentation signatures.
  */
 object OgImageManager {
-    const val MAX_PENDING_FALLBACK_KEYS = 128
-    const val RECONCILE_ALL_KEY = "__reconcile_all__"
+    const val MAX_PENDING_FALLBACK_KEYS = MediaCacheRevisionBus.MAX_PENDING_FALLBACK_KEYS
+    const val RECONCILE_ALL_KEY = MediaCacheRevisionBus.RECONCILE_ALL_KEY
 
-    private const val MAX_CACHE_SIZE_BYTES = 16 * 1024 * 1024 // 16MB limit
+    const val MAX_IMAGE_DIMENSION = OgImageStore.MAX_IMAGE_DIMENSION
+    const val MAX_FILE_SIZE_BYTES = OgImageStore.MAX_FILE_SIZE_BYTES
+    const val DEFAULT_QUALITY = OgImageStore.DEFAULT_QUALITY
 
-    private val memoryCache = object : LruCache<String, ImageBitmap>(MAX_CACHE_SIZE_BYTES) {
-        override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
-    }
+    typealias CompressedImageResult = CompressedOgImage
 
-    private val ogDominantColorCache = LruCache<String, Color>(128)
-    private val ogHeroPaletteCache = LruCache<String, DetailHeroPalette>(128)
-    private val dominantColorLock = Any()
-    private class ColorSampling(val identity: String, var invalidated: Boolean = false)
-    private val activeColorSampling = mutableSetOf<ColorSampling>()
+    val cacheGenerationState: StateFlow<Long>
+        get() = MediaCacheStore.shared.revisionBus.cacheGenerationState
 
-    /** Resolves the displayed image's accent, returning null if invalidated while sampling. */
-    internal suspend fun getDominantColor(domain: String, imageKey: String?, bitmap: ImageBitmap): Color? {
-        val androidBitmap = bitmap.asAndroidBitmap()
-        val source = if (imageKey.isNullOrBlank()) fallbackCacheKey(domain) else cacheKey(domain, imageKey)
-        return resolveDominantColor("$source|${androidBitmap.generationId}") {
-            DomainIconManager.extractDominantColor(androidBitmap, domain)
-        }
-    }
+    val ogImageUpdatedDomain: SharedFlow<Pair<String, Long>>
+        get() = MediaCacheStore.shared.revisionBus.ogImageUpdatedDomain
 
-    /** Resolves the displayed image's top/bottom edge colors and dominant accent, returning null if invalidated while sampling. */
+    val cacheClearedEvent: SharedFlow<Long>
+        get() = MediaCacheStore.shared.revisionBus.cacheClearedEvent
+
+    @VisibleForTesting
+    internal var imageDownloader: (suspend (String) -> ByteArray?)? = null
+
+    internal suspend fun getDominantColor(domain: String, imageKey: String?, bitmap: ImageBitmap): Color? =
+        MediaCacheStore.shared.ogImages.getDominantColor(domain, imageKey, bitmap)
+
     internal suspend fun getDetailHeroPalette(
         domain: String,
         imageKey: String?,
         bitmap: ImageBitmap
-    ): DetailHeroPalette? {
-        val androidBitmap = bitmap.asAndroidBitmap()
-        val source = if (imageKey.isNullOrBlank()) fallbackCacheKey(domain) else cacheKey(domain, imageKey)
-        return resolveHeroPalette("$source|${androidBitmap.generationId}") {
-            extractDetailHeroPalette(androidBitmap, domain)
-        }
-    }
+    ): DetailHeroPalette? =
+        MediaCacheStore.shared.ogImages.getDetailHeroPalette(domain, imageKey, bitmap)
 
     internal suspend fun resolveHeroPalette(
         identity: String,
         extract: suspend () -> DetailHeroPalette
     ): DetailHeroPalette? =
-        resolveSampledValue(identity, ogHeroPaletteCache, extract) { id, palette ->
-            ogHeroPaletteCache.put(id, palette)
-            ogDominantColorCache.put(id, palette.accentColor)
-        }
+        MediaCacheStore.shared.ogImages.resolveHeroPalette(identity, extract)
 
     internal suspend fun resolveDominantColor(identity: String, extract: suspend () -> Color): Color? =
-        resolveSampledValue(identity, ogDominantColorCache, extract) { id, color ->
-            ogDominantColorCache.put(id, color)
-        }
+        MediaCacheStore.shared.ogImages.resolveDominantColor(identity, extract)
 
-    private suspend fun <T : Any> resolveSampledValue(
-        identity: String,
-        cache: LruCache<String, T>,
-        extract: suspend () -> T,
-        store: (String, T) -> Unit
-    ): T? = withContext(Dispatchers.Default) {
-        val sampling = synchronized(dominantColorLock) {
-            cache.get(identity)?.let { return@withContext it }
-            ColorSampling(identity).also { activeColorSampling.add(it) }
-        }
-        try {
-            val value = extract()
-            val workContext = currentCoroutineContext()
-            synchronized(dominantColorLock) {
-                workContext.ensureActive()
-                if (sampling.invalidated) null else value.also { store(identity, it) }
-            }
-        } finally {
-            synchronized(dominantColorLock) { activeColorSampling.remove(sampling) }
-        }
-    }
+    internal fun invalidateDominantColors(source: String? = null) =
+        MediaCacheStore.shared.ogImages.invalidateDominantColors(source)
 
-    /** Also invalidates in-flight sampling, so clearing cannot repopulate stale entries. */
-    internal fun invalidateDominantColors(source: String? = null) = synchronized(dominantColorLock) {
-        activeColorSampling.filter { source == null || it.identity.substringBeforeLast('|') == source }
-            .forEach { it.invalidated = true }
-        if (source == null) {
-            ogDominantColorCache.evictAll()
-            ogHeroPaletteCache.evictAll()
-        } else {
-            fun <T : Any> LruCache<String, T>.removeBySource(targetSource: String) {
-                snapshot().keys.filter { it.substringBeforeLast('|') == targetSource }.forEach { remove(it) }
-            }
-            ogDominantColorCache.removeBySource(source)
-            ogHeroPaletteCache.removeBySource(source)
-        }
-    }
+    internal suspend fun evictExpiredImage(
+        context: Context,
+        filename: String,
+        expectedModifiedAt: Long,
+        domains: Set<String>
+    ): Boolean =
+        MediaCacheStore.getInstance(context).ogImages.evictExpiredImage(filename, expectedModifiedAt, domains)
 
-    private val downloads = OgImageFetchCoordinator<ImageBitmap>()
-    private val cacheGeneration = downloads.generation
-    private val _cacheGenerationState = MutableStateFlow(0L)
-    val cacheGenerationState: StateFlow<Long> = _cacheGenerationState.asStateFlow()
-    private val _exactImageUpdates = MutableSharedFlow<String>(extraBufferCapacity = 64)
-    private val emissionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val pendingFallbackKeys = ConcurrentHashMap.newKeySet<String>()
-    private val isDrainingFallback = AtomicBoolean(false)
+    internal suspend fun deleteUnreferencedImage(
+        context: Context,
+        domain: String,
+        imageKey: String,
+        removeLatest: Boolean
+    ) = MediaCacheStore.getInstance(context).ogImages.deleteUnreferencedImage(domain, imageKey, removeLatest)
 
-    @VisibleForTesting
-    internal var imageDownloader: (suspend (String) -> ByteArray?)? = null
-    private val cacheMutex = Mutex()
-    private val imageEpochs = ConcurrentHashMap<String, AtomicLong>()
+    internal suspend fun deleteUnreferencedImage(
+        context: Context,
+        domains: Set<String>,
+        imageKey: String,
+        removeLatestDomains: Set<String>
+    ) = MediaCacheStore.getInstance(context).ogImages.deleteUnreferencedImage(
+        domains,
+        imageKey,
+        removeLatestDomains
+    )
 
-    internal suspend fun evictExpiredImage(context: Context, filename: String,
-        expectedModifiedAt: Long, domains: Set<String>): Boolean = withContext(Dispatchers.IO) {
-        cacheMutex.withLock {
-            val file = File(getOgImageDir(context), filename)
-            if (file.parentFile != getOgImageDir(context) ||
-                !java.nio.file.Files.isRegularFile(file.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS) ||
-                file.lastModified() != expectedModifiedAt) return@withLock false
-            val fallback = filename.startsWith("latest_")
-            val affectedDomains = if (fallback) domains + filename.removePrefix("latest_").removeSuffix(".webp") else domains
-            if (!fallback) imageEpochs.computeIfAbsent(filename) { AtomicLong(0) }.incrementAndGet()
-            if (!file.delete()) throw IOException("Could not remove expired OG image")
-            if (fallback) {
-                for (domain in affectedDomains) {
-                    memoryCache.remove(fallbackCacheKey(domain))
-                    invalidateDominantColors(fallbackCacheKey(domain))
-                    notifyOgImageUpdated(domain)
-                }
-            } else {
-                memoryCache.snapshot().keys.filter { it.endsWith("/$filename") }.forEach {
-                    memoryCache.remove(it)
-                    invalidateDominantColors(it)
-                }
-                // An orphan may still be present in memory even without a current database domain.
-                for (domain in affectedDomains.ifEmpty { setOf("") }) notifyExactImageUpdated(domain, filename)
-            }
-            true
-        }
-    }
+    fun getDomainRevision(domain: String): Long =
+        MediaCacheStore.shared.revisionBus.getOgDomainRevision(domain)
 
-    /** Called after a transactional reference check; invalidate only this deleted image's work. */
-    internal suspend fun deleteUnreferencedImage(context: Context, domain: String, imageKey: String, removeLatest: Boolean) =
-        deleteUnreferencedImage(context, setOf(domain), imageKey, if (removeLatest) setOf(domain) else emptySet())
+    fun notifyOgImageUpdated(domain: String) =
+        MediaCacheStore.shared.revisionBus.notifyOgImageUpdated(domain)
 
-    /** Remove all matching domain copies before the exact file, preserving retry comparisons. */
-    internal suspend fun deleteUnreferencedImage(context: Context, domains: Set<String>, imageKey: String,
-        removeLatestDomains: Set<String>) = withContext(Dispatchers.IO) {
-        cacheMutex.withLock {
-            imageEpochs.computeIfAbsent(imageKey) { AtomicLong(0) }.incrementAndGet()
-            val exact = getOgImageFile(context, imageKey)
-            for (domain in removeLatestDomains) {
-                val latest = getDomainLatestImageFile(context, domain)
-                val matchesLatest = exact.isFile && latest.isFile &&
-                    exact.length() == latest.length() && exact.readBytes().contentEquals(latest.readBytes())
-                if (matchesLatest) {
-                    if (!latest.delete()) throw IOException("Could not remove RSS image copy")
-                    invalidateDominantColors(fallbackCacheKey(domain))
-                    memoryCache.remove(fallbackCacheKey(domain))
-                    notifyOgImageUpdated(domain)
-                }
-            }
-            if (exact.exists() && !exact.delete()) throw IOException("Could not remove RSS image")
-            memoryCache.snapshot().keys.filter { it.endsWith("/$imageKey") }.forEach {
-                memoryCache.remove(it)
-                invalidateDominantColors(it)
-            }
-            for (domain in domains) {
-                invalidateDominantColors(cacheKey(domain, imageKey))
-                notifyExactImageUpdated(domain, imageKey)
-            }
-        }
-    }
-
-    private val domainRevisions = ConcurrentHashMap<String, AtomicLong>()
-
-    private val _ogImageUpdatedDomain = MutableSharedFlow<Pair<String, Long>>(extraBufferCapacity = 64)
-    val ogImageUpdatedDomain: SharedFlow<Pair<String, Long>> = _ogImageUpdatedDomain.asSharedFlow()
-
-    private val _cacheClearedEvent = MutableSharedFlow<Long>(extraBufferCapacity = 1)
-    val cacheClearedEvent: SharedFlow<Long> = _cacheClearedEvent.asSharedFlow()
-
-    /**
-     * Returns the composite monotonic revision for a given domain, combining its individual updates
-     * and the global cache clearing generation.
-     */
-    fun getDomainRevision(domain: String): Long {
-        val normalized = domain.trim().lowercase()
-        val rev = domainRevisions[normalized]?.get() ?: 0L
-        return rev + (cacheGeneration.get() * 1_000_000_000L)
-    }
-
-    /**
-     * Emits a notification that a specific domain's OG image has been saved or updated.
-     */
-    fun notifyOgImageUpdated(domain: String) {
-        val normalized = domain.trim().lowercase()
-        val rev = domainRevisions.computeIfAbsent(normalized) { AtomicLong(0L) }.incrementAndGet()
-        val currentRev = rev + (cacheGeneration.get() * 1_000_000_000L)
-        _ogImageUpdatedDomain.tryEmit(Pair(normalized, currentRev))
-    }
-
-    /** Exact-image notifications update observers without invalidating sibling card requests. */
     fun observeExactImageUpdates(imageKey: String): Flow<String> =
-        _exactImageUpdates.filter { it == imageKey || it == RECONCILE_ALL_KEY }
-
-    private fun notifyExactImageUpdated(domain: String, imageKey: String) {
-        if (!_exactImageUpdates.tryEmit(imageKey)) {
-            if (pendingFallbackKeys.size >= MAX_PENDING_FALLBACK_KEYS) {
-                // Bounded backlog overflow: coalesce all pending/future keys into a global reconciliation signal
-                pendingFallbackKeys.clear()
-                pendingFallbackKeys.add(RECONCILE_ALL_KEY)
-            } else if (!pendingFallbackKeys.contains(RECONCILE_ALL_KEY)) {
-                pendingFallbackKeys.add(imageKey)
-            }
-            drainPendingFallbackKeys()
-        }
-        notifyOgImageUpdated(domain)
-    }
-
-    private fun drainPendingFallbackKeys() {
-        if (isDrainingFallback.compareAndSet(false, true)) {
-            emissionScope.launch {
-                try {
-                    while (pendingFallbackKeys.isNotEmpty()) {
-                        val iterator = pendingFallbackKeys.iterator()
-                        if (iterator.hasNext()) {
-                            val key = iterator.next()
-                            iterator.remove()
-                            _exactImageUpdates.emit(key)
-                        }
-                    }
-                } finally {
-                    isDrainingFallback.set(false)
-                    if (pendingFallbackKeys.isNotEmpty()) {
-                        drainPendingFallbackKeys()
-                    }
-                }
-            }
-        }
-    }
+        MediaCacheStore.shared.revisionBus.observeExactImageUpdates(imageKey)
 
     @VisibleForTesting
-    internal fun notifyExactImageUpdatedForTesting(domain: String, imageKey: String) {
-        notifyExactImageUpdated(domain, imageKey)
-    }
+    internal fun notifyExactImageUpdatedForTesting(domain: String, imageKey: String) =
+        MediaCacheStore.shared.revisionBus.notifyExactImageUpdated(domain, imageKey)
 
-    /**
-     * Returns a Flow that emits a distinct Long revision whenever the given domain's OG image is updated
-     * or the full cache is cleared. Immediately emits the current revision upon collection start or resume.
-     */
-    fun observeOgImageUpdates(domain: String?): Flow<Long> {
-        if (domain.isNullOrBlank()) return emptyFlow()
-        val normalized = domain.trim().lowercase()
-        return merge(
-            ogImageUpdatedDomain
-                .onSubscription { emit(normalized to getDomainRevision(normalized)) }
-                .filter { it.first == normalized }
-                .map { it.second },
-            cacheClearedEvent
-                .onSubscription { emit(getDomainRevision(normalized)) }
-                .map { getDomainRevision(normalized) }
-        ).distinctUntilChanged()
-    }
+    fun observeOgImageUpdates(domain: String?): Flow<Long> =
+        MediaCacheStore.shared.revisionBus.observeOgImageUpdates(domain)
 
-    private val inFlightLoads = ConcurrentHashMap<String, Deferred<ImageBitmap?>>()
+    fun getCurrentGeneration(): Long =
+        MediaCacheStore.shared.revisionBus.getCurrentGeneration()
 
-    /**
-     * Returns the current cache generation token.
-     */
-    fun getCurrentGeneration(): Long = cacheGeneration.get()
+    fun cacheKey(domain: String, imageKey: String): String =
+        MediaCacheLayout.ogCacheKey(domain, imageKey)
 
-    /**
-     * Constructs a composite memory cache key for a domain and specific image key.
-     */
-    fun cacheKey(domain: String, imageKey: String): String = "$domain/$imageKey"
+    fun fallbackCacheKey(domain: String): String =
+        MediaCacheLayout.ogFallbackCacheKey(domain)
 
-    /**
-     * Constructs a fallback memory cache key for a domain's latest image.
-     */
-    fun fallbackCacheKey(domain: String): String = "$domain/__latest__"
+    fun getCachedOgImageBitmap(domain: String, imageKey: String? = null): ImageBitmap? =
+        MediaCacheStore.shared.ogImages.getCachedOgImageBitmap(domain, imageKey)
 
-    /**
-     * Retrieves a cached ImageBitmap from in-memory LruCache.
-     * Looks up by (domain, imageKey) if imageKey is provided; otherwise checks domain fallback key.
-     */
-    fun getCachedOgImageBitmap(domain: String, imageKey: String? = null): ImageBitmap? {
-        if (!imageKey.isNullOrBlank()) {
-            return memoryCache.get(cacheKey(domain, imageKey))
-        }
-        return memoryCache.get(fallbackCacheKey(domain))
-    }
+    fun getOgImageDir(context: Context): File =
+        MediaCacheStore.getInstance(context).layout.ogImagesDir()
 
-    /**
-     * Directory inside cacheDir storing OG images.
-     */
-    fun getOgImageDir(context: Context): File {
-        val dir = File(context.cacheDir, "og_images")
-        if (!dir.exists()) dir.mkdirs()
-        return dir
-    }
+    fun getOgImageFile(context: Context, imageKey: String): File =
+        MediaCacheStore.getInstance(context).layout.ogImageFile(imageKey)
 
-    /**
-     * Resolves the local cache file for a specific image key.
-     */
-    fun getOgImageFile(context: Context, imageKey: String): File {
-        return File(getOgImageDir(context), imageKey)
-    }
+    fun getDomainLatestImageFile(context: Context, domain: String): File =
+        MediaCacheStore.getInstance(context).layout.domainLatestOgImageFile(domain)
 
-    /**
-     * Resolves the local cache file for a domain's latest fallback image.
-     */
-    fun getDomainLatestImageFile(context: Context, domain: String): File {
-        val safeDomain = domain.replace(Regex("[^a-zA-Z0-9.-]"), "_")
-        return File(getOgImageDir(context), "latest_$safeDomain.webp")
-    }
-
-    /**
-     * Loads a cached OG image from cacheDir on Dispatchers.IO.
-     *
-     * 1. If imageKey is provided, looks up specific image (domain, imageKey).
-     * 2. Only when imageKey is not provided, looks up the latest image for the domain.
-     * 3. Stores the decoded ImageBitmap into in-memory LruCache.
-     */
     suspend fun loadOgImage(
         context: Context,
         domain: String,
         imageKey: String? = null
-    ): ImageBitmap? = withContext(Dispatchers.IO) {
-        val isSpecific = !imageKey.isNullOrBlank()
-        val key = if (!imageKey.isNullOrBlank()) cacheKey(domain, imageKey) else fallbackCacheKey(domain)
-
-        // 1. Check memory cache first
-        if (isSpecific) {
-            memoryCache.get(key)?.let { return@withContext it }
-        } else {
-            memoryCache.get(fallbackCacheKey(domain))?.let { return@withContext it }
-        }
-
-        // 2. Request deduplication
-        val startGen = cacheGeneration.get()
-        val flightKey = "$startGen|$key"
-        val deferred = inFlightLoads.computeIfAbsent(flightKey) {
-            CoroutineScope(Dispatchers.IO + SupervisorJob()).async(start = CoroutineStart.LAZY) {
-                loadOgImageInternal(context, domain, imageKey, isSpecific, startGen)
-            }
-        }
-        deferred.invokeOnCompletion { inFlightLoads.remove(flightKey, deferred) }
-        deferred.await()
-    }
-
-    private suspend fun loadOgImageInternal(
-        context: Context,
-        domain: String,
-        imageKey: String?,
-        isSpecific: Boolean,
-        startGen: Long
-    ): ImageBitmap? {
-        val epoch = imageKey?.let { imageEpochs.computeIfAbsent(it) { AtomicLong(0) } }
-        val startEpoch = epoch?.get()
-        val domainRevision = getDomainRevision(domain)
-        val file = if (isSpecific) {
-            getOgImageFile(context, requireNotNull(imageKey))
-        } else {
-            getDomainLatestImageFile(context, domain)
-        }
-
-        if (!file.exists() || file.length() == 0L) return null
-
-        return try {
-            val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
-            val imageBitmap = bitmap.asImageBitmap()
-            val isTargetExact = isSpecific && file.name == imageKey
-            cacheMutex.withLock {
-                currentCoroutineContext().ensureActive()
-                if (cacheGeneration.get() != startGen || epoch?.get() != startEpoch ||
-                    (!isSpecific && getDomainRevision(domain) != domainRevision)) return@withLock null
-                if (isTargetExact) {
-                    memoryCache.put(cacheKey(domain, imageKey), imageBitmap)
-                }
-                if (!isSpecific) {
-                    memoryCache.put(fallbackCacheKey(domain), imageBitmap)
-                }
-                imageBitmap
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            null
-        }
-    }
+    ): ImageBitmap? =
+        MediaCacheStore.getInstance(context).ogImages.loadOgImage(domain, imageKey)
 
     @VisibleForTesting
-    fun clearMemoryCache() {
-        memoryCache.evictAll()
-        invalidateDominantColors()
-    }
+    fun clearMemoryCache() =
+        MediaCacheStore.shared.ogImages.clearMemoryCache()
 
-    /**
-     * Clears all cached OG image files on disk, invalidates in-memory bitmaps,
-     * and increments generation token to discard in-flight downloads.
-     */
-    suspend fun clearImageCache(context: Context) = withContext(Dispatchers.IO) {
-        cacheMutex.withLock {
-            downloads.clear()
-            memoryCache.evictAll()
-            invalidateDominantColors()
-            val dir = File(context.cacheDir, "og_images")
-            if (dir.exists()) {
-                dir.deleteRecursively()
-            }
-            domainRevisions.clear()
-            pendingFallbackKeys.clear()
-            _cacheGenerationState.value = cacheGeneration.get()
-            _cacheClearedEvent.tryEmit(cacheGeneration.get())
-        }
-    }
+    suspend fun clearImageCache(context: Context) =
+        MediaCacheStore.getInstance(context).ogImages.clearImageCache()
 
-    const val MAX_IMAGE_DIMENSION = 640
-    const val MAX_FILE_SIZE_BYTES = 50 * 1024 // 50KB
-    const val DEFAULT_QUALITY = 75
-    private const val TIMEOUT_MS = 10_000
-    private const val MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024 // 10MB max download safeguard
-    private const val USER_AGENT =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    fun extractDomain(url: String): String? =
+        MediaCacheLayout.extractDomain(url)
 
-    data class CompressedImageResult(
-        val bytes: ByteArray,
-        val width: Int,
-        val height: Int,
-        val mimeType: String = "image/webp"
-    ) {
-        override fun equals(other: Any?): Boolean {
-            if (this === other) return true
-            if (javaClass != other?.javaClass) return false
-            other as CompressedImageResult
-            if (!bytes.contentEquals(other.bytes)) return false
-            if (width != other.width) return false
-            if (height != other.height) return false
-            if (mimeType != other.mimeType) return false
-            return true
-        }
+    fun resolveImageUrl(pageUrl: String, imageUrl: String): String =
+        MediaCacheLayout.resolveImageUrl(pageUrl, imageUrl)
 
-        override fun hashCode(): Int {
-            var result = bytes.contentHashCode()
-            result = 31 * result + width
-            result = 31 * result + height
-            result = 31 * result + mimeType.hashCode()
-            return result
-        }
-    }
+    fun computeImageKey(resolvedImageUrl: String): String =
+        MediaCacheLayout.computeImageKey(resolvedImageUrl)
 
-    /**
-     * Extracts normalized domain from a URL (lowercase, strips 'www.' and port).
-     */
-    fun extractDomain(url: String): String? {
-        return try {
-            val trimmed = url.trim()
-            val uri = URI(if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) "https://$trimmed" else trimmed)
-            val host = uri.host ?: return null
-            host.removePrefix("www.").lowercase().substringBefore(':')
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    /**
-     * Resolves an image URL against the base page URL, supporting relative paths.
-     */
-    fun resolveImageUrl(pageUrl: String, imageUrl: String): String {
-        val trimmed = imageUrl.trim()
-        return try {
-            if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-                trimmed
-            } else {
-                val baseUri = URI(pageUrl)
-                baseUri.resolve(trimmed).toString()
-            }
-        } catch (_: Exception) {
-            trimmed
-        }
-    }
-
-    /**
-     * Computes a deterministic, URL-distinct image key from a resolved image URL.
-     * Preserves query parameters (?...) and removes fragment (#...).
-     * Hashes the normalized string using SHA-256.
-     */
-    fun computeImageKey(resolvedImageUrl: String): String {
-        val normalized = resolvedImageUrl.trim().substringBefore('#')
-        return try {
-            val digest = MessageDigest.getInstance("SHA-256")
-            val hash = digest.digest(normalized.toByteArray(Charsets.UTF_8))
-            val hex = hash.joinToString("") { "%02x".format(it) }
-            "$hex.webp"
-        } catch (_: Exception) {
-            "${normalized.hashCode().toUInt().toString(16)}.webp"
-        }
-    }
-
-    /**
-     * Calculates the optimal inSampleSize for safe downsampling.
-     */
     @VisibleForTesting
-    fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
-        val height = options.outHeight
-        val width = options.outWidth
-        var inSampleSize = 1
+    fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int =
+        AndroidOgImageCodec.calculateInSampleSize(options, reqWidth, reqHeight)
 
-        if (height > reqHeight || width > reqWidth) {
-            val halfHeight = height / 2
-            val halfWidth = width / 2
-
-            while ((halfHeight / inSampleSize) >= reqHeight || (halfWidth / inSampleSize) >= reqWidth) {
-                inSampleSize *= 2
-            }
-        }
-        return inSampleSize
-    }
-
-    /**
-     * Downsamples and compresses raw image bytes to WebP format under [maxBytes].
-     */
     fun compressToWebp(
         rawBytes: ByteArray,
         maxDimension: Int = MAX_IMAGE_DIMENSION,
         maxBytes: Int = MAX_FILE_SIZE_BYTES
-    ): CompressedImageResult? {
-        if (rawBytes.isEmpty()) return null
+    ): CompressedImageResult? =
+        AndroidOgImageCodec.compressToWebp(rawBytes, maxDimension, maxBytes)
 
-        try {
-            // 1. Measure dimensions without allocating full bitmap in memory
-            val options = BitmapFactory.Options().apply {
-                inJustDecodeBounds = true
-            }
-            BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, options)
-            if (options.outWidth <= 0 || options.outHeight <= 0) return null
-
-            // 2. Decode with inSampleSize to safely fit near maxDimension
-            options.inSampleSize = calculateInSampleSize(options, maxDimension, maxDimension)
-            options.inJustDecodeBounds = false
-
-            val decodedBitmap = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, options)
-                ?: return null
-
-            // 3. Scale down exactly if either dimension still exceeds maxDimension
-            val srcWidth = decodedBitmap.width
-            val srcHeight = decodedBitmap.height
-            val scaledBitmap = if (srcWidth > maxDimension || srcHeight > maxDimension) {
-                val ratio = minOf(
-                    maxDimension.toFloat() / srcWidth,
-                    maxDimension.toFloat() / srcHeight
-                )
-                val targetW = (srcWidth * ratio).toInt().coerceAtLeast(1)
-                val targetH = (srcHeight * ratio).toInt().coerceAtLeast(1)
-                val scaled = Bitmap.createScaledBitmap(decodedBitmap, targetW, targetH, true)
-                if (scaled !== decodedBitmap) {
-                    decodedBitmap.recycle()
-                }
-                scaled
-            } else {
-                decodedBitmap
-            }
-
-            // 4. Compress to WebP lossy with quality fallback if size exceeds maxBytes
-            var quality = DEFAULT_QUALITY
-            val outStream = ByteArrayOutputStream()
-            scaledBitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, quality, outStream)
-
-            var compressedBytes = outStream.toByteArray()
-            val qualitiesToTry = listOf(60, 45, 30)
-            var tryIndex = 0
-
-            while (compressedBytes.size >= maxBytes && tryIndex < qualitiesToTry.size) {
-                quality = qualitiesToTry[tryIndex++]
-                outStream.reset()
-                scaledBitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, quality, outStream)
-                compressedBytes = outStream.toByteArray()
-            }
-
-            val finalWidth = scaledBitmap.width
-            val finalHeight = scaledBitmap.height
-            scaledBitmap.recycle()
-
-            if (compressedBytes.size >= maxBytes) {
-                return null
-            }
-
-            return CompressedImageResult(
-                bytes = compressedBytes,
-                width = finalWidth,
-                height = finalHeight
-            )
-        } catch (_: Exception) {
-            return null
-        }
-    }
-
-    /** Loads only this bookmark's image, sharing missing-image work with imports and other cards. */
     suspend fun loadOrFetchOgImage(
         context: Context,
         pageUrl: String,
         domain: String,
         ogImageUrl: String?,
-        network: me.bubblespark.tidilo.parser.ArticleNetwork? = null
-    ): ImageBitmap? = withContext(Dispatchers.IO) {
-        if (ogImageUrl.isNullOrBlank()) return@withContext null
-        val startGen = cacheGeneration.get()
-        val resolvedUrl = resolveImageUrl(pageUrl, ogImageUrl).substringBefore('#')
-        val imageKey = computeImageKey(resolvedUrl)
-        val epoch = imageEpochs.computeIfAbsent(imageKey) { AtomicLong(0) }
-        val startEpoch = epoch.get()
-        loadOgImage(context, domain, imageKey)?.let {
-            return@withContext if (cacheGeneration.get() == startGen) it else null
-        }
-        val result = downloads.fetch("${network?.scopeKey ?: "manual"}|$imageKey", startGen) {
-            // Another request may have populated the cache while this one waited for a permit.
-            loadOgImage(context, domain, imageKey)?.let { return@fetch it }
-            currentCoroutineContext().ensureActive()
-            if (cacheGeneration.get() != startGen) return@fetch null
-            val downloader = imageDownloader
-            val raw = if (network != null) {
-                val response = network.fetch(resolvedUrl)
-                if (response.status !in 200..299) throw java.io.IOException("Image HTTP ${response.status}")
-                response.bytes
-            } else if (downloader != null) downloader(resolvedUrl) else downloadImage(resolvedUrl)
-            if (raw == null || raw.size > MAX_DOWNLOAD_BYTES) throw PermanentOgImageFailure()
-            currentCoroutineContext().ensureActive()
-            if (cacheGeneration.get() != startGen) return@fetch null
-            val compressed = compressToWebp(raw) ?: throw PermanentOgImageFailure()
-            currentCoroutineContext().ensureActive()
-            val bitmap = BitmapFactory.decodeByteArray(compressed.bytes, 0, compressed.bytes.size)
-                ?.asImageBitmap() ?: throw PermanentOgImageFailure()
-            cacheMutex.withLock {
-                currentCoroutineContext().ensureActive()
-                if (cacheGeneration.get() != startGen || epoch.get() != startEpoch) return@withLock null
-                writeAtomically(getOgImageFile(context, imageKey), compressed.bytes)
-                // Legacy domain previews remain available only to callers explicitly requesting them.
-                runCatching { writeAtomically(getDomainLatestImageFile(context, domain), compressed.bytes) }
-                invalidateDominantColors(cacheKey(domain, imageKey))
-                invalidateDominantColors(fallbackCacheKey(domain))
-                memoryCache.put(cacheKey(domain, imageKey), bitmap)
-                memoryCache.put(fallbackCacheKey(domain), bitmap)
-                notifyExactImageUpdated(domain, imageKey)
-                bitmap
-            }
-        }
-        cacheMutex.withLock {
-            currentCoroutineContext().ensureActive()
-            if (cacheGeneration.get() != startGen || epoch.get() != startEpoch) return@withLock null
-            // The same image URL can be shared by pages on different domains.
-            if (result != null) memoryCache.put(cacheKey(domain, imageKey), result)
-            result
-        }
-    }
+        network: ArticleNetwork? = null
+    ): ImageBitmap? =
+        MediaCacheStore.getInstance(context).ogImages.loadOrFetchOgImage(pageUrl, domain, ogImageUrl, network)
 
-    private fun writeAtomically(target: File, bytes: ByteArray) {
-        val temporary = File.createTempFile("og-", ".tmp", target.parentFile)
-        try {
-            temporary.writeBytes(bytes)
-            java.nio.file.Files.move(temporary.toPath(), target.toPath(),
-                java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-        } finally {
-            temporary.delete()
-        }
-    }
-
-    /** Disconnect on cancellation and await the blocking worker before releasing its semaphore permit. */
-    private suspend fun downloadImage(resolvedUrl: String): ByteArray {
-        try {
-            return withTimeout(TIMEOUT_MS.toLong()) {
-                coroutineScope {
-                    suspendCancellableCoroutine { continuation ->
-                        val connection = AtomicReference<HttpURLConnection?>()
-                        val worker = launch(Dispatchers.IO) {
-                            try {
-                                var url = URL(resolvedUrl)
-                                var bytes: ByteArray? = null
-                                for (redirect in 0..10) {
-                                    if (url.protocol != "http" && url.protocol != "https") throw PermanentOgImageFailure()
-                                    currentCoroutineContext().ensureActive()
-                                    val http = url.openConnection() as HttpURLConnection
-                                    connection.set(http)
-                                    try {
-                                        currentCoroutineContext().ensureActive()
-                                        http.connectTimeout = TIMEOUT_MS
-                                        http.readTimeout = TIMEOUT_MS
-                                        http.instanceFollowRedirects = false
-                                        http.setRequestProperty("User-Agent", USER_AGENT)
-                                        val status = http.responseCode
-                                        if (status in listOf(301, 302, 303, 307, 308)) {
-                                            val location = http.getHeaderField("Location") ?: throw PermanentOgImageFailure()
-                                            url = URL(url, location)
-                                            continue
-                                        }
-                                        if (status !in 200..299) {
-                                            if (status in 400..499 && status != 408 && status != 429) throw PermanentOgImageFailure()
-                                            throw IOException("Image HTTP status $status")
-                                        }
-                                        if (http.contentLengthLong > MAX_DOWNLOAD_BYTES) throw PermanentOgImageFailure()
-                                        bytes = http.inputStream.use { input ->
-                                            val output = ByteArrayOutputStream()
-                                            val buffer = ByteArray(8192)
-                                            while (true) {
-                                                currentCoroutineContext().ensureActive()
-                                                val count = input.read(buffer)
-                                                if (count < 0) break
-                                                if (output.size() + count > MAX_DOWNLOAD_BYTES) throw PermanentOgImageFailure()
-                                                output.write(buffer, 0, count)
-                                            }
-                                            output.toByteArray()
-                                        }
-                                        break
-                                    } finally {
-                                        http.disconnect()
-                                        connection.compareAndSet(http, null)
-                                    }
-                                }
-                                continuation.resume(bytes ?: throw PermanentOgImageFailure())
-                            } catch (failure: Exception) {
-                                continuation.resumeWithException(failure)
-                            }
-                        }
-                        continuation.invokeOnCancellation {
-                            worker.cancel()
-                            connection.get()?.disconnect()
-                        }
-                    }
-                }
-            }
-        } catch (timeout: TimeoutCancellationException) {
-            currentCoroutineContext().ensureActive()
-            throw IOException("Image download timed out", timeout)
-        }
-    }
-
-    /**
-     * Downloads, compresses, and persists an og:image to cacheDir during Processing.
-     * Shares on-demand recovery and validates existing files before treating them as cached.
-     *
-     * @return true if successfully saved or already exists; false if failed.
-     */
     suspend fun processAndSaveOgImage(
         context: Context,
         pageUrl: String,
         ogImageUrl: String?,
-        network: me.bubblespark.tidilo.parser.ArticleNetwork? = null
-    ): Boolean {
-        val domain = extractDomain(pageUrl) ?: return false
-        return loadOrFetchOgImage(context, pageUrl, domain, ogImageUrl, network) != null
-    }
+        network: ArticleNetwork? = null
+    ): Boolean =
+        MediaCacheStore.getInstance(context).ogImages.processAndSaveOgImage(pageUrl, ogImageUrl, network)
 }
 
-/**
- * Sampled edge and accent palette for an `og:image` asset, cached in [OgImageManager].
- */
-@Immutable
-data class DetailHeroPalette(
-    val topEdgeColor: Color,
-    val bottomEdgeColor: Color,
-    val accentColor: Color
-) {
-    companion object {
-        val Transparent = DetailHeroPalette(
-            topEdgeColor = Color.Transparent,
-            bottomEdgeColor = Color.Transparent,
-            accentColor = Color.Transparent
-        )
-    }
-}
+typealias DetailHeroPalette = me.bubblespark.tidilo.data.cache.DetailHeroPalette
 
-/**
- * Samples representative top-edge (~15%), bottom-edge (~15%), and overall dominant accent colors from [bitmap].
- */
-internal fun extractDetailHeroPalette(bitmap: Bitmap, domain: String): DetailHeroPalette {
-    return try {
-        val sampleWidth = 32
-        val sampleHeight = 32
-        val scaled = Bitmap.createScaledBitmap(bitmap, sampleWidth, sampleHeight, true)
-        val pixels = IntArray(sampleWidth * sampleHeight)
-        scaled.getPixels(pixels, 0, sampleWidth, 0, 0, sampleWidth, sampleHeight)
-        if (scaled != bitmap) scaled.recycle()
-        extractDetailHeroPaletteFromPixels(pixels, sampleWidth, sampleHeight, domain)
-    } catch (_: Exception) {
-        val fallback = DomainIconManager.generateDomainAccentColor(domain)
-        DetailHeroPalette(fallback, fallback, fallback)
-    }
-}
+internal fun extractDetailHeroPalette(bitmap: Bitmap, domain: String): DetailHeroPalette =
+    AndroidOgImageCodec.extractDetailHeroPalette(bitmap, domain)
 
-/**
- * Pure pixel-array extractor for top ~15% edge band, bottom ~15% edge band, and dominant accent color.
- */
 fun extractDetailHeroPaletteFromPixels(
     pixels: IntArray,
     width: Int,
     height: Int,
     domain: String
-): DetailHeroPalette {
-    if (width <= 0 || height <= 0 || pixels.size < width * height) {
-        val fallback = DomainIconManager.generateDomainAccentColor(domain)
-        return DetailHeroPalette(fallback, fallback, fallback)
-    }
-    val bandRows = maxOf(1, (height * 0.15f).toInt())
-    val topEdge = sampleBandAverageColor(pixels, width, 0, bandRows)
-    val bottomEdge = sampleBandAverageColor(pixels, width, height - bandRows, height)
-    val accent = DomainIconManager.extractDominantColorFromPixels(pixels, domain)
-    return DetailHeroPalette(
-        topEdgeColor = topEdge ?: accent,
-        bottomEdgeColor = bottomEdge ?: accent,
-        accentColor = accent
-    )
-}
-
-private fun sampleBandAverageColor(
-    pixels: IntArray,
-    width: Int,
-    startRow: Int,
-    endRowExclusive: Int
-): Color? {
-    var rSum = 0f
-    var gSum = 0f
-    var bSum = 0f
-    var weightSum = 0f
-    for (y in startRow until endRowExclusive) {
-        val rowOffset = y * width
-        for (x in 0 until width) {
-            val pixel = pixels[rowOffset + x]
-            val alpha = (pixel ushr 24) and 0xFF
-            if (alpha == 0) continue
-            val w = alpha / 255f
-            rSum += ((pixel ushr 16) and 0xFF) / 255f * w
-            gSum += ((pixel ushr 8) and 0xFF) / 255f * w
-            bSum += (pixel and 0xFF) / 255f * w
-            weightSum += w
-        }
-    }
-    if (weightSum <= 0f) return null
-    return Color(
-        red = (rSum / weightSum).coerceIn(0f, 1f),
-        green = (gSum / weightSum).coerceIn(0f, 1f),
-        blue = (bSum / weightSum).coerceIn(0f, 1f),
-        alpha = 1f
-    )
-}
+): DetailHeroPalette =
+    MediaColorPalette.extractDetailHeroPaletteFromPixels(pixels, width, height, domain)

@@ -173,7 +173,7 @@ object MediaColorPalette {
      * Generates a deterministic, aesthetically pleasing accent color based on domain name hash.
      */
     fun generateDomainAccentColor(domain: String): Color {
-        val hash = abs(domain.hashCode())
+        val hash = domain.hashCode() and 0x7FFFFFFF
         val hue = (hash % 360).toFloat()
         val isBlue = hue in 190f..275f
         val sat = if (isBlue) 0.48f else 0.55f

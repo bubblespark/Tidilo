@@ -200,7 +200,7 @@ internal class OgImageStore(
     private val layout: MediaCacheLayout,
     private val revisionBus: MediaCacheRevisionBus,
     private val coordinator: CoalescedFetchCoordinator<ImageBitmap> =
-        CoalescedFetchCoordinator(generation = revisionBus.generation),
+        CoalescedFetchCoordinator(generation = revisionBus.ogGeneration),
     private val imageDownloader: (suspend (String) -> ByteArray?)? = null,
     private val compatImageDownloaderProvider: (() -> (suspend (String) -> ByteArray?)?)? = null,
     private val codec: OgImageCodec = AndroidOgImageCodec,
@@ -318,7 +318,7 @@ internal class OgImageStore(
 
         memoryCache.get(key)?.let { return@withContext it }
 
-        val startGen = revisionBus.getCurrentGeneration()
+        val startGen = revisionBus.getOgGeneration()
         val flightKey = "$startGen|$key"
         val deferred = inFlightLoads.computeIfAbsent(flightKey) {
             loadScope.async(start = CoroutineStart.LAZY) {
@@ -351,7 +351,7 @@ internal class OgImageStore(
             val isTargetExact = isSpecific && file.name == imageKey
             cacheMutex.withLock {
                 currentCoroutineContext().ensureActive()
-                if (revisionBus.getCurrentGeneration() != startGen ||
+                if (revisionBus.getOgGeneration() != startGen ||
                     epoch?.get() != startEpoch ||
                     (!isSpecific && revisionBus.getOgDomainRevision(domain) != domainRevision)
                 ) {
@@ -379,18 +379,18 @@ internal class OgImageStore(
         network: ArticleNetwork? = null
     ): ImageBitmap? = withContext(Dispatchers.IO) {
         if (ogImageUrl.isNullOrBlank()) return@withContext null
-        val startGen = revisionBus.getCurrentGeneration()
+        val startGen = revisionBus.getOgGeneration()
         val resolvedUrl = MediaCacheLayout.resolveImageUrl(pageUrl, ogImageUrl).substringBefore('#')
         val imageKey = MediaCacheLayout.computeImageKey(resolvedUrl)
         val epoch = imageEpochs.computeIfAbsent(imageKey) { AtomicLong(0) }
         val startEpoch = epoch.get()
         loadOgImage(domain, imageKey)?.let {
-            return@withContext if (revisionBus.getCurrentGeneration() == startGen) it else null
+            return@withContext if (revisionBus.getOgGeneration() == startGen) it else null
         }
         val result = coordinator.fetch("${network?.scopeKey ?: "manual"}|$imageKey", startGen) {
             loadOgImage(domain, imageKey)?.let { return@fetch it }
             currentCoroutineContext().ensureActive()
-            if (revisionBus.getCurrentGeneration() != startGen) return@fetch null
+            if (revisionBus.getOgGeneration() != startGen) return@fetch null
             val downloader = compatImageDownloaderProvider?.invoke() ?: imageDownloader
             val raw = if (network != null) {
                 val response = network.fetch(resolvedUrl)
@@ -403,14 +403,14 @@ internal class OgImageStore(
             }
             if (raw == null || raw.size > MAX_DOWNLOAD_BYTES) throw PermanentFetchFailure()
             currentCoroutineContext().ensureActive()
-            if (revisionBus.getCurrentGeneration() != startGen) return@fetch null
+            if (revisionBus.getOgGeneration() != startGen) return@fetch null
             val compressed = codec.compressToWebp(raw, MAX_IMAGE_DIMENSION, MAX_FILE_SIZE_BYTES)
                 ?: throw PermanentFetchFailure()
             currentCoroutineContext().ensureActive()
             val bitmap = codec.decodeCompressedBytes(compressed.bytes) ?: throw PermanentFetchFailure()
             cacheMutex.withLock {
                 currentCoroutineContext().ensureActive()
-                if (revisionBus.getCurrentGeneration() != startGen || epoch.get() != startEpoch) {
+                if (revisionBus.getOgGeneration() != startGen || epoch.get() != startEpoch) {
                     return@withLock null
                 }
                 layout.writeAtomically("og-", layout.ogImageFile(imageKey), compressed.bytes)
@@ -427,7 +427,7 @@ internal class OgImageStore(
         }
         cacheMutex.withLock {
             currentCoroutineContext().ensureActive()
-            if (revisionBus.getCurrentGeneration() != startGen || epoch.get() != startEpoch) {
+            if (revisionBus.getOgGeneration() != startGen || epoch.get() != startEpoch) {
                 return@withLock null
             }
             if (result != null) {
@@ -528,7 +528,7 @@ internal class OgImageStore(
         invalidateDominantColors()
     }
 
-    suspend fun clearImageCache() = withContext(Dispatchers.IO) {
+    suspend fun clearImageCache(broadcastClear: Boolean = true) = withContext(Dispatchers.IO) {
         cacheMutex.withLock {
             coordinator.clear()
             memoryCache.evictAll()
@@ -537,7 +537,7 @@ internal class OgImageStore(
             if (dir.exists()) {
                 dir.deleteRecursively()
             }
-            revisionBus.onOgImagesCleared()
+            revisionBus.onOgImagesCleared(advanceSharedGeneration = broadcastClear)
         }
     }
 

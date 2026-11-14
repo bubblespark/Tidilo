@@ -89,6 +89,10 @@ class MediaColorPaletteTest {
         val c2 = MediaColorPalette.generateDomainAccentColor("developer.android.com")
         assertEquals(c1, c2)
         assertEquals(1f, c1.alpha, 0.001f)
+
+        assertEquals(Int.MIN_VALUE, "polygenelubricants".hashCode())
+        val minHashColor = MediaColorPalette.generateDomainAccentColor("polygenelubricants")
+        assertEquals(1f, minHashColor.alpha, 0.001f)
     }
 
     @Test

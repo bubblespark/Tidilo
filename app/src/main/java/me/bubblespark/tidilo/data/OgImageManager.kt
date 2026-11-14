@@ -6,9 +6,11 @@ import android.graphics.BitmapFactory
 import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.cache.AndroidOgImageCodec
 import me.bubblespark.tidilo.data.cache.CompressedOgImage
 import me.bubblespark.tidilo.data.cache.MediaCacheLayout
@@ -72,26 +74,31 @@ object OgImageManager {
         filename: String,
         expectedModifiedAt: Long,
         domains: Set<String>
-    ): Boolean =
+    ): Boolean = withContext(Dispatchers.IO) {
         MediaCacheStore.getInstance(context).ogImages.evictExpiredImage(filename, expectedModifiedAt, domains)
+    }
 
     internal suspend fun deleteUnreferencedImage(
         context: Context,
         domain: String,
         imageKey: String,
         removeLatest: Boolean
-    ) = MediaCacheStore.getInstance(context).ogImages.deleteUnreferencedImage(domain, imageKey, removeLatest)
+    ) = withContext(Dispatchers.IO) {
+        MediaCacheStore.getInstance(context).ogImages.deleteUnreferencedImage(domain, imageKey, removeLatest)
+    }
 
     internal suspend fun deleteUnreferencedImage(
         context: Context,
         domains: Set<String>,
         imageKey: String,
         removeLatestDomains: Set<String>
-    ) = MediaCacheStore.getInstance(context).ogImages.deleteUnreferencedImage(
-        domains,
-        imageKey,
-        removeLatestDomains
-    )
+    ) = withContext(Dispatchers.IO) {
+        MediaCacheStore.getInstance(context).ogImages.deleteUnreferencedImage(
+            domains,
+            imageKey,
+            removeLatestDomains
+        )
+    }
 
     fun getDomainRevision(domain: String): Long =
         MediaCacheStore.shared.revisionBus.getOgDomainRevision(domain)
@@ -110,7 +117,7 @@ object OgImageManager {
         MediaCacheStore.shared.revisionBus.observeOgImageUpdates(domain)
 
     fun getCurrentGeneration(): Long =
-        MediaCacheStore.shared.revisionBus.getCurrentGeneration()
+        MediaCacheStore.shared.revisionBus.getOgGeneration()
 
     fun cacheKey(domain: String, imageKey: String): String =
         MediaCacheLayout.ogCacheKey(domain, imageKey)
@@ -134,15 +141,17 @@ object OgImageManager {
         context: Context,
         domain: String,
         imageKey: String? = null
-    ): ImageBitmap? =
+    ): ImageBitmap? = withContext(Dispatchers.IO) {
         MediaCacheStore.getInstance(context).ogImages.loadOgImage(domain, imageKey)
+    }
 
     @VisibleForTesting
     fun clearMemoryCache() =
         MediaCacheStore.shared.ogImages.clearMemoryCache()
 
-    suspend fun clearImageCache(context: Context) =
+    suspend fun clearImageCache(context: Context) = withContext(Dispatchers.IO) {
         MediaCacheStore.getInstance(context).ogImages.clearImageCache()
+    }
 
     fun extractDomain(url: String): String? =
         MediaCacheLayout.extractDomain(url)
@@ -170,16 +179,18 @@ object OgImageManager {
         domain: String,
         ogImageUrl: String?,
         network: ArticleNetwork? = null
-    ): ImageBitmap? =
+    ): ImageBitmap? = withContext(Dispatchers.IO) {
         MediaCacheStore.getInstance(context).ogImages.loadOrFetchOgImage(pageUrl, domain, ogImageUrl, network)
+    }
 
     suspend fun processAndSaveOgImage(
         context: Context,
         pageUrl: String,
         ogImageUrl: String?,
         network: ArticleNetwork? = null
-    ): Boolean =
+    ): Boolean = withContext(Dispatchers.IO) {
         MediaCacheStore.getInstance(context).ogImages.processAndSaveOgImage(pageUrl, ogImageUrl, network)
+    }
 }
 
 typealias DetailHeroPalette = me.bubblespark.tidilo.data.cache.DetailHeroPalette

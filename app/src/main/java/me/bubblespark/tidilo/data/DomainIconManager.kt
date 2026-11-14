@@ -5,9 +5,11 @@ import android.graphics.Bitmap
 import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.cache.AndroidDomainIconCodec
 import me.bubblespark.tidilo.data.cache.DomainIconStore
 import me.bubblespark.tidilo.data.cache.IconDownloadResult
@@ -58,13 +60,17 @@ object DomainIconManager {
         MediaCacheLayout.feedPublisherDomain(feed)
 
     suspend fun loadOrFetchFeedIcon(context: Context, feed: RssFeedEntity): ImageBitmap? =
-        MediaCacheStore.getInstance(context).domainIcons.loadOrFetchFeedIcon(feed)
+        withContext(Dispatchers.IO) {
+            MediaCacheStore.getInstance(context).domainIcons.loadOrFetchFeedIcon(feed)
+        }
 
     suspend fun loadOrFetchIcon(context: Context, domain: String, pageUrl: String? = null): ImageBitmap? =
-        MediaCacheStore.getInstance(context).domainIcons.loadOrFetchIcon(domain, pageUrl)
+        withContext(Dispatchers.IO) {
+            MediaCacheStore.getInstance(context).domainIcons.loadOrFetchIcon(domain, pageUrl)
+        }
 
     fun getCurrentGeneration(): Long =
-        MediaCacheStore.shared.revisionBus.getCurrentGeneration()
+        MediaCacheStore.shared.revisionBus.getIconGeneration()
 
     fun getDomainRevision(domain: String): Long =
         MediaCacheStore.shared.revisionBus.getIconDomainRevision(domain)
@@ -123,8 +129,9 @@ object DomainIconManager {
     fun generateDomainAccentColor(domain: String): Color =
         MediaColorPalette.generateDomainAccentColor(domain)
 
-    suspend fun clearCache(context: Context) =
+    suspend fun clearCache(context: Context) = withContext(Dispatchers.IO) {
         MediaCacheStore.getInstance(context).domainIcons.clearCache()
+    }
 
     fun makeBackgroundTransparent(source: Bitmap): Bitmap =
         AndroidDomainIconCodec.makeBackgroundTransparent(source)
@@ -143,7 +150,7 @@ object DomainIconManager {
         faviconUrl: String? = null,
         knownCandidates: List<DomainIconCandidate>? = null,
         network: ArticleNetwork? = null
-    ): FetchResult =
+    ): FetchResult = withContext(Dispatchers.IO) {
         MediaCacheStore.getInstance(context).domainIcons.fetchAndSaveDomainIcon(
             url = url,
             appleTouchIconUrl = appleTouchIconUrl,
@@ -151,4 +158,5 @@ object DomainIconManager {
             knownCandidates = knownCandidates,
             network = network
         )
+    }
 }

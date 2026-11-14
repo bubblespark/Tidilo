@@ -277,7 +277,7 @@ internal class DomainIconStore(
     private val layout: MediaCacheLayout,
     private val revisionBus: MediaCacheRevisionBus,
     private val coordinator: CoalescedFetchCoordinator<IconFetchResult> =
-        CoalescedFetchCoordinator(generation = revisionBus.generation),
+        CoalescedFetchCoordinator(generation = revisionBus.iconGeneration),
     private val httpDownloader: ((String) -> IconDownloadResult)? = null,
     private val htmlDiscoverer: ((String) -> IconHtmlDiscoveryResult)? = null,
     private val compatHttpDownloaderProvider: (() -> ((String) -> IconDownloadResult)?)? = null,
@@ -401,13 +401,13 @@ internal class DomainIconStore(
         dominantColorCache.get(MediaCacheLayout.normalizeDomain(domain))
 
     suspend fun loadOrFetchFeedIcon(feed: RssFeedEntity): ImageBitmap? = withContext(Dispatchers.IO) {
-        val generation = revisionBus.getCurrentGeneration()
+        val generation = revisionBus.getIconGeneration()
         val key = MediaCacheLayout.feedIconKey(feed)
         val direct = feed.iconUrl?.let { RssFeedParser.httpUrl(feed.url, it) }
         if (direct != null) {
             (getCachedIconBitmap(key) ?: loadIconFromDisk(key))?.let { return@withContext it }
             if (!shouldSkipFetch(key)) coordinator.fetch("feed|$key", generation) {
-                if (generation != revisionBus.getCurrentGeneration() || shouldSkipFetch(key)) {
+                if (generation != revisionBus.getIconGeneration() || shouldSkipFetch(key)) {
                     return@fetch IconFetchResult(false)
                 }
                 if (getCachedIconBitmap(key) != null || loadIconFromDisk(key) != null) {
@@ -415,24 +415,24 @@ internal class DomainIconStore(
                 }
                 fetchIconInternal(key, direct, null, null, generation, null, null, directOnly = true)
             }
-            if (generation != revisionBus.getCurrentGeneration()) return@withContext null
+            if (generation != revisionBus.getIconGeneration()) return@withContext null
             getCachedIconBitmap(key)?.let { return@withContext it }
         }
-        if (generation != revisionBus.getCurrentGeneration()) return@withContext null
+        if (generation != revisionBus.getIconGeneration()) return@withContext null
         val bitmap = MediaCacheLayout.feedPublisherDomain(feed)?.let { loadOrFetchIcon(it) }
-        if (generation == revisionBus.getCurrentGeneration()) bitmap else null
+        if (generation == revisionBus.getIconGeneration()) bitmap else null
     }
 
     suspend fun loadOrFetchIcon(domain: String, pageUrl: String? = null): ImageBitmap? =
         withContext(Dispatchers.IO) {
             val normalized = MediaCacheLayout.normalizeDomain(domain)
             if (MediaCacheLayout.extractDomain("https://$normalized") != normalized) return@withContext null
-            val generation = revisionBus.getCurrentGeneration()
+            val generation = revisionBus.getIconGeneration()
             (getCachedIconBitmap(normalized) ?: loadIconFromDisk(normalized))?.let { return@withContext it }
             val page = pageUrl?.takeIf { MediaCacheLayout.extractDomain(it) == normalized } ?: "https://$normalized"
             fetchAndSaveDomainIcon(page)
             synchronized(cacheLock) {
-                if (generation != revisionBus.getCurrentGeneration()) null else getCachedIconBitmap(normalized)
+                if (generation != revisionBus.getIconGeneration()) null else getCachedIconBitmap(normalized)
             }
         }
 
@@ -444,7 +444,7 @@ internal class DomainIconStore(
         network: ArticleNetwork? = null
     ): IconFetchResult = withContext(Dispatchers.IO) {
         val domain = MediaCacheLayout.extractDomain(url) ?: return@withContext IconFetchResult(false)
-        val generation = revisionBus.getCurrentGeneration()
+        val generation = revisionBus.getIconGeneration()
         if (getCachedIconBitmap(domain) != null || loadIconFromDisk(domain) != null) {
             return@withContext IconFetchResult(true)
         }
@@ -453,12 +453,12 @@ internal class DomainIconStore(
             if (getCachedIconBitmap(domain) != null || loadIconFromDisk(domain) != null) {
                 return@fetch IconFetchResult(true)
             }
-            if (shouldSkipFetch(domain) || generation != revisionBus.getCurrentGeneration()) {
+            if (shouldSkipFetch(domain) || generation != revisionBus.getIconGeneration()) {
                 return@fetch IconFetchResult(false)
             }
             val page = if (url.startsWith("http://") || url.startsWith("https://")) url else "https://$domain"
             fetchIconInternal(domain, page, appleTouchIconUrl, faviconUrl, generation, knownCandidates, network)
-        } ?: IconFetchResult(false, generation == revisionBus.getCurrentGeneration())
+        } ?: IconFetchResult(false, generation == revisionBus.getIconGeneration())
     }
 
     private suspend fun fetchIconInternal(
@@ -515,7 +515,8 @@ internal class DomainIconStore(
                                 iconUrls = candidates.map { it.url },
                                 hasServerContact = true,
                                 hasTransientFailure = isTransientHttpStatus(response.status),
-                                highPriorityUrls = candidates.filter { it.highPriority }.map { it.url }.toSet()
+                                highPriorityUrls = candidates.filter { it.highPriority }.map { it.url }.toSet(),
+                                discoveredSiteName = extractSiteName(doc)
                             )
                         } else {
                             IconHtmlDiscoveryResult(
@@ -528,7 +529,7 @@ internal class DomainIconStore(
                     contacted = contacted || discovery.hasServerContact
                     transientFailure = transientFailure || discovery.hasTransientFailure
                     val siteName = discovery.discoveredSiteName?.trim()?.takeIf { it.isNotBlank() }
-                    if (siteName != null && generation == revisionBus.getCurrentGeneration()) {
+                    if (siteName != null && generation == revisionBus.getIconGeneration()) {
                         discoveredSiteName = siteName
                         MediaCacheLayout.extractDomain(source)?.let { sourceDomain ->
                             onSiteDisplayNameDiscovered?.invoke(sourceDomain, siteName)
@@ -542,7 +543,7 @@ internal class DomainIconStore(
             )
         }
         currentCoroutineContext().ensureActive()
-        if (generation != revisionBus.getCurrentGeneration()) {
+        if (generation != revisionBus.getIconGeneration()) {
             selected?.recycle()
             return IconFetchResult(false, discoveredSiteName = discoveredSiteName)
         }
@@ -550,7 +551,7 @@ internal class DomainIconStore(
             val workContext = currentCoroutineContext()
             synchronized(cacheLock) {
                 workContext.ensureActive()
-                if (generation == revisionBus.getCurrentGeneration() && contacted && !transientFailure) {
+                if (generation == revisionBus.getIconGeneration() && contacted && !transientFailure) {
                     writeNegativeMarker(domain)
                 }
             }
@@ -564,7 +565,7 @@ internal class DomainIconStore(
             val workContext = currentCoroutineContext()
             return synchronized(cacheLock) {
                 workContext.ensureActive()
-                if (generation != revisionBus.getCurrentGeneration()) {
+                if (generation != revisionBus.getIconGeneration()) {
                     return@synchronized IconFetchResult(false, discoveredSiteName = discoveredSiteName)
                 }
                 layout.writeAtomically("icon-", layout.domainIconFile(domain), encoded.pngBytes)
@@ -583,7 +584,7 @@ internal class DomainIconStore(
         }
     }
 
-    suspend fun clearCache() = withContext(Dispatchers.IO) {
+    suspend fun clearCache(broadcastClear: Boolean = true) = withContext(Dispatchers.IO) {
         synchronized(cacheLock) {
             coordinator.clear()
             memoryCache.evictAll()
@@ -596,7 +597,7 @@ internal class DomainIconStore(
             if (legacy != null && legacy.exists()) {
                 legacy.deleteRecursively()
             }
-            revisionBus.onDomainIconsCleared()
+            revisionBus.onDomainIconsCleared(advanceSharedGeneration = broadcastClear)
         }
     }
 

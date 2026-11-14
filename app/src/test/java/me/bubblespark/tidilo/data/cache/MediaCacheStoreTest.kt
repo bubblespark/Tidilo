@@ -29,6 +29,8 @@ import me.bubblespark.tidilo.data.db.OgCacheReference
 import me.bubblespark.tidilo.data.db.RssDao
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import me.bubblespark.tidilo.data.db.RssImageCleanupEntity
+import me.bubblespark.tidilo.parser.ArticleNetwork
+import me.bubblespark.tidilo.parser.ArticleResponse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -216,9 +218,9 @@ class MediaCacheStoreTest {
 
             assertNull(inFlight.await())
             delay(20)
-            assertTrue(store.revisionBus.getCurrentGeneration() > initialGen)
-            assertTrue(store.revisionBus.cacheGenerationState.value > initialGen)
-            assertFalse(clearedEvents.isEmpty())
+            assertEquals(initialGen + 1, store.revisionBus.getCurrentGeneration())
+            assertEquals(initialGen + 1, store.revisionBus.cacheGenerationState.value)
+            assertEquals(listOf(initialGen + 1), clearedEvents)
             assertFalse(store.layout.ogImageFile(imageKey).exists())
             assertNull(store.ogImages.getCachedOgImageBitmap("stale.example", imageKey))
 
@@ -485,6 +487,146 @@ class MediaCacheStoreTest {
             assertFalse(drainedLatest.exists())
             assertNull(store.ogImages.getCachedOgImageBitmap("drained.example", drainedKey))
             assertTrue(cleanupOutbox.isEmpty())
+        } finally {
+            tempRoot.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun clearingOgImagesLeavesInFlightIconFetchAndSeparateStoresIntact() = runBlocking {
+        val rootA = Files.createTempDirectory("media_store_isolated_a").toFile()
+        val rootB = Files.createTempDirectory("media_store_isolated_b").toFile()
+        try {
+            val discoverEntered = CompletableDeferred<Unit>()
+            val releaseIcon = CountDownLatch(1)
+            val storeA = MediaCacheStore(
+                cacheRootDir = rootA,
+                iconHtmlDiscoverer = {
+                    discoverEntered.complete(Unit)
+                    check(releaseIcon.await(5, TimeUnit.SECONDS))
+                    IconHtmlDiscoveryResult(
+                        iconUrls = listOf("https://kept-icon.example/icon.png"),
+                        hasServerContact = true,
+                        hasTransientFailure = false
+                    )
+                },
+                iconHttpDownloader = {
+                    IconDownloadResult("icon-a".toByteArray(), hasServerContact = true, hasTransientFailure = false)
+                },
+                ogImageDownloader = { "og-a".toByteArray() },
+                ogImageCodec = fakeOgCodec(Color.Cyan),
+                domainIconCodec = fakeIconCodec(Color.Green)
+            )
+            val storeB = MediaCacheStore(
+                cacheRootDir = rootB,
+                ogImageDownloader = { "og-b".toByteArray() },
+                iconHtmlDiscoverer = {
+                    IconHtmlDiscoveryResult(
+                        iconUrls = listOf("https://b.example/icon.png"),
+                        hasServerContact = true,
+                        hasTransientFailure = false
+                    )
+                },
+                iconHttpDownloader = {
+                    IconDownloadResult("icon-b".toByteArray(), hasServerContact = true, hasTransientFailure = false)
+                },
+                ogImageCodec = fakeOgCodec(Color.Red),
+                domainIconCodec = fakeIconCodec(Color.Blue)
+            )
+
+            val initialOgGenA = storeA.revisionBus.getOgGeneration()
+            val initialIconGenA = storeA.revisionBus.getIconGeneration()
+
+            val inFlightIcon = async(start = CoroutineStart.UNDISPATCHED) {
+                storeA.domainIcons.loadOrFetchIcon("kept-icon.example")
+            }
+            discoverEntered.await()
+
+            assertNotNull(storeB.ogImages.loadOrFetchOgImage("https://b.example/p", "b.example", "https://b.example/og.png"))
+            val ogKeyB = MediaCacheLayout.computeImageKey("https://b.example/og.png")
+
+            storeA.ogImages.clearImageCache()
+
+            assertEquals(initialOgGenA + 1, storeA.revisionBus.getOgGeneration())
+            assertEquals(initialIconGenA, storeA.revisionBus.getIconGeneration())
+
+            releaseIcon.countDown()
+            assertNotNull(inFlightIcon.await())
+            assertTrue(storeA.layout.domainIconFile("kept-icon.example").isFile)
+
+            assertNotNull(storeB.ogImages.getCachedOgImageBitmap("b.example", ogKeyB))
+            assertTrue(storeB.layout.ogImageFile(ogKeyB).isFile)
+            assertEquals(0L, storeB.revisionBus.getCurrentGeneration())
+        } finally {
+            rootA.deleteRecursively()
+            rootB.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun articleNetworkDiscoveryReportsSiteNameAndLayoutSanitizesIconAndLazyContext() = runBlocking {
+        val tempRoot = Files.createTempDirectory("media_store_network_site").toFile()
+        val initialRoot = File(tempRoot, "initial")
+        val boundRoot = File(tempRoot, "bound")
+        try {
+            val discoveredSites = mutableListOf<Pair<String, String>>()
+            val store = MediaCacheStore(
+                cacheRootDir = boundRoot,
+                onSiteDisplayNameDiscovered = { d, name -> discoveredSites.add(d to name) },
+                domainIconCodec = fakeIconCodec(Color.Yellow)
+            )
+            val network = object : ArticleNetwork {
+                override val scopeKey: String = "rss-feed"
+                override suspend fun fetch(url: String): ArticleResponse = when {
+                    url.endsWith(".png") -> ArticleResponse(
+                        url = url,
+                        status = 200,
+                        bytes = "png-bytes".toByteArray(),
+                        contentType = "image/png"
+                    )
+                    else -> ArticleResponse(
+                        url = url,
+                        status = 200,
+                        bytes = """
+                            <html><head>
+                              <meta property="og:site_name" content="Network Publisher" />
+                              <link rel="icon" href="/favicon.png" />
+                            </head></html>
+                        """.trimIndent().toByteArray(),
+                        contentType = "text/html"
+                    )
+                }
+            }
+
+            val result = store.domainIcons.fetchAndSaveDomainIcon(
+                url = "https://net-icon.example/article",
+                network = network
+            )
+            assertTrue(result.success)
+            assertEquals("Network Publisher", result.discoveredSiteName)
+            assertEquals(listOf("net-icon.example" to "Network Publisher"), discoveredSites)
+
+            val sanitizedIcon = store.layout.domainIconFile("../escape/host")
+            assertEquals(store.layout.domainIconsDir(), sanitizedIcon.parentFile)
+            assertFalse(sanitizedIcon.name.contains("/"))
+
+            var cacheDirReads = 0
+            val countingContext = object : ContextWrapper(null) {
+                override fun getCacheDir(): File {
+                    cacheDirReads++
+                    return boundRoot
+                }
+
+                override fun getFilesDir(): File = File(tempRoot, "files")
+            }
+            val lazyLayout = MediaCacheLayout(initialRoot)
+            lazyLayout.bindContext(countingContext)
+            assertEquals(0, cacheDirReads)
+            assertEquals(File(boundRoot, MediaCacheLayout.OG_IMAGES_DIR_NAME), lazyLayout.ogImagesDir())
+            assertEquals(1, cacheDirReads)
+            lazyLayout.bindContext(countingContext)
+            lazyLayout.domainIconsDir()
+            assertEquals(1, cacheDirReads)
         } finally {
             tempRoot.deleteRecursively()
         }

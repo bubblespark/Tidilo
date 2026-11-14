@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onSubscription
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.bubblespark.tidilo.data.CoalescedFetchCoordinator
 import me.bubblespark.tidilo.data.DomainIconManager
@@ -24,6 +25,7 @@ import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.data.OgImageManager
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import java.io.File
+import java.lang.ref.WeakReference
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
@@ -32,6 +34,7 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Single source of truth for physical cache directories, filename conventions, URL key computation,
@@ -58,11 +61,43 @@ internal class MediaCacheLayout(
     @Volatile
     private var currentLegacyFilesRoot: File? = legacyFilesDir
 
+    private val pendingContext = AtomicReference<WeakReference<Context>?>(null)
+    private val lastResolvedContext = AtomicReference<WeakReference<Context>?>(null)
+    private val rootUpdateLock = Any()
+
     val cacheRootDir: File
-        get() = currentCacheRoot
+        get() {
+            resolvePendingContext()
+            return currentCacheRoot
+        }
 
     val legacyFilesDir: File?
-        get() = currentLegacyFilesRoot
+        get() {
+            resolvePendingContext()
+            return currentLegacyFilesRoot
+        }
+
+    internal fun bindContext(context: Context) {
+        val target = runCatching { context.applicationContext }.getOrNull() ?: context
+        if (pendingContext.get() == null && lastResolvedContext.get()?.get() === target) {
+            return
+        }
+        pendingContext.set(WeakReference(target))
+    }
+
+    private fun resolvePendingContext() {
+        val ref = pendingContext.get() ?: return
+        pendingContext.compareAndSet(ref, null)
+        val ctx = ref.get() ?: return
+        val cacheDir = runCatching { ctx.cacheDir }.getOrNull() ?: return
+        val filesDir = runCatching { ctx.filesDir }.getOrNull()
+        synchronized(rootUpdateLock) {
+            if (pendingContext.get() == null) {
+                updateRoots(cacheDir, filesDir)
+                lastResolvedContext.set(ref)
+            }
+        }
+    }
 
     internal fun updateRoots(cacheRoot: File, legacyFiles: File?) {
         if (currentCacheRoot != cacheRoot) {
@@ -74,19 +109,21 @@ internal class MediaCacheLayout(
     }
 
     fun ogImagesDir(createIfMissing: Boolean = true): File {
+        resolvePendingContext()
         val dir = File(currentCacheRoot, OG_IMAGES_DIR_NAME)
         if (createIfMissing && !dir.exists()) dir.mkdirs()
         return dir
     }
 
     fun domainIconsDir(createIfMissing: Boolean = true): File {
+        resolvePendingContext()
         val dir = File(currentCacheRoot, DOMAIN_ICONS_DIR_NAME)
         if (createIfMissing && !dir.exists()) dir.mkdirs()
         return dir
     }
 
     fun legacyDomainIconsDir(): File? =
-        currentLegacyFilesRoot?.let { File(it, DOMAIN_ICONS_DIR_NAME) }
+        legacyFilesDir?.let { File(it, DOMAIN_ICONS_DIR_NAME) }
 
     fun ogImageFile(imageKey: String): File =
         File(ogImagesDir(createIfMissing = true), imageKey)
@@ -99,14 +136,17 @@ internal class MediaCacheLayout(
     fun domainLatestOgImageFile(domain: String): File =
         File(ogImagesDir(createIfMissing = true), domainLatestOgImageFileName(domain))
 
+    private fun sanitizeIconKey(domain: String): String =
+        domain.replace(SAFE_DOMAIN_REGEX, "_")
+
     fun domainIconFile(domain: String): File =
-        File(domainIconsDir(createIfMissing = true), "$domain$DOMAIN_ICON_EXTENSION")
+        File(domainIconsDir(createIfMissing = true), "${sanitizeIconKey(domain)}$DOMAIN_ICON_EXTENSION")
 
     fun legacyDomainIconFile(domain: String): File? =
-        legacyDomainIconsDir()?.let { File(it, "$domain$DOMAIN_ICON_EXTENSION") }
+        legacyDomainIconsDir()?.let { File(it, "${sanitizeIconKey(domain)}$DOMAIN_ICON_EXTENSION") }
 
     fun negativeMarkerFile(domain: String): File =
-        File(domainIconsDir(createIfMissing = true), "$domain$NEGATIVE_MARKER_EXTENSION")
+        File(domainIconsDir(createIfMissing = true), "${sanitizeIconKey(domain)}$NEGATIVE_MARKER_EXTENSION")
 
     fun isPrunableOgImageFileName(fileName: String): Boolean =
         OG_IMAGE_FILE_REGEX.matches(fileName) || isDomainLatestOgImageFileName(fileName)
@@ -238,11 +278,15 @@ internal class MediaCacheRevisionBus(
     val generation: AtomicLong = AtomicLong(0L),
     private val emissionScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) {
+    internal val ogGeneration: AtomicLong = AtomicLong(generation.get())
+    internal val iconGeneration: AtomicLong = AtomicLong(generation.get())
+
     private val _cacheGenerationState = MutableStateFlow(generation.get())
     val cacheGenerationState: StateFlow<Long> = _cacheGenerationState.asStateFlow()
 
     private val _cacheClearedEvent = MutableSharedFlow<Long>(extraBufferCapacity = 4)
     val cacheClearedEvent: SharedFlow<Long> = _cacheClearedEvent.asSharedFlow()
+    private val clearBroadcastLock = Any()
 
     private val ogDomainRevisions = ConcurrentHashMap<String, AtomicLong>()
     private val _ogImageUpdatedDomain = MutableSharedFlow<Pair<String, Long>>(extraBufferCapacity = 64)
@@ -258,11 +302,15 @@ internal class MediaCacheRevisionBus(
 
     fun getCurrentGeneration(): Long = generation.get()
 
+    fun getOgGeneration(): Long = ogGeneration.get()
+
+    fun getIconGeneration(): Long = iconGeneration.get()
+
     fun getOgDomainRevision(domain: String): Long =
-        getDomainRevision(ogDomainRevisions, domain)
+        getDomainRevision(ogDomainRevisions, domain, ogGeneration)
 
     fun notifyOgImageUpdated(domain: String) {
-        notifyDomainChannel(domain, ogDomainRevisions, _ogImageUpdatedDomain)
+        notifyDomainChannel(domain, ogDomainRevisions, _ogImageUpdatedDomain, ogGeneration)
     }
 
     fun notifyExactImageUpdated(domain: String, imageKey: String) {
@@ -285,46 +333,57 @@ internal class MediaCacheRevisionBus(
         observeDomainChannel(domain, ::getOgDomainRevision, ogImageUpdatedDomain)
 
     fun getIconDomainRevision(domain: String): Long =
-        getDomainRevision(iconDomainRevisions, domain)
+        getDomainRevision(iconDomainRevisions, domain, iconGeneration)
 
     fun notifyIconUpdated(domain: String) {
-        notifyDomainChannel(domain, iconDomainRevisions, _iconUpdatedDomain)
+        notifyDomainChannel(domain, iconDomainRevisions, _iconUpdatedDomain, iconGeneration)
     }
 
     fun observeIconUpdates(domain: String?): Flow<Long> =
         observeDomainChannel(domain, ::getIconDomainRevision, iconUpdatedDomain)
 
-    internal fun onOgImagesCleared() {
+    internal fun onOgImagesCleared(advanceSharedGeneration: Boolean = true) {
         ogDomainRevisions.clear()
         pendingExactKeys.clear()
-        broadcastGenerationCleared()
+        if (advanceSharedGeneration) {
+            advanceAndBroadcastGenerationCleared()
+        }
     }
 
-    internal fun onDomainIconsCleared() {
+    internal fun onDomainIconsCleared(advanceSharedGeneration: Boolean = true) {
         iconDomainRevisions.clear()
-        broadcastGenerationCleared()
+        if (advanceSharedGeneration) {
+            advanceAndBroadcastGenerationCleared()
+        }
     }
 
-    private fun broadcastGenerationCleared() {
-        val current = generation.get()
-        _cacheGenerationState.value = current
-        _cacheClearedEvent.tryEmit(current)
+    internal fun advanceAndBroadcastGenerationCleared() {
+        synchronized(clearBroadcastLock) {
+            val current = generation.incrementAndGet()
+            _cacheGenerationState.update { prev -> maxOf(prev, current) }
+            _cacheClearedEvent.tryEmit(_cacheGenerationState.value)
+        }
     }
 
-    private fun getDomainRevision(revisions: ConcurrentHashMap<String, AtomicLong>, domain: String): Long {
+    private fun getDomainRevision(
+        revisions: ConcurrentHashMap<String, AtomicLong>,
+        domain: String,
+        storeGeneration: AtomicLong
+    ): Long {
         val normalized = MediaCacheLayout.normalizeDomain(domain)
         val rev = revisions[normalized]?.get() ?: 0L
-        return rev + (generation.get() * GENERATION_STRIDE)
+        return rev + (storeGeneration.get() * GENERATION_STRIDE)
     }
 
     private fun notifyDomainChannel(
         domain: String,
         revisions: ConcurrentHashMap<String, AtomicLong>,
-        sink: MutableSharedFlow<Pair<String, Long>>
+        sink: MutableSharedFlow<Pair<String, Long>>,
+        storeGeneration: AtomicLong
     ) {
         val normalized = MediaCacheLayout.normalizeDomain(domain)
         val rev = revisions.computeIfAbsent(normalized) { AtomicLong(0L) }.incrementAndGet()
-        val currentRev = rev + (generation.get() * GENERATION_STRIDE)
+        val currentRev = rev + (storeGeneration.get() * GENERATION_STRIDE)
         sink.tryEmit(Pair(normalized, currentRev))
     }
 
@@ -430,7 +489,7 @@ internal class MediaCacheStore private constructor(
     val ogImages: OgImageStore = OgImageStore(
         layout = layout,
         revisionBus = revisionBus,
-        coordinator = CoalescedFetchCoordinator(nowMillis = nowMillis, generation = revisionBus.generation),
+        coordinator = CoalescedFetchCoordinator(nowMillis = nowMillis, generation = revisionBus.ogGeneration),
         imageDownloader = ogImageDownloader,
         compatImageDownloaderProvider = compatOgImageDownloaderProvider,
         codec = ogImageCodec
@@ -439,7 +498,7 @@ internal class MediaCacheStore private constructor(
     val domainIcons: DomainIconStore = DomainIconStore(
         layout = layout,
         revisionBus = revisionBus,
-        coordinator = CoalescedFetchCoordinator(nowMillis = nowMillis, generation = revisionBus.generation),
+        coordinator = CoalescedFetchCoordinator(nowMillis = nowMillis, generation = revisionBus.iconGeneration),
         httpDownloader = iconHttpDownloader,
         htmlDiscoverer = iconHtmlDiscoverer,
         compatHttpDownloaderProvider = compatIconHttpDownloaderProvider,
@@ -450,8 +509,9 @@ internal class MediaCacheStore private constructor(
     )
 
     suspend fun clearCache() {
-        ogImages.clearImageCache()
-        domainIcons.clearCache()
+        ogImages.clearImageCache(broadcastClear = false)
+        domainIcons.clearCache(broadcastClear = false)
+        revisionBus.advanceAndBroadcastGenerationCleared()
     }
 
     companion object {
@@ -467,22 +527,14 @@ internal class MediaCacheStore private constructor(
             }
 
         fun getInstance(context: Context): MediaCacheStore {
-            val cacheDir = context.cacheDir
-            val filesDir = runCatching { context.filesDir }.getOrNull()
             val current = instance
             if (current != null) {
-                if (current.layout.cacheRootDir != cacheDir ||
-                    (filesDir != null && current.layout.legacyFilesDir != filesDir)
-                ) {
-                    synchronized(this) {
-                        current.layout.updateRoots(cacheDir, filesDir)
-                    }
-                }
+                current.layout.bindContext(context)
                 return current
             }
             return synchronized(this) {
-                val created = instance ?: buildCompatStore(cacheDir, filesDir).also { instance = it }
-                created.layout.updateRoots(cacheDir, filesDir)
+                val created = instance ?: buildCompatStore(defaultRoot, null).also { instance = it }
+                created.layout.bindContext(context)
                 created
             }
         }

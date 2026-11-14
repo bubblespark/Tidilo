@@ -173,7 +173,7 @@ Library retains its title/subtitle, exposes only the existing dashboard/gear dis
   - **Dynamic Edge-Color Palette (`DetailHeroPalette`)**: `BookmarkDetailLighting.kt` and `OgImageManager` sample representative colors from the top ~15% band (`topEdgeColor`) and bottom ~15% band (`bottomEdgeColor`) alongside the dominant `accentColor` on `Dispatchers.Default`, calibrated via `calibrateDetailEdgeColor` for status bar and text legibility and animated with a 350ms `EaseOutCubic` transition. `OgImageManager` caches up to 128 palettes keyed by image source and bitmap generation and invalidates them on eviction or cache clearing.
   - **Minimal Edge Feathering & Symmetric Upward/Downward Gradient Extensions**: Over the `og:image` itself, top and bottom feathering is kept minimal (`12.dp` top / `14.dp` bottom) so artwork remains unobstructed while eliminating hard 1px seams. Above the image, the status bar band extends `topEdgeColor` upward and fades into transparent (`Transparent` -> `topEdgeColor.copy(alpha = 0.50f)` -> `topEdgeColor`). Below the image, a downward gradient extension (`bottomEdgeColor` -> `bottomEdgeColor.copy(alpha = 0.35f)` -> `Transparent`) hosts the above-title metadata and Bookmark Title.
   - **Measured Light Source**: The ambient radial bloom has radius `screenWidth * 1.05` and follows the banner's actual root-space center through scrolling, accompanied by a downward linear wash (`detailAmbientLight`).
-  - **Reactive Cache & On-Demand Loading**: Integrated with `rememberOgImage` (`OgImageManager` cache observer and update notifications, triggering background on-demand fetching when uncached), unified across `BookmarkDetailScreen` and `BookmarkGridCard`.
+  - **Reactive Cache & On-Demand Loading**: Integrated with `rememberOgImage` (`LocalCacheVisualSource` cache observer and exact-image update notifications, triggering background on-demand fetching when uncached), unified across `BookmarkDetailScreen` and `BookmarkGridCard`.
   - **Domain Icon Watermark Fallback (`DomainWatermark`)**:
     - When `og:image` is available, the Seamless Hero Banner is rendered and the background `DomainWatermark` is suppressed.
     - When `og:image` is absent (`ogImageUrl == null` or load fails) and image resolution has completed (`ogState.resolved`), top clearance (`statusBars + 72.dp`) is applied so the floating Back and Save buttons never overlap text, and `DomainWatermark` (`195dp`, 50% saturation, `0.14f` alpha, `RoundedCornerShape(20.dp)`) renders at `Alignment.TopEnd` with domain shoulder ambient lighting.
@@ -233,7 +233,7 @@ When a standalone 86dp bottom-right button expands into a menu, child menu pills
 ### 6.5 `DomainWatermark`
 - **Dimensions & Effects**: Default `195dp` size, `ColorMatrix` with 50% saturation (`0.50f`), 0.14f alpha, clipped with `RoundedCornerShape(20.dp)`.
 - **Shared Consistency**: Shared seamlessly between card feeds (`BookmarkCard`, `SearchScreen`), domain grid (`DomainCard`), and detail views (`BookmarkDetailScreen`).
-- **Asynchronous & Non-Blocking Performance**: Uses `rememberDomainIcon` to resolve cached icons and recover missing icons without blocking the UI. Imports and visible consumers share bounded per-domain requests. Completion updates bitmaps and accent colors without restarting active icon producers; cache generation changes recreate them. See [Domain Icon Recovery](domain_icon_cache.md).
+- **Asynchronous & Non-Blocking Performance**: Uses `rememberDomainVisual` (`CacheVisualSource`) to resolve cached icons and recover missing icons alongside calibrated accent colors under a single subscription without blocking the UI. Imports and visible consumers share bounded per-domain requests. Completion updates bitmaps and accent colors without restarting active icon producers; cache generation changes recreate them. See [Domain Icon Recovery](domain_icon_cache.md).
 
 ### 6.6 Import notifications
 
@@ -276,7 +276,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 - **Drill-down Interaction & Radiant Ambient Background**:
   - Tapping a domain card opens the domain-filtered bookmark list (rendered using standard `BookmarkItemCard` in latest-first order).
   - **Radiant Brand Background (2/3 Screen Spread)**:
-    - Uses domain dominant color (`selectedDomainColor`), resolved asynchronously via `produceState` from `DomainIconManager.getCachedDominantColor` or fallback `generateDomainAccentColor`.
+    - Uses domain dominant color (`selectedDomainColor`), resolved asynchronously via `rememberDomainVisual` (`CacheVisualSource` cached dominant color or fallback generated accent color).
     - Radiant beam (`Brush.linearGradient`): 6-stop gradient radiating from top-right (`Offset(size.width * 1.05f, -size.height * 0.02f)`) towards bottom-left (`Offset(-size.width * 0.15f, size.height * 0.90f)`), holding visible color across ~2/3 of the screen before gently tapering (`0.32f` -> `0.22f` -> `0.13f` -> `0.05f` -> `0.015f` -> `Transparent`).
     - Corner radial glow (`Brush.radialGradient`): Centered at `Offset(size.width, 0f)` with deep radius `size.height * 0.72f` (~650-700dp), bathing the upper 2/3 of the screen in a soft atmospheric bloom (`0.22f` -> `0.13f` -> `0.05f` -> `0.012f` -> `Transparent`).
     - Seamlessly harmonizes with the card top-right ambient illumination, establishing deep spatial coherence.

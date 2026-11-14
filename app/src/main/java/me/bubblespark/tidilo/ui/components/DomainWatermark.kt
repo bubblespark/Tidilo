@@ -37,9 +37,9 @@ fun DomainWatermark(
 ) {
     if (domain.isNullOrBlank()) return
 
-    val iconBitmap by rememberDomainIcon(domain, pageUrl, context = context)
+    val domainVisual by rememberDomainVisual(domain, pageUrl, context = context)
 
-    IconWatermark(iconBitmap, modifier, size, saturation, alpha)
+    IconWatermark(domainVisual.bitmap, modifier, size, saturation, alpha)
 }
 
 /** Same image treatment for domain and feed-specific watermarks. */

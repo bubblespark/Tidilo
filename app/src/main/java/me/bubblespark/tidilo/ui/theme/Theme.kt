@@ -12,8 +12,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import me.bubblespark.tidilo.config.AppTheme
+import me.bubblespark.tidilo.data.cache.MediaCacheStore
+import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
 import me.bubblespark.tidilo.ui.components.OverlayBlurHost
 import me.bubblespark.tidilo.ui.components.ScreenBackdropHost
+import me.bubblespark.tidilo.ui.components.SingletonCacheVisualAdapter
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
@@ -68,11 +71,15 @@ fun TidiloTheme(
     blurEnabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    val context = LocalContext.current
+    val cacheVisualSource = remember(context) {
+        MediaCacheStore.getInstance(context)
+        SingletonCacheVisualAdapter
+    }
     val style = remember(theme) { AppThemeStyle.forTheme(theme) }
     val colorScheme = resolveMaterialColors(darkTheme, style) {
         when {
             dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-                val context = LocalContext.current
                 if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
             }
             darkTheme -> DarkColorScheme
@@ -82,8 +89,12 @@ fun TidiloTheme(
     val surfaces = remember(theme, darkTheme, colorScheme, style) {
         resolveThemeSurfaces(theme, darkTheme, colorScheme, style)
     }
-    CompositionLocalProvider(LocalThemeSurfaces provides surfaces, LocalAppThemeStyle provides style,
-        LocalOverlayBlurSetting provides resolveOverlayBlur(style.overlayBlurPolicy, blurEnabled)) {
+    CompositionLocalProvider(
+        LocalThemeSurfaces provides surfaces,
+        LocalAppThemeStyle provides style,
+        LocalOverlayBlurSetting provides resolveOverlayBlur(style.overlayBlurPolicy, blurEnabled),
+        LocalCacheVisualSource provides cacheVisualSource
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

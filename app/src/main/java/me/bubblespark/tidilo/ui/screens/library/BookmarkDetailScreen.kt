@@ -78,9 +78,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
-import me.bubblespark.tidilo.data.DomainIconManager
 import androidx.compose.ui.layout.ContentScale
 import me.bubblespark.tidilo.ui.components.DomainWatermark
+import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
 import me.bubblespark.tidilo.ui.components.calculateOgAspectRatio
 import me.bubblespark.tidilo.ui.components.rememberOgImage
 import androidx.compose.ui.res.vectorResource
@@ -279,7 +279,10 @@ fun BookmarkDetailScreen(
     }
 
 
-    val domain = remember(bookmark.url) { DomainIconManager.extractDomain(bookmark.url) }
+    val visualSource = LocalCacheVisualSource.current
+    val domain = remember(bookmark.domain, bookmark.url, visualSource) {
+        bookmark.domain ?: visualSource.extractDomain(bookmark.url)
+    }
     val policies by DomainPolicyManager.policies.collectAsStateWithLifecycle()
     val domainDisplayName = remember(domain, policies) {
         domain?.let { DomainPolicyManager.getDisplayName(it) } ?: domain ?: ""

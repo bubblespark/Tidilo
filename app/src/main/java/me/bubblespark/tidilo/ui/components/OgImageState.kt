@@ -7,16 +7,21 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.consumeAsFlow
-import me.bubblespark.tidilo.data.OgImageManager
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 const val DEFAULT_OG_ASPECT_RATIO = 1.91f
 
@@ -58,6 +63,40 @@ fun initialOgImageState(cached: ImageBitmap?, ogFilename: String?): OgImageState
 fun resolvedOgImageState(fetched: ImageBitmap?): OgImageState =
     OgImageState(bitmap = fetched, resolved = true)
 
+internal fun observeOgImageStateFlow(
+    url: String,
+    domain: String?,
+    ogImageUrl: String?,
+    ogFilename: String?,
+    context: Context?,
+    source: CacheVisualSource,
+    ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+): Flow<OgImageState> = channelFlow {
+    if (domain == null || ogFilename == null) {
+        send(initialOgImageState(null, ogFilename))
+        return@channelFlow
+    }
+
+    val updates = Channel<Unit>(Channel.CONFLATED)
+    // Subscribe before the initial fetch so eviction cannot be missed during loading.
+    launch(start = CoroutineStart.UNDISPATCHED) {
+        source.observeExactImageUpdates(ogFilename).collect { updates.send(Unit) }
+    }
+    updates.trySend(Unit)
+    updates.consumeAsFlow().collectLatest {
+        val available = source.getCachedOgImageBitmap(domain, ogFilename)
+        if (available != null) {
+            send(resolvedOgImageState(available))
+        } else {
+            send(initialOgImageState(null, ogFilename))
+            val fetched = withContext(ioDispatcher) {
+                source.loadOrFetchOgImage(context, url, domain, ogImageUrl)
+            }
+            send(resolvedOgImageState(fetched))
+        }
+    }
+}.distinctUntilChanged()
+
 /**
  * Reactively loads and caches the og:image for a bookmark, coordinating in-memory hits,
  * background disk/network fetching, and exact image update notifications.
@@ -68,31 +107,17 @@ fun rememberOgImage(
     domain: String?,
     ogImageUrl: String?,
     ogFilename: String?,
-    context: Context = LocalContext.current
+    context: Context = LocalContext.current,
+    source: CacheVisualSource = LocalCacheVisualSource.current
 ): State<OgImageState> {
-    val cacheGeneration by OgImageManager.cacheGenerationState.collectAsStateWithLifecycle()
+    val cacheGeneration by source.cacheGenerationState.collectAsStateWithLifecycle()
 
-    return key(context, url, domain, ogFilename, cacheGeneration) {
-        val cached = if (domain != null && ogFilename != null) OgImageManager.getCachedOgImageBitmap(domain, ogFilename) else null
+    return key(context, url, domain, ogFilename, cacheGeneration, source) {
+        val cached = remember(domain, ogFilename, cacheGeneration, source) {
+            if (domain != null && ogFilename != null) source.getCachedOgImageBitmap(domain, ogFilename) else null
+        }
         produceState(initialValue = initialOgImageState(cached, ogFilename)) {
-            if (domain != null && ogFilename != null) {
-                coroutineScope {
-                    val updates = Channel<Unit>(Channel.CONFLATED)
-                    // Subscribe before the initial fetch so eviction cannot be missed during loading.
-                    launch(start = CoroutineStart.UNDISPATCHED) {
-                        OgImageManager.observeExactImageUpdates(ogFilename).collect { updates.send(Unit) }
-                    }
-                    updates.trySend(Unit)
-                    updates.consumeAsFlow().collectLatest {
-                        val available = OgImageManager.getCachedOgImageBitmap(domain, ogFilename)
-                        if (available != null) value = resolvedOgImageState(available)
-                        else {
-                            value = initialOgImageState(null, ogFilename)
-                            value = resolvedOgImageState(OgImageManager.loadOrFetchOgImage(context, url, domain, ogImageUrl))
-                        }
-                    }
-                }
-            }
+            observeOgImageStateFlow(url, domain, ogImageUrl, ogFilename, context, source).collect { value = it }
         }
     }
 }

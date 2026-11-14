@@ -64,7 +64,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.key
@@ -92,19 +91,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
-import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
+import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
 import me.bubblespark.tidilo.ui.components.RememberAmbientLighting
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.screenActionInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
-import me.bubblespark.tidilo.ui.components.rememberFeedIcon
+import me.bubblespark.tidilo.ui.components.rememberDomainVisual
+import me.bubblespark.tidilo.ui.components.rememberFeedVisual
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 private sealed interface LibraryDisplayState {
@@ -142,10 +140,11 @@ fun LibraryScreen(
     LaunchedEffect(collectionRows, collectionLoading, collectionError, selectedCollectionId) {
         if (!collectionLoading && collectionError == null && selectedCollectionId != null && selectedCollection == null) viewModel.selectCollectionFilter(null)
     }
+    val visualSource = LocalCacheVisualSource.current
     val rssFeedGroups by viewModel.rssFeedGroups.collectAsStateWithLifecycle()
     val rssFeedGroupsLoading by viewModel.rssFeedGroupsLoading.collectAsStateWithLifecycle()
     val selectedFeed = rssFeedGroups.firstOrNull { it.feed.id == selectedRssFeedFilter?.id }?.feed ?: selectedRssFeedFilter
-    val selectedFeedIcon = if (selectedFeed != null) rememberFeedIcon(selectedFeed, context = context).value else null
+    val selectedFeedIcon = if (selectedFeed != null) rememberFeedVisual(selectedFeed, context = context, source = visualSource).value else null
     val domainGroups by viewModel.domainGroups.collectAsStateWithLifecycle()
     val initializationFailure by viewModel.initializationFailure.collectAsStateWithLifecycle()
     val initialized by viewModel.isInitialized.collectAsStateWithLifecycle()
@@ -275,13 +274,11 @@ fun LibraryScreen(
     val activeDrillDownColor = when {
         filterMode == LibraryFilterMode.COLLECTION && selectedCollection != null -> selectedCollection.accentColor
         filterMode == LibraryFilterMode.RSS && selectedFeed != null -> {
-            val publisherDomain = DomainIconManager.feedPublisherDomain(selectedFeed).orEmpty()
-            selectedFeedIcon?.color ?: DomainIconManager.getCachedDominantColor(publisherDomain)
-                ?: DomainIconManager.generateDomainAccentColor(publisherDomain)
+            val publisherDomain = visualSource.feedPublisherDomain(selectedFeed).orEmpty()
+            selectedFeedIcon?.color ?: visualSource.resolveInstantDomainAccentColor(publisherDomain)
         }
         filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null -> {
-            selectedDomainColor ?: DomainIconManager.getCachedDominantColor(selectedDomainFilter!!)
-                ?: DomainIconManager.generateDomainAccentColor(selectedDomainFilter!!)
+            selectedDomainColor ?: visualSource.resolveInstantDomainAccentColor(selectedDomainFilter!!)
         }
         else -> null
     }
@@ -638,12 +635,11 @@ fun LibraryScreen(
                             val feed = (state as? LibraryDisplayState.RssFeedDrillDown)?.feed?.let { snapshot ->
                                 rssFeedGroups.firstOrNull { it.feed.id == snapshot.id }?.feed ?: snapshot
                             }
-                            val feedIcon = if (feed != null) rememberFeedIcon(feed, context = context).value else null
+                            val feedIcon = if (feed != null) rememberFeedVisual(feed, context = context, source = visualSource).value else null
                             val currentDomain = (state as? LibraryDisplayState.DomainDrillDown)?.domain
-                                ?: feed?.let(DomainIconManager::feedPublisherDomain).orEmpty()
+                                ?: feed?.let(visualSource::feedPublisherDomain).orEmpty()
                             val domainColor = collectionItem?.accentColor ?: feedIcon?.color ?: rememberDomainAccentColor(currentDomain)
-                                ?: DomainIconManager.getCachedDominantColor(currentDomain)
-                                ?: DomainIconManager.generateDomainAccentColor(currentDomain)
+                                ?: visualSource.resolveInstantDomainAccentColor(currentDomain)
 
                             val domainBookmarks = bookmarks
 
@@ -934,18 +930,7 @@ internal fun BookmarkSummaryPeekOverlay(bookmark: BookmarkItem?, headerHeight: a
 internal data class LibrarySubtitle(val text: String, val color: Color)
 
 @Composable
-private fun rememberDomainAccentColor(domain: String?): Color? = key(domain) {
-    val context = LocalContext.current
-    val updates by remember(domain) { DomainIconManager.observeIconUpdates(domain) }
-        .collectAsStateWithLifecycle(initialValue = 0L)
-    val color by produceState(
-        initialValue = domain?.let {
-            DomainIconManager.getCachedDominantColor(it) ?: DomainIconManager.generateDomainAccentColor(it)
-        }, key1 = updates
-    ) {
-        if (domain != null) value = withContext(Dispatchers.IO) {
-            DomainIconManager.getDominantColor(context, domain)
-        }
-    }
-    color
+private fun rememberDomainAccentColor(domain: String?): Color? {
+    val visual by rememberDomainVisual(domain = domain?.takeIf { it.isNotBlank() })
+    return visual.accentColor.takeIf { it != Color.Unspecified }
 }

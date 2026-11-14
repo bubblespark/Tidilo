@@ -57,8 +57,9 @@ app/src/main/java/com/ykgudev/tidilo/
     │   ├── HeaderDefaults.kt            # Shared font-aware header geometry and body clearance
     │   ├── TidiloFrostedHeader.kt        # Independent slot-based toolbar and secondary-page header
     │   ├── TidiloScreenScaffold.kt       # Body/header/overlay layers and optional scroll-linked header visibility
+    │   ├── CacheVisualSource.kt         # Root-level visual cache interface, SingletonCacheVisualAdapter, and LocalCacheVisualSource
     │   ├── DomainWatermark.kt           # Shared 195dp, 50% saturation, 0.14 alpha domain icon watermark
-    │   └── DomainIconState.kt           # Generation-scoped icon loading and completion observation
+    │   └── DomainIconState.kt           # Generation-scoped icon & accent color producer (DomainIconVisual, rememberDomainVisual)
     │
     ├── icons/                           # Custom SVG / Vector icon assets and definitions
     │

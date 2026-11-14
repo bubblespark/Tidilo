@@ -36,11 +36,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import me.bubblespark.tidilo.data.DomainIconManager
-import me.bubblespark.tidilo.data.OgImageManager
+import me.bubblespark.tidilo.data.cache.MediaColorPalette
+import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
+import me.bubblespark.tidilo.ui.components.rememberDomainVisual
 import kotlin.math.ceil
 
 typealias DetailHeroPalette = me.bubblespark.tidilo.data.DetailHeroPalette
@@ -127,7 +125,7 @@ fun calibrateDetailEdgeColor(
         ((color.green * 255).toInt() shl 8) or
         (color.blue * 255).toInt()
     val hsv = FloatArray(3)
-    DomainIconManager.colorToHsv(argb, hsv)
+    MediaColorPalette.colorToHsv(argb, hsv)
     val hue = hsv[0]
     var sat = hsv[1]
     var value = hsv[2]
@@ -193,29 +191,32 @@ internal fun rememberDetailHeroPalette(
     showFallback: Boolean
 ): State<DetailHeroPalette> = key(bookmarkId, domain) {
     val context = LocalContext.current
+    val visualSource = LocalCacheVisualSource.current
     val surfaces = currentThemeSurfaces()
     val themeStyle = surfaces.preset
     val isDark = surfaces.isDark
     val colorScheme = MaterialTheme.colorScheme
-    val iconRevision by androidx.compose.runtime.remember(domain) { DomainIconManager.observeIconUpdates(domain) }
-        .collectAsStateWithLifecycle(initialValue = 0L)
-    val rawPalette by produceState(DetailHeroPalette.Transparent, bitmap, imageKey, showFallback, iconRevision) {
-        value = when {
-            bitmap != null && domain != null -> {
-                OgImageManager.getDetailHeroPalette(domain, imageKey, bitmap) ?: DetailHeroPalette.Transparent
-            }
-            showFallback && domain != null -> {
-                val fallbackColor = DomainIconManager.getCachedDominantColor(domain) ?: withContext(Dispatchers.IO) {
-                    DomainIconManager.getDominantColor(context, domain)
-                }
-                DetailHeroPalette(
-                    topEdgeColor = Color.Transparent,
-                    bottomEdgeColor = Color.Transparent,
-                    accentColor = fallbackColor
-                )
-            }
-            else -> DetailHeroPalette.Transparent
+    val fallbackVisual by rememberDomainVisual(
+        domain = if (bitmap == null && showFallback) domain else null,
+        allowNetwork = false,
+        context = context,
+        source = visualSource
+    )
+    val ogPalette by produceState(DetailHeroPalette.Transparent, bitmap, imageKey, domain, visualSource) {
+        value = if (bitmap != null && domain != null) {
+            visualSource.getDetailHeroPalette(domain, imageKey, bitmap) ?: DetailHeroPalette.Transparent
+        } else {
+            DetailHeroPalette.Transparent
         }
+    }
+    val rawPalette = when {
+        bitmap != null && domain != null -> ogPalette
+        showFallback && domain != null && fallbackVisual.accentColor != Color.Unspecified -> DetailHeroPalette(
+            topEdgeColor = Color.Transparent,
+            bottomEdgeColor = Color.Transparent,
+            accentColor = fallbackVisual.accentColor
+        )
+        else -> DetailHeroPalette.Transparent
     }
     val targetAccent = if (rawPalette.accentColor != Color.Transparent) {
         themeStyle.resolveColor(colorScheme, rawPalette.accentColor)

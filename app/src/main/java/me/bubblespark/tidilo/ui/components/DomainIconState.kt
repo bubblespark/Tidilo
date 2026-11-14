@@ -2,20 +2,122 @@ package me.bubblespark.tidilo.ui.components
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import me.bubblespark.tidilo.data.DomainIconManager
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
-/** Keeps completion observations separate from the lifetime of a shared icon request. */
+/** Unified domain artwork and calibrated accent color resolved from a single subscription. */
+@Immutable
+data class DomainIconVisual(
+    val bitmap: ImageBitmap?,
+    val accentColor: Color
+)
+
+internal fun resolveInitialDomainVisual(
+    domain: String?,
+    source: CacheVisualSource
+): DomainIconVisual {
+    if (domain.isNullOrBlank()) {
+        return DomainIconVisual(bitmap = null, accentColor = Color.Unspecified)
+    }
+    return DomainIconVisual(
+        bitmap = source.getCachedIconBitmap(domain),
+        accentColor = source.resolveInstantDomainAccentColor(domain)
+    )
+}
+
+internal fun observeDomainVisualFlow(
+    domain: String?,
+    pageUrl: String?,
+    allowNetwork: Boolean,
+    context: Context?,
+    source: CacheVisualSource,
+    ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+): Flow<DomainIconVisual> = channelFlow {
+    if (domain.isNullOrBlank()) return@channelFlow
+
+    val initialBitmap = source.getCachedIconBitmap(domain)
+    val initialColor = source.getCachedDominantColor(domain)
+    val initialResolved = AtomicBoolean(initialBitmap != null && initialColor != null)
+    val retainedBitmap = AtomicReference<ImageBitmap?>(initialBitmap)
+
+    launch(start = CoroutineStart.UNDISPATCHED) {
+        source.observeIconUpdates(domain).collect {
+            val resolved = initialResolved.get()
+            val cachedBitmap = source.getCachedIconBitmap(domain)
+            val cachedColor = source.getCachedDominantColor(domain)
+            if (!resolved) {
+                if (cachedBitmap != null && cachedColor != null) {
+                    retainedBitmap.set(cachedBitmap)
+                    send(DomainIconVisual(cachedBitmap, cachedColor))
+                }
+                return@collect
+            }
+            val updatedBitmap = cachedBitmap
+                ?: withContext(ioDispatcher) { source.loadIconFromDisk(context, domain) }
+                ?: retainedBitmap.get()
+            val updatedColor = cachedColor
+                ?: withContext(ioDispatcher) { source.getDominantColor(context, domain) }
+            retainedBitmap.set(updatedBitmap)
+            send(DomainIconVisual(updatedBitmap, updatedColor))
+        }
+    }
+
+    if (initialBitmap != null && initialColor != null) {
+        send(DomainIconVisual(initialBitmap, initialColor))
+    } else {
+        val bitmap = initialBitmap ?: withContext(ioDispatcher) {
+            if (allowNetwork) source.loadOrFetchIcon(context, domain, pageUrl)
+            else source.loadIconFromDisk(context, domain)
+        }
+        val color = source.getCachedDominantColor(domain) ?: withContext(ioDispatcher) {
+            source.getDominantColor(context, domain)
+        }
+        retainedBitmap.set(bitmap)
+        initialResolved.set(true)
+        send(DomainIconVisual(bitmap, color))
+    }
+}.distinctUntilChanged()
+
+/** Keeps completion updates and accent color resolution under a single subscription per domain. */
+@Composable
+fun rememberDomainVisual(
+    domain: String?,
+    pageUrl: String? = null,
+    allowNetwork: Boolean = true,
+    context: Context = LocalContext.current,
+    source: CacheVisualSource = LocalCacheVisualSource.current
+): State<DomainIconVisual> {
+    val generation by source.cacheGenerationState.collectAsStateWithLifecycle()
+    return key(context, domain, pageUrl, generation, allowNetwork, source) {
+        val initial = remember(domain, generation, source) {
+            resolveInitialDomainVisual(domain, source)
+        }
+        produceState(initialValue = initial) {
+            observeDomainVisualFlow(domain, pageUrl, allowNetwork, context, source).collect { value = it }
+        }
+    }
+}
+
+/** Compatibility wrapper returning only the domain icon bitmap from [rememberDomainVisual]. */
 @Composable
 internal fun rememberDomainIcon(
     domain: String?,
@@ -23,23 +125,6 @@ internal fun rememberDomainIcon(
     allowNetwork: Boolean = true,
     context: Context = LocalContext.current
 ): State<ImageBitmap?> {
-    val generation by DomainIconManager.cacheGenerationState.collectAsStateWithLifecycle()
-    return key(context, domain, pageUrl, generation, allowNetwork) {
-        val cached = domain?.let { DomainIconManager.getCachedIconBitmap(it) }
-        produceState<ImageBitmap?>(initialValue = cached) {
-            if (!domain.isNullOrBlank()) coroutineScope {
-                launch {
-                    DomainIconManager.observeIconUpdates(domain).collect {
-                        DomainIconManager.getCachedIconBitmap(domain)?.let { value = it }
-                    }
-                }
-                if (cached == null) {
-                    value = withContext(Dispatchers.IO) {
-                        if (allowNetwork) DomainIconManager.loadOrFetchIcon(context, domain, pageUrl)
-                        else DomainIconManager.loadIconFromDisk(context, domain)
-                    }
-                }
-            }
-        }
-    }
+    val visualState = rememberDomainVisual(domain, pageUrl, allowNetwork, context)
+    return remember(visualState) { derivedStateOf { visualState.value.bitmap } }
 }

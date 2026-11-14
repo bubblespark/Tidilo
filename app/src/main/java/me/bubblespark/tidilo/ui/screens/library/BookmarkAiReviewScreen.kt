@@ -82,7 +82,6 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.Category
-import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.Subcategory
 import me.bubblespark.tidilo.service.GeminiTaggingService
 import me.bubblespark.tidilo.service.TaggingResult

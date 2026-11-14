@@ -86,16 +86,21 @@ internal class MediaCacheLayout(
     }
 
     private fun resolvePendingContext() {
-        val ref = pendingContext.get() ?: return
-        pendingContext.compareAndSet(ref, null)
-        val ctx = ref.get() ?: return
-        val cacheDir = runCatching { ctx.cacheDir }.getOrNull() ?: return
-        val filesDir = runCatching { ctx.filesDir }.getOrNull()
+        if (pendingContext.get() == null) return
         synchronized(rootUpdateLock) {
-            if (pendingContext.get() == null) {
+            val ref = pendingContext.get() ?: return
+            val ctx = ref.get()
+            if (ctx == null) {
+                pendingContext.compareAndSet(ref, null)
+                return
+            }
+            val cacheDir = runCatching { ctx.cacheDir }.getOrNull()
+            val filesDir = runCatching { ctx.filesDir }.getOrNull()
+            if (cacheDir != null) {
                 updateRoots(cacheDir, filesDir)
                 lastResolvedContext.set(ref)
             }
+            pendingContext.compareAndSet(ref, null)
         }
     }
 

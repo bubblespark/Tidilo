@@ -817,41 +817,15 @@ class ImportRepository internal constructor(
         }
     }
 
-    private suspend fun persistDirectBookmarkInTransaction(item: BookmarkItem): BookmarkItem {
-        val domain = DomainIconManager.extractDomain(item.url)
-        val resolvedItem = if (domainPolicyAdapter.isNsfwDomain(domain) && !item.isNsfw) {
-            item.copy(isNsfw = true)
-        } else {
-            item
-        }
-        val existing = bookmarkDao?.getBookmarkByUrl(resolvedItem.url)
-            ?: bookmarkDao?.getBookmarkById(resolvedItem.id)
-        val finalItem = if (existing != null) {
-            val existingTag = existing.logicalTag()
-            resolvedItem.copy(
-                id = existing.id,
-                tag = Tag(
-                    category = resolvedItem.tag.category ?: existingTag.category,
-                    subcategory = resolvedItem.tag.subcategory ?: existingTag.subcategory,
-                    entities = resolvedItem.tag.entities.ifEmpty { existingTag.entities }
-                ),
-                note = if (resolvedItem.note.isNotBlank()) resolvedItem.note else existing.note,
-                createdAt = existing.createdAt,
-                isLiked = existing.isLiked,
-                browserOpenCount = existing.browserOpenCount,
-                detailViewCount = existing.detailViewCount,
-                summaryPeekCount = existing.summaryPeekCount,
-                lastInteractedAt = existing.lastInteractedAt
-            )
-        } else {
-            resolvedItem
-        }
-        if (finalItem.rssFeedId != null) {
-            rssAdapter.validateRssWrite(finalItem.url, finalItem.id, finalItem.rssFeedId, finalItem.isNsfw)
-        }
-        bookmarkDao?.insertReplacingUrl(BookmarkEntity.fromBookmarkItem(finalItem))
-        return finalItem
-    }
+    private suspend fun persistDirectBookmarkInTransaction(item: BookmarkItem): BookmarkItem =
+        persistMergedBookmarkInTransaction(
+            item = item,
+            bookmarkDao = bookmarkDao,
+            isNsfwDomain = domainPolicyAdapter::isNsfwDomain,
+            validateRssWrite = { finalItem, feedId ->
+                rssAdapter.validateRssWrite(finalItem.url, finalItem.id, feedId, finalItem.isNsfw)
+            }
+        )
 
     private suspend fun retainDirectSaveError(target: ImportTask, error: Throwable) {
         taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(target.copy(status = TaskStatus.ERROR,

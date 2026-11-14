@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.DomainPolicyEntity
@@ -42,13 +43,20 @@ class DomainPolicyStore internal constructor(
 
     private val readyMutex = Mutex()
     private val writeMutex = Mutex()
+    private val cacheLock = Any()
 
     @Volatile
     private var isReady = false
 
     init {
         storeScope.launch {
-            runCatching { ensureReady() }
+            try {
+                ensureReady()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Non-critical eager warmup failure; retried on next awaitReady()
+            }
         }
     }
 
@@ -58,38 +66,40 @@ class DomainPolicyStore internal constructor(
 
     private suspend fun ensureReady() {
         if (isReady) return
-        readyMutex.withLock {
-            if (isReady) return
-            val (legacyPolicies, parsedCleanly) = readLegacyJsonPolicies(legacyJsonFile)
-            val loaded = transactionRunner.run {
-                val existingList = domainPolicyDao.getAll()
-                if (legacyPolicies.isNotEmpty()) {
-                    val existingByDomain = existingList.associateBy { it.domain }
-                    val merged = legacyPolicies.map { legacy ->
-                        val existing = existingByDomain[legacy.domain]
-                        if (existing == null) {
-                            DomainPolicyEntity.fromDomainPolicy(legacy)
-                        } else {
-                            DomainPolicyEntity(
-                                domain = existing.domain,
-                                isNsfw = existing.isNsfw || legacy.isNsfw,
-                                displayName = existing.displayName.ifBlank { legacy.displayName }
-                            )
+        withContext(Dispatchers.IO) {
+            readyMutex.withLock {
+                if (isReady) return@withLock
+                val (legacyPolicies, parsedCleanly) = readLegacyJsonPolicies(legacyJsonFile)
+                val loaded = transactionRunner.run {
+                    val existingList = domainPolicyDao.getAll()
+                    if (legacyPolicies.isNotEmpty()) {
+                        val existingByDomain = existingList.associateBy { it.domain }
+                        val merged = legacyPolicies.map { legacy ->
+                            val existing = existingByDomain[legacy.domain]
+                            if (existing == null) {
+                                DomainPolicyEntity.fromDomainPolicy(legacy)
+                            } else {
+                                DomainPolicyEntity(
+                                    domain = existing.domain,
+                                    isNsfw = existing.isNsfw || legacy.isNsfw,
+                                    displayName = existing.displayName.ifBlank { legacy.displayName }
+                                )
+                            }
                         }
+                        merged.chunked(BULK_BATCH_SIZE).forEach { chunk ->
+                            domainPolicyDao.upsertAll(chunk)
+                        }
+                        domainPolicyDao.getAll()
+                    } else {
+                        existingList
                     }
-                    merged.chunked(BULK_BATCH_SIZE).forEach { chunk ->
-                        domainPolicyDao.upsertAll(chunk)
-                    }
-                    domainPolicyDao.getAll()
-                } else {
-                    existingList
                 }
+                if (parsedCleanly) {
+                    deleteLegacyFiles(legacyJsonFile)
+                }
+                mergeLoadedEntitiesIntoCache(loaded)
+                isReady = true
             }
-            if (parsedCleanly) {
-                deleteLegacyFiles(legacyJsonFile)
-            }
-            mergeLoadedEntitiesIntoCache(loaded)
-            isReady = true
         }
     }
 
@@ -136,28 +146,35 @@ class DomainPolicyStore internal constructor(
     }
 
     private fun mergeLoadedEntitiesIntoCache(entities: List<DomainPolicyEntity>) {
-        entities.forEach { entity ->
-            val fromDb = entity.toDomainPolicy()
-            domainMap.merge(fromDb.domain, fromDb) { existing, dbPolicy ->
-                DomainPolicy(
-                    domain = dbPolicy.domain,
-                    isNsfw = existing.isNsfw || dbPolicy.isNsfw,
-                    displayName = existing.displayName.ifBlank { dbPolicy.displayName }
-                )
+        updateCache { map ->
+            var changed = false
+            entities.forEach { entity ->
+                val fromDb = entity.toDomainPolicy()
+                val existing = map[fromDb.domain]
+                val merged = if (existing == null) {
+                    fromDb
+                } else {
+                    DomainPolicy(
+                        domain = fromDb.domain,
+                        isNsfw = existing.isNsfw || fromDb.isNsfw,
+                        displayName = existing.displayName.ifBlank { fromDb.displayName }
+                    )
+                }
+                if (existing != merged) {
+                    map[fromDb.domain] = merged
+                    changed = true
+                }
+            }
+            changed
+        }
+    }
+
+    private inline fun updateCache(mutate: (MutableMap<String, DomainPolicy>) -> Boolean) {
+        synchronized(cacheLock) {
+            if (mutate(domainMap)) {
+                _policies.value = domainMap.values.sortedBy { it.domain }
             }
         }
-        notifyStateUpdated()
-    }
-
-    private fun replaceCacheFromEntities(entities: List<DomainPolicyEntity>) {
-        val next = entities.associate { it.domain to it.toDomainPolicy() }
-        domainMap.clear()
-        domainMap.putAll(next)
-        notifyStateUpdated()
-    }
-
-    private fun notifyStateUpdated() {
-        _policies.value = domainMap.values.sortedBy { it.domain }
     }
 
     fun isNsfwDomain(domain: String?): Boolean {
@@ -181,17 +198,17 @@ class DomainPolicyStore internal constructor(
     fun registerDomain(domain: String?, isNsfw: Boolean = false, displayName: String = "") {
         val normalized = normalizeDomain(domain) ?: return
         val cleanName = displayName.trim()
-        val existing = domainMap[normalized]
-        var cacheChanged = false
-        if (existing == null) {
-            domainMap[normalized] = DomainPolicy(normalized, isNsfw, cleanName)
-            cacheChanged = true
-        } else if (cleanName.isNotBlank() && existing.displayName.isBlank()) {
-            domainMap[normalized] = existing.copy(displayName = cleanName)
-            cacheChanged = true
-        }
-        if (cacheChanged) {
-            notifyStateUpdated()
+        updateCache { map ->
+            val existing = map[normalized]
+            if (existing == null) {
+                map[normalized] = DomainPolicy(normalized, isNsfw, cleanName)
+                true
+            } else if (cleanName.isNotBlank() && existing.displayName.isBlank()) {
+                map[normalized] = existing.copy(displayName = cleanName)
+                true
+            } else {
+                false
+            }
         }
         storeScope.launch {
             try {
@@ -224,9 +241,13 @@ class DomainPolicyStore internal constructor(
                 }
             }
             val policy = saved.toDomainPolicy()
-            if (domainMap[normalized] != policy) {
-                domainMap[normalized] = policy
-                notifyStateUpdated()
+            updateCache { map ->
+                if (map[normalized] != policy) {
+                    map[normalized] = policy
+                    true
+                } else {
+                    false
+                }
             }
         }
     }
@@ -235,11 +256,15 @@ class DomainPolicyStore internal constructor(
         val normalized = normalizeDomain(domain) ?: return
         val cleanName = displayName.trim()
         if (cleanName.isBlank()) return
-        val existing = domainMap[normalized]
-        if (existing == null || existing.displayName != cleanName) {
-            domainMap[normalized] = existing?.copy(displayName = cleanName)
-                ?: DomainPolicy(normalized, false, cleanName)
-            notifyStateUpdated()
+        updateCache { map ->
+            val existing = map[normalized]
+            if (existing == null || existing.displayName != cleanName) {
+                map[normalized] = existing?.copy(displayName = cleanName)
+                    ?: DomainPolicy(normalized, false, cleanName)
+                true
+            } else {
+                false
+            }
         }
         storeScope.launch {
             try {
@@ -275,9 +300,13 @@ class DomainPolicyStore internal constructor(
                 }
             }
             val policy = saved.toDomainPolicy()
-            if (domainMap[normalized] != policy) {
-                domainMap[normalized] = policy
-                notifyStateUpdated()
+            updateCache { map ->
+                if (map[normalized] != policy) {
+                    map[normalized] = policy
+                    true
+                } else {
+                    false
+                }
             }
         }
     }
@@ -285,15 +314,15 @@ class DomainPolicyStore internal constructor(
     fun syncDomains(domains: Collection<String?>) {
         val normalizedDomains = domains.mapNotNull { normalizeDomain(it) }.distinct()
         if (normalizedDomains.isEmpty()) return
-        var hasNew = false
-        normalizedDomains.forEach { normalized ->
-            if (!domainMap.containsKey(normalized)) {
-                domainMap[normalized] = DomainPolicy(normalized, false, "")
-                hasNew = true
+        updateCache { map ->
+            var hasNew = false
+            normalizedDomains.forEach { normalized ->
+                if (!map.containsKey(normalized)) {
+                    map[normalized] = DomainPolicy(normalized, false, "")
+                    hasNew = true
+                }
             }
-        }
-        if (hasNew) {
-            notifyStateUpdated()
+            hasNew
         }
         storeScope.launch {
             try {
@@ -323,24 +352,30 @@ class DomainPolicyStore internal constructor(
                 domainPolicyDao.getAll()
             }
             if (loaded != null) {
-                loaded.forEach { domainMap[it.domain] = it.toDomainPolicy() }
-                notifyStateUpdated()
+                updateCache { map ->
+                    var changed = false
+                    loaded.forEach { entity ->
+                        val policy = entity.toDomainPolicy()
+                        if (map[policy.domain] != policy) {
+                            map[policy.domain] = policy
+                            changed = true
+                        }
+                    }
+                    changed
+                }
             }
         }
     }
 
     fun setDomainNsfw(domain: String, isNsfw: Boolean) {
         val normalized = normalizeDomain(domain) ?: return
-        val existing = domainMap[normalized]
-        domainMap[normalized] = existing?.copy(isNsfw = isNsfw) ?: DomainPolicy(normalized, isNsfw, "")
-        notifyStateUpdated()
         storeScope.launch {
             try {
                 setDomainNsfwAndAwait(normalized, isNsfw)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                // Non-critical background persistence failure
+                // Non-critical background persistence failure; cache stays consistent with SQLite
             }
         }
     }
@@ -362,8 +397,15 @@ class DomainPolicyStore internal constructor(
                     bookmarkDao.updateDomainNsfw(normalized, isNsfw)
                     entity
                 }
-                domainMap[normalized] = updated.toDomainPolicy()
-                notifyStateUpdated()
+                val policy = updated.toDomainPolicy()
+                updateCache { map ->
+                    if (map[normalized] != policy) {
+                        map[normalized] = policy
+                        true
+                    } else {
+                        false
+                    }
+                }
             }
         }.await()
     }

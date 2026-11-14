@@ -1,18 +1,28 @@
 package me.bubblespark.tidilo.data
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.DomainPolicyEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.Executors
 
 class DomainPolicyStoreTest {
 
@@ -224,6 +234,159 @@ class DomainPolicyStoreTest {
             }
         } finally {
             dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun setDomainNsfwDoesNotUpdateCacheOptimisticallyBeforeCommitOrOnFailure() = runBlocking {
+        val policyDao = InMemoryDomainPolicyDao()
+        val bookmarkDao = RecordingBookmarkDao()
+        var gate: CompletableDeferred<Unit>? = null
+        var enteredWriteTx: CompletableDeferred<Unit>? = null
+        var shouldFailWrite = true
+
+        val runner = object : TransactionRunner {
+            override suspend fun <R> run(block: suspend () -> R): R {
+                val activeGate = gate
+                if (activeGate != null) {
+                    enteredWriteTx?.complete(Unit)
+                    activeGate.await()
+                }
+                val policySnapshot = LinkedHashMap(policyDao.rows)
+                return try {
+                    val result = block()
+                    if (activeGate != null && shouldFailWrite) {
+                        throw IllegalStateException("write rejected")
+                    }
+                    result
+                } catch (e: Throwable) {
+                    policyDao.rows.clear()
+                    policyDao.rows.putAll(policySnapshot)
+                    throw e
+                }
+            }
+        }
+
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        try {
+            val store = DomainPolicyStore(
+                database = fakeAppDatabase(bookmarkDao = bookmarkDao, domainPolicyDao = policyDao),
+                transactionRunner = runner,
+                storeScope = scope
+            )
+            store.awaitReady()
+
+            // Failed background write must not leave an optimistic NSFW state in cache or StateFlow.
+            enteredWriteTx = CompletableDeferred()
+            gate = CompletableDeferred()
+            store.setDomainNsfw("async.example", true)
+            withTimeout(5000) { enteredWriteTx.await() }
+            assertFalse(store.isNsfwDomain("async.example"))
+            assertTrue(store.policies.value.none { it.domain == "async.example" })
+
+            gate.complete(Unit)
+            withTimeout(5000) {
+                while (scope.coroutineContext[Job]?.children?.any { it.isActive } == true) {
+                    delay(10)
+                }
+            }
+            assertFalse(store.isNsfwDomain("async.example"))
+            assertTrue(store.policies.value.none { it.domain == "async.example" })
+
+            // Successful background write updates cache and StateFlow only after commit.
+            shouldFailWrite = false
+            enteredWriteTx = CompletableDeferred()
+            gate = CompletableDeferred()
+            store.setDomainNsfw("async.example", true)
+            withTimeout(5000) { enteredWriteTx.await() }
+            assertFalse(store.isNsfwDomain("async.example"))
+
+            gate.complete(Unit)
+            withTimeout(5000) {
+                while (!store.isNsfwDomain("async.example")) {
+                    delay(10)
+                }
+            }
+            assertTrue(store.policies.value.single { it.domain == "async.example" }.isNsfw)
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun awaitReadyOffloadsDiskAndDbInitializationToIoDispatcher() = runBlocking {
+        val callerExecutor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "fake-main-caller")
+        }
+        val callerDispatcher = callerExecutor.asCoroutineDispatcher()
+        var observedTxThreadName: String? = null
+        val runner = object : TransactionRunner {
+            override suspend fun <R> run(block: suspend () -> R): R {
+                observedTxThreadName = Thread.currentThread().name
+                return block()
+            }
+        }
+        try {
+            val dir = Files.createTempDirectory("domain-policy-io-dispatch").toFile()
+            try {
+                val jsonFile = File(dir, "domain_policies.json")
+                jsonFile.writeText("""[{"domain":"io.example","isNsfw":false,"displayName":"IO"}]""", Charsets.UTF_8)
+                // Cancel storeScope upfront so eager warmup skips and awaitReady() runs on callerDispatcher.
+                val cancelledScope = CoroutineScope(Dispatchers.IO + SupervisorJob()).apply {
+                    coroutineContext[Job]?.cancel()
+                }
+                val store = DomainPolicyStore(
+                    database = fakeAppDatabase(domainPolicyDao = InMemoryDomainPolicyDao()),
+                    legacyJsonFile = jsonFile,
+                    transactionRunner = runner,
+                    storeScope = cancelledScope
+                )
+                withContext(callerDispatcher) {
+                    store.awaitReady()
+                }
+                assertNotEquals("fake-main-caller", observedTxThreadName)
+                assertEquals("IO", store.getDisplayName("io.example"))
+            } finally {
+                dir.deleteRecursively()
+            }
+        } finally {
+            callerDispatcher.close()
+        }
+    }
+
+    @Test
+    fun concurrentCacheAndStoreMutationsStayConsistent() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        try {
+            val store = DomainPolicyStore(
+                database = fakeAppDatabase(domainPolicyDao = InMemoryDomainPolicyDao()),
+                transactionRunner = directTransactionRunner(),
+                storeScope = scope
+            )
+            store.awaitReady()
+
+            val jobs = (0 until 20).map { idx ->
+                launch(Dispatchers.Default) {
+                    val domain = "concurrent-$idx.example"
+                    store.registerDomain(domain, displayName = "Site $idx")
+                    store.setDomainDisplayName(domain, "Updated $idx")
+                    store.syncDomains(listOf(domain, "shared.example"))
+                    store.setDomainNsfwAndAwait(domain, idx % 2 == 0)
+                }
+            }
+            jobs.joinAll()
+            scope.coroutineContext[Job]?.children?.toList()?.joinAll()
+
+            val snapshot = store.policies.value
+            assertEquals(snapshot.map { it.domain }.sorted(), snapshot.map { it.domain })
+            assertTrue(snapshot.any { it.domain == "shared.example" })
+            for (idx in 0 until 20) {
+                val domain = "concurrent-$idx.example"
+                assertEquals(idx % 2 == 0, store.isNsfwDomain(domain))
+                assertEquals("Updated $idx", store.getDisplayName(domain))
+            }
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
         }
     }
 }

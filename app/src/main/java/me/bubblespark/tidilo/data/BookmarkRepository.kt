@@ -23,6 +23,7 @@ import me.bubblespark.tidilo.data.db.TagCount
 import me.bubblespark.tidilo.data.db.DomainCount
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.data.db.AppDatabase
+import me.bubblespark.tidilo.data.db.BookmarkDao
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.TrashedBookmarkEntity
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
@@ -150,41 +151,20 @@ class BookmarkRepository internal constructor(
     suspend fun addBookmarkAndAwait(item: BookmarkItem) = withContext(Dispatchers.IO) {
         domainPolicyStore?.awaitReady()
         val domain = DomainIconManager.extractDomain(item.url)
-        val resolvedItem = if (domainPolicyStore?.isNsfwDomain(domain) == true && !item.isNsfw) {
-            item.copy(isNsfw = true)
-        } else item
         val savedItem = transactionRunner.run {
-            val existing = bookmarkDao.getBookmarkByUrl(resolvedItem.url)
-                ?: bookmarkDao.getBookmarkById(resolvedItem.id)
-            val finalItem = if (existing != null) {
-                val existingTag = existing.logicalTag()
-                resolvedItem.copy(
-                    id = existing.id,
-                    tag = Tag(
-                        category = resolvedItem.tag.category ?: existingTag.category,
-                        subcategory = resolvedItem.tag.subcategory ?: existingTag.subcategory,
-                        entities = resolvedItem.tag.entities.ifEmpty { existingTag.entities }
-                    ),
-                    note = if (resolvedItem.note.isNotBlank()) resolvedItem.note else existing.note,
-                    createdAt = existing.createdAt,
-                    isLiked = existing.isLiked,
-                    browserOpenCount = existing.browserOpenCount,
-                    detailViewCount = existing.detailViewCount,
-                    summaryPeekCount = existing.summaryPeekCount,
-                    lastInteractedAt = existing.lastInteractedAt
-                )
-            } else resolvedItem
-
-            if (finalItem.rssFeedId != null) {
-                val feed = database.rssDao().feed(finalItem.rssFeedId)
-                val blocked = database.rssDao().rssWriteConflict(finalItem.url, finalItem.id)
-                if (feed == null || feed.deleted || blocked ||
-                    (finalItem.isNsfw && !me.bubblespark.tidilo.config.AppConfig.isNsfwContentBookmarkable.value)) {
-                    throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
+            persistMergedBookmarkInTransaction(
+                item = item,
+                bookmarkDao = bookmarkDao,
+                isNsfwDomain = { domainPolicyStore?.isNsfwDomain(it) == true },
+                validateRssWrite = { finalItem, feedId ->
+                    val feed = database.rssDao().feed(feedId)
+                    val blocked = database.rssDao().rssWriteConflict(finalItem.url, finalItem.id)
+                    if (feed == null || feed.deleted || blocked ||
+                        (finalItem.isNsfw && !me.bubblespark.tidilo.config.AppConfig.isNsfwContentBookmarkable.value)) {
+                        throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
+                    }
                 }
-            }
-            bookmarkDao.insertReplacingUrl(BookmarkEntity.fromBookmarkItem(finalItem))
-            finalItem
+            )
         }
         // Room publishes the committed bookmark; auxiliary cache work cannot fail the save.
         repositoryScope.launch {
@@ -575,4 +555,58 @@ class BookmarkRepository internal constructor(
             )
         }
     }
+}
+
+/**
+ * Resolves the effective NSFW flag from [isNsfwDomain], merges [item] with any existing
+ * row matched by URL or ID, validates RSS writes when applicable, and persists via
+ * [BookmarkDao.insertReplacingUrl].
+ */
+internal suspend inline fun persistMergedBookmarkInTransaction(
+    item: BookmarkItem,
+    bookmarkDao: BookmarkDao?,
+    isNsfwDomain: (String?) -> Boolean,
+    validateRssWrite: (BookmarkItem, String) -> Unit
+): BookmarkItem {
+    val domain = DomainIconManager.extractDomain(item.url)
+    val resolvedItem = if (!item.isNsfw && isNsfwDomain(domain)) {
+        item.copy(isNsfw = true)
+    } else {
+        item
+    }
+    val existing = bookmarkDao?.getBookmarkByUrl(resolvedItem.url)
+        ?: bookmarkDao?.getBookmarkById(resolvedItem.id)
+    val finalItem = mergeWithExistingBookmark(resolvedItem, existing)
+    if (finalItem.rssFeedId != null) {
+        validateRssWrite(finalItem, finalItem.rssFeedId)
+    }
+    bookmarkDao?.insertReplacingUrl(BookmarkEntity.fromBookmarkItem(finalItem))
+    return finalItem
+}
+
+/**
+ * Preserves existing tag fields, notes, creation timestamp, and engagement counters
+ * when updating an already-persisted bookmark row.
+ */
+internal fun mergeWithExistingBookmark(
+    incoming: BookmarkItem,
+    existing: BookmarkEntity?
+): BookmarkItem {
+    if (existing == null) return incoming
+    val existingTag = existing.logicalTag()
+    return incoming.copy(
+        id = existing.id,
+        tag = Tag(
+            category = incoming.tag.category ?: existingTag.category,
+            subcategory = incoming.tag.subcategory ?: existingTag.subcategory,
+            entities = incoming.tag.entities.ifEmpty { existingTag.entities }
+        ),
+        note = if (incoming.note.isNotBlank()) incoming.note else existing.note,
+        createdAt = existing.createdAt,
+        isLiked = existing.isLiked,
+        browserOpenCount = existing.browserOpenCount,
+        detailViewCount = existing.detailViewCount,
+        summaryPeekCount = existing.summaryPeekCount,
+        lastInteractedAt = existing.lastInteractedAt
+    )
 }

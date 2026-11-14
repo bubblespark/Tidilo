@@ -20,9 +20,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 
 /** Unified domain artwork and calibrated accent color resolved from a single subscription. */
 @Immutable
@@ -56,33 +56,43 @@ internal fun observeDomainVisualFlow(
 
     val initialBitmap = source.getCachedIconBitmap(domain)
     val initialColor = source.getCachedDominantColor(domain)
-    val initialResolved = AtomicBoolean(initialBitmap != null && initialColor != null)
-    val retainedBitmap = AtomicReference<ImageBitmap?>(initialBitmap)
+    val stateMutex = Mutex()
+    var initialResolved = initialBitmap != null && initialColor != null
+    var observerDelivered = false
+    var retainedBitmap: ImageBitmap? = initialBitmap
 
     launch(start = CoroutineStart.UNDISPATCHED) {
         source.observeIconUpdates(domain).collect {
-            val resolved = initialResolved.get()
-            val cachedBitmap = source.getCachedIconBitmap(domain)
-            val cachedColor = source.getCachedDominantColor(domain)
-            if (!resolved) {
-                if (cachedBitmap != null && cachedColor != null) {
-                    retainedBitmap.set(cachedBitmap)
-                    send(DomainIconVisual(cachedBitmap, cachedColor))
+            stateMutex.withLock {
+                val cachedBitmap = source.getCachedIconBitmap(domain)
+                val cachedColor = source.getCachedDominantColor(domain)
+                if (!initialResolved) {
+                    if (cachedBitmap != null && cachedColor != null) {
+                        initialResolved = true
+                        observerDelivered = true
+                        retainedBitmap = cachedBitmap
+                        send(DomainIconVisual(cachedBitmap, cachedColor))
+                    }
+                    return@withLock
                 }
-                return@collect
+                val updatedBitmap = cachedBitmap
+                    ?: withContext(ioDispatcher) { source.loadIconFromDisk(context, domain) }
+                    ?: retainedBitmap
+                val updatedColor = cachedColor
+                    ?: withContext(ioDispatcher) { source.getDominantColor(context, domain) }
+                observerDelivered = true
+                retainedBitmap = updatedBitmap
+                send(DomainIconVisual(updatedBitmap, updatedColor))
             }
-            val updatedBitmap = cachedBitmap
-                ?: withContext(ioDispatcher) { source.loadIconFromDisk(context, domain) }
-                ?: retainedBitmap.get()
-            val updatedColor = cachedColor
-                ?: withContext(ioDispatcher) { source.getDominantColor(context, domain) }
-            retainedBitmap.set(updatedBitmap)
-            send(DomainIconVisual(updatedBitmap, updatedColor))
         }
     }
 
     if (initialBitmap != null && initialColor != null) {
-        send(DomainIconVisual(initialBitmap, initialColor))
+        stateMutex.withLock {
+            if (!observerDelivered) {
+                send(DomainIconVisual(initialBitmap, initialColor))
+            }
+        }
     } else {
         val bitmap = initialBitmap ?: withContext(ioDispatcher) {
             if (allowNetwork) source.loadOrFetchIcon(context, domain, pageUrl)
@@ -91,9 +101,18 @@ internal fun observeDomainVisualFlow(
         val color = source.getCachedDominantColor(domain) ?: withContext(ioDispatcher) {
             source.getDominantColor(context, domain)
         }
-        retainedBitmap.set(bitmap)
-        initialResolved.set(true)
-        send(DomainIconVisual(bitmap, color))
+        stateMutex.withLock {
+            if (observerDelivered) return@withLock
+            val latestBitmap = source.getCachedIconBitmap(domain) ?: bitmap
+            val latestColor = source.getCachedDominantColor(domain) ?: if (latestBitmap != null && latestBitmap !== bitmap) {
+                withContext(ioDispatcher) { source.getDominantColor(context, domain) }
+            } else {
+                color
+            }
+            retainedBitmap = latestBitmap
+            initialResolved = true
+            send(DomainIconVisual(latestBitmap, latestColor))
+        }
     }
 }.distinctUntilChanged()
 

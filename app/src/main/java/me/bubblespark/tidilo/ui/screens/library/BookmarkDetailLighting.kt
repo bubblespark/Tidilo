@@ -33,12 +33,11 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.data.cache.MediaColorPalette
+import me.bubblespark.tidilo.ui.components.DomainIconVisual
 import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
-import me.bubblespark.tidilo.ui.components.rememberDomainVisual
 import kotlin.math.ceil
 
 typealias DetailHeroPalette = me.bubblespark.tidilo.data.DetailHeroPalette
@@ -188,20 +187,14 @@ internal fun rememberDetailHeroPalette(
     domain: String?,
     imageKey: String?,
     bitmap: ImageBitmap?,
-    showFallback: Boolean
+    showFallback: Boolean,
+    fallbackVisual: DomainIconVisual
 ): State<DetailHeroPalette> = key(bookmarkId, domain) {
-    val context = LocalContext.current
     val visualSource = LocalCacheVisualSource.current
     val surfaces = currentThemeSurfaces()
     val themeStyle = surfaces.preset
     val isDark = surfaces.isDark
     val colorScheme = MaterialTheme.colorScheme
-    val fallbackVisual by rememberDomainVisual(
-        domain = if (bitmap == null && showFallback) domain else null,
-        allowNetwork = false,
-        context = context,
-        source = visualSource
-    )
     val ogPalette by produceState(DetailHeroPalette.Transparent, bitmap, imageKey, domain, visualSource) {
         value = if (bitmap != null && domain != null) {
             visualSource.getDetailHeroPalette(domain, imageKey, bitmap) ?: DetailHeroPalette.Transparent
@@ -264,9 +257,10 @@ internal fun rememberDetailAccent(
     domain: String?,
     imageKey: String?,
     bitmap: ImageBitmap?,
-    showFallback: Boolean
+    showFallback: Boolean,
+    fallbackVisual: DomainIconVisual = DomainIconVisual(null, Color.Unspecified)
 ): State<Color> {
-    val palette by rememberDetailHeroPalette(bookmarkId, domain, imageKey, bitmap, showFallback)
+    val palette by rememberDetailHeroPalette(bookmarkId, domain, imageKey, bitmap, showFallback, fallbackVisual)
     return rememberUpdatedState(palette.accentColor)
 }
 

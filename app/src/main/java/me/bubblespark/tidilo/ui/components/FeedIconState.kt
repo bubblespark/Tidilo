@@ -20,9 +20,10 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.db.RssFeedEntity
-import java.util.concurrent.atomic.AtomicBoolean
 
 @Immutable
 internal data class FeedIconVisual(val bitmap: ImageBitmap?, val color: Color)
@@ -47,6 +48,25 @@ private fun resolveCachedFeedVisual(
     return FeedIconVisual(bitmap, source.resolveInstantDomainAccentColor(colorKey))
 }
 
+private suspend fun resolveFeedVisual(
+    identity: String,
+    publisher: String?,
+    context: Context?,
+    source: CacheVisualSource,
+    ioDispatcher: CoroutineDispatcher
+): FeedIconVisual {
+    val direct = source.getCachedIconBitmap(identity)
+    val bitmap = direct ?: publisher?.let(source::getCachedIconBitmap)
+    val colorKey = if (direct != null || publisher == null) identity else publisher
+    val color = if (bitmap != null) {
+        source.getCachedDominantColor(colorKey)
+            ?: withContext(ioDispatcher) { source.getDominantColor(context, colorKey) }
+    } else {
+        source.resolveInstantDomainAccentColor(colorKey)
+    }
+    return FeedIconVisual(bitmap, color)
+}
+
 internal fun observeFeedVisualFlow(
     feed: RssFeedEntity,
     context: Context?,
@@ -61,7 +81,9 @@ internal fun observeFeedVisualFlow(
     val initialPublisherColor = publisher?.let(source::getCachedDominantColor)
     val fastPathHit = (initialDirect != null && initialDirectColor != null) ||
         (feed.iconUrl.isNullOrBlank() && initialPublisherBitmap != null && initialPublisherColor != null)
-    val initialResolved = AtomicBoolean(fastPathHit)
+    val stateMutex = Mutex()
+    var initialResolved = fastPathHit
+    var observerDelivered = false
     val baseline = resolveCachedFeedVisual(identity, publisher, source)
 
     launch(start = CoroutineStart.UNDISPATCHED) {
@@ -69,19 +91,39 @@ internal fun observeFeedVisualFlow(
             source.observeIconUpdates(identity),
             source.observeIconUpdates(publisher)
         ).collect {
-            val updated = resolveCachedFeedVisual(identity, publisher, source)
-            if (initialResolved.get() || (updated.bitmap != null && updated != baseline)) {
+            stateMutex.withLock {
+                if (!initialResolved) {
+                    val quick = resolveCachedFeedVisual(identity, publisher, source)
+                    if (quick.bitmap == null || quick == baseline) {
+                        return@withLock
+                    }
+                    val resolved = resolveFeedVisual(identity, publisher, context, source, ioDispatcher)
+                    initialResolved = true
+                    observerDelivered = true
+                    send(resolved)
+                    return@withLock
+                }
+                val updated = resolveFeedVisual(identity, publisher, context, source, ioDispatcher)
+                observerDelivered = true
                 send(updated)
             }
         }
     }
 
     if (fastPathHit) {
-        send(baseline)
+        stateMutex.withLock {
+            if (!observerDelivered) {
+                send(baseline)
+            }
+        }
     } else {
         withContext(ioDispatcher) { source.loadOrFetchFeedIcon(context, feed) }
-        initialResolved.set(true)
-        send(resolveCachedFeedVisual(identity, publisher, source))
+        val resolved = resolveFeedVisual(identity, publisher, context, source, ioDispatcher)
+        stateMutex.withLock {
+            if (observerDelivered) return@withLock
+            initialResolved = true
+            send(resolved)
+        }
     }
 }.distinctUntilChanged()
 

@@ -25,6 +25,7 @@ import me.bubblespark.tidilo.data.cache.MediaCacheLayout
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CacheVisualStateTest {
@@ -538,5 +539,245 @@ class CacheVisualStateTest {
         assertEquals(Color.Yellow, results[1].accentColor)
         assertSame(diskRecoveredBitmap, results[2].bitmap)
         assertEquals(Color.Red, results[2].accentColor)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun observeOgImageStateFlow_cacheGenerationReset_clearsAndReEvaluatesProducer() = runBlocking {
+        val source = FakeCacheVisualSource()
+        val domain = "og-reset.example"
+        val ogFilename = "og-reset-key"
+        val beforeBitmap = FakeImageBitmap("og-before-reset")
+        val recoveredBitmap = FakeImageBitmap("og-after-reset")
+        source.ogBitmaps["$domain|$ogFilename"] = beforeBitmap
+
+        val fetchStarted = CompletableDeferred<Unit>()
+        val releaseFetch = CompletableDeferred<Unit>()
+        source.onLoadOrFetchOgImage = { _, d, _ ->
+            fetchStarted.complete(Unit)
+            releaseFetch.await()
+            source.ogBitmaps["$d|$ogFilename"] = recoveredBitmap
+            recoveredBitmap
+        }
+
+        val emitted = mutableListOf<OgImageState>()
+        val job = launch(Dispatchers.Unconfined) {
+            source.cacheGenerationState
+                .flatMapLatest {
+                    observeOgImageStateFlow(
+                        url = "https://$domain/article",
+                        domain = domain,
+                        ogImageUrl = "https://cdn.$domain/hero.jpg",
+                        ogFilename = ogFilename,
+                        context = null,
+                        source = source,
+                        ioDispatcher = Dispatchers.Unconfined
+                    )
+                }
+                .take(3)
+                .toList(emitted)
+        }
+
+        withTimeout(2000) {
+            while (emitted.isEmpty()) yield()
+        }
+        assertEquals(0, source.ogLoadCalls)
+        assertEquals(OgImageState(bitmap = beforeBitmap, resolved = true), emitted[0])
+
+        source.ogBitmaps.clear()
+        source.generation.value = source.generation.value + 1L
+
+        withTimeout(2000) { fetchStarted.await() }
+        withTimeout(2000) {
+            while (emitted.size < 2) yield()
+        }
+        assertEquals(OgImageState(bitmap = null, resolved = false), emitted[1])
+
+        releaseFetch.complete(Unit)
+        withTimeout(2000) {
+            while (emitted.size < 3) yield()
+        }
+        job.cancel()
+
+        assertEquals(1, source.ogLoadCalls)
+        assertEquals(true, emitted[2].resolved)
+        assertSame(recoveredBitmap, emitted[2].bitmap)
+    }
+
+    @Test
+    fun observeOgImageStateFlow_postResolutionEviction_transitionsPendingToReloadAndFallback() = runBlocking {
+        val source = FakeCacheVisualSource()
+        val domain = "og-evict.example"
+        val ogFilename = "og-evict-key"
+        val initialBitmap = FakeImageBitmap("og-initial")
+        val reloadedBitmap = FakeImageBitmap("og-reloaded")
+        source.ogBitmaps["$domain|$ogFilename"] = initialBitmap
+
+        var nextFetchResult: ImageBitmap? = reloadedBitmap
+        var fetchStarted = CompletableDeferred<Unit>()
+        var releaseFetch = CompletableDeferred<Unit>()
+        source.onLoadOrFetchOgImage = { _, d, _ ->
+            fetchStarted.complete(Unit)
+            releaseFetch.await()
+            val result = nextFetchResult
+            if (result != null) {
+                source.ogBitmaps["$d|$ogFilename"] = result
+            }
+            result
+        }
+
+        val states = mutableListOf<OgImageState>()
+        val fiveReady = CompletableDeferred<Unit>()
+        val job = launch(Dispatchers.Unconfined) {
+            observeOgImageStateFlow(
+                url = "https://$domain/post",
+                domain = domain,
+                ogImageUrl = "https://cdn.$domain/og.jpg",
+                ogFilename = ogFilename,
+                context = null,
+                source = source,
+                ioDispatcher = Dispatchers.Unconfined
+            ).take(5).toList(states)
+            fiveReady.complete(Unit)
+        }
+
+        withTimeout(2000) {
+            while (states.isEmpty()) yield()
+        }
+        assertEquals(OgImageState(bitmap = initialBitmap, resolved = true), states[0])
+
+        // 1st eviction: memory cleared -> pending -> reloaded bitmap.
+        source.ogBitmaps.remove("$domain|$ogFilename")
+        source.exactImageUpdates.emit(ogFilename)
+        withTimeout(2000) { fetchStarted.await() }
+        withTimeout(2000) {
+            while (states.size < 2) yield()
+        }
+        assertEquals(OgImageState(bitmap = null, resolved = false), states[1])
+        releaseFetch.complete(Unit)
+        withTimeout(2000) {
+            while (states.size < 3) yield()
+        }
+        assertSame(reloadedBitmap, states[2].bitmap)
+        assertTrue(states[2].resolved)
+
+        // 2nd eviction with miss: memory cleared -> pending -> resolved null fallback.
+        fetchStarted = CompletableDeferred()
+        releaseFetch = CompletableDeferred()
+        nextFetchResult = null
+        source.ogBitmaps.remove("$domain|$ogFilename")
+        source.exactImageUpdates.emit(ogFilename)
+        withTimeout(2000) { fetchStarted.await() }
+        withTimeout(2000) {
+            while (states.size < 4) yield()
+        }
+        assertEquals(OgImageState(bitmap = null, resolved = false), states[3])
+        releaseFetch.complete(Unit)
+
+        withTimeout(2000) { fiveReady.await() }
+        job.join()
+
+        assertEquals(OgImageState(bitmap = null, resolved = true), states[4])
+        assertTrue(states[4].shouldShowFallback)
+    }
+
+    @Test
+    fun observeDomainVisualFlow_doesNotOverwriteInFlightObserverUpdateDuringColorExtraction() = runBlocking {
+        val source = FakeCacheVisualSource()
+        val domain = "race.example"
+        val staleBitmap = FakeImageBitmap("bitmap-a")
+        val newerBitmap = FakeImageBitmap("bitmap-b")
+        source.iconBitmaps[domain] = staleBitmap
+
+        val colorExtractionStarted = CompletableDeferred<Unit>()
+        val releaseColorExtraction = CompletableDeferred<Unit>()
+        source.onGetDominantColor = {
+            colorExtractionStarted.complete(Unit)
+            releaseColorExtraction.await()
+            Color.Yellow
+        }
+
+        val results = mutableListOf<DomainIconVisual>()
+        val twoReady = CompletableDeferred<Unit>()
+        val job = launch(Dispatchers.Unconfined) {
+            observeDomainVisualFlow(
+                domain = domain,
+                pageUrl = null,
+                allowNetwork = false,
+                context = null,
+                source = source,
+                ioDispatcher = Dispatchers.Unconfined
+            ).take(2).toList(results)
+            twoReady.complete(Unit)
+        }
+
+        withTimeout(2000) { colorExtractionStarted.await() }
+        // Observer delivers newer bitmap B + color while initial path awaits dominant color for A.
+        source.iconBitmaps[domain] = newerBitmap
+        source.dominantColors[domain] = Color.Magenta
+        source.iconUpdates.emit(domain)
+
+        withTimeout(2000) {
+            while (results.isEmpty()) yield()
+        }
+        assertSame(newerBitmap, results[0].bitmap)
+        assertEquals(Color.Magenta, results[0].accentColor)
+
+        releaseColorExtraction.complete(Unit)
+        yield()
+
+        // Subsequent eviction miss must also confirm retainedBitmap stayed on bitmap B, not stale A.
+        source.iconBitmaps.remove(domain)
+        source.onLoadIconFromDisk = { null }
+        source.dominantColors[domain] = Color.Cyan
+        source.iconUpdates.emit(domain)
+
+        withTimeout(2000) { twoReady.await() }
+        job.join()
+
+        assertEquals(2, results.size)
+        assertSame(newerBitmap, results[1].bitmap)
+        assertEquals(Color.Cyan, results[1].accentColor)
+    }
+
+    @Test
+    fun observeFeedVisualFlow_resolvesDominantColorWhenBitmapCachedWithoutColor() = runBlocking {
+        val source = FakeCacheVisualSource()
+        val feed = RssFeedEntity(
+            id = "feed-3",
+            url = "https://cached-no-color.example/feed.xml",
+            title = "Cached Bitmap Feed",
+            iconUrl = "https://cached-no-color.example/icon.png",
+            siteUrl = "https://cached-no-color.example"
+        )
+        val feedKey = source.feedIconKey(feed)
+        val cachedBitmap = FakeImageBitmap("feed-cached-no-color")
+        source.iconBitmaps[feedKey] = cachedBitmap
+        source.generatedColors[feedKey] = Color.Gray
+        source.onLoadOrFetchFeedIcon = { cachedBitmap }
+        source.onGetDominantColor = { key ->
+            source.dominantColors[key] = Color.Green
+            Color.Green
+        }
+
+        val results = mutableListOf<FeedIconVisual>()
+        val oneReady = CompletableDeferred<Unit>()
+        val job = launch(Dispatchers.Unconfined) {
+            observeFeedVisualFlow(
+                feed = feed,
+                context = null,
+                source = source,
+                ioDispatcher = Dispatchers.Unconfined
+            ).take(1).toList(results)
+            oneReady.complete(Unit)
+        }
+
+        withTimeout(2000) { oneReady.await() }
+        job.join()
+
+        assertEquals(1, source.dominantColorLoadCalls)
+        assertEquals(1, results.size)
+        assertSame(cachedBitmap, results[0].bitmap)
+        assertEquals(Color.Green, results[0].color)
     }
 }

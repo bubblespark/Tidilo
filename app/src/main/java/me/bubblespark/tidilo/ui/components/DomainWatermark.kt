@@ -37,9 +37,22 @@ fun DomainWatermark(
 ) {
     if (domain.isNullOrBlank()) return
 
-    val iconBitmap by rememberDomainIcon(domain, pageUrl, context = context)
+    val visualSource = LocalCacheVisualSource.current
+    val domainVisual by rememberDomainVisual(domain, pageUrl, context = context, source = visualSource)
 
-    IconWatermark(iconBitmap, modifier, size, saturation, alpha)
+    DomainWatermark(domainVisual, modifier, size, saturation, alpha)
+}
+
+/** Renders a domain watermark from an already-hoisted [DomainIconVisual] to avoid duplicate cache subscriptions. */
+@Composable
+fun DomainWatermark(
+    visual: DomainIconVisual,
+    modifier: Modifier = Modifier,
+    size: Dp = 195.dp,
+    saturation: Float = 0.50f,
+    alpha: Float = 0.14f
+) {
+    IconWatermark(visual.bitmap, modifier, size, saturation, alpha)
 }
 
 /** Same image treatment for domain and feed-specific watermarks. */

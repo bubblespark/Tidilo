@@ -24,7 +24,7 @@ This document defines the strict engineering standards, naming conventions, Comp
 
 ### 2.1 State Observation & `CompositionLocal` Scoping
 - **Always use `collectAsStateWithLifecycle()`**: Never use standard `collectAsState()` for observing ViewModel or global state flows in UI composables. `collectAsStateWithLifecycle()` automatically cancels flow collection when the app is in the background, conserving battery and system memory.
-- **State Hoisting**: Keep reusable components stateless. Pass data models and event callbacks (`() -> Unit` or `(T) -> Unit`) rather than passing ViewModel instances down the widget tree.
+- **State Hoisting & Producer Consolidation**: Keep reusable components stateless by passing data models and event callbacks (`() -> Unit` or `(T) -> Unit`) rather than ViewModel instances. Additionally, when multiple UI consumers in the same screen or card depend on the same asynchronous visual key (e.g., domain artwork for a watermark and its dominant accent color for lighting), hoist a single state producer in the common parent scope and share the resolved immutable value object and already-read `CompositionLocal` instances downward instead of opening duplicate observers inside child helpers.
 - **Localize High-Frequency `CompositionLocal` Reads**: Never read frequently toggling `CompositionLocal` values (such as `LocalBarsVisible.current`) at the root of large screen composables (`LibraryScreen`, `SearchScreen`, `ImportScreen`), as this invalidates and recomposes the entire screen on every scroll direction change. Always encapsulate the read inside a dedicated, narrow child wrapper composable (e.g., `LibraryHeaderAnimatedVisibility`).
 
 ### 2.2 Lazy Layouts Optimization
@@ -77,6 +77,8 @@ This document defines the strict engineering standards, naming conventions, Comp
   }
   ```
 - When publishing monotonic counters to a `MutableStateFlow` or lazily initializing shared state from an `AtomicReference`, keep the state mutation and publication inside the same lock or atomic `update { maxOf(it, next) }` block so concurrent callers never observe partially initialized state or overwrite newer values with stale ones.
+- **Non-Reverting Initial Hydration vs. Live Update Observers**: When a reactive state producer runs an asynchronous initial load/extraction concurrently with a live invalidation or cache-update observer, never allow a delayed initial completion to overwrite or revert a newer state already delivered by the observer. Serialize initial resolution and observer emissions under a coroutine `Mutex` (or track observer delivery and re-read latest cache state before emitting) so state progression remains strictly forward.
+- **Symmetric Contracts Between Fast-Path Checks and Slow-Path Completion**: When a fast path requires a composite invariant (e.g., both cached primary artwork and derived dominant color) before bypassing background work, the slow/fallback path must explicitly guarantee that every member of that invariant is resolved before emitting final completion. Do not assume an upstream cache store computes derived attributes when returning an early hit on the primary asset.
 
 ### 3.3 StateFlow Sharing, Bounded Buffers, & Input Debouncing
 - **Prefer `SharingStarted.WhileSubscribed(5000)` over `SharingStarted.Eagerly`**: In ViewModels, database-backed and sorting-heavy `StateFlow`s (e.g., `domainGroups`, `rssFeedGroups`, count observers) must use `SharingStarted.WhileSubscribed(5000)` so upstream Room queries and `Collator` sorting stop when the screen leaves the foreground.
@@ -97,6 +99,9 @@ This document defines the strict engineering standards, naming conventions, Comp
   - Never define expensive URL normalization or SHA-256 hashing inside a custom `get()` property on a UI data class or recompute them inside composable item cards.
 - **Bilingual Substring Search (`instr`) vs. Default FTS**:
   - Retain SQLite `instr()` over normalized comparison columns (`searchTitle`, `searchDescription`, `searchUrl`, `searchValue`) for bilingual (Japanese/English) and arbitrary URL substring queries. Do not replace with default `@Fts4`/`FTS5` whitespace tokenizers (`simple`/`unicode61`) or trigram tokenizers without fallback, as they break unsegmented Japanese words and 1–2 character queries.
+
+### 3.5 Lifecycle Re-Entry & Symmetric Producer Testing
+- **Cover Full Lifecycle Cycles Across Sibling Producers**: For reactive cache/state producers, unit tests must exercise not only the forward `pending -> resolved` transition, but also lifecycle re-entry paths—post-resolution eviction, invalidation, and generation resets (`resolved -> pending -> reloaded or fallback`). Apply this coverage symmetrically across all sibling flows sharing the same visual or cache contract.
 
 ---
 

@@ -29,13 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.key
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,23 +40,17 @@ import me.bubblespark.tidilo.ui.components.TidiloSurface
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.SurfaceVariant
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
-import me.bubblespark.tidilo.R
-import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
-import me.bubblespark.tidilo.data.OgImageManager
-import me.bubblespark.tidilo.ui.util.TimeFormatter
-import me.bubblespark.tidilo.ui.components.rememberDomainIcon
+import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
+import me.bubblespark.tidilo.ui.components.rememberDomainVisual
 import me.bubblespark.tidilo.ui.components.rememberOgImage
+import me.bubblespark.tidilo.ui.util.TimeFormatter
 
 /**
  * Modern 2-column Grid bookmark card with 16:9 og:image header,
@@ -78,7 +67,10 @@ fun BookmarkGridCard(
     onLongClick: (() -> Unit)? = null,
     onToggleLike: () -> Unit = {}
 ) {
-    val domain = bookmark.domain
+    val visualSource = LocalCacheVisualSource.current
+    val domain = remember(bookmark.domain, bookmark.url, visualSource) {
+        bookmark.domain ?: visualSource.extractDomain(bookmark.url)
+    }
     val domainDisplayName = remember(domain) {
         domain?.let { DomainPolicyManager.getDisplayName(it) } ?: domain ?: ""
     }
@@ -89,21 +81,17 @@ fun BookmarkGridCard(
 
     val ogFilename = bookmark.ogImageFilename
 
-    val iconRefreshSignal by remember(domain) {
-        DomainIconManager.observeIconUpdates(domain)
-    }.collectAsStateWithLifecycle(initialValue = 0L)
-
     // Track completion explicitly: a null bitmap alone cannot distinguish pending from failed.
-    val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename, context = context)
+    val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename, context = context, source = visualSource)
     val ogBitmap = ogState.bitmap
-    val domainIconBitmap by rememberDomainIcon(domain, bookmark.url, ogState.shouldShowFallback, context = context)
+    val domainVisual by rememberDomainVisual(domain, bookmark.url, ogState.shouldShowFallback, context = context, source = visualSource)
+    val domainIconBitmap = domainVisual.bitmap
 
     val primaryColor = MaterialTheme.colorScheme.primary
-    val domainAccentColor = remember(domain, primaryColor, iconRefreshSignal) {
-        domain?.let {
-            DomainIconManager.getCachedDominantColor(it)
-                ?: DomainIconManager.generateDomainAccentColor(it)
-        } ?: primaryColor
+    val domainAccentColor = if (domainVisual.accentColor != Color.Unspecified) {
+        domainVisual.accentColor
+    } else {
+        primaryColor
     }
 
     val hasSummary = bookmark.description.isNotBlank()

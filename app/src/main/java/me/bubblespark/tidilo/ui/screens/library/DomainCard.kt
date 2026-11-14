@@ -27,7 +27,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,17 +40,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
-import me.bubblespark.tidilo.data.DomainIconManager
-import me.bubblespark.tidilo.ui.components.DomainWatermark
-import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
+import me.bubblespark.tidilo.ui.components.IconWatermark
 import me.bubblespark.tidilo.ui.components.TidiloSurface
+import me.bubblespark.tidilo.ui.components.rememberDomainVisual
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.SurfaceVariant
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
 
 data class DomainGroupItem(
     val domain: String,
@@ -72,34 +68,14 @@ fun DomainCard(
     modifier: Modifier = Modifier,
     context: Context = LocalContext.current
 ) {
-    val iconRefreshSignal by remember(item.domain) {
-        DomainIconManager.observeIconUpdates(item.domain)
-    }.collectAsStateWithLifecycle(initialValue = 0L)
+    val domainVisual by rememberDomainVisual(item.domain, context = context)
 
-    // Dynamically retrieve or compute the domain's dominant brand color (calibrated for dark-mode visibility)
-    val dominantColor by produceState(
-        initialValue = DomainIconManager.getCachedDominantColor(item.domain)
-            ?: DomainIconManager.generateDomainAccentColor(item.domain),
-        key1 = item.domain,
-        key2 = iconRefreshSignal
-    ) {
-        val cached = DomainIconManager.getCachedDominantColor(item.domain)
-        if (cached != null) {
-            value = cached
-        } else {
-            value = withContext(Dispatchers.IO) {
-                DomainIconManager.getDominantColor(context, item.domain)
-            }
-        }
-    }
-
-    LibraryDeckCard(item, dominantColor, onClick, modifier) { watermarkModifier ->
-        DomainWatermark(
-            domain = item.domain,
-            size = 96.dp,
-            alpha = 0.20f,
+    LibraryDeckCard(item, domainVisual.accentColor, onClick, modifier) { watermarkModifier ->
+        IconWatermark(
+            bitmap = domainVisual.bitmap,
             modifier = watermarkModifier,
-            context = context
+            size = 96.dp,
+            alpha = 0.20f
         )
     }
 }

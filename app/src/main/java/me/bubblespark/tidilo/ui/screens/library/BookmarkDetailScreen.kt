@@ -78,10 +78,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
-import me.bubblespark.tidilo.data.DomainIconManager
 import androidx.compose.ui.layout.ContentScale
 import me.bubblespark.tidilo.ui.components.DomainWatermark
+import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
 import me.bubblespark.tidilo.ui.components.calculateOgAspectRatio
+import me.bubblespark.tidilo.ui.components.rememberDomainVisual
 import me.bubblespark.tidilo.ui.components.rememberOgImage
 import androidx.compose.ui.res.vectorResource
 import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
@@ -279,7 +280,10 @@ fun BookmarkDetailScreen(
     }
 
 
-    val domain = remember(bookmark.url) { DomainIconManager.extractDomain(bookmark.url) }
+    val visualSource = LocalCacheVisualSource.current
+    val domain = remember(bookmark.domain, bookmark.url, visualSource) {
+        bookmark.domain ?: visualSource.extractDomain(bookmark.url)
+    }
     val policies by DomainPolicyManager.policies.collectAsStateWithLifecycle()
     val domainDisplayName = remember(domain, policies) {
         domain?.let { DomainPolicyManager.getDisplayName(it) } ?: domain ?: ""
@@ -295,9 +299,22 @@ fun BookmarkDetailScreen(
     }
 
     val ogFilename = bookmark.ogImageFilename
-    val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename)
+    val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename, context = context, source = visualSource)
     val ogBitmap = ogState.bitmap
-    val heroPaletteState = rememberDetailHeroPalette(bookmark.id, domain, ogFilename, ogBitmap, ogState.shouldShowFallback)
+    val fallbackDomainVisual by rememberDomainVisual(
+        domain = if (ogState.shouldShowFallback) domain else null,
+        allowNetwork = true,
+        context = context,
+        source = visualSource
+    )
+    val heroPaletteState = rememberDetailHeroPalette(
+        bookmarkId = bookmark.id,
+        domain = domain,
+        imageKey = ogFilename,
+        bitmap = ogBitmap,
+        showFallback = ogState.shouldShowFallback,
+        fallbackVisual = fallbackDomainVisual
+    )
     val detailAccent = remember(heroPaletteState) { derivedStateOf { heroPaletteState.value.accentColor } }
     val statusBarTopPadding = screenSystemInsets().asPaddingValues().calculateTopPadding()
     val surfaces = currentThemeSurfaces()
@@ -618,7 +635,7 @@ fun BookmarkDetailScreen(
                 // Upper right domain watermark (rendered only when og:image is unavailable and resolution completed)
                 if (ogState.shouldShowDomainWatermarkFallback) {
                     DomainWatermark(
-                        domain = domain,
+                        visual = fallbackDomainVisual,
                         modifier = Modifier.align(Alignment.TopEnd)
                     )
                 }

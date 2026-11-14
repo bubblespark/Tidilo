@@ -63,9 +63,9 @@ import java.time.format.DateTimeFormatter
 import me.bubblespark.tidilo.data.rss.replaceRssTriggerTime
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.RssFeedEntity
-import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.rss.RssSettings
-import me.bubblespark.tidilo.ui.components.rememberFeedIcon
+import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
+import me.bubblespark.tidilo.ui.components.rememberFeedVisual
 import me.bubblespark.tidilo.ui.theme.DestructiveActionColors
 
 private val TRIGGER_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
@@ -377,7 +377,8 @@ private fun RssFeedCard(
     onEnabled: (Boolean) -> Unit,
     context: Context = LocalContext.current
 ) {
-    val icon by rememberFeedIcon(feed, context = context)
+    val visualSource = LocalCacheVisualSource.current
+    val icon by rememberFeedVisual(feed, context = context, source = visualSource)
     val enabledLabel = stringResource(R.string.rss_enabled)
     val deleteLabel = stringResource(R.string.rss_delete)
     Card(modifier = Modifier.fillMaxWidth().combinedClickable(enabled = !busy, onClick = onEdit, onLongClickLabel = deleteLabel,
@@ -395,7 +396,7 @@ private fun RssFeedCard(
                 Column(Modifier.weight(1f)) {
                     Text(feed.title, modifier = Modifier.fillMaxWidth().basicMarquee(initialDelayMillis = 2000, repeatDelayMillis = 2000),
                         maxLines = 1, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(DomainIconManager.feedPublisherDomain(feed) ?: feed.url, style = MaterialTheme.typography.bodySmall,
+                    Text(visualSource.feedPublisherDomain(feed) ?: feed.url, style = MaterialTheme.typography.bodySmall,
                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
             }

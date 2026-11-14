@@ -54,9 +54,9 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.BookmarkRepository
 import android.content.Context
-import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicy
 import me.bubblespark.tidilo.data.DomainPolicyStore
+import me.bubblespark.tidilo.ui.components.rememberDomainVisual
 
 @Composable
 fun NsfwSettingsScreen(
@@ -299,13 +299,8 @@ private fun NsfwDomainPolicyItem(
         }
     }
     val isChecked = policy.isNsfw
-    val iconRefreshSignal by remember(policy.domain) {
-        DomainIconManager.observeIconUpdates(policy.domain)
-    }.collectAsStateWithLifecycle(initialValue = 0L)
-
-    val iconBitmap = remember(policy.domain, iconRefreshSignal) {
-        DomainIconManager.getIconBitmap(context, policy.domain)
-    }
+    val domainVisual by rememberDomainVisual(policy.domain, allowNetwork = false, context = context)
+    val iconBitmap = domainVisual.bitmap
 
     Row(
         modifier = modifier

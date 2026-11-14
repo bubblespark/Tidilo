@@ -61,7 +61,7 @@ This document defines the strict engineering standards, naming conventions, Comp
 
 ### 3.1 Dispatchers & Main-Thread I/O Prohibition
 - **`Dispatchers.Main`**: Strictly reserved for UI rendering, event forwarding, and state mutations.
-- **`Dispatchers.IO`**: Required for all disk I/O, directory traversal (`CacheStorageRepository.scan`, `File.walkTopDown`), `SharedPreferences` serialization/deserialization, Jsoup network fetching, and DOM parsing. Never run synchronous filesystem `stat`/read calls directly on `viewModelScope.launch` (`Dispatchers.Main.immediate`); always wrap them in `withContext(Dispatchers.IO)`.
+- **`Dispatchers.IO`**: Required for all disk I/O, directory traversal (`CacheStorageRepository.scan`, `File.walkTopDown`), `SharedPreferences` serialization/deserialization, Jsoup network fetching, and DOM parsing. Never run synchronous filesystem `stat`/read calls directly on `viewModelScope.launch` (`Dispatchers.Main.immediate`); always wrap them in `withContext(Dispatchers.IO)`. `Context.cacheDir` and `Context.filesDir` perform underlying filesystem existence checks on Android; always resolve them inside `withContext(Dispatchers.IO)` and only after in-memory `LruCache` fast-path checks miss.
 - **`Dispatchers.Default`**: Use for CPU-intensive background sorting, tokenization, or `Collator` comparisons.
 - **`viewModelScope`**: Use for ViewModel-initiated user actions.
 - **`repositoryScope`**: Use dedicated `CoroutineScope(Dispatchers.IO + SupervisorJob())` inside singleton repositories for independent background persistence tasks that must outlive any individual screen lifecycle.
@@ -76,6 +76,7 @@ This document defines the strict engineering standards, naming conventions, Comp
       }
   }
   ```
+- When publishing monotonic counters to a `MutableStateFlow` or lazily initializing shared state from an `AtomicReference`, keep the state mutation and publication inside the same lock or atomic `update { maxOf(it, next) }` block so concurrent callers never observe partially initialized state or overwrite newer values with stale ones.
 
 ### 3.3 StateFlow Sharing, Bounded Buffers, & Input Debouncing
 - **Prefer `SharingStarted.WhileSubscribed(5000)` over `SharingStarted.Eagerly`**: In ViewModels, database-backed and sorting-heavy `StateFlow`s (e.g., `domainGroups`, `rssFeedGroups`, count observers) must use `SharingStarted.WhileSubscribed(5000)` so upstream Room queries and `Collator` sorting stop when the screen leaves the foreground.
@@ -136,6 +137,10 @@ This document defines the strict engineering standards, naming conventions, Comp
 4. **Preserving Code Integrity**:
    - Maintain all existing comments and documentation unless explicitly modifying or refactoring that specific feature.
    - Do not remove fallback mechanisms or sample data repair routines.
+
+5. **Non-Negative Hashing & Cache Path Sanitization**:
+   - Mask hash codes with `hashCode() and 0x7FFFFFFF` (or `mod(n)`) instead of `kotlin.math.abs(hashCode())` to avoid negative `Int.MIN_VALUE` overflow.
+   - Always validate or sanitize external strings (e.g., domains, keys) against a strict allowlist regex before constructing `File(cacheDir, name)` paths.
 
 ---
 

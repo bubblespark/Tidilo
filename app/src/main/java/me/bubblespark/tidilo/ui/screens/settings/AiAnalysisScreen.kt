@@ -22,10 +22,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,7 +49,6 @@ import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 fun AiAnalysisScreen(
     onNavigateBack: () -> Unit,
     onNavigateToGenerateContentRequest: () -> Unit,
-    onNavigateToNsfwContents: () -> Unit,
     modifier: Modifier = Modifier,
     checkAiCoreAvailable: suspend () -> Boolean = { AiCoreAvailability.check() }
 ) {
@@ -70,7 +66,6 @@ fun AiAnalysisScreen(
         onModeChange = AppConfig::setAiAnalysisMode,
 
         onNavigateToParameters = onNavigateToGenerateContentRequest,
-        onNavigateToSafety = onNavigateToNsfwContents,
         modifier = modifier
     )
 }
@@ -84,7 +79,6 @@ internal fun AiAnalysisContent(
     onModeChange: (AiAnalysisMode) -> Unit,
 
     onNavigateToParameters: () -> Unit,
-    onNavigateToSafety: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), modifier = modifier, header = {
@@ -109,12 +103,6 @@ internal fun AiAnalysisContent(
                             stringResource(R.string.settings_generate_content_subtitle), Icons.Default.Tune, onNavigateToParameters)
                     }
                 }
-            }
-            Spacer(Modifier.height(20.dp))
-            SettingsSectionTitle(stringResource(R.string.settings_section_content_safety))
-            SettingsGroup {
-                SettingsNavigationRow(stringResource(R.string.settings_nsfw_title),
-                    stringResource(R.string.settings_nsfw_subtitle), Icons.Default.Visibility, onNavigateToSafety)
             }
         }
     }

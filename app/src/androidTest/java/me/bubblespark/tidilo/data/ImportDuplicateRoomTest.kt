@@ -346,15 +346,15 @@ class ImportDuplicateRoomTest {
         override suspend fun deleteByIdOrUrl(id: String, url: String) = delegate.deleteByIdOrUrl(id, url)
         override suspend fun getCount(): Int = delegate.getCount()
         override suspend fun deleteAll() = delegate.deleteAll()
-        override fun timeline(showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = delegate.timeline(showNsfw)
-        override fun byDomain(domain: String, showNsfw: Boolean): PagingSource<Int, BookmarkEntity> = delegate.byDomain(domain, showNsfw)
+        override fun timeline(showPrivate: Boolean): PagingSource<Int, BookmarkEntity> = delegate.timeline(showPrivate)
+        override fun byDomain(domain: String, showPrivate: Boolean): PagingSource<Int, BookmarkEntity> = delegate.byDomain(domain, showPrivate)
         override fun search(query: SupportSQLiteQuery): PagingSource<Int, BookmarkEntity> = delegate.search(query)
         override fun tagCounts(query: SupportSQLiteQuery): Flow<List<TagCount>> = delegate.tagCounts(query)
         override fun observeById(id: String): Flow<BookmarkEntity?> = delegate.observeById(id)
-        override fun domainCounts(showNsfw: Boolean, source: Int): Flow<List<DomainCount>> = delegate.domainCounts(showNsfw, source)
+        override fun domainCounts(showPrivate: Boolean, source: Int): Flow<List<DomainCount>> = delegate.domainCounts(showPrivate, source)
         override suspend fun distinctDomains(): List<String> = delegate.distinctDomains()
         override fun observeDistinctDomains(): Flow<List<String>> = delegate.observeDistinctDomains()
-        override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) = delegate.updateDomainNsfw(domain, isNsfw)
+        override suspend fun updateDomainPrivate(domain: String, isPrivate: Boolean) = delegate.updateDomainPrivate(domain, isPrivate)
     }
 
     @Test

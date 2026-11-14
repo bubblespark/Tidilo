@@ -36,7 +36,7 @@ data class ImportTask(
     val errorMessage: String? = null,
     val assignedTags: List<String> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
-    val isNsfw: Boolean = false,
+    val isPrivate: Boolean = false,
     val siteName: String = "",
     val description: String = "",
     val bodySnippet: String = "",

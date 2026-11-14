@@ -37,7 +37,7 @@ app/src/main/java/com/ykgudev/tidilo/
 │   ├── OgImageManager.kt                # Part A compatibility facade delegating OG image operations to MediaCacheStore
 │   ├── OgImageFetchCoordinator.kt       # Generalized CoalescedFetchCoordinator<T> and OG compatibility aliases
 │   ├── DomainPolicyManager.kt           # Compatibility facade delegating to DomainPolicyStore (in-memory fallback for pure JVM tests)
-│   ├── DomainPolicyStore.kt             # Room-backed per-domain NSFW policy & display-name store with atomic bookmark updates
+│   ├── DomainPolicyStore.kt             # Room-backed per-domain Private policy & display-name store with atomic bookmark updates
 │   ├── ImportRepository.kt              # Direct URL import queue, duplicate resolution, and flat transactional bookmark persistence
 │   ├── EntityCandidateExtractor.kt      # Candidate key & 1-token suggestion extraction from title and description
 │   ├── EntityTagPolicy.kt               # Shared entity-tag normalization, deduplication, and bounds policy
@@ -93,7 +93,8 @@ app/src/main/java/com/ykgudev/tidilo/
     │   │   └── NotificationScreen.kt    # Back/Clear header and per-error action menus
     │   │
     │   └── settings/                    # User preferences & LLM inference parameters
-    │       ├── AiAnalysisScreen.kt                # Inline AI model, automation, fallback, parameters, and safety settings
+    │       ├── AiAnalysisScreen.kt                # Inline AI model, automation, fallback, and parameter settings
+    │       ├── PrivateSettingsScreen.kt           # Private Content visibility, bookmarking, and domain policy settings
     │       ├── SettingsComponents.kt              # Grouped cards and accessible settings rows
     │       ├── GenerateContentRequestScreen.kt    # Fine-grained tuning for Gemini Nano inference
     │       ├── GenerateContentRequestViewModel.kt # State management for inference parameters

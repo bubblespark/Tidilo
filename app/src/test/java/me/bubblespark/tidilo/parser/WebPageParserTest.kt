@@ -106,24 +106,24 @@ class WebPageParserTest {
         assertTrue(article.textContent.isNotBlank())
         assertTrue(article.charCount > 0)
 
-        // Verify regular articles yield false for NSFW signal
-        org.junit.Assert.assertFalse(parsed.isNsfwSignal)
+        // Verify regular articles yield false for Private signal
+        org.junit.Assert.assertFalse(parsed.isPrivateSignal)
     }
 
     @Test
-    fun testNsfwSignalDetectionFromTitleKeywords() {
+    fun testPrivateSignalDetectionFromTitleKeywords() {
         val keywords = listOf("R-18", "R18", "18禁", "成人向け", "成年コミック")
         for (kw in keywords) {
             val html = """
                 <html><head><title>作品タイトル 【$kw】</title></head><body>本文</body></html>
             """.trimIndent()
             val parsed = WebPageParser.parseHtml("https://example.com/item", html)
-            assertTrue("Expected NSFW signal for keyword: $kw", parsed.isNsfwSignal)
+            assertTrue("Expected Private signal for keyword: $kw", parsed.isPrivateSignal)
         }
     }
 
     @Test
-    fun testNsfwSignalDetectionFromMetaRating() {
+    fun testPrivateSignalDetectionFromMetaRating() {
         val ratings = listOf("RTA-5042-1996-1400-1577-RTA", "R-18", "R18", "18+", "adult", "mature")
         for (rating in ratings) {
             val html = """
@@ -133,12 +133,12 @@ class WebPageParserTest {
                 </head><body>Content</body></html>
             """.trimIndent()
             val parsed = WebPageParser.parseHtml("https://example.com/item", html)
-            assertTrue("Expected NSFW signal for meta rating: $rating", parsed.isNsfwSignal)
+            assertTrue("Expected Private signal for meta rating: $rating", parsed.isPrivateSignal)
         }
     }
 
     @Test
-    fun testNsfwSignalDetectionFromJsonLd() {
+    fun testPrivateSignalDetectionFromJsonLd() {
         // 1. isFamilyFriendly: false
         val html1 = """
             <html><head>
@@ -148,7 +148,7 @@ class WebPageParserTest {
             </head><body>Content</body></html>
         """.trimIndent()
         val parsed1 = WebPageParser.parseHtml("https://example.com/item", html1)
-        assertTrue("Expected NSFW signal for isFamilyFriendly: false", parsed1.isNsfwSignal)
+        assertTrue("Expected Private signal for isFamilyFriendly: false", parsed1.isPrivateSignal)
 
         // 2. contentRating: "R18"
         val html2 = """
@@ -159,7 +159,7 @@ class WebPageParserTest {
             </head><body>Content</body></html>
         """.trimIndent()
         val parsed2 = WebPageParser.parseHtml("https://example.com/item", html2)
-        assertTrue("Expected NSFW signal for contentRating: R18", parsed2.isNsfwSignal)
+        assertTrue("Expected Private signal for contentRating: R18", parsed2.isPrivateSignal)
 
         // 3. typicalAgeRange: "18+"
         val html3 = """
@@ -170,11 +170,11 @@ class WebPageParserTest {
             </head><body>Content</body></html>
         """.trimIndent()
         val parsed3 = WebPageParser.parseHtml("https://example.com/item", html3)
-        assertTrue("Expected NSFW signal for typicalAgeRange: 18+", parsed3.isNsfwSignal)
+        assertTrue("Expected Private signal for typicalAgeRange: 18+", parsed3.isPrivateSignal)
     }
 
     @Test
-    fun testPixivDesktopArtworkRtaRatingNsfwDetection() {
+    fun testPixivDesktopArtworkRtaRatingPrivateDetection() {
         val html = """
             <!DOCTYPE html><html lang="ja"><head>
                 <title>#にじさんじ ９月まとめ１ - 水木のイラスト - pixiv</title>
@@ -183,25 +183,25 @@ class WebPageParserTest {
         """.trimIndent()
         val parsed = WebPageParser.parseHtml("https://www.pixiv.net/artworks/150183100", html)
         assertEquals("RTA-5042-1996-1400-1577-RTA", parsed.standardMetaTags["rating"])
-        assertTrue("Expected NSFW signal from Pixiv RTA rating", parsed.isNsfwSignal)
+        assertTrue("Expected Private signal from Pixiv RTA rating", parsed.isPrivateSignal)
     }
 
     @Test
-    fun testNsfwSignalDetectionFromDomainPolicy() {
+    fun testPrivateSignalDetectionFromDomainPolicy() {
         val testDomain = "adult-site-example.com"
-        me.bubblespark.tidilo.data.DomainPolicyManager.registerDomain(testDomain, isNsfw = true)
-        me.bubblespark.tidilo.data.DomainPolicyManager.setDomainNsfw(testDomain, true)
+        me.bubblespark.tidilo.data.DomainPolicyManager.registerDomain(testDomain, isPrivate = true)
+        me.bubblespark.tidilo.data.DomainPolicyManager.setDomainPrivate(testDomain, true)
 
         val cleanHtml = """
             <html><head><title>Clean Content</title></head><body>Normal text</body></html>
         """.trimIndent()
 
         val parsed = WebPageParser.parseHtml("https://$testDomain/page1", cleanHtml)
-        assertTrue("Expected NSFW signal unconditionally when domain is designated as NSFW", parsed.isNsfwSignal)
+        assertTrue("Expected Private signal unconditionally when domain is designated as Private", parsed.isPrivateSignal)
 
-        me.bubblespark.tidilo.data.DomainPolicyManager.setDomainNsfw(testDomain, false)
+        me.bubblespark.tidilo.data.DomainPolicyManager.setDomainPrivate(testDomain, false)
         val parsedAfterDisable = WebPageParser.parseHtml("https://$testDomain/page1", cleanHtml)
-        org.junit.Assert.assertFalse(parsedAfterDisable.isNsfwSignal)
+        org.junit.Assert.assertFalse(parsedAfterDisable.isPrivateSignal)
     }
 
     @Test

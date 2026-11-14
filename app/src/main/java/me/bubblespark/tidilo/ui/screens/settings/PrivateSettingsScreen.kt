@@ -11,7 +11,7 @@ import kotlinx.coroutines.ensureActive
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,7 +33,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -44,8 +43,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -59,18 +60,19 @@ import me.bubblespark.tidilo.data.DomainPolicyStore
 import me.bubblespark.tidilo.ui.components.rememberDomainVisual
 
 @Composable
-fun NsfwSettingsScreen(
+fun PrivateSettingsScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val domainPolicyStore = remember(context) { DomainPolicyStore.getInstance(context) }
-    val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
-    val isNsfwBookmarkable by AppConfig.isNsfwContentBookmarkable.collectAsStateWithLifecycle()
+    val isPrivateVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
+    val isPrivateBookmarkable by AppConfig.isPrivateContentBookmarkable.collectAsStateWithLifecycle()
     val policies by domainPolicyStore.policies.collectAsStateWithLifecycle()
 
     // Ensure all domains from current bookmarks are synced
-    val bookmarkRepo = remember { BookmarkRepository.getInstance(context) }
+    val bookmarkRepo = remember(context) { BookmarkRepository.getInstance(context) }
+    val persistenceScope = androidx.compose.runtime.rememberCoroutineScope()
     val initializationFailure by bookmarkRepo.initializationFailure.collectAsStateWithLifecycle()
     val domains by remember(bookmarkRepo) { bookmarkRepo.observeDomains() }
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -78,13 +80,13 @@ fun NsfwSettingsScreen(
         domainPolicyStore.syncDomains(domains)
     }
 
-    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), 
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(),
         modifier = modifier,
         hideHeaderOnScroll = false,
         // Header with Back button
         header = {
             TidiloPageHeader(
-                title = stringResource(R.string.title_nsfw_contents),
+                title = stringResource(R.string.title_private_content),
                 onNavigateBack = onNavigateBack
             )
         }
@@ -92,124 +94,35 @@ fun NsfwSettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                
                 .verticalScroll(rememberScrollState())
                 .padding(contentPadding)
         ) {
             initializationFailure?.let { me.bubblespark.tidilo.ui.screens.library.PagingFeedback(androidx.paging.LoadState.Error(it), bookmarkRepo::retryInitialization) }
-            // 1. Option: Show NSFW content (Default ON)
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = themeCorner(ThemeCorner.CARD),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Visibility,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.nsfw_show_content_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = stringResource(R.string.nsfw_show_content_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Switch(
-                        checked = isNsfwVisible,
-                        onCheckedChange = { AppConfig.setNsfwContentVisible(it) }
-                    )
-                }
-            }
+            // 1. Option: Show Private Content (Default ON)
+            PrivateOptionCard(
+                icon = Icons.Default.Visibility,
+                title = stringResource(R.string.private_show_content_title),
+                subtitle = stringResource(R.string.private_show_content_subtitle),
+                checked = isPrivateVisible,
+                onCheckedChange = { AppConfig.setPrivateContentVisible(it) }
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 2. Option: Bookmark NSFW content (Default ON)
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = themeCorner(ThemeCorner.CARD),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Bookmark,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.nsfw_bookmark_content_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = stringResource(R.string.nsfw_bookmark_content_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Switch(
-                        checked = isNsfwBookmarkable,
-                        onCheckedChange = { AppConfig.setNsfwContentBookmarkable(it) }
-                    )
-                }
-            }
+            // 2. Option: Bookmark Private Content (Default ON)
+            PrivateOptionCard(
+                icon = Icons.Default.Bookmark,
+                title = stringResource(R.string.private_bookmark_content_title),
+                subtitle = stringResource(R.string.private_bookmark_content_subtitle),
+                checked = isPrivateBookmarkable,
+                onCheckedChange = { AppConfig.setPrivateContentBookmarkable(it) }
+            )
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // 3. Section: NSFW Domain Management
+            // 3. Section: Private Domain Management
             Text(
-                text = stringResource(R.string.nsfw_domain_management_title),
+                text = stringResource(R.string.private_domain_management_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
@@ -217,7 +130,7 @@ fun NsfwSettingsScreen(
             )
 
             Text(
-                text = stringResource(R.string.nsfw_domain_management_subtitle),
+                text = stringResource(R.string.private_domain_management_subtitle),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(start = 4.dp, bottom = 12.dp)
@@ -238,7 +151,7 @@ fun NsfwSettingsScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = stringResource(R.string.nsfw_no_domains),
+                            text = stringResource(R.string.private_no_domains),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -256,10 +169,23 @@ fun NsfwSettingsScreen(
                         modifier = Modifier.padding(vertical = 8.dp)
                     ) {
                         policies.forEachIndexed { index, policy ->
-                            NsfwDomainPolicyItem(
+                            PrivateDomainPolicyItem(
                                 policy = policy,
-                                domainPolicyStore = domainPolicyStore,
-                                context = context
+                                context = context,
+                                onCheckedChange = { checked ->
+                                    persistenceScope.launch {
+                                        try {
+                                            domainPolicyStore.setDomainPrivateAndAwait(policy.domain, checked)
+                                        } catch (e: Exception) {
+                                            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                context.getString(R.string.common_save_failed),
+                                                android.widget.Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+                                    }
+                                }
                             )
 
                             if (index < policies.size - 1) {
@@ -281,24 +207,78 @@ fun NsfwSettingsScreen(
 }
 
 @Composable
-private fun NsfwDomainPolicyItem(
-    policy: DomainPolicy,
-    domainPolicyStore: DomainPolicyStore,
-    context: Context,
+private fun PrivateOptionCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val persistenceScope = androidx.compose.runtime.rememberCoroutineScope()
-    val updatePolicy: (Boolean) -> Unit = { checked ->
-        persistenceScope.launch {
-            try {
-                domainPolicyStore.setDomainNsfwAndAwait(policy.domain, checked)
-            } catch (e: Exception) {
-                kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                android.widget.Toast.makeText(context, context.getString(R.string.common_save_failed), android.widget.Toast.LENGTH_LONG).show()
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = themeCorner(ThemeCorner.CARD),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = checked,
+                    role = Role.Switch,
+                    onValueChange = onCheckedChange
+                )
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Switch(
+                checked = checked,
+                onCheckedChange = null
+            )
         }
     }
-    val isChecked = policy.isNsfw
+}
+
+@Composable
+private fun PrivateDomainPolicyItem(
+    policy: DomainPolicy,
+    context: Context,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isChecked = policy.isPrivate
     val domainVisual by rememberDomainVisual(policy.domain, allowNetwork = false, context = context)
     val iconBitmap = domainVisual.bitmap
 
@@ -306,16 +286,14 @@ private fun NsfwDomainPolicyItem(
         modifier = modifier
             .fillMaxWidth()
             .clickable {
-                updatePolicy(!isChecked)
+                onCheckedChange(!isChecked)
             }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Checkbox(
             checked = isChecked,
-            onCheckedChange = { checked ->
-                updatePolicy(checked)
-            }
+            onCheckedChange = onCheckedChange
         )
 
         Spacer(modifier = Modifier.width(8.dp))

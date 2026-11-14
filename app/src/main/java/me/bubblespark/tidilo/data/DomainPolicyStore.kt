@@ -18,14 +18,15 @@ import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.DomainPolicyEntity
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Room-backed store for per-domain NSFW policies and display names.
+ * Room-backed store for per-domain Private Content policies and display names.
  * Owns one-time idempotent migration from legacy domain_policies.json and updates
- * domain policies and bookmark NSFW flags in a single atomic transaction.
+ * domain policies and bookmark Private flags in a single atomic transaction.
  */
 class DomainPolicyStore internal constructor(
     private val database: AppDatabase,
@@ -90,7 +91,7 @@ class DomainPolicyStore internal constructor(
                             } else {
                                 DomainPolicyEntity(
                                     domain = existing.domain,
-                                    isNsfw = existing.isNsfw || legacy.isNsfw,
+                                    isPrivate = existing.isPrivate || legacy.isPrivate,
                                     displayName = existing.displayName.ifBlank { legacy.displayName }
                                 )
                             }
@@ -125,15 +126,15 @@ class DomainPolicyStore internal constructor(
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
                 val normalized = normalizeDomain(obj.optString("domain")) ?: continue
-                val isNsfw = obj.optBoolean("isNsfw", false)
+                val isPrivate = obj.readLegacyCompatiblePrivateFlag()
                 val displayName = obj.optString("displayName", "").trim()
                 val existing = mergedByDomain[normalized]
                 mergedByDomain[normalized] = if (existing == null) {
-                    DomainPolicy(normalized, isNsfw, displayName)
+                    DomainPolicy(normalized, isPrivate, displayName)
                 } else {
                     DomainPolicy(
                         domain = normalized,
-                        isNsfw = existing.isNsfw || isNsfw,
+                        isPrivate = existing.isPrivate || isPrivate,
                         displayName = existing.displayName.ifBlank { displayName }
                     )
                 }
@@ -170,7 +171,7 @@ class DomainPolicyStore internal constructor(
                 } else {
                     DomainPolicy(
                         domain = fromDb.domain,
-                        isNsfw = existing.isNsfw || fromDb.isNsfw,
+                        isPrivate = existing.isPrivate || fromDb.isPrivate,
                         displayName = existing.displayName.ifBlank { fromDb.displayName }
                     )
                 }
@@ -191,14 +192,14 @@ class DomainPolicyStore internal constructor(
         }
     }
 
-    fun isNsfwDomain(domain: String?): Boolean {
+    fun isPrivateDomain(domain: String?): Boolean {
         val normalized = normalizeDomain(domain) ?: return false
-        return domainMap[normalized]?.isNsfw ?: false
+        return domainMap[normalized]?.isPrivate ?: false
     }
 
-    internal suspend fun isNsfwDomainCommitted(domain: String?): Boolean {
+    internal suspend fun isPrivateDomainCommitted(domain: String?): Boolean {
         val normalized = normalizeDomain(domain) ?: return false
-        return domainPolicyDao.getByDomain(normalized)?.isNsfw == true
+        return domainPolicyDao.getByDomain(normalized)?.isPrivate == true
     }
 
     fun getDisplayName(domain: String?): String {
@@ -214,12 +215,12 @@ class DomainPolicyStore internal constructor(
 
     fun getAllPolicies(): List<DomainPolicy> = _policies.value
 
-    fun registerDomain(domain: String?, isNsfw: Boolean = false, displayName: String = "") {
+    fun registerDomain(domain: String?, isPrivate: Boolean = false, displayName: String = "") {
         val normalized = normalizeDomain(domain) ?: return
         val cleanName = displayName.trim()
         storeScope.launch {
             try {
-                registerDomainAndAwait(normalized, isNsfw, cleanName)
+                registerDomainAndAwait(normalized, isPrivate, cleanName)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -228,7 +229,7 @@ class DomainPolicyStore internal constructor(
         }
     }
 
-    suspend fun registerDomainAndAwait(domain: String?, isNsfw: Boolean = false, displayName: String = "") {
+    suspend fun registerDomainAndAwait(domain: String?, isPrivate: Boolean = false, displayName: String = "") {
         val normalized = normalizeDomain(domain) ?: return
         val cleanName = displayName.trim()
         ensureReady()
@@ -236,7 +237,7 @@ class DomainPolicyStore internal constructor(
             val saved = transactionRunner.run {
                 val existing = domainPolicyDao.getByDomain(normalized)
                 if (existing == null) {
-                    val created = DomainPolicyEntity(normalized, isNsfw, cleanName)
+                    val created = DomainPolicyEntity(normalized, isPrivate, cleanName)
                     domainPolicyDao.upsert(created)
                     created
                 } else if (cleanName.isNotBlank() && existing.displayName.isBlank()) {
@@ -331,7 +332,7 @@ class DomainPolicyStore internal constructor(
                 val existing = domainPolicyDao.getAll().mapTo(HashSet()) { it.domain }
                 val missing = normalizedDomains.filter { it !in existing }
                 if (missing.isEmpty()) return@run null
-                missing.map { DomainPolicyEntity(domain = it, isNsfw = false, displayName = "") }
+                missing.map { DomainPolicyEntity(domain = it, isPrivate = false, displayName = "") }
                     .chunked(BULK_BATCH_SIZE)
                     .forEach { chunk ->
                         domainPolicyDao.insertAllIgnore(chunk)
@@ -354,11 +355,11 @@ class DomainPolicyStore internal constructor(
         }
     }
 
-    fun setDomainNsfw(domain: String, isNsfw: Boolean) {
+    fun setDomainPrivate(domain: String, isPrivate: Boolean) {
         val normalized = normalizeDomain(domain) ?: return
         storeScope.launch {
             try {
-                setDomainNsfwAndAwait(normalized, isNsfw)
+                setDomainPrivateAndAwait(normalized, isPrivate)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -368,20 +369,20 @@ class DomainPolicyStore internal constructor(
     }
 
     /**
-     * Atomically persists the domain NSFW flag and updates all matching bookmarks
+     * Atomically persists the domain Private flag and updates all matching bookmarks
      * in a single transaction on [storeScope], surviving caller cancellation once started.
      */
-    suspend fun setDomainNsfwAndAwait(domain: String, isNsfw: Boolean) {
+    suspend fun setDomainPrivateAndAwait(domain: String, isPrivate: Boolean) {
         val normalized = normalizeDomain(domain) ?: return
         storeScope.async {
             ensureReady()
             writeMutex.withLock {
                 val updated = transactionRunner.run {
                     val existing = domainPolicyDao.getByDomain(normalized)
-                    val entity = existing?.copy(isNsfw = isNsfw)
-                        ?: DomainPolicyEntity(domain = normalized, isNsfw = isNsfw, displayName = "")
+                    val entity = existing?.copy(isPrivate = isPrivate)
+                        ?: DomainPolicyEntity(domain = normalized, isPrivate = isPrivate, displayName = "")
                     domainPolicyDao.upsert(entity)
-                    bookmarkDao.updateDomainNsfw(normalized, isNsfw)
+                    bookmarkDao.updateDomainPrivate(normalized, isPrivate)
                     entity
                 }
                 val policy = updated.toDomainPolicy()
@@ -429,3 +430,9 @@ class DomainPolicyStore internal constructor(
         }
     }
 }
+
+/**
+ * Reads `isPrivate` from legacy-compatible JSON payloads, falling back to `isNsfw` if absent.
+ */
+internal fun JSONObject.readLegacyCompatiblePrivateFlag(): Boolean =
+    if (has("isPrivate")) optBoolean("isPrivate", false) else optBoolean("isNsfw", false)

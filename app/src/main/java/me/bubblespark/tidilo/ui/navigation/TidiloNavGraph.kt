@@ -183,6 +183,9 @@ fun TidiloNavGraph(
                 onNavigateToAiAnalysis = dropUnlessResumed {
                     navController.navigate(Screen.AiAnalysis.route) { launchSingleTop = true }
                 },
+                onNavigateToPrivateContent = dropUnlessResumed {
+                    navController.navigate(Screen.PrivateContent.route) { launchSingleTop = true }
+                },
                 onNavigateToRss = { navController.navigate(Screen.RssSettings.route) },
                 onNavigateToStorage = { navController.navigate(Screen.Storage.route) },
                 onNavigateToDebug = {
@@ -195,9 +198,6 @@ fun TidiloNavGraph(
                 onNavigateBack = dropUnlessResumed { navController.popBackStack() },
                 onNavigateToGenerateContentRequest = dropUnlessResumed {
                     navController.navigate(Screen.GenerateContentRequest.route) { launchSingleTop = true }
-                },
-                onNavigateToNsfwContents = dropUnlessResumed {
-                    navController.navigate(Screen.NsfwContents.route) { launchSingleTop = true }
                 }
             )
         }
@@ -209,8 +209,8 @@ fun TidiloNavGraph(
                 onNavigateBack = { navController.popBackStack() }
             )
         }
-        composable(Screen.NsfwContents.route) {
-            me.bubblespark.tidilo.ui.screens.settings.NsfwSettingsScreen(
+        composable(Screen.PrivateContent.route) {
+            me.bubblespark.tidilo.ui.screens.settings.PrivateSettingsScreen(
                 onNavigateBack = {
                     navController.popBackStack()
                 }

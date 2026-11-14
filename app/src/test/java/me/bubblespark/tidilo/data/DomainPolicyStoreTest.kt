@@ -29,9 +29,9 @@ class DomainPolicyStoreTest {
 
     private class RecordingBookmarkDao : StubBookmarkDao() {
         val rows = linkedMapOf<String, BookmarkEntity>()
-        override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) {
+        override suspend fun updateDomainPrivate(domain: String, isPrivate: Boolean) {
             rows.replaceAll { _, entity ->
-                if (entity.domain == domain) entity.copy(isNsfw = isNsfw) else entity
+                if (entity.domain == domain) entity.copy(isPrivate = isPrivate) else entity
             }
         }
     }
@@ -49,27 +49,27 @@ class DomainPolicyStoreTest {
             )
 
             store.registerDomainAndAwait("  PIXIV.NET  ")
-            assertFalse(store.isNsfwDomain("pixiv.net"))
+            assertFalse(store.isPrivateDomain("pixiv.net"))
             assertEquals("", store.getDomainDisplayName("pixiv.net"))
             assertEquals("pixiv.net", store.getDisplayName("pixiv.net"))
 
-            store.setDomainNsfwAndAwait("pixiv.net", true)
-            assertTrue(store.isNsfwDomain("PIXIV.NET"))
+            store.setDomainPrivateAndAwait("pixiv.net", true)
+            assertTrue(store.isPrivateDomain("PIXIV.NET"))
 
-            // Re-registering with isNsfw=false does not overwrite isNsfw=true, and fills blank displayName.
-            store.registerDomainAndAwait("pixiv.net", isNsfw = false, displayName = "Pixiv")
-            assertTrue(store.isNsfwDomain("pixiv.net"))
+            // Re-registering with isPrivate=false does not overwrite isPrivate=true, and fills blank displayName.
+            store.registerDomainAndAwait("pixiv.net", isPrivate = false, displayName = "Pixiv")
+            assertTrue(store.isPrivateDomain("pixiv.net"))
             assertEquals("Pixiv", store.getDomainDisplayName("pixiv.net"))
             assertEquals("Pixiv", store.getDisplayName("pixiv.net"))
 
-            // Explicit displayName update replaces existing displayName while preserving isNsfw.
+            // Explicit displayName update replaces existing displayName while preserving isPrivate.
             store.setDomainDisplayNameAndAwait("pixiv.net", "pixiv")
             assertEquals("pixiv", store.getDisplayName("pixiv.net"))
-            assertTrue(store.isNsfwDomain("pixiv.net"))
+            assertTrue(store.isPrivateDomain("pixiv.net"))
 
             store.syncDomainsAndAwait(listOf("pixiv.net", "dlsite.com", null, " "))
-            assertTrue(store.isNsfwDomain("pixiv.net"))
-            assertFalse(store.isNsfwDomain("dlsite.com"))
+            assertTrue(store.isPrivateDomain("pixiv.net"))
+            assertFalse(store.isPrivateDomain("dlsite.com"))
 
             val listed = store.getAllPolicies()
             assertEquals(listOf("dlsite.com", "pixiv.net"), listed.map { it.domain })
@@ -105,16 +105,16 @@ class DomainPolicyStoreTest {
     }
 
     @Test
-    fun setDomainNsfwUpdatesPolicyAndBookmarksInSingleTransactionAndDoesNotPublishOnFailure() = runBlocking {
+    fun setDomainPrivateUpdatesPolicyAndBookmarksInSingleTransactionAndDoesNotPublishOnFailure() = runBlocking {
         val policyDao = InMemoryDomainPolicyDao()
         val bookmarkDao = RecordingBookmarkDao()
         bookmarkDao.rows["b1"] = BookmarkEntity(
             id = "b1", title = "One", url = "https://example.com/1", description = "",
-            createdAt = 1L, updatedAt = 1L, isNsfw = false
+            createdAt = 1L, updatedAt = 1L, isPrivate = false
         )
         bookmarkDao.rows["b2"] = BookmarkEntity(
             id = "b2", title = "Two", url = "https://other.com/2", description = "",
-            createdAt = 2L, updatedAt = 2L, isNsfw = false
+            createdAt = 2L, updatedAt = 2L, isPrivate = false
         )
 
         var shouldFail = false
@@ -147,22 +147,22 @@ class DomainPolicyStoreTest {
             store.awaitReady()
             transactionCount = 0
 
-            store.setDomainNsfwAndAwait(" EXAMPLE.COM ", true)
+            store.setDomainPrivateAndAwait(" EXAMPLE.COM ", true)
             assertEquals(1, transactionCount)
-            assertTrue(store.isNsfwDomain("example.com"))
-            assertTrue(bookmarkDao.rows.getValue("b1").isNsfw)
-            assertFalse(bookmarkDao.rows.getValue("b2").isNsfw)
+            assertTrue(store.isPrivateDomain("example.com"))
+            assertTrue(bookmarkDao.rows.getValue("b1").isPrivate)
+            assertFalse(bookmarkDao.rows.getValue("b2").isPrivate)
 
             shouldFail = true
             val thrown = runCatching {
-                store.setDomainNsfwAndAwait("example.com", false)
+                store.setDomainPrivateAndAwait("example.com", false)
             }.exceptionOrNull()
             assertTrue(thrown is IllegalStateException)
             // Rolled back in DB and never published to in-memory cache/StateFlow.
-            assertTrue(store.isNsfwDomain("example.com"))
-            assertTrue(store.policies.value.single { it.domain == "example.com" }.isNsfw)
-            assertTrue(bookmarkDao.rows.getValue("b1").isNsfw)
-            assertTrue(policyDao.rows.getValue("example.com").isNsfw)
+            assertTrue(store.isPrivateDomain("example.com"))
+            assertTrue(store.policies.value.single { it.domain == "example.com" }.isPrivate)
+            assertTrue(bookmarkDao.rows.getValue("b1").isPrivate)
+            assertTrue(policyDao.rows.getValue("example.com").isPrivate)
         } finally {
             scope.coroutineContext[Job]?.cancelAndJoin()
         }
@@ -188,7 +188,7 @@ class DomainPolicyStoreTest {
 
             val policyDao = InMemoryDomainPolicyDao()
             // Simulate an already-present default row that must not erase legacy isNsfw=true.
-            policyDao.rows["merge.example"] = DomainPolicyEntity("merge.example", isNsfw = false, displayName = "")
+            policyDao.rows["merge.example"] = DomainPolicyEntity("merge.example", isPrivate = false, displayName = "")
 
             var failMigration = true
             val runner = object : TransactionRunner {
@@ -225,11 +225,11 @@ class DomainPolicyStoreTest {
 
                 assertFalse("Legacy JSON must be removed after commit", jsonFile.exists())
                 assertFalse("Pending file must be removed after commit", pendingFile.exists())
-                assertTrue(store.isNsfwDomain("pixiv.net"))
+                assertTrue(store.isPrivateDomain("pixiv.net"))
                 assertEquals("Pixiv", store.getDisplayName("pixiv.net"))
                 assertEquals("Example", store.getDisplayName("example.com"))
-                assertTrue(store.isNsfwDomain("merge.example"))
-                assertFalse(store.isNsfwDomain("fresh.example"))
+                assertTrue(store.isPrivateDomain("merge.example"))
+                assertFalse(store.isPrivateDomain("fresh.example"))
             } finally {
                 scope.coroutineContext[Job]?.cancelAndJoin()
             }
@@ -239,7 +239,7 @@ class DomainPolicyStoreTest {
     }
 
     @Test
-    fun setDomainNsfwDoesNotUpdateCacheOptimisticallyBeforeCommitOrOnFailure() = runBlocking {
+    fun setDomainPrivateDoesNotUpdateCacheOptimisticallyBeforeCommitOrOnFailure() = runBlocking {
         val policyDao = InMemoryDomainPolicyDao()
         val bookmarkDao = RecordingBookmarkDao()
         var gate: CompletableDeferred<Unit>? = null
@@ -277,12 +277,12 @@ class DomainPolicyStoreTest {
             )
             store.awaitReady()
 
-            // Failed background write must not leave an optimistic NSFW state in cache or StateFlow.
+            // Failed background write must not leave an optimistic Private state in cache or StateFlow.
             enteredWriteTx = CompletableDeferred()
             gate = CompletableDeferred()
-            store.setDomainNsfw("async.example", true)
+            store.setDomainPrivate("async.example", true)
             withTimeout(5000) { enteredWriteTx.await() }
-            assertFalse(store.isNsfwDomain("async.example"))
+            assertFalse(store.isPrivateDomain("async.example"))
             assertTrue(store.policies.value.none { it.domain == "async.example" })
 
             gate.complete(Unit)
@@ -291,24 +291,24 @@ class DomainPolicyStoreTest {
                     delay(10)
                 }
             }
-            assertFalse(store.isNsfwDomain("async.example"))
+            assertFalse(store.isPrivateDomain("async.example"))
             assertTrue(store.policies.value.none { it.domain == "async.example" })
 
             // Successful background write updates cache and StateFlow only after commit.
             shouldFailWrite = false
             enteredWriteTx = CompletableDeferred()
             gate = CompletableDeferred()
-            store.setDomainNsfw("async.example", true)
+            store.setDomainPrivate("async.example", true)
             withTimeout(5000) { enteredWriteTx.await() }
-            assertFalse(store.isNsfwDomain("async.example"))
+            assertFalse(store.isPrivateDomain("async.example"))
 
             gate.complete(Unit)
             withTimeout(5000) {
-                while (!store.isNsfwDomain("async.example")) {
+                while (!store.isPrivateDomain("async.example")) {
                     delay(10)
                 }
             }
-            assertTrue(store.policies.value.single { it.domain == "async.example" }.isNsfw)
+            assertTrue(store.policies.value.single { it.domain == "async.example" }.isPrivate)
         } finally {
             scope.coroutineContext[Job]?.cancelAndJoin()
         }
@@ -372,7 +372,7 @@ class DomainPolicyStoreTest {
                     store.registerDomain(domain, displayName = "Site $idx")
                     store.setDomainDisplayName(domain, "Updated $idx")
                     store.syncDomains(listOf(domain, "shared.example"))
-                    store.setDomainNsfwAndAwait(domain, idx % 2 == 0)
+                    store.setDomainPrivateAndAwait(domain, idx % 2 == 0)
                 }
             }
             jobs.joinAll()
@@ -383,7 +383,7 @@ class DomainPolicyStoreTest {
             assertTrue(snapshot.any { it.domain == "shared.example" })
             for (idx in 0 until 20) {
                 val domain = "concurrent-$idx.example"
-                assertEquals(idx % 2 == 0, store.isNsfwDomain(domain))
+                assertEquals(idx % 2 == 0, store.isPrivateDomain(domain))
                 assertEquals("Updated $idx", store.getDisplayName(domain))
             }
         } finally {
@@ -413,10 +413,10 @@ class DomainPolicyStoreTest {
                 )
                 store1.awaitReady()
                 assertTrue(migrated)
-                assertTrue(store1.isNsfwDomain("legacy.example"))
+                assertTrue(store1.isPrivateDomain("legacy.example"))
 
-                store1.setDomainNsfwAndAwait("legacy.example", false)
-                assertFalse(store1.isNsfwDomain("legacy.example"))
+                store1.setDomainPrivateAndAwait("legacy.example", false)
+                assertFalse(store1.isPrivateDomain("legacy.example"))
             } finally {
                 scope1.coroutineContext[Job]?.cancelAndJoin()
             }
@@ -436,8 +436,8 @@ class DomainPolicyStoreTest {
                 )
                 store2.awaitReady()
 
-                assertFalse(store2.isNsfwDomain("legacy.example"))
-                assertFalse(policyDao.rows.getValue("legacy.example").isNsfw)
+                assertFalse(store2.isPrivateDomain("legacy.example"))
+                assertFalse(policyDao.rows.getValue("legacy.example").isPrivate)
                 assertFalse("Subsequent startup should still clean up retained legacy file", jsonFile.exists())
             } finally {
                 scope2.coroutineContext[Job]?.cancelAndJoin()
@@ -470,11 +470,11 @@ class DomainPolicyStoreTest {
 
                 val thrown = runCatching { store.awaitReady() }.exceptionOrNull()
                 assertTrue(thrown is IOException)
-                assertFalse(store.isNsfwDomain("retry.example"))
+                assertFalse(store.isPrivateDomain("retry.example"))
 
                 failRead = false
                 store.awaitReady()
-                assertTrue(store.isNsfwDomain("retry.example"))
+                assertTrue(store.isPrivateDomain("retry.example"))
                 assertEquals("Retry", store.getDisplayName("retry.example"))
             } finally {
                 scope.coroutineContext[Job]?.cancelAndJoin()
@@ -485,7 +485,7 @@ class DomainPolicyStoreTest {
     }
 
     @Test
-    fun nonNsfwMutationsDoNotPublishCacheWhenPersistenceFails() = runBlocking {
+    fun nonPrivateMutationsDoNotPublishCacheWhenPersistenceFails() = runBlocking {
         val policyDao = InMemoryDomainPolicyDao()
         var failWrite = false
         val runner = object : TransactionRunner {
@@ -505,7 +505,7 @@ class DomainPolicyStoreTest {
             store.awaitReady()
 
             failWrite = true
-            store.registerDomain("reg-fail.example", isNsfw = false, displayName = "Reg Fail")
+            store.registerDomain("reg-fail.example", isPrivate = false, displayName = "Reg Fail")
             store.setDomainDisplayName("name-fail.example", "Unsaved Name")
             store.syncDomains(listOf("sync-fail.example"))
             scope.coroutineContext[Job]?.children?.toList()?.joinAll()

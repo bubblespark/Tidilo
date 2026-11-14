@@ -256,7 +256,7 @@ object WebPageParser {
             ?: DomainIconManager.extractDomain(finalUrl)
 
         val effectiveTitle = ogpTags["og:title"]?.trim()?.takeIf { it.isNotBlank() } ?: title
-        val isNsfwSignal = detectNsfwSignal(
+        val isPrivateSignal = detectPrivateSignal(
             effectiveTitle = effectiveTitle,
             standardMetaTags = standardMetaTags,
             metaTags = metaTags,
@@ -290,7 +290,7 @@ object WebPageParser {
             resolvedUrl = resolvedUrl,
             appleTouchIconUrl = appleTouchIconUrl,
             faviconUrl = faviconUrl,
-            isNsfwSignal = isNsfwSignal,
+            isPrivateSignal = isPrivateSignal,
             iconCandidates = iconCandidates,
             imageBaseUrl = imageBaseUrl,
             cleanedBodyText = cleanedBodyText,
@@ -316,8 +316,9 @@ object WebPageParser {
         }
 
     /**
-     * Determines whether the parsed web page contains NSFW signals based on:
-     * 0. Domain NSFW Policy: DomainPolicyManager.isNsfwDomain(domain) == true (unconditional)
+     * Determines whether the parsed web page should be flagged as Private based on
+     * domain Private policy and R-18/adult metadata signals:
+     * 0. Domain Private Policy: DomainPolicyManager.isPrivateDomain(domain) == true (unconditional)
      * 1. Effective title (og:title or <title>) containing adult/R-18 keywords
      * 2. Meta rating tag containing: "R-18", "R18", "18+", "RTA-5042-1996-1400-1577-RTA", "adult", "mature"
      * 3. Schema.org / JSON-LD properties:
@@ -325,7 +326,7 @@ object WebPageParser {
      *    - contentRating: "R18", "R-18", "18+"
      *    - typicalAgeRange: "18+"
      */
-    fun detectNsfwSignal(
+    fun detectPrivateSignal(
         effectiveTitle: String?,
         standardMetaTags: Map<String, String>,
         metaTags: List<WebMetaTag>,
@@ -333,8 +334,8 @@ object WebPageParser {
         jsonLdList: List<JsonLdItem>,
         domain: String? = null
     ): Boolean {
-        // 0. Domain check (always assign NSFW if domain is marked in DomainPolicyManager)
-        if (!domain.isNullOrBlank() && DomainPolicyManager.isNsfwDomain(domain)) {
+        // 0. Domain check (always assign Private if domain is marked in DomainPolicyManager)
+        if (!domain.isNullOrBlank() && DomainPolicyManager.isPrivateDomain(domain)) {
             return true
         }
 

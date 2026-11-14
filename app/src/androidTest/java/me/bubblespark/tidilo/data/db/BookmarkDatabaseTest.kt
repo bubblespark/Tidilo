@@ -21,6 +21,7 @@ import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.removeStandardClassificationColumns
+import me.bubblespark.tidilo.data.rewindPrivateColumnsToLegacyNsfw
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
 import org.junit.Assert.*
 import org.junit.Test
@@ -28,27 +29,77 @@ import java.util.UUID
 import java.security.MessageDigest
 
 class BookmarkDatabaseTest {
+    private fun rewindPrivateColumnsToLegacyNsfw(sql: SupportSQLiteDatabase, includeDomainPolicies: Boolean) {
+        rewindPrivateColumnsToLegacyNsfw(sql::execSQL, includeDomainPolicies)
+    }
+
+    @Test fun versionTwentyOneRenamesNsfwColumnsAndIndexToPrivate() = runBlocking {
+        val name = "private-rename-migration-${UUID.randomUUID()}.db"
+        val before = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+        try {
+            before.bookmarkDao().insertAll(
+                listOf(
+                    BookmarkEntity("private-b", "Private", "https://private.invalid/1", "", createdAt = 1, updatedAt = 1, isPrivate = true),
+                    BookmarkEntity("normal-b", "Normal", "https://normal.invalid/2", "", createdAt = 2, updatedAt = 2, isPrivate = false)
+                )
+            )
+            before.trashDao().insert(
+                TrashedBookmarkEntity("private-t", "Trashed", "https://private.invalid/trash", "", createdAt = 1, updatedAt = 1, note = "", isPrivate = true, trashedAt = 3)
+            )
+            before.importTaskDao().insertOrUpdate(
+                ImportTaskEntity(id = "private-i", url = "https://private.invalid/import", title = "Import", status = "READY", statusText = "Ready", assignedTags = emptyList(), createdAt = 1, isPrivate = true)
+            )
+            before.domainPolicyDao().upsert(
+                DomainPolicyEntity("private.invalid", isPrivate = true, displayName = "Private Site")
+            )
+            val sql = before.openHelper.writableDatabase
+            rewindPrivateColumnsToLegacyNsfw(sql, includeDomainPolicies = true)
+            sql.version = 21
+        } finally { before.close() }
+        val after = database(name)
+        try {
+            val readable = after.openHelper.readableDatabase
+            assertEquals(22, readable.version)
+            for (table in listOf("bookmarks", "trashed_bookmarks", "import_tasks", "domain_policies")) {
+                val cols = columns(readable, table)
+                assertTrue("Expected isPrivate column on $table, got $cols", "isPrivate" in cols)
+                assertFalse("Unexpected isNsfw column on $table, got $cols", "isNsfw" in cols)
+            }
+            val indexes = readable.query("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='bookmarks'").use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+            }
+            assertTrue("Expected index_bookmarks_isPrivate in $indexes", "index_bookmarks_isPrivate" in indexes)
+            assertFalse("Unexpected index_bookmarks_isNsfw in $indexes", "index_bookmarks_isNsfw" in indexes)
+
+            assertTrue(after.bookmarkDao().getBookmarkById("private-b")!!.isPrivate)
+            assertFalse(after.bookmarkDao().getBookmarkById("normal-b")!!.isPrivate)
+            assertTrue(after.trashDao().getById("private-t")!!.isPrivate)
+            assertTrue(after.importTaskDao().getTaskById("private-i")!!.isPrivate)
+            assertTrue(after.domainPolicyDao().getByDomain("private.invalid")!!.isPrivate)
+        } finally { after.close(); context.deleteDatabase(name) }
+    }
+
     @Test fun versionTwentyPreservesBookmarksAndCreatesDomainPolicies() = runBlocking {
         val name = "domain-policy-migration-${UUID.randomUUID()}.db"
         val before = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
         try {
             before.bookmarkDao().insertOrUpdate(BookmarkEntity("kept", "Keep", "https://kept.invalid/article", "",
-                createdAt = 1, updatedAt = 1, isNsfw = true))
+                createdAt = 1, updatedAt = 1, isPrivate = true))
             val sql = before.openHelper.writableDatabase
-            sql.execSQL("DROP TABLE domain_policies")
+            rewindPrivateColumnsToLegacyNsfw(sql, includeDomainPolicies = false)
             sql.version = 20
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(21, after.openHelper.readableDatabase.version)
+            assertEquals(22, after.openHelper.readableDatabase.version)
             val kept = after.bookmarkDao().getBookmarkById("kept")
             assertNotNull(kept)
-            assertTrue(kept!!.isNsfw)
-            assertEquals(listOf("domain", "isNsfw", "displayName"), columns(after.openHelper.readableDatabase, "domain_policies"))
-            after.domainPolicyDao().upsert(DomainPolicyEntity("kept.invalid", isNsfw = true, displayName = "Kept"))
+            assertTrue(kept!!.isPrivate)
+            assertEquals(listOf("domain", "isPrivate", "displayName"), columns(after.openHelper.readableDatabase, "domain_policies"))
+            after.domainPolicyDao().upsert(DomainPolicyEntity("kept.invalid", isPrivate = true, displayName = "Kept"))
             val stored = after.domainPolicyDao().getByDomain("kept.invalid")
             assertNotNull(stored)
-            assertTrue(stored!!.isNsfw)
+            assertTrue(stored!!.isPrivate)
             assertEquals("Kept", stored.displayName)
         } finally { after.close(); context.deleteDatabase(name) }
     }
@@ -63,11 +114,12 @@ class BookmarkDatabaseTest {
             sql.execSQL("DROP TABLE rss_image_cleanup")
             sql.execSQL("CREATE TABLE rss_image_cleanup (imageUrl TEXT NOT NULL PRIMARY KEY, articleUrl TEXT NOT NULL)")
             sql.execSQL("INSERT INTO rss_image_cleanup VALUES ('https://images.invalid/shared.webp', 'https://first.invalid/article')")
+            rewindPrivateColumnsToLegacyNsfw(sql, includeDomainPolicies = false)
             sql.version = 19
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(21, after.openHelper.readableDatabase.version)
+            assertEquals(22, after.openHelper.readableDatabase.version)
             assertNotNull(after.bookmarkDao().getBookmarkById("kept"))
             assertEquals(1, after.rssDao().cleanupItems().size)
             after.rssDao().enqueueCleanup(RssImageCleanupEntity("https://images.invalid/shared.webp", "https://second.invalid/article"))
@@ -87,11 +139,12 @@ class BookmarkDatabaseTest {
             val sql = before.openHelper.writableDatabase
             removeStandardClassificationColumns(sql::execSQL)
             me.bubblespark.tidilo.data.restoreLegacyAiSkippedColumns(sql::execSQL)
+            rewindPrivateColumnsToLegacyNsfw(sql, includeDomainPolicies = false)
             sql.version = 16
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(21, after.openHelper.readableDatabase.version)
+            assertEquals(22, after.openHelper.readableDatabase.version)
             assertEquals(queued.copy(status = "QUEUED", statusText = ""), after.importTaskDao().getTaskById(queued.id))
         } finally { after.close(); context.deleteDatabase(name) }
     }
@@ -201,14 +254,14 @@ class BookmarkDatabaseTest {
             var db = database(name)
             try {
                 val sql = db.openHelper.writableDatabase
-                assertEquals(21, sql.version)
+                assertEquals(22, sql.version)
                 assertTrue(columns(sql, "bookmark_entities").contains("skeletonKey"))
                 sql.query("PRAGMA index_list(bookmark_entities)").use { cursor ->
                     val names = buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
                     assertTrue(names.contains("index_bookmark_entities_skeletonKey"))
                 }
-                assertEquals(before, fingerprint(sql, "bookmarks", keptColumns))
-                assertEquals(trashBefore, fingerprint(sql, "trashed_bookmarks", trashColumns))
+                assertEquals(before, fingerprint(sql, "bookmarks", keptColumns.map { if (it == "isNsfw") "isPrivate" else it }))
+                assertEquals(trashBefore, fingerprint(sql, "trashed_bookmarks", trashColumns.map { if (it == "isNsfw") "isPrivate" else it }))
                 assertTrue(!columns(sql, "bookmarks").contains("isAiSkipped"))
                 assertTrue(!columns(sql, "trashed_bookmarks").contains("isAiSkipped"))
                 val expected = mapOf(
@@ -269,7 +322,7 @@ class BookmarkDatabaseTest {
             helper.close()
             val db = database(name)
             try {
-                assertEquals(21, db.openHelper.readableDatabase.version)
+                assertEquals(22, db.openHelper.readableDatabase.version)
                 val feed = db.rssDao().feed("feed")!!
                 assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
                 assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)
@@ -337,6 +390,7 @@ class BookmarkDatabaseTest {
             })
             val sql = before.openHelper.writableDatabase
             me.bubblespark.tidilo.data.restoreLegacyAiSkippedColumns(sql::execSQL)
+            rewindPrivateColumnsToLegacyNsfw(sql, includeDomainPolicies = false)
             sql.version = 17
         } finally { before.close() }
         val after = database(name)
@@ -358,11 +412,11 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
-    private suspend fun results(db: AppDatabase, query: String, showNsfw: Boolean = true): List<BookmarkEntity> {
-        val page = db.bookmarkDao().search(BookmarkQueries.results(query, showNsfw)).load(
+    private suspend fun results(db: AppDatabase, query: String, showPrivate: Boolean = true): List<BookmarkEntity> {
+        val page = db.bookmarkDao().search(BookmarkQueries.results(query, showPrivate)).load(
             PagingSource.LoadParams.Refresh(null, 30, false))
         assertTrue(page.toString(), page is PagingSource.LoadResult.Page)
         return (page as PagingSource.LoadResult.Page).data
@@ -527,18 +581,18 @@ class BookmarkDatabaseTest {
             val rows = listOf(
                 BookmarkEntity("a", "İstanbul 100%_ \uD801\uDC00", "https://www.example.com/a", "記事 École", "Article", "Tech", listOf("Kotlin", "Kotlin", "σ"), 1, 1),
                 BookmarkEntity("b", "Other", "https://example.com/b", "description", "Tool", "Life", listOf("Kot", "lin"), 1, 1),
-                BookmarkEntity("c", "istanbul", "not a valid URL", "記事", "Article", "Tech", listOf("Kotlin"), 2, 2, isNsfw = true)
+                BookmarkEntity("c", "istanbul", "not a valid URL", "記事", "Article", "Tech", listOf("Kotlin"), 2, 2, isPrivate = true)
             )
             db.bookmarkDao().insertAll(rows)
             val queries = listOf("", "#", "Kotlin", "#Kotlin", "#記事", "#技術", "İSTANBUL", "istanbul",
                 "100%_", "%", "_", "\uD801\uDC00", "\uD801\uDC28", "#σ", "#Kotlin\u3000École", "#Article #Tech", "#lin", "#Kot #lin")
-            for (showNsfw in listOf(false, true)) {
+            for (showPrivate in listOf(false, true)) {
                 for (query in queries) {
-                    val visible = rows.filter { showNsfw || !it.isNsfw }.map { it.toBookmarkItem() }
+                    val visible = rows.filter { showPrivate || !it.isPrivate }.map { it.toBookmarkItem() }
                     val expected = LibraryViewModel.filterBookmarks(visible, query).map { it.id }.toSet()
-                    assertEquals("query=$query visible=$showNsfw", expected, results(db, query, showNsfw).map { it.id }.toSet())
+                    assertEquals("query=$query visible=$showPrivate", expected, results(db, query, showPrivate).map { it.id }.toSet())
                     assertEquals("Count must include off-page and domainless results", expected.size,
-                        db.bookmarkDao().observeCount(BookmarkQueries.count(query, showNsfw)).first())
+                        db.bookmarkDao().observeCount(BookmarkQueries.count(query, showPrivate)).first())
                 }
             }
             assertEquals(listOf("c", "b", "a"), results(db, "").map { it.id })
@@ -646,7 +700,7 @@ class BookmarkDatabaseTest {
             )
             pendingFile.writeText("[]")
             // Pre-populate default row that must not erase legacy isNsfw=true or displayName.
-            db.domainPolicyDao().upsert(DomainPolicyEntity("issue85.invalid", isNsfw = false, displayName = ""))
+            db.domainPolicyDao().upsert(DomainPolicyEntity("issue85.invalid", isPrivate = false, displayName = ""))
 
             var failFirst = true
             val runner = object : me.bubblespark.tidilo.data.TransactionRunner {
@@ -663,23 +717,23 @@ class BookmarkDatabaseTest {
                 storeScope = scope
             )
             try {
-                store.setDomainNsfwAndAwait("safe.invalid", true)
+                store.setDomainPrivateAndAwait("safe.invalid", true)
                 fail("Storage failure must reach the initiating caller")
             } catch (_: java.io.IOException) {
                 assertTrue(legacyFile.exists())
                 assertTrue(pendingFile.exists())
-                assertTrue(store.policies.value.none { it.domain == "safe.invalid" && it.isNsfw })
+                assertTrue(store.policies.value.none { it.domain == "safe.invalid" && it.isPrivate })
             }
 
             failFirst = false
             store.syncDomainsAndAwait(listOf("issue85.invalid", "new.invalid"))
             assertFalse(legacyFile.exists())
             assertFalse(pendingFile.exists())
-            assertTrue(store.isNsfwDomain("issue85.invalid"))
+            assertTrue(store.isPrivateDomain("issue85.invalid"))
             assertEquals("Issue 85", store.getDisplayName("issue85.invalid"))
             assertEquals("Safe", store.getDisplayName("safe.invalid"))
-            assertFalse(store.isNsfwDomain("new.invalid"))
-            assertTrue(db.domainPolicyDao().getByDomain("issue85.invalid")!!.isNsfw)
+            assertFalse(store.isPrivateDomain("new.invalid"))
+            assertTrue(db.domainPolicyDao().getByDomain("issue85.invalid")!!.isPrivate)
         } finally {
             scope.coroutineContext[Job]?.cancelAndJoin()
             db.close()
@@ -706,9 +760,9 @@ class BookmarkDatabaseTest {
             storeScope = scope
         )
         val rows = listOf(
-            BookmarkEntity("safe", "Safe", "https://rollback.invalid/a", "", createdAt = 1, updatedAt = 1, isNsfw = false),
-            BookmarkEntity("adult", "Adult", "https://rollback.invalid/b", "", createdAt = 2, updatedAt = 2, isNsfw = true),
-            BookmarkEntity("other", "Other", "https://other.invalid/a", "", createdAt = 3, updatedAt = 3, isNsfw = false)
+            BookmarkEntity("safe", "Safe", "https://rollback.invalid/a", "", createdAt = 1, updatedAt = 1, isPrivate = false),
+            BookmarkEntity("adult", "Adult", "https://rollback.invalid/b", "", createdAt = 2, updatedAt = 2, isPrivate = true),
+            BookmarkEntity("other", "Other", "https://other.invalid/a", "", createdAt = 3, updatedAt = 3, isPrivate = false)
         )
         try {
             db.bookmarkDao().insertAll(rows)
@@ -716,22 +770,22 @@ class BookmarkDatabaseTest {
             for (desired in listOf(true, false)) {
                 failNext = true
                 try {
-                    store.setDomainNsfwAndAwait("rollback.invalid", desired)
+                    store.setDomainPrivateAndAwait("rollback.invalid", desired)
                     fail("Policy save failure must be propagated")
                 } catch (e: java.io.IOException) {
                     assertEquals("Policy write failed", e.message)
                 }
                 for (row in rows) assertEquals(row.withSearchFields(), db.bookmarkDao().getBookmarkById(row.id))
-                assertFalse(db.domainPolicyDao().getByDomain("rollback.invalid")!!.isNsfw)
-                assertFalse(store.isNsfwDomain("rollback.invalid"))
+                assertFalse(db.domainPolicyDao().getByDomain("rollback.invalid")!!.isPrivate)
+                assertFalse(store.isPrivateDomain("rollback.invalid"))
             }
             failNext = false
-            store.setDomainNsfwAndAwait("rollback.invalid", true)
-            assertTrue(db.domainPolicyDao().getByDomain("rollback.invalid")!!.isNsfw)
-            assertTrue(store.isNsfwDomain("rollback.invalid"))
-            assertTrue(db.bookmarkDao().getBookmarkById("safe")!!.isNsfw)
-            assertTrue(db.bookmarkDao().getBookmarkById("adult")!!.isNsfw)
-            assertFalse(db.bookmarkDao().getBookmarkById("other")!!.isNsfw)
+            store.setDomainPrivateAndAwait("rollback.invalid", true)
+            assertTrue(db.domainPolicyDao().getByDomain("rollback.invalid")!!.isPrivate)
+            assertTrue(store.isPrivateDomain("rollback.invalid"))
+            assertTrue(db.bookmarkDao().getBookmarkById("safe")!!.isPrivate)
+            assertTrue(db.bookmarkDao().getBookmarkById("adult")!!.isPrivate)
+            assertFalse(db.bookmarkDao().getBookmarkById("other")!!.isPrivate)
         } finally {
             scope.coroutineContext[Job]?.cancelAndJoin()
             db.close()
@@ -762,7 +816,10 @@ class BookmarkDatabaseTest {
                 assertEquals(1, db.trashDao().getCount())
                 assertEquals(0, db.importTaskDao().getCount())
                 val sql = db.openHelper.readableDatabase
-                for ((table, snapshot) in snapshots) assertEquals(snapshot.second, fingerprint(sql, table, snapshot.first))
+                for ((table, snapshot) in snapshots) {
+                    val afterColumns = snapshot.first.map { if (it == "isNsfw") "isPrivate" else it }
+                    assertEquals(snapshot.second, fingerprint(sql, table, afterColumns))
+                }
                 assertTrue(!columns(sql, "bookmarks").contains("isAiSkipped"))
                 assertTrue(!columns(sql, "trashed_bookmarks").contains("isAiSkipped"))
                 assertEquals(listOf("kept"), results(db, "#Kotlin").map { it.id })
@@ -817,8 +874,9 @@ class BookmarkDatabaseTest {
                 assertEquals("DIRECT", task.intendedMode)
                 val sql = db.openHelper.readableDatabase
                 for ((table, snapshot) in snapshots) {
+                    val afterColumns = snapshot.first.map { if (it == "isNsfw") "isPrivate" else it }
                     assertEquals("Original data changed in $table from v$version", snapshot.second,
-                        fingerprint(sql, table, snapshot.first))
+                        fingerprint(sql, table, afterColumns))
                 }
                 sql.query("SELECT COUNT(*) FROM bookmarks WHERE note='preserved' AND searchTitle<>''").use { assertTrue(it.moveToFirst()); assertEquals(count, it.getInt(0)) }
                 sql.query("SELECT COUNT(*) FROM bookmark_entities").use { it.moveToFirst(); assertEquals(count, it.getInt(0)) }

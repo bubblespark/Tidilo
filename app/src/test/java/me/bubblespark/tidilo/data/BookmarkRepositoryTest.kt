@@ -265,31 +265,38 @@ class BookmarkRepositoryTest {
     }
 
     @Test
-    fun testBookmarkItemIsNsfwSerializationAndDeserialization() {
-        val nsfwBookmark = BookmarkItem(
-            id = "nsfw-1",
+    fun testBookmarkItemIsPrivateSerializationAndDeserialization() {
+        val privateBookmark = BookmarkItem(
+            id = "private-1",
             title = "Adult Creative Work",
             url = "https://example.com/r18/item",
             description = "18+ content description",
             tag = Tag.create("Media", "Adult", listOf("Sample")),
-            isNsfw = true
+            isPrivate = true
         )
 
-        val json = BookmarkRepository.serializeBookmarkToObj(nsfwBookmark)
-        assertTrue(json.optBoolean("isNsfw"))
+        val json = BookmarkRepository.serializeBookmarkToObj(privateBookmark)
+        assertTrue(json.optBoolean("isPrivate"))
 
         val restored = BookmarkRepository.parseBookmarkFromObj(json)
-        assertTrue(restored.isNsfw)
+        assertTrue(restored.isPrivate)
         assertEquals("Adult Creative Work", restored.title)
 
-        // Backward compatibility: old JSON without isNsfw field defaults to false
-        json.remove("isNsfw")
+        // Legacy fallback: old JSON with isNsfw=true still parses into isPrivate=true
+        val legacyJson = org.json.JSONObject(json.toString()).apply {
+            remove("isPrivate")
+            put("isNsfw", true)
+        }
+        assertTrue(BookmarkRepository.parseBookmarkFromObj(legacyJson).isPrivate)
+
+        // Backward compatibility: old JSON without isPrivate/isNsfw field defaults to false
+        json.remove("isPrivate")
         val backwardCompat = BookmarkRepository.parseBookmarkFromObj(json)
-        assertFalse(backwardCompat.isNsfw)
+        assertFalse(backwardCompat.isPrivate)
     }
 
     @Test
-    fun testBookmarkListIsNsfwSerializationAndDeserialization() {
+    fun testBookmarkListIsPrivateSerializationAndDeserialization() {
         val mixedList = listOf(
             BookmarkItem(
                 id = "clean-1",
@@ -297,27 +304,27 @@ class BookmarkRepositoryTest {
                 url = "https://example.com/tech",
                 description = "Tech article",
                 tag = Tag.create("Tech", "Tech"),
-                isNsfw = false
+                isPrivate = false
             ),
             BookmarkItem(
-                id = "nsfw-1",
+                id = "private-1",
                 title = "Adult Artwork",
                 url = "https://pixiv.net/artworks/123",
                 description = "R-18 artwork",
                 tag = Tag.create("Media", "Adult"),
-                isNsfw = true
+                isPrivate = true
             )
         )
 
         // Serialize full list to JSON string (same as saved in SharedPreferences)
         val serializedJson = BookmarkRepository.serializeBookmarks(mixedList)
-        assertTrue(serializedJson.contains("\"isNsfw\":true"))
+        assertTrue(serializedJson.contains("\"isPrivate\":true"))
 
         // Parse list back (same as loadFromPrefs on screen reload/app restart)
         val parsedList = BookmarkRepository.parseBookmarks(serializedJson)
         assertEquals(2, parsedList.size)
-        assertFalse("clean-1 should retain isNsfw = false", parsedList[0].isNsfw)
-        assertTrue("nsfw-1 MUST retain isNsfw = true across list deserialization", parsedList[1].isNsfw)
+        assertFalse("clean-1 should retain isPrivate = false", parsedList[0].isPrivate)
+        assertTrue("private-1 MUST retain isPrivate = true across list deserialization", parsedList[1].isPrivate)
     }
 
     @Test
@@ -341,24 +348,24 @@ class BookmarkRepositoryTest {
 
             // 1. Initial registration defaults to false
             store.registerDomainAndAwait("pixiv.net")
-            assertFalse(store.isNsfwDomain("pixiv.net"))
+            assertFalse(store.isPrivateDomain("pixiv.net"))
 
-            // 2. Set NSFW flag to true
-            store.setDomainNsfwAndAwait("pixiv.net", true)
-            assertTrue(store.isNsfwDomain("pixiv.net"))
+            // 2. Set Private flag to true
+            store.setDomainPrivateAndAwait("pixiv.net", true)
+            assertTrue(store.isPrivateDomain("pixiv.net"))
 
             // 3. Sync domain does not overwrite existing true flag
             store.syncDomainsAndAwait(listOf("pixiv.net", "dlsite.com"))
-            assertTrue(store.isNsfwDomain("pixiv.net"))
-            assertFalse(store.isNsfwDomain("dlsite.com"))
+            assertTrue(store.isPrivateDomain("pixiv.net"))
+            assertFalse(store.isPrivateDomain("dlsite.com"))
 
             // 4. Listing policies
             val policies = store.getAllPolicies()
             assertEquals(2, policies.size)
             assertEquals("dlsite.com", policies[0].domain)
-            assertFalse(policies[0].isNsfw)
+            assertFalse(policies[0].isPrivate)
             assertEquals("pixiv.net", policies[1].domain)
-            assertTrue(policies[1].isNsfw)
+            assertTrue(policies[1].isPrivate)
         } finally {
             scope.coroutineContext[Job]?.cancelAndJoin()
         }
@@ -515,9 +522,9 @@ class BookmarkRepositoryTest {
             rows.clear()
             occurrences.clear()
         }
-        override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) {
+        override suspend fun updateDomainPrivate(domain: String, isPrivate: Boolean) {
             rows.replaceAll { _, entity ->
-                if (entity.domain == domain) entity.copy(isNsfw = isNsfw) else entity
+                if (entity.domain == domain) entity.copy(isPrivate = isPrivate) else entity
             }
         }
     }
@@ -594,7 +601,7 @@ class BookmarkRepositoryTest {
             val trashed = TrashedBookmarkEntity(
                 id = "t1", title = "Saved", url = "https://example.com/saved", description = "Summary",
                 category = "Article", subcategory = "Tech", entities = listOf("Kotlin"),
-                createdAt = 1L, updatedAt = 1L, note = "memo", isNsfw = false, isLiked = true, trashedAt = 10L
+                createdAt = 1L, updatedAt = 1L, note = "memo", isPrivate = false, isLiked = true, trashedAt = 10L
             )
             trashDao.rows["t1"] = trashed
 
@@ -635,7 +642,7 @@ class BookmarkRepositoryTest {
             val repository = testRepository(bookmarkDao, trashDao, scope)
             trashDao.rows["t1"] = TrashedBookmarkEntity(
                 id = "t1", title = "Saved", url = "https://example.com/1", description = "",
-                createdAt = 1L, updatedAt = 1L, note = "", isNsfw = false, trashedAt = 10L
+                createdAt = 1L, updatedAt = 1L, note = "", isPrivate = false, trashedAt = 10L
             )
             assertEquals(TrashMutationResult.Deleted, repository.deleteFromTrash("t1"))
             assertNull(trashDao.rows["t1"])
@@ -671,7 +678,7 @@ class BookmarkRepositoryTest {
                 id = "b1",
                 note = "Updated note",
                 tag = Tag("Tool", "Tech", listOf("GitHub", "Android")),
-                isNsfw = true,
+                isPrivate = true,
                 replacements = mapOf("github" to "git-hub"),
                 updatedAt = 99L
             )
@@ -679,7 +686,7 @@ class BookmarkRepositoryTest {
             val b1 = bookmarkDao.rows.getValue("b1")
             assertEquals("Updated note", b1.note)
             assertEquals("Tool", b1.category)
-            assertTrue(b1.isNsfw)
+            assertTrue(b1.isPrivate)
             assertEquals(99L, b1.updatedAt)
             assertEquals(listOf("git-hub", "Android"), b1.entities)
             assertEquals(listOf("git-hub", "Android"), bookmarkDao.occurrences.getValue("b1").map { it.value })
@@ -718,7 +725,7 @@ class BookmarkRepositoryTest {
                     id = "b1",
                     note = "Should rollback",
                     tag = Tag("Tool", "Tech", listOf("git-hub")),
-                    isNsfw = false,
+                    isPrivate = false,
                     replacements = mapOf("github" to "Different"),
                     updatedAt = 101L
                 )
@@ -733,7 +740,7 @@ class BookmarkRepositoryTest {
     }
 
     @Test
-    fun repositoryRespectsDomainPolicyStoreNsfwFlagAndAtomicTogglePropagatesFailure() = runBlocking {
+    fun repositoryRespectsDomainPolicyStorePrivateFlagAndAtomicTogglePropagatesFailure() = runBlocking {
         val bookmarkDao = InMemoryBookmarkDao()
         val trashDao = InMemoryTrashDao()
         val policyDao = InMemoryDomainPolicyDao()
@@ -769,32 +776,32 @@ class BookmarkRepositoryTest {
                 transactionRunner = atomicRunner,
                 domainPolicyStore = policyStore
             )
-            policyStore.setDomainNsfwAndAwait(" EXAMPLE.COM ", true)
+            policyStore.setDomainPrivateAndAwait(" EXAMPLE.COM ", true)
             repository.addBookmarkAndAwait(
-                BookmarkItem(id = "b1", title = "One", url = "https://example.com/1", description = "", tag = defaultTag, isNsfw = false)
+                BookmarkItem(id = "b1", title = "One", url = "https://example.com/1", description = "", tag = defaultTag, isPrivate = false)
             )
             repository.addBookmarkAndAwait(
-                BookmarkItem(id = "b2", title = "Two", url = "https://other.com/2", description = "", tag = defaultTag, isNsfw = false)
+                BookmarkItem(id = "b2", title = "Two", url = "https://other.com/2", description = "", tag = defaultTag, isPrivate = false)
             )
 
-            assertTrue(bookmarkDao.rows.getValue("b1").isNsfw)
-            assertFalse(bookmarkDao.rows.getValue("b2").isNsfw)
+            assertTrue(bookmarkDao.rows.getValue("b1").isPrivate)
+            assertFalse(bookmarkDao.rows.getValue("b2").isPrivate)
 
             failNextTx = true
             val thrown = runCatching {
-                policyStore.setDomainNsfwAndAwait("example.com", false)
+                policyStore.setDomainPrivateAndAwait("example.com", false)
             }.exceptionOrNull()
             assertTrue(thrown is IllegalStateException)
             assertEquals("policy write failed", thrown?.message)
-            assertTrue(bookmarkDao.rows.getValue("b1").isNsfw)
-            assertTrue(policyStore.isNsfwDomain("example.com"))
+            assertTrue(bookmarkDao.rows.getValue("b1").isPrivate)
+            assertTrue(policyStore.isPrivateDomain("example.com"))
         } finally {
             scope.coroutineContext[Job]?.cancelAndJoin()
         }
     }
 
     @Test
-    fun addBookmarkReadsCommittedNsfwPolicyFromDbEvenWhenCacheIsStale() = runBlocking {
+    fun addBookmarkReadsCommittedPrivatePolicyFromDbEvenWhenCacheIsStale() = runBlocking {
         val bookmarkDao = InMemoryBookmarkDao()
         val trashDao = InMemoryTrashDao()
         val policyDao = InMemoryDomainPolicyDao()
@@ -809,10 +816,10 @@ class BookmarkRepositoryTest {
             // Simulate a policy committed to DB before the store's in-memory cache is published.
             policyDao.rows["stale-cache.example"] = me.bubblespark.tidilo.data.db.DomainPolicyEntity(
                 domain = "stale-cache.example",
-                isNsfw = true,
+                isPrivate = true,
                 displayName = ""
             )
-            assertFalse(policyStore.isNsfwDomain("stale-cache.example"))
+            assertFalse(policyStore.isPrivateDomain("stale-cache.example"))
 
             val repository = testRepository(
                 bookmarkDao = bookmarkDao,
@@ -828,11 +835,11 @@ class BookmarkRepositoryTest {
                     url = "https://stale-cache.example/post",
                     description = "",
                     tag = defaultTag,
-                    isNsfw = false
+                    isPrivate = false
                 )
             )
 
-            assertTrue(bookmarkDao.rows.getValue("b-stale").isNsfw)
+            assertTrue(bookmarkDao.rows.getValue("b-stale").isPrivate)
         } finally {
             scope.coroutineContext[Job]?.cancelAndJoin()
         }

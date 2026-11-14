@@ -60,7 +60,7 @@ flowchart TD
 ### 2.2 Local-First Storage (Room SQLite)
 - Saved data lives on the device and is readable without a connection. Network access is needed only to fetch pages, images, and feeds that the user adds.
 - Bookmark and trash records are persisted in a robust local SQLite database via AndroidX Room (`AppDatabase`, `BookmarkEntity`, `TrashedBookmarkEntity`).
-- Indexed queries on URL, creation timestamp, category, subcategory, NSFW, and domain support targeted reads; transactions preserve durable write integrity.
+- Indexed queries on URL, creation timestamp, category, subcategory, Private status, and domain support targeted reads; transactions preserve durable write integrity.
 - Room migration 16 to 17 stages nullable standard category and subcategory IDs and an evaluation marker on prepared imports. Existing queued rows keep their data and start without staged classification.
 - Room is the source of truth. Writes are awaited by ID/domain; Room invalidation refreshes Paging and aggregate observers. Active bookmarks are never cached as an unbounded application-wide list.
 - An automatic migration bridge on startup safely ingests legacy `SharedPreferences` JSON caches into Room on first launch with an empty database.

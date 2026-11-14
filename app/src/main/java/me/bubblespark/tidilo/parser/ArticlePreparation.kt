@@ -17,7 +17,7 @@ data class PreparedArticle(
     val description: String,
     val bodySnippet: String,
     val ogImageUrl: String?,
-    val isNsfw: Boolean
+    val isPrivate: Boolean
 )
 
 object ArticlePreparation {
@@ -33,6 +33,6 @@ object ArticlePreparation {
             parsed.promptBodyText.take(800).replace("\n", " "),
             (parsed.ogpTags["og:image"].nonblank() ?: parsed.twitterTags["twitter:image"].nonblank())?.let {
                 runCatching { URI(parsed.imageBaseUrl).resolve(it).toString() }.getOrNull()
-            }, parsed.isNsfwSignal)
+            }, parsed.isPrivateSignal)
     }
 }

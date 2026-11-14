@@ -182,7 +182,7 @@ class BookmarkDetailTest {
             createdAt = initialTime,
             updatedAt = initialTime,
             note = "Original Note",
-            isNsfw = false,
+            isPrivate = false,
         )
 
         val updatedTag = Tag.create("Tool", "Business", listOf("Kotlin", "Productivity"))
@@ -206,7 +206,7 @@ class BookmarkDetailTest {
         assertEquals("https://example.com/item", modified.url)
         assertEquals("Original Description", modified.description)
         assertEquals(initialTime, modified.createdAt)
-        assertEquals(false, modified.isNsfw)
+        assertEquals(false, modified.isPrivate)
     }
 
     @Test
@@ -270,44 +270,44 @@ class BookmarkDetailTest {
     }
 
     @Test
-    fun testNsfwToggleAndPersistence() {
+    fun testPrivateToggleAndPersistence() {
         val original = BookmarkItem(
-            id = "b-nsfw-test",
+            id = "b-private-test",
             title = "Test Item",
             url = "https://example.com/item",
             description = "Description",
             tag = Tag.create("Media", "Video", listOf("Tutorial")),
-            isNsfw = false
+            isPrivate = false
         )
-        org.junit.Assert.assertFalse(original.isNsfw)
+        org.junit.Assert.assertFalse(original.isPrivate)
 
-        // Toggle NSFW ON
-        val toggledOn = original.copy(isNsfw = true)
-        assertTrue(toggledOn.isNsfw)
+        // Toggle Private ON
+        val toggledOn = original.copy(isPrivate = true)
+        assertTrue(toggledOn.isPrivate)
         assertEquals("Media", toggledOn.tag.category)
 
-        // Toggle NSFW OFF
-        val toggledOff = toggledOn.copy(isNsfw = false)
-        org.junit.Assert.assertFalse(toggledOff.isNsfw)
+        // Toggle Private OFF
+        val toggledOff = toggledOn.copy(isPrivate = false)
+        org.junit.Assert.assertFalse(toggledOff.isPrivate)
     }
 
     @Test
-    fun testNsfwWarningCondition() {
-        fun shouldShowWarning(isNsfwContentVisible: Boolean, isNsfw: Boolean): Boolean {
-            return !isNsfwContentVisible && isNsfw
+    fun testPrivateWarningCondition() {
+        fun shouldShowWarning(isPrivateContentVisible: Boolean, isPrivate: Boolean): Boolean {
+            return !isPrivateContentVisible && isPrivate
         }
 
-        // ShowNSFWContents = false (disabled in Settings), isNsfw = true (toggled ON) -> Show warning
-        assertTrue(shouldShowWarning(isNsfwContentVisible = false, isNsfw = true))
+        // ShowPrivateContent = false (disabled in Settings), isPrivate = true (toggled ON) -> Show warning
+        assertTrue(shouldShowWarning(isPrivateContentVisible = false, isPrivate = true))
 
-        // ShowNSFWContents = true (enabled in Settings), isNsfw = true -> Don't show warning
-        org.junit.Assert.assertFalse(shouldShowWarning(isNsfwContentVisible = true, isNsfw = true))
+        // ShowPrivateContent = true (enabled in Settings), isPrivate = true -> Don't show warning
+        org.junit.Assert.assertFalse(shouldShowWarning(isPrivateContentVisible = true, isPrivate = true))
 
-        // ShowNSFWContents = false, isNsfw = false -> Don't show warning
-        org.junit.Assert.assertFalse(shouldShowWarning(isNsfwContentVisible = false, isNsfw = false))
+        // ShowPrivateContent = false, isPrivate = false -> Don't show warning
+        org.junit.Assert.assertFalse(shouldShowWarning(isPrivateContentVisible = false, isPrivate = false))
 
-        // ShowNSFWContents = true, isNsfw = false -> Don't show warning
-        org.junit.Assert.assertFalse(shouldShowWarning(isNsfwContentVisible = true, isNsfw = false))
+        // ShowPrivateContent = true, isPrivate = false -> Don't show warning
+        org.junit.Assert.assertFalse(shouldShowWarning(isPrivateContentVisible = true, isPrivate = false))
     }
 
     @Test
@@ -602,51 +602,51 @@ class BookmarkDetailTest {
 
     @Test
     fun testFormatClassificationBreadcrumbAllCombinations() {
-        // 1. Category + Subcategory + NSFW
+        // 1. Category + Subcategory + Private
         assertEquals(
-            "Article > Entertainment - NSFW",
-            formatClassificationBreadcrumb("Article", "Entertainment", isNsfw = true)
+            "Article > Entertainment - Private",
+            formatClassificationBreadcrumb("Article", "Entertainment", isPrivate = true)
         )
 
-        // 2. Category + Subcategory (no NSFW)
+        // 2. Category + Subcategory (not Private)
         assertEquals(
             "Article > Entertainment",
-            formatClassificationBreadcrumb("Article", "Entertainment", isNsfw = false)
+            formatClassificationBreadcrumb("Article", "Entertainment", isPrivate = false)
         )
 
-        // 3. Category only + NSFW
+        // 3. Category only + Private
         assertEquals(
-            "Article - NSFW",
-            formatClassificationBreadcrumb("Article", "", isNsfw = true)
+            "Article - Private",
+            formatClassificationBreadcrumb("Article", "", isPrivate = true)
         )
 
-        // 4. Category only (no NSFW)
+        // 4. Category only (not Private)
         assertEquals(
             "Article",
-            formatClassificationBreadcrumb("Article", "  ", isNsfw = false)
+            formatClassificationBreadcrumb("Article", "  ", isPrivate = false)
         )
 
-        // 5. Subcategory only + NSFW
+        // 5. Subcategory only + Private
         assertEquals(
-            "Entertainment - NSFW",
-            formatClassificationBreadcrumb("", "Entertainment", isNsfw = true)
+            "Entertainment - Private",
+            formatClassificationBreadcrumb("", "Entertainment", isPrivate = true)
         )
 
-        // 6. Subcategory only (no NSFW)
+        // 6. Subcategory only (not Private)
         assertEquals(
             "Entertainment",
-            formatClassificationBreadcrumb("  ", "Entertainment", isNsfw = false)
+            formatClassificationBreadcrumb("  ", "Entertainment", isPrivate = false)
         )
 
-        // 7. No Category, no Subcategory, NSFW = true
+        // 7. No Category, no Subcategory, Private = true
         assertEquals(
-            "NSFW",
-            formatClassificationBreadcrumb("", "", isNsfw = true)
+            "Private",
+            formatClassificationBreadcrumb("", "", isPrivate = true)
         )
 
-        // 8. No Category, no Subcategory, NSFW = false -> null (omitted)
+        // 8. No Category, no Subcategory, Private = false -> null (omitted)
         assertNull(
-            formatClassificationBreadcrumb("", "   ", isNsfw = false)
+            formatClassificationBreadcrumb("", "   ", isPrivate = false)
         )
     }
 

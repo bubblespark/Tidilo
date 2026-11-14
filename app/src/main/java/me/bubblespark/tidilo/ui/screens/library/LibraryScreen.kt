@@ -149,7 +149,7 @@ fun LibraryScreen(
     val initializationFailure by viewModel.initializationFailure.collectAsStateWithLifecycle()
     val initialized by viewModel.isInitialized.collectAsStateWithLifecycle()
     val domainGroupsLoading by viewModel.domainGroupsLoading.collectAsStateWithLifecycle()
-    val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
+    val isPrivateVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
     val isLoading = !initialized ||
         (filterMode == LibraryFilterMode.DOMAIN && domainGroupsLoading) ||
         (filterMode == LibraryFilterMode.RSS && rssFeedGroupsLoading) ||
@@ -237,7 +237,7 @@ fun LibraryScreen(
     }
     val headerScope = key(activeScrollState) { rememberCoroutineScope() }
 
-    val observedCount = key(displayState, isNsfwVisible) {
+    val observedCount = key(displayState, isPrivateVisible) {
         val initialCount = when (displayState) {
             LibraryDisplayState.DomainGrid, LibraryDisplayState.RssFeedGrid, LibraryDisplayState.CollectionList -> 0
             is LibraryDisplayState.CollectionDrillDown -> selectedCollection?.count ?: 0
@@ -247,10 +247,10 @@ fun LibraryScreen(
         }
         val count by remember(displayState) {
             if (displayState == LibraryDisplayState.DomainGrid || displayState == LibraryDisplayState.RssFeedGrid || displayState == LibraryDisplayState.CollectionList) flowOf(0)
-            else if (displayState is LibraryDisplayState.CollectionDrillDown) viewModel.libraryCount(LibraryFilterMode.COLLECTION, null, null, isNsfwVisible, displayState.collectionId)
+            else if (displayState is LibraryDisplayState.CollectionDrillDown) viewModel.libraryCount(LibraryFilterMode.COLLECTION, null, null, isPrivateVisible, displayState.collectionId)
             else viewModel.libraryCount(
                 filterMode, selectedDomainFilter.takeIf { filterMode == LibraryFilterMode.DOMAIN },
-                selectedFeed?.id, isNsfwVisible
+                selectedFeed?.id, isPrivateVisible
             )
         }.collectAsStateWithLifecycle(initialValue = initialCount)
         count
@@ -505,7 +505,7 @@ fun LibraryScreen(
                 PagingFeedback(LoadState.Error(initializationFailure!!), viewModel::retryInitialization)
             }
         } else {
-            key(isNsfwVisible) {
+            key(isPrivateVisible) {
                 AnimatedContent(
                     targetState = displayState,
                     transitionSpec = {
@@ -529,7 +529,7 @@ fun LibraryScreen(
                             },
                             (state as? LibraryDisplayState.DomainDrillDown)?.domain,
                             (state as? LibraryDisplayState.RssFeedDrillDown)?.feed?.id,
-                            isNsfwVisible,
+                            isPrivateVisible,
                             (state as? LibraryDisplayState.CollectionDrillDown)?.collectionId
                         )
                     }

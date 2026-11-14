@@ -8,7 +8,7 @@ Room version 16 adds `collections` and `bookmark_collection_cross_ref` through t
 
 `CollectionEntity` stores UUID String `id`, `title`, `description`, nullable `presetIconId` and `customSymbol`, `colorIndex`, `createdAt`, and `updatedAt`. The membership table has a composite `(bookmarkId, collectionId)` primary key, individual indices on both columns, and cascading foreign keys. Bookmark IDs remain Strings, matching existing bookmark identity.
 
-CollectionDao returns aggregate counts through Flow and collection bookmarks through PagingSource. CollectionRepository validates writes and saves membership sets atomically. Empty collections remain visible. Counts and pages apply the same NSFW visibility rule and include all bookmark sources. Collections and their bookmarks sort by creation time descending, then ID descending. Membership changes do not change collection creation order.
+CollectionDao returns aggregate counts through Flow and collection bookmarks through PagingSource. CollectionRepository validates writes and saves membership sets atomically. Empty collections remain visible. Counts and pages apply the same Private Content visibility rule and include all bookmark sources. Collections and their bookmarks sort by creation time descending, then ID descending. Membership changes do not change collection creation order.
 
 Collection membership exempts RSS articles from automatic age deletion while any membership remains. Removing the last membership resumes the normal age rule without restarting its clock; a Like still protects the article. Image cache remains disposable under [Daily Library Maintenance](library_maintenance.md).
 
@@ -24,7 +24,7 @@ Collection cards and the add card expose button roles to accessibility services.
 
 Card bookmark counts also use English singular/plural quantities and retain the existing Japanese count format. The Collection filter exposes its button role and selected state. Preset icons and palette colors form separate single-choice groups with radio roles; a custom symbol leaves the preset group unselected.
 
-The selected collection ID is saved separately from its latest Room metadata. Editing a title or color updates presentation without changing identity. Collection ID and NSFW visibility participate in the Paging session key; outgoing sessions retain their existing leases, and same-key database invalidation keeps loaded bookmarks mounted. Deleting the selected collection returns to the collection list.
+The selected collection ID is saved separately from its latest Room metadata. Editing a title or color updates presentation without changing identity. Collection ID and Private Content visibility participate in the Paging session key; outgoing sessions retain their existing leases, and same-key database invalidation keeps loaded bookmarks mounted. Deleting the selected collection returns to the collection list.
 
 The editor uses a scrollable Material 3 modal bottom sheet with IME and navigation-bar padding. A fixed header places Save to the right of the title (Create for a new collection), keeping it reachable while the form scrolls. There is no sheet-level Cancel button; back, scrim, or swipe dismissal abandons the draft. Draft fields and delete confirmation survive state restoration. All editing controls wait for the initial row to load, so early decoration input cannot replace existing fields. Save is guarded while pending, failures retain the draft, and confirmed deletion leaves bookmarks intact. Sheet observers are scoped to the sheet lifetime.
 

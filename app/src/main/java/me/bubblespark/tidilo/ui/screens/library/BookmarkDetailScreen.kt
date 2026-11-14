@@ -197,16 +197,16 @@ fun BookmarkDetailScreen(
     }
 
     val edit = rememberSaveable(bookmark.id, saver = BookmarkDetailEditState.Saver) {
-        BookmarkDetailEditState(bookmark.note, bookmark.tag, bookmark.isNsfw)
+        BookmarkDetailEditState(bookmark.note, bookmark.tag, bookmark.isPrivate)
     }
-    LaunchedEffect(bookmark.id, bookmark.note, bookmark.tag, bookmark.isNsfw) {
+    LaunchedEffect(bookmark.id, bookmark.note, bookmark.tag, bookmark.isPrivate) {
         edit.syncWithBookmark(bookmark)
     }
     val hasCollection by remember(viewModel, bookmark.id) { viewModel.bookmarkHasCollections(bookmark.id) }
         .collectAsStateWithLifecycle(initialValue = false)
     var noteText by edit.noteText
     var editedTag by edit.editedTag
-    var editedIsNsfw by edit.editedIsNsfw
+    var editedIsPrivate by edit.editedIsPrivate
     var pendingReplacements by edit.pendingReplacements
     var showTagEditDialog by edit.showTagEditDialog
     var showAddEntityDialog by edit.showAddEntityDialog
@@ -214,7 +214,7 @@ fun BookmarkDetailScreen(
     var draftCategory by edit.draftCategory
     var draftSubcategory by edit.draftSubcategory
     var draftEntities by edit.draftEntities
-    var draftIsNsfw by edit.draftIsNsfw
+    var draftIsPrivate by edit.draftIsPrivate
     var draftReplacements by edit.draftReplacements
     var entityInput by edit.entityInput
     var conflictInput by edit.conflictInput
@@ -228,10 +228,10 @@ fun BookmarkDetailScreen(
     val libraryFlow = remember(viewModel, entityLibraryRetry) { viewModel.entityLibrary() }
     val libraryState = rememberEntityLibraryState(showAddEntityDialog || showEntityBottomSheet, libraryFlow)
 
-    val isNsfwContentVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
+    val isPrivateContentVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
 
     val hasChanges = noteText != edit.originalNote || editedTag != edit.originalTag ||
-        editedIsNsfw != edit.originalNsfw || pendingReplacements.isNotEmpty()
+        editedIsPrivate != edit.originalPrivate || pendingReplacements.isNotEmpty()
 
     fun requestExit(toCollections: Boolean = false) {
         if (isSaving) return
@@ -294,8 +294,9 @@ fun BookmarkDetailScreen(
     val sourceAttributionText = remember(domainDisplayName, relativeCreatedAt) {
         if (domainDisplayName.isNotBlank()) "$domainDisplayName • $relativeCreatedAt" else relativeCreatedAt
     }
-    val classificationBreadcrumb = remember(localizedCategory, localizedSubcategory, editedIsNsfw) {
-        formatClassificationBreadcrumb(localizedCategory, localizedSubcategory, editedIsNsfw)
+    val privateLabel = stringResource(R.string.detail_tag_private_label)
+    val classificationBreadcrumb = remember(localizedCategory, localizedSubcategory, editedIsPrivate, privateLabel) {
+        formatClassificationBreadcrumb(localizedCategory, localizedSubcategory, editedIsPrivate, privateLabel)
     }
 
     val ogFilename = bookmark.ogImageFilename
@@ -324,7 +325,7 @@ fun BookmarkDetailScreen(
         draftCategory = editedTag.category
         draftSubcategory = editedTag.subcategory
         draftEntities = editedTag.entities
-        draftIsNsfw = editedIsNsfw
+        draftIsPrivate = editedIsPrivate
         draftReplacements = pendingReplacements
         showTagEditDialog = true
     }
@@ -362,7 +363,7 @@ fun BookmarkDetailScreen(
                         isSaving = true
                         coroutineScope.launch {
                             try {
-                                viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsNsfw, pendingReplacements)
+                                viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsPrivate, pendingReplacements)
                                 onNavigateBack()
                             } catch (e: Exception) {
                                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
@@ -540,18 +541,18 @@ fun BookmarkDetailScreen(
                     selectedCategory = draftCategory,
                     selectedSubcategory = draftSubcategory,
                     selectedEntities = draftEntities,
-                    isNsfw = draftIsNsfw,
-                    isNsfwContentVisible = isNsfwContentVisible,
+                    isPrivate = draftIsPrivate,
+                    isPrivateContentVisible = isPrivateContentVisible,
                     onCategoryChanged = { draftCategory = it },
                     onSubcategoryChanged = { draftSubcategory = it },
-                    onNsfwChanged = { draftIsNsfw = it },
+                    onPrivateChanged = { draftIsPrivate = it },
                     onAddEntityClick = { entityInput = ""; showAddEntityDialog = true },
                     onOpenEntityPickerClick = { showEntityBottomSheet = true },
                     onConfirm = {
                         editedTag = Tag.fromDisplayValues(
                             draftCategory, draftSubcategory, draftEntities
                         )
-                        editedIsNsfw = draftIsNsfw
+                        editedIsPrivate = draftIsPrivate
                         pendingReplacements = draftReplacements
                         showTagEditDialog = false
                     },

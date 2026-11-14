@@ -12,8 +12,8 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface TrashDao {
 
-    @Query("SELECT t.*, EXISTS(SELECT 1 FROM bookmarks b WHERE b.url = t.url) AS duplicateInLibrary FROM trashed_bookmarks t WHERE (:showNsfw OR NOT t.isNsfw) ORDER BY t.trashedAt DESC, t.id DESC")
-    fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>>
+    @Query("SELECT t.*, EXISTS(SELECT 1 FROM bookmarks b WHERE b.url = t.url) AS duplicateInLibrary FROM trashed_bookmarks t WHERE (:showPrivate OR NOT t.isPrivate) ORDER BY t.trashedAt DESC, t.id DESC")
+    fun observeTrash(showPrivate: Boolean): Flow<List<TrashBookmarkRow>>
 
     @Query("SELECT * FROM trashed_bookmarks WHERE id = :id")
     suspend fun getById(id: String): TrashedBookmarkEntity?

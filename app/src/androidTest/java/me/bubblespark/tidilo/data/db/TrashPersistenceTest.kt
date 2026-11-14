@@ -50,7 +50,7 @@ class TrashPersistenceTest {
 
     @Test fun duplicateCannotOverwriteHiddenOrRssBookmark() = runBlocking { fixture { db ->
         trash(db)
-        val existing = bookmark("existing").copy(isNsfw = true, note = "new memo")
+        val existing = bookmark("existing").copy(isPrivate = true, note = "new memo")
         db.bookmarkDao().insertOrUpdate(existing)
         assertEquals(TrashMutationResult.DuplicateInLibrary, repo(db).restoreFromTrash("old"))
         assertEquals("new memo", db.bookmarkDao().getBookmarkById("existing")?.note)
@@ -120,7 +120,7 @@ class TrashPersistenceTest {
     } }
 
     @Test fun capacityOrderingAndVisibilityRemainBounded() = runBlocking { fixture { db ->
-        for (index in 0..100) trash(db, bookmark("item-%03d".format(index), "https://example.com/$index").copy(isNsfw = index == 100), index.toLong())
+        for (index in 0..100) trash(db, bookmark("item-%03d".format(index), "https://example.com/$index").copy(isPrivate = index == 100), index.toLong())
         assertEquals(100, db.trashDao().observeTrash(true).first().size)
         assertEquals("item-100", db.trashDao().observeTrash(true).first().first().item.id)
         assertEquals(99, db.trashDao().observeTrash(false).first().size)

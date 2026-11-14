@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RssFeed
 import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
@@ -62,6 +63,7 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToAiAnalysis: () -> Unit,
     modifier: Modifier = Modifier,
+    onNavigateToPrivateContent: () -> Unit = {},
     onNavigateToDebug: () -> Unit = {},
     onNavigateToStorage: () -> Unit = {},
     onNavigateToRss: () -> Unit = {}
@@ -104,6 +106,9 @@ fun SettingsScreen(
                 SettingsNavigationRow(stringResource(R.string.settings_ai_analysis_title),
                     stringResource(if (aiAnalysisMode == AiAnalysisMode.AICORE) R.string.settings_ai_analysis_aicore
                         else R.string.settings_ai_analysis_disable), Icons.Default.AutoAwesome, onNavigateToAiAnalysis)
+                SettingsDivider()
+                SettingsNavigationRow(stringResource(R.string.settings_private_title),
+                    stringResource(R.string.settings_private_subtitle), Icons.Default.Lock, onNavigateToPrivateContent)
             }
             Spacer(Modifier.height(24.dp))
             SettingsSectionTitle(stringResource(R.string.settings_section_data))

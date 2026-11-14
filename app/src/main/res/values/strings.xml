@@ -41,7 +41,6 @@
     <string name="settings_ai_analysis_aicore_desc">Summarize and categorize bookmarks using on-device Gemini Nano</string>
     <string name="settings_ai_analysis_disable_desc">Save bookmarks directly without AI analysis</string>
     <string name="settings_section_aicore_parameters">AICore parameters</string>
-    <string name="settings_section_content_safety">Content Safety</string>
     <!-- App & Navigation -->
     <string name="app_name">Tidilo</string>
     <string name="nav_library">Library</string>
@@ -55,7 +54,7 @@
     <string name="title_bookmark_ai_review">AI Review</string>
     <string name="title_tag_selection">Tag Selection</string>
     <string name="title_generate_content_request">GenerateContentRequest</string>
-    <string name="title_nsfw_contents">NSFW Contents</string>
+    <string name="title_private_content">Private Content</string>
 
     <!-- Common Actions & Labels -->
     <string name="common_ok">OK</string>
@@ -169,8 +168,8 @@
     <string name="detail_tag_dialog_title">Edit Category &amp; Tags</string>
     <string name="detail_tag_category_label">Category</string>
     <string name="detail_tag_subcategory_label">Subcategory</string>
-    <string name="detail_tag_nsfw_label">NSFW</string>
-    <string name="detail_tag_nsfw_hidden_warning">If you save while “ON” is selected, that bookmark will be hidden. (See “NSFW Contents” in Settings.)</string>
+    <string name="detail_tag_private_label">Private</string>
+    <string name="detail_tag_private_hidden_warning">If you save while “ON” is selected, that bookmark will be hidden. (See “Private Content” in Settings.)</string>
     <string name="detail_tag_entity_label">Entity</string>
     <string name="detail_tag_add_entity">Add new entity</string>
     <string name="detail_tag_select_entities">Select from existing entity tags</string>
@@ -211,22 +210,22 @@
     <string name="settings_language_dialog_title">Select Language</string>
     <string name="settings_generate_content_title">GenerateContentRequest</string>
     <string name="settings_generate_content_subtitle">Configure AICore request parameters</string>
-    <string name="settings_nsfw_title">NSFW Contents</string>
-    <string name="settings_nsfw_subtitle">Visibility &amp; Domain Policies</string>
+    <string name="settings_private_title">Private Content</string>
+    <string name="settings_private_subtitle">Visibility &amp; Domain Policies</string>
     <string name="settings_section_data">Data Management</string>
     <string name="settings_clear_image_cache_done">Image cache cleared</string>
     <string name="settings_section_debug">Debug</string>
     <string name="settings_debug_title">Debug</string>
     <string name="settings_debug_subtitle">System &amp; AI Diagnostics</string>
 
-    <!-- NSFW Settings Screen -->
-    <string name="nsfw_show_content_title">Show NSFW Content</string>
-    <string name="nsfw_show_content_subtitle">Show or hide NSFW bookmarks in library and search</string>
-    <string name="nsfw_bookmark_content_title">Bookmark NSFW Content</string>
-    <string name="nsfw_bookmark_content_subtitle">Allow queuing and bookmarking NSFW pages (Upcoming feature)</string>
-    <string name="nsfw_domain_management_title">NSFW Domain Management</string>
-    <string name="nsfw_domain_management_subtitle">Checked domains are designated and treated as NSFW sources.</string>
-    <string name="nsfw_no_domains">No domains saved yet</string>
+    <!-- Private Settings Screen -->
+    <string name="private_show_content_title">Show Private Content</string>
+    <string name="private_show_content_subtitle">Show or hide Private bookmarks in library and search</string>
+    <string name="private_bookmark_content_title">Bookmark Private Content</string>
+    <string name="private_bookmark_content_subtitle">Allow queuing and bookmarking Private pages (Upcoming feature)</string>
+    <string name="private_domain_management_title">Private Domain Management</string>
+    <string name="private_domain_management_subtitle">Checked domains are designated and treated as Private sources.</string>
+    <string name="private_no_domains">No domains saved yet</string>
 
     <!-- GenerateContentRequest Screen -->
     <string name="gcr_reset_default_content_desc">Reset to Default</string>

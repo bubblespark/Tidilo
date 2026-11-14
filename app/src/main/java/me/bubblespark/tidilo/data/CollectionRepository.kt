@@ -14,13 +14,13 @@ import java.util.UUID
 
 class CollectionRepository(private val database: AppDatabase) {
     private val dao = database.collectionDao()
-    fun observeCollections(showNsfw: Boolean) = dao.observeCollections(showNsfw)
+    fun observeCollections(showPrivate: Boolean) = dao.observeCollections(showPrivate)
     fun observeCollection(id: String) = dao.observeCollection(id)
     fun observeMembershipIds(bookmarkId: String) = dao.observeMembershipIds(bookmarkId)
-    fun observeCount(collectionId: String, showNsfw: Boolean) = dao.observeCount(collectionId, showNsfw)
-    fun pagedBookmarks(collectionId: String, showNsfw: Boolean) =
+    fun observeCount(collectionId: String, showPrivate: Boolean) = dao.observeCount(collectionId, showPrivate)
+    fun pagedBookmarks(collectionId: String, showPrivate: Boolean) =
         Pager(PagingConfig(pageSize = 30, prefetchDistance = 10, initialLoadSize = 60,
-            maxSize = 150, enablePlaceholders = false)) { dao.bookmarks(collectionId, showNsfw) }
+            maxSize = 150, enablePlaceholders = false)) { dao.bookmarks(collectionId, showPrivate) }
             .flow.map { page -> page.map { it.toBookmarkItem() } }
 
     suspend fun create(id: String, draft: CollectionDraft, now: Long): String = withContext(Dispatchers.IO) {

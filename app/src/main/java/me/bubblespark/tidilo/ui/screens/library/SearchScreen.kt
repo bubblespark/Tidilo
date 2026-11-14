@@ -162,9 +162,9 @@ fun SearchScreen(
 
     val headerHeight = HeaderDefaults.bodyTopPadding()
 
-    val isNsfwVisible by AppConfig.isNsfwContentVisible.collectAsStateWithLifecycle()
-    val activeQueryKey = remember(searchQuery, isNsfwVisible) {
-        buildSearchQueryKey(searchQuery, isNsfwVisible)
+    val isPrivateVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
+    val activeQueryKey = remember(searchQuery, isPrivateVisible) {
+        buildSearchQueryKey(searchQuery, isPrivateVisible)
     }
     val isQueryChanging = isSearchQueryChanging(searchQuery, activeQueryKey, searchGeneration.key)
 

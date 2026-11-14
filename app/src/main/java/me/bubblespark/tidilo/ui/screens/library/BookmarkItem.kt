@@ -74,7 +74,7 @@ data class BookmarkItem(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = createdAt,
     val note: String = "",
-    val isNsfw: Boolean = false,
+    val isPrivate: Boolean = false,
     val isLiked: Boolean = false,
     val browserOpenCount: Int = 0,
     val detailViewCount: Int = 0,

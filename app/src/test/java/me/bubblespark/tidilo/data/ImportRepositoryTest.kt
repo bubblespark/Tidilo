@@ -135,7 +135,7 @@ class ImportRepositoryTest {
             override suspend fun resumeAcquisitions() = Unit
             override suspend fun retryAcquisition(taskId: String) = Unit
             override suspend fun restoreTask(entity: ImportTaskEntity) = Unit
-            override suspend fun validateRssWrite(url: String, bookmarkId: String, feedId: String, isNsfw: Boolean) {
+            override suspend fun validateRssWrite(url: String, bookmarkId: String, feedId: String, isPrivate: Boolean) {
                 if (bookmarkId == "skipped") throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
             }
             override suspend fun recordRecoveredDirectSave(taskId: String) = Unit
@@ -346,7 +346,7 @@ class ImportRepositoryTest {
             title = "Example Article Title",
             status = TaskStatus.QUEUED,
             statusText = "Ready for AI Analysis",
-            isNsfw = false,
+            isPrivate = false,
             siteName = "Example Blog",
             description = "A concise article description",
             bodySnippet = "This is the extracted body text snippet used for instant AI tagging."
@@ -358,7 +358,7 @@ class ImportRepositoryTest {
         assertEquals("Example Blog", item.siteName)
         assertEquals("A concise article description", item.description)
         assertEquals("This is the extracted body text snippet used for instant AI tagging.", item.bodySnippet)
-        assertEquals(false, item.isNsfw)
+        assertEquals(false, item.isPrivate)
 
         // Verify prompt construction with precomputed snippets
         val promptJa = me.bubblespark.tidilo.service.GeminiTaggingService.buildPromptWithSnippets(
@@ -416,7 +416,7 @@ class ImportRepositoryTest {
             title = "Target Web Page",
             status = TaskStatus.PROCESSING,
             statusText = "Processing",
-            isNsfw = true,
+            isPrivate = true,
             siteName = "ExampleSite",
             description = "Parsed HTML description text",
             bodySnippet = "Extracted body snippet"
@@ -428,7 +428,7 @@ class ImportRepositoryTest {
             url = target.url,
             description = target.description,
             tag = Tag.createEmpty(),
-            isNsfw = target.isNsfw,
+            isPrivate = target.isPrivate,
         )
 
         assertEquals("Target Web Page", fallbackBookmark.title)
@@ -437,7 +437,7 @@ class ImportRepositoryTest {
         assertNull(fallbackBookmark.tag.category)
         assertNull(fallbackBookmark.tag.subcategory)
         assertTrue(fallbackBookmark.tag.entities.isEmpty())
-        assertTrue(fallbackBookmark.isNsfw)
+        assertTrue(fallbackBookmark.isPrivate)
     }
 
     @Test
@@ -451,7 +451,7 @@ class ImportRepositoryTest {
             errorMessage = null,
             assignedTags = listOf("tag1", "tag2"),
             createdAt = 123456789L,
-            isNsfw = false,
+            isPrivate = false,
             siteName = "Site",
             description = "Desc",
             bodySnippet = "Body"
@@ -471,7 +471,7 @@ class ImportRepositoryTest {
         assertEquals(task.statusText, reconstructed.statusText)
         assertEquals(task.assignedTags, reconstructed.assignedTags)
         assertEquals(task.createdAt, reconstructed.createdAt)
-        assertEquals(task.isNsfw, reconstructed.isNsfw)
+        assertEquals(task.isPrivate, reconstructed.isPrivate)
         assertEquals(task.siteName, reconstructed.siteName)
         assertEquals(task.description, reconstructed.description)
         assertEquals(task.bodySnippet, reconstructed.bodySnippet)
@@ -716,12 +716,12 @@ class ImportRepositoryTest {
                 events.add("awaitReady")
             }
 
-            override fun isNsfwDomain(domain: String?): Boolean {
-                events.add("isNsfwDomain:$domain")
-                return domain == "nsfw.example"
+            override fun isPrivateDomain(domain: String?): Boolean {
+                events.add("isPrivateDomain:$domain")
+                return domain == "private.example"
             }
 
-            override fun registerDomain(domain: String?, isNsfw: Boolean, displayName: String) {
+            override fun registerDomain(domain: String?, isPrivate: Boolean, displayName: String) {
                 events.add("registerDomain:$domain:$displayName")
             }
         }
@@ -757,8 +757,8 @@ class ImportRepositoryTest {
                 events.add("restoreTask:${entity.id}")
             }
 
-            override suspend fun validateRssWrite(url: String, bookmarkId: String, feedId: String, isNsfw: Boolean) {
-                events.add("validateRssWrite:$bookmarkId:$feedId:$isNsfw")
+            override suspend fun validateRssWrite(url: String, bookmarkId: String, feedId: String, isPrivate: Boolean) {
+                events.add("validateRssWrite:$bookmarkId:$feedId:$isPrivate")
             }
 
             override suspend fun recordRecoveredDirectSave(taskId: String) {
@@ -786,7 +786,7 @@ class ImportRepositoryTest {
                 taskDao = taskDao,
                 bookmarkDao = bookmarkDao,
                 repositoryScope = CoroutineScope(coroutineContext + job),
-                articleAcquirer = { directFixture(it).copy(ogpTags = mapOf("og:site_name" to "NSFW Site", "og:image" to "/hero.png")) },
+                articleAcquirer = { directFixture(it).copy(ogpTags = mapOf("og:site_name" to "Private Site", "og:image" to "/hero.png")) },
                 domainPolicyAdapter = domainPolicyAdapter,
                 mediaCacheAdapter = mediaCacheAdapter,
                 rssAdapter = rssAdapter,
@@ -795,19 +795,19 @@ class ImportRepositoryTest {
 
             // 1. Direct import exercises domain policy + post-commit media caching
             val done = CompletableDeferred<Result<ImportOutcome>>()
-            repository.importUrl("https://nsfw.example/post") { done.complete(it) }
+            repository.importUrl("https://private.example/post") { done.complete(it) }
             val outcome = withTimeout(5000) { done.await() }.getOrThrow()
             assertTrue(outcome is ImportOutcome.BookmarkSaved)
-            assertTrue(bookmarkDao.getBookmarkByUrl("https://nsfw.example/post")!!.isNsfw)
-            assertTrue(events.indexOf("awaitReady") in 0 until events.indexOf("isNsfwDomain:nsfw.example"))
+            assertTrue(bookmarkDao.getBookmarkByUrl("https://private.example/post")!!.isPrivate)
+            assertTrue(events.indexOf("awaitReady") in 0 until events.indexOf("isPrivateDomain:private.example"))
             assertFalse(registerDuringInsert)
             assertFalse(fetchIconDuringInsert)
             assertFalse(ogDuringInsert)
-            assertTrue(events.contains("registerDomain:nsfw.example:NSFW Site"))
-            assertTrue(events.contains("hasDomainIcon:nsfw.example"))
-            assertTrue(events.contains("fetchDomainIcon:https://nsfw.example/post"))
+            assertTrue(events.contains("registerDomain:private.example:Private Site"))
+            assertTrue(events.contains("hasDomainIcon:private.example"))
+            assertTrue(events.contains("fetchDomainIcon:https://private.example/post"))
             withTimeout(3000) {
-                while (events.none { it.startsWith("cacheOgImage:https://nsfw.example/post:") }) delay(10)
+                while (events.none { it.startsWith("cacheOgImage:https://private.example/post:") }) delay(10)
             }
 
             // 2. Invalid URL delegates error to ImportNotificationAdapter
@@ -879,8 +879,8 @@ class ImportRepositoryTest {
                 throw IllegalStateException("policy init failed")
             }
 
-            override fun isNsfwDomain(domain: String?): Boolean = false
-            override fun registerDomain(domain: String?, isNsfw: Boolean, displayName: String) = Unit
+            override fun isPrivateDomain(domain: String?): Boolean = false
+            override fun registerDomain(domain: String?, isPrivate: Boolean, displayName: String) = Unit
         }
         try {
             val repository = ImportRepository(

@@ -49,10 +49,10 @@ class PagedQueryRecoveryTest {
         val policyDao = InMemoryDomainPolicyDao()
         val bookmarkDao = object : StubBookmarkDao() {
             var updatedDomain: String? = null
-            var updatedNsfw: Boolean? = null
-            override suspend fun updateDomainNsfw(domain: String, isNsfw: Boolean) {
+            var updatedPrivate: Boolean? = null
+            override suspend fun updateDomainPrivate(domain: String, isPrivate: Boolean) {
                 updatedDomain = domain
-                updatedNsfw = isNsfw
+                updatedPrivate = isPrivate
             }
         }
         val committed = CompletableDeferred<Unit>()
@@ -74,17 +74,17 @@ class PagedQueryRecoveryTest {
         store.awaitReady()
         gateUpdates = true
         val caller = launch {
-            store.setDomainNsfwAndAwait("example.com", true)
+            store.setDomainPrivateAndAwait("example.com", true)
         }
         try {
             withTimeout(5000) { committed.await() }
             caller.cancelAndJoin()
             release.complete(Unit)
             withTimeout(5000) {
-                store.policies.first { list -> list.any { it.domain == "example.com" && it.isNsfw } }
+                store.policies.first { list -> list.any { it.domain == "example.com" && it.isPrivate } }
             }
             assertEquals("example.com", bookmarkDao.updatedDomain)
-            assertEquals(true, bookmarkDao.updatedNsfw)
+            assertEquals(true, bookmarkDao.updatedPrivate)
         } finally { owner.cancelAndJoin() }
     }
 }

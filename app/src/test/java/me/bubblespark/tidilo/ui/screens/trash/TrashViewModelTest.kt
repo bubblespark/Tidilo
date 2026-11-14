@@ -11,7 +11,7 @@ import org.junit.Test
 class TrashViewModelTest {
     private fun row(duplicate: Boolean = false) = TrashBookmarkRow(TrashedBookmarkEntity(
         "old", "Saved", "https://example.com", "", createdAt = 1, updatedAt = 1,
-        note = "memo", isNsfw = false, trashedAt = 2
+        note = "memo", isPrivate = false, trashedAt = 2
     ), duplicate)
 
     private class Store(initial: List<TrashBookmarkRow>) : TrashStore {
@@ -23,11 +23,11 @@ class TrashViewModelTest {
         var failRead = false
         var retryAction: suspend () -> Unit = {}
         val readFailure = MutableStateFlow<Throwable?>(null)
-        override fun observe(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> = flow {
+        override fun observe(showPrivate: Boolean): Flow<List<TrashBookmarkRow>> = flow {
             if (failRead) throw java.io.IOException("read")
             combine(rows, readFailure) { current, error ->
                 if (error != null) throw error
-                current.filter { row -> showNsfw || !row.item.isNsfw }
+                current.filter { row -> showPrivate || !row.item.isPrivate }
             }.collect { emit(it) }
         }
         override suspend fun restore(id: String): TrashMutationResult {
@@ -121,7 +121,7 @@ class TrashViewModelTest {
 
     @Test fun visibilityAndRetryRestartObservation() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store = Store(listOf(row(), row().let { it.copy(item = it.item.copy(id = "hidden", isNsfw = true)) }))
+        val store = Store(listOf(row(), row().let { it.copy(item = it.item.copy(id = "hidden", isPrivate = true)) }))
         val visibility = MutableStateFlow(false)
         store.failRead = true
         try {

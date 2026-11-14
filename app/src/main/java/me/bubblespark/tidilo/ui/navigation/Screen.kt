@@ -98,10 +98,10 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.CollectionsBookmark
     )
 
-    data object NsfwContents : Screen(
-        route = "settings_nsfw",
-        title = "NSFW Contents",
-        titleRes = R.string.title_nsfw_contents,
+    data object PrivateContent : Screen(
+        route = "settings_private",
+        title = "Private Content",
+        titleRes = R.string.title_private_content,
         selectedIcon = Icons.Filled.CollectionsBookmark,
         unselectedIcon = Icons.Outlined.CollectionsBookmark
     )

@@ -155,7 +155,7 @@ Library retains its title/subtitle, exposes only the existing dashboard/gear dis
   5. Entity tags: FlowRow of `CompactTagBadge` chips with `#` icon.
 
 ### 6.3 `CompactTagBadge`
-- **Height**: Fixed `26.dp` container height (`Modifier.height(26.dp)`) with vertical center alignment, ensuring exact size uniformity across all tags (e.g. NSFW badge, ASCII entity tags).
+- **Height**: Fixed `26.dp` container height (`Modifier.height(26.dp)`) with vertical center alignment, ensuring exact size uniformity across all tags (e.g. Private badge, ASCII entity tags).
 - **Shape**: `RoundedCornerShape(12.dp)`.
 - **Layout**: 14dp Vector icon + 6dp spacer + label text (single line) with 10dp horizontal padding.
 - **Hit Highlighting**: When matching active search queries, container and content transition to high-contrast tonal colors.
@@ -180,7 +180,7 @@ Library retains its title/subtitle, exposes only the existing dashboard/gear dis
 - **Above-Title Metadata & Classification Breadcrumb**:
   - Inside the downward gradient extension (padded by `20.dp` start/end) directly above the Bookmark Title:
     1. **Source Attribution Row**: Displays `Domain • Relative Time` (`DomainPolicyManager.getDisplayName(domain) ?: domain` and `TimeFormatter.formatRelativeTime`) in `MaterialTheme.typography.labelMedium` (`12.sp`, `onSurfaceVariant`). No favicon and no browser-jump icon are rendered here.
-    2. **Classification Breadcrumb**: Immediately below the Source Attribution Row in the exact same `labelMedium` (`12.sp`) font size and `onSurfaceVariant` text color (plain text, no icons, no chip borders, no red highlight on NSFW), formatted via `formatClassificationBreadcrumb` as `Category > Subcategory - NSFW` (or subset). When Category, Subcategory, and NSFW are all empty/false, this line is completely omitted with zero vertical gap so the Bookmark Title pulls up directly beneath the Source Attribution Row.
+    2. **Classification Breadcrumb**: Immediately below the Source Attribution Row in the exact same `labelMedium` (`12.sp`) font size and `onSurfaceVariant` text color (plain text, no icons, no chip borders, no accent highlight on Private), formatted via `formatClassificationBreadcrumb` as `Category > Subcategory - Private` (or subset). When Category, Subcategory, and Private are all empty/false, this line is completely omitted with zero vertical gap so the Bookmark Title pulls up directly beneath the Source Attribution Row.
     3. **Bookmark Title**: `MaterialTheme.typography.titleLarge`, `FontWeight.Bold`, `color = MaterialTheme.colorScheme.onBackground`.
 - **Below-Title Entity-Only Tag Row**:
   - Placed directly beneath the header block without a `# Category & Tags` section title or classification chips.
@@ -193,9 +193,9 @@ Library retains its title/subtitle, exposes only the existing dashboard/gear dis
 - **Integrated Category & Tag Editing Workflow (Parent Dialog + Screen-Level Bottom Sheet)**:
   - **Edit Action Trigger**: Positioned at the right end of the entity tag row (and on the `+ Add tags` placeholder when entities are empty).
   - **Parent Modification Dialog (`BookmarkTagEditDialog`)**:
-    - Centralized `AlertDialog` managing Category (7 options), Subcategory (11 options), NSFW status toggle, and assigned Entities in one place.
+    - Centralized `AlertDialog` managing Category (7 options), Subcategory (11 options), Private status toggle, and assigned Entities in one place.
     - **Category & Subcategory Dropdowns**: Single-select dropdown menus displaying localized strings.
-    - **NSFW Content Toggle Section**: Positioned between Subcategory and Entity sections. Contains a Material 3 `Switch` allowing users to mark bookmarks as NSFW. When `AppConfig.isNsfwContentVisible` is OFF (NSFW hidden in Settings) and the toggle is ON, displays a contextual warning banner beneath the switch: `If you save while “ON” is selected, that bookmark will be hidden. (See “NSFW Contents” in Settings.)`.
+    - **Private Content Toggle Section**: Positioned between Subcategory and Entity sections. Contains a Material 3 `Switch` allowing users to mark bookmarks as Private. When `AppConfig.isPrivateContentVisible` is OFF (Private Content hidden in Settings) and the toggle is ON, displays a contextual warning banner beneath the switch: `If you save while “ON” is selected, that bookmark will be hidden. (See “Private Content” in Settings.)`.
     - **Entity Section Header**: Features borderless action icon buttons: `+` (Add new entity via `AddEntityDialog`) and `List Alt` (`R.drawable.ic_list_alt`, opens existing entity picker bottom sheet).
     - **Entity Preview Chips**: Rendered identically to Detail screen's chip style (`AssistChip`, 10dp rounded corners, tag icon) **without delete buttons** to maintain a clean layout.
   - **Screen-Level Bottom Sheet Anchor (`EntityTagPickerBottomSheet`)**:
@@ -206,11 +206,11 @@ Library retains its title/subtitle, exposes only the existing dashboard/gear dis
     - **Bottom Section**: All unique entity tags across the library sorted A-Z (`compareEntityNames`), functioning as toggle buttons with highlighted ON/OFF states.
     - Dismissing or dragging down cleanly commits changes to the parent dialog's draft state.
   - **Two-Stage Persistence & In-Memory Preview**:
-    - Confirming the parent dialog updates `editedTag` and `editedIsNsfw` in memory, immediately previewing the changes in both the above-title Classification Breadcrumb and the below-title entity row, and activating the top-right floppy Save button.
+    - Confirming the parent dialog updates `editedTag` and `editedIsPrivate` in memory, immediately previewing the changes in both the above-title Classification Breadcrumb and the below-title entity row, and activating the top-right floppy Save button.
     - Changes are atomically persisted to Room database and repository only when the user taps Save. Save validates that the edited bookmark still exists, applies all staged replacements across active bookmarks (including hidden content), and saves the current fields in one transaction. Trash is excluded. A missing target or any failure commits nothing; repeated taps cannot submit overlapping saves.
     - Manual variant entry compares skeleton identity against all active library tags, including hidden content, independently of Library filters. The lookup is collected only while manual entry or the entity picker is open, with lifecycle-aware cancellation. Closing both editors disposes the snapshot; reopening or retrying starts Loading and waits for a fresh snapshot. Detail viewing, note editing, and the parent tag dialog alone do not collect the library aggregate. Lookup loading or failure blocks confirmation; failure offers Retry.
     - A spelling conflict offers **Use existing tag** or **Replace across all bookmarks**, displays both spellings, and explains that replacement applies only after the detail screen Save. Dismissing the conflict changes nothing. Replacement choices remain in the parent editor until its confirmation; canceling that editor or discarding the screen never renames library tags.
-    - The complete note, classification, entity, NSFW, replacement, and nested-dialog draft uses saved state for recreation. Automated restoration coverage remounts the SaveableStateRegistry; actual OS process death has not been exercised. Incoming Room updates preserve edits. Pending replacements alone enable Save, and failed Save retains all choices for retry. An explicit choice still applies if its last active occurrence disappears before Save; without an explicit replacement, a stale draft resolves the latest library spelling. Stored display spelling (including meaningful leading hashes) is rendered unchanged; the picker overlays pending spellings and shows each skeleton once.
+    - The complete note, classification, entity, Private, replacement, and nested-dialog draft uses saved state for recreation. Automated restoration coverage remounts the SaveableStateRegistry; actual OS process death has not been exercised. Incoming Room updates preserve edits. Pending replacements alone enable Save, and failed Save retains all choices for retry. An explicit choice still applies if its last active occurrence disappears before Save; without an explicit replacement, a stale draft resolves the latest library spelling. Stored display spelling (including meaningful leading hashes) is rendered unchanged; the picker overlays pending spellings and shows each skeleton once.
 - **Footer Full-URL & Timestamps**:
   - The full `bookmark.url` is rendered at the bottom of the scrollable body directly above the `Created: yyyy/MM/dd HH:mm` and `Updated: yyyy/MM/dd HH:mm` lines in the same right-aligned muted style (`MaterialTheme.typography.labelSmall`, `onSurfaceVariant.copy(alpha = 0.45f)`).
   - Bound via `combinedClickable` so tapping or long-pressing the footer URL performs haptic feedback (`HapticFeedbackType.LongPress`), copies the full URL to the clipboard, and displays the `detail_url_copied` toast. Browser launching is handled exclusively by the bottom toolbar's right-side square button.
@@ -239,21 +239,22 @@ When a standalone 86dp bottom-right button expands into a menu, child menu pills
 
 Manual Import opens the URL-entry dialog from the Library rail. Notification lists saved history and import/RSS XML errors with creation timestamps. Error rows offer Retry and Delete through their overflow menu; there are no Import overview cards or swipe/Undo actions.
 
-### 6.7 NSFW Contents Settings & Badge Specification
+### 6.7 Private Content Settings & Badge Specification
 - **Settings Screen Menu Icons (`SettingsScreen.kt`)**:
   - All menu card icon containers use `primaryContainer` with icon tint `onPrimaryContainer`. Manual domain icon re-fetch is removed; cache clearing remains available and explains automatic preview/icon recovery.
-- **NSFW Settings Screen (`NsfwSettingsScreen.kt`)**:
+- **Private Content Settings Screen (`PrivateSettingsScreen.kt`)**:
+  - Accessed directly from `SettingsScreen` -> `General` -> `Private Content` (`Icons.Default.Lock`).
   - Clean top bar with `Icons.AutoMirrored.Filled.ArrowBack`.
   - Top options configured as 20dp rounded cards (`surfaceContainerHigh`):
     - Layout: Flattened `Row` structure (`Surface(Icon, 40.dp, primaryContainer/onPrimaryContainer)` + `Spacer(12.dp)` + `Column(Modifier.weight(1f))` + `Spacer(12.dp)` + `Switch`), with `padding(horizontal = 16.dp, vertical = 14.dp)` to maximize usable text width and eliminate mid-character line wraps before the Switch toggle.
-    - **"Show NSFW Content" Switch**: Controls `AppConfig.isNsfwContentVisible`. Default ON.
-    - **"Bookmark NSFW Content" Switch**: Controls `AppConfig.isNsfwContentBookmarkable`. Default ON.
-  - **NSFW Domain Management Section**:
+    - **"Show Private Content" Switch**: Controls `AppConfig.isPrivateContentVisible`. Default ON.
+    - **"Bookmark Private Content" Switch**: Controls `AppConfig.isPrivateContentBookmarkable`. Default ON.
+  - **Domain Management Section**:
     - Lists all registered domains with a `Checkbox` on the left and domain name (with cached favicon/watermark icon) on the right.
-    - Interactive row tap toggles domain NSFW classification in `DomainPolicyManager`.
-- **Card & Detail NSFW Indicator**:
-  - `BookmarkCard` displays a prominent red-toned `NSFW` badge (`errorContainer` background, `onErrorContainer` text) immediately adjacent to the `[category] > [subcategory]` chips when `bookmark.isNsfw == true`.
-  - `BookmarkDetailScreen` displays `NSFW` inside the plain-text Classification Breadcrumb (`Category > Subcategory - NSFW` or `NSFW`) above the Bookmark Title in `labelMedium` (`12.sp`, `onSurfaceVariant`) without high-emphasis color or chip borders.
+    - Interactive row tap toggles domain Private classification in `DomainPolicyManager`.
+- **Card & Detail Private Indicator**:
+  - `BookmarkCard` displays a subtle `Private` badge (`Icons.Default.Lock` + `Private` label, `SurfaceTone.NORMAL`, resolved via `resolveChipColors` with `secondaryContainer` / `onSecondaryContainer` fallback) immediately adjacent to the `[category] > [subcategory]` chips when `bookmark.isPrivate == true`.
+  - `BookmarkDetailScreen` displays `Private` inside the plain-text Classification Breadcrumb (`Category > Subcategory - Private` or `Private`) above the Bookmark Title in `labelMedium` (`12.sp`, `onSurfaceVariant`) without high-emphasis color, icon, or chip borders.
 
 ### 6.8 `DomainCard` & Library Domain Filter Mode
 - **2-Column Grid Layout (`LazyVerticalGrid(GridCells.Fixed(2))`)**:
@@ -284,7 +285,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
   - Domain and RSS drill-down titles remain single-line and scale by Unicode code point count: up to 6 uses `headlineMedium` (28sp / 36sp); 7–9 uses `headlineSmall` with 23sp / 28sp; 10–13 uses `titleLarge` with 20sp / 25sp; 14 or more uses `titleMedium` with 17sp / 22sp. The title column takes the remaining width between navigation and action buttons. `basicMarquee(initialDelayMillis = 2000)` scrolls overflowing titles without ellipsis; fitting titles remain still. Normal collection headers retain their existing typography. Title text and drill-down status travel together through `AnimatedContent`, preserving outgoing typography during navigation.
   - Header subtitle text color dynamically coordinates with `selectedDomainColor`.
   - System back gesture is captured via `BackHandler` to return to the domain grid rather than exiting or switching tabs.
-  - **Drill-down Content State Retention during Exit Transition**: Each animated destination collects a bounded Pager for its own domain or feed identity. The ViewModel retains the selected session across detail navigation to preserve its loaded window and scroll position. Animated compositions lease their sessions; nonselected sessions cancel when the last exit finishes. Rapid A-to-B-to-A navigation reactivates A even if its composition is reused. Clearing the global selection cannot replace outgoing items with another query or an empty feed-grid generation. NSFW visibility changes discard visible destinations immediately and use a new visibility-specific session.
+  - **Drill-down Content State Retention during Exit Transition**: Each animated destination collects a bounded Pager for its own domain or feed identity. The ViewModel retains the selected session across detail navigation to preserve its loaded window and scroll position. Animated compositions lease their sessions; nonselected sessions cancel when the last exit finishes. Rapid A-to-B-to-A navigation reactivates A even if its composition is reused. Clearing the global selection cannot replace outgoing items with another query or an empty feed-grid generation. Private Content visibility changes discard visible destinations immediately and use a new visibility-specific session.
 - **Page Transition Animations (`AnimatedContent` & `AnimatedVisibility`)**:
   - **Forward and Backward Transitions**: Domain and RSS grid/drill-down navigation uses a symmetric crossfade (220ms in, 180ms out, EaseInOutCubic). Loading, error, and empty content render inside the persistent transition host.
   - **Filter Mode Transition**: Uses the same crossfade between Newest First, Domain, and RSS destinations.
@@ -313,7 +314,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 
 ### 6.10 Application-Wide Title Bar & Header Geometry Standardization
 - **Shared Source of Truth (`HeaderDefaults`, `TidiloFrostedHeader`, `TidiloScreenScaffold`)**:
-  - Settings, NSFW, RSS, Storage, Debug and AI generation settings use `TidiloPageHeader` for the title/navigation boilerplate. Its optional subtitle slot retains Debug's secondary text, and its actions slot retains the generation reset control.
+  - Settings, Private Content, RSS, Storage, Debug and AI generation settings use `TidiloPageHeader` for the title/navigation boilerplate. Its optional subtitle slot retains Debug's secondary text, and its actions slot retains the generation reset control.
   - `TidiloFrostedHeader` and `TidiloPageHeader` expose an optional `onTitleClick` callback. Only the weighted title/subtitle column is clickable when supplied, with `TextHandleMove` haptic feedback and no ripple. Navigation and action slots remain independent; blank row/status-bar padding only absorbs taps.
   - Library binds the title action to `animateScrollToItem(0)` on the active Newest list/grid, Domain deck/detail list/grid, or RSS deck/detail list/grid. Index 0 with offset 0 skips animation. Other states retain their positions under existing navigation rules, and changing the active state cancels any pending title-scroll coroutine. Search and bookmark detail enable header-origin scrolling without adding a title-tap action.
   - The header owns status-bar padding; the body receives matching top clearance from the scaffold. Do not apply status-bar padding again to the body.
@@ -328,7 +329,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
   - Header Icon Buttons: 48dp interactive slots (Library menu and display mode, Notification overflow actions, Reset Wrench in GenerateContentRequest). Title slots take the remaining width so actions stay visible at large font sizes.
 - **Unified Screens**:
   - Library has a menu button. Search and Notification use the shared Back header; the Import overview is removed. Search automatically focuses the search input and shows the software keyboard when entered from Library or returning from Tag Selection, while returning from Bookmark Detail preserves the scroll position without re-focusing.
-  - Sub-Screens with Back Button: Search, Notification, `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `NsfwSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `StorageScreen`, `RssSettingsScreen`, `BookmarkAiReviewScreen`. Library Domain/RSS drill-downs also show Back; Library's root uses its menu action.
+  - Sub-Screens with Back Button: Search, Notification, `BookmarkDetailScreen`, `TagSelectionScreen`, `SettingsScreen`, `PrivateSettingsScreen`, `SettingsDebugScreen`, `GenerateContentRequestScreen`, `StorageScreen`, `RssSettingsScreen`, `BookmarkAiReviewScreen`. Library Domain/RSS drill-downs also show Back; Library's root uses its menu action.
 - **Visibility Policy**:
   - `hideHeaderOnScroll` defaults to false. Library and Search explicitly enable it and reuse MainActivity's `LocalBarsVisible` signal. Notification, Settings and the other secondary pages keep fixed headers.
   - One shared slide/fade implementation retains the existing spring and 200ms enter/150ms exit fades. Peek suppression is a separate `headerVisible` input. Header disappearance never collapses body padding or jumps the list.
@@ -339,7 +340,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 - **Bookmark Card (`BookmarkCard.kt`)**:
   - Description text renders directly using `MaterialTheme.typography.bodyMedium` with keyword highlighting when search terms are present.
 - **Bookmark Detail Screen Spacing & Layout Rhythm (`BookmarkDetailScreen.kt`)**:
-  - Above-title header metadata (`Source Attribution Row` and optional `Classification Breadcrumb`) sits inside the seamless downward gradient extension directly above the Bookmark Title. When `Classification Breadcrumb` is `null` (no category, subcategory, or NSFW), zero vertical spacer is added so the title pulls up directly beneath `Domain • Relative Time`.
+  - Above-title header metadata (`Source Attribution Row` and optional `Classification Breadcrumb`) sits inside the seamless downward gradient extension directly above the Bookmark Title. When `Classification Breadcrumb` is `null` (no category, subcategory, or Private), zero vertical spacer is added so the title pulls up directly beneath `Domain • Relative Time`.
   - Below the title, the Entity-only tag row (`BookmarkEntityChipsFlow` under `AppTheme.MODERN` or `AssistChip` under `AppTheme.DEFAULT`, or the `+ Add tags` placeholder when entities are empty) and its right-aligned `Edit` `IconButton` are scoped under `CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified)` to eliminate invisible accessibility touch-target inflation.
   - Standard vertical section spacing between the Entity tag row, Editorial Summary Callout, and Note section is `24.dp`, with `10.dp` between section headers and their content containers.
 
@@ -446,7 +447,7 @@ Manual Import opens the URL-entry dialog from the Library rail. Notification lis
 - Timeline, domain drill-down, and search render LazyPagingItems with stable bookmark-ID keys in list and two-column grid layouts.
 - Initial load, refresh error, and true empty results are distinct states. Initial loading never displays an empty-library message. Domain grids also wait for their first aggregate result.
 - Prepend and append loading/error feedback supports retry after earlier or later pages have been evicted. An error takes precedence over another direction's spinner.
-- Library domain/feed/mode changes create destination-owned Pager flows; outgoing flows remain only until their animations are disposed. Search retains its ViewModel-owned query generation. NSFW changes discard existing library destinations immediately. Separate remembered list/grid scroll states are retained. Domain positions reset only when the selected filter changes, including across detail return.
+- Library domain/feed/mode changes create destination-owned Pager flows; outgoing flows remain only until their animations are disposed. Search retains its ViewModel-owned query generation. Private Content changes discard existing library destinations immediately. Separate remembered list/grid scroll states are retained. Domain positions reset only when the selected filter changes, including across detail return.
 - Detail and AI-review screens remember a single-ID observation per ID/retry and distinguish loading, missing/deleted, and failed reads. Saving or trashing only navigates after the database operation succeeds; failures retain the screen and show a retryable action/message.
 - Tag selection counts come from all matching database rows, independently of loaded pages. Settings domain lists use distinct-domain queries.
 
@@ -468,11 +469,11 @@ The Body Text panel offers Readability4J, Jsoup Clean, and Prompt modes. Readabi
 
 ## Settings and AI Analysis
 
-Settings groups existing rows into General (Language, Notification, AI Analysis), Data Management (Storage, RSS), and Debug cards. Cards use 20dp corners, surfaceContainerHigh, 20dp row padding, 40dp decorative circular icons, and inset outlineVariant dividers at alpha 0.25. Navigation rows expose a single Button target; text wraps within its weighted column.
+Settings groups existing rows into General (Language, Theme, Notification, AI Analysis, Private Content), Data Management (Storage, RSS), and Debug cards. Cards use 20dp corners, surfaceContainerHigh, 20dp row padding, 40dp decorative circular icons, and inset outlineVariant dividers at alpha 0.25. Navigation rows expose a single Button target; text wraps within its weighted column.
 
-General > AI Analysis opens a dedicated secondary page using the shared fixed header and centralized slide/predictive-back transitions. Its sections are Using AI Model, Automation, AICore error fallback, AICore parameters, and Content Safety. AICore and Disable are inline radio rows in a selectable group, each at least 48dp high. A fresh installation automatically selects AICore only when the initial readiness check returns AVAILABLE; otherwise it selects Disable. Existing/manual selections remain unchanged. Each page entry checks readiness again: AICore is unselectable and its label uses 0.38 alpha while checking or unavailable, with checking guidance or an error-colored unavailable explanation. Disable remains enabled. The check never writes the selected mode, downloads a model, generates content, or records inference usage.
+General > AI Analysis opens a dedicated secondary page using the shared fixed header and centralized slide/predictive-back transitions. Its sections are Using AI Model, Automation, AICore error fallback, and AICore parameters. AICore and Disable are inline radio rows in a selectable group, each at least 48dp high. A fresh installation automatically selects AICore only when the initial readiness check returns AVAILABLE; otherwise it selects Disable. Existing/manual selections remain unchanged. Each page entry checks readiness again: AICore is unselectable and its label uses 0.38 alpha while checking or unavailable, with checking guidance or an error-colored unavailable explanation. Disable remains enabled. The check never writes the selected mode, downloads a model, generates content, or records inference usage.
 
-Automation, fallback, and request parameters appear only for the AICore selection. Changing to Disable slides these sections upward by one-third of their height while fading and shrinking vertically with NoBouncy/MediumLow springs; enabling AICore reverses that motion. Hidden sections retain their saved preferences. Automation exposes one Switch row target. Fallback uses inline radio choices (Disable, If the quota is exceeded, All AICore errors), independent of the global model selection. Content Safety remains accessible in either mode and opens the existing NSFW Contents page. Long text and large fonts grow rows vertically; navigation-bar clearance keeps the final row reachable.
+Automation, fallback, and request parameters appear only for the AICore selection. Changing to Disable slides these sections upward by one-third of their height while fading and shrinking vertically with NoBouncy/MediumLow springs; enabling AICore reverses that motion. Hidden sections retain their saved preferences. Automation exposes one Switch row target. Fallback uses inline radio choices (Disable, If the quota is exceeded, All AICore errors), independent of the global model selection. Long text and large fonts grow rows vertically; navigation-bar clearance keeps the final row reachable.
 
 ## RSS Settings and Library Scope
 
@@ -516,7 +517,7 @@ For preset registration, editing points, parameter limits, and verification step
 | --- | --- | --- |
 | Bookmark list/grid | BOOKMARK_CARD, compact grid variant | Scoped accent rim/wash/shadow, image crop, click/long press, paging keys |
 | Collection/domain/RSS deck | DECK_FRONT and DECK_BACK | Existing front/back corner differences, stack offsets, watermark and contextual accent wash |
-| Classification/entity display badges | Shared badge resolution and Surface | Category hierarchy, NSFW error pair and search-match colors |
+| Classification/entity display badges | Shared badge resolution and Surface | Category hierarchy, Private badge tones and search-match colors |
 | Entity editor/toggle chips | ENTITY_CHIP/FILTER_CHIP compact native styles | Existing flat styling, selection/removal, animated colors and limit state |
 | Navigation, toolbar and actions | FLOATING_BAR, TOOLBAR, PRIMARY_ACTION, FILTER_ACTION, NAVIGATION_INDICATOR | Navigation/visibility animations, ripple and input semantics |
 | Like and toolbar icon plates | LIKE_ACTION/TOOLBAR_ACTION wrappers | Existing foreground semantic tints, native icon/toggle interaction |

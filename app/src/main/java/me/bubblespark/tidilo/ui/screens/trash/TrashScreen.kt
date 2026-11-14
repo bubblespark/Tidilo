@@ -43,7 +43,7 @@ private val trashDate = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
 @Composable
 private fun trashViewModel(): TrashViewModel {
     val factory = remember { viewModelFactory { initializer {
-        TrashViewModel(RepositoryTrashStore(BookmarkRepository.getInstance()), createSavedStateHandle(), AppConfig.isNsfwContentVisible)
+        TrashViewModel(RepositoryTrashStore(BookmarkRepository.getInstance()), createSavedStateHandle(), AppConfig.isPrivateContentVisible)
     } } }
     return viewModel(factory = factory)
 }

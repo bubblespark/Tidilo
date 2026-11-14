@@ -72,7 +72,7 @@ class RoomEntityMappingTest {
             createdAt = now,
             updatedAt = now + 5000L,
             note = "Important note regarding architecture.",
-            isNsfw = true,
+            isPrivate = true,
             ogImageUrl = "https://example.com/images/article_og.png"
         )
 
@@ -87,7 +87,7 @@ class RoomEntityMappingTest {
         assertEquals(now, entity.createdAt)
         assertEquals(now + 5000L, entity.updatedAt)
         assertEquals("Important note regarding architecture.", entity.note)
-        assertTrue(entity.isNsfw)
+        assertTrue(entity.isPrivate)
         assertEquals("https://example.com/images/article_og.png", entity.ogImageUrl)
 
         val restored = entity.toBookmarkItem()
@@ -101,7 +101,7 @@ class RoomEntityMappingTest {
         assertEquals(original.createdAt, restored.createdAt)
         assertEquals(original.updatedAt, restored.updatedAt)
         assertEquals(original.note, restored.note)
-        assertEquals(original.isNsfw, restored.isNsfw)
+        assertEquals(original.isPrivate, restored.isPrivate)
         assertEquals(original.ogImageUrl, restored.ogImageUrl)
         assertEquals(me.bubblespark.tidilo.data.OgImageManager.computeImageKey("https://example.com/images/article_og.png"), restored.ogImageFilename)
         assertEquals("example.com", entity.domain)
@@ -136,7 +136,7 @@ class RoomEntityMappingTest {
             createdAt = now,
             updatedAt = now,
             note = "",
-            isNsfw = false,
+            isPrivate = false,
             ogImageUrl = "https://example.com/images/trash_og.png"
         )
         val trashedItem = TrashedBookmarkItem(
@@ -148,7 +148,7 @@ class RoomEntityMappingTest {
         assertEquals("trash-1", entity.id)
         assertEquals(now + 10000L, entity.trashedAt)
         assertEquals("Trashed Item Title", entity.title)
-        assertFalse(entity.isNsfw)
+        assertFalse(entity.isPrivate)
 
         val restored = entity.toTrashedBookmarkItem()
         assertEquals(trashedItem.bookmark.id, restored.bookmark.id)
@@ -169,7 +169,7 @@ class RoomEntityMappingTest {
             tag = Tag.createEmpty(),
             createdAt = now,
             updatedAt = now,
-            isNsfw = false
+            isPrivate = false
         )
 
         val entity = BookmarkEntity.fromBookmarkItem(original)

@@ -38,7 +38,7 @@ class TrashScreenTest {
         val host = HeaderTestHost()
         val screen = host.launch()
         val row = TrashBookmarkRow(TrashedBookmarkEntity("dark", "Dark title", "https://example.com", "",
-            createdAt = 1, updatedAt = 1, note = "", isNsfw = false, trashedAt = 2), false)
+            createdAt = 1, updatedAt = 1, note = "", isPrivate = false, trashedAt = 2), false)
         var foreground = androidx.compose.ui.graphics.Color.Unspecified
         try {
             host.main { screen.setContent { TidiloTheme(darkTheme = true, dynamicColor = false) {
@@ -69,7 +69,7 @@ class TrashScreenTest {
                 repository.moveToTrash(id, if (id == "one") 3 else 2, 100)
             }
             val store = object : TrashStore {
-                override fun observe(showNsfw: Boolean) = db.trashDao().observeTrash(showNsfw)
+                override fun observe(showPrivate: Boolean) = db.trashDao().observeTrash(showPrivate)
                 override suspend fun restore(id: String) = repository.restoreFromTrash(id)
                 override suspend fun delete(id: String) = repository.deleteFromTrash(id)
                 override suspend fun retry() = Unit
@@ -129,7 +129,7 @@ class TrashScreenTest {
     } }
 
     @Test fun duplicatesHaveLabelAndDisabledRestore(): Unit = runBlocking { fixture { host, screen, db ->
-        db.bookmarkDao().insertOrUpdate(BookmarkEntity("existing", "Existing", "https://example.com/one", "", createdAt = 1, updatedAt = 1, isNsfw = true))
+        db.bookmarkDao().insertOrUpdate(BookmarkEntity("existing", "Existing", "https://example.com/one", "", createdAt = 1, updatedAt = 1, isPrivate = true))
         host.await(screen) { host.text(it, host.context.getString(R.string.trash_duplicate)) }
         clickTrashNode(host, host.await(screen) { it.config.getOrNull(SemanticsProperties.TestTag) == "trash_actions:one" })
         val restore = host.await(screen) { host.text(it, host.context.getString(R.string.trash_restore)) }
@@ -173,7 +173,7 @@ class TrashScreenTest {
         val appearance = mutableStateOf(AppTheme.DEFAULT to false)
         val row = TrashBookmarkRow(TrashedBookmarkEntity("long", "Long title ".repeat(30),
             "https://example.com/" + "long-path/".repeat(30), "", createdAt = 1, updatedAt = 1,
-            note = "memo".repeat(50), isNsfw = false, trashedAt = 2), false)
+            note = "memo".repeat(50), isPrivate = false, trashedAt = 2), false)
         val state = mutableStateOf(TrashUiState(loading = false, rows = listOf(row)))
         var confirmed = 0
         try {
@@ -219,7 +219,7 @@ class TrashScreenTest {
             val activity = host.launch()
             screen = activity
             val row = TrashBookmarkRow(TrashedBookmarkEntity("short", "Long title ".repeat(20), "https://example.com/long-path", "",
-                createdAt = 1, updatedAt = 1, note = "", isNsfw = false, trashedAt = 2), false)
+                createdAt = 1, updatedAt = 1, note = "", isPrivate = false, trashedAt = 2), false)
             val state = mutableStateOf(TrashUiState(loading = false, rows = listOf(row)))
             var confirmed = false
             host.main { activity.setContent {

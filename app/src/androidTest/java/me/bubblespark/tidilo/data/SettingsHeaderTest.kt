@@ -47,8 +47,8 @@ class SettingsHeaderTest {
     }
 
     @Test fun settingsHeaderStaysFixed() = verify { back -> SettingsScreen(onNavigateBack = back, onNavigateToAiAnalysis = {}) }
-    @Test fun aiAnalysisHeaderStaysFixed() = verify { back -> AiAnalysisScreen(onNavigateBack = back, onNavigateToGenerateContentRequest = {}, onNavigateToNsfwContents = {}, checkAiCoreAvailable = { true }) }
-    @Test fun nsfwHeaderStaysFixed() = verify { back -> NsfwSettingsScreen(onNavigateBack = back) }
+    @Test fun aiAnalysisHeaderStaysFixed() = verify { back -> AiAnalysisScreen(onNavigateBack = back, onNavigateToGenerateContentRequest = {}, checkAiCoreAvailable = { true }) }
+    @Test fun privateHeaderStaysFixed() = verify { back -> PrivateSettingsScreen(onNavigateBack = back) }
     @Test fun debugHeaderStaysFixed() = verify { back -> SettingsDebugScreen(onNavigateBack = back) }
     @Test fun generationHeaderStaysFixed() = verify { back -> GenerateContentRequestScreen(onNavigateBack = back) }
     @Test fun storageHeaderStaysFixed() = verify { back -> StorageScreen(onNavigateBack = back) }

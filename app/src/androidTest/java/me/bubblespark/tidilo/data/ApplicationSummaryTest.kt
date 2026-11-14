@@ -48,14 +48,14 @@ class ApplicationSummaryTest {
         } finally { context.deleteSharedPreferences(name) }
     }
 
-    @Test fun collectionCountsObserveBothTablesAndIncludeNsfw() = runBlocking {
+    @Test fun collectionCountsObserveBothTablesAndIncludePrivate() = runBlocking {
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
             val dao = database.bookmarkDao()
             assertEquals(CollectionCounts(0, 0), dao.observeCollectionCounts().first())
             dao.insertAll(listOf(
                 BookmarkEntity("public", "Public", "https://summary.example/1", "", createdAt = 1, updatedAt = 1),
-                BookmarkEntity("adult", "Adult", "https://summary.example/2", "", createdAt = 2, updatedAt = 2, isNsfw = true)))
+                BookmarkEntity("adult", "Adult", "https://summary.example/2", "", createdAt = 2, updatedAt = 2, isPrivate = true)))
             assertEquals(CollectionCounts(2, 0), dao.observeCollectionCounts().first())
             coroutineScope {
                 val changed = async {

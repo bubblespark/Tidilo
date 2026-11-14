@@ -93,14 +93,14 @@ class BookmarkRepository internal constructor(
             _initializationFailure.value = null
             try {
                 val adapter = legacyAdapter
-                val nsfwLookup: (String?) -> Boolean = { domainPolicyStore?.isNsfwDomain(it) == true }
+                val privateLookup: (String?) -> Boolean = { domainPolicyStore?.isPrivateDomain(it) == true }
                 val count = bookmarkDao.getCount()
                 if (count == 0) {
                     if (adapter != null) {
                         domainPolicyStore?.awaitReady()
                         val legacyJson = adapter.readLegacyBookmarksJson()
                         val initialList = if (!legacyJson.isNullOrBlank()) {
-                            val parsed = parseBookmarks(legacyJson, isNsfwDomain = nsfwLookup)
+                            val parsed = parseBookmarks(legacyJson, isPrivateDomain = privateLookup)
                             if (parsed.isNotEmpty()) parsed else getInitialSampleBookmarks()
                         } else {
                             getInitialSampleBookmarks()
@@ -117,7 +117,7 @@ class BookmarkRepository internal constructor(
                     domainPolicyStore?.awaitReady()
                     val legacyTrashJson = adapter.readLegacyTrashJson()
                     if (!legacyTrashJson.isNullOrBlank()) {
-                        val parsedTrash = parseTrash(legacyTrashJson, isNsfwDomain = nsfwLookup)
+                        val parsedTrash = parseTrash(legacyTrashJson, isPrivateDomain = privateLookup)
                         if (parsedTrash.isNotEmpty()) {
                             trashDao.insertAll(parsedTrash.map { TrashedBookmarkEntity.fromTrashedBookmarkItem(it) })
                         }
@@ -155,12 +155,12 @@ class BookmarkRepository internal constructor(
             persistMergedBookmarkInTransaction(
                 item = item,
                 bookmarkDao = bookmarkDao,
-                isNsfwDomain = { domainPolicyStore?.isNsfwDomainCommitted(it) == true },
+                isPrivateDomain = { domainPolicyStore?.isPrivateDomainCommitted(it) == true },
                 validateRssWrite = { finalItem, feedId ->
                     val feed = database.rssDao().feed(feedId)
                     val blocked = database.rssDao().rssWriteConflict(finalItem.url, finalItem.id)
                     if (feed == null || feed.deleted || blocked ||
-                        (finalItem.isNsfw && !me.bubblespark.tidilo.config.AppConfig.isNsfwContentBookmarkable.value)) {
+                        (finalItem.isPrivate && !me.bubblespark.tidilo.config.AppConfig.isPrivateContentBookmarkable.value)) {
                         throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
                     }
                 }
@@ -206,14 +206,14 @@ class BookmarkRepository internal constructor(
     }
 
     /**
-     * Updates note, tag, and NSFW status of a bookmark and persists the change atomically.
+     * Updates note, tag, and Private status of a bookmark and persists the change atomically.
      * Applies explicit library spellings before re-resolving a possibly stale display-value draft.
      */
     suspend fun updateBookmarkDetails(
         id: String,
         note: String,
         tag: Tag,
-        isNsfw: Boolean,
+        isPrivate: Boolean,
         replacements: Map<String, String> = emptyMap(),
         updatedAt: Long = clock()
     ) = withContext(Dispatchers.IO) {
@@ -221,7 +221,7 @@ class BookmarkRepository internal constructor(
             requireNotNull(bookmarkDao.getBookmarkById(id)) { "Bookmark no longer exists" }
             bookmarkDao.replaceEntitySpellings(replacements, updatedAt)
             val entities = tag.entities.map { replacements[entitySkeletonKey(it)] ?: it }
-            bookmarkDao.updateNoteAndTag(id, note, tag.category, tag.subcategory, entities, isNsfw, updatedAt)
+            bookmarkDao.updateNoteAndTag(id, note, tag.category, tag.subcategory, entities, isPrivate, updatedAt)
         }
     }
 
@@ -250,12 +250,12 @@ class BookmarkRepository internal constructor(
 
     /** Trash consumers own their error UI and must not wait forever on a failed startup/read. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    fun observeTrash(showNsfw: Boolean): Flow<List<TrashBookmarkRow>> =
+    fun observeTrash(showPrivate: Boolean): Flow<List<TrashBookmarkRow>> =
         combine(isInitialized, initializationFailure) { initialized, error -> initialized to error }
             .flatMapLatest { (initialized, error) ->
                 when {
                     error != null -> flow { throw error }
-                    initialized -> trashDao.observeTrash(showNsfw)
+                    initialized -> trashDao.observeTrash(showPrivate)
                     else -> emptyFlow()
                 }
             }
@@ -294,34 +294,34 @@ class BookmarkRepository internal constructor(
     }
 
     /** Each input generation owns a Pager; callers switch generations before caching in the ViewModel. */
-    fun pagedBookmarks(query: String, domain: String?, showNsfw: Boolean, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): Flow<PagingData<BookmarkItem>> =
+    fun pagedBookmarks(query: String, domain: String?, showPrivate: Boolean, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): Flow<PagingData<BookmarkItem>> =
         Pager(PagingConfig(pageSize = 30, prefetchDistance = 10, initialLoadSize = 60,
             maxSize = 150, enablePlaceholders = false)) {
             when {
-                query.isNotBlank() || source != BookmarkSource.ALL || rssFeedId != null -> bookmarkDao.search(BookmarkQueries.results(query, showNsfw, domain, source, rssFeedId))
-                domain != null -> bookmarkDao.byDomain(domain, showNsfw)
-                else -> bookmarkDao.timeline(showNsfw)
+                query.isNotBlank() || source != BookmarkSource.ALL || rssFeedId != null -> bookmarkDao.search(BookmarkQueries.results(query, showPrivate, domain, source, rssFeedId))
+                domain != null -> bookmarkDao.byDomain(domain, showPrivate)
+                else -> bookmarkDao.timeline(showPrivate)
             }
         }.flow.map { page -> page.map { it.toBookmarkItem() } }
 
     fun observeBookmark(id: String): Flow<BookmarkItem?> = bookmarkDao.observeById(id).map { it?.toBookmarkItem() }
 
-    fun observeDomainCounts(showNsfw: Boolean, source: BookmarkSource = BookmarkSource.ALL): Flow<List<DomainCount>> = observeSafely { bookmarkDao.domainCounts(showNsfw, source.sqlValue) }
+    fun observeDomainCounts(showPrivate: Boolean, source: BookmarkSource = BookmarkSource.ALL): Flow<List<DomainCount>> = observeSafely { bookmarkDao.domainCounts(showPrivate, source.sqlValue) }
 
-    fun observeRssFeedGroups(showNsfw: Boolean): Flow<List<me.bubblespark.tidilo.data.db.RssFeedGroup>> =
-        observeSafely { database.rssDao().observeLibraryGroups(showNsfw) }
+    fun observeRssFeedGroups(showPrivate: Boolean): Flow<List<me.bubblespark.tidilo.data.db.RssFeedGroup>> =
+        observeSafely { database.rssDao().observeLibraryGroups(showPrivate) }
 
     fun observeCollectionCounts(): Flow<CollectionCounts> = observeSafely { bookmarkDao.observeCollectionCounts() }
 
-    fun observeCount(query: String, domain: String?, showNsfw: Boolean, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): Flow<Int> =
-        observeSafely { bookmarkDao.observeCount(BookmarkQueries.count(query, showNsfw, domain, source, rssFeedId)) }
+    fun observeCount(query: String, domain: String?, showPrivate: Boolean, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): Flow<Int> =
+        observeSafely { bookmarkDao.observeCount(BookmarkQueries.count(query, showPrivate, domain, source, rssFeedId)) }
 
     suspend fun distinctDomains(): List<String> = withContext(Dispatchers.IO) { bookmarkDao.distinctDomains() }
 
     fun observeDomains(): Flow<List<String>> = observeSafely { bookmarkDao.observeDistinctDomains() }
 
-    internal fun observeTagCounts(selected: Set<String>, showNsfw: Boolean, kind: TagKind): Flow<List<TagCount>> =
-        observeSafely { bookmarkDao.tagCounts(BookmarkQueries.tags(selected, showNsfw, kind)) }
+    internal fun observeTagCounts(selected: Set<String>, showPrivate: Boolean, kind: TagKind): Flow<List<TagCount>> =
+        observeSafely { bookmarkDao.tagCounts(BookmarkQueries.tags(selected, showPrivate, kind)) }
             .map { normalizeTagCounts(it, kind) }
 
     /** Unfiltered active entities; failures propagate so manual entry cannot silently bypass lookup. */
@@ -390,13 +390,13 @@ class BookmarkRepository internal constructor(
                 put("createdAt", item.createdAt)
                 put("updatedAt", item.updatedAt)
                 put("note", item.note)
-                put("isNsfw", item.isNsfw)
+                put("isPrivate", item.isPrivate)
             }
         }
 
         fun parseBookmarkFromObj(
             obj: JSONObject,
-            isNsfwDomain: (String?) -> Boolean = { false }
+            isPrivateDomain: (String?) -> Boolean = { false }
         ): BookmarkItem {
             val id = obj.getString("id")
             val url = obj.getString("url")
@@ -416,8 +416,8 @@ class BookmarkRepository internal constructor(
             val createdAt = obj.optLong("createdAt", now)
             val updatedAt = obj.optLong("updatedAt", createdAt)
             val note = obj.optString("note", "")
-            val isNsfw = obj.optBoolean("isNsfw", false) ||
-                isNsfwDomain(DomainIconManager.extractDomain(url))
+            val isPrivate = obj.readLegacyCompatiblePrivateFlag() ||
+                isPrivateDomain(DomainIconManager.extractDomain(url))
             return BookmarkItem(
                 id = id,
                 title = obj.getString("title"),
@@ -427,7 +427,7 @@ class BookmarkRepository internal constructor(
                 createdAt = createdAt,
                 updatedAt = updatedAt,
                 note = note,
-                isNsfw = isNsfw
+                isPrivate = isPrivate
             )
         }
 
@@ -453,7 +453,7 @@ class BookmarkRepository internal constructor(
 
         fun parseTrash(
             json: String,
-            isNsfwDomain: (String?) -> Boolean = { false }
+            isPrivateDomain: (String?) -> Boolean = { false }
         ): List<TrashedBookmarkItem> {
             return runCatching {
                 val array = JSONArray(json)
@@ -462,7 +462,7 @@ class BookmarkRepository internal constructor(
                     val obj = array.getJSONObject(i)
                     val trashedAt = obj.getLong("trashedAt")
                     val bookmarkObj = obj.getJSONObject("bookmark")
-                    val bookmark = parseBookmarkFromObj(bookmarkObj, isNsfwDomain)
+                    val bookmark = parseBookmarkFromObj(bookmarkObj, isPrivateDomain)
                     list.add(TrashedBookmarkItem(bookmark, trashedAt))
                 }
                 list
@@ -473,7 +473,7 @@ class BookmarkRepository internal constructor(
             json: String,
             sampleBookmarks: List<BookmarkItem> = emptyList(),
             queueTagsMap: Map<String, Tag> = emptyMap(),
-            isNsfwDomain: (String?) -> Boolean = { false }
+            isPrivateDomain: (String?) -> Boolean = { false }
         ): List<BookmarkItem> {
             return runCatching {
                 val array = JSONArray(json)
@@ -519,8 +519,8 @@ class BookmarkRepository internal constructor(
                     val createdAt = obj.optLong("createdAt", now)
                     val updatedAt = obj.optLong("updatedAt", createdAt)
                     val note = obj.optString("note", "")
-                    val isNsfw = obj.optBoolean("isNsfw", false) ||
-                        isNsfwDomain(DomainIconManager.extractDomain(url))
+                    val isPrivate = obj.readLegacyCompatiblePrivateFlag() ||
+                        isPrivateDomain(DomainIconManager.extractDomain(url))
                     list.add(
                         BookmarkItem(
                             id = id,
@@ -531,7 +531,7 @@ class BookmarkRepository internal constructor(
                             createdAt = createdAt,
                             updatedAt = updatedAt,
                             note = note,
-                            isNsfw = isNsfw
+                            isPrivate = isPrivate
                         )
                     )
                 }
@@ -558,19 +558,19 @@ class BookmarkRepository internal constructor(
 }
 
 /**
- * Resolves the effective NSFW flag from [isNsfwDomain], merges [item] with any existing
+ * Resolves the effective Private flag from [isPrivateDomain], merges [item] with any existing
  * row matched by URL or ID, validates RSS writes when applicable, and persists via
  * [BookmarkDao.insertReplacingUrl].
  */
 internal suspend fun persistMergedBookmarkInTransaction(
     item: BookmarkItem,
     bookmarkDao: BookmarkDao?,
-    isNsfwDomain: suspend (String?) -> Boolean,
+    isPrivateDomain: suspend (String?) -> Boolean,
     validateRssWrite: suspend (BookmarkItem, String) -> Unit
 ): BookmarkItem {
     val domain = DomainIconManager.extractDomain(item.url)
-    val resolvedItem = if (!item.isNsfw && isNsfwDomain(domain)) {
-        item.copy(isNsfw = true)
+    val resolvedItem = if (!item.isPrivate && isPrivateDomain(domain)) {
+        item.copy(isPrivate = true)
     } else {
         item
     }

@@ -17,7 +17,7 @@ data class TrashUiState(
 )
 
 interface TrashStore {
-    fun observe(showNsfw: Boolean): Flow<List<TrashBookmarkRow>>
+    fun observe(showPrivate: Boolean): Flow<List<TrashBookmarkRow>>
     suspend fun restore(id: String): TrashMutationResult
     suspend fun delete(id: String): TrashMutationResult
     suspend fun retry()

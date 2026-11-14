@@ -292,7 +292,7 @@ internal class RssRepository internal constructor(private val context: Context,
             if (!store.complete(feed, task, article, runId, classification)) return
             val domain = DomainIconManager.extractDomain(article.url)
             domainPolicyStore.registerDomain(domain, false, article.siteName)
-            if (article.isNsfw && !AppConfig.isNsfwContentBookmarkable.value) return
+            if (article.isPrivate && !AppConfig.isPrivateContentBookmarkable.value) return
             // Optional enrichment cannot turn a committed article into an acquisition error.
             try {
                 DomainIconManager.fetchAndSaveDomainIcon(context, article.url, parsed.appleTouchIconUrl, parsed.faviconUrl,

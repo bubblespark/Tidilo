@@ -13,9 +13,9 @@ import java.util.UUID
 class CollectionDatabaseTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private fun collection(id: String) = CollectionEntity(id, id, "", "folder", null, 0, 1, 1)
-    private fun bookmark(id: String, nsfw: Boolean = false, feed: String? = null) = BookmarkEntity(
+    private fun bookmark(id: String, isPrivate: Boolean = false, feed: String? = null) = BookmarkEntity(
         id, id, "https://example.com/$id", "", createdAt = 1, updatedAt = 1,
-        isNsfw = nsfw, rssFeedId = feed, isLiked = true)
+        isPrivate = isPrivate, rssFeedId = feed, isLiked = true)
 
     @Test fun emptyCollectionsRemainVisible() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
@@ -72,9 +72,10 @@ class CollectionDatabaseTest {
         sql.execSQL("DROP TABLE collections")
         removeStandardClassificationColumns(sql::execSQL)
         me.bubblespark.tidilo.data.restoreLegacyAiSkippedColumns(sql::execSQL)
+        me.bubblespark.tidilo.data.rewindPrivateColumnsToLegacyNsfw(sql::execSQL, includeDomainPolicies = false)
         sql.version = 15
         before.close()
-        val after = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21).build()
+        val after = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22).build()
         try {
             assertTrue(after.bookmarkDao().getBookmarkById("kept")?.isLiked == true)
             assertTrue(after.collectionDao().observeCollections(true).first().isEmpty())

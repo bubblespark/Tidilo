@@ -26,6 +26,7 @@ import me.bubblespark.tidilo.ui.components.DomainWatermark
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.Card
@@ -211,7 +212,7 @@ fun BookmarkItemCard(
                 tag = bookmark.tag,
                 localizedCategory = localizedCategory,
                 localizedSubcategory = localizedSubcategory,
-                isNsfw = bookmark.isNsfw,
+                isPrivate = bookmark.isPrivate,
                 isCategoryMatched = isCategoryMatched,
                 isSubcategoryMatched = isSubcategoryMatched,
                 tagKeywords = tagKeywords
@@ -222,14 +223,15 @@ fun BookmarkItemCard(
 }
 
 /**
- * Shared tag badges layout displaying [category] > [subcategory] (+ [NSFW]) and entity chips.
+ * Shared tag badges layout displaying [category] > [subcategory] (+ [Private]) and entity chips.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BookmarkTagSection(
     tag: Tag,
     localizedCategory: String,
     localizedSubcategory: String,
-    isNsfw: Boolean = false,
+    isPrivate: Boolean = false,
     isCategoryMatched: Boolean = false,
     isSubcategoryMatched: Boolean = false,
     tagKeywords: List<String> = emptyList(),
@@ -248,11 +250,12 @@ fun BookmarkTagSection(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        val hasCategoryLine = localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() || isNsfw
+        val hasCategoryLine = localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() || isPrivate
         if (hasCategoryLine) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                itemVerticalAlignment = Alignment.CenterVertically
             ) {
                 val categoryColors = resolveChipColors(
                     style = themeStyle.chipStyle,
@@ -336,16 +339,23 @@ fun BookmarkTagSection(
                     )
                 }
 
-                if (isNsfw) {
+                if (isPrivate) {
+                    val privateColors = resolveChipColors(
+                        style = themeStyle.chipStyle,
+                        categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        fallbackContainerColor = chipNeutralContainer,
+                        fallbackContentColor = chipCategoryContent
+                    )
                     CompactTagBadge(
-                        icon = null,
-                        text = "NSFW",
-                        tone = SurfaceTone.ERROR,
+                        icon = Icons.Default.Lock,
+                        text = stringResource(R.string.detail_tag_private_label),
+                        tone = SurfaceTone.NORMAL,
                         isMatched = false,
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                        matchedContainerColor = MaterialTheme.colorScheme.errorContainer,
-                        matchedContentColor = MaterialTheme.colorScheme.onErrorContainer
+                        containerColor = privateColors.containerColor,
+                        contentColor = privateColors.contentColor,
+                        matchedContainerColor = privateColors.containerColor,
+                        matchedContentColor = privateColors.contentColor
                     )
                 }
             }

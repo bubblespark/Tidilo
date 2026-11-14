@@ -78,11 +78,11 @@ fun BookmarkTagEditDialog(
     selectedCategory: String?,
     selectedSubcategory: String?,
     selectedEntities: List<String>,
-    isNsfw: Boolean = false,
-    isNsfwContentVisible: Boolean = true,
+    isPrivate: Boolean = false,
+    isPrivateContentVisible: Boolean = true,
     onCategoryChanged: (String) -> Unit,
     onSubcategoryChanged: (String) -> Unit,
-    onNsfwChanged: (Boolean) -> Unit = {},
+    onPrivateChanged: (Boolean) -> Unit = {},
     onAddEntityClick: () -> Unit,
     onOpenEntityPickerClick: () -> Unit,
     onConfirm: () -> Unit,
@@ -302,7 +302,7 @@ fun BookmarkTagEditDialog(
                     }
                 }
 
-                // 3. NSFW Toggle Section
+                // 3. Private Toggle Section
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -310,19 +310,19 @@ fun BookmarkTagEditDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = stringResource(R.string.detail_tag_nsfw_label),
+                            text = stringResource(R.string.detail_tag_private_label),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         Switch(
-                            checked = isNsfw,
-                            onCheckedChange = onNsfwChanged
+                            checked = isPrivate,
+                            onCheckedChange = onPrivateChanged
                         )
                     }
 
-                    if (!isNsfwContentVisible && isNsfw) {
+                    if (!isPrivateContentVisible && isPrivate) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Surface(
                             shape = themeCorner(ThemeCorner.CONTROL),
@@ -341,7 +341,7 @@ fun BookmarkTagEditDialog(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = stringResource(R.string.detail_tag_nsfw_hidden_warning),
+                                    text = stringResource(R.string.detail_tag_private_hidden_warning),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
                                     fontWeight = FontWeight.Medium

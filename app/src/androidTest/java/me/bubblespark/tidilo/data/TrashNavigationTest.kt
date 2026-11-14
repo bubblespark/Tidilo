@@ -19,7 +19,7 @@ class TrashNavigationTest {
         val id = "trash-navigation-${UUID.randomUUID()}"
         val title = "Trash navigation fixture $id"
         db.trashDao().insert(TrashedBookmarkEntity(id, title, "https://example.com/$id", "",
-            createdAt = 1, updatedAt = 1, note = "", isNsfw = false, trashedAt = System.currentTimeMillis()))
+            createdAt = 1, updatedAt = 1, note = "", isPrivate = false, trashedAt = System.currentTimeMillis()))
         val screen = host.launch()
         try {
             clickTrashNode(host, host.await(screen) { host.description(it, host.context.getString(R.string.navigation_open)) })

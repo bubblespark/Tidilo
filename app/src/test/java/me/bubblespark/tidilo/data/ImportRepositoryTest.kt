@@ -14,8 +14,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.withLock
+import me.bubblespark.tidilo.data.db.BookmarkEntity
+import me.bubblespark.tidilo.data.db.BookmarkEntityOccurrence
+import me.bubblespark.tidilo.data.db.BookmarkEntitySpelling
 import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
+import me.bubblespark.tidilo.data.db.bookmarkSearchKey
 import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.Tag
@@ -69,7 +74,7 @@ class ImportRepositoryTest {
     @Test fun foregroundStartupDirectlySavesQueuedAndInterruptedTasks() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()
-        val saved = mutableListOf<BookmarkItem>()
+        val bookmarkDao = FakeBookmarkDao()
         try {
             dao.insertAll(listOf(
                 waitingEntity("ready").copy(status = "QUEUED", articlePrepared = true),
@@ -79,12 +84,12 @@ class ImportRepositoryTest {
             ))
             val repository = ImportRepository(
                 taskDao = dao,
-                repositoryScope = CoroutineScope(coroutineContext + job),
-                persistFallback = { saved.add(it) }
+                bookmarkDao = bookmarkDao,
+                repositoryScope = CoroutineScope(coroutineContext + job)
             )
             repository.onAppBecameActive()
             withTimeout(3000) { while (dao.getCount() > 1) delay(10) }
-            assertEquals(setOf("ready", "waiting", "interrupted"), saved.map { it.id }.toSet())
+            assertEquals(setOf("ready", "waiting", "interrupted"), bookmarkDao.savedItems.map { it.id }.toSet())
             assertEquals("ERROR", dao.getTaskById("error")?.status)
         } finally { job.cancelAndJoin() }
     }
@@ -92,20 +97,19 @@ class ImportRepositoryTest {
     @Test fun newImportSavesDirectlyWithAiEnabled() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()
-        val saved = mutableListOf<BookmarkItem>()
+        val bookmarkDao = FakeBookmarkDao()
         val completed = CompletableDeferred<Result<ImportOutcome>>()
         try {
             val repository = ImportRepository(
                 taskDao = dao,
+                bookmarkDao = bookmarkDao,
                 repositoryScope = CoroutineScope(coroutineContext + job),
-                articleAcquirer = { directFixture(it) },
-                persistFallback = { saved.add(it) },
-
-                )
+                articleAcquirer = { directFixture(it) }
+            )
             repository.importUrl("https://direct.example/article") { completed.complete(it) }
             val outcome = withTimeout(5000) { completed.await() }.getOrThrow()
             assertTrue("Expected a saved bookmark, got $outcome", outcome is ImportOutcome.BookmarkSaved)
-            assertEquals("Parsed Description", saved.single().description)
+            assertEquals("Parsed Description", bookmarkDao.savedItems.single().description)
             assertEquals(0, dao.getCount())
         } finally { job.cancelAndJoin() }
     }
@@ -124,43 +128,54 @@ class ImportRepositoryTest {
     @Test fun disabledRssSkipDeletesTaskWithoutErrorAndContinuesBatch() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()
+        val bookmarkDao = FakeBookmarkDao()
         dao.insertAll(listOf(waitingEntity("skipped").copy(status = "QUEUED", articlePrepared = true, rssFeedId = "feed"),
             waitingEntity("following").copy(status = "QUEUED", articlePrepared = true, rssFeedId = "feed")))
-        val saved = mutableListOf<BookmarkItem>()
+        val rssAdapter = object : ImportRssAdapter {
+            override suspend fun resumeAcquisitions() = Unit
+            override suspend fun retryAcquisition(taskId: String) = Unit
+            override suspend fun restoreTask(entity: ImportTaskEntity) = Unit
+            override suspend fun validateRssWrite(url: String, bookmarkId: String, feedId: String, isNsfw: Boolean) {
+                if (bookmarkId == "skipped") throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
+            }
+            override suspend fun recordRecoveredDirectSave(taskId: String) = Unit
+        }
         try {
-            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-
-                persistFallback = {
-                    if (it.id == "skipped") throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
-                    saved.add(it)
-                })
+            val repository = ImportRepository(
+                taskDao = dao,
+                bookmarkDao = bookmarkDao,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                rssAdapter = rssAdapter
+            )
             repository.onAppBecameActive()
             withTimeout(5000) {
-                while (dao.getTasksByStatuses(listOf("QUEUED", "PROCESSING")).isNotEmpty() || saved.isEmpty()) delay(5)
+                while (dao.getTasksByStatuses(listOf("QUEUED", "PROCESSING")).isNotEmpty() || bookmarkDao.savedItems.isEmpty()) delay(5)
             }
             assertNull(dao.getTaskById("skipped"))
             assertEquals(0, dao.getCount())
-            assertEquals(listOf("following"), saved.map { it.id })
+            assertEquals(listOf("following"), bookmarkDao.savedItems.map { it.id })
         } finally { job.cancelAndJoin() }
     }
 
     @Test fun disabledNewImportSavesDescriptionWithoutInsertingTask() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()
-        val saved = mutableListOf<BookmarkItem>()
+        val bookmarkDao = FakeBookmarkDao()
         val completed = CompletableDeferred<Unit>()
         val old = me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value
         me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE)
         try {
-            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-                articleAcquirer = { directFixture(it) }, persistFallback = { saved.add(it) },
-
-                )
+            val repository = ImportRepository(
+                taskDao = dao,
+                bookmarkDao = bookmarkDao,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = { directFixture(it) }
+            )
             repository.importUrl("https://direct.example/article") { completed.complete(Unit) }
             withTimeout(5000) { completed.await() }
             assertEquals(0, dao.getCount())
             assertEquals(0, dao.insertCount)
-            val bookmark = saved.single()
+            val bookmark = bookmarkDao.savedItems.single()
             assertEquals("Parsed Description", bookmark.description)
             assertEquals("Parsed Title", bookmark.title)
             assertEquals(Tag.createEmpty(), bookmark.tag)
@@ -174,21 +189,24 @@ class ImportRepositoryTest {
     @Test fun disabledReadyBatchNeverOpensModelAndPreservesRssMetadata() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()
+        val bookmarkDao = FakeBookmarkDao()
         dao.insertAll(listOf(waitingEntity("normal").copy(status = "QUEUED", articlePrepared = true, description = "Normal"),
             waitingEntity("rss").copy(status = "QUEUED", articlePrepared = true, description = "RSS", rssFeedId = "feed", createdAt = 7)))
-        val saved = mutableListOf<BookmarkItem>()
         val old = me.bubblespark.tidilo.config.AppConfig.aiAnalysisMode.value
         me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(me.bubblespark.tidilo.config.AiAnalysisMode.DISABLE)
         try {
-            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-                persistFallback = { saved.add(it) })
+            val repository = ImportRepository(
+                taskDao = dao,
+                bookmarkDao = bookmarkDao,
+                repositoryScope = CoroutineScope(coroutineContext + job)
+            )
             delay(10)
             assertEquals(2, dao.getCount())
             repository.onAppBecameActive()
             withTimeout(5000) { while (dao.getCount() > 0) delay(5) }
-            assertEquals(2, saved.size)
-            assertTrue(saved.all { it.tag == Tag.createEmpty() })
-            assertEquals(7L, saved.single { it.rssFeedId != null }.createdAt)
+            assertEquals(2, bookmarkDao.savedItems.size)
+            assertTrue(bookmarkDao.savedItems.all { it.tag == Tag.createEmpty() })
+            assertEquals(7L, bookmarkDao.savedItems.single { it.rssFeedId != null }.createdAt)
         } finally {
             me.bubblespark.tidilo.config.AppConfig.setAiAnalysisMode(old)
             job.cancelAndJoin()
@@ -207,19 +225,22 @@ class ImportRepositoryTest {
         for (failure in listOf("offline", "404", "503", "parse")) {
             val job = SupervisorJob()
             val dao = FakeImportTaskDao()
+            val bookmarkDao = FakeBookmarkDao()
             var failed = true
             val done = CompletableDeferred<Boolean>()
-            val saved = mutableListOf<BookmarkItem>()
             try {
-                val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-
-                articleAcquirer = {
+                val repository = ImportRepository(
+                    taskDao = dao,
+                    bookmarkDao = bookmarkDao,
+                    repositoryScope = CoroutineScope(coroutineContext + job),
+                    articleAcquirer = {
                         if (failed) when (failure) {
                             "offline" -> throw java.io.IOException("Offline")
                             "parse" -> throw IllegalArgumentException("Parse failed")
                             else -> directFixture(it).copy(statusCode = failure.toInt())
                         } else directFixture(it)
-                    }, persistFallback = { saved.add(it) })
+                    }
+                )
                 repository.importUrl("https://direct.example/$failure") { done.complete(it.isFailure) }
                 assertTrue(withTimeout(5000) { done.await() })
                 val task = dao.getAllTasks().single()
@@ -228,7 +249,7 @@ class ImportRepositoryTest {
                 failed = false
                 repository.retryErrorTask(task.id)
                 withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
-                assertEquals("Parsed Description", saved.single().description)
+                assertEquals("Parsed Description", bookmarkDao.savedItems.single().description)
             } finally { job.cancelAndJoin() }
         }
     }
@@ -236,21 +257,25 @@ class ImportRepositoryTest {
     @Test fun disabledSaveFailureKeepsPreparedTaskUntilDurableRetryCompletes() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()
+        val bookmarkDao = FakeBookmarkDao()
         var failSave = true
         var fetches = 0
         val saveStarted = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val done = CompletableDeferred<Boolean>()
-        val saved = mutableListOf<BookmarkItem>()
+        bookmarkDao.onInsertReplacingUrl = {
+            if (failSave) error("Disk full")
+            saveStarted.complete(Unit)
+            release.await()
+        }
         try {
-            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-
-                articleAcquirer = { fetches++; directFixture(it) }, persistFallback = {
-                    if (failSave) error("Disk full")
-                    saveStarted.complete(Unit)
-                    release.await()
-                    saved.add(it)
-                })
+            val repository = ImportRepository(
+                taskDao = dao,
+                bookmarkDao = bookmarkDao,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                transactionRunner = CountingRollbackTransactionRunner(bookmarkDao, dao),
+                articleAcquirer = { fetches++; directFixture(it) }
+            )
             repository.importUrl("https://direct.example/storage") { done.complete(it.isFailure) }
             assertTrue(withTimeout(5000) { done.await() })
             val task = dao.getAllTasks().single()
@@ -260,27 +285,29 @@ class ImportRepositoryTest {
             repository.retryErrorTask(task.id)
             withTimeout(5000) { saveStarted.await() }
             assertNotNull(dao.getTaskById(task.id))
-            assertTrue(saved.isEmpty())
+            assertTrue(bookmarkDao.savedItems.isEmpty())
             release.complete(Unit)
             withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
             assertEquals(1, fetches)
-            assertEquals("Parsed Description", saved.single().description)
+            assertEquals("Parsed Description", bookmarkDao.savedItems.single().description)
         } finally { job.cancelAndJoin() }
     }
 
     @Test fun disabledRestartResumesInterruptedProcessingWithoutOpeningModel() = runBlocking {
         val job = SupervisorJob()
         val dao = FakeImportTaskDao()
+        val bookmarkDao = FakeBookmarkDao()
         dao.insertOrUpdate(waitingEntity("interrupted").copy(status = "PROCESSING", articlePrepared = true,
             description = "Persisted Description"))
-        val saved = mutableListOf<BookmarkItem>()
         try {
-            val repository = ImportRepository(taskDao = dao, repositoryScope = CoroutineScope(coroutineContext + job),
-
-                persistFallback = { saved.add(it) })
+            val repository = ImportRepository(
+                taskDao = dao,
+                bookmarkDao = bookmarkDao,
+                repositoryScope = CoroutineScope(coroutineContext + job)
+            )
             repository.onAppBecameActive()
             withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
-            assertEquals("Persisted Description", saved.single().description)
+            assertEquals("Persisted Description", bookmarkDao.savedItems.single().description)
         } finally { job.cancelAndJoin() }
     }
 
@@ -553,6 +580,431 @@ class ImportRepositoryTest {
         // And taskDao should contain the task
         val tasks = fakeDao.getAllTasks()
         assertTrue(tasks.any { it.url.contains("example.com") })
+    }
+
+    @Test
+    fun processDirectTaskInsertsBookmarkWithOccurrencesAndDeletesTaskInSingleFlatTransaction() = runBlocking {
+        val job = SupervisorJob()
+        val taskDao = FakeImportTaskDao()
+        val bookmarkDao = FakeBookmarkDao()
+        bookmarkDao.insertOrUpdate(
+            BookmarkEntity(
+                id = "seed",
+                title = "Seed",
+                url = "https://example.com/seed",
+                description = "",
+                entities = listOf("Kotlin"),
+                createdAt = 1L,
+                updatedAt = 1L
+            )
+        )
+        taskDao.insertOrUpdate(
+            ImportTaskEntity.fromImportTask(
+                ImportTask(
+                    id = "direct-atomic",
+                    url = "https://example.com/kotlin-coroutines",
+                    title = "Kotlin Coroutines Guide",
+                    status = TaskStatus.QUEUED,
+                    statusText = "Waiting",
+                    description = "Structured concurrency with Kotlin",
+                    articlePrepared = true
+                )
+            )
+        )
+        val runner = CountingRollbackTransactionRunner(bookmarkDao, taskDao)
+        try {
+            val repository = ImportRepository(
+                taskDao = taskDao,
+                bookmarkDao = bookmarkDao,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                transactionRunner = runner,
+                candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
+            )
+            repository.onAppBecameActive()
+            withTimeout(5000) { while (taskDao.getCount() != 0) delay(10) }
+
+            assertEquals(1, runner.runCount)
+            assertNull(taskDao.getTaskById("direct-atomic"))
+            assertEquals(2, bookmarkDao.getCount())
+            val saved = bookmarkDao.getBookmarkById("direct-atomic")
+            assertNotNull(saved)
+            assertEquals(listOf("Kotlin"), saved!!.entities)
+            assertEquals(
+                listOf(BookmarkEntityOccurrence("direct-atomic", 0, "Kotlin", bookmarkSearchKey("Kotlin"))),
+                bookmarkDao.occurrences["direct-atomic"]
+            )
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun processDirectTaskRollsBackBookmarkAndOccurrencesWhenDeleteFails() = runBlocking {
+        val job = SupervisorJob()
+        val baseTaskDao = FakeImportTaskDao()
+        val bookmarkDao = FakeBookmarkDao()
+        bookmarkDao.insertOrUpdate(
+            BookmarkEntity(
+                id = "seed",
+                title = "Seed",
+                url = "https://example.com/seed",
+                description = "",
+                entities = listOf("Kotlin"),
+                createdAt = 1L,
+                updatedAt = 1L
+            )
+        )
+        baseTaskDao.insertOrUpdate(
+            ImportTaskEntity.fromImportTask(
+                ImportTask(
+                    id = "failing-task",
+                    url = "https://example.com/kotlin-rollback",
+                    title = "Kotlin Rollback",
+                    status = TaskStatus.QUEUED,
+                    statusText = "Waiting",
+                    articlePrepared = true
+                )
+            )
+        )
+        val failingTaskDao = object : ImportTaskDao by baseTaskDao {
+            override suspend fun deleteById(id: String) {
+                if (id == "failing-task") {
+                    throw IllegalStateException("Simulated delete failure after bookmark insert")
+                }
+                baseTaskDao.deleteById(id)
+            }
+        }
+        val runner = CountingRollbackTransactionRunner(bookmarkDao, baseTaskDao)
+        try {
+            val repository = ImportRepository(
+                taskDao = failingTaskDao,
+                bookmarkDao = bookmarkDao,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                transactionRunner = runner,
+                candidateExtractor = EntityCandidateExtractor(StandardTextSegmenter())
+            )
+            repository.onAppBecameActive()
+            withTimeout(5000) {
+                while (baseTaskDao.getTaskById("failing-task")?.status != "ERROR") delay(10)
+            }
+
+            assertEquals(2, runner.runCount)
+            assertNull(bookmarkDao.getBookmarkById("failing-task"))
+            assertEquals(1, bookmarkDao.getCount())
+            assertNull(bookmarkDao.occurrences["failing-task"])
+            val retained = baseTaskDao.getTaskById("failing-task")!!
+            assertEquals("ERROR", retained.status)
+            assertEquals("Save failed", retained.statusText)
+            assertTrue(retained.articlePrepared)
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun injectedAdaptersReceiveDomainPolicyMediaRssAndNotificationCalls() = runBlocking {
+        val job = SupervisorJob()
+        val taskDao = FakeImportTaskDao()
+        val bookmarkDao = FakeBookmarkDao()
+        val events = mutableListOf<String>()
+        var registerDuringInsert = false
+        var fetchIconDuringInsert = false
+        var ogDuringInsert = false
+
+        val domainPolicyAdapter = object : ImportDomainPolicyAdapter {
+            override suspend fun awaitReady() {
+                events.add("awaitReady")
+            }
+
+            override fun isNsfwDomain(domain: String?): Boolean {
+                events.add("isNsfwDomain:$domain")
+                return domain == "nsfw.example"
+            }
+
+            override fun registerDomain(domain: String?, isNsfw: Boolean, displayName: String) {
+                events.add("registerDomain:$domain:$displayName")
+            }
+        }
+        val mediaCacheAdapter = object : ImportMediaCacheAdapter {
+            override fun hasDomainIcon(domain: String): Boolean {
+                events.add("hasDomainIcon:$domain")
+                return false
+            }
+
+            override suspend fun fetchDomainIcon(
+                url: String,
+                appleTouchIconUrl: String?,
+                faviconUrl: String?,
+                knownCandidates: List<DomainIconCandidate>?
+            ) {
+                events.add("fetchDomainIcon:$url")
+            }
+
+            override suspend fun cacheOgImage(url: String, ogImageUrl: String, rssFeedId: String?) {
+                events.add("cacheOgImage:$url:$ogImageUrl:$rssFeedId")
+            }
+        }
+        val rssAdapter = object : ImportRssAdapter {
+            override suspend fun resumeAcquisitions() {
+                events.add("resumeAcquisitions")
+            }
+
+            override suspend fun retryAcquisition(taskId: String) {
+                events.add("retryAcquisition:$taskId")
+            }
+
+            override suspend fun restoreTask(entity: ImportTaskEntity) {
+                events.add("restoreTask:${entity.id}")
+            }
+
+            override suspend fun validateRssWrite(url: String, bookmarkId: String, feedId: String, isNsfw: Boolean) {
+                events.add("validateRssWrite:$bookmarkId:$feedId:$isNsfw")
+            }
+
+            override suspend fun recordRecoveredDirectSave(taskId: String) {
+                events.add("recordRecoveredDirectSave:$taskId")
+            }
+        }
+        val notificationAdapter = object : ImportNotificationAdapter {
+            override fun importError(error: Throwable) {
+                events.add("importError:${error.message}")
+            }
+
+            override suspend fun publishCompletedRssRuns() {
+                events.add("publishCompletedRssRuns")
+            }
+        }
+
+        bookmarkDao.onInsertReplacingUrl = {
+            registerDuringInsert = events.any { it.startsWith("registerDomain:") }
+            fetchIconDuringInsert = events.any { it.startsWith("fetchDomainIcon:") }
+            ogDuringInsert = events.any { it.startsWith("cacheOgImage:") }
+        }
+
+        try {
+            val repository = ImportRepository(
+                taskDao = taskDao,
+                bookmarkDao = bookmarkDao,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = { directFixture(it).copy(ogpTags = mapOf("og:site_name" to "NSFW Site", "og:image" to "/hero.png")) },
+                domainPolicyAdapter = domainPolicyAdapter,
+                mediaCacheAdapter = mediaCacheAdapter,
+                rssAdapter = rssAdapter,
+                notificationAdapter = notificationAdapter
+            )
+
+            // 1. Direct import exercises domain policy + post-commit media caching
+            val done = CompletableDeferred<Result<ImportOutcome>>()
+            repository.importUrl("https://nsfw.example/post") { done.complete(it) }
+            val outcome = withTimeout(5000) { done.await() }.getOrThrow()
+            assertTrue(outcome is ImportOutcome.BookmarkSaved)
+            assertTrue(bookmarkDao.getBookmarkByUrl("https://nsfw.example/post")!!.isNsfw)
+            assertTrue(events.indexOf("awaitReady") in 0 until events.indexOf("isNsfwDomain:nsfw.example"))
+            assertFalse(registerDuringInsert)
+            assertFalse(fetchIconDuringInsert)
+            assertFalse(ogDuringInsert)
+            assertTrue(events.contains("registerDomain:nsfw.example:NSFW Site"))
+            assertTrue(events.contains("hasDomainIcon:nsfw.example"))
+            assertTrue(events.contains("fetchDomainIcon:https://nsfw.example/post"))
+            withTimeout(3000) {
+                while (events.none { it.startsWith("cacheOgImage:https://nsfw.example/post:") }) delay(10)
+            }
+
+            // 2. Invalid URL delegates error to ImportNotificationAdapter
+            assertTrue(repository.importUrl("https://").isFailure)
+            assertTrue(events.contains("importError:Invalid HTTP/HTTPS URL"))
+
+            // 3. Unprepared RSS error retry delegates to ImportRssAdapter.retryAcquisition
+            val unpreparedRss = ImportTask(
+                id = "rss-err",
+                url = "https://feed.example/1",
+                title = "Feed Item",
+                status = TaskStatus.ERROR,
+                statusText = "Failed",
+                rssFeedId = "feed-1",
+                articlePrepared = false
+            )
+            taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(unpreparedRss))
+            repository.retryErrorTaskAndAwait("rss-err")
+            assertTrue(events.contains("retryAcquisition:rss-err"))
+
+            // 4. Restoring an RSS error task delegates to ImportRssAdapter.restoreTask
+            repository.restoreErrorTask(unpreparedRss)
+            withTimeout(3000) { while (!events.contains("restoreTask:rss-err")) delay(10) }
+
+            // 5. Prepared RSS task in processDirectTask calls validateRssWrite, recordRecoveredDirectSave, and publishCompletedRssRuns
+            taskDao.deleteById("rss-err")
+            taskDao.insertOrUpdate(
+                ImportTaskEntity.fromImportTask(
+                    ImportTask(
+                        id = "rss-ready",
+                        url = "https://feed.example/ready",
+                        title = "Ready RSS",
+                        status = TaskStatus.QUEUED,
+                        statusText = "Ready",
+                        rssFeedId = "feed-1",
+                        articlePrepared = true
+                    )
+                )
+            )
+            repository.onAppBecameActive()
+            withTimeout(5000) {
+                while (taskDao.getCount() != 0 || !events.contains("publishCompletedRssRuns")) delay(10)
+            }
+            assertTrue(events.contains("validateRssWrite:rss-ready:feed-1:false"))
+            assertTrue(events.contains("recordRecoveredDirectSave:rss-ready"))
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun directTaskRetainsErrorWhenPolicyReadinessFailsAfterClaim() = runBlocking {
+        val taskDao = FakeImportTaskDao()
+        val bookmarkDao = FakeBookmarkDao()
+        val job = SupervisorJob()
+        taskDao.insertOrUpdate(
+            ImportTaskEntity.fromImportTask(
+                ImportTask(
+                    id = "ready-fail",
+                    url = "https://example.com/item",
+                    title = "Pending Item",
+                    status = TaskStatus.QUEUED,
+                    statusText = "Waiting"
+                )
+            )
+        )
+        val failingPolicyAdapter = object : ImportDomainPolicyAdapter {
+            override suspend fun awaitReady() {
+                throw IllegalStateException("policy init failed")
+            }
+
+            override fun isNsfwDomain(domain: String?): Boolean = false
+            override fun registerDomain(domain: String?, isNsfw: Boolean, displayName: String) = Unit
+        }
+        try {
+            val repository = ImportRepository(
+                taskDao = taskDao,
+                bookmarkDao = bookmarkDao,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                domainPolicyAdapter = failingPolicyAdapter
+            )
+            repository.onAppBecameActive()
+            withTimeout(5000) {
+                while (taskDao.getTaskById("ready-fail")?.status != "ERROR") delay(10)
+            }
+            val failed = taskDao.getTaskById("ready-fail")!!
+            assertEquals("ERROR", failed.status)
+            assertEquals("Save failed", failed.statusText)
+            assertTrue(failed.errorMessage.orEmpty().contains("policy init failed"))
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
+
+    private class FakeBookmarkDao : StubBookmarkDao(onGetCount = { 0 }) {
+        val bookmarks = linkedMapOf<String, BookmarkEntity>()
+        val occurrences = linkedMapOf<String, MutableList<BookmarkEntityOccurrence>>()
+        var onInsertReplacingUrl: (suspend (BookmarkEntity) -> Unit)? = null
+
+        val savedItems: List<BookmarkItem>
+            get() = bookmarks.values.map { it.toBookmarkItem() }
+
+        override suspend fun getBookmarkById(id: String): BookmarkEntity? = bookmarks[id]
+
+        override suspend fun getBookmarkByUrl(url: String): BookmarkEntity? =
+            bookmarks.values.firstOrNull { it.url == url }
+
+        override suspend fun clearRssFeedId(id: String) {
+            val existing = bookmarks[id] ?: return
+            bookmarks[id] = existing.copy(rssFeedId = null)
+        }
+
+        override suspend fun canonicalEntityValue(skeletonKey: String): String? =
+            bookmarks.values.flatMap { it.entities }.firstOrNull { entitySkeletonKey(it) == skeletonKey }
+
+        override suspend fun findSpellingsForKeys(keys: List<String>): List<BookmarkEntitySpelling> {
+            val keySet = keys.toSet()
+            return bookmarks.values.flatMap { bookmark ->
+                bookmark.entities.mapNotNull { entity ->
+                    val key = entitySkeletonKey(entity)
+                    if (key in keySet) BookmarkEntitySpelling(key, entity) else null
+                }
+            }
+        }
+
+        override suspend fun insertReplacingUrl(bookmark: BookmarkEntity) {
+            onInsertReplacingUrl?.invoke(bookmark)
+            super.insertReplacingUrl(bookmark)
+        }
+
+        public override suspend fun insertRow(bookmark: BookmarkEntity) {
+            bookmarks[bookmark.id] = bookmark
+        }
+
+        override suspend fun insertRows(bookmarks: List<BookmarkEntity>) {
+            bookmarks.forEach { this.bookmarks[it.id] = it }
+        }
+
+        override suspend fun insertOccurrences(rows: List<BookmarkEntityOccurrence>) {
+            rows.forEach { row ->
+                occurrences.getOrPut(row.bookmarkId) { mutableListOf() }.add(row)
+            }
+        }
+
+        override suspend fun deleteOccurrences(id: String) {
+            occurrences.remove(id)
+        }
+
+        override suspend fun deleteOccurrencesForBookmarks(bookmarkIds: List<String>) {
+            bookmarkIds.forEach { occurrences.remove(it) }
+        }
+
+        override suspend fun deleteById(id: String) {
+            bookmarks.remove(id)
+            occurrences.remove(id)
+        }
+
+        override suspend fun deleteByIdOrUrl(id: String, url: String) {
+            val removedIds = bookmarks.values.filter { it.id == id || it.url == url }.map { it.id }
+            removedIds.forEach {
+                bookmarks.remove(it)
+                occurrences.remove(it)
+            }
+        }
+
+        override suspend fun getCount(): Int = bookmarks.size
+
+        override suspend fun deleteAll() {
+            bookmarks.clear()
+            occurrences.clear()
+        }
+    }
+
+    private class CountingRollbackTransactionRunner(
+        private val bookmarkDao: FakeBookmarkDao,
+        private val taskDao: FakeImportTaskDao
+    ) : TransactionRunner {
+        var runCount = 0
+            private set
+        private val mutex = kotlinx.coroutines.sync.Mutex()
+
+        override suspend fun <R> run(block: suspend () -> R): R = mutex.withLock {
+            runCount++
+            val bookmarkSnapshot = LinkedHashMap(bookmarkDao.bookmarks)
+            val occurrenceSnapshot = bookmarkDao.occurrences.mapValues { it.value.toMutableList() }
+            val taskSnapshot = taskDao.tasksFlow.value.toList()
+            try {
+                block()
+            } catch (t: Throwable) {
+                bookmarkDao.bookmarks.clear()
+                bookmarkDao.bookmarks.putAll(bookmarkSnapshot)
+                bookmarkDao.occurrences.clear()
+                occurrenceSnapshot.forEach { (k, v) -> bookmarkDao.occurrences[k] = v.toMutableList() }
+                taskDao.tasksFlow.value = taskSnapshot
+                throw t
+            }
+        }
     }
 }
 

@@ -328,52 +328,69 @@ class BookmarkRepositoryTest {
     }
 
     @Test
-    fun testDomainPolicyManagerRegistrationAndToggling() {
-        DomainPolicyManager.clearPoliciesForTest()
+    fun testDomainPolicyStoreRegistrationAndToggling() = runBlocking {
+        val policyDao = InMemoryDomainPolicyDao()
+        val bookmarkDao = InMemoryBookmarkDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val store = DomainPolicyStore(
+                database = fakeAppDatabase(bookmarkDao = bookmarkDao, domainPolicyDao = policyDao),
+                transactionRunner = directTransactionRunner(),
+                storeScope = scope
+            )
 
-        // 1. Initial registration defaults to false
-        DomainPolicyManager.registerDomain("pixiv.net")
-        assertFalse(DomainPolicyManager.isNsfwDomain("pixiv.net"))
+            // 1. Initial registration defaults to false
+            store.registerDomainAndAwait("pixiv.net")
+            assertFalse(store.isNsfwDomain("pixiv.net"))
 
-        // 2. Set NSFW flag to true
-        DomainPolicyManager.setDomainNsfw("pixiv.net", true)
-        assertTrue(DomainPolicyManager.isNsfwDomain("pixiv.net"))
+            // 2. Set NSFW flag to true
+            store.setDomainNsfwAndAwait("pixiv.net", true)
+            assertTrue(store.isNsfwDomain("pixiv.net"))
 
-        // 3. Sync domain does not overwrite existing true flag
-        DomainPolicyManager.syncDomains(listOf("pixiv.net", "dlsite.com"))
-        assertTrue(DomainPolicyManager.isNsfwDomain("pixiv.net"))
-        assertFalse(DomainPolicyManager.isNsfwDomain("dlsite.com"))
+            // 3. Sync domain does not overwrite existing true flag
+            store.syncDomainsAndAwait(listOf("pixiv.net", "dlsite.com"))
+            assertTrue(store.isNsfwDomain("pixiv.net"))
+            assertFalse(store.isNsfwDomain("dlsite.com"))
 
-        // 4. Listing policies
-        val policies = DomainPolicyManager.getAllPolicies()
-        assertEquals(2, policies.size)
-        assertEquals("dlsite.com", policies[0].domain)
-        assertFalse(policies[0].isNsfw)
-        assertEquals("pixiv.net", policies[1].domain)
-        assertTrue(policies[1].isNsfw)
-
-        DomainPolicyManager.clearPoliciesForTest()
+            // 4. Listing policies
+            val policies = store.getAllPolicies()
+            assertEquals(2, policies.size)
+            assertEquals("dlsite.com", policies[0].domain)
+            assertFalse(policies[0].isNsfw)
+            assertEquals("pixiv.net", policies[1].domain)
+            assertTrue(policies[1].isNsfw)
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
     }
 
     @Test
-    fun testDomainPolicyManagerDisplayName() {
-        DomainPolicyManager.clearPoliciesForTest()
+    fun testDomainPolicyStoreDisplayName() = runBlocking {
+        val policyDao = InMemoryDomainPolicyDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val store = DomainPolicyStore(
+                database = fakeAppDatabase(domainPolicyDao = policyDao),
+                transactionRunner = directTransactionRunner(),
+                storeScope = scope
+            )
 
-        // 1. Register with displayName
-        DomainPolicyManager.registerDomain("github.com", false, "GitHub")
-        assertEquals("GitHub", DomainPolicyManager.getDomainDisplayName("github.com"))
-        assertEquals("GitHub", DomainPolicyManager.getDisplayName("github.com"))
+            // 1. Register with displayName
+            store.registerDomainAndAwait("github.com", false, "GitHub")
+            assertEquals("GitHub", store.getDomainDisplayName("github.com"))
+            assertEquals("GitHub", store.getDisplayName("github.com"))
 
-        // 2. Register without displayName falls back to domain
-        DomainPolicyManager.registerDomain("example.com", false)
-        assertEquals("", DomainPolicyManager.getDomainDisplayName("example.com"))
-        assertEquals("example.com", DomainPolicyManager.getDisplayName("example.com"))
+            // 2. Register without displayName falls back to domain
+            store.registerDomainAndAwait("example.com", false)
+            assertEquals("", store.getDomainDisplayName("example.com"))
+            assertEquals("example.com", store.getDisplayName("example.com"))
 
-        // 3. Update displayName
-        DomainPolicyManager.setDomainDisplayName("example.com", "Example Site")
-        assertEquals("Example Site", DomainPolicyManager.getDisplayName("example.com"))
-
-        DomainPolicyManager.clearPoliciesForTest()
+            // 3. Update displayName
+            store.setDomainDisplayNameAndAwait("example.com", "Example Site")
+            assertEquals("Example Site", store.getDisplayName("example.com"))
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
     }
 
     @Test
@@ -527,12 +544,14 @@ class BookmarkRepositoryTest {
         bookmarkDao: InMemoryBookmarkDao,
         trashDao: InMemoryTrashDao,
         scope: CoroutineScope,
-        transactionRunner: TransactionRunner = directTransactionRunner()
+        transactionRunner: TransactionRunner = directTransactionRunner(),
+        domainPolicyStore: DomainPolicyStore? = null
     ): BookmarkRepository = BookmarkRepository(
         database = fakeAppDatabase(bookmarkDao = bookmarkDao, trashDao = trashDao),
         transactionRunner = transactionRunner,
         repositoryScope = scope,
-        autoInitialize = false
+        autoInitialize = false,
+        domainPolicyStore = domainPolicyStore
     )
 
     @Test
@@ -714,35 +733,106 @@ class BookmarkRepositoryTest {
     }
 
     @Test
-    fun updateBookmarksNsfwForDomainNormalizesDomainAndPropagatesPolicyFailure() = runBlocking {
+    fun repositoryRespectsDomainPolicyStoreNsfwFlagAndAtomicTogglePropagatesFailure() = runBlocking {
         val bookmarkDao = InMemoryBookmarkDao()
         val trashDao = InMemoryTrashDao()
+        val policyDao = InMemoryDomainPolicyDao()
         val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        var failNextTx = false
+        val atomicRunner = object : TransactionRunner {
+            override suspend fun <R> run(block: suspend () -> R): R {
+                val policySnapshot = LinkedHashMap(policyDao.rows)
+                val bookmarkSnapshot = LinkedHashMap(bookmarkDao.rows)
+                return try {
+                    val result = block()
+                    if (failNextTx) throw IllegalStateException("policy write failed")
+                    result
+                } catch (e: Throwable) {
+                    policyDao.rows.clear()
+                    policyDao.rows.putAll(policySnapshot)
+                    bookmarkDao.rows.clear()
+                    bookmarkDao.rows.putAll(bookmarkSnapshot)
+                    throw e
+                }
+            }
+        }
         try {
-            val repository = testRepository(bookmarkDao, trashDao, scope)
-            bookmarkDao.rows["b1"] = BookmarkEntity(
-                id = "b1", title = "One", url = "https://example.com/1", description = "",
-                createdAt = 1L, updatedAt = 1L, isNsfw = false
+            val policyStore = DomainPolicyStore(
+                database = fakeAppDatabase(bookmarkDao = bookmarkDao, domainPolicyDao = policyDao),
+                transactionRunner = atomicRunner,
+                storeScope = scope
             )
-            bookmarkDao.rows["b2"] = BookmarkEntity(
-                id = "b2", title = "Two", url = "https://other.com/2", description = "",
-                createdAt = 2L, updatedAt = 2L, isNsfw = false
+            val repository = testRepository(
+                bookmarkDao = bookmarkDao,
+                trashDao = trashDao,
+                scope = scope,
+                transactionRunner = atomicRunner,
+                domainPolicyStore = policyStore
+            )
+            policyStore.setDomainNsfwAndAwait(" EXAMPLE.COM ", true)
+            repository.addBookmarkAndAwait(
+                BookmarkItem(id = "b1", title = "One", url = "https://example.com/1", description = "", tag = defaultTag, isNsfw = false)
+            )
+            repository.addBookmarkAndAwait(
+                BookmarkItem(id = "b2", title = "Two", url = "https://other.com/2", description = "", tag = defaultTag, isNsfw = false)
             )
 
-            var policyPersisted = false
-            repository.updateBookmarksNsfwForDomain(" EXAMPLE.COM ", true) {
-                policyPersisted = true
-            }
-            assertTrue(policyPersisted)
             assertTrue(bookmarkDao.rows.getValue("b1").isNsfw)
             assertFalse(bookmarkDao.rows.getValue("b2").isNsfw)
 
-            val failure = IllegalStateException("policy write failed")
+            failNextTx = true
             val thrown = runCatching {
-                repository.updateBookmarksNsfwForDomain("example.com", false) { throw failure }
+                policyStore.setDomainNsfwAndAwait("example.com", false)
             }.exceptionOrNull()
             assertTrue(thrown is IllegalStateException)
             assertEquals("policy write failed", thrown?.message)
+            assertTrue(bookmarkDao.rows.getValue("b1").isNsfw)
+            assertTrue(policyStore.isNsfwDomain("example.com"))
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun addBookmarkReadsCommittedNsfwPolicyFromDbEvenWhenCacheIsStale() = runBlocking {
+        val bookmarkDao = InMemoryBookmarkDao()
+        val trashDao = InMemoryTrashDao()
+        val policyDao = InMemoryDomainPolicyDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val policyStore = DomainPolicyStore(
+                database = fakeAppDatabase(bookmarkDao = bookmarkDao, domainPolicyDao = policyDao),
+                transactionRunner = directTransactionRunner(),
+                storeScope = scope
+            )
+            policyStore.awaitReady()
+            // Simulate a policy committed to DB before the store's in-memory cache is published.
+            policyDao.rows["stale-cache.example"] = me.bubblespark.tidilo.data.db.DomainPolicyEntity(
+                domain = "stale-cache.example",
+                isNsfw = true,
+                displayName = ""
+            )
+            assertFalse(policyStore.isNsfwDomain("stale-cache.example"))
+
+            val repository = testRepository(
+                bookmarkDao = bookmarkDao,
+                trashDao = trashDao,
+                scope = scope,
+                transactionRunner = directTransactionRunner(),
+                domainPolicyStore = policyStore
+            )
+            repository.addBookmarkAndAwait(
+                BookmarkItem(
+                    id = "b-stale",
+                    title = "Stale Cache",
+                    url = "https://stale-cache.example/post",
+                    description = "",
+                    tag = defaultTag,
+                    isNsfw = false
+                )
+            )
+
+            assertTrue(bookmarkDao.rows.getValue("b-stale").isNsfw)
         } finally {
             scope.coroutineContext[Job]?.cancelAndJoin()
         }

@@ -34,7 +34,7 @@ import me.bubblespark.tidilo.data.BookmarkSource
 import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.DomainIconManager
-import me.bubblespark.tidilo.data.DomainPolicyManager
+import me.bubblespark.tidilo.data.DomainPolicyStore
 import me.bubblespark.tidilo.data.Subcategory
 import org.json.JSONArray
 import java.text.Collator
@@ -87,6 +87,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     }
 
     private val bookmarkRepository = BookmarkRepository.getInstance()
+    private val domainPolicyStore = DomainPolicyStore.getInstance(TidiloApplication.instance)
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
@@ -212,12 +213,12 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val domainGroups: StateFlow<List<DomainGroupItem>> =
-        combine(AppConfig.isNsfwContentVisible.flatMapLatest { bookmarkRepository.observeDomainCounts(it, BookmarkSource.MANUAL).onStart { _domainGroupsLoading.value = true } }, DomainPolicyManager.policies) { counts, _ ->
+        combine(AppConfig.isNsfwContentVisible.flatMapLatest { bookmarkRepository.observeDomainCounts(it, BookmarkSource.MANUAL).onStart { _domainGroupsLoading.value = true } }, domainPolicyStore.policies) { counts, _ ->
             _domainGroupsLoading.value = false
             val countMap = counts.associate { it.domain to it.count }
             val collator = Collator.getInstance(Locale.JAPANESE)
             countMap.map { (domain, count) ->
-                val displayName = DomainPolicyManager.getDisplayName(domain)
+                val displayName = domainPolicyStore.getDisplayName(domain)
                 DomainGroupItem(
                     domain = domain,
                     displayName = displayName,

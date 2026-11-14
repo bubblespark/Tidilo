@@ -28,6 +28,31 @@ import java.util.UUID
 import java.security.MessageDigest
 
 class BookmarkDatabaseTest {
+    @Test fun versionTwentyPreservesBookmarksAndCreatesDomainPolicies() = runBlocking {
+        val name = "domain-policy-migration-${UUID.randomUUID()}.db"
+        val before = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+        try {
+            before.bookmarkDao().insertOrUpdate(BookmarkEntity("kept", "Keep", "https://kept.invalid/article", "",
+                createdAt = 1, updatedAt = 1, isNsfw = true))
+            val sql = before.openHelper.writableDatabase
+            sql.execSQL("DROP TABLE domain_policies")
+            sql.version = 20
+        } finally { before.close() }
+        val after = database(name)
+        try {
+            assertEquals(21, after.openHelper.readableDatabase.version)
+            val kept = after.bookmarkDao().getBookmarkById("kept")
+            assertNotNull(kept)
+            assertTrue(kept!!.isNsfw)
+            assertEquals(listOf("domain", "isNsfw", "displayName"), columns(after.openHelper.readableDatabase, "domain_policies"))
+            after.domainPolicyDao().upsert(DomainPolicyEntity("kept.invalid", isNsfw = true, displayName = "Kept"))
+            val stored = after.domainPolicyDao().getByDomain("kept.invalid")
+            assertNotNull(stored)
+            assertTrue(stored!!.isNsfw)
+            assertEquals("Kept", stored.displayName)
+        } finally { after.close(); context.deleteDatabase(name) }
+    }
+
     @Test fun versionNineteenPreservesImageDeletionJobsAndAllowsMultipleDomains() = runBlocking {
         val name = "image-cleanup-migration-${UUID.randomUUID()}.db"
         val before = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
@@ -42,7 +67,7 @@ class BookmarkDatabaseTest {
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(20, after.openHelper.readableDatabase.version)
+            assertEquals(21, after.openHelper.readableDatabase.version)
             assertNotNull(after.bookmarkDao().getBookmarkById("kept"))
             assertEquals(1, after.rssDao().cleanupItems().size)
             after.rssDao().enqueueCleanup(RssImageCleanupEntity("https://images.invalid/shared.webp", "https://second.invalid/article"))
@@ -66,7 +91,7 @@ class BookmarkDatabaseTest {
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(20, after.openHelper.readableDatabase.version)
+            assertEquals(21, after.openHelper.readableDatabase.version)
             assertEquals(queued.copy(status = "QUEUED", statusText = ""), after.importTaskDao().getTaskById(queued.id))
         } finally { after.close(); context.deleteDatabase(name) }
     }
@@ -176,7 +201,7 @@ class BookmarkDatabaseTest {
             var db = database(name)
             try {
                 val sql = db.openHelper.writableDatabase
-                assertEquals(20, sql.version)
+                assertEquals(21, sql.version)
                 assertTrue(columns(sql, "bookmark_entities").contains("skeletonKey"))
                 sql.query("PRAGMA index_list(bookmark_entities)").use { cursor ->
                     val names = buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
@@ -244,7 +269,7 @@ class BookmarkDatabaseTest {
             helper.close()
             val db = database(name)
             try {
-                assertEquals(20, db.openHelper.readableDatabase.version)
+                assertEquals(21, db.openHelper.readableDatabase.version)
                 val feed = db.rssDao().feed("feed")!!
                 assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
                 assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)
@@ -333,7 +358,7 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showNsfw: Boolean = true): List<BookmarkEntity> {
@@ -603,45 +628,83 @@ class BookmarkDatabaseTest {
     }
 
     @Test
-    fun domainPolicyPersistenceCompletesBeforeReturnAndReportsWriteFailure() = runBlocking {
-        val folder = java.io.File(context.cacheDir, "issue85-policy-${UUID.randomUUID()}").apply { mkdirs() }
-        val isolated = object : android.content.ContextWrapper(context) {
-            override fun getFilesDir(): java.io.File = folder
-        }
+    fun domainPolicyStoreMigratesLegacyJsonIdempotentlyAndDeletesFilesAfterCommit() = runBlocking {
+        val folder = java.io.File(context.cacheDir, "issue233-policy-${UUID.randomUUID()}").apply { mkdirs() }
+        val legacyFile = java.io.File(folder, "domain_policies.json")
+        val pendingFile = java.io.File(folder, "domain_policies.json.pending")
+        val name = "issue233-legacy-policy-${UUID.randomUUID()}.db"
+        val db = database(name)
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         try {
-            me.bubblespark.tidilo.data.DomainPolicyManager.setDomainNsfwAndPersist("issue85.invalid", true, isolated)
-            val file = java.io.File(folder, "domain_policies.json")
-            val policies = org.json.JSONArray(file.readText())
-            val saved = (0 until policies.length()).map { policies.getJSONObject(it) }.single { it.getString("domain") == "issue85.invalid" }
-            assertTrue(saved.getBoolean("isNsfw"))
-            assertTrue(file.delete())
-            assertTrue(file.mkdir())
+            legacyFile.writeText(
+                """
+                [
+                  {"domain": "issue85.invalid", "isNsfw": true, "displayName": "Issue 85"},
+                  {"domain": "safe.invalid", "isNsfw": false, "displayName": "Safe"}
+                ]
+                """.trimIndent()
+            )
+            pendingFile.writeText("[]")
+            // Pre-populate default row that must not erase legacy isNsfw=true or displayName.
+            db.domainPolicyDao().upsert(DomainPolicyEntity("issue85.invalid", isNsfw = false, displayName = ""))
+
+            var failFirst = true
+            val runner = object : me.bubblespark.tidilo.data.TransactionRunner {
+                override suspend fun <R> run(block: suspend () -> R): R = db.withTransaction {
+                    val result = block()
+                    if (failFirst) throw java.io.IOException("Simulated commit failure")
+                    result
+                }
+            }
+            val store = me.bubblespark.tidilo.data.DomainPolicyStore(
+                database = db,
+                legacyJsonFile = legacyFile,
+                transactionRunner = runner,
+                storeScope = scope
+            )
             try {
-                me.bubblespark.tidilo.data.DomainPolicyManager.setDomainNsfwAndPersist("issue85.invalid", false, isolated)
+                store.setDomainNsfwAndAwait("safe.invalid", true)
                 fail("Storage failure must reach the initiating caller")
             } catch (_: java.io.IOException) {
-                assertTrue(me.bubblespark.tidilo.data.DomainPolicyManager.isNsfwDomain("issue85.invalid"))
-                assertTrue(me.bubblespark.tidilo.data.DomainPolicyManager.policies.value.single { it.domain == "issue85.invalid" }.isNsfw)
+                assertTrue(legacyFile.exists())
+                assertTrue(pendingFile.exists())
+                assertTrue(store.policies.value.none { it.domain == "safe.invalid" && it.isNsfw })
             }
-            try {
-                me.bubblespark.tidilo.data.DomainPolicyManager.setDomainNsfwAndPersist("new-issue85.invalid", true, isolated)
-                fail("New policy must not be published after failure")
-            } catch (_: java.io.IOException) {
-                assertFalse(me.bubblespark.tidilo.data.DomainPolicyManager.isNsfwDomain("new-issue85.invalid"))
-                assertTrue(me.bubblespark.tidilo.data.DomainPolicyManager.policies.value.none { it.domain == "new-issue85.invalid" })
-            }
-            assertTrue(file.delete())
-            me.bubblespark.tidilo.data.DomainPolicyManager.setDomainNsfwAndPersist("issue85.invalid", false, isolated)
-            assertFalse(me.bubblespark.tidilo.data.DomainPolicyManager.isNsfwDomain("issue85.invalid"))
-            assertTrue(file.isFile)
-        } finally { folder.deleteRecursively() }
+
+            failFirst = false
+            store.syncDomainsAndAwait(listOf("issue85.invalid", "new.invalid"))
+            assertFalse(legacyFile.exists())
+            assertFalse(pendingFile.exists())
+            assertTrue(store.isNsfwDomain("issue85.invalid"))
+            assertEquals("Issue 85", store.getDisplayName("issue85.invalid"))
+            assertEquals("Safe", store.getDisplayName("safe.invalid"))
+            assertFalse(store.isNsfwDomain("new.invalid"))
+            assertTrue(db.domainPolicyDao().getByDomain("issue85.invalid")!!.isNsfw)
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+            db.close()
+            context.deleteDatabase(name)
+            folder.deleteRecursively()
+        }
     }
 
     @Test
     fun failedPolicySaveRollsBackMixedBookmarkFlagsAndSuccessfulRetryCommits() = runBlocking {
         val name = "issue85-domain-rollback-${UUID.randomUUID()}.db"
         val db = database(name)
-        val repository = BookmarkRepository(db, autoInitialize = false)
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        var failNext = false
+        val store = me.bubblespark.tidilo.data.DomainPolicyStore(
+            database = db,
+            transactionRunner = object : me.bubblespark.tidilo.data.TransactionRunner {
+                override suspend fun <R> run(block: suspend () -> R): R = db.withTransaction {
+                    val result = block()
+                    if (failNext) throw java.io.IOException("Policy write failed")
+                    result
+                }
+            },
+            storeScope = scope
+        )
         val rows = listOf(
             BookmarkEntity("safe", "Safe", "https://rollback.invalid/a", "", createdAt = 1, updatedAt = 1, isNsfw = false),
             BookmarkEntity("adult", "Adult", "https://rollback.invalid/b", "", createdAt = 2, updatedAt = 2, isNsfw = true),
@@ -649,25 +712,31 @@ class BookmarkDatabaseTest {
         )
         try {
             db.bookmarkDao().insertAll(rows)
+            store.syncDomainsAndAwait(listOf("rollback.invalid"))
             for (desired in listOf(true, false)) {
-                val failure = java.io.IOException("Policy write failed")
+                failNext = true
                 try {
-                    repository.updateBookmarksNsfwForDomain("rollback.invalid", desired) {
-                        assertEquals(desired, db.bookmarkDao().getBookmarkById("safe")!!.isNsfw)
-                        assertEquals(desired, db.bookmarkDao().getBookmarkById("adult")!!.isNsfw)
-                        throw failure
-                    }
+                    store.setDomainNsfwAndAwait("rollback.invalid", desired)
                     fail("Policy save failure must be propagated")
-                } catch (e: java.io.IOException) { assertSame(failure, e) }
+                } catch (e: java.io.IOException) {
+                    assertEquals("Policy write failed", e.message)
+                }
                 for (row in rows) assertEquals(row.withSearchFields(), db.bookmarkDao().getBookmarkById(row.id))
+                assertFalse(db.domainPolicyDao().getByDomain("rollback.invalid")!!.isNsfw)
+                assertFalse(store.isNsfwDomain("rollback.invalid"))
             }
-            var persisted = false
-            repository.updateBookmarksNsfwForDomain("rollback.invalid", true) { persisted = true }
-            assertTrue(persisted)
+            failNext = false
+            store.setDomainNsfwAndAwait("rollback.invalid", true)
+            assertTrue(db.domainPolicyDao().getByDomain("rollback.invalid")!!.isNsfw)
+            assertTrue(store.isNsfwDomain("rollback.invalid"))
             assertTrue(db.bookmarkDao().getBookmarkById("safe")!!.isNsfw)
             assertTrue(db.bookmarkDao().getBookmarkById("adult")!!.isNsfw)
             assertFalse(db.bookmarkDao().getBookmarkById("other")!!.isNsfw)
-        } finally { db.close(); context.deleteDatabase(name) }
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+            db.close()
+            context.deleteDatabase(name)
+        }
     }
 
     @Test

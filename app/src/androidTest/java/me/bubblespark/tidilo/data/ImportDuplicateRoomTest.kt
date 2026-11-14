@@ -56,8 +56,7 @@ class ImportDuplicateRoomTest {
         }
         try {
             val repository = ImportRepository(taskDao = throwingDao, bookmarkDao = database.bookmarkDao(),
-                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
-                persistFallback = { database.bookmarkDao().insertOrUpdate(BookmarkEntity.fromBookmarkItem(it)) })
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job))
             repository.onAppBecameActive()
             withTimeout(5000) { while (tasks.getTaskById(healthy.id) != null) delay(10) }
             assertEquals("ERROR", tasks.getTaskById(unavailable.id)?.status)
@@ -93,8 +92,7 @@ class ImportDuplicateRoomTest {
         assertTrue(notifications.unpublishedRuns().isEmpty())
         try {
             val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
-                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
-                persistFallback = { database.bookmarkDao().insertOrUpdate(BookmarkEntity.fromBookmarkItem(it)) })
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job))
             repository.onAppBecameActive()
             withTimeout(5000) {
                 while (database.importTaskDao().getCount() != 0) delay(10)
@@ -129,7 +127,7 @@ class ImportDuplicateRoomTest {
         } finally { job.cancel(); job.join() }
     }
 
-    @Test fun disabledRssSkipRemovesTaskOnlyAfterNestedTransactionRollsBack() = runBlocking {
+    @Test fun disabledRssSkipRemovesTaskOnlyAfterFlatTransactionRollsBack() = runBlocking {
         val job = kotlinx.coroutines.SupervisorJob()
         val feed = me.bubblespark.tidilo.data.db.RssFeedEntity("skip-feed", "https://example.com/feed", "Feed", enabled = false)
         database.rssDao().putFeed(feed)
@@ -137,20 +135,19 @@ class ImportDuplicateRoomTest {
             rssFeedId = feed.id, articlePrepared = true, status = TaskStatus.QUEUED, statusText = "Ready")
         database.importTaskDao().insertOrUpdate(ImportTaskEntity.fromImportTask(task))
         var attempted = false
+        val hookableDao = HookableBookmarkDao(database.bookmarkDao()).apply {
+            insertReplacingUrlOverride = { bookmark ->
+                attempted = true
+                database.bookmarkDao().insertReplacingUrl(bookmark)
+                throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
+            }
+        }
         try {
-            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
-                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
-
-                persistFallback = { bookmark ->
-                    attempted = true
-                    database.withTransaction {
-                        database.bookmarkDao().insertOrUpdate(BookmarkEntity.fromBookmarkItem(bookmark))
-                        throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
-                    }
-                })
+            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = hookableDao,
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job))
             repository.onAppBecameActive()
             withTimeout(5000) {
-                while (!attempted || database.importTaskDao().getTaskById(task.id)?.status in listOf("QUEUED", "QUEUED", "PROCESSING")) delay(10)
+                while (!attempted || database.importTaskDao().getTaskById(task.id)?.status in listOf("QUEUED", "PROCESSING")) delay(10)
             }
             assertNull(database.importTaskDao().getTaskById(task.id))
             assertNull(database.bookmarkDao().getBookmarkByUrl(task.url))
@@ -196,8 +193,7 @@ class ImportDuplicateRoomTest {
             standardCategory = "Reference", standardClassificationEvaluated = true)))
         try {
             val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
-                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
-                persistFallback = { bookmark -> database.withTransaction { database.bookmarkDao().insertOrUpdate(BookmarkEntity.fromBookmarkItem(bookmark)) } })
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job))
             repository.onEnteringFinalization = { finished.complete(Unit) }
             repository.importUrl(url) { outcome.complete(it.isSuccess && !database.inTransaction()) }
             withTimeout(5000) { finished.await() }
@@ -209,20 +205,21 @@ class ImportDuplicateRoomTest {
         } finally { job.cancel(); job.join() }
     }
 
-    @Test fun disabledReadyNestedSaveFailureRemainsAnErrorInsteadOfRepeating() = kotlinx.coroutines.runBlocking {
+    @Test fun disabledReadySaveFailureRemainsAnErrorInsteadOfRepeating() = kotlinx.coroutines.runBlocking {
         val job = kotlinx.coroutines.SupervisorJob()
         val attempted = CompletableDeferred<Unit>()
         database.importTaskDao().insertOrUpdate(ImportTaskEntity.fromImportTask(ImportTask(id = "ready-failure",
             url = "https://example.com/ready-failure", title = "Prepared", articlePrepared = true,
             status = TaskStatus.QUEUED, statusText = "Ready")))
+        val hookableDao = HookableBookmarkDao(database.bookmarkDao()).apply {
+            insertReplacingUrlOverride = {
+                attempted.complete(Unit)
+                throw android.database.sqlite.SQLiteFullException("Simulated disk full")
+            }
+        }
         try {
-            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
-                database = database, repositoryScope = CoroutineScope(coroutineContext + job),
-
-                persistFallback = {
-                    attempted.complete(Unit)
-                    database.withTransaction { throw android.database.sqlite.SQLiteFullException("Simulated disk full") }
-                })
+            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = hookableDao,
+                database = database, repositoryScope = CoroutineScope(coroutineContext + job))
             repository.onAppBecameActive()
             withTimeout(5000) { attempted.await() }
             withTimeout(2000) { while (database.importTaskDao().getTaskById("ready-failure")?.status != "ERROR") delay(10) }
@@ -230,16 +227,19 @@ class ImportDuplicateRoomTest {
         } finally { job.cancel(); job.join() }
     }
 
-    @Test fun disabledNestedSaveFailureLeavesDurableErrorTask() = kotlinx.coroutines.runBlocking {
+    @Test fun disabledSaveFailureLeavesDurableErrorTask() = kotlinx.coroutines.runBlocking {
         val job = kotlinx.coroutines.SupervisorJob()
         val finished = CompletableDeferred<Unit>()
         val callback = CompletableDeferred<Result<ImportOutcome>>()
+        val hookableDao = HookableBookmarkDao(database.bookmarkDao()).apply {
+            insertReplacingUrlOverride = {
+                throw android.database.sqlite.SQLiteFullException("Simulated disk full")
+            }
+        }
         try {
-            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
+            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = hookableDao,
                 database = database, repositoryScope = CoroutineScope(coroutineContext + job),
-                articleAcquirer = { createFakeParsedPage(it) }, persistFallback = {
-                    database.withTransaction { throw android.database.sqlite.SQLiteFullException("Simulated disk full") }
-                })
+                articleAcquirer = { createFakeParsedPage(it) })
             repository.onEnteringFinalization = { finished.complete(Unit) }
             repository.importUrl("https://example.com/nested-failure") { callback.complete(it) }
             withTimeout(5000) { finished.await() }
@@ -322,6 +322,15 @@ class ImportDuplicateRoomTest {
             beforePromotion?.invoke()
             delegate.clearRssFeedId(id)
             afterPromotion?.invoke()
+        }
+        var insertReplacingUrlOverride: (suspend (BookmarkEntity) -> Unit)? = null
+        override suspend fun insertReplacingUrl(bookmark: BookmarkEntity) {
+            val override = insertReplacingUrlOverride
+            if (override != null) {
+                override(bookmark)
+            } else {
+                delegate.insertReplacingUrl(bookmark)
+            }
         }
         override suspend fun insertRow(bookmark: BookmarkEntity) = error("Unused primitive")
         override suspend fun insertRows(bookmarks: List<BookmarkEntity>) = error("Unused primitive")

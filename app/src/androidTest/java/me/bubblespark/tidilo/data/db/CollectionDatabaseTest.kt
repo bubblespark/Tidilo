@@ -74,7 +74,7 @@ class CollectionDatabaseTest {
         me.bubblespark.tidilo.data.restoreLegacyAiSkippedColumns(sql::execSQL)
         sql.version = 15
         before.close()
-        val after = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20).build()
+        val after = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21).build()
         try {
             assertTrue(after.bookmarkDao().getBookmarkById("kept")?.isLiked == true)
             assertTrue(after.collectionDao().observeCollections(true).first().isEmpty())

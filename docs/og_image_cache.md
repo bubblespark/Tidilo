@@ -12,9 +12,9 @@ The placeholder uses the existing domain-accent gradient, with the theme primary
 
 ## Recovery and shared work
 
-`OgImageManager.loadOrFetchOgImage` resolves relative image URLs against the page URL, preserves query parameters, removes fragments, and derives the existing SHA-256 `.webp` filename. It first checks exact memory/disk caches. Missing and undecodable cache files are fetched again. `processAndSaveOgImage` uses this same path during import.
+`OgImageStore` (owned by the `File`-rooted `MediaCacheStore` under `data/cache/`, with `OgImageManager` retained as the Part A compatibility facade) resolves relative image URLs against the page URL via `MediaCacheLayout`, preserves query parameters, removes fragments, and derives the SHA-256 `.webp` filename. It first checks exact memory/disk caches. Missing and undecodable cache files are fetched again. `processAndSaveOgImage` uses this same path during import, while `MediaColorPalette` (`DetailHeroPalette`) computes invalidation-safe accent and hero-edge colors.
 
-`OgImageFetchCoordinator` shares requests by cache generation and image key, independently of the page's domain. A four-permit semaphore covers network access, image compression, and publication. A queued caller leaving composition cancels its interest; a shared request is cancelled only when its final caller leaves. Actual HTTP work disconnects on cancellation, and the permit is retained until its blocking worker exits.
+`CoalescedFetchCoordinator<T>` (aliased as `OgImageFetchCoordinator` for compatibility) shares requests by unified cache generation (owned by `MediaCacheRevisionBus`) and image key, independently of the page's domain. A four-permit semaphore covers network access, image compression, and publication. A queued caller leaving composition cancels its interest; a shared request is cancelled only when its final caller leaves. Actual HTTP work disconnects on cancellation, and the permit is retained until its blocking worker exits.
 
 The transport accepts HTTP/HTTPS, follows at most ten redirects, limits the response to 10MiB, and applies a 10-second timeout. Images retain the existing maximum dimension of 640px and WebP output strictly below 50KiB. Files are published through atomic temporary-file replacement.
 

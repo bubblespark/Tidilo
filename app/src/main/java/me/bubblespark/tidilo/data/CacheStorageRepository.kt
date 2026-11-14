@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import me.bubblespark.tidilo.data.cache.MediaCacheLayout
 
 data class CacheStorageSnapshot(
     val iconFiles: Int = 0, val iconBytes: Long = 0,
@@ -39,17 +40,17 @@ internal object CacheStorageRepository {
             override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
                 context.ensureActive()
                 if (!attrs.isRegularFile) return FileVisitResult.CONTINUE
-                val relative = rootPath.relativize(file)
-                when (relative.takeIf { it.nameCount > 1 }?.getName(0)?.toString()) {
-                    "domain_icons" -> {
+                val classification = MediaCacheLayout.classifyRelativePath(rootPath.relativize(file))
+                when (classification.bucket) {
+                    MediaCacheLayout.CacheBucket.DOMAIN_ICONS -> {
                         iconBytes += attrs.size()
-                        if (file.fileName.toString().endsWith(".png", ignoreCase = true)) icons++
+                        if (classification.isPrimaryAsset) icons++
                     }
-                    "og_images" -> {
+                    MediaCacheLayout.CacheBucket.OG_IMAGES -> {
                         imageBytes += attrs.size()
-                        if (file.fileName.toString().endsWith(".webp", ignoreCase = true)) images++
+                        if (classification.isPrimaryAsset) images++
                     }
-                    else -> otherBytes += attrs.size()
+                    MediaCacheLayout.CacheBucket.OTHER -> otherBytes += attrs.size()
                 }
                 return FileVisitResult.CONTINUE
             }

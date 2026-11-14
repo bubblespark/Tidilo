@@ -43,7 +43,7 @@ This document defines the strict engineering standards, naming conventions, Comp
 
 ### 2.4 Paging 3 Load State & Scope Lifecycle
 - **Same-Key Room Invalidations**: When observing `LazyPagingItems`, never replace a populated list or grid (`itemCount > 0`) with a full-screen skeleton solely because `loadState.refresh is LoadState.Loading`; let Paging 3 diff Room invalidations in place. Keep loading, error, and empty branches inside transition hosts so loading states never cancel navigation animations.
-- **Generation & Session Scope Leases**: Never cache transient `Pager` flows in unconstrained `viewModelScope` or in an unbounded map of per-filter scopes. Bind Pager lifecycles to replaceable generation scopes or destination-owned leases (e.g., `DisposableEffect` exit disposal and `SideEffect` reactivation when returning via rapid transitions) and invalidate stale caches immediately on Private Content visibility changes. See [UI Design §6.16](ui_design.md#616-paged-bookmark-results) for `Search` and `Library` behavior.
+- **Generation & Session Scope Leases**: Never cache transient `Pager` flows in unconstrained `viewModelScope` or in an unbounded map of per-filter scopes. Bind Pager lifecycles to replaceable generation scopes or destination-owned leases (e.g., `DisposableEffect` exit disposal and `SideEffect` reactivation when returning via rapid transitions) and invalidate stale caches immediately on Private Content visibility changes. See [Library & Search UI §8](ui_library.md#8-paged-bookmark-results) for `Search` and `Library` behavior.
 
 ### 2.5 Responsive Chip Rows & Large-Font Tolerance
 - **Wrap Multi-Badge & Localized Tag Rows with `FlowRow`**: Never lay out variable-length classification tags, localized category labels, and icon-prefixed status badges (such as `BookmarkTagSection`) inside a single-line `Row` without wrapping. Always use `FlowRow` with `itemVerticalAlignment = Alignment.CenterVertically` so badges stay single-line on standard screens while wrapping cleanly on narrow grid cards or `2f` system font scaling without right-edge clipping.
@@ -135,7 +135,7 @@ This document defines the strict engineering standards, naming conventions, Comp
 ### 6.1 Pre-Commit Quality Gates
 See [Coding Workflow (Phase 2)](../.agents/coding/workflow.md) for branching, approval gates, and commit lifecycle rules. Before committing code changes:
 - **Unit & Instrumentation Verification**: Ensure `./gradlew testDebugUnitTest` passes 100%. Whenever Room schemas, migrations, or UI navigation/semantics change, also assemble `assembleDebugAndroidTest` and run the affected `androidTest` suites on a connected device/emulator (`testDebugUnitTest` and compilation alone do not verify SQLite migrations or Compose runtime semantics).
-- **Navigation Route & Doc Parity**: Update UI route assertions (such as `SettingsRedesignTest`) when adding or moving routes/settings entries, and keep `docs/ui_design.md` (screen order, containers, Material tokens) synchronized with the implementation.
+- **Navigation Route & Doc Parity**: Update UI route assertions (such as `SettingsRedesignTest`) when adding or moving routes/settings entries, and keep `docs/ui_design.md` and screen UI specs (`ui_library.md`, `ui_bookmark_detail.md`, `ui_settings.md`) synchronized with the implementation.
 
 ### 6.2 Conventional Commit Messages
 Use standard Conventional Commits in English:

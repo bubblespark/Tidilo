@@ -178,7 +178,7 @@ app/src/main/java/com/ykgudev/tidilo/
 
 `ui/components/TidiloSurface.kt` owns shared background/edge/shadow rendering and Material coordination. `TidiloChip.kt` integrates display badge semantics; `TidiloIconButton.kt` preserves native icon/toggle input behavior while sharing optional plate decoration. Existing feature components retain their content, layout and data/state ownership. `BookmarkCardStyle.kt` now contains only the scoped accent input, not a parallel rendering system.
 
-The component catalogue and rendering/lifecycle checks live in Android test sources. There is no production catalogue screen or future backdrop-blur infrastructure. See [UI design](ui_design.md#83-resolved-theme-and-shared-surface-contract) for the coverage contract and native Material inheritance limits.
+The component catalogue and rendering/lifecycle checks live in Android test sources. There is no production catalogue screen or future backdrop-blur infrastructure. See [UI design](ui_design.md#73-resolved-theme-and-shared-surface-contract) for the coverage contract and native Material inheritance limits.
 For instructions on adding or tuning a preset, see [Developing app themes](theme_development.md).
 
 ## Daily library maintenance

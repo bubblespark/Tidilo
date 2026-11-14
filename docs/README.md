@@ -51,13 +51,19 @@ cd Tidilo
 | Document | Contents |
 | :--- | :--- |
 | [coding_conventions.md](coding_conventions.md) | Naming, Compose performance, coroutines, error handling. |
-| [ui_design.md](ui_design.md) | Material 3 Expressive spec: color, typography, shape, motion, components. |
+| [ui_design.md](ui_design.md) | Material 3 Expressive foundation: color, typography, shape, motion, insets, chrome, theme surfaces. |
+| [ui_library.md](ui_library.md) | Library/Search cards, deck grids, domain watermarks, view modes, and paging UI rules. |
+| [ui_bookmark_detail.md](ui_bookmark_detail.md) | Bookmark Detail layout, hero banner/palette, tag edit dialog, and entity picker sheet. |
+| [ui_settings.md](ui_settings.md) | Settings cards, Private Content settings, AI Analysis toggles, and Debug Web Parser UI. |
 
 ### Where to Start
 
 | If you are working on... | Read |
 | :--- | :--- |
 | A new screen or component | `structure.md`, `ui_design.md` |
+| Library, Search, or bookmark cards | `ui_library.md`, `ui_design.md` |
+| Bookmark Detail or tag editing | `ui_bookmark_detail.md`, `ui_design.md` |
+| Settings or Debug screens | `ui_settings.md`, `ui_design.md` |
 | Saving, parsing or the import queue | `overview.md`, `data_models.md` |
 | RSS | `rss.md` |
 | Collections | `collections.md` |

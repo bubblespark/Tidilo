@@ -34,13 +34,15 @@ class SettingsRedesignTest {
     @Test fun settingsRowsNavigateAndKeepExistingConfirmationDialogs(): Unit = runBlocking {
         val activity = host.launch()
         var ai = 0
+        var privateContent = 0
         var rss = 0
         var summary = 0
         var debug = 0
         try {
             host.main { activity.setContent { TidiloTheme {
-                SettingsScreen({}, { ai++ }, onNavigateToRss = { rss++ },
-                    onNavigateToStorage = { summary++ }, onNavigateToDebug = { debug++ })
+                SettingsScreen({}, { ai++ }, onNavigateToPrivateContent = { privateContent++ },
+                    onNavigateToRss = { rss++ }, onNavigateToStorage = { summary++ },
+                    onNavigateToDebug = { debug++ })
             } } }
             suspend fun click(label: Int) = invokeClick(host.await(activity) {
                 host.text(it, host.context.getString(label)) && clickableOrNull(it) != null
@@ -50,6 +52,10 @@ class SettingsRedesignTest {
             assertEquals(androidx.compose.ui.semantics.Role.Button, aiRow.config[SemanticsProperties.Role])
             invokeClick(aiLabel)
             assertEquals(1, ai)
+            val privateLabel = host.await(activity) { host.text(it, host.context.getString(R.string.settings_private_title)) }
+            assertEquals(androidx.compose.ui.semantics.Role.Button, clickable(privateLabel).config[SemanticsProperties.Role])
+            invokeClick(privateLabel)
+            assertEquals(1, privateContent)
             click(R.string.rss_title)
             click(R.string.summary_title)
             click(R.string.settings_debug_title)

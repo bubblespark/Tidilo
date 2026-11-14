@@ -225,6 +225,7 @@ fun BookmarkItemCard(
 /**
  * Shared tag badges layout displaying [category] > [subcategory] (+ [Private]) and entity chips.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BookmarkTagSection(
     tag: Tag,
@@ -251,9 +252,10 @@ fun BookmarkTagSection(
     ) {
         val hasCategoryLine = localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() || isPrivate
         if (hasCategoryLine) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                itemVerticalAlignment = Alignment.CenterVertically
             ) {
                 val categoryColors = resolveChipColors(
                     style = themeStyle.chipStyle,

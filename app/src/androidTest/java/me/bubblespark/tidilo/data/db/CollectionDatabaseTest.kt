@@ -72,9 +72,10 @@ class CollectionDatabaseTest {
         sql.execSQL("DROP TABLE collections")
         removeStandardClassificationColumns(sql::execSQL)
         me.bubblespark.tidilo.data.restoreLegacyAiSkippedColumns(sql::execSQL)
+        me.bubblespark.tidilo.data.rewindPrivateColumnsToLegacyNsfw(sql::execSQL, includeDomainPolicies = false)
         sql.version = 15
         before.close()
-        val after = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21).build()
+        val after = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22).build()
         try {
             assertTrue(after.bookmarkDao().getBookmarkById("kept")?.isLiked == true)
             assertTrue(after.collectionDao().observeCollections(true).first().isEmpty())

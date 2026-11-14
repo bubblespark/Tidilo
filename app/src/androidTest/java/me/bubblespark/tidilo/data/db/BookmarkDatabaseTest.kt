@@ -21,6 +21,7 @@ import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.removeStandardClassificationColumns
+import me.bubblespark.tidilo.data.rewindPrivateColumnsToLegacyNsfw
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
 import org.junit.Assert.*
 import org.junit.Test
@@ -29,16 +30,7 @@ import java.security.MessageDigest
 
 class BookmarkDatabaseTest {
     private fun rewindPrivateColumnsToLegacyNsfw(sql: SupportSQLiteDatabase, includeDomainPolicies: Boolean) {
-        sql.execSQL("DROP INDEX IF EXISTS `index_bookmarks_isPrivate`")
-        sql.execSQL("ALTER TABLE `bookmarks` RENAME COLUMN `isPrivate` TO `isNsfw`")
-        sql.execSQL("CREATE INDEX IF NOT EXISTS `index_bookmarks_isNsfw` ON `bookmarks` (`isNsfw`)")
-        sql.execSQL("ALTER TABLE `trashed_bookmarks` RENAME COLUMN `isPrivate` TO `isNsfw`")
-        sql.execSQL("ALTER TABLE `import_tasks` RENAME COLUMN `isPrivate` TO `isNsfw`")
-        if (includeDomainPolicies) {
-            sql.execSQL("ALTER TABLE `domain_policies` RENAME COLUMN `isPrivate` TO `isNsfw`")
-        } else {
-            sql.execSQL("DROP TABLE IF EXISTS `domain_policies`")
-        }
+        rewindPrivateColumnsToLegacyNsfw(sql::execSQL, includeDomainPolicies)
     }
 
     @Test fun versionTwentyOneRenamesNsfwColumnsAndIndexToPrivate() = runBlocking {
@@ -262,14 +254,14 @@ class BookmarkDatabaseTest {
             var db = database(name)
             try {
                 val sql = db.openHelper.writableDatabase
-                assertEquals(21, sql.version)
+                assertEquals(22, sql.version)
                 assertTrue(columns(sql, "bookmark_entities").contains("skeletonKey"))
                 sql.query("PRAGMA index_list(bookmark_entities)").use { cursor ->
                     val names = buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
                     assertTrue(names.contains("index_bookmark_entities_skeletonKey"))
                 }
-                assertEquals(before, fingerprint(sql, "bookmarks", keptColumns))
-                assertEquals(trashBefore, fingerprint(sql, "trashed_bookmarks", trashColumns))
+                assertEquals(before, fingerprint(sql, "bookmarks", keptColumns.map { if (it == "isNsfw") "isPrivate" else it }))
+                assertEquals(trashBefore, fingerprint(sql, "trashed_bookmarks", trashColumns.map { if (it == "isNsfw") "isPrivate" else it }))
                 assertTrue(!columns(sql, "bookmarks").contains("isAiSkipped"))
                 assertTrue(!columns(sql, "trashed_bookmarks").contains("isAiSkipped"))
                 val expected = mapOf(
@@ -330,7 +322,7 @@ class BookmarkDatabaseTest {
             helper.close()
             val db = database(name)
             try {
-                assertEquals(21, db.openHelper.readableDatabase.version)
+                assertEquals(22, db.openHelper.readableDatabase.version)
                 val feed = db.rssDao().feed("feed")!!
                 assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
                 assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)
@@ -398,6 +390,7 @@ class BookmarkDatabaseTest {
             })
             val sql = before.openHelper.writableDatabase
             me.bubblespark.tidilo.data.restoreLegacyAiSkippedColumns(sql::execSQL)
+            rewindPrivateColumnsToLegacyNsfw(sql, includeDomainPolicies = false)
             sql.version = 17
         } finally { before.close() }
         val after = database(name)

@@ -85,7 +85,7 @@ class EntityPickerParentBlurTest {
             assertTrue("Picker must sample the green parent", android.graphics.Color.green(before) > android.graphics.Color.blue(before))
             var ownership = emptyList<Long>()
             host.main {
-                ownership = controller!!.registry.lowerLayers(Long.MAX_VALUE)
+                ownership = requireController(controller).registry.lowerLayers(Long.MAX_VALUE)
                 assertEquals(2, ownership.size)
                 color = Color.Blue
             }
@@ -94,7 +94,7 @@ class EntityPickerParentBlurTest {
             withTimeout(8000) { while (after == before) { delay(30); after = sample() } }
             assertNotEquals("Upper blur must refresh the suppressed parent's changed content", before, after)
             assertTrue("Picker must sample the changed blue parent", android.graphics.Color.blue(after) > android.graphics.Color.green(after))
-            host.main { assertEquals(ownership, controller!!.registry.lowerLayers(Long.MAX_VALUE)) }
+            host.main { assertEquals(ownership, requireController(controller).registry.lowerLayers(Long.MAX_VALUE)) }
         } finally { host.main { activity.setContent {}; activity.finish() } }
     }
 
@@ -154,7 +154,7 @@ class EntityPickerParentBlurTest {
             delay(500)
             capture("open")
             var bounds = androidx.compose.ui.geometry.Rect.Zero
-            host.main { bounds = title.boundsInWindow; assertEquals(2, controller!!.activeCount) }
+            host.main { bounds = title.boundsInWindow; assertEquals(2, requireController(controller).activeCount) }
             val density = host.context.resources.displayMetrics.density
             val tapY = bounds.top - 120 * density
             assertTrue("Fixture must expose scrim above the short sheet", tapY > 100f)
@@ -183,7 +183,7 @@ class EntityPickerParentBlurTest {
                     if (!restored) delay(30)
                 }
             }
-            host.main { assertEquals(1, controller!!.activeCount) }
+            host.main { assertEquals(1, requireController(controller).activeCount) }
             capture("after")
         } finally { host.main { activity.setContent {}; activity.finish() } }
     }
@@ -295,7 +295,7 @@ class EntityPickerParentBlurTest {
                 awaitLayers(1)
             }
             var parentToken = 0L
-            host.main { parentToken = controller!!.registry.lowerLayers(Long.MAX_VALUE).single() }
+            host.main { parentToken = requireController(controller).registry.lowerLayers(Long.MAX_VALUE).single() }
             repeat(3) { cycle ->
                 step = "open picker $cycle"
                 clickDescription(R.string.detail_tag_select_entities)
@@ -317,7 +317,7 @@ class EntityPickerParentBlurTest {
                     scroll = host.await(activity) { it.config.getOrNull(SemanticsActions.ScrollBy) != null && hasCandidate(it) }
                     host.await(activity) { host.text(it, "${host.context.getString(R.string.detail_entity_picker_selected)} (2/10)") }
                 }
-                host.main { assertTrue(controller!!.registry.lowerLayers(Long.MAX_VALUE).contains(parentToken)) }
+                host.main { assertTrue(requireController(controller).registry.lowerLayers(Long.MAX_VALUE).contains(parentToken)) }
                 if (cycle == 0) {
                     step = "toggle draft entity"
                     val remove = host.await(activity) { host.description(it, host.context.getString(R.string.detail_tag_remove_entity, "DraftOne")) }
@@ -369,7 +369,7 @@ class EntityPickerParentBlurTest {
                 awaitLayers(1)
                 host.await(activity) { host.text(it, "DraftOne") }
                 host.await(activity) { host.text(it, "DraftTwo") }
-                host.main { assertEquals(parentToken, controller!!.registry.lowerLayers(Long.MAX_VALUE).single()) }
+                host.main { assertEquals(parentToken, requireController(controller).registry.lowerLayers(Long.MAX_VALUE).single()) }
             }
         } catch (failure: Throwable) {
             val frame = host.instrumentation.uiAutomation.takeScreenshot()
@@ -431,24 +431,27 @@ class EntityPickerParentBlurTest {
             val initial = background(expectPlain = false)
             var ownership = emptyList<Long>()
             host.main {
-                ownership = controller!!.registry.lowerLayers(Long.MAX_VALUE)
+                ownership = requireController(controller).registry.lowerLayers(Long.MAX_VALUE)
                 assertEquals(1, ownership.size)
                 blur = false
             }
             assertEquals(tint.toArgb(), background(expectPlain = true))
             host.main {
-                assertEquals("Suppression retains source ownership", ownership, controller!!.registry.lowerLayers(Long.MAX_VALUE))
+                assertEquals("Suppression retains source ownership", ownership, requireController(controller).registry.lowerLayers(Long.MAX_VALUE))
                 blur = true
             }
             assertEquals("Restoring blur restores its captured background", initial, background(expectPlain = false))
             host.main { enabled = false }
             background(expectPlain = true)
-            host.main { assertEquals(0, controller!!.activeCount); blur = false; enabled = true }
+            host.main { assertEquals(0, requireController(controller).activeCount); blur = false; enabled = true }
             background(expectPlain = true)
-            host.main { assertEquals(ownership, controller!!.registry.lowerLayers(Long.MAX_VALUE)); blur = true }
+            host.main { assertEquals(ownership, requireController(controller).registry.lowerLayers(Long.MAX_VALUE)); blur = true }
             background(expectPlain = false)
         } finally { host.main { activity.setContent {}; activity.finish() } }
     }
+
+    private fun requireController(controller: OverlayBlurController?): OverlayBlurController =
+        requireNotNull(controller) { "Overlay blur controller was not initialized" }
 
     private fun Modifier.stripedBackground(): Modifier = drawBehind {
         val stripe = 8.dp.toPx()

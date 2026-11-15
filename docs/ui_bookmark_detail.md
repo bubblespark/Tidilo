@@ -45,6 +45,7 @@
   - **Leading Checkmarks**: `Icons.Default.Check` (`18.dp`, `primary`) on selected rows; `Spacer(18.dp)` on unselected rows for fixed text alignment.
 - **Entity Picker Bottom Sheet (`EntityTagPickerBottomSheet`)**:
   - Anchored at root `BookmarkDetailScreen` level (sliding over the dialog's lower half); OK uses `sheetState.hide()` before `onDismiss()`.
+  - While the picker is composed, the retained tag editor omits only its own background blur (`blurBackground = !showEntityBottomSheet`). Its source registration, tint, outline, native window and draft state remain intact; the picker keeps its own blur. Parent blur returns when dismissal removes the picker, including after the closing animation.
   - Top shows removable selected chips (`Icons.Default.Close`); bottom lists all library entities sorted via `compareEntityNames`. `SelectedEntityChip` and active `AllEntityToggleChip` share `primary` / `onPrimary` (`FontWeight.Bold`).
 - **10-Entity Ceiling Feedback**:
   - At `Tag.MAX_ENTITIES` (`10`), tapping `+` blocks `AddEntityDialog`, unselected picker chips dim (`0.38f` text/border, `0.25f` fill), and an inline banner (`errorContainer.copy(0.35f)`, error `Info` icon, `detail_tag_entity_limit_inline`) appears without a modal dialog until a tag is removed or closed.

@@ -12,6 +12,7 @@ import androidx.compose.ui.window.DialogProperties
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 
+/** Disabling background blur retains this dialog as a source for higher overlays. */
 @Composable
 fun TidiloAlertDialog(
     onDismissRequest: () -> Unit,
@@ -25,10 +26,11 @@ fun TidiloAlertDialog(
     containerColor: Color = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
     tonalElevation: Dp = AlertDialogDefaults.TonalElevation,
     properties: DialogProperties = DialogProperties(),
+    blurBackground: Boolean = true,
 ) {
     val layer = rememberOverlayBlurLayer(true)
     AlertDialog(onDismissRequest = onDismissRequest, confirmButton = confirmButton,
-        modifier = modifier.overlayBlurBackground(layer, shape, containerColor),
+        modifier = modifier.overlayBlurBackground(layer, shape, containerColor, blurBackground),
         dismissButton = dismissButton, icon = icon, title = title, text = text, shape = shape,
         containerColor = if (layer == null) containerColor else Color.Transparent,
         tonalElevation = if (layer == null) tonalElevation else 0.dp, properties = properties)

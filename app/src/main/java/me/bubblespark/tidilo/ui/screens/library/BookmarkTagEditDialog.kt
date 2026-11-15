@@ -85,6 +85,7 @@ fun BookmarkTagEditDialog(
     onPrivateChanged: (Boolean) -> Unit = {},
     onAddEntityClick: () -> Unit,
     onOpenEntityPickerClick: () -> Unit,
+    blurBackground: Boolean = true,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -110,6 +111,7 @@ fun BookmarkTagEditDialog(
 
     TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+        blurBackground = blurBackground,
         onDismissRequest = onDismiss,
         title = {
             Text(

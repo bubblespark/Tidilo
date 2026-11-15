@@ -538,6 +538,7 @@ fun BookmarkDetailScreen(
             // Tag edit dialogs & bottom sheet
             if (showTagEditDialog) {
                 BookmarkTagEditDialog(
+                    blurBackground = !showEntityBottomSheet,
                     selectedCategory = draftCategory,
                     selectedSubcategory = draftSubcategory,
                     selectedEntities = draftEntities,

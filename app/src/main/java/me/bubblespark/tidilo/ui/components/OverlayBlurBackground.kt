@@ -17,7 +17,12 @@ import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 
 /** Only captured lower sources are blurred; tint and foreground are drawn locally afterward. */
 @Composable
-internal fun Modifier.overlayBlurBackground(layer: OverlayBlurLayer?, shape: Shape, containerColor: Color): Modifier {
+internal fun Modifier.overlayBlurBackground(
+    layer: OverlayBlurLayer?,
+    shape: Shape,
+    containerColor: Color,
+    blurBackground: Boolean = true,
+): Modifier {
     if (layer == null) return this
     val dark = currentThemeSurfaces().isDark
     val tint = containerColor.copy(alpha = containerColor.alpha * if (dark) 0.78f else 0.82f)
@@ -31,7 +36,7 @@ internal fun Modifier.overlayBlurBackground(layer: OverlayBlurLayer?, shape: Sha
     } }
     return then(layer.sourceModifier).clip(shape)
         .background(containerColor.copy(alpha = 1f))
-        .hazeBlur(input = layer.input, style = style)
+        .then(if (blurBackground) Modifier.hazeBlur(input = layer.input, style = style) else Modifier)
         .drawWithContent { drawRect(tint); drawContent() }
         .border(1.dp, outline, shape)
 }

@@ -4,6 +4,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LibraryRadialMenuStateTest {
+    @Test fun onlyActiveCancellationRequestsFocusAndRepeatedCancellationIsSilent() {
+        val state = LibraryRadialMenuState()
+        var callbacks = 0
+        state.onCancellation = { callbacks++ }
+        state.cancel()
+        assertEquals(0, callbacks)
+        state.beginPress(1, "window")
+        state.cancel()
+        state.cancel()
+        assertEquals(1, callbacks)
+        assertNull(state.endPress(1, LibraryShortcut.SEARCH, true, "window").action)
+        state.activateTrigger()
+        state.cancel()
+        assertEquals(2, callbacks)
+    }
     @Test fun stationaryPressOpensOnlyOnReleaseAndSemanticActivationIsIndependent() {
         val state = LibraryRadialMenuState()
         state.beginPress(1, "window")

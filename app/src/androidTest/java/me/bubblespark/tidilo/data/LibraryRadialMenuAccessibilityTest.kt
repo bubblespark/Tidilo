@@ -18,6 +18,33 @@ import org.junit.Test
 import java.util.UUID
 
 class LibraryRadialMenuAccessibilityTest {
+    @Test fun closeRestoresTriggerFocusFromAnItem() = runBlocking {
+        RadialMenuFixture().use { fixture ->
+            for (physical in listOf(false, true)) {
+                var stage = "open"
+                try {
+                    fixture.click("trigger")
+                    fixture.node("search")
+                    fixture.host.instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_TAB)
+                    stage = "focus item"
+                    fixture.host.await(fixture.activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_search" &&
+                        it.config.getOrNull(SemanticsProperties.Focused) == true }
+                    stage = "close"
+                    if (physical) {
+                        val center = fixture.center("trigger")
+                        val time = android.os.SystemClock.uptimeMillis()
+                        fixture.send(android.view.MotionEvent.ACTION_DOWN, center, time)
+                        try { fixture.send(android.view.MotionEvent.ACTION_UP, center, time) }
+                        finally { fixture.send(android.view.MotionEvent.ACTION_CANCEL, center, time) }
+                    } else fixture.click("trigger")
+                    stage = "restore trigger"
+                    fixture.host.await(fixture.activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" &&
+                        it.config.getOrNull(SemanticsProperties.Focused) == true }
+                    fixture.host.main { assertFalse(fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
+                } catch (error: Exception) { throw AssertionError("physical=$physical, stage=$stage", error) }
+            }
+        }
+    }
     @Test fun everyShortcutHasIndependentActivationAndOnlyFiltersExposeSelection() = runBlocking {
         RadialMenuFixture().use { fixture ->
             for ((suffix, action) in listOf("search" to "SEARCH", "collection" to "COLLECTION", "rss" to "RSS",
@@ -80,6 +107,19 @@ class LibraryRadialMenuAccessibilityTest {
             host.main { trigger.config[SemanticsActions.OnClick].action!!.invoke() }
             host.await(activity) { host.description(it, host.context.getString(R.string.common_close)) }
             host.main { assertEquals(0, backgroundActions()) }
+            for (key in listOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_LEFT,
+                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT)) repeat(5) {
+                host.instrumentation.sendKeyDownUpSync(key)
+                delay(30)
+                host.main {
+                    assertTrue("Directional focus escaped the menu: $key", host.nodes(activity).any {
+                        it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("library_radial_") == true &&
+                            it.config.getOrNull(SemanticsProperties.Focused) == true
+                    })
+                }
+            }
+            val close = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" }
+            host.main { assertTrue(close.config[SemanticsActions.RequestFocus].action!!.invoke()) }
             host.instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_TAB)
             host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_search" &&
                 it.config.getOrNull(SemanticsProperties.Focused) == true }

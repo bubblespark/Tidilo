@@ -4,6 +4,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -34,6 +35,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.*
@@ -91,6 +93,14 @@ private class TriggerPressFeedback(private val source: MutableInteractionSource)
     fun cancel() { press?.let { source.tryEmit(PressInteraction.Cancel(it)) }; press = null }
 }
 
+/** A square layout corner belongs to outside dismissal, never to a shortcut. */
+private suspend fun AwaitPointerEventScope.consumeOutsideGesture() {
+    do {
+        val event = awaitPointerEvent(PointerEventPass.Initial)
+        event.changes.forEach { it.consume() }
+    } while (event.changes.any { it.pressed })
+}
+
 /** One persistent trigger owns physical input; every item also has ordinary button semantics. */
 @Composable
 fun LibraryRadialMenu(
@@ -133,6 +143,8 @@ fun LibraryRadialMenu(
         }
         if (event.opened) {
             haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+            focuses[0].requestFocus()
+        } else if (event.closed) {
             focuses[0].requestFocus()
         }
         if (event.entered != null) haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
@@ -181,7 +193,10 @@ fun LibraryRadialMenu(
             val center = size.width / 2f
             val origin = down.position
             down.consume()
-            if (!geometry.inTrigger(origin.x - center, origin.y - center)) return@awaitEachGesture
+            if (!geometry.inTrigger(origin.x - center, origin.y - center)) {
+                try { consumeOutsideGesture() } finally { cancel() }
+                return@awaitEachGesture
+            }
             val stamp = currentSignature()
             environment.signature = stamp
             state.beginPress(down.id.value, stamp)
@@ -219,7 +234,9 @@ fun LibraryRadialMenu(
         }
     }
     val retainedTarget = remember { arrayOfNulls<LibraryShortcut>(1) }
-    Layout(modifier = modifier.fillMaxSize().then(if (open) Modifier.semantics {
+    Layout(modifier = modifier.fillMaxSize().focusProperties {
+        onExit = { if (state.isOpen) cancelFocusChange() }
+    }.focusGroup().then(if (open) Modifier.semantics {
         paneTitle = pane
         isTraversalGroup = true
     } else Modifier).onPreviewKeyEvent { event ->
@@ -234,6 +251,7 @@ fun LibraryRadialMenu(
         RadialButton(null, triggerLabel, true, false, false, source,
             Modifier.zIndex(1f).then(triggerInput)
                 .focusRequester(focuses[0]).focusProperties {
+                    canFocus = true
                     if (open) { next = focuses[1]; previous = focuses[5] }
                 }.onPreviewKeyEvent { event ->
                     if (open && event.type == KeyEventType.KeyDown && event.key == Key.Tab) {
@@ -328,7 +346,12 @@ private fun RadialButton(
                 (position - androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)).getDistance() <= size.width / 2f
             var valid = inside(down.position)
             var completed = false
-            if (!valid) down.consume() else onFeedback(action)
+            if (!valid) {
+                down.consume()
+                try { consumeOutsideGesture() } finally { onPointerCancellation() }
+                return@awaitEachGesture
+            }
+            onFeedback(action)
             try {
                 do {
                     val event = awaitPointerEvent(PointerEventPass.Initial)

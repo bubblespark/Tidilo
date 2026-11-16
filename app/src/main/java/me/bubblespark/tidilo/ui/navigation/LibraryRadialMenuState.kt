@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 data class LibraryRadialMenuEvent(
     val action: LibraryShortcut? = null,
     val opened: Boolean = false,
+    val closed: Boolean = false,
     val entered: LibraryShortcut? = null
 )
 
@@ -29,7 +30,7 @@ class LibraryRadialMenuState {
         val opening = !isOpen
         isOpen = opening
         feedbackTarget = null
-        return LibraryRadialMenuEvent(opened = opening)
+        return LibraryRadialMenuEvent(opened = opening, closed = !opening)
     }
 
     fun beginPress(id: Long, geometrySignature: Any) {
@@ -60,7 +61,7 @@ class LibraryRadialMenuState {
         if (!allowed) return LibraryRadialMenuEvent()
         if (wasSwiping) {
             close()
-            return LibraryRadialMenuEvent(action = target)
+            return LibraryRadialMenuEvent(action = target, closed = target == null)
         }
         return if (insideTrigger) activateTrigger() else LibraryRadialMenuEvent()
     }
@@ -78,8 +79,9 @@ class LibraryRadialMenuState {
     }
 
     fun cancel() {
+        val wasActive = isOpen || valid
         close()
-        onCancellation?.invoke()
+        if (wasActive) onCancellation?.invoke()
     }
 
     private fun close() {

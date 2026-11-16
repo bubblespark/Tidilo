@@ -119,6 +119,22 @@ internal class RadialMenuFixture(val direction: LayoutDirection = LayoutDirectio
 }
 
 class LibraryRadialMenuInteractionTest {
+    @Test fun tapsOutsideEveryCircleInsideControlBoundsDismiss() = runBlocking {
+        RadialMenuFixture().use { fixture ->
+            for (target in listOf("trigger", "search", "collection", "rss", "domain", "newest_first")) {
+                fixture.click("trigger")
+                val bounds = fixture.node(target).boundsInWindow
+                val corner = bounds.bottomRight - Offset(2f, 2f)
+                val time = SystemClock.uptimeMillis()
+                fixture.send(MotionEvent.ACTION_DOWN, corner, time)
+                try {
+                    fixture.send(MotionEvent.ACTION_UP, corner, time)
+                    delay(100)
+                    fixture.host.main { assertFalse(target, fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
+                } finally { fixture.send(MotionEvent.ACTION_CANCEL, corner, time) }
+            }
+        }
+    }
     @Test fun backgroundingCancelsTapOpenMenu() = runBlocking {
         RadialMenuFixture().use { fixture ->
             fixture.click("trigger")
@@ -149,8 +165,18 @@ class LibraryRadialMenuInteractionTest {
                     finally { event.recycle() }
                     val cancel = MotionEvent.obtain(time, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL,
                         2, properties, coordinates, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
-                    try { assertTrue(fixture.host.instrumentation.uiAutomation.injectInputEvent(cancel, true)) }
-                    finally { cancel.recycle() }
+                    try {
+                        withTimeout(3000) {
+                            var closed = false
+                            while (!closed) {
+                                fixture.host.main { closed = !fixture.state.isOpen; assertTrue(fixture.actions.isEmpty()) }
+                                if (!closed) delay(20)
+                            }
+                        }
+                    } finally {
+                        try { assertTrue(fixture.host.instrumentation.uiAutomation.injectInputEvent(cancel, true)) }
+                        finally { cancel.recycle() }
+                    }
                 } else fixture.send(MotionEvent.ACTION_CANCEL, center, time)
                 delay(100)
                 fixture.host.main { assertFalse("additional=$additional", fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }

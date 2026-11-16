@@ -325,17 +325,20 @@ class EntityPickerParentBlurTest {
                     host.await(activity) { host.text(it, "${host.context.getString(R.string.detail_entity_picker_selected)} (1/10)") }
                     val candidate = host.await(activity) { host.text(it, "DraftOne") && inDialog(it, R.string.detail_entity_picker_title) }
                     click(candidate)
+                    host.await(activity) { host.text(it, "${host.context.getString(R.string.detail_entity_picker_selected)} (2/10)") }
                     step = "verify ten-entity feedback"
                     val extras = (3..10).map { "Picker fixture entity $it" }
-                    for (name in extras) {
+                    for ((index, name) in extras.withIndex()) {
                         click(host.await(activity) { host.text(it, name) && inDialog(it, R.string.detail_entity_picker_title) })
+                        host.await(activity) { host.text(it, "${host.context.getString(R.string.detail_entity_picker_selected)} (${index + 3}/10)") }
                     }
                     host.await(activity) { host.text(it, "${host.context.getString(R.string.detail_entity_picker_selected)} (10/10)") }
                     click(host.await(activity) { host.text(it, "Picker fixture entity 11") && inDialog(it, R.string.detail_entity_picker_title) })
                     host.await(activity) { host.text(it, host.context.getString(R.string.detail_tag_entity_limit_inline)) }
                     host.await(activity) { host.text(it, "${host.context.getString(R.string.detail_entity_picker_selected)} (10/10)") }
-                    for (name in extras) {
+                    for ((index, name) in extras.withIndex()) {
                         click(host.await(activity) { host.description(it, host.context.getString(R.string.detail_tag_remove_entity, name)) })
+                        host.await(activity) { host.text(it, "${host.context.getString(R.string.detail_entity_picker_selected)} (${9 - index}/10)") }
                     }
                     host.await(activity) { host.text(it, "${host.context.getString(R.string.detail_entity_picker_selected)} (2/10)") }
                 }
@@ -408,7 +411,7 @@ class EntityPickerParentBlurTest {
                     }
                 })
             } } }
-            suspend fun background(expectPlain: Boolean): Int = withTimeout(8000) {
+            suspend fun background(expectPlain: Boolean, expected: Int? = null, captureName: String? = null): Int = withTimeout(8000) {
                 while (true) {
                     val frame = host.instrumentation.uiAutomation.takeScreenshot()
                     try {
@@ -417,8 +420,12 @@ class EntityPickerParentBlurTest {
                         if (rows.isNotEmpty()) {
                             val y = (rows.first() + rows.last()) / 2
                             val pixel = frame.getPixel(x + 80, y)
-                            if ((pixel == tint.toArgb()) == expectPlain) {
+                            if ((pixel == tint.toArgb()) == expectPlain && (expected == null || pixel == expected)) {
                                 assertEquals("Foreground remains sharp", Color.Magenta.toArgb(), frame.getPixel(x, y))
+                                if (captureName != null) java.io.File(host.context.cacheDir,
+                                    "blur-restoration-$theme-$dark-$captureName.png").outputStream().use {
+                                    frame.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                                }
                                 return@withTimeout pixel
                             }
                         }
@@ -428,25 +435,35 @@ class EntityPickerParentBlurTest {
                 @Suppress("UNREACHABLE_CODE")
                 error("No matching background")
             }
-            val initial = background(expectPlain = false)
+            val initial = background(expectPlain = false, captureName = "initial")
             var ownership = emptyList<Long>()
             host.main {
                 ownership = requireController(controller).registry.lowerLayers(Long.MAX_VALUE)
                 assertEquals(1, ownership.size)
                 blur = false
             }
-            assertEquals(tint.toArgb(), background(expectPlain = true))
+            assertEquals(tint.toArgb(), background(expectPlain = true, captureName = "plain"))
             host.main {
                 assertEquals("Suppression retains source ownership", ownership, requireController(controller).registry.lowerLayers(Long.MAX_VALUE))
                 blur = true
             }
-            assertEquals("Restoring blur restores its captured background", initial, background(expectPlain = false))
+            val intermediate = background(expectPlain = false, captureName = "intermediate")
+            assertNotEquals("Restoration must show an intermediate background, not jump to full blur", initial, intermediate)
+            host.main { blur = false }
+            background(expectPlain = true)
+            host.main {
+                assertEquals("Interrupted restoration retains source ownership", ownership,
+                    requireController(controller).registry.lowerLayers(Long.MAX_VALUE))
+                blur = true
+            }
+            assertEquals("Restoring blur restores its captured background", initial,
+                background(expectPlain = false, expected = initial, captureName = "restored"))
             host.main { enabled = false }
             background(expectPlain = true)
             host.main { assertEquals(0, requireController(controller).activeCount); blur = false; enabled = true }
             background(expectPlain = true)
             host.main { assertEquals(ownership, requireController(controller).registry.lowerLayers(Long.MAX_VALUE)); blur = true }
-            background(expectPlain = false)
+            background(expectPlain = false, expected = initial)
         } finally { host.main { activity.setContent {}; activity.finish() } }
     }
 

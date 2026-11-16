@@ -4,6 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LibraryRadialMenuGeometryTest {
+    @Test fun movingCentersAndOverlapsFollowTheDrawOrder() {
+        val geometry = LibraryRadialMenuGeometry(1f)
+        assertEquals(RadialPoint(-65, -37), geometry.centerAt(LibraryShortcut.RSS, .5f))
+        assertEquals(RadialPoint(-26, -26), geometry.centerAt(LibraryShortcut.SEARCH, .5f))
+        assertNull(geometry.targetAt(0f, 0f, .2f))
+        assertEquals(LibraryShortcut.NEWEST_FIRST, geometry.targetAt(0f, -40f, .2f))
+        assertEquals(LibraryShortcut.DOMAIN, geometry.targetAt(-75f, -130f, 1f))
+    }
     @Test fun popupAvoidsOtherTargetsAndUsesLeftSpaceInShortWindows() {
         val geometry = LibraryRadialMenuGeometry(1f)
         assertEquals(RadialPoint(200, 274), geometry.popup(RadialPoint(300, 500), LibraryShortcut.SEARCH,

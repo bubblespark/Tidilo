@@ -22,9 +22,19 @@ class LibraryRadialMenuGeometry(density: Float, val diameter: Int = (56 * densit
 
     fun inTrigger(x: Float, y: Float): Boolean = hypot(x, y) <= radius
 
-    fun targetAt(x: Float, y: Float): LibraryShortcut? = centers.entries.firstOrNull { (_, center) ->
-        hypot(x - center.x, y - center.y) <= radius
-    }?.key
+    fun centerAt(action: LibraryShortcut, progress: Float): RadialPoint {
+        val center = centers.getValue(action)
+        val fraction = progress.coerceIn(0f, 1f)
+        return RadialPoint((center.x * fraction).roundToInt(), (center.y * fraction).roundToInt())
+    }
+
+    fun targetAt(x: Float, y: Float, progress: Float = 1f): LibraryShortcut? {
+        if (inTrigger(x, y)) return null
+        return LibraryShortcut.entries.reversed().firstOrNull { action ->
+            val center = centerAt(action, progress)
+            hypot(x - center.x, y - center.y) <= radius
+        }
+    }
 
     fun anchor(width: Int, height: Int, right: Int, bottom: Int, margin: Int): RadialPoint =
         RadialPoint(width - right - margin - diameter / 2, height - bottom - margin - diameter / 2)
@@ -36,7 +46,8 @@ class LibraryRadialMenuGeometry(density: Float, val diameter: Int = (56 * densit
         }
 
     fun popup(anchor: RadialPoint, target: LibraryShortcut, width: Int, height: Int,
-        left: Int, top: Int, right: Int, bottom: Int, gap: Int): RadialPoint {
+        left: Int, top: Int, right: Int, bottom: Int, gap: Int, progress: Float = 1f): RadialPoint {
+        val centers = centers.mapValues { centerAt(it.key, progress) }
         val center = centers.getValue(target)
         val x = anchor.x + center.x - diameter / 2 - gap - width
         val y = anchor.y + center.y - diameter / 2 - gap - height

@@ -86,9 +86,13 @@ internal class RadialMenuFixture(val direction: LayoutDirection = LayoutDirectio
     suspend fun click(suffix: String) {
         val node = node(suffix)
         host.main { assertTrue(node.config[SemanticsActions.OnClick].action!!.invoke()) }
+        if (state.isOpen) delay(280)
     }
 
-    suspend fun center(suffix: String): Offset = node(suffix).boundsInWindow.center
+    suspend fun center(suffix: String): Offset {
+        if (state.isOpen) delay(280)
+        return node(suffix).boundsInWindow.center
+    }
 
     fun send(action: Int, position: Offset, downTime: Long) {
         if (action == MotionEvent.ACTION_CANCEL && !pointerDown) return
@@ -119,6 +123,86 @@ internal class RadialMenuFixture(val direction: LayoutDirection = LayoutDirectio
 }
 
 class LibraryRadialMenuInteractionTest {
+    @Test fun midExpansionCornerTapSelectsSearchInsteadOfDismissing() = runBlocking {
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        val previous = android.provider.Settings.Global.getString(instrumentation.targetContext.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE)
+        fun shell(command: String) { instrumentation.uiAutomation.executeShellCommand(command).use {
+            java.io.FileInputStream(it.fileDescriptor).use { stream -> stream.readBytes() }
+        } }
+        try {
+            shell("settings put global animator_duration_scale 10")
+            delay(200)
+            RadialMenuFixture().use { fixture ->
+                val trigger = fixture.center("trigger")
+                val button = fixture.node("trigger")
+                fixture.host.main { button.config[SemanticsActions.OnClick].action!!.invoke() }
+                val density = fixture.activity.resources.displayMetrics.density
+                withTimeout(4000) {
+                    var ready = false
+                    while (!ready) {
+                        fixture.host.main {
+                            val node = fixture.host.nodes(fixture.activity).first { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_newest_first" }
+                            val progress = (trigger.y - node.boundsInWindow.center.y) / (150f * density)
+                            ready = progress in .48f.. .65f
+                        }
+                        if (!ready) delay(10)
+                    }
+                }
+                val point = trigger + Offset(-25f * density, -25f * density)
+                val time = SystemClock.uptimeMillis()
+                fixture.send(MotionEvent.ACTION_DOWN, point, time)
+                try { fixture.send(MotionEvent.ACTION_UP, point, time) }
+                finally { fixture.send(MotionEvent.ACTION_CANCEL, point, time) }
+                delay(100)
+                fixture.host.main { assertEquals(listOf("SEARCH"), fixture.actions); assertFalse(fixture.state.isOpen) }
+            }
+        } finally {
+            shell(if (previous == null) "settings delete global animator_duration_scale" else "settings put global animator_duration_scale $previous")
+        }
+    }
+
+    @Test fun expansionAndRetractionMoveItemsWhileTriggerStaysFixed() = runBlocking {
+        RadialMenuFixture().use { fixture ->
+            val trigger = fixture.center("trigger")
+            val samples = java.util.concurrent.CopyOnWriteArrayList<Float>()
+            var sampling = true
+            val callback = object : android.view.Choreographer.FrameCallback {
+                override fun doFrame(time: Long) {
+                    fixture.host.nodes(fixture.activity).firstOrNull {
+                        it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_newest_first" &&
+                            generateSequence(it) { node -> node.parent }.any { node ->
+                                node.config.getOrNull(SemanticsProperties.TestTag) == "radial_fixture"
+                            }
+                    }?.let { samples += it.boundsInWindow.center.y }
+                    if (sampling) android.view.Choreographer.getInstance().postFrameCallback(this)
+                }
+            }
+            try {
+                fixture.host.main {
+                    android.view.Choreographer.getInstance().postFrameCallback(callback)
+                    val button = fixture.host.nodes(fixture.activity).first {
+                        it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" &&
+                            it.config.getOrNull(SemanticsActions.OnClick) != null
+                    }
+                    button.config[SemanticsActions.OnClick].action!!.invoke()
+                }
+                delay(400)
+                assertTrue("Opening must move, not only fade", samples.distinct().size > 2)
+                assertTrue(samples.first() > samples.last())
+                assertEquals(trigger, fixture.center("trigger"))
+                samples.clear()
+                fixture.click("trigger")
+                delay(400)
+                assertTrue("Closing must move", samples.distinct().size > 2)
+                assertTrue(samples.first() < samples.last())
+                fixture.host.main { assertFalse(fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
+            } finally {
+                fixture.host.main { sampling = false; android.view.Choreographer.getInstance().removeFrameCallback(callback) }
+            }
+        }
+    }
+
     @Test fun tapsOutsideEveryCircleInsideControlBoundsDismiss() = runBlocking {
         RadialMenuFixture().use { fixture ->
             for (target in listOf("trigger", "search", "collection", "rss", "domain", "newest_first")) {

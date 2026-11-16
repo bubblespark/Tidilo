@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.navigation
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -35,6 +37,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
@@ -65,6 +69,9 @@ private class MenuEnvironment {
     var width = 0
     var height = 0
     var fits = false
+    var pointer: Long? = null
+    var pointerPosition = androidx.compose.ui.geometry.Offset.Zero
+    var swiping = false
 }
 
 private fun LibraryShortcut.filter(): LibraryFilterMode? = when (this) {
@@ -101,6 +108,25 @@ private suspend fun AwaitPointerEventScope.consumeOutsideGesture() {
     } while (event.changes.any { it.pressed })
 }
 
+private suspend fun AwaitPointerEventScope.cornerAction(
+    down: PointerInputChange, feedback: (LibraryShortcut?) -> Unit, resolve: (Offset) -> LibraryShortcut?
+): LibraryShortcut? {
+    val initial = resolve(down.position)
+    var valid = true
+    feedback(initial)
+    try {
+    do {
+        val event = awaitPointerEvent(PointerEventPass.Initial)
+        if (event.changes.any { it.isConsumed || (it.id != down.id && it.pressed) }) valid = false
+        val change = event.changes.firstOrNull { it.id == down.id }
+        if (change == null || (change.position - down.position).getDistance() > viewConfiguration.touchSlop) valid = false
+        feedback(initial.takeIf { valid && change != null && resolve(change.position) == initial })
+        event.changes.forEach { it.consume() }
+        if (event.changes.none { it.pressed }) return initial.takeIf { valid && change != null && resolve(change.position) == initial }
+    } while (true)
+    } finally { feedback(null) }
+}
+
 /** One persistent trigger owns physical input; every item also has ordinary button semantics. */
 @Composable
 fun LibraryRadialMenu(
@@ -128,6 +154,7 @@ fun LibraryRadialMenu(
     val source = remember { MutableInteractionSource() }
     val pressFeedback = remember(source) { TriggerPressFeedback(source) }
     val environment = remember { MenuEnvironment() }
+    val expansion = remember { Animatable(0f) }
     // Updated metadata is read again at input dispatch, before asynchronous observers can run.
     val metadata by rememberUpdatedState(listOf(configuration.orientation, density.density, density.fontScale, left, top, right, bottom))
     fun signature(): Any = listOf(window.containerSize, window.isWindowFocused, metadata,
@@ -173,11 +200,23 @@ fun LibraryRadialMenu(
     LaunchedEffect(window, state) {
         var previous = currentSignature()
         snapshotFlow { currentSignature() }.collect { next ->
-            if (next != previous && environment.signature != next) cancel()
+            if (next != previous && environment.signature != next) { cancel(); expansion.snapTo(0f) }
             previous = next
         }
     }
     val open = state.isOpen
+    LaunchedEffect(open) {
+        expansion.animateTo(if (open) 1f else 0f, tween(230, easing = CubicBezierEasing(.2f, .8f, .2f, 1f)))
+    }
+    LaunchedEffect(state, geometry, expansion) {
+        snapshotFlow { expansion.value }.collect { fraction ->
+            val pointer = environment.pointer
+            if (pointer != null && environment.swiping) {
+                val position = environment.pointerPosition
+                dispatch(state.movePress(pointer, true, geometry.targetAt(position.x, position.y, fraction), currentSignature()))
+            }
+        }
+    }
     val alpha = animateFloatAsState(if (open) 1f else 0f, tween(140), label = "shortcutOpacity")
     val dim = animateFloatAsState(if (open) .65f else 0f, tween(180), label = "shortcutDim")
     val glyphRotation = animateFloatAsState(if (open) 90f else 0f, tween(200), label = "shortcutRotation")
@@ -194,12 +233,17 @@ fun LibraryRadialMenu(
             val origin = down.position
             down.consume()
             if (!geometry.inTrigger(origin.x - center, origin.y - center)) {
-                try { consumeOutsideGesture() } finally { cancel() }
+                try {
+                    val action = cornerAction(down, { dispatch(state.feedback(it)) }) { point -> geometry.targetAt(point.x - center, point.y - center, expansion.value) }
+                    if (action == null) cancel() else dispatch(state.activateItem(action))
+                } catch (error: kotlinx.coroutines.CancellationException) { cancel(); throw error }
                 return@awaitEachGesture
             }
             val stamp = currentSignature()
             environment.signature = stamp
             state.beginPress(down.id.value, stamp)
+            environment.pointer = down.id.value
+            environment.swiping = false
             pressFeedback.start(origin)
             var crossedSlop = false
             try {
@@ -213,22 +257,27 @@ fun LibraryRadialMenu(
                     if (change == null) break
                     if (currentSignature() != stamp) cancel()
                     val relative = change.position - androidx.compose.ui.geometry.Offset(center, center)
+                    environment.pointerPosition = relative
                     if (!crossedSlop && (change.position - origin).getDistance() > slop) {
                         crossedSlop = true
+                        environment.swiping = true
                         pressFeedback.cancel()
                     }
                     if (change.pressed) {
                         dispatch(state.movePress(down.id.value, crossedSlop,
-                            geometry.targetAt(relative.x, relative.y), currentSignature()))
+                            geometry.targetAt(relative.x, relative.y, expansion.value), currentSignature()))
                     } else {
                         val inside = geometry.inTrigger(relative.x, relative.y)
-                        if (!crossedSlop && inside && stamp == currentSignature()) pressFeedback.release() else pressFeedback.cancel()
-                        dispatch(state.endPress(down.id.value, geometry.targetAt(relative.x, relative.y), inside, currentSignature()))
+                        environment.pointerPosition = relative
+                    if (!crossedSlop && inside && stamp == currentSignature()) pressFeedback.release() else pressFeedback.cancel()
+                        dispatch(state.endPress(down.id.value, geometry.targetAt(relative.x, relative.y, expansion.value), inside, currentSignature()))
                         break
                     }
                 }
             } finally {
                 pressFeedback.cancel()
+                environment.pointer = null
+                environment.swiping = false
                 state.cancelPendingPress(down.id.value)
             }
         }
@@ -249,7 +298,7 @@ fun LibraryRadialMenu(
                 detectTapGestures { cancel() }
             } else Modifier))
         RadialButton(null, triggerLabel, true, false, false, source,
-            Modifier.zIndex(1f).then(triggerInput)
+            Modifier.zIndex(2f).then(triggerInput)
                 .focusRequester(focuses[0]).focusProperties {
                     canFocus = true
                     if (open) { next = focuses[1]; previous = focuses[5] }
@@ -282,7 +331,18 @@ fun LibraryRadialMenu(
                                 focuses[if (event.isShiftPressed) index else if (index == 4) 0 else index + 2].requestFocus(); true
                             } else false
                         }, onClick = { dispatch(state.activateItem(action)) },
-                    onFeedback = { dispatch(state.feedback(it)) }, onPointerCancellation = state::cancel) {
+                    onFeedback = { dispatch(state.feedback(it)) }, onPointerCancellation = state::cancel,
+                    artworkScale = { .65f + .35f * expansion.value },
+                    onOutsidePress = { down ->
+                        try {
+                            val chosen = cornerAction(down, { dispatch(state.feedback(it)) }) { point ->
+                                val center = geometry.centerAt(action, expansion.value)
+                                geometry.targetAt(center.x + point.x - size.width / 2f,
+                                    center.y + point.y - size.height / 2f, expansion.value)
+                            }
+                            if (chosen == null) state.cancel() else dispatch(state.activateItem(chosen))
+                        } catch (error: kotlinx.coroutines.CancellationException) { state.cancel(); throw error }
+                    }) {
                     Icon(when (action) {
                         LibraryShortcut.SEARCH -> Icons.Default.Search
                         LibraryShortcut.COLLECTION -> Icons.Default.CollectionsBookmark
@@ -298,7 +358,7 @@ fun LibraryRadialMenu(
         val popupAlpha = animateFloatAsState(if (open && target != null) 1f else 0f, tween(100), label = "shortcutName")
         val popupMovement = animateFloatAsState(if (open && target != null) 0f else 1f, tween(140), label = "shortcutNameMovement")
         Text((target ?: retainedTarget[0])?.let { stringResource(it.label()) }.orEmpty(),
-            Modifier.zIndex(2f).testTag("library_radial_name").clearAndSetSemantics {}
+            Modifier.zIndex(3f).testTag("library_radial_name").clearAndSetSemantics {}
                 .graphicsLayer { this.alpha = popupAlpha.value; translationY = popupMovement.value * -6.dp.toPx() }
                 .background(MaterialTheme.colorScheme.inverseSurface, MaterialTheme.shapes.small).padding(12.dp, 8.dp),
             color = MaterialTheme.colorScheme.inverseOnSurface, style = MaterialTheme.typography.labelLarge)
@@ -316,12 +376,12 @@ fun LibraryRadialMenu(
         environment.fits = geometry.fits(anchor, left, top, width - right, height - bottom)
         val target = state.feedbackTarget ?: retainedTarget[0] ?: LibraryShortcut.SEARCH
         val label = geometry.popup(anchor, target, popup.width, popup.height, left + margin, top + margin,
-            width - right - margin, height - bottom - margin, (8 * density.density).toInt())
+            width - right - margin, height - bottom - margin, (8 * density.density).toInt(), expansion.value)
         layout(width, height) {
             scrim.place(0, 0)
             buttons[0].place(anchor.x - geometry.diameter / 2, anchor.y - geometry.diameter / 2)
             shortcutOrder.forEachIndexed { index, action ->
-                val point = geometry.centers.getValue(action)
+                val point = geometry.centerAt(action, expansion.value)
                 buttons[index + 1].place(anchor.x + point.x - geometry.diameter / 2, anchor.y + point.y - geometry.diameter / 2)
             }
             popup.place(label.x, label.y)
@@ -334,6 +394,8 @@ private fun RadialButton(
     action: LibraryShortcut?, label: String, enabled: Boolean, selected: Boolean, highlighted: Boolean,
     source: MutableInteractionSource, modifier: Modifier, onClick: () -> Unit,
     onFeedback: (LibraryShortcut?) -> Unit = {}, onPointerCancellation: () -> Unit = {},
+    artworkScale: () -> Float = { 1f },
+    onOutsidePress: suspend AwaitPointerEventScope.(PointerInputChange) -> Unit = { consumeOutsideGesture(); onPointerCancellation() },
     content: @Composable () -> Unit
 ) {
     val style = currentThemeSurfaces().resolve(
@@ -348,7 +410,7 @@ private fun RadialButton(
             var completed = false
             if (!valid) {
                 down.consume()
-                try { consumeOutsideGesture() } finally { onPointerCancellation() }
+                onOutsidePress(down)
                 return@awaitEachGesture
             }
             onFeedback(action)
@@ -373,20 +435,25 @@ private fun RadialButton(
             }
         }
     } else Modifier
-    ResolvedTidiloSurface(style, modifier.size(HeaderDefaults.LibraryActionSize), blurBackground = enabled) {
+    Box(modifier.size(HeaderDefaults.LibraryActionSize)) {
+        ResolvedTidiloSurface(style, Modifier.fillMaxSize().graphicsLayer {
+            scaleX = artworkScale(); scaleY = scaleX
+        }, blurBackground = enabled) {
+            Box(Modifier.fillMaxSize().drawBehind {
+                if (highlighted) drawCircle(style.contentColor.copy(alpha = .16f))
+            }, contentAlignment = Alignment.Center) {
+                content()
+                if (selected && action != LibraryShortcut.SEARCH && action != null) {
+                    Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 5.dp).size(4.dp).background(style.contentColor, CircleShape))
+                }
+            }
+        }
         Box(Modifier.fillMaxSize().testTag(if (action == null) "library_radial_trigger" else "library_radial_${action.name.lowercase(java.util.Locale.ROOT)}").clip(CircleShape).then(guard)
             .then(if (enabled) Modifier.semantics {
                 contentDescription = label
                 traversalIndex = if (action == null) 0f else action.ordinal + 1f
                 if (action != null && action != LibraryShortcut.SEARCH) this.selected = selected
             }.clickable(interactionSource = source, indication = ripple(), role = Role.Button, onClick = onClick)
-            else Modifier.clearAndSetSemantics {})
-            .drawBehind { if (highlighted) drawCircle(style.contentColor.copy(alpha = .16f)) },
-            contentAlignment = Alignment.Center) {
-            content()
-            if (selected && action != LibraryShortcut.SEARCH && action != null) {
-                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 5.dp).size(4.dp).background(style.contentColor, CircleShape))
-            }
-        }
+            else Modifier.clearAndSetSemantics {}))
     }
 }

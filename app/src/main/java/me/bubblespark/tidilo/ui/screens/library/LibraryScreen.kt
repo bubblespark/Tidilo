@@ -97,7 +97,7 @@ import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
 import me.bubblespark.tidilo.ui.components.RememberAmbientLighting
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.screenSystemInsets
-import me.bubblespark.tidilo.ui.components.screenActionInsets
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.rememberDomainVisual
 import me.bubblespark.tidilo.ui.components.rememberFeedVisual
@@ -260,10 +260,16 @@ fun LibraryScreen(
     val headerHeight = HeaderDefaults.bodyTopPadding()
 
     var peekBookmark by remember { mutableStateOf<BookmarkItem?>(null) }
+    val radialMenuState = me.bubblespark.tidilo.ui.navigation.rememberLibraryRadialMenuState()
+    val radialMenuOpen = radialMenuState.isOpen
+    LaunchedEffect(peekBookmark != null, showCollectionEditorSheet) {
+        if (peekBookmark != null || showCollectionEditorSheet) radialMenuState.cancel()
+    }
+    BackHandler(enabled = radialMenuOpen) { radialMenuState.cancel() }
     LaunchedEffect(filterMode, selectedDomainFilter, selectedFeed?.id) { peekBookmark = null }
 
     // Dismiss summary peek on system back gesture
-    BackHandler(enabled = peekBookmark != null) {
+    BackHandler(enabled = peekBookmark != null && !radialMenuOpen) {
         peekBookmark = null
     }
 
@@ -291,20 +297,21 @@ fun LibraryScreen(
         }
     }
     if (isDrillDown) {
-        BackHandler(enabled = peekBookmark == null) {
+        BackHandler(enabled = peekBookmark == null && !radialMenuOpen) {
             clearCollectionFilter()
         }
     }
 
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), 
         modifier = modifier,
+        bodyModifier = if (radialMenuOpen) Modifier.clearAndSetSemantics {} else Modifier,
         hideHeaderOnScroll = true,
         bottomContentPadding = HeaderDefaults.LibraryActionClearance,
         headerVisible = peekBookmark == null,
         overlay = {
             if (peekBookmark == null && !showCollectionEditorSheet) {
-                me.bubblespark.tidilo.ui.navigation.LibrarySearchAction(onNavigateToSearch,
-                    Modifier.align(Alignment.BottomEnd).screenActionInsets().padding(end = 24.dp, bottom = 24.dp))
+                me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu(radialMenuState, filterMode,
+                    viewModel::setFilterMode, onNavigateToSearch)
             }
             BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null }
             if (showCollectionEditorSheet) {
@@ -319,6 +326,7 @@ fun LibraryScreen(
         },
         // Expressive Header (slides out/in from top screen edge linked with scrolling, hidden during peek)
         header = {
+            Box(if (radialMenuOpen) Modifier.clearAndSetSemantics {} else Modifier) {
             TidiloFrostedHeader(
                 scrollState = activeScrollState,
                 onTitleClick = {
@@ -498,6 +506,7 @@ fun LibraryScreen(
 
                 }
             )
+            }
         }
     ) { contentPadding ->
         if (initializationFailure != null) {

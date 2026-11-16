@@ -40,7 +40,9 @@ import me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent
 import me.bubblespark.tidilo.ui.screens.settings.SettingsGroup
 import me.bubblespark.tidilo.ui.screens.settings.StorageLoad
 import me.bubblespark.tidilo.ui.theme.*
-import me.bubblespark.tidilo.ui.navigation.LibrarySearchAction
+import me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu
+import me.bubblespark.tidilo.ui.navigation.rememberLibraryRadialMenuState
+import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
 import me.bubblespark.tidilo.ui.navigation.LibraryNavigationRail
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.rememberWideNavigationRailState
@@ -234,10 +236,10 @@ class ThemeConsumerRegressionTest {
                 SurfaceRole.PRIMARY_ACTION to SurfaceStyleOverride(containerColor = Color.Black, opacity = opacity)))
             scene(preset, blurEnabled = true, content = {
                 TidiloScreenScaffold(header = {}, modifier = Modifier.size(220.dp), overlay = {
-                    LibrarySearchAction({}, Modifier.align(Alignment.Center))
+                    LibraryRadialMenu(rememberLibraryRadialMenuState(), LibraryFilterMode.NEWEST_FIRST, {}, {})
                 }) { Box(Modifier.fillMaxSize().background(Color.Blue)) }
             }) { host, activity ->
-                val action = tagged(host, activity, "library_search_action").boundsInWindow
+                val action = tagged(host, activity, "library_radial_trigger").boundsInWindow
                 delay(400)
                 blues += android.graphics.Color.blue(pixel(host, action.center.x, action.top + 9f * host.context.resources.displayMetrics.density))
             }
@@ -251,7 +253,7 @@ class ThemeConsumerRegressionTest {
                 gradient = SurfaceGradient(Color.Blue, Color.Blue), bevel = SurfaceGradient(Color.Green, Color.Green),
                 borderWidth = 4.dp, opacity = 0.4f, shape = androidx.compose.foundation.shape.RoundedCornerShape(7.dp))))
         scene(preset, content = { NavigationFixture(false) }) { host, activity ->
-            val tab = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_search_action" }
+            val tab = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" }
             val bounds = tab.boundsInWindow
             val density = host.context.resources.displayMetrics.density
             withTimeout(5000) {
@@ -298,7 +300,7 @@ class ThemeConsumerRegressionTest {
                 val state = rememberWideNavigationRailState()
                 LaunchedEffect(Unit) { state.expand() }
                 LibraryNavigationRail(state, LibraryFilterMode.DOMAIN, {}, {}, {}, {}, {})
-            } else LibrarySearchAction({}, Modifier.align(Alignment.BottomEnd))
+            } else LibraryRadialMenu(rememberLibraryRadialMenuState(), LibraryFilterMode.NEWEST_FIRST, {}, {})
         }
     }
 }

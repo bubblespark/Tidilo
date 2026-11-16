@@ -202,10 +202,12 @@ class SearchInputNavigationTest {
             }
             withTimeout(3000) { while (!contentReady) delay(20) }
 
-            // 1. Taps the library_search_action button, awaits SearchScreen, and asserts input is focused
+            // 1. Taps the library_radial_trigger button, awaits SearchScreen, and asserts input is focused
             phase = "library search action"
-            val searchAction = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_search_action" }
+            val searchAction = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" }
             host.main { click(searchAction) }
+            val innerSearch = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_search" && it.config.getOrNull(SemanticsActions.OnClick) != null }
+            host.main { click(innerSearch) }
             val searchInput1 = host.await(activity) {
                 it.config.getOrNull(SemanticsProperties.EditableText) != null && it.config.getOrNull(SemanticsProperties.Focused) == true
             }

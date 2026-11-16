@@ -1,4 +1,6 @@
 <resources>
+    <string name="library_shortcuts_open">Open shortcuts</string>
+    <string name="library_shortcuts_title">Library shortcuts</string>
     <string name="settings_blur_effects">Blur effects</string>
     <string name="settings_blur_fixed_on">Enabled by this theme</string>
     <string name="settings_blur_fixed_off">Disabled by this theme</string>

@@ -19,7 +19,9 @@ import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.screenCanvasSource
 import androidx.compose.foundation.background
 import me.bubblespark.tidilo.ui.screens.library.BookmarkDetailScreen
-import me.bubblespark.tidilo.ui.navigation.LibrarySearchAction
+import me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu
+import me.bubblespark.tidilo.ui.navigation.rememberLibraryRadialMenuState
+import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import me.bubblespark.tidilo.ui.theme.LocalOverlayBlurSetting
 import me.bubblespark.tidilo.ui.theme.OverlayBlurPolicy
@@ -94,10 +96,11 @@ class ChromeBlurControlsTest {
             host.main { activity.setContent { TidiloTheme(darkTheme = dark, dynamicColor = false, theme = theme, blurEnabled = enabled) {
                 CompositionLocalProvider(LocalOverlayBlurSetting provides resolveOverlayBlur(policy, enabled)) {
                 TidiloScreenScaffold(header = {}, overlay = {
-                    LibrarySearchAction({ clicks++ }, Modifier.align(Alignment.Center).onGloballyPositioned { bounds = it.boundsInWindow() })
+                    LibraryRadialMenu(rememberLibraryRadialMenuState(), LibraryFilterMode.NEWEST_FIRST, {}, { clicks++ })
                 }) { Box(Modifier.fillMaxSize().drawBehind { drawRect(body) }) }
                 }
             } } }
+            bounds = host.await(activity) { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag) == "library_radial_trigger" }.boundsInWindow
             fun pixel(): Int {
                 val frame = host.instrumentation.uiAutomation.takeScreenshot()
                 return try { frame.getPixel((bounds.left + bounds.width * .25f).toInt(), (bounds.top + bounds.height * .4f).toInt()) }
@@ -116,6 +119,8 @@ class ChromeBlurControlsTest {
                 host.main { body = Color.Red }
                 delay(250)
                 assertNotEquals("Search must sample its body for $preset/$night", blue, pixel())
+                val trigger = host.await(activity) { host.description(it, host.context.getString(me.bubblespark.tidilo.R.string.library_shortcuts_open)) }
+                host.main { trigger.config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action!!.invoke() }
                 val node = host.await(activity) { host.description(it, host.context.getString(me.bubblespark.tidilo.R.string.nav_search)) }
                 host.main {
                     var clickable = node

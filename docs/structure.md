@@ -50,7 +50,7 @@ app/src/main/java/me/bubblespark/tidilo/
     │   └── CacheVisualSource.kt / DomainWatermark.kt / DomainIconState.kt / FeedIconState.kt / OgImageState.kt
     │
     ├── navigation/                      # Root navigation graph & Library rail shell
-    │   ├── BarsState.kt / LibraryNavigationRail.kt / LibrarySearchAction.kt / Screen.kt / TidiloNavGraph.kt
+    │   ├── BarsState.kt / LibraryNavigationRail.kt / LibraryRadialMenu.kt / LibraryRadialMenuState.kt / LibraryRadialMenuGeometry.kt / Screen.kt / TidiloNavGraph.kt
     │
     ├── screens/                         # Feature screens and ViewModels
     │   ├── debug/                       # DebugPromptTester.kt, WebParserTestSection.kt
@@ -91,7 +91,7 @@ app/src/main/java/me/bubblespark/tidilo/
 
 ### `me.bubblespark.tidilo.ui`
 - Responsible for all user-facing UI and interaction:
-  - `components/` & `navigation/`: Shared scaffolds (`TidiloScreenScaffold`), headers (`TidiloFrostedHeader`), surfaces (`TidiloSurface`, `TidiloChip`, `TidiloIconButton`), backdrop blur layers, feed/domain artwork observers (`FeedIconState`, `DomainIconState`), `TidiloNavGraph`, modal navigation rail, and Search action.
+  - `components/` & `navigation/`: Shared scaffolds (`TidiloScreenScaffold`), headers (`TidiloFrostedHeader`), surfaces (`TidiloSurface`, `TidiloChip`, `TidiloIconButton`), backdrop blur layers, feed/domain artwork observers (`FeedIconState`, `DomainIconState`), `TidiloNavGraph`, modal navigation rail, and Library radial shortcuts (presentation, ephemeral interaction state, and shared geometry).
   - `screens/`: Feature modules (`library/` owns bookmark/domain/collection/RSS views, `RssFeedGroup` + `RssDao` feed presentation via `LibraryViewModel` and `RssFeedCard` ➔ `LibraryDeckCard` in `DomainCard.kt`, detail/AI review, and collection sheets; `trash/` owns the Trash list with no Trash Detail route; `importscreen/`, `notifications/`, `settings/`, `debug/`).
   - `theme/`: `ThemeSurfaces`, `ThemeShapeScale`, `AppThemeStyle`, and `Theme` coordinate Material and extended surface tokens (`BookmarkCardStyle.kt` holds only scoped accent input). Component catalogue checks live in Android test sources; see [UI design](ui_design.md#73-resolved-theme-and-shared-surface-contract) and [Developing app themes](theme_development.md).
 

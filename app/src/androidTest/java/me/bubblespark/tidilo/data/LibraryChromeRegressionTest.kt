@@ -27,7 +27,9 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppTheme
-import me.bubblespark.tidilo.ui.navigation.LibrarySearchAction
+import me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu
+import me.bubblespark.tidilo.ui.navigation.rememberLibraryRadialMenuState
+import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
 import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
 import me.bubblespark.tidilo.ui.screens.library.SearchScreen
@@ -185,17 +187,17 @@ class LibraryChromeRegressionTest {
         }
     }
 
-    @Test fun searchRippleDoesNotPaintOutsideItsRoundSurface(): Unit = runBlocking {
+    @Test fun radialTriggerRippleDoesNotPaintOutsideItsRoundSurface(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()
         var ready = false
         try {
             host.main { activity.setContent { TidiloTheme(darkTheme = false, dynamicColor = false, theme = AppTheme.DEFAULT) {
-                Box(Modifier.fillMaxSize().background(Color.White).padding(64.dp)) { LibrarySearchAction({}) }
+                Box(Modifier.fillMaxSize().background(Color.White).padding(64.dp)) { LibraryRadialMenu(rememberLibraryRadialMenuState(), LibraryFilterMode.NEWEST_FIRST, {}, {}) }
                 SideEffect { ready = true }
             } } }
             withTimeout(3000) { while (!ready) delay(20) }
-            val bounds = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_search_action" }.boundsInWindow
+            val bounds = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" }.boundsInWindow
             delay(400)
             val inset = 3f * activity.resources.displayMetrics.density
             val x = (bounds.left + inset).roundToInt()

@@ -8,7 +8,7 @@
 
 - **Root Header**: Library displays its title, subtitle, the top-left modal navigation rail trigger (`ModalWideNavigationRail(hideOnCollapse = true)`), and a single right-side `48.dp` display-mode selector (`R.drawable.ic_dashboard_2_gear`).
 - **Domain, RSS & Collection Headers**: Overview modes expose the rail menu icon; drill-downs crossfade its glyph to `Up` (`220ms`, `EaseInOutCubic`) inside the same persistent `48.dp` slot (`4.dp` trailing padding) while keeping button geometry, title position, and the display-mode action fixed. Click handling and accessible descriptions switch immediately with the active hierarchy.
-- **Compact Search Action**: Fixed bottom-right `56.dp` circular `PRIMARY_ACTION` surface (`expanded = false`, `28.dp` Search icon) with `24.dp` margins plus `screenActionInsets`. It never resizes or shifts on scroll, hides during Summary Peek, and is absent on child screens (see [UI Design §5](ui_design.md#5-edge-to-edge-adaptive-insets--fab-placement)).
+- **Radial Shortcuts**: Fixed bottom-right `56.dp` circular trigger (`28.dp` orbit/Close glyph, `24.dp` margins plus independent system/cutout insets). Tap opens five shortcuts; swipe opens immediately for continuous release selection, without a hold timer. Four filters occupy the outer upper-left arc and Search the inner diagonal. The same-window overlay dims and isolates background input; a single localized hover name and entry haptics identify targets without enlargement. It hides during Summary Peek/collection editing and is absent on child screens. See [Library navigation](library_navigation.md#library-and-rail) for geometry, cancellation, Back, accessibility, and filter behavior.
 
 ---
 

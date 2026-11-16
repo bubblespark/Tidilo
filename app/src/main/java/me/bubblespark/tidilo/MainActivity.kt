@@ -220,7 +220,7 @@ fun TidiloApp(
     val selectedRssFeedFilter by libraryViewModel.selectedRssFeedFilter.collectAsStateWithLifecycle()
     val selectedCollectionId by libraryViewModel.selectedCollectionId.collectAsStateWithLifecycle()
 
-    // Scroll visibility belongs to the Library header; the Search action stays compact.
+    // Scroll visibility belongs to the Library header; the shortcut trigger stays fixed.
     var isBarsVisible by remember { mutableStateOf(true) }
     // Restore the header on navigation and filter changes.
     LaunchedEffect(currentRoute, filterMode, selectedDomainFilter, selectedRssFeedFilter?.id) {

@@ -54,7 +54,7 @@ class LibraryNavigationInteractionTest {
             }
             withTimeout(3000) { while (!contentReady) delay(20) }
             stage = "waiting for the Library Search action"
-            val before = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_search_action" }.boundsInRoot
+            val before = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" }.boundsInRoot
             stage = "waiting for Library fixtures"
             host.await(activity) { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text.startsWith("Navigation fixture") } == true }
             val libraryTitle = host.await(activity) { host.text(it, host.context.getString(R.string.library_header_title)) }
@@ -63,7 +63,7 @@ class LibraryNavigationInteractionTest {
             host.await(activity) { it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text.startsWith("Navigation fixture") } == true }
             host.scroll(activity, 500f)
             delay(400)
-            val action = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_search_action" }
+            val action = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" }
             var firstVisibleTitle = ""
             var firstVisibleTop = 0f
             host.main {
@@ -80,22 +80,24 @@ class LibraryNavigationInteractionTest {
                 assertEquals(before.width, after.width, 1f)
                 click(action)
             }
+            val innerSearch = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_search" && it.config.getOrNull(SemanticsActions.OnClick) != null }
+            host.main { click(innerSearch) }
             stage = "opening Search"
             host.await(activity) { host.text(it, host.context.getString(R.string.search_header_title)) }
             withTimeout(3000) {
                 var searchOnly = false
                 while (!searchOnly) {
-                    host.main { searchOnly = host.nodes(activity).none { it.config.getOrNull(SemanticsProperties.TestTag) == "library_search_action" } }
+                    host.main { searchOnly = host.nodes(activity).none { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" } }
                     if (!searchOnly) delay(20)
                 }
             }
             host.main {
-                assertFalse(host.nodes(activity).any { it.config.getOrNull(SemanticsProperties.TestTag) == "library_search_action" })
+                assertFalse(host.nodes(activity).any { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" })
             }
             stage = "returning from Search"
             val back = host.await(activity) { host.description(it, host.context.getString(R.string.common_back)) }
             host.main { click(back) }
-            host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_search_action" }
+            host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" }
             assertEquals(LibraryFilterMode.NEWEST_FIRST, model.filterMode.value)
             delay(500)
             stage = "restoring the visible bookmark"

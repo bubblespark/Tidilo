@@ -36,7 +36,7 @@ internal fun Modifier.overlayBlurBackground(
         if (!blurBackground) {
             blurAlpha.snapTo(0f)
         } else if (blurAlpha.value < 1f) {
-            blurAlpha.animateTo(1f, tween(200, easing = FastOutSlowInEasing))
+            blurAlpha.animateTo(1f, tween(300, easing = FastOutSlowInEasing))
         }
     }
     val style = remember(containerColor) { HazeBlurStyle {

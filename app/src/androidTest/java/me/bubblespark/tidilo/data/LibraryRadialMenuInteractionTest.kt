@@ -189,36 +189,66 @@ class LibraryRadialMenuInteractionTest {
                 fun toggle() = fixture.host.main { button.config[SemanticsActions.OnClick].action!!.invoke() }
                 toggle()
                 awaitProgress(fixture, trigger, .4f.. .6f)
-                val samples = java.util.concurrent.CopyOnWriteArrayList<Float>()
+                data class FrameSample(val progress: Float, val observedAtNanos: Long)
+                val samples = java.util.concurrent.CopyOnWriteArrayList<FrameSample>()
+                var generation = 0
+                fun assertFrameContinuity(before: Float, toggledAt: Long) {
+                    assertTrue("No drawn frame sampled after reversal", samples.isNotEmpty())
+                    var previous = FrameSample(before, toggledAt)
+                    for (sample in samples) {
+                        val elapsedMillis = (sample.observedAtNanos - previous.observedAtNanos) / 1_000_000f
+                        // Bound the easing derivative by 5 and allow two pixels of rounding.
+                        // This checks the first post-toggle frame and subsequent frames too.
+                        val rounding = 2f / (150f * fixture.activity.resources.displayMetrics.density)
+                        val tolerance = 5f * elapsedMillis / (230f * 10f) + rounding
+                        assertTrue("Drawn frame jumped: ${previous.progress} -> ${sample.progress}, elapsed=$elapsedMillis, tolerance=$tolerance",
+                            kotlin.math.abs(sample.progress - previous.progress) <= tolerance)
+                        previous = sample
+                    }
+                }
                 var sampling = true
                 val callback = object : android.view.Choreographer.FrameCallback {
                     override fun doFrame(time: Long) {
-                        samples += readProgress(fixture, trigger)
+                        val frameGeneration = generation
+                        // Run after this frame's traversal/draw, not before placement.
+                        fixture.activity.window.decorView.post {
+                            if (sampling && frameGeneration == generation) {
+                                samples += FrameSample(readProgress(fixture, trigger), System.nanoTime())
+                            }
+                        }
                         if (sampling) android.view.Choreographer.getInstance().postFrameCallback(this)
                     }
                 }
                 try {
                     fixture.host.main { android.view.Choreographer.getInstance().postFrameCallback(callback) }
                     var beforeClose = 0f
+                    var closeTime = 0L
                     fixture.host.main {
                         beforeClose = readProgress(fixture, trigger)
+                        generation++
                         samples.clear()
+                        closeTime = System.nanoTime()
                         button.config[SemanticsActions.OnClick].action!!.invoke()
                     }
                     assertTrue("Close must interrupt expansion", beforeClose in .05f.. .9f)
                     val contracting = awaitProgress(fixture, trigger, .15f.. .3f, increasing = false)
-                    assertTrue("Retraction must not reset to either endpoint", samples.isNotEmpty() && samples.all { it > 0f && it <= beforeClose + .1f })
+                    assertFrameContinuity(beforeClose, closeTime)
+                    assertTrue("Retraction must not reset to either endpoint", samples.isNotEmpty() && samples.all { it.progress > 0f && it.progress <= beforeClose + .1f })
                     var beforeOpen = 0f
+                    var openTime = 0L
                     fixture.host.main {
                         beforeOpen = readProgress(fixture, trigger)
+                        generation++
                         samples.clear()
+                        openTime = System.nanoTime()
                         button.config[SemanticsActions.OnClick].action!!.invoke()
                     }
                     awaitProgress(fixture, trigger, .7f.. .9f)
+                    assertFrameContinuity(beforeOpen, openTime)
                     assertTrue(beforeClose > contracting)
                     assertTrue(beforeOpen < .4f)
                     assertTrue(samples.size > 2)
-                    assertTrue("Reopening must continue from the contracted position", samples.all { it > 0f && it >= beforeOpen - .1f && it < 1f })
+                    assertTrue("Reopening must continue from the contracted position", samples.all { it.progress > 0f && it.progress >= beforeOpen - .1f && it.progress < 1f })
                     fixture.host.main { assertTrue(fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
                 } finally { fixture.host.main { sampling = false; android.view.Choreographer.getInstance().removeFrameCallback(callback) } }
             }

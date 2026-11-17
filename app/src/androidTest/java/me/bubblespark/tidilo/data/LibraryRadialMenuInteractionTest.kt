@@ -9,6 +9,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Recomposer
+import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.platform.AndroidUiDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -34,16 +41,22 @@ import org.junit.Test
 /** Menu-only fixture. Effective semantics deliberately use the merged Activity root. */
 internal class RadialMenuFixture(val direction: LayoutDirection = LayoutDirection.Ltr,
     theme: AppTheme = AppTheme.DEFAULT, dark: Boolean = false, blur: Boolean = true,
-    fontScale: Float? = null) : AutoCloseable {
+    fontScale: Float? = null, motionScale: Float? = null) : AutoCloseable {
     val host = HeaderTestHost()
     val activity = host.launch()
     val state = LibraryRadialMenuState()
     val actions = mutableListOf<String>()
     private var pointerDown = false
     private var ready = false
+    private val motionScope = motionScale?.let { CoroutineScope(AndroidUiDispatcher.Main + SupervisorJob()) }
+    private val recomposer = motionScope?.let { scope -> Recomposer(scope.coroutineContext + object : MotionDurationScale {
+        override val scaleFactor: Float = requireNotNull(motionScale)
+    }) }
+
 
     init {
-        host.main { activity.setContent {
+        recomposer?.let { active -> motionScope!!.launch { active.runRecomposeAndApplyChanges() } }
+        host.main { activity.setContent(parent = recomposer) {
             TidiloTheme(dynamicColor = false, theme = theme, darkTheme = dark, blurEnabled = blur) {
                 val currentDensity = LocalDensity.current
                 CompositionLocalProvider(LocalLayoutDirection provides direction,
@@ -105,7 +118,7 @@ internal class RadialMenuFixture(val direction: LayoutDirection = LayoutDirectio
         } finally { event.recycle() }
     }
 
-    override fun close() { host.main { activity.setContent {}; activity.finish() } }
+    override fun close() { host.main { activity.setContent {}; activity.finish(); recomposer?.cancel(); motionScope?.cancel() } }
 
     companion object {
         fun effectiveNodes(activity: ComponentActivity): List<SemanticsNode> {
@@ -123,6 +136,95 @@ internal class RadialMenuFixture(val direction: LayoutDirection = LayoutDirectio
 }
 
 class LibraryRadialMenuInteractionTest {
+    private fun readProgress(fixture: RadialMenuFixture, trigger: Offset): Float {
+        val node = fixture.host.nodes(fixture.activity).first { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_newest_first" &&
+            generateSequence(it) { parent -> parent.parent }.any { parent -> parent.config.getOrNull(SemanticsProperties.TestTag) == "radial_fixture" } }
+        return (trigger.y - node.boundsInWindow.center.y) / (150f * fixture.activity.resources.displayMetrics.density)
+    }
+
+    private fun progress(fixture: RadialMenuFixture, trigger: Offset): Float {
+        var value = 0f
+        fixture.host.main { value = readProgress(fixture, trigger) }
+        return value
+    }
+
+    private suspend fun awaitProgress(fixture: RadialMenuFixture, trigger: Offset, range: ClosedFloatingPointRange<Float>, increasing: Boolean = true): Float = withTimeout(4000) {
+        var value = progress(fixture, trigger)
+        while (value !in range) {
+            check(!increasing || value <= range.endInclusive) { "Missed progress $range, observed $value" }
+            delay(5); value = progress(fixture, trigger)
+        }
+        value
+    }
+
+    @Test fun stationaryCornerPressDoesNotCountWrapperMotionAsFingerMotion() = runBlocking {
+        run {
+            RadialMenuFixture(motionScale = 10f).use { fixture ->
+                val trigger = fixture.center("trigger")
+                val button = fixture.node("trigger")
+                fixture.host.main { button.config[SemanticsActions.OnClick].action!!.invoke() }
+                val start = awaitProgress(fixture, trigger, .42f.. .48f)
+                val density = fixture.activity.resources.displayMetrics.density
+                val point = trigger + Offset(-27f * density, (-150f * start + 8f) * density)
+                val time = SystemClock.uptimeMillis()
+                fixture.send(MotionEvent.ACTION_DOWN, point, time)
+                try {
+                    val slop = android.view.ViewConfiguration.get(fixture.activity).scaledTouchSlop
+                    val delta = (slop / density + 4f) / 150f
+                    val end = awaitProgress(fixture, trigger, start + delta..start + delta + .07f)
+                    assertTrue("Wrapper must move farther than touch slop", (end - start) * 150f * density > slop)
+                    fixture.send(MotionEvent.ACTION_UP, point, time)
+                } finally { fixture.send(MotionEvent.ACTION_CANCEL, point, time) }
+                delay(100)
+                fixture.host.main { assertEquals(listOf("DOMAIN"), fixture.actions); assertFalse(fixture.state.isOpen) }
+            }
+        }
+    }
+
+    @Test fun reversingDuringMotionKeepsContinuousFramePositions() = runBlocking {
+        run {
+            RadialMenuFixture(motionScale = 10f).use { fixture ->
+                val trigger = fixture.center("trigger")
+                val button = fixture.node("trigger")
+                fun toggle() = fixture.host.main { button.config[SemanticsActions.OnClick].action!!.invoke() }
+                toggle()
+                awaitProgress(fixture, trigger, .4f.. .6f)
+                val samples = java.util.concurrent.CopyOnWriteArrayList<Float>()
+                var sampling = true
+                val callback = object : android.view.Choreographer.FrameCallback {
+                    override fun doFrame(time: Long) {
+                        samples += readProgress(fixture, trigger)
+                        if (sampling) android.view.Choreographer.getInstance().postFrameCallback(this)
+                    }
+                }
+                try {
+                    fixture.host.main { android.view.Choreographer.getInstance().postFrameCallback(callback) }
+                    var beforeClose = 0f
+                    fixture.host.main {
+                        beforeClose = readProgress(fixture, trigger)
+                        samples.clear()
+                        button.config[SemanticsActions.OnClick].action!!.invoke()
+                    }
+                    assertTrue("Close must interrupt expansion", beforeClose in .05f.. .9f)
+                    val contracting = awaitProgress(fixture, trigger, .15f.. .3f, increasing = false)
+                    assertTrue("Retraction must not reset to either endpoint", samples.isNotEmpty() && samples.all { it > 0f && it <= beforeClose + .1f })
+                    var beforeOpen = 0f
+                    fixture.host.main {
+                        beforeOpen = readProgress(fixture, trigger)
+                        samples.clear()
+                        button.config[SemanticsActions.OnClick].action!!.invoke()
+                    }
+                    awaitProgress(fixture, trigger, .7f.. .9f)
+                    assertTrue(beforeClose > contracting)
+                    assertTrue(beforeOpen < .4f)
+                    assertTrue(samples.size > 2)
+                    assertTrue("Reopening must continue from the contracted position", samples.all { it > 0f && it >= beforeOpen - .1f && it < 1f })
+                    fixture.host.main { assertTrue(fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
+                } finally { fixture.host.main { sampling = false; android.view.Choreographer.getInstance().removeFrameCallback(callback) } }
+            }
+        }
+    }
+
     @Test fun midExpansionCornerTapSelectsSearchInsteadOfDismissing() = runBlocking {
         val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
         val previous = android.provider.Settings.Global.getString(instrumentation.targetContext.contentResolver,
@@ -133,7 +235,7 @@ class LibraryRadialMenuInteractionTest {
         try {
             shell("settings put global animator_duration_scale 10")
             delay(200)
-            RadialMenuFixture().use { fixture ->
+            RadialMenuFixture(motionScale = 10f).use { fixture ->
                 val trigger = fixture.center("trigger")
                 val button = fixture.node("trigger")
                 fixture.host.main { button.config[SemanticsActions.OnClick].action!!.invoke() }

@@ -113,13 +113,17 @@ private suspend fun AwaitPointerEventScope.cornerAction(
 ): LibraryShortcut? {
     val initial = resolve(down.position)
     var valid = true
+    var movement = Offset.Zero
     feedback(initial)
     try {
     do {
         val event = awaitPointerEvent(PointerEventPass.Initial)
         if (event.changes.any { it.isConsumed || (it.id != down.id && it.pressed) }) valid = false
         val change = event.changes.firstOrNull { it.id == down.id }
-        if (change == null || (change.position - down.position).getDistance() > viewConfiguration.touchSlop) valid = false
+        // Both positions are projected into the current wrapper coordinates, so its
+        // animation cancels out. Comparing against the original down would include it.
+        if (change != null) movement += change.position - change.previousPosition
+        if (change == null || movement.getDistance() > viewConfiguration.touchSlop) valid = false
         feedback(initial.takeIf { valid && change != null && resolve(change.position) == initial })
         event.changes.forEach { it.consume() }
         if (event.changes.none { it.pressed }) return initial.takeIf { valid && change != null && resolve(change.position) == initial }

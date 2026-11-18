@@ -12,6 +12,7 @@
 # Agent files
 AGENTS.md
 .agents/
+.claude/
 
 # Generated files
 bin/

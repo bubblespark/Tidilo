@@ -91,6 +91,7 @@ Supports **Material You Dynamic Color** (Android 12+) with fallback M3 Expressiv
 
 ### 7.1 Centralized Stationary Background (`TidiloBackground.kt`)
 Anchored beneath `TidiloNavGraph` in `MainActivity.kt` so route transitions slide only foreground chrome/content.
+The transparent root `Scaffold` provides `MaterialTheme.colorScheme.onBackground` as the inherited foreground for content drawn directly on the canvas. Nested Material and Tidilo surfaces provide their own foreground roles, and components can specify semantic colors explicitly.
 
 ### 7.2 Ambient Lighting (`LocalAmbientLighting`, `RememberAmbientLighting`)
 Drill-downs publish active colors (`ownerId = "library_drilldown"`) via `RememberAmbientLighting` (auto-resetting on `DisposableEffect` disposal); `TidiloBackground` morphs `effectiveActiveColor` in-place via `animateColorAsState(tween(350, EaseInOutCubic))`.

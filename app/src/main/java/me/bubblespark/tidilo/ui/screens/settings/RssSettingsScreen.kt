@@ -132,21 +132,27 @@ fun RssSettingsScreen(
     if (notificationRationale && initialFetch == null) {
         RssNotificationPermissionDialog(
             onAllow = {
-                model.consumeNotificationRationale()
-                if (onLaunchNotificationPermission != null) {
-                    onLaunchNotificationPermission()
-                } else {
-                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                model.consumeNotificationRationale {
+                    if (onLaunchNotificationPermission != null) {
+                        onLaunchNotificationPermission()
+                    } else {
+                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
                 }
             },
-            onDismiss = model::consumeNotificationRationale
+            onDismiss = { model.consumeNotificationRationale() }
         )
     }
 }
 
 @Composable
-internal fun RssNotificationPermissionDialog(onAllow: () -> Unit, onDismiss: () -> Unit) {
+internal fun RssNotificationPermissionDialog(
+    onAllow: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     TidiloAlertDialog(
+        modifier = modifier,
         containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
         shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
         onDismissRequest = onDismiss,

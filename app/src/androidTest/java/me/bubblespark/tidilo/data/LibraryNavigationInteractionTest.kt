@@ -1,7 +1,14 @@
 package me.bubblespark.tidilo.data
 
 import android.content.res.Configuration
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.result.ActivityResultRegistryOwner
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.core.app.ActivityOptionsCompat
+import java.util.concurrent.CopyOnWriteArrayList
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -175,7 +182,6 @@ class LibraryNavigationInteractionTest {
 
     @Test fun emptyLibrarySaveUrlOpensImportDialogAcrossThemesAndFontScales(): Unit = runBlocking {
         val host = HeaderTestHost()
-        val activity = host.launch()
         val db = AppDatabase.getInstance(host.context)
         val collectionDao = db.collectionDao()
         val prefs = host.context.getSharedPreferences("tidilo_library_prefs", android.content.Context.MODE_PRIVATE)
@@ -204,15 +210,35 @@ class LibraryNavigationInteractionTest {
             reportImportError = {}
         )
         val testImportViewModel = ImportViewModel(testImportRepo)
+        val launchedPermissionRequests = CopyOnWriteArrayList<Any?>()
+        val deniedRegistryOwner = object : ActivityResultRegistryOwner {
+            override val activityResultRegistry = object : ActivityResultRegistry() {
+                override fun <I, O> onLaunch(
+                    requestCode: Int,
+                    contract: ActivityResultContract<I, O>,
+                    input: I,
+                    options: ActivityOptionsCompat?
+                ) {
+                    launchedPermissionRequests.add(input)
+                    dispatchResult(requestCode, false)
+                }
+            }
+        }
         val collectionId = "empty-capture-${UUID.randomUUID()}"
         lateinit var model: LibraryViewModel
         var initialized = false
         var previousMode = LibraryFilterMode.NEWEST_FIRST
         var previousCollection: String? = null
+        var activity: ComponentActivity? = null
         try {
+            val hostActivity = host.launch().also { activity = it }
+            assertFalse(
+                "Cold launch must not mark notification permission as requested",
+                notificationPrefs.getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
+            )
             collectionDao.insert(CollectionEntity(collectionId, "Empty capture fixture", "", "folder", null, 0, 1L, 1L))
             host.main {
-                model = ViewModelProvider(activity)[LibraryViewModel::class.java]
+                model = ViewModelProvider(hostActivity)[LibraryViewModel::class.java]
                 initialized = true
                 previousMode = model.filterMode.value
                 previousCollection = model.selectedCollectionId.value
@@ -223,28 +249,30 @@ class LibraryNavigationInteractionTest {
             }
             host.main {
                 model.selectCollectionFilter(collectionId)
-                activity.setContent {
+                hostActivity.setContent {
                     TidiloTheme {
-                        TidiloApp(importViewModel = testImportViewModel, libraryViewModel = model)
+                        CompositionLocalProvider(LocalActivityResultRegistryOwner provides deniedRegistryOwner) {
+                            TidiloApp(importViewModel = testImportViewModel, libraryViewModel = model)
+                        }
                     }
                 }
             }
-            host.await(activity) { host.text(it, host.context.getString(R.string.library_empty_title)) }
-            host.await(activity) { host.text(it, host.context.getString(R.string.library_empty_hint)) }
-            val saveButton = host.await(activity) { host.text(it, host.context.getString(R.string.library_empty_save_url)) }
-            val radial = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" }
-            val density = activity.resources.displayMetrics.density
+            host.await(hostActivity) { host.text(it, host.context.getString(R.string.library_empty_title)) }
+            host.await(hostActivity) { host.text(it, host.context.getString(R.string.library_empty_hint)) }
+            val saveButton = host.await(hostActivity) { host.text(it, host.context.getString(R.string.library_empty_save_url)) }
+            val radial = host.await(hostActivity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" }
+            val density = hostActivity.resources.displayMetrics.density
             val clickableSave = clickableNode(saveButton)
             assertTrue("Save URL button must meet 48dp touch height", clickableSave.boundsInRoot.height >= 47.5f * density)
             assertFalse("Save URL button must not overlap the radial shortcut trigger",
                 clickableSave.boundsInRoot.overlaps(radial.boundsInRoot))
             host.main { click(clickableSave) }
-            host.await(activity) { host.text(it, host.context.getString(R.string.import_dialog_title)) }
+            host.await(hostActivity) { host.text(it, host.context.getString(R.string.import_dialog_title)) }
 
-            val input = host.await(activity) { it.config.getOrNull(SemanticsActions.SetText) != null }
+            val input = host.await(hostActivity) { it.config.getOrNull(SemanticsActions.SetText) != null }
             val testUrl = "https://empty-capture-denied.invalid/article"
             host.main { input.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(testUrl)) }
-            val confirm = host.await(activity) { node ->
+            val confirm = host.await(hostActivity) { node ->
                 host.text(node, host.context.getString(R.string.import_dialog_confirm)) &&
                     clickableNode(node).config.getOrNull(SemanticsProperties.Disabled) == null
             }
@@ -252,9 +280,13 @@ class LibraryNavigationInteractionTest {
             withTimeout(5000) {
                 while (inMemoryDb.bookmarkDao().getBookmarkByUrl(testUrl) == null) delay(30)
             }
+            assertTrue(
+                "Cold launch and manual URL saving must not launch any permission request",
+                launchedPermissionRequests.isEmpty()
+            )
             assertFalse("Manual URL saving must not request or mark notification permission",
                 notificationPrefs.getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false))
-            host.await(activity) { host.text(it, host.context.getString(R.string.library_empty_save_url)) }
+            host.await(hostActivity) { host.text(it, host.context.getString(R.string.library_empty_save_url)) }
 
             val cases = listOf(
                 Triple(AppTheme.DEFAULT, false, 1f to Locale.ENGLISH),
@@ -272,7 +304,7 @@ class LibraryNavigationInteractionTest {
                 var saveClicks = 0
                 var ready = false
                 host.main {
-                    activity.setContent {
+                    hostActivity.setContent {
                         key(theme, dark, fontScale, locale) {
                             TidiloTheme(darkTheme = dark, dynamicColor = false, theme = theme) {
                                 CompositionLocalProvider(
@@ -293,9 +325,9 @@ class LibraryNavigationInteractionTest {
                     }
                 }
                 withTimeout(3000) { while (!ready) delay(20) }
-                host.await(activity) { host.text(it, emptyTitle) }
-                host.await(activity) { host.text(it, emptyHint) }
-                val cta = host.await(activity) { host.text(it, saveLabel) }
+                host.await(hostActivity) { host.text(it, emptyTitle) }
+                host.await(hostActivity) { host.text(it, emptyHint) }
+                val cta = host.await(hostActivity) { host.text(it, saveLabel) }
                 val ctaTarget = clickableNode(cta)
                 assertTrue("$theme/$dark/$fontScale/$locale CTA must have >= 48dp height",
                     ctaTarget.boundsInRoot.height >= 47.5f * density)
@@ -303,12 +335,14 @@ class LibraryNavigationInteractionTest {
                 assertEquals(1, saveClicks)
             }
         } finally {
-            host.main {
-                if (initialized) {
-                    model.selectCollectionFilter(previousCollection)
-                    model.setFilterMode(previousMode)
+            activity?.let { current ->
+                host.main {
+                    if (initialized) {
+                        model.selectCollectionFilter(previousCollection)
+                        model.setFilterMode(previousMode)
+                    }
+                    current.finish()
                 }
-                activity.finish()
             }
             importJob.cancelAndJoin()
             inMemoryDb.close()

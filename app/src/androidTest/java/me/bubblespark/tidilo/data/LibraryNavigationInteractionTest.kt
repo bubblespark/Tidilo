@@ -189,7 +189,6 @@ class LibraryNavigationInteractionTest {
         val notificationPrefs = host.context.getSharedPreferences(NOTIFICATION_PREFS_NAME, android.content.Context.MODE_PRIVATE)
         val hadRequestedKey = notificationPrefs.contains(KEY_NOTIFICATION_PERMISSION_REQUESTED)
         val previousRequested = notificationPrefs.getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
-        assertTrue(notificationPrefs.edit().remove(KEY_NOTIFICATION_PERMISSION_REQUESTED).commit())
         val inMemoryDb = Room.inMemoryDatabaseBuilder(host.context, AppDatabase::class.java).build()
         val importJob = SupervisorJob()
         val testImportRepo = ImportRepository(
@@ -234,22 +233,82 @@ class LibraryNavigationInteractionTest {
             val pfd = host.instrumentation.uiAutomation.executeShellCommand(command)
             return android.os.ParcelFileDescriptor.AutoCloseInputStream(pfd).bufferedReader().use { it.readText() }
         }
+        fun runCheckedPmCommand(command: String) {
+            val output = runShellCommand(command)
+            check(output.isBlank()) { "Unexpected pm output for '$command': ${output.trim()}" }
+        }
         val myUserHandle = android.os.Process.myUserHandle()
         val myUserId = android.os.UserHandle::class.java.getMethod("myUserId").invoke(null) as Int
-        fun readPostNotifDumpLine(): String {
+        fun isPostNotificationsGranted(): Boolean = host.context.packageManager.checkPermission(
+            android.Manifest.permission.POST_NOTIFICATIONS,
+            host.context.packageName
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        fun revokePostNotificationsWithoutKill() {
+            host.instrumentation.uiAutomation.adoptShellPermissionIdentity()
+            try {
+                val permManager = checkNotNull(host.context.getSystemService("permission"))
+                permManager.javaClass.getMethod(
+                    "revokePostNotificationPermissionWithoutKillForTest",
+                    String::class.java,
+                    Int::class.javaPrimitiveType
+                ).invoke(permManager, host.context.packageName, myUserId)
+            } finally {
+                host.instrumentation.uiAutomation.dropShellPermissionIdentity()
+            }
+        }
+        fun readPostNotifDumpLineOrNull(): String? {
             val dump = runShellCommand("dumpsys package ${host.context.packageName}")
-            var inTargetUser = false
+            var seenTargetUserBlock = false
+            var inTargetUserBlock = false
+            var targetUserIndent = Int.MAX_VALUE
+            var inRuntimePermissions = false
+            var runtimePermissionsIndent = Int.MAX_VALUE
             for (rawLine in dump.lineSequence()) {
                 val trimmed = rawLine.trim()
-                if (trimmed.startsWith("User ") && trimmed.contains(":")) {
-                    inTargetUser = trimmed.startsWith("User $myUserId:")
+                if (trimmed.isEmpty()) {
+                    if (inTargetUserBlock) {
+                        inTargetUserBlock = false
+                        inRuntimePermissions = false
+                    }
                     continue
                 }
-                if (inTargetUser && trimmed.startsWith("android.permission.POST_NOTIFICATIONS:") && trimmed.contains("granted=")) {
-                    return trimmed
+                val indent = rawLine.indexOfFirst { !it.isWhitespace() }.let { if (it < 0) rawLine.length else it }
+                if (!seenTargetUserBlock &&
+                    trimmed.startsWith("User $myUserId:") &&
+                    (trimmed.contains("installed=") || trimmed.contains("ceDataInode="))
+                ) {
+                    seenTargetUserBlock = true
+                    inTargetUserBlock = true
+                    targetUserIndent = indent
+                    inRuntimePermissions = false
+                    continue
+                }
+                if (inTargetUserBlock) {
+                    if (indent <= targetUserIndent) {
+                        inTargetUserBlock = false
+                        inRuntimePermissions = false
+                        continue
+                    }
+                    if (trimmed == "runtime permissions:") {
+                        inRuntimePermissions = true
+                        runtimePermissionsIndent = indent
+                        continue
+                    }
+                    if (inRuntimePermissions) {
+                        if (indent <= runtimePermissionsIndent) {
+                            inRuntimePermissions = false
+                        } else if (trimmed.startsWith("android.permission.POST_NOTIFICATIONS:") &&
+                            trimmed.contains("granted=")
+                        ) {
+                            return trimmed
+                        }
+                    }
                 }
             }
-            error("POST_NOTIFICATIONS runtime permission line missing for user $myUserId")
+            check(seenTargetUserBlock) {
+                "Target user $myUserId section missing in dumpsys package ${host.context.packageName}"
+            }
+            return null
         }
         val managedFlagMap = listOf(
             "USER_SET" to "user-set",
@@ -258,15 +317,23 @@ class LibraryNavigationInteractionTest {
             "REVOKED_COMPAT" to "revoked-compat",
             "REVOKE_WHEN_REQUESTED" to "revoke-when-requested"
         )
+        fun extractManagedFlags(dumpLine: String?): List<String> =
+            if (dumpLine == null) {
+                emptyList()
+            } else {
+                managedFlagMap
+                    .filter { (dumpName, _) -> Regex("\\b$dumpName\\b").containsMatchIn(dumpLine) }
+                    .map { it.second }
+            }
         val allManagedFlagArgs = managedFlagMap.joinToString(" ") { it.second }
-        val initialDumpLine = readPostNotifDumpLine()
-        val wasPermissionGranted = host.context.packageManager.checkPermission(
-            android.Manifest.permission.POST_NOTIFICATIONS,
-            host.context.packageName
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        val initialManagedFlags = managedFlagMap
-            .filter { (dumpName, _) -> Regex("\\b$dumpName\\b").containsMatchIn(initialDumpLine) }
-            .map { it.second }
+        val initialDumpLine = readPostNotifDumpLineOrNull()
+        val wasPermissionGranted = isPostNotificationsGranted()
+        if (initialDumpLine == null) {
+            check(!wasPermissionGranted) {
+                "POST_NOTIFICATIONS runtime permission line missing while granted for user $myUserId"
+            }
+        }
+        val initialManagedFlags = extractManagedFlags(initialDumpLine)
         val platformPermissionMonitor = host.instrumentation.addMonitor(
             android.content.IntentFilter("android.content.pm.action.REQUEST_PERMISSIONS"),
             android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null),
@@ -279,30 +346,39 @@ class LibraryNavigationInteractionTest {
             android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null),
             true
         )
-        try {
-            if (wasPermissionGranted) {
-                host.instrumentation.uiAutomation.adoptShellPermissionIdentity()
-                try {
-                    val permManager = checkNotNull(host.context.getSystemService("permission"))
-                    permManager.javaClass.getMethod(
-                        "revokePostNotificationPermissionWithoutKillForTest",
-                        String::class.java,
-                        Int::class.javaPrimitiveType
-                    ).invoke(permManager, host.context.packageName, myUserId)
-                } finally {
-                    host.instrumentation.uiAutomation.dropShellPermissionIdentity()
-                }
+        var primaryFailure: Throwable? = null
+        fun recordFailure(failure: Throwable) {
+            val existing = primaryFailure
+            if (existing == null) {
+                primaryFailure = failure
+            } else {
+                existing.addSuppressed(failure)
             }
-            runShellCommand(
+        }
+        suspend fun runCleanupStep(block: suspend () -> Unit) {
+            try {
+                block()
+            } catch (t: Throwable) {
+                recordFailure(t)
+            }
+        }
+        try {
+            assertTrue(notificationPrefs.edit().remove(KEY_NOTIFICATION_PERMISSION_REQUESTED).commit())
+            if (wasPermissionGranted) {
+                revokePostNotificationsWithoutKill()
+            }
+            runCheckedPmCommand(
                 "pm clear-permission-flags --user $myUserId ${host.context.packageName} " +
                     "android.permission.POST_NOTIFICATIONS $allManagedFlagArgs"
             )
-            val preLaunchDump = readPostNotifDumpLine()
-            assertTrue("Expected denied permission in dumpsys but was: $preLaunchDump", preLaunchDump.contains("granted=false"))
-            assertFalse("POST_NOTIFICATIONS must not have USER_FIXED before launch: $preLaunchDump", preLaunchDump.contains("USER_FIXED"))
-            assertFalse("POST_NOTIFICATIONS must not have USER_SET before launch: $preLaunchDump", preLaunchDump.contains("USER_SET"))
-            assertFalse("POST_NOTIFICATIONS must not have POLICY_FIXED before launch: $preLaunchDump", preLaunchDump.contains("POLICY_FIXED"))
-            assertFalse("POST_NOTIFICATIONS must not have SYSTEM_FIXED before launch: $preLaunchDump", preLaunchDump.contains("SYSTEM_FIXED"))
+            val preLaunchDump = readPostNotifDumpLineOrNull()
+            if (preLaunchDump != null) {
+                assertTrue("Expected denied permission in dumpsys but was: $preLaunchDump", preLaunchDump.contains("granted=false"))
+                assertFalse("POST_NOTIFICATIONS must not have USER_FIXED before launch: $preLaunchDump", preLaunchDump.contains("USER_FIXED"))
+                assertFalse("POST_NOTIFICATIONS must not have USER_SET before launch: $preLaunchDump", preLaunchDump.contains("USER_SET"))
+                assertFalse("POST_NOTIFICATIONS must not have POLICY_FIXED before launch: $preLaunchDump", preLaunchDump.contains("POLICY_FIXED"))
+                assertFalse("POST_NOTIFICATIONS must not have SYSTEM_FIXED before launch: $preLaunchDump", preLaunchDump.contains("SYSTEM_FIXED"))
+            }
             assertEquals(
                 "Test fixture requires real denied OS POST_NOTIFICATIONS permission",
                 android.content.pm.PackageManager.PERMISSION_DENIED,
@@ -473,47 +549,76 @@ class LibraryNavigationInteractionTest {
                 host.main { click(ctaTarget) }
                 assertEquals(1, saveClicks)
             }
+        } catch (t: Throwable) {
+            recordFailure(t)
         } finally {
-            host.instrumentation.removeMonitor(platformPermissionMonitor)
-            host.instrumentation.removeMonitor(contractPermissionMonitor)
-            activity?.let { current ->
-                host.main {
-                    if (initialized) {
-                        model.selectCollectionFilter(previousCollection)
-                        model.setFilterMode(previousMode)
+            runCleanupStep { host.instrumentation.removeMonitor(platformPermissionMonitor) }
+            runCleanupStep { host.instrumentation.removeMonitor(contractPermissionMonitor) }
+            runCleanupStep {
+                activity?.let { current ->
+                    host.main {
+                        if (initialized) {
+                            model.selectCollectionFilter(previousCollection)
+                            model.setFilterMode(previousMode)
+                        }
+                        current.finish()
                     }
-                    current.finish()
                 }
             }
-            importJob.cancelAndJoin()
-            inMemoryDb.close()
-            val edit = prefs.edit()
-            if (previousModePref == null) edit.remove("library_filter_mode") else edit.putString("library_filter_mode", previousModePref)
-            edit.commit()
-            val notifEdit = notificationPrefs.edit()
-            if (hadRequestedKey) notifEdit.putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, previousRequested)
-            else notifEdit.remove(KEY_NOTIFICATION_PERMISSION_REQUESTED)
-            notifEdit.commit()
-            collectionDao.delete(collectionId)
-            runCatching {
+            runCleanupStep { importJob.cancelAndJoin() }
+            runCleanupStep { inMemoryDb.close() }
+            runCleanupStep {
+                val edit = prefs.edit()
+                if (previousModePref == null) edit.remove("library_filter_mode") else edit.putString("library_filter_mode", previousModePref)
+                check(edit.commit()) { "Failed to restore library_filter_mode preference" }
+            }
+            runCleanupStep {
+                val notifEdit = notificationPrefs.edit()
+                if (hadRequestedKey) notifEdit.putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, previousRequested)
+                else notifEdit.remove(KEY_NOTIFICATION_PERMISSION_REQUESTED)
+                check(notifEdit.commit()) { "Failed to restore $KEY_NOTIFICATION_PERMISSION_REQUESTED preference" }
+            }
+            runCleanupStep { collectionDao.delete(collectionId) }
+            runCleanupStep {
                 if (wasPermissionGranted) {
                     host.instrumentation.uiAutomation.grantRuntimePermissionAsUser(
                         host.context.packageName,
                         android.Manifest.permission.POST_NOTIFICATIONS,
                         myUserHandle
                     )
+                } else if (isPostNotificationsGranted()) {
+                    revokePostNotificationsWithoutKill()
                 }
-                runShellCommand(
+                runCheckedPmCommand(
                     "pm clear-permission-flags --user $myUserId ${host.context.packageName} " +
                         "android.permission.POST_NOTIFICATIONS $allManagedFlagArgs"
                 )
                 if (initialManagedFlags.isNotEmpty()) {
-                    runShellCommand(
+                    runCheckedPmCommand(
                         "pm set-permission-flags --user $myUserId ${host.context.packageName} " +
                             "android.permission.POST_NOTIFICATIONS ${initialManagedFlags.joinToString(" ")}"
                     )
                 }
+                val restoredGranted = isPostNotificationsGranted()
+                check(restoredGranted == wasPermissionGranted) {
+                    "Failed to restore POST_NOTIFICATIONS grant state: expected=$wasPermissionGranted actual=$restoredGranted"
+                }
+                val restoredDumpLine = readPostNotifDumpLineOrNull()
+                if (wasPermissionGranted) {
+                    check(restoredDumpLine != null && restoredDumpLine.contains("granted=true")) {
+                        "Restored POST_NOTIFICATIONS dump did not reflect granted=true: $restoredDumpLine"
+                    }
+                } else if (restoredDumpLine != null) {
+                    check(restoredDumpLine.contains("granted=false")) {
+                        "Restored POST_NOTIFICATIONS dump did not reflect granted=false: $restoredDumpLine"
+                    }
+                }
+                val restoredManagedFlags = extractManagedFlags(restoredDumpLine).toSet()
+                check(restoredManagedFlags == initialManagedFlags.toSet()) {
+                    "Failed to restore POST_NOTIFICATIONS managed flags: expected=${initialManagedFlags.toSet()} actual=$restoredManagedFlags"
+                }
             }
+            primaryFailure?.let { throw it }
         }
     }
 }

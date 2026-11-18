@@ -91,14 +91,31 @@ fun RssSettingsScreen(
     val registration by model.registration.collectAsStateWithLifecycle()
     val initialFetch by model.initialFetch.collectAsStateWithLifecycle()
     val notificationRationale by model.notificationRationale.collectAsStateWithLifecycle()
+    val permissionLaunchPending by model.permissionLaunchPending.collectAsStateWithLifecycle()
     val online by model.online.collectAsStateWithLifecycle()
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
         model::onNotificationPermissionResult
     )
+    var isResumed by remember { mutableStateOf(false) }
+    val currentLaunchOverride by rememberUpdatedState(onLaunchNotificationPermission)
+    LaunchedEffect(permissionLaunchPending, isResumed, permissionLauncher) {
+        if (permissionLaunchPending && isResumed && model.consumePermissionLaunchRequest()) {
+            val override = currentLaunchOverride
+            if (override != null) {
+                override()
+            } else {
+                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
     LifecycleResumeEffect(model) {
+        isResumed = true
         model.startListening()
-        onPauseOrDispose { model.stopListening() }
+        onPauseOrDispose {
+            isResumed = false
+            model.stopListening()
+        }
     }
     RssSettingsContent(
         feeds = feeds,
@@ -131,16 +148,8 @@ fun RssSettingsScreen(
     }
     if (notificationRationale && initialFetch == null) {
         RssNotificationPermissionDialog(
-            onAllow = {
-                model.consumeNotificationRationale {
-                    if (onLaunchNotificationPermission != null) {
-                        onLaunchNotificationPermission()
-                    } else {
-                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                }
-            },
-            onDismiss = { model.consumeNotificationRationale() }
+            onAllow = { model.consumeNotificationRationale(requestPermission = true) },
+            onDismiss = { model.consumeNotificationRationale(requestPermission = false) }
         )
     }
 }

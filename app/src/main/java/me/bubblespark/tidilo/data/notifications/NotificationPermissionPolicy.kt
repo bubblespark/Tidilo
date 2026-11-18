@@ -3,13 +3,21 @@ package me.bubblespark.tidilo.data.notifications
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.core.content.ContextCompat
 
 const val NOTIFICATION_PREFS_NAME = "tidilo_notifications"
 const val KEY_NOTIFICATION_PERMISSION_REQUESTED = "permission_requested"
 
+@Volatile
+internal var postNotificationsPermissionOverrideForTesting: ((Context) -> Boolean)? = null
+
+@Volatile
+internal var activityResultRegistryOwnerOverrideForTesting: ActivityResultRegistryOwner? = null
+
 fun hasPostNotificationsPermission(context: Context): Boolean =
-    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    postNotificationsPermissionOverrideForTesting?.invoke(context)
+        ?: (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
 
 /** Notification permission rationale is offered at most once when permission is not yet granted. */
 fun shouldOfferNotificationPermissionRationale(

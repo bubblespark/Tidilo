@@ -231,7 +231,19 @@ class LibraryNavigationInteractionTest {
         var previousCollection: String? = null
         var activity: ComponentActivity? = null
         try {
+            me.bubblespark.tidilo.data.notifications.postNotificationsPermissionOverrideForTesting = { false }
+            me.bubblespark.tidilo.data.notifications.activityResultRegistryOwnerOverrideForTesting = deniedRegistryOwner
             val hostActivity = host.launch().also { activity = it }
+            host.await(hostActivity) { host.description(it, host.context.getString(R.string.navigation_open)) }
+            assertEquals(
+                android.content.pm.PackageManager.PERMISSION_DENIED,
+                hostActivity.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            )
+            assertFalse(me.bubblespark.tidilo.data.notifications.hasPostNotificationsPermission(hostActivity))
+            assertTrue(
+                "MainActivity startup must not launch any permission request",
+                launchedPermissionRequests.isEmpty()
+            )
             assertFalse(
                 "Cold launch must not mark notification permission as requested",
                 notificationPrefs.getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
@@ -335,6 +347,8 @@ class LibraryNavigationInteractionTest {
                 assertEquals(1, saveClicks)
             }
         } finally {
+            me.bubblespark.tidilo.data.notifications.postNotificationsPermissionOverrideForTesting = null
+            me.bubblespark.tidilo.data.notifications.activityResultRegistryOwnerOverrideForTesting = null
             activity?.let { current ->
                 host.main {
                     if (initialized) {

@@ -831,6 +831,126 @@ class RssSettingsScreenTest {
                 find { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title) }
             )
 
+            val staleSavedState = androidx.lifecycle.SavedStateHandle(mapOf("notificationRationale" to true))
+            val restoredStaleModel = me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel(
+                activity.application,
+                staleSavedState,
+                testRepo,
+                permissionGrantedProvider = { false }
+            )
+            assertFalse(
+                "Restored rationale must stay hidden before recheck when already requested",
+                restoredStaleModel.notificationRationale.value
+            )
+            withTimeout(3000) {
+                while (staleSavedState.get<Boolean>("notificationRationale") != false) {
+                    delay(20)
+                }
+            }
+            assertFalse(restoredStaleModel.notificationRationale.value)
+
+            assertTrue(
+                notificationPrefs.edit()
+                    .putBoolean(me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
+                    .commit()
+            )
+            val persistStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val allowPersistFinish = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val recreationState = androidx.lifecycle.SavedStateHandle(mapOf("notificationRationale" to true))
+            val recreationModel = me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel(
+                activity.application,
+                recreationState,
+                testRepo,
+                permissionGrantedProvider = { false },
+                persistPermissionRequested = {
+                    persistStarted.complete(Unit)
+                    allowPersistFinish.await()
+                    notificationPrefs.edit()
+                        .putBoolean(me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED, true)
+                        .commit()
+                }
+            )
+            val screenGeneration = mutableStateOf(1)
+            var firstOwnerLaunches = 0
+            var secondOwnerLaunches = 0
+            val firstRegistryOwner = object : androidx.activity.result.ActivityResultRegistryOwner {
+                override val activityResultRegistry = object : androidx.activity.result.ActivityResultRegistry() {
+                    override fun <I, O> onLaunch(
+                        requestCode: Int,
+                        contract: androidx.activity.result.contract.ActivityResultContract<I, O>,
+                        input: I,
+                        options: androidx.core.app.ActivityOptionsCompat?
+                    ) {
+                        firstOwnerLaunches++
+                        dispatchResult(requestCode, false)
+                    }
+                }
+            }
+            val secondRegistryOwner = object : androidx.activity.result.ActivityResultRegistryOwner {
+                override val activityResultRegistry = object : androidx.activity.result.ActivityResultRegistry() {
+                    override fun <I, O> onLaunch(
+                        requestCode: Int,
+                        contract: androidx.activity.result.contract.ActivityResultContract<I, O>,
+                        input: I,
+                        options: androidx.core.app.ActivityOptionsCompat?
+                    ) {
+                        assertTrue(
+                            "KEY_NOTIFICATION_PERMISSION_REQUESTED must already be persisted before second screen launches OS prompt",
+                            notificationPrefs.getBoolean(
+                                me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED,
+                                false
+                            )
+                        )
+                        secondOwnerLaunches++
+                        dispatchResult(requestCode, false)
+                    }
+                }
+            }
+            try {
+                instrumentation.runOnMainSync {
+                    activity.setContent {
+                        MaterialTheme {
+                            if (screenGeneration.value == 1) {
+                                CompositionLocalProvider(
+                                    androidx.activity.compose.LocalActivityResultRegistryOwner provides firstRegistryOwner
+                                ) {
+                                    me.bubblespark.tidilo.ui.screens.settings.RssSettingsScreen(
+                                        onNavigateBack = {},
+                                        model = recreationModel,
+                                        isNotificationPermissionGranted = { false }
+                                    )
+                                }
+                            } else {
+                                CompositionLocalProvider(
+                                    androidx.activity.compose.LocalActivityResultRegistryOwner provides secondRegistryOwner
+                                ) {
+                                    me.bubblespark.tidilo.ui.screens.settings.RssSettingsScreen(
+                                        onNavigateBack = {},
+                                        model = recreationModel,
+                                        isNotificationPermissionGranted = { false }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                node("Restored eligible rationale") {
+                    it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title)
+                }
+                clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_allow))
+                withTimeout(3000) { persistStarted.await() }
+                instrumentation.runOnMainSync { screenGeneration.value = 2 }
+                instrumentation.waitForIdleSync()
+                allowPersistFinish.complete(Unit)
+                withTimeout(3000) {
+                    while (secondOwnerLaunches == 0) delay(20)
+                }
+                assertEquals("Disposed composition launcher must not be called", 0, firstOwnerLaunches)
+                assertEquals("Resumed recreated screen launcher must be invoked once", 1, secondOwnerLaunches)
+            } finally {
+                allowPersistFinish.complete(Unit)
+            }
+
             me.bubblespark.tidilo.config.AppConfig.setLanguage(me.bubblespark.tidilo.config.AppLanguage.ENGLISH)
             val jaLocale = Locale.JAPANESE
             val jaConfig = Configuration(context.resources.configuration).apply {

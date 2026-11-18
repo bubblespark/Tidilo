@@ -1,13 +1,19 @@
 package me.bubblespark.tidilo
 
+import android.Manifest
+import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import kotlinx.coroutines.launch
 import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
+import me.bubblespark.tidilo.data.notifications.activityResultRegistryOwnerOverrideForTesting
+import me.bubblespark.tidilo.data.notifications.postNotificationsPermissionOverrideForTesting
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -71,6 +77,47 @@ import me.bubblespark.tidilo.config.AppLanguage
 
 class MainActivity : ComponentActivity() {
     private val notificationDestination = mutableStateOf<String?>(null)
+
+    override fun checkSelfPermission(permission: String): Int {
+        if (permission == Manifest.permission.POST_NOTIFICATIONS) {
+            postNotificationsPermissionOverrideForTesting?.invoke(this)?.let { granted ->
+                return if (granted) PackageManager.PERMISSION_GRANTED else PackageManager.PERMISSION_DENIED
+            }
+        }
+        return super.checkSelfPermission(permission)
+    }
+
+    override fun checkPermission(permission: String, pid: Int, uid: Int): Int {
+        if (permission == Manifest.permission.POST_NOTIFICATIONS) {
+            postNotificationsPermissionOverrideForTesting?.invoke(this)?.let { granted ->
+                return if (granted) PackageManager.PERMISSION_GRANTED else PackageManager.PERMISSION_DENIED
+            }
+        }
+        return super.checkPermission(permission, pid, uid)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun startActivityForResult(intent: Intent, requestCode: Int, options: Bundle?) {
+        val registryOverride = activityResultRegistryOwnerOverrideForTesting
+        if (registryOverride != null &&
+            intent.action == ActivityResultContracts.RequestMultiplePermissions.ACTION_REQUEST_PERMISSIONS
+        ) {
+            val permissions = intent.getStringArrayExtra(
+                ActivityResultContracts.RequestMultiplePermissions.EXTRA_PERMISSIONS
+            ) ?: emptyArray()
+            registryOverride.activityResultRegistry.onLaunch(
+                requestCode,
+                ActivityResultContracts.RequestMultiplePermissions(),
+                permissions,
+                null
+            )
+            @Suppress("DEPRECATION")
+            onActivityResult(requestCode, Activity.RESULT_CANCELED, null)
+            return
+        }
+        @Suppress("DEPRECATION")
+        super.startActivityForResult(intent, requestCode, options)
+    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -136,7 +183,7 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(
                 LocalConfiguration provides updatedConfig,
                 LocalContext provides localizedContext,
-                LocalActivityResultRegistryOwner provides this@MainActivity
+                LocalActivityResultRegistryOwner provides (activityResultRegistryOwnerOverrideForTesting ?: this@MainActivity)
             ) {
                 val selectedTheme by AppConfig.currentTheme.collectAsStateWithLifecycle()
                 val blurEnabled by AppConfig.overlayBlurEnabled.collectAsStateWithLifecycle()

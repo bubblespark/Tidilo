@@ -230,19 +230,71 @@ class LibraryNavigationInteractionTest {
         var previousMode = LibraryFilterMode.NEWEST_FIRST
         var previousCollection: String? = null
         var activity: ComponentActivity? = null
+        val platformPermissionMonitor = host.instrumentation.addMonitor(
+            android.content.IntentFilter("android.content.pm.action.REQUEST_PERMISSIONS"),
+            android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null),
+            true
+        )
+        val contractPermissionMonitor = host.instrumentation.addMonitor(
+            android.content.IntentFilter(
+                androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions.ACTION_REQUEST_PERMISSIONS
+            ),
+            android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null),
+            true
+        )
         try {
-            me.bubblespark.tidilo.data.notifications.postNotificationsPermissionOverrideForTesting = { false }
-            me.bubblespark.tidilo.data.notifications.activityResultRegistryOwnerOverrideForTesting = deniedRegistryOwner
-            val hostActivity = host.launch().also { activity = it }
+            assertEquals(
+                "Test fixture requires real denied OS POST_NOTIFICATIONS permission",
+                android.content.pm.PackageManager.PERMISSION_DENIED,
+                host.context.packageManager.checkPermission(
+                    android.Manifest.permission.POST_NOTIFICATIONS,
+                    host.context.packageName
+                )
+            )
+            assertFalse(
+                "POST_NOTIFICATIONS must be requestable rather than revoked by policy",
+                host.context.packageManager.isPermissionRevokedByPolicy(
+                    android.Manifest.permission.POST_NOTIFICATIONS,
+                    host.context.packageName
+                )
+            )
+            // Use an explicit ACTION_MAIN intent so IntentFilter monitors targeting permission actions do not match null-action launches.
+            val launchIntent = android.content.Intent(android.content.Intent.ACTION_MAIN)
+                .setClass(host.context, me.bubblespark.tidilo.MainActivity::class.java)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            val hostActivity = (host.instrumentation.startActivitySync(launchIntent) as ComponentActivity)
+                .also { activity = it }
             host.await(hostActivity) { host.description(it, host.context.getString(R.string.navigation_open)) }
+            assertEquals(
+                android.content.pm.PackageManager.PERMISSION_DENIED,
+                host.context.packageManager.checkPermission(
+                    android.Manifest.permission.POST_NOTIFICATIONS,
+                    host.context.packageName
+                )
+            )
             assertEquals(
                 android.content.pm.PackageManager.PERMISSION_DENIED,
                 hostActivity.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
             )
             assertFalse(me.bubblespark.tidilo.data.notifications.hasPostNotificationsPermission(hostActivity))
-            assertTrue(
-                "MainActivity startup must not launch any permission request",
-                launchedPermissionRequests.isEmpty()
+            suspend fun awaitActiveWindowPackage(): String = withTimeout(5000) {
+                while (true) {
+                    val pkg = host.instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString()
+                    if (pkg != null) return@withTimeout pkg
+                    delay(50)
+                }
+                error("Unreachable")
+            }
+            assertFalse(
+                "POST_NOTIFICATIONS must be in initial requestable state before launch",
+                hostActivity.shouldShowRequestPermissionRationale(android.Manifest.permission.POST_NOTIFICATIONS)
+            )
+            assertEquals("MainActivity startup must not dispatch platform permission UI", 0, platformPermissionMonitor.hits)
+            assertEquals("MainActivity startup must not dispatch permission contract", 0, contractPermissionMonitor.hits)
+            assertEquals(
+                "MainActivity startup must stay in Tidilo without system permission dialog",
+                host.context.packageName,
+                awaitActiveWindowPackage()
             )
             assertFalse(
                 "Cold launch must not mark notification permission as requested",
@@ -292,9 +344,16 @@ class LibraryNavigationInteractionTest {
             withTimeout(5000) {
                 while (inMemoryDb.bookmarkDao().getBookmarkByUrl(testUrl) == null) delay(30)
             }
+            assertEquals("Manual URL saving must not dispatch platform permission UI", 0, platformPermissionMonitor.hits)
+            assertEquals("Manual URL saving must not dispatch permission contract", 0, contractPermissionMonitor.hits)
             assertTrue(
                 "Cold launch and manual URL saving must not launch any permission request",
                 launchedPermissionRequests.isEmpty()
+            )
+            assertEquals(
+                "Manual URL saving must remain in Tidilo without system permission dialog",
+                host.context.packageName,
+                awaitActiveWindowPackage()
             )
             assertFalse("Manual URL saving must not request or mark notification permission",
                 notificationPrefs.getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false))
@@ -347,8 +406,8 @@ class LibraryNavigationInteractionTest {
                 assertEquals(1, saveClicks)
             }
         } finally {
-            me.bubblespark.tidilo.data.notifications.postNotificationsPermissionOverrideForTesting = null
-            me.bubblespark.tidilo.data.notifications.activityResultRegistryOwnerOverrideForTesting = null
+            host.instrumentation.removeMonitor(platformPermissionMonitor)
+            host.instrumentation.removeMonitor(contractPermissionMonitor)
             activity?.let { current ->
                 host.main {
                     if (initialized) {

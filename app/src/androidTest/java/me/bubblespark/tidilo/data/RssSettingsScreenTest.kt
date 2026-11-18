@@ -871,6 +871,8 @@ class RssSettingsScreenTest {
                 }
             )
             val screenGeneration = mutableStateOf(1)
+            val firstDisposed = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val secondApplied = kotlinx.coroutines.CompletableDeferred<Unit>()
             var firstOwnerLaunches = 0
             var secondOwnerLaunches = 0
             val firstRegistryOwner = object : androidx.activity.result.ActivityResultRegistryOwner {
@@ -911,6 +913,9 @@ class RssSettingsScreenTest {
                     activity.setContent {
                         MaterialTheme {
                             if (screenGeneration.value == 1) {
+                                androidx.compose.runtime.DisposableEffect(Unit) {
+                                    onDispose { firstDisposed.complete(Unit) }
+                                }
                                 CompositionLocalProvider(
                                     androidx.activity.compose.LocalActivityResultRegistryOwner provides firstRegistryOwner
                                 ) {
@@ -930,6 +935,9 @@ class RssSettingsScreenTest {
                                         isNotificationPermissionGranted = { false }
                                     )
                                 }
+                                androidx.compose.runtime.SideEffect {
+                                    secondApplied.complete(Unit)
+                                }
                             }
                         }
                     }
@@ -940,7 +948,10 @@ class RssSettingsScreenTest {
                 clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_allow))
                 withTimeout(3000) { persistStarted.await() }
                 instrumentation.runOnMainSync { screenGeneration.value = 2 }
-                instrumentation.waitForIdleSync()
+                withTimeout(3000) {
+                    firstDisposed.await()
+                    secondApplied.await()
+                }
                 allowPersistFinish.complete(Unit)
                 withTimeout(3000) {
                     while (secondOwnerLaunches == 0) delay(20)

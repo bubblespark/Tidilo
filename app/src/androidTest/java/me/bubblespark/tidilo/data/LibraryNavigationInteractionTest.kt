@@ -230,6 +230,32 @@ class LibraryNavigationInteractionTest {
         var previousMode = LibraryFilterMode.NEWEST_FIRST
         var previousCollection: String? = null
         var activity: ComponentActivity? = null
+        fun runShellCommand(command: String): String {
+            val pfd = host.instrumentation.uiAutomation.executeShellCommand(command)
+            return android.os.ParcelFileDescriptor.AutoCloseInputStream(pfd).bufferedReader().use { it.readText() }
+        }
+        val wasPermissionGranted = host.context.packageManager.checkPermission(
+            android.Manifest.permission.POST_NOTIFICATIONS,
+            host.context.packageName
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (wasPermissionGranted) {
+            host.instrumentation.uiAutomation.adoptShellPermissionIdentity()
+            try {
+                val permManager = checkNotNull(host.context.getSystemService("permission"))
+                val myUserId = android.os.UserHandle::class.java.getMethod("myUserId").invoke(null) as Int
+                permManager.javaClass.getMethod(
+                    "revokePostNotificationPermissionWithoutKillForTest",
+                    String::class.java,
+                    Int::class.javaPrimitiveType
+                ).invoke(permManager, host.context.packageName, myUserId)
+            } finally {
+                host.instrumentation.uiAutomation.dropShellPermissionIdentity()
+            }
+        }
+        runShellCommand(
+            "pm clear-permission-flags ${host.context.packageName} android.permission.POST_NOTIFICATIONS " +
+                "user-set user-fixed review-required revoked-compat revoke-when-requested"
+        )
         val platformPermissionMonitor = host.instrumentation.addMonitor(
             android.content.IntentFilter("android.content.pm.action.REQUEST_PERMISSIONS"),
             android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null),
@@ -243,6 +269,18 @@ class LibraryNavigationInteractionTest {
             true
         )
         try {
+            val preLaunchDump = runShellCommand("dumpsys package ${host.context.packageName}")
+                .lineSequence()
+                .firstOrNull { line ->
+                    val trimmed = line.trim()
+                    trimmed.startsWith("android.permission.POST_NOTIFICATIONS:") && trimmed.contains("granted=")
+                }
+            assertNotNull("POST_NOTIFICATIONS runtime permission line must exist in dumpsys", preLaunchDump)
+            assertTrue("Expected denied permission in dumpsys but was: $preLaunchDump", preLaunchDump!!.contains("granted=false"))
+            assertFalse("POST_NOTIFICATIONS must not have USER_FIXED before launch: $preLaunchDump", preLaunchDump.contains("USER_FIXED"))
+            assertFalse("POST_NOTIFICATIONS must not have USER_SET before launch: $preLaunchDump", preLaunchDump.contains("USER_SET"))
+            assertFalse("POST_NOTIFICATIONS must not have POLICY_FIXED before launch: $preLaunchDump", preLaunchDump.contains("POLICY_FIXED"))
+            assertFalse("POST_NOTIFICATIONS must not have SYSTEM_FIXED before launch: $preLaunchDump", preLaunchDump.contains("SYSTEM_FIXED"))
             assertEquals(
                 "Test fixture requires real denied OS POST_NOTIFICATIONS permission",
                 android.content.pm.PackageManager.PERMISSION_DENIED,
@@ -357,6 +395,14 @@ class LibraryNavigationInteractionTest {
             )
             assertFalse("Manual URL saving must not request or mark notification permission",
                 notificationPrefs.getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false))
+            // Prove Activity.requestPermissions is not short-circuited and dispatches REQUEST_PERMISSIONS when invoked.
+            host.main { hostActivity.requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 999) }
+            withTimeout(3000) { while (platformPermissionMonitor.hits == 0) delay(20) }
+            assertEquals(
+                "Platform REQUEST_PERMISSIONS monitor must observe direct requestPermissions dispatch",
+                1,
+                platformPermissionMonitor.hits
+            )
             host.await(hostActivity) { host.text(it, host.context.getString(R.string.library_empty_save_url)) }
 
             val cases = listOf(
@@ -427,6 +473,18 @@ class LibraryNavigationInteractionTest {
             else notifEdit.remove(KEY_NOTIFICATION_PERMISSION_REQUESTED)
             notifEdit.commit()
             collectionDao.delete(collectionId)
+            runCatching {
+                runShellCommand(
+                    "pm clear-permission-flags ${host.context.packageName} android.permission.POST_NOTIFICATIONS " +
+                        "user-set user-fixed review-required revoked-compat revoke-when-requested"
+                )
+            }
+            if (wasPermissionGranted) {
+                host.instrumentation.uiAutomation.grantRuntimePermission(
+                    host.context.packageName,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                )
+            }
         }
     }
 }

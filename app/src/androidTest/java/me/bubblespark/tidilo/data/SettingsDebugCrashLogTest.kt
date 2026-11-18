@@ -29,11 +29,6 @@ class SettingsDebugCrashLogTest {
     @Before
     fun setUp() {
         CrashLogManager.clearLogs(host.context)
-        runCatching {
-            host.instrumentation.uiAutomation.executeShellCommand(
-                "pm grant ${host.context.packageName} android.permission.POST_NOTIFICATIONS"
-            )
-        }
     }
 
     @After

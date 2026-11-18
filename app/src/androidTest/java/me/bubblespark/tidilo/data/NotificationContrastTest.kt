@@ -1,9 +1,12 @@
 package me.bubblespark.tidilo.data
 
+import android.Manifest
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
+import android.view.View
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.ui.geometry.Offset
@@ -19,10 +22,13 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.toSize
 import androidx.room.withTransaction
 import androidx.test.core.app.ActivityScenario
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import me.bubblespark.tidilo.MainActivity
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiAnalysisMode
@@ -41,6 +47,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.UUID
+import kotlin.math.ceil
 
 class NotificationContrastTest {
     /** Uses a dedicated emulator because opening the production route marks unread history as read. */
@@ -65,9 +72,16 @@ class NotificationContrastTest {
         val actions = listOf(importAction, rssAction)
         val createdAt = System.currentTimeMillis()
         var historyId = 0L
+        var testFailure: Throwable? = null
 
         assertEquals("Use a test profile with no unread notification history", 0, notifications.observeUnreadCount().first())
         try {
+            val permission = Manifest.permission.POST_NOTIFICATIONS
+            if (host.context.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+                shell(host, "pm grant ${host.context.packageName} $permission")
+                assertEquals("Notification permission setup failed", PackageManager.PERMISSION_GRANTED,
+                    host.context.checkSelfPermission(permission))
+            }
             AppConfig.setAiAnalysisMode(AiAnalysisMode.DISABLE)
             AppConfig.setTheme(AppTheme.DEFAULT)
             nightMode(host, "yes")
@@ -107,14 +121,29 @@ class NotificationContrastTest {
                     while (db.importTaskDao().getTaskById(key) != null) delay(30)
                 }
             }
+        } catch (failure: Throwable) {
+            testFailure = failure
+            throw failure
         } finally {
-            AppConfig.setTheme(originalTheme)
-            AppConfig.setAiAnalysisMode(originalAiMode)
-            nightMode(host, originalNightMode)
-            if (historyId != 0L) db.withTransaction {
-                notifications.deleteById(historyId)
-                db.importTaskDao().deleteById(key)
-                db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(key))
+            withContext(NonCancellable) {
+                val cleanup = listOf<suspend () -> Unit>(
+                    { AppConfig.setTheme(originalTheme) },
+                    { AppConfig.setAiAnalysisMode(originalAiMode) },
+                    { nightMode(host, originalNightMode) },
+                    {
+                        if (historyId != 0L) db.withTransaction {
+                            notifications.deleteById(historyId)
+                            db.importTaskDao().deleteById(key)
+                            db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(key))
+                        }
+                    }
+                )
+                val failures = cleanup.mapNotNull { runCatching { it() }.exceptionOrNull() }
+                if (failures.isNotEmpty()) {
+                    val failure = testFailure ?: AssertionError("Notification contrast test cleanup failed")
+                    failures.forEach(failure::addSuppressed)
+                    if (testFailure == null) throw failure
+                }
             }
         }
     }
@@ -137,73 +166,105 @@ class NotificationContrastTest {
             AppTheme.MODERN -> if (dark) ModernDarkColorScheme.background else ModernLightColorScheme.background
         }
         val appearance = "$theme ${if (dark) "dark" else "light"}"
-        val firstTitle = awaitNode(host, scenario) { host.text(it, titles.first()) }
-        val canvasY = onMain(host) { firstTitle.screenBounds().center.y }
-        withTimeout(6000) {
-            var matches = false
-            while (!matches) {
-                screenshot(host) { matches = it.colorAt(2f, canvasY) == expectedCanvas }
-                if (!matches) delay(30)
+        val iconDescription = host.context.getString(R.string.notification_more_actions)
+        val rows = awaitStableFrame(host, scenario, "$appearance notification rows") { activity, nodes ->
+            val rtl = activity.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
+            val titleSamples = titles.map { title ->
+                val node = nodes.firstOrNull { host.text(it, title) } ?: return@awaitStableFrame null
+                val bounds = node.screenBounds()
+                val margin = if (rtl) bounds.right + 8f else bounds.left - 8f
+                Sample(bounds, Offset(margin, bounds.center.y), node.textColor())
             }
+            val iconSamples = actions.map { tag ->
+                val button = nodes.firstOrNull { it.tag() == tag } ?: return@awaitStableFrame null
+                val icon = button.children.firstOrNull { host.description(it, iconDescription) }
+                    ?: return@awaitStableFrame null
+                assertNull(button.config.getOrNull(SemanticsProperties.Disabled))
+                val bounds = button.screenBounds()
+                Sample(icon.screenBounds(), Offset(bounds.left + bounds.width * 0.1f, bounds.center.y))
+            }
+            FrameSamples(titleSamples + iconSamples, expectedCanvas)
         }
-
-        val titleNodes = titles.map { title -> awaitNode(host, scenario) { host.text(it, title) } }
-        val actionNodes = actions.map { tag -> awaitNode(host, scenario) { it.tag() == tag } }
-        val (titleSamples, actionBounds) = onMain(host) {
-            val titlesOnScreen = titleNodes.map { it.textColor() to it.screenBounds() }
-            val actionsOnScreen = actionNodes.map {
-                assertNull(it.config.getOrNull(SemanticsProperties.Disabled))
-                it.screenBounds()
-            }
-            titlesOnScreen to actionsOnScreen
+        titles.zip(rows.take(titles.size)).forEach { (title, ratio) ->
+            assertContrast("$appearance $title", ratio, NORMAL_TEXT_CONTRAST)
         }
-        screenshot(host) { image ->
-            titles.zip(titleSamples).forEach { (title, sample) ->
-                val (color, bounds) = sample
-                // Sample the blank margin beside the row.
-                assertContrast("$appearance $title", color, image.colorAt(2f, bounds.center.y), 4.5)
-            }
-            actions.zip(actionBounds).forEach { (tag, bounds) ->
-                val foreground = image.colorAt(bounds.center.x, bounds.center.y)
-                val background = image.colorAt(bounds.left + bounds.width * 0.1f, bounds.center.y)
-                assertContrast("$appearance $tag", foreground, background, 3.0)
-            }
+        actions.zip(rows.drop(titles.size)).forEach { (tag, ratio) ->
+            assertContrast("$appearance $tag", ratio, ICON_CONTRAST)
         }
 
         val menuLabels = listOf(R.string.common_retry, R.string.common_delete).map(host.context::getString)
-        actionNodes.forEach { action ->
-            click(host, action)
-            val menuNodes = menuLabels.map { label -> awaitNode(host, scenario) { host.text(it, label) } }
-            // Wait for the popup's entrance scale and opacity to settle before taking screen coordinates.
-            delay(250)
-            val menuSamples = onMain(host) {
-                menuNodes.map { label ->
-                    val item = label.clickOwner()
+        actions.forEach { tag ->
+            click(host, awaitNode(host, scenario) { it.tag() == tag })
+            val menu = awaitStableFrame(host, scenario, "$appearance $tag menu") { _, nodes ->
+                FrameSamples(menuLabels.map { label ->
+                    val node = nodes.firstOrNull { host.text(it, label) } ?: return@awaitStableFrame null
+                    val item = node.clickOwner()
                     assertNull(item.config.getOrNull(SemanticsProperties.Disabled))
-                    label.screenBounds() to item.screenBounds()
-                }
+                    val textBounds = node.screenBounds()
+                    val itemBounds = item.screenBounds()
+                    Sample(textBounds, Offset(itemBounds.left + itemBounds.width * 0.04f, textBounds.center.y))
+                })
             }
-            screenshot(host) { image ->
-                menuLabels.zip(menuSamples).forEach { (label, sample) ->
-                    val (textBounds, itemBounds) = sample
-                    val background = image.colorAt(itemBounds.left + itemBounds.width * 0.04f, textBounds.center.y)
-                    val bg = background.luminance()
-                    // The menu's Text can supply its color at draw time, outside the text layout result.
-                    val contrast = (textBounds.top.toInt() until textBounds.bottom.toInt()).maxOf { y ->
-                        (textBounds.left.toInt() until textBounds.right.toInt()).maxOf { x ->
-                            contrastRatio(Color(image.getPixel(x, y)).luminance(), bg)
-                        }
-                    }
-                    assertTrue("$appearance $label contrast was $contrast, expected at least 4.5", contrast >= 4.5)
-                }
+            menuLabels.zip(menu).forEach { (label, ratio) ->
+                assertContrast("$appearance $label", ratio, NORMAL_TEXT_CONTRAST)
             }
             assertTrue(host.instrumentation.uiAutomation.performGlobalAction(
                 AccessibilityService.GLOBAL_ACTION_BACK
             ))
             withTimeout(5000) {
-                while (nodes(host, scenario).any { node -> menuLabels.any { host.text(node, it) } }) delay(30)
+                while (nodes(host, scenario).any { node -> menuLabels.any { host.text(node, it) } }) delay(POLL_INTERVAL_MS)
             }
         }
+    }
+
+    private data class Sample(val bounds: Rect, val background: Offset, val textColor: Color? = null)
+
+    private data class FrameSamples(val samples: List<Sample>, val canvas: Color? = null)
+
+    private data class Measurement(val bounds: Rect, val background: Color, val ratio: Double)
+
+    private suspend fun awaitStableFrame(
+        host: HeaderTestHost,
+        scenario: ActivityScenario<MainActivity>,
+        label: String,
+        locate: (MainActivity, List<SemanticsNode>) -> FrameSamples?
+    ): List<Double> {
+        var previous: List<Measurement>? = null
+        var stableReads = 0
+        val measurements = withTimeoutOrNull(8000) {
+            while (stableReads < 3) {
+                val frame = onActivity(scenario) { locate(it, host.nodes(it)) }
+                val current = frame?.let { screenshot(host) { image -> measureFrame(image, frame) } }
+                // Geometry and pixels must settle. Popup opacity can change without moving its layout bounds.
+                stableReads = if (current != null && current == previous) stableReads + 1 else 0
+                previous = current
+                if (stableReads < 3) delay(POLL_INTERVAL_MS)
+            }
+            previous
+        }
+        return checkNotNull(measurements) { "$label did not settle inside the screenshot viewport" }.map { it.ratio }
+    }
+
+    private fun measureFrame(image: Bitmap, frame: FrameSamples): List<Measurement>? = frame.samples.map { sample ->
+        val bounds = sample.bounds
+        val point = sample.background
+        if (bounds.isEmpty || bounds.left < 0 || bounds.top < 0 ||
+            bounds.right > image.width || bounds.bottom > image.height ||
+            point.x !in 0f..<image.width.toFloat() || point.y !in 0f..<image.height.toFloat()) return null
+        val background = image.colorAt(point.x, point.y)
+        val textColor = sample.textColor
+        if (textColor != null && frame.canvas != null && background != frame.canvas) return null
+        val bg = background.luminance()
+        val ratio = if (textColor != null) {
+            contrastRatio(textColor.compositeOver(background).luminance(), bg)
+        } else {
+            (ceil(bounds.top).toInt() until bounds.bottom.toInt()).maxOfOrNull { y ->
+                (ceil(bounds.left).toInt() until bounds.right.toInt()).maxOfOrNull { x ->
+                    contrastRatio(Color(image.getPixel(x, y)).luminance(), bg)
+                } ?: 1.0
+            } ?: 1.0
+        }
+        Measurement(bounds, background, ratio)
     }
 
     private suspend fun awaitNode(
@@ -213,15 +274,18 @@ class NotificationContrastTest {
     ): SemanticsNode = withTimeout(8000) {
         var found = nodes(host, scenario).firstOrNull(match)
         while (found == null) {
-            delay(30)
+            delay(POLL_INTERVAL_MS)
             found = nodes(host, scenario).firstOrNull(match)
         }
         found
     }
 
-    private fun nodes(host: HeaderTestHost, scenario: ActivityScenario<MainActivity>): List<SemanticsNode> {
-        var result: Result<List<SemanticsNode>>? = null
-        scenario.onActivity { result = runCatching { host.nodes(it) } }
+    private fun nodes(host: HeaderTestHost, scenario: ActivityScenario<MainActivity>): List<SemanticsNode> =
+        onActivity(scenario) { host.nodes(it) }
+
+    private fun <T> onActivity(scenario: ActivityScenario<MainActivity>, block: (MainActivity) -> T): T {
+        var result: Result<T>? = null
+        scenario.onActivity { result = runCatching { block(it) } }
         return checkNotNull(result).getOrThrow()
     }
 
@@ -251,19 +315,16 @@ class NotificationContrastTest {
 
     private fun Bitmap.colorAt(x: Float, y: Float) = Color(getPixel(x.toInt(), y.toInt()))
 
-    private fun screenshot(host: HeaderTestHost, inspect: (Bitmap) -> Unit) {
+    private fun <T> screenshot(host: HeaderTestHost, inspect: (Bitmap) -> T): T {
         val image = requireNotNull(host.instrumentation.uiAutomation.takeScreenshot())
-        try {
+        return try {
             inspect(image)
         } finally {
             image.recycle()
         }
     }
 
-    private fun assertContrast(label: String, foreground: Color, background: Color, minimum: Double) {
-        val fg = foreground.compositeOver(background).luminance()
-        val bg = background.luminance()
-        val ratio = contrastRatio(fg, bg)
+    private fun assertContrast(label: String, ratio: Double, minimum: Double) {
         assertTrue("$label contrast was $ratio, expected at least $minimum", ratio >= minimum)
     }
 
@@ -271,7 +332,16 @@ class NotificationContrastTest {
         (maxOf(foreground, background) + 0.05) / (minOf(foreground, background) + 0.05)
 
     private fun nightMode(host: HeaderTestHost, mode: String = ""): String =
+        shell(host, "cmd uimode night $mode".trimEnd())
+
+    private fun shell(host: HeaderTestHost, command: String): String =
         ParcelFileDescriptor.AutoCloseInputStream(
-            host.instrumentation.uiAutomation.executeShellCommand("cmd uimode night $mode".trimEnd())
+            host.instrumentation.uiAutomation.executeShellCommand(command)
         ).bufferedReader().use { it.readText().trim() }
+
+    private companion object {
+        const val NORMAL_TEXT_CONTRAST = 4.5
+        const val ICON_CONTRAST = 3.0
+        const val POLL_INTERVAL_MS = 30L
+    }
 }

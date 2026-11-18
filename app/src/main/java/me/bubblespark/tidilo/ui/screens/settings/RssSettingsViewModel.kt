@@ -12,6 +12,7 @@ import androidx.work.WorkManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
@@ -21,6 +22,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.db.RssFeedEntity
+import me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED
+import me.bubblespark.tidilo.data.notifications.NOTIFICATION_PREFS_NAME
+import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
+import me.bubblespark.tidilo.data.notifications.hasPostNotificationsPermission
+import me.bubblespark.tidilo.data.notifications.shouldPromptNotificationPermissionOnRssEvent
 import me.bubblespark.tidilo.data.rss.RssPreferences
 import me.bubblespark.tidilo.data.rss.RssRepository
 import me.bubblespark.tidilo.data.rss.RssScheduler
@@ -63,6 +69,8 @@ class RssSettingsViewModel(
     val online = _online.asStateFlow()
     private val _initialFetch = MutableStateFlow<String?>(savedState["initialFeed"])
     val initialFetch = _initialFetch.asStateFlow()
+    private val _notificationRationale = MutableStateFlow(savedState["notificationRationale"] ?: false)
+    val notificationRationale = _notificationRationale.asStateFlow()
     private val _registration = MutableStateFlow<RssRegistrationRequest?>(null)
     internal val registration = _registration.asStateFlow()
     private val connectivity = application.getSystemService(ConnectivityManager::class.java)
@@ -117,9 +125,18 @@ class RssSettingsViewModel(
         }
     }
 
-    fun saveSettings(value: RssSettings) = action {
+    fun saveSettings(
+        value: RssSettings,
+        permissionGranted: Boolean = hasPostNotificationsPermission(getApplication())
+    ) = action {
+        val previousDaily = settings.value.dailyEnabled
         preferences.save(value)
         RssScheduler.reschedule(getApplication())
+        evaluateNotificationRationaleOnIo(
+            permissionGranted = permissionGranted,
+            previousDailyEnabled = previousDaily,
+            newDailyEnabled = value.dailyEnabled
+        )
     }
 
     fun saveFeed(original: RssFeedEntity?, url: String) =
@@ -153,11 +170,28 @@ class RssSettingsViewModel(
         savedState["initialFeed"] = id
         _initialFetch.value = id
     }
-    fun dismissInitialFetch() {
+    private fun clearInitialFetchState() {
         savedState["initialFeed"] = null
         _initialFetch.value = null
     }
-    fun fetchInitial(mobileConsent: Boolean) = action {
+    fun dismissInitialFetch(
+        permissionGranted: Boolean = hasPostNotificationsPermission(getApplication())
+    ) {
+        val hadInitial = _initialFetch.value != null
+        clearInitialFetchState()
+        if (hadInitial) {
+            viewModelScope.launch(Dispatchers.IO) {
+                evaluateNotificationRationaleOnIo(
+                    permissionGranted = permissionGranted,
+                    initialRegistrationCompleted = true
+                )
+            }
+        }
+    }
+    fun fetchInitial(
+        mobileConsent: Boolean,
+        permissionGranted: Boolean = hasPostNotificationsPermission(getApplication())
+    ) = action {
         val id = _initialFetch.value ?: return@action
         updateNetwork()
         check(_online.value == true) { "No validated Internet connection is available" }
@@ -165,7 +199,53 @@ class RssSettingsViewModel(
         // A connection change must first make the warning visible before cellular is authorized.
         if (requiresOverride && !mobileConsent) return@action
         repository.requestInitialFetch(id, requiresOverride && mobileConsent)
-        dismissInitialFetch()
+        clearInitialFetchState()
+        evaluateNotificationRationaleOnIo(
+            permissionGranted = permissionGranted,
+            initialRegistrationCompleted = true
+        )
+    }
+
+    fun consumeNotificationRationale() {
+        savedState["notificationRationale"] = false
+        _notificationRationale.value = false
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            getApplication<Application>()
+                .getSharedPreferences(NOTIFICATION_PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, true)
+                .commit()
+        }
+    }
+
+    fun onNotificationPermissionResult(granted: Boolean) {
+        if (granted) {
+            viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+                NotificationCoordinator.getInstance(getApplication()).refresh()
+            }
+        }
+    }
+
+    private fun evaluateNotificationRationaleOnIo(
+        permissionGranted: Boolean,
+        previousDailyEnabled: Boolean = false,
+        newDailyEnabled: Boolean = false,
+        initialRegistrationCompleted: Boolean = false
+    ) {
+        val prefs = getApplication<Application>()
+            .getSharedPreferences(NOTIFICATION_PREFS_NAME, android.content.Context.MODE_PRIVATE)
+        val alreadyRequested = prefs.getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
+        if (shouldPromptNotificationPermissionOnRssEvent(
+                permissionGranted = permissionGranted,
+                alreadyRequested = alreadyRequested,
+                previousDailyEnabled = previousDailyEnabled,
+                newDailyEnabled = newDailyEnabled,
+                initialRegistrationCompleted = initialRegistrationCompleted
+            )
+        ) {
+            savedState["notificationRationale"] = true
+            _notificationRationale.value = true
+        }
     }
 
     fun deleteFeed(id: String) = action { repository.delete(id) }

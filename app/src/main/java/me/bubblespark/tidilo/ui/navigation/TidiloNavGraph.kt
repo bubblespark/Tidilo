@@ -32,7 +32,8 @@ fun TidiloNavGraph(
     importViewModel: ImportViewModel,
     libraryViewModel: LibraryViewModel = viewModel(),
     modifier: Modifier = Modifier,
-    onOpenNavigation: () -> Unit = {}
+    onOpenNavigation: () -> Unit = {},
+    onOpenManualImport: () -> Unit = {}
 ) {
     NavHost(
         navController = navController,
@@ -107,6 +108,7 @@ fun TidiloNavGraph(
             LibraryScreen(
                 viewModel = libraryViewModel,
                 onOpenNavigation = onOpenNavigation,
+                onOpenManualImport = onOpenManualImport,
                 onNavigateToSearch = {
                     libraryViewModel.triggerSearchFocus()
                     navController.navigate(Screen.Search.route) { launchSingleTop = true }

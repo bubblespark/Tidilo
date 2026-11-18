@@ -1,31 +1,64 @@
 package me.bubblespark.tidilo.data
 
+import android.content.res.Configuration
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.key
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
+import androidx.room.Room
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.TidiloApp
+import me.bubblespark.tidilo.config.AppTheme
+import me.bubblespark.tidilo.data.ImportRepository
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
+import me.bubblespark.tidilo.data.db.CollectionEntity
+import me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED
+import me.bubblespark.tidilo.data.notifications.NOTIFICATION_PREFS_NAME
+import me.bubblespark.tidilo.parser.WebPageParser
+import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
+import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
+import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.Locale
 import java.util.UUID
 
 class LibraryNavigationInteractionTest {
-    private fun click(node: SemanticsNode) {
+    private fun clickableNode(node: SemanticsNode): SemanticsNode {
         var target = node
         while (target.config.getOrNull(SemanticsActions.OnClick) == null) target = requireNotNull(target.parent)
-        check(target.config[SemanticsActions.OnClick].action?.invoke() == true)
+        return target
+    }
+
+    private fun click(node: SemanticsNode) {
+        check(clickableNode(node).config[SemanticsActions.OnClick].action?.invoke() == true)
     }
 
     @Test fun searchStaysCompactWhileScrollingAndBackRestoresLibrary(): Unit = runBlocking {
@@ -138,5 +171,155 @@ class LibraryNavigationInteractionTest {
             host.main { click(cancel) }
             host.await(activity) { host.description(it, host.context.getString(R.string.navigation_open)) }
         } finally { host.main { activity.finish() } }
+    }
+
+    @Test fun emptyLibrarySaveUrlOpensImportDialogAcrossThemesAndFontScales(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val db = AppDatabase.getInstance(host.context)
+        val collectionDao = db.collectionDao()
+        val prefs = host.context.getSharedPreferences("tidilo_library_prefs", android.content.Context.MODE_PRIVATE)
+        val previousModePref = prefs.getString("library_filter_mode", null)
+        val notificationPrefs = host.context.getSharedPreferences(NOTIFICATION_PREFS_NAME, android.content.Context.MODE_PRIVATE)
+        val hadRequestedKey = notificationPrefs.contains(KEY_NOTIFICATION_PERMISSION_REQUESTED)
+        val previousRequested = notificationPrefs.getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
+        assertTrue(notificationPrefs.edit().remove(KEY_NOTIFICATION_PERMISSION_REQUESTED).commit())
+        val inMemoryDb = Room.inMemoryDatabaseBuilder(host.context, AppDatabase::class.java).build()
+        val importJob = SupervisorJob()
+        val testImportRepo = ImportRepository(
+            taskDao = inMemoryDb.importTaskDao(),
+            bookmarkDao = inMemoryDb.bookmarkDao(),
+            notificationDao = inMemoryDb.importNotificationDao(),
+            database = inMemoryDb,
+            repositoryScope = CoroutineScope(Dispatchers.IO + importJob),
+            articleAcquirer = { url ->
+                WebPageParser.parseHtml(
+                    url,
+                    "<html><head><title>Denied Save Fixture</title></head><body><p>Saved without notification permission.</p></body></html>",
+                    url,
+                    200,
+                    contentType = "text/html"
+                )
+            },
+            reportImportError = {}
+        )
+        val testImportViewModel = ImportViewModel(testImportRepo)
+        val collectionId = "empty-capture-${UUID.randomUUID()}"
+        lateinit var model: LibraryViewModel
+        var initialized = false
+        var previousMode = LibraryFilterMode.NEWEST_FIRST
+        var previousCollection: String? = null
+        try {
+            collectionDao.insert(CollectionEntity(collectionId, "Empty capture fixture", "", "folder", null, 0, 1L, 1L))
+            host.main {
+                model = ViewModelProvider(activity)[LibraryViewModel::class.java]
+                initialized = true
+                previousMode = model.filterMode.value
+                previousCollection = model.selectedCollectionId.value
+                model.setFilterMode(LibraryFilterMode.COLLECTION)
+            }
+            withTimeout(8000) {
+                while (model.collectionState.value.rows.none { it.collection.id == collectionId }) delay(20)
+            }
+            host.main {
+                model.selectCollectionFilter(collectionId)
+                activity.setContent {
+                    TidiloTheme {
+                        TidiloApp(importViewModel = testImportViewModel, libraryViewModel = model)
+                    }
+                }
+            }
+            host.await(activity) { host.text(it, host.context.getString(R.string.library_empty_title)) }
+            host.await(activity) { host.text(it, host.context.getString(R.string.library_empty_hint)) }
+            val saveButton = host.await(activity) { host.text(it, host.context.getString(R.string.library_empty_save_url)) }
+            val radial = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" }
+            val density = activity.resources.displayMetrics.density
+            val clickableSave = clickableNode(saveButton)
+            assertTrue("Save URL button must meet 48dp touch height", clickableSave.boundsInRoot.height >= 47.5f * density)
+            assertFalse("Save URL button must not overlap the radial shortcut trigger",
+                clickableSave.boundsInRoot.overlaps(radial.boundsInRoot))
+            host.main { click(clickableSave) }
+            host.await(activity) { host.text(it, host.context.getString(R.string.import_dialog_title)) }
+
+            val input = host.await(activity) { it.config.getOrNull(SemanticsActions.SetText) != null }
+            val testUrl = "https://empty-capture-denied.invalid/article"
+            host.main { input.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(testUrl)) }
+            val confirm = host.await(activity) { node ->
+                host.text(node, host.context.getString(R.string.import_dialog_confirm)) &&
+                    clickableNode(node).config.getOrNull(SemanticsProperties.Disabled) == null
+            }
+            host.main { click(confirm) }
+            withTimeout(5000) {
+                while (inMemoryDb.bookmarkDao().getBookmarkByUrl(testUrl) == null) delay(30)
+            }
+            assertFalse("Manual URL saving must not request or mark notification permission",
+                notificationPrefs.getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false))
+            host.await(activity) { host.text(it, host.context.getString(R.string.library_empty_save_url)) }
+
+            val cases = listOf(
+                Triple(AppTheme.DEFAULT, false, 1f to Locale.ENGLISH),
+                Triple(AppTheme.DEFAULT, true, 2f to Locale.ENGLISH),
+                Triple(AppTheme.MODERN, false, 2f to Locale.JAPANESE),
+                Triple(AppTheme.MODERN, true, 1f to Locale.JAPANESE)
+            )
+            for ((theme, dark, scaleAndLocale) in cases) {
+                val (fontScale, locale) = scaleAndLocale
+                val config = Configuration(host.context.resources.configuration).apply { setLocale(locale) }
+                val localized = host.context.createConfigurationContext(config)
+                val emptyTitle = localized.getString(R.string.library_empty_title)
+                val emptyHint = localized.getString(R.string.library_empty_hint)
+                val saveLabel = localized.getString(R.string.library_empty_save_url)
+                var saveClicks = 0
+                var ready = false
+                host.main {
+                    activity.setContent {
+                        key(theme, dark, fontScale, locale) {
+                            TidiloTheme(darkTheme = dark, dynamicColor = false, theme = theme) {
+                                CompositionLocalProvider(
+                                    LocalConfiguration provides config,
+                                    LocalContext provides localized,
+                                    LocalDensity provides Density(LocalDensity.current.density, fontScale)
+                                ) {
+                                    Box(Modifier.size(360.dp, 640.dp).background(MaterialTheme.colorScheme.background)) {
+                                        LibraryScreen(
+                                            viewModel = model,
+                                            onOpenManualImport = { saveClicks++ }
+                                        )
+                                    }
+                                    SideEffect { ready = true }
+                                }
+                            }
+                        }
+                    }
+                }
+                withTimeout(3000) { while (!ready) delay(20) }
+                host.await(activity) { host.text(it, emptyTitle) }
+                host.await(activity) { host.text(it, emptyHint) }
+                val cta = host.await(activity) { host.text(it, saveLabel) }
+                val ctaTarget = clickableNode(cta)
+                assertTrue("$theme/$dark/$fontScale/$locale CTA must have >= 48dp height",
+                    ctaTarget.boundsInRoot.height >= 47.5f * density)
+                host.main { click(ctaTarget) }
+                assertEquals(1, saveClicks)
+            }
+        } finally {
+            host.main {
+                if (initialized) {
+                    model.selectCollectionFilter(previousCollection)
+                    model.setFilterMode(previousMode)
+                }
+                activity.finish()
+            }
+            importJob.cancelAndJoin()
+            inMemoryDb.close()
+            val edit = prefs.edit()
+            if (previousModePref == null) edit.remove("library_filter_mode") else edit.putString("library_filter_mode", previousModePref)
+            edit.commit()
+            val notifEdit = notificationPrefs.edit()
+            if (hadRequestedKey) notifEdit.putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, previousRequested)
+            else notifEdit.remove(KEY_NOTIFICATION_PERMISSION_REQUESTED)
+            notifEdit.commit()
+            collectionDao.delete(collectionId)
+        }
     }
 }

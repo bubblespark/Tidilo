@@ -133,8 +133,7 @@ This document defines the strict engineering standards, naming conventions, Comp
 ## 6. Verification & Commit Conventions
 
 ### 6.1 Pre-Commit Quality Gates
-See [Coding Workflow (Phase 2)](../.agents/coding/workflow.md) for branching, approval gates, and commit lifecycle rules. Before committing code changes:
-- **Unit & Instrumentation Verification**: Ensure `./gradlew testDebugUnitTest` passes 100%. Whenever Room schemas, migrations, or UI navigation/semantics change, also assemble `assembleDebugAndroidTest` and run the affected `androidTest` suites on a connected device/emulator (`testDebugUnitTest` and compilation alone do not verify SQLite migrations or Compose runtime semantics).
+compilation alone do not verify SQLite migrations or Compose runtime semantics).
 - **Navigation Route & Doc Parity**: Update UI route assertions (such as `SettingsRedesignTest`) when adding or moving routes/settings entries, and keep `docs/ui_design.md` and screen UI specs (`ui_library.md`, `ui_bookmark_detail.md`, `ui_settings.md`) synchronized with the implementation.
 
 ### 6.2 Conventional Commit Messages

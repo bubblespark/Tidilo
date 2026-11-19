@@ -16,6 +16,8 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -68,7 +70,9 @@ fun TidiloSurface(
         return
     }
     Surface(
-        onClick = onClick, modifier = modifier.decoration(style), enabled = state.enabled,
+        onClick = onClick,
+        modifier = modifier.semantics { this.role = Role.Button }.decoration(style),
+        enabled = state.enabled,
         shape = style.shape, color = if (frosted) Color.Transparent else style.materialColor(), contentColor = style.contentColor,
         shadowElevation = style.materialElevation(), tonalElevation = if (frosted) 0.dp else style.tonalElevation,
         border = style.materialBorder(), interactionSource = interactionSource

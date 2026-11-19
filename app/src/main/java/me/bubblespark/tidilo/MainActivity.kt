@@ -45,6 +45,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.data.ImportOutcome
 import me.bubblespark.tidilo.ui.components.AmbientLightingState
 import me.bubblespark.tidilo.ui.components.LocalAmbientLighting
 import me.bubblespark.tidilo.ui.components.TidiloBackground
@@ -74,8 +75,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        val destination = notificationRoute(intent) ?: return
         setIntent(intent)
-        notificationDestination.value = notificationRoute(intent)
+        notificationDestination.value = destination
     }
 
     private fun notificationRoute(intent: Intent?): String? =
@@ -165,6 +167,8 @@ fun TidiloApp(
     val railState = rememberWideNavigationRailState()
     val navigationScope = rememberCoroutineScope()
     var showManualImport by rememberSaveable { mutableStateOf(false) }
+    val manualImportState by importViewModel.manualImportState.collectAsStateWithLifecycle()
+    var notificationDeferred by rememberSaveable { mutableStateOf(false) }
     var consumedSharedUrl by rememberSaveable { mutableStateOf<String?>(null) }
     fun openDestination(route: String) {
         navigationScope.launch {
@@ -175,20 +179,32 @@ fun TidiloApp(
         }
     }
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+    val isLibraryRoute = currentRoute == Screen.Library.route
 
-    LaunchedEffect(notificationRoute) {
+    LaunchedEffect(notificationRoute, manualImportState, notificationDeferred, currentRoute) {
         if (notificationRoute != null) {
+            if (manualImportState != null) {
+                notificationDeferred = true
+                return@LaunchedEffect
+            }
+            if (notificationDeferred && navController.currentDestination?.route != Screen.Library.route) {
+                return@LaunchedEffect
+            }
+            showManualImport = false
             normalizeNotificationDestination(notificationRoute)?.let { destination -> navController.navigate(destination) {
                 popUpTo(navController.graph.findStartDestination().id) { saveState = true }
                 launchSingleTop = true
             } }
+            notificationDeferred = false
             onNotificationConsumed()
         }
     }
 
     // Consume the optional foreground share once across recreation; the share receiver remains independent.
-    LaunchedEffect(sharedUrl) {
-        if (!sharedUrl.isNullOrBlank() && sharedUrl != consumedSharedUrl) {
+    LaunchedEffect(sharedUrl, manualImportState) {
+        if (manualImportState == null && !sharedUrl.isNullOrBlank() && sharedUrl != consumedSharedUrl) {
             consumedSharedUrl = sharedUrl
             importViewModel.importUrl(sharedUrl)
             navController.navigate(Screen.Library.route) {
@@ -197,10 +213,6 @@ fun TidiloApp(
             }
         }
     }
-
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
-    val isLibraryRoute = currentRoute == Screen.Library.route
 
     val filterMode by libraryViewModel.filterMode.collectAsStateWithLifecycle()
     val selectedDomainFilter by libraryViewModel.selectedDomainFilter.collectAsStateWithLifecycle()
@@ -346,10 +358,24 @@ fun TidiloApp(
             }
         }
 
-        if (showManualImport) ImportUrlDialog(onDismiss = { showManualImport = false }, onConfirm = { url ->
-            showManualImport = false
-            importViewModel.importUrl(url)
-        })
+        if (isLibraryRoute && (showManualImport || manualImportState != null)) ImportUrlDialog(
+            state = manualImportState,
+            onDismiss = { if (importViewModel.dismissManualImport()) showManualImport = false },
+            onConfirm = importViewModel::submitManualImport,
+            onRetry = importViewModel::retryManualImport,
+            onOpenSaved = {
+                val bookmarkId = when (val result = importViewModel.consumeManualImportResult()) {
+                    is ImportOutcome.BookmarkSaved -> result.bookmarkId
+                    is ImportOutcome.SavedDuplicate -> result.bookmarkId
+                    else -> null
+                }
+                if (bookmarkId != null) {
+                    if (notificationRoute != null) notificationDeferred = true
+                    showManualImport = false
+                    navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) { launchSingleTop = true }
+                }
+            }
+        )
 
     }
 }

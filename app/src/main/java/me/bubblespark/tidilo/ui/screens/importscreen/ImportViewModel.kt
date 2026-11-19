@@ -11,13 +11,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.rss.RssRepository
 import me.bubblespark.tidilo.ui.screens.notifications.NotificationListItem
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.data.ImportRepository
+import me.bubblespark.tidilo.data.ImportOutcome
 import me.bubblespark.tidilo.data.ImportTask
 import me.bubblespark.tidilo.data.ImportingTask
+import java.net.URI
+
+sealed interface ManualImportState {
+    data object Saving : ManualImportState
+
+    /** A completion remains distinct even when another attempt produces the same outcome. */
+    class Finished(val outcome: ImportOutcome) : ManualImportState
+}
 
 class ImportViewModel(
     private val repository: ImportRepository = ImportRepository.getInstance(TidiloApplication.instance)
@@ -30,6 +40,49 @@ class ImportViewModel(
     val notificationBusyKeys = _notificationBusyKeys.asStateFlow()
     private val _notificationActionError = MutableStateFlow<String?>(null)
     val notificationActionError = _notificationActionError.asStateFlow()
+    private val _manualImportState = MutableStateFlow<ManualImportState?>(null)
+    val manualImportState = _manualImportState.asStateFlow()
+
+    fun submitManualImport(url: String) {
+        val current = _manualImportState.value
+        val editableFailure = ((current as? ManualImportState.Finished)?.outcome as? ImportOutcome.Failed)
+            ?.let { it.retryTaskId == null } == true
+        if (current == null || editableFailure) runManualImport(url) { repository.importManually(url) }
+    }
+
+    fun retryManualImport() {
+        val failure = (_manualImportState.value as? ManualImportState.Finished)?.outcome as? ImportOutcome.Failed
+        val retryId = failure?.retryTaskId ?: return
+        runManualImport(failure.url) { repository.retryManualImport(retryId, failure.url) }
+    }
+
+    fun consumeManualImportResult(): ImportOutcome? {
+        val finished = _manualImportState.value as? ManualImportState.Finished ?: return null
+        _manualImportState.value = null
+        return finished.outcome
+    }
+
+    fun dismissManualImport(): Boolean {
+        if (_manualImportState.value == ManualImportState.Saving) return false
+        _manualImportState.value = null
+        return true
+    }
+
+    private fun runManualImport(url: String, process: suspend () -> ImportOutcome) {
+        if (_manualImportState.value == ManualImportState.Saving) return
+        _manualImportState.value = ManualImportState.Saving
+        viewModelScope.launch {
+            val outcome = try {
+                process()
+            } catch (cancelled: CancellationException) {
+                coroutineContext.ensureActive()
+                ImportOutcome.Failed(url)
+            } catch (_: Exception) {
+                ImportOutcome.Failed(url)
+            }
+            _manualImportState.value = ManualImportState.Finished(outcome)
+        }
+    }
 
     fun dismissNotificationActionError() { _notificationActionError.value = null }
 
@@ -90,10 +143,18 @@ class ImportViewModel(
         repository.clearAllNotifications()
     }
 
-    fun findBookmarkIdByUrl(url: String, onResult: (String?) -> Unit) {
+    fun resolveNotificationBookmark(url: String, bookmarkId: String?, unavailableMessage: String,
+        onResult: (String) -> Unit) {
         viewModelScope.launch {
-            val id = repository.findBookmarkIdByUrl(url)
-            onResult(id)
+            val id = try {
+                repository.resolveNotificationBookmark(url, bookmarkId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            if (id != null) onResult(id)
+            else if (bookmarkId != null) _notificationActionError.value = unavailableMessage
         }
     }
 
@@ -123,6 +184,16 @@ class ImportViewModel(
     }
 
     companion object {
+        fun resolveManualImportUrl(input: String): String? {
+            val url = input.trim()
+            if (isValidHttpUrl(url)) return url
+            if (url.substringBefore('/').endsWith(':')) return null
+            val candidate = "https://$url"
+            val uri = runCatching { URI(candidate) }.getOrNull() ?: return null
+            val host = uri.host ?: return null
+            return candidate.takeIf { uri.userInfo == null && '.' in host.trimEnd('.') }
+        }
+
         /**
          * Validates whether the given URL is a valid http/https URL.
          */

@@ -69,7 +69,9 @@ internal class RssIngestionStore(
         val current = rss.feed(feed.id) ?: return@withTransaction false
         if (current.deleted || !current.enabled || current.revision != feed.revision) return@withTransaction false
         val actual = database.importTaskDao().getTaskById(task.id) ?: return@withTransaction false
-        if (actual.articlePrepared || actual.intendedMode != task.intendedMode) return@withTransaction false
+        if (actual.rssFeedId != feed.id || actual.articlePrepared || actual.intendedMode != task.intendedMode) {
+            return@withTransaction false
+        }
         val category = if (classification == null) {
             actual.standardCategory.takeIf { actual.standardClassificationEvaluated }
         } else classification.category?.id
@@ -111,7 +113,7 @@ internal class RssIngestionStore(
         val current = rss.feed(feed.id) ?: return@withTransaction
         if (current.deleted || current.revision != feed.revision) return@withTransaction
         val actual = database.importTaskDao().getTaskById(task.id) ?: return@withTransaction
-        if (actual.articlePrepared) return@withTransaction
+        if (actual.rssFeedId != feed.id || actual.articlePrepared) return@withTransaction
         val attempts = actual.acquisitionAttempts + 1
         database.importTaskDao().insertOrUpdate(actual.copy(status = "ERROR", statusText = "Article acquisition failed",
             intendedMode = "DIRECT",

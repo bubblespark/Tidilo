@@ -32,6 +32,116 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImportRepositoryTest {
+    @Test fun manualSaveResolvesRedirectedDuplicateWhileMediaIsStillLoading() = runBlocking {
+        val job = SupervisorJob()
+        val started = CompletableDeferred<Unit>()
+        val releasePage = CompletableDeferred<Unit>()
+        val mediaStarted = CompletableDeferred<Unit>()
+        val releaseMedia = CompletableDeferred<Unit>()
+        val submittedUrl = "https://manual.example/short"
+        val savedUrl = "https://manual.example/article"
+        var acquisitions = 0
+        try {
+            val repository = ImportRepository(
+                taskDao = FakeImportTaskDao(),
+                bookmarkDao = FakeBookmarkDao(),
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = {
+                    acquisitions++
+                    started.complete(Unit)
+                    releasePage.await()
+                    directFixture(savedUrl)
+                },
+                mediaCacheAdapter = object : ImportMediaCacheAdapter {
+                    override fun hasDomainIcon(domain: String) = false
+                    override suspend fun fetchDomainIcon(url: String, appleTouchIconUrl: String?, faviconUrl: String?,
+                        knownCandidates: List<DomainIconCandidate>?) {
+                        mediaStarted.complete(Unit)
+                        releaseMedia.await()
+                    }
+                    override suspend fun cacheOgImage(url: String, ogImageUrl: String, rssFeedId: String?) = Unit
+                }
+            )
+            withTimeout(3000) {
+                val attempt = async { repository.importManually(submittedUrl) }
+                started.await()
+                assertFalse(attempt.isCompleted)
+                assertEquals(ImportOutcome.AlreadySaving(submittedUrl), repository.importManually(submittedUrl))
+                releasePage.complete(Unit)
+                mediaStarted.await()
+                val saved = attempt.await() as ImportOutcome.BookmarkSaved
+                assertEquals(savedUrl, saved.url)
+                assertEquals(ImportOutcome.SavedDuplicate(saved.bookmarkId, savedUrl), repository.importManually(submittedUrl))
+                assertEquals(1, acquisitions)
+            }
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test fun manualImportReturnsAnEditableFailureWhenErrorStorageFails() = runBlocking {
+        val job = SupervisorJob()
+        val tasks = object : ImportTaskDao by FakeImportTaskDao() {
+            override suspend fun insertOrUpdate(task: ImportTaskEntity) {
+                throw java.io.IOException("storage unavailable")
+            }
+        }
+        try {
+            val repository = ImportRepository(taskDao = tasks, repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = { throw java.io.IOException("offline") })
+            val url = "https://manual.example/article"
+            withTimeout(3000) {
+                assertEquals(ImportOutcome.Failed(url), repository.importManually(url))
+                assertEquals(ImportOutcome.Failed(url), repository.importManually(url))
+            }
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test fun manualImportRetriesThePersistedAcquisitionFailure() = runBlocking {
+        val job = SupervisorJob()
+        val bookmarks = FakeBookmarkDao()
+        val url = "https://manual.example/article"
+        var acquisitions = 0
+        try {
+            val repository = ImportRepository(
+                taskDao = FakeImportTaskDao(),
+                bookmarkDao = bookmarks,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = {
+                    if (acquisitions++ == 0) throw java.io.IOException("offline")
+                    directFixture(it)
+                }
+            )
+            val failure = withTimeout(3000) { repository.importManually(url) } as ImportOutcome.Failed
+            val taskId = checkNotNull(failure.retryTaskId)
+            val result = withTimeout(3000) { repository.retryManualImport(taskId, url) }
+            assertEquals(ImportOutcome.BookmarkSaved(taskId, url), result)
+            assertEquals(taskId, bookmarks.savedItems.single().id)
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test fun manualRetryReturnsExactRedirectDuplicateAndHandlesMissingOrClaimedTasks() = runBlocking {
+        val job = SupervisorJob()
+        val tasks = FakeImportTaskDao()
+        val bookmarks = FakeBookmarkDao()
+        val failedTask = waitingEntity("manual-error").copy(status = "ERROR")
+        val redirect = "https://manual.example/redirect-target"
+        try {
+            tasks.insertOrUpdate(failedTask)
+            val claimed = waitingEntity("claimed-by-queue").copy(status = "PROCESSING")
+            tasks.insertOrUpdate(claimed)
+            val repository = ImportRepository(taskDao = tasks, bookmarkDao = bookmarks,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = { directFixture(redirect) })
+            withTimeout(3000) {
+                val saved = repository.importManually(redirect) as ImportOutcome.BookmarkSaved
+                assertEquals(ImportOutcome.AlreadySaving(claimed.url), repository.retryManualImport(claimed.id, claimed.url))
+                assertEquals(ImportOutcome.SavedDuplicate(saved.bookmarkId, redirect),
+                    repository.retryManualImport(failedTask.id, failedTask.url))
+                assertEquals(ImportOutcome.Failed(failedTask.url), repository.retryManualImport(failedTask.id, failedTask.url))
+                assertEquals(1, bookmarks.savedItems.size)
+            }
+        } finally { job.cancelAndJoin() }
+    }
+
     @Test fun notificationDeleteWaitsForStorageCompletion() = runBlocking {
         val dao = FakeImportTaskDao()
         dao.insertOrUpdate(waitingEntity("error").copy(status = "ERROR"))

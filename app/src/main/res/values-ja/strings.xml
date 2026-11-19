@@ -85,10 +85,20 @@
     <string name="import_collapse_group">%1$sを折りたたむ</string>
     <string name="import_expand_group">%1$sを展開</string>
     <string name="import_dialog_title">URLの登録</string>
-    <string name="import_dialog_description">有効なHTTPまたはHTTPSのWebアドレスを入力してください。</string>
-    <string name="import_dialog_error_invalid">http:// または https:// で始まり、有効なドメイン名である必要があります</string>
-    <string name="import_dialog_supporting_text">http:// または https:// で始まる必要があります</string>
+    <string name="import_dialog_description">保存するページのウェブアドレスを入力してください。</string>
+    <string name="import_dialog_error_invalid">有効なドメイン名、または HTTP・HTTPS のアドレスを入力してください</string>
+    <string name="import_dialog_supporting_text">ドメイン名または完全なウェブアドレスを入力してください</string>
     <string name="import_dialog_confirm">登録</string>
+    <string name="import_dialog_placeholder">https://example.com/…</string>
+    <string name="import_dialog_resolved_url">登録先は %1$s です</string>
+    <string name="import_dialog_paste">URL を貼り付け</string>
+    <string name="import_dialog_saving">ページを保存しています…</string>
+    <string name="import_dialog_saved">ページを保存しました</string>
+    <string name="import_dialog_duplicate">このページはすでに保存されています</string>
+    <string name="import_dialog_already_saving">このページはすでに保存処理中です</string>
+    <string name="import_dialog_failed">ページを保存できませんでした</string>
+    <string name="import_open_saved_page">保存済みのページを開く</string>
+    <string name="notification_bookmark_unavailable">保存済みのページは利用できなくなりました</string>
     <string name="import_status_failed">失敗</string>
     <string name="import_status_importing">インポート中…</string>
 

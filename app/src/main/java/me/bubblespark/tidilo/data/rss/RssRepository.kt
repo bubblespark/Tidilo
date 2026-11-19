@@ -258,21 +258,27 @@ internal class RssRepository internal constructor(private val context: Context,
     suspend fun retryAcquisition(taskId: String) = withContext(Dispatchers.IO) {
         preferences.initialize()
         operation.withLock {
-            val task = db.importTaskDao().getTaskById(taskId) ?: return@withLock
-            val feed = task.rssFeedId?.let { dao.feed(it) } ?: return@withLock
-            if (feed.deleted || !feed.enabled) {
-                if (!task.articlePrepared) db.importTaskDao().updateStatus(task.id, "ERROR", "Subscription unavailable for acquisition")
-                return@withLock
-            }
-            if (task.articlePrepared) return@withLock
-            db.importTaskDao().insertOrUpdate(task.copy(acquisitionAttempts = 0, acquisitionRetryAt = 0))
+            val (feed, task) = db.withTransaction {
+                val tasks = db.importTaskDao()
+                val current = tasks.getTaskById(taskId) ?: return@withTransaction null
+                val feed = current.rssFeedId?.let { dao.feed(it) } ?: return@withTransaction null
+                if (current.articlePrepared) return@withTransaction null
+                if (feed.deleted || !feed.enabled) {
+                    tasks.updateStatus(current.id, "ERROR", "Subscription unavailable for acquisition")
+                    return@withTransaction null
+                }
+                val retried = current.copy(acquisitionAttempts = 0, acquisitionRetryAt = 0)
+                tasks.update(retried)
+                feed to retried
+            } ?: return@withLock
             try {
-                acquireTask(feed, task.copy(acquisitionAttempts = 0, acquisitionRetryAt = 0), articleNetwork(feed = feed))
+                acquireTask(feed, task, articleNetwork(feed = feed))
             } catch (_: RssWifiUnavailable) {
                 // Connectivity waits belong to this task, not the uncaught handler.
                 db.withTransaction {
                     val current = dao.feed(feed.id)
-                    if (current != null && current.enabled && !current.deleted && current.revision == feed.revision) {
+                    val actual = db.importTaskDao().getTaskById(task.id)
+                    if (actual?.rssFeedId == feed.id && current != null && current.enabled && !current.deleted && current.revision == feed.revision) {
                         db.importTaskDao().updateStatus(task.id, "ERROR", "Waiting for an allowed network",
                             "Connect to a network allowed by RSS settings, then retry.")
                     }

@@ -67,11 +67,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -513,10 +515,12 @@ private fun SearchMatchCaption(
     val names = remember(fields, fieldNames, separator) {
         fieldNames.filterKeys { it in fields }.values.joinToString(separator)
     }
+    val languageTag = LocalConfiguration.current.locales[0].toLanguageTag()
+    val locales = remember(languageTag) { LocaleList(languageTag) }
     Text(
-        text = stringResource(R.string.search_match_fields, names),
+        text = names,
         modifier = modifier.padding(horizontal = 8.dp),
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodySmall.copy(localeList = locales),
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 }

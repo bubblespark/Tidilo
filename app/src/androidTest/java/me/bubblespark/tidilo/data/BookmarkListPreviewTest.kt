@@ -102,7 +102,7 @@ class BookmarkListPreviewTest {
                     }
                 }
             }
-            fun caption(field: Int) = activity.getString(R.string.search_match_fields, activity.getString(field))
+            fun caption(field: Int) = activity.getString(field)
             host.await(activity) { host.text(it, caption(R.string.search_match_title)) }
             host.main { viewModel.onSearchQueryChanged("#Tag$token") }
             host.await(activity) { host.text(it, caption(R.string.search_match_entity_tags)) }
@@ -112,11 +112,10 @@ class BookmarkListPreviewTest {
                 assertTrue(nodes.none { host.text(it, caption(R.string.search_match_title)) })
             }
             host.main { viewModel.onSearchQueryChanged("shared$token\u3000#Tag$token #Article") }
-            val fields = listOf(
+            val allFields = listOf(
                 R.string.search_match_title, R.string.detail_section_summary, R.string.search_match_url,
                 R.string.search_match_classification, R.string.search_match_entity_tags
             ).joinToString(activity.getString(R.string.search_match_separator)) { activity.getString(it) }
-            val allFields = activity.getString(R.string.search_match_fields, fields)
             host.await(activity) { host.text(it, allFields) }
             host.main {
                 val nodes = host.nodes(activity)

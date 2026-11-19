@@ -28,7 +28,7 @@
   4. Tag row: `FlowRow` of `[Category] > [Subcategory]` (+ `Icons.Default.Lock` `Private` badge when `bookmark.isPrivate == true`, `SurfaceTone.NORMAL`, `resolveChipColors` with `secondaryContainer`/`onSecondaryContainer` fallback), wrapping cleanly on narrow cards and `2f` font scales.
   5. Entity tags wrap in saved order into at most 3 rows. The localized remaining count fits inside those rows and counts omitted chips. Long labels can ellipsize within a visible chip. Open the card to see the full text and all tags in Detail.
 
-Search List places one localized match caption above the card inside the same keyed paging item. It lists the matching fields in the order Title, Summary, URL, Classification, and Entity tags. It reflects the query that loaded the row, including matches outside the preview. The caption wraps at narrow widths or large font sizes. A query with no effective terms leaves no caption.
+Search List places one localized caption above the card inside the same keyed paging item. It shows only the matching field names in the order Title, Summary, URL, Classification, and Entity tags. It reflects the query that loaded the row, including matches outside the preview. The caption wraps at narrow widths or large font sizes. A query with no effective terms leaves no caption.
 
 ---
 

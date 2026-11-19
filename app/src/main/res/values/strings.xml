@@ -412,7 +412,6 @@
     <string name="settings_theme_dialog_title">Select Theme</string>
     <string name="settings_theme_default">Default</string>
     <string name="settings_theme_modern">Modern</string>
-    <string name="search_match_fields">Matches · %1$s</string>
     <string name="search_match_separator">", "</string>
     <string name="search_match_title">Title</string>
     <string name="search_match_url">URL</string>

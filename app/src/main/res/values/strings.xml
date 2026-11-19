@@ -89,10 +89,20 @@
     <string name="import_collapse_group">Collapse %1$s</string>
     <string name="import_expand_group">Expand %1$s</string>
     <string name="import_dialog_title">Import URL</string>
-    <string name="import_dialog_description">Enter a valid HTTP or HTTPS web address to import.</string>
-    <string name="import_dialog_error_invalid">Must start with http:// or https:// and have a valid domain</string>
-    <string name="import_dialog_supporting_text">http:// or https:// required</string>
+    <string name="import_dialog_description">Enter the web address of the page you want to save.</string>
+    <string name="import_dialog_error_invalid">Enter a valid domain or HTTP(S) address</string>
+    <string name="import_dialog_supporting_text">Enter a domain or a full web address</string>
     <string name="import_dialog_confirm">Import</string>
+    <string name="import_dialog_placeholder">https://example.com/…</string>
+    <string name="import_dialog_resolved_url">Will import %1$s</string>
+    <string name="import_dialog_paste">Paste URL</string>
+    <string name="import_dialog_saving">Saving page…</string>
+    <string name="import_dialog_saved">Page saved</string>
+    <string name="import_dialog_duplicate">This page is already saved</string>
+    <string name="import_dialog_already_saving">This page is already being saved</string>
+    <string name="import_dialog_failed">Couldn’t save the page</string>
+    <string name="import_open_saved_page">Open saved page</string>
+    <string name="notification_bookmark_unavailable">The saved page is no longer available</string>
     <string name="import_status_failed">Failed</string>
     <string name="import_status_importing">Importing...</string>
 

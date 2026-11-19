@@ -2,8 +2,14 @@ package me.bubblespark.tidilo.data
 
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkQueries
@@ -14,10 +20,57 @@ import me.bubblespark.tidilo.parser.PreparedArticle
 import me.bubblespark.tidilo.parser.RssEntry
 import me.bubblespark.tidilo.parser.RssFeedParser
 import me.bubblespark.tidilo.parser.StandardClassification
+import me.bubblespark.tidilo.parser.WebPageParser
 import org.junit.Assert.*
 import org.junit.Test
 
 class RssIngestionStoreTest {
+    @Test fun lateRssCompletionAndFailurePreserveTheTaskClaimedByManualRetry() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
+        val repositoryJob = SupervisorJob()
+        val manualAcquisitionStarted = CompletableDeferred<Unit>()
+        val finishManualAcquisition = CompletableDeferred<Unit>()
+        try {
+            val feed = RssFeedEntity("feed", "https://example.com/feed", "Feed")
+            val url = "https://example.com/manual-retry"
+            db.rssDao().putFeed(feed)
+            val store = RssIngestionStore(db)
+            assertTrue(store.stage(feed, listOf(RssEntry("key", url, "Article", "", "", null, null, emptyList())), 100))
+            val tasks = db.importTaskDao()
+            val rssTask = tasks.getAllTasks().single()
+            store.failArticle(feed, rssTask, java.io.IOException("Offline"), true)
+            val repository = ImportRepository(
+                taskDao = tasks, bookmarkDao = db.bookmarkDao(), database = db,
+                repositoryScope = CoroutineScope(coroutineContext + repositoryJob),
+                articleAcquirer = {
+                    manualAcquisitionStarted.complete(Unit)
+                    finishManualAcquisition.await()
+                    WebPageParser.parseHtml(it, "<html><head><title>Manual retry</title></head><body>Article</body></html>")
+                }
+            )
+            withTimeout(5000) {
+                val retry = async { repository.retryManualImport(rssTask.id, url) }
+                manualAcquisitionStarted.await()
+                val claimed = checkNotNull(tasks.getTaskById(rssTask.id))
+                assertNull(claimed.rssFeedId)
+                assertEquals("PROCESSING", claimed.status)
+                assertFalse(store.complete(feed, rssTask, article(url)))
+                store.failArticle(feed, rssTask, java.io.IOException("Late RSS failure"), true)
+                assertEquals(claimed, tasks.getTaskById(rssTask.id))
+                assertNull(db.bookmarkDao().getBookmarkById(rssTask.id))
+                finishManualAcquisition.complete(Unit)
+                assertEquals(ImportOutcome.BookmarkSaved(rssTask.id, url), retry.await())
+                assertNull(tasks.getTaskById(rssTask.id))
+                val saved = checkNotNull(db.bookmarkDao().getBookmarkById(rssTask.id))
+                assertNull(saved.rssFeedId)
+                assertEquals(rssTask.title, saved.title)
+            }
+        } finally {
+            repositoryJob.cancelAndJoin()
+            db.close()
+        }
+    }
+
     @Test fun directRawCategoriesCleanOnceAndResolveBeforeLimit() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(InstrumentationRegistry.getInstrumentation().targetContext, AppDatabase::class.java).build()
         try {

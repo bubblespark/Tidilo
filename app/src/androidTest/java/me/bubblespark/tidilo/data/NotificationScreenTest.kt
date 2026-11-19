@@ -6,16 +6,65 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.room.Room
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
+import me.bubblespark.tidilo.data.db.AppDatabase
+import me.bubblespark.tidilo.data.db.BookmarkEntity
+import me.bubblespark.tidilo.data.db.ImportNotificationEntity
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.ui.screens.notifications.NotificationContent
 import me.bubblespark.tidilo.ui.screens.notifications.NotificationListItem
+import me.bubblespark.tidilo.ui.screens.notifications.NotificationScreen
+import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
 import org.junit.Assert.*
 import org.junit.Test
 
 class NotificationScreenTest {
+    @Test fun savedDuplicateUsesItsStoredIdAndReportsAStaleTarget(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val job = SupervisorJob()
+        val database = Room.inMemoryDatabaseBuilder(host.context, AppDatabase::class.java).build()
+        val bookmarks = database.bookmarkDao()
+        val history = database.importNotificationDao()
+        val url = "https://history.invalid/page"
+        val bookmark = BookmarkEntity("exact-id", "Saved", url, "", createdAt = 1, updatedAt = 1)
+        val opened = mutableStateOf<String?>(null)
+        try {
+            bookmarks.insertOrUpdate(bookmark)
+            history.insert(ImportNotificationEntity(type = "WARNING", domain = "Duplicate fixture", url = url,
+                message = "Duplicate URL (Already in Library)", existingBookmarkId = bookmark.id))
+            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = bookmarks,
+                notificationDao = history, database = database, repositoryScope = CoroutineScope(coroutineContext + job))
+            val viewModel = ImportViewModel(repository)
+            host.main { activity.setContent { MaterialTheme {
+                NotificationScreen(viewModel, {}, { opened.value = it })
+            } } }
+            val open = host.await(activity) { host.text(it, activity.getString(R.string.import_open_saved_page)) }
+            fun openSavedPage() = host.main {
+                val button = generateSequence(open) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
+                assertTrue(button.config[SemanticsActions.OnClick].action?.invoke() == true)
+            }
+            openSavedPage()
+            withTimeout(5000) { while (opened.value != bookmark.id) delay(20) }
+            bookmarks.deleteById(bookmark.id)
+            bookmarks.insertOrUpdate(bookmark.copy(id = "replacement-id"))
+            openSavedPage()
+            host.await(activity) { host.text(it, activity.getString(R.string.notification_bookmark_unavailable)) }
+            assertEquals(bookmark.id, opened.value)
+        } finally {
+            host.main { activity.finish() }
+            job.cancelAndJoin()
+            database.close()
+        }
+    }
+
     @Test fun historyExposesButtonRoleAndOpensSelectedNotification(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()

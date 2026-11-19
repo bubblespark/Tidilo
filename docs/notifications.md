@@ -38,6 +38,8 @@ Completed unpublished runs form a local outbox, reconciled on application startu
 
 The common import outcome path reports invalid HTTP/HTTPS input, acquisition/HTTP failures, duplicate rejection, and other import failures with a concrete error reason. ShareReceiverActivity only reports invalid share envelopes/text itself; repository failures are not reported twice. The former queued success and `Bookmark added` OS notifications and legacy Import Notifications channel are removed.
 
+For a saved duplicate, Notification history opens the active bookmark by its recorded ID. Older history without a bookmark ID resolves by URL. Manual Import shows its result in the dialog over Library. Both entry points open Bookmark Detail, where the existing Collection action is available.
+
 Manual AI review reports generation errors inside the review screen.
 
 Each notification uses an immutable destination-specific PendingIntent. MainActivity consumes destination intents on cold start and `onNewIntent`, opening Notification, Library, or RSS Settings as specified. Legacy import destination extras are normalized to Notification. The Library rail's bell opens the in-app Notification list; Room history and ordinary Snackbar/Toast feedback remain independent of these OS channels. See [Library Navigation](library_navigation.md) for the combined history/import-error/XML-error list, per-item Retry/Delete menus and second-precision creation timestamps.

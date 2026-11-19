@@ -34,6 +34,7 @@ fun NotificationScreen(viewModel: ImportViewModel, onNavigateBack: () -> Unit,
     val feeds by viewModel.notificationFeeds.collectAsStateWithLifecycle()
     val busy by viewModel.notificationBusyKeys.collectAsStateWithLifecycle()
     val actionError by viewModel.notificationActionError.collectAsStateWithLifecycle()
+    val unavailableMessage = stringResource(R.string.notification_bookmark_unavailable)
     val rows = remember(history, errors, feeds) { buildNotificationList(history, errors, feeds) }
     LaunchedEffect(Unit) { viewModel.markAllNotificationsAsRead() }
     val snackbar = remember { SnackbarHostState() }
@@ -42,7 +43,8 @@ fun NotificationScreen(viewModel: ImportViewModel, onNavigateBack: () -> Unit,
         NotificationContent(rows, history.isNotEmpty(), busy, onNavigateBack, viewModel::clearAllNotifications,
             viewModel::retryNotification, viewModel::deleteNotification, { row ->
                 val notification = row.notification
-                viewModel.findBookmarkIdByUrl(notification.url) { id -> id?.let(onNavigateToDetail) }
+                viewModel.resolveNotificationBookmark(notification.url, notification.existingBookmarkId,
+                    unavailableMessage, onNavigateToDetail)
             })
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).screenActionInsets())
     }
@@ -80,7 +82,8 @@ fun NotificationContent(items: List<NotificationListItem>, canClear: Boolean, bu
                     is NotificationListItem.RssXmlFailure -> row.feed.url
                 }
                 var menuOpen by remember(row) { mutableStateOf(false) }
-                Row(Modifier.fillMaxWidth().then(if (row is NotificationListItem.History)
+                val hasSavedPageAction = row is NotificationListItem.History && row.notification.existingBookmarkId != null
+                Row(Modifier.fillMaxWidth().then(if (row is NotificationListItem.History && !hasSavedPageAction)
                     Modifier.clickable(role = Role.Button) { onOpen(row) } else Modifier).padding(vertical = 16.dp),
                     verticalAlignment = Alignment.Top) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -90,6 +93,11 @@ fun NotificationContent(items: List<NotificationListItem>, canClear: Boolean, bu
                         Text(url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(formatNotificationTimestamp(row.createdAt, zone), style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (hasSavedPageAction) {
+                            TextButton(onClick = { onOpen(row) }) {
+                                Text(stringResource(R.string.import_open_saved_page))
+                            }
+                        }
                     }
                     if (failure) Box {
                         IconButton(onClick = { menuOpen = true }, enabled = row.key !in busyKeys,

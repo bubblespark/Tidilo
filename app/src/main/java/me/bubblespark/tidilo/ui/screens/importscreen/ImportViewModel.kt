@@ -45,8 +45,8 @@ class ImportViewModel(
 
     fun submitManualImport(url: String) {
         val current = _manualImportState.value
-        val editableFailure = ((current as? ManualImportState.Finished)?.outcome as? ImportOutcome.Failed)
-            ?.let { it.retryTaskId == null } == true
+        val outcome = (current as? ManualImportState.Finished)?.outcome
+        val editableFailure = outcome is ImportOutcome.Failed && outcome.retryTaskId == null
         if (current == null || editableFailure) runManualImport(url) { repository.importManually(url) }
     }
 

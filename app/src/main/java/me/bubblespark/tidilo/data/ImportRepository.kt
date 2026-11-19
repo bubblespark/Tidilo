@@ -22,7 +22,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import me.bubblespark.tidilo.TidiloApplication
 import kotlinx.coroutines.flow.flowOf
 import androidx.room.withTransaction
@@ -55,6 +57,7 @@ internal data class ResolvedTarget(
 
 private val ACTIVE_QUEUE_STATUSES = setOf("QUEUED", "PROCESSING", "ERROR")
 private const val DIRECT_ACQUISITION_TIMEOUT_MS = 30_000L
+private const val MAX_DIRECT_ACQUISITIONS = 4
 
 internal interface ImportDomainPolicyAdapter {
     suspend fun awaitReady() = Unit
@@ -197,11 +200,13 @@ class ImportRepository internal constructor(
     private val rssAdapter: ImportRssAdapter = defaultRssAdapter(database, taskDao, isPrivateContentBookmarkable),
     private val notificationAdapter: ImportNotificationAdapter = ImportNotificationAdapter.NO_OP,
     private val reportImportError: (Throwable) -> Unit = { error -> notificationAdapter.importError(error) },
-    private val legacyQueuePrefsProvider: () -> SharedPreferences? = { null }
+    private val legacyQueuePrefsProvider: () -> SharedPreferences? = { null },
+    private val acquisitionTimeoutMillis: Long = DIRECT_ACQUISITION_TIMEOUT_MS
 ) {
 
     private val directExecutionMutex = Mutex()
     private val directRecoveryMutex = Mutex()
+    private val directAcquisitionSlots = Semaphore(MAX_DIRECT_ACQUISITIONS)
 
     private val _processingTasks = MutableStateFlow<List<ImportTask>>(emptyList())
     val processingTasks: StateFlow<List<ImportTask>> = _processingTasks.asStateFlow()
@@ -293,9 +298,27 @@ class ImportRepository internal constructor(
         return DuplicateCheckResult.NoDuplicate
     }
 
-    private suspend fun acquireDirectArticle(url: String): ParsedWebPage =
-        withTimeoutOrNull(DIRECT_ACQUISITION_TIMEOUT_MS) { articleAcquirer(url) }
-            ?: throw SocketTimeoutException("Article acquisition timed out")
+    private suspend fun acquireDirectArticle(url: String): ParsedWebPage {
+        // A blocked transport can outlive its caller. Only the caller can proceed to persistence.
+        val acquisition = repositoryScope.async {
+            directAcquisitionSlots.withPermit {
+                try {
+                    Result.success(articleAcquirer(url))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Result.failure(error)
+                }
+            }
+        }
+        return try {
+            val result = withTimeoutOrNull(acquisitionTimeoutMillis) { acquisition.await() }
+                ?: throw SocketTimeoutException("Article acquisition timed out")
+            result.getOrThrow()
+        } finally {
+            acquisition.cancel()
+        }
+    }
 
     private suspend fun handleDuplicateOrConflict(
         url: String,

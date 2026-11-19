@@ -3,10 +3,16 @@ package me.bubblespark.tidilo.data
 import com.google.mlkit.genai.common.GenAiException
 import com.google.mlkit.genai.prompt.GenerativeModel
 import java.lang.reflect.Proxy
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -32,6 +38,58 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImportRepositoryTest {
+    @Test fun notificationResolutionUsesUrlOnlyWhenTheHistoryHasNoBookmarkId() = runBlocking {
+        val job = SupervisorJob()
+        val url = "https://manual.example/current"
+        try {
+            val repository = ImportRepository(taskDao = FakeImportTaskDao(), bookmarkDao = FakeBookmarkDao(),
+                repositoryScope = CoroutineScope(coroutineContext + job), articleAcquirer = { directFixture(it) })
+            val saved = withTimeout(3000) { repository.importManually(url) } as ImportOutcome.BookmarkSaved
+            assertEquals(saved.bookmarkId, repository.resolveNotificationBookmark(url, null))
+            assertEquals(saved.bookmarkId, repository.resolveNotificationBookmark("https://manual.example/previous", saved.bookmarkId))
+            assertNull(repository.resolveNotificationBookmark(url, "deleted-bookmark-id"))
+        } finally { job.cancelAndJoin() }
+    }
+
+    @Test fun manualImportTimesOutBeforeBlockedAcquisitionReturnsAndRetriesTheSameTask() = runBlocking {
+        val job = SupervisorJob()
+        val started = CompletableDeferred<Job>()
+        val release = CountDownLatch(1)
+        val calls = AtomicInteger()
+        val bookmarks = FakeBookmarkDao()
+        val url = "https://manual.example/page"
+        val lateUrl = "https://manual.example/late"
+        try {
+            val repository = ImportRepository(
+                taskDao = FakeImportTaskDao(),
+                bookmarkDao = bookmarks,
+                repositoryScope = CoroutineScope(Dispatchers.IO + job),
+                acquisitionTimeoutMillis = 500,
+                articleAcquirer = {
+                    if (calls.getAndIncrement() == 0) {
+                        started.complete(checkNotNull(currentCoroutineContext()[Job]))
+                        check(release.await(10, TimeUnit.SECONDS))
+                        directFixture(lateUrl)
+                    } else directFixture(it)
+                }
+            )
+            withTimeout(4000) {
+                val pending = async { repository.importManually(url) }
+                val blockedAcquisition = started.await()
+                val failure = pending.await() as ImportOutcome.Failed
+                val taskId = checkNotNull(failure.retryTaskId)
+                assertTrue(bookmarks.savedItems.isEmpty())
+                assertEquals(ImportOutcome.BookmarkSaved(taskId, url), repository.retryManualImport(taskId, url))
+                release.countDown()
+                blockedAcquisition.join()
+                assertEquals(listOf(url), bookmarks.savedItems.map { it.url })
+            }
+        } finally {
+            release.countDown()
+            job.cancelAndJoin()
+        }
+    }
+
     @Test fun manualSaveResolvesRedirectedDuplicateWhileMediaIsStillLoading() = runBlocking {
         val job = SupervisorJob()
         val started = CompletableDeferred<Unit>()

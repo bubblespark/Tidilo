@@ -97,4 +97,34 @@ class CollectionAssignmentTest {
             assertEquals(setOf("a", "b", "c"), vm.state.value.selectedIds)
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
+
+    @Test fun retryRestartsAFailedObservationAlongWithFailedWrites() = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
+        val store = ViewModelStore()
+        lateinit var vm: CollectionMembershipViewModel
+        try {
+            listOf("a", "b").forEach { db.collectionDao().insert(CollectionEntity(it, it, "", "folder", null, 0, 1, 1)) }
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity("one", "One", "https://example.com/one", "", createdAt = 1, updatedAt = 1))
+            host.runOnMainSync { vm = model(store, db) }
+            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            val sql = db.openHelper.writableDatabase
+            sql.execSQL("CREATE TRIGGER fail_a BEFORE INSERT ON bookmark_collection_cross_ref WHEN NEW.collectionId = 'a' BEGIN SELECT RAISE(ABORT,'injected'); END")
+            host.runOnMainSync { vm.toggle("a") }
+            withTimeout(5000) { while (vm.state.value.error != "save") delay(20) }
+            // Break the observation: the next re-query of the renamed table fails.
+            sql.execSQL("ALTER TABLE collections RENAME TO unavailable_collections")
+            sql.execSQL("INSERT INTO bookmark_collection_cross_ref (bookmarkId, collectionId) VALUES ('one', 'b')")
+            db.invalidationTracker.refreshVersionsAsync()
+            withTimeout(5000) { while (vm.state.value.error != "load") delay(20) }
+            sql.execSQL("ALTER TABLE unavailable_collections RENAME TO collections")
+            sql.execSQL("DROP TRIGGER fail_a")
+            host.runOnMainSync { vm.retry() }
+            withTimeout(5000) { while (db.collectionDao().observeMembershipIds("one").first().toSet() != setOf("a", "b")) delay(20) }
+            // The restarted observation keeps delivering later changes.
+            db.collectionDao().removeMembership("one", "b")
+            withTimeout(5000) { while (vm.state.value.selectedIds != setOf("a")) delay(20) }
+            assertNull(vm.state.value.error)
+        } finally { host.runOnMainSync { store.clear() }; db.close() }
+    }
 }

@@ -44,12 +44,17 @@ class CollectionMembershipViewModel internal constructor(
 
     /** Reloads after a read failure, or re-applies every unresolved failed membership change. */
     fun retry() {
+        // A failed read stops the observation; restart it even when failed writes are also retried.
+        // With nothing to re-apply, Retry keeps its previous meaning: reload.
+        if (observation?.isActive != true || failedChanges.isEmpty()) observe()
         if (failedChanges.isNotEmpty()) {
             val changes = failedChanges.toMap()
             failedChanges.clear()
             changes.forEach { (id, member) -> apply(id, member) }
-            return
         }
+    }
+
+    private fun observe() {
         observation?.cancel()
         mutable.value = state.value.copy(loading = true, error = null)
         observation = viewModelScope.launch {

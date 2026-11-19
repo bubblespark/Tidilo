@@ -82,12 +82,12 @@ class CollectionEditorViewModel(
                         else {
                             val stored = CollectionDraft(row.title, row.description, row.presetIconId, row.customSymbol, row.colorIndex)
                             storedDraft = stored
-                            if (saved.get<Boolean>("loaded") != true) {
-                                applyDraft(stored)
-                            } else if (!restoredDraftSubmitted) {
-                                // A draft restored after rotation or process recreation may be unsaved or invalid.
+                            // Only the first successful load decides whether a restored draft needs saving;
+                            // later emissions (autosave echoes, other editors) must not resubmit it.
+                            if (!restoredDraftSubmitted) {
                                 restoredDraftSubmitted = true
-                                autosaver?.submit(state.value.draft)
+                                if (saved.get<Boolean>("loaded") != true) applyDraft(stored)
+                                else autosaver?.submit(state.value.draft)
                             }
                             mutable.value = mutable.value.copy(loading = false, missing = false)
                         }

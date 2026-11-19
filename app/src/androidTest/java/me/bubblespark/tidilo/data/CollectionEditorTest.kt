@@ -199,4 +199,21 @@ class CollectionEditorTest {
             withTimeout(5000) { while (db.collectionDao().getById("a")?.title != "Restored") delay(20) }
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
+
+    @Test fun laterEmissionsNeverResubmitTheInitialDraft() = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
+        val store = ViewModelStore()
+        lateinit var vm: CollectionEditorViewModel
+        try {
+            db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "A", "", "folder", null, 0, 1, 1))
+            host.runOnMainSync { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java] }
+            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            // Another editor renames the collection while this one is open without edits.
+            CollectionRepository(db).update("a", CollectionDraft("B"), 2)
+            delay(1500)
+            assertEquals("An untouched editor must not write its initial draft back", "B", db.collectionDao().getById("a")?.title)
+            assertEquals(me.bubblespark.tidilo.ui.screens.library.AutosaveStatus.Idle, vm.autosaveStatus.value)
+        } finally { host.runOnMainSync { store.clear() }; db.close() }
+    }
 }

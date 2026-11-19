@@ -239,7 +239,17 @@ fun BookmarkDetailScreen(
     var conflictInput by edit.conflictInput
     var conflictExisting by edit.conflictExisting
     var tagSaveFailed by edit.tagSaveFailed
-    var isTagSaving by remember { mutableStateOf(false) }
+    // The commit runs on the shared ViewModel, so its saving state and result survive rotation.
+    val tagSaves by viewModel.tagSaves.collectAsStateWithLifecycle()
+    val tagSave = tagSaves[bookmark.id]
+    val isTagSaving = tagSave == TagSaveStatus.Saving
+    LaunchedEffect(tagSave) {
+        when (tagSave) {
+            TagSaveStatus.Saved -> { edit.closeTagEditor(); viewModel.consumeTagSave(bookmark.id) }
+            TagSaveStatus.Failed -> { tagSaveFailed = true; viewModel.consumeTagSave(bookmark.id) }
+            TagSaveStatus.Saving, null -> Unit
+        }
+    }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showCollectionMembership by rememberSaveable(bookmark.id) { mutableStateOf(false) }
     var entityLibraryRetry by remember { mutableStateOf(0) }
@@ -333,22 +343,9 @@ fun BookmarkDetailScreen(
 
     fun confirmTagEditor() {
         if (isTagSaving) return
-        isTagSaving = true
         tagSaveFailed = false
-        val tag = Tag.fromDisplayValues(draftCategory, draftSubcategory, draftEntities)
-        val isPrivate = draftIsPrivate
-        val replacements = draftReplacements
-        coroutineScope.launch {
-            try {
-                viewModel.updateBookmarkTags(bookmark.id, tag, isPrivate, replacements)
-                edit.closeTagEditor()
-            } catch (e: Exception) {
-                kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                tagSaveFailed = true
-            } finally {
-                isTagSaving = false
-            }
-        }
+        viewModel.commitBookmarkTags(bookmark.id, Tag.fromDisplayValues(draftCategory, draftSubcategory, draftEntities),
+            draftIsPrivate, draftReplacements)
     }
 
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(),

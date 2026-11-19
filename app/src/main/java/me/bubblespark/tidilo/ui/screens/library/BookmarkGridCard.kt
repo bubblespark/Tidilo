@@ -42,10 +42,12 @@ import me.bubblespark.tidilo.ui.theme.SurfaceVariant
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
 import me.bubblespark.tidilo.ui.components.rememberDomainVisual
@@ -108,6 +110,7 @@ fun BookmarkGridCard(
     TidiloSurface(
         onClick = onClick,
         onLongClick = if (hasSummary) onLongClick else null,
+        onLongClickLabel = if (hasSummary && onLongClick != null) stringResource(R.string.library_summary_peek_open) else null,
         role = SurfaceRole.BOOKMARK_CARD,
         variant = SurfaceVariant.COMPACT,
         accent = LocalCardAccentColor.current,

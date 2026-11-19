@@ -27,7 +27,7 @@ internal class HeaderTestHost {
         is ViewGroup -> (0 until view.childCount).flatMap { roots(view.getChildAt(it)) }
         else -> emptyList()
     }
-    fun nodes(activity: ComponentActivity): List<SemanticsNode> {
+    fun nodes(activity: ComponentActivity, useUnmergedTree: Boolean = true): List<SemanticsNode> {
         fun visit(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::visit)
         val activityRoots = roots(activity.window.decorView)
         val windowRoots = runCatching {
@@ -41,7 +41,10 @@ internal class HeaderTestHost {
             .getOrDefault(emptyList())
         val allRoots = (activityRoots + windowRoots).distinct()
         return allRoots.flatMap { root ->
-            runCatching { visit(root.semanticsOwner.unmergedRootSemanticsNode) }
+            runCatching {
+                val owner = root.semanticsOwner
+                visit(if (useUnmergedTree) owner.unmergedRootSemanticsNode else owner.rootSemanticsNode)
+            }
                 .onFailure { android.util.Log.w("HeaderTestHost", "Semantics traversal failed", it) }
                 .getOrDefault(emptyList())
         }

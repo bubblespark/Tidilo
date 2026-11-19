@@ -99,6 +99,11 @@ This document defines the strict engineering standards, naming conventions, Comp
 ### 3.5 Lifecycle Re-Entry & Symmetric Producer Testing
 - **Cover Full Lifecycle Cycles Across Sibling Producers**: For reactive cache/state producers, unit tests must exercise not only the forward `pending -> resolved` transition, but also lifecycle re-entry paths—post-resolution eviction, invalidation, and generation resets (`resolved -> pending -> reloaded or fallback`). Apply this coverage symmetrically across all sibling flows sharing the same visual or cache contract.
 
+### 3.6 Autosave & Drafts
+- **Record Edit Intent; Never Infer It From Values**: Track which fields the user edited with `EditedFields`. An edited field shows the user's value and ignores Room emissions until a write of its latest edit succeeds; a revert is an edit, and a failed write stays owed. Every other field follows the stored row.
+- **Write Only Edited Fields, In Order**: Persist only the edited fields in one transaction, so concurrent changes to other fields survive. Autosavers for the same records share one FIFO write lock and run on `Dispatchers.Main.immediate`, so writes land in submission order across screens.
+- **Survive Recreation**: Save the edited fields with the draft (`rememberSaveable` / `SavedStateHandle`), resubmit them after the first stored value loads, and submit and flush them when the screen or ViewModel goes away.
+
 ---
 
 ## 4. Static Allocations, HTML Parsing, Build & Privacy Hygiene

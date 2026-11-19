@@ -4,6 +4,18 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class BookmarkSearchTermsTest {
+    @Test fun reportsSummaryOnlyAndRecognizesJapaneseSubcategoryNames() {
+        val bookmark = BookmarkEntity(
+            id = "bookmark", title = "Android notes", url = "https://example.test/android",
+            description = "Notes about typography", subcategory = "Tech", createdAt = 0, updatedAt = 0
+        )
+
+        assertEquals(setOf(BookmarkMatchField.SUMMARY),
+            BookmarkSearchTerms.parse("typography").matchingFields(bookmark))
+        assertEquals(setOf(BookmarkMatchField.CLASSIFICATION),
+            BookmarkSearchTerms.parse("#技術").matchingFields(bookmark))
+    }
+
     @Test fun reportsEveryMatchingFieldOnce() {
         val bookmark = BookmarkEntity(
             id = "bookmark", title = "Android notes", url = "https://example.test/android",

@@ -71,6 +71,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.intl.LocaleList
@@ -165,6 +166,13 @@ fun SearchScreen(
 
     val matchFieldNames = searchMatchFieldNames()
     val matchFieldSeparator = stringResource(R.string.search_match_separator)
+    val captionBaseStyle = MaterialTheme.typography.bodySmall
+    val configurationLocales = LocalConfiguration.current.locales
+    val captionLanguage = if (configurationLocales.isEmpty) null else configurationLocales[0].toLanguageTag()
+    val captionStyle = remember(captionBaseStyle, captionLanguage) {
+        if (captionLanguage == null) captionBaseStyle
+        else captionBaseStyle.copy(localeList = LocaleList(captionLanguage))
+    }
     val headerHeight = HeaderDefaults.bodyTopPadding()
 
     val isPrivateVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
@@ -458,7 +466,7 @@ fun SearchScreen(
                             )
                         } else {
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                SearchMatchCaption(result.matchedFields, matchFieldNames, matchFieldSeparator)
+                                SearchMatchCaption(result.matchedFields, matchFieldNames, matchFieldSeparator, captionStyle)
                                 BookmarkItemCard(
                                     bookmark = item,
                                     wordKeywords = wordKeywords,
@@ -509,18 +517,17 @@ private fun SearchMatchCaption(
     fields: Set<BookmarkMatchField>,
     fieldNames: Map<BookmarkMatchField, String>,
     separator: String,
+    style: TextStyle,
     modifier: Modifier = Modifier
 ) {
     if (fields.isEmpty()) return
     val names = remember(fields, fieldNames, separator) {
         fieldNames.filterKeys { it in fields }.values.joinToString(separator)
     }
-    val languageTag = LocalConfiguration.current.locales[0].toLanguageTag()
-    val locales = remember(languageTag) { LocaleList(languageTag) }
     Text(
         text = names,
         modifier = modifier.padding(horizontal = 8.dp),
-        style = MaterialTheme.typography.bodySmall.copy(localeList = locales),
+        style = style,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 }

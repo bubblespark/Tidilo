@@ -2,13 +2,20 @@ package me.bubblespark.tidilo.ui.screens.library
 
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.layout.SubcomposeLayout
-import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
 
@@ -18,30 +25,60 @@ internal val ENTITY_TAG_VERTICAL_GAP = 8.dp
 
 @Composable
 internal fun EntityTagPreview(modifier: Modifier = Modifier, chips: @Composable () -> Unit) {
+    val resources = LocalResources.current
+    val labelStyle = MaterialTheme.typography.labelSmall
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val textMeasurer = rememberTextMeasurer()
     SubcomposeLayout(modifier) { constraints ->
         val width = constraints.maxWidth
         val chipConstraints = constraints.copy(minWidth = 0, minHeight = 0)
         val horizontalGap = ENTITY_TAG_HORIZONTAL_GAP.roundToPx()
         val verticalGap = ENTITY_TAG_VERTICAL_GAP.roundToPx()
+        val labelPadding = 4.dp
+        val horizontalPadding = 2 * labelPadding.roundToPx()
+        val labelWidth = if (constraints.hasBoundedWidth) (width - horizontalPadding).coerceAtLeast(0) else width
         val tags = subcompose(0, chips).map { it.measure(chipConstraints) }
-        val overflow = mutableMapOf<Int, Placeable>()
+        val labels = mutableMapOf<Int, OverflowLabel>()
+        fun measureLabel(text: String): Int = textMeasurer.measure(
+            text = text, style = labelStyle, softWrap = false, maxLines = 1
+        ).size.width
         val visible = visibleEntityTagCount(tags.map { it.width }, width, horizontalGap) { remaining ->
-            overflow.getOrPut(remaining) {
-                subcompose(remaining) {
-                    Text(
-                        text = pluralStringResource(R.plurals.bookmark_remaining_entity_tags, remaining, remaining),
-                        modifier = Modifier.heightIn(min = 26.dp).padding(horizontal = 4.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }.single().measure(chipConstraints)
-            }.width
+            val full = resources.getQuantityString(R.plurals.bookmark_remaining_entity_tags, remaining, remaining)
+            val fullWidth = measureLabel(full)
+            val label = if (fullWidth <= labelWidth) {
+                OverflowLabel(full, full, fullWidth + horizontalPadding)
+            } else {
+                val compact = resources.getString(R.string.bookmark_remaining_entity_tags_compact, remaining)
+                OverflowLabel(compact, full, (measureLabel(compact) + horizontalPadding).coerceAtMost(width))
+            }
+            labels[remaining] = label
+            label.width
         }
-        val children = tags.take(visible) + listOfNotNull(overflow[tags.size - visible])
+        val overflow = labels[tags.size - visible]?.let { label ->
+            subcompose("overflow") {
+                val semantics = if (label.text == label.accessibleText) Modifier else Modifier.clearAndSetSemantics {
+                    text = AnnotatedString(label.accessibleText)
+                }
+                Text(
+                    text = label.text,
+                    modifier = semantics.heightIn(min = 26.dp)
+                        .wrapContentHeight(Alignment.CenterVertically).padding(horizontal = labelPadding),
+                    color = labelColor,
+                    style = labelStyle,
+                    softWrap = false,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }.single().measure(chipConstraints)
+        }
+        val children = tags.take(visible) + listOfNotNull(overflow)
         val rows = entityTagRows(children.map { it.width }, width, horizontalGap)
         val rowHeights = rows.map { row -> row.maxOf { children[it].height } }
         val height = rowHeights.sum() + verticalGap * (rows.size - 1).coerceAtLeast(0)
-        layout(width, height.coerceIn(constraints.minHeight, constraints.maxHeight)) {
+        val layoutWidth = if (constraints.hasBoundedWidth) width else constraints.constrainWidth(
+            rows.maxOfOrNull { row -> row.sumOf { children[it].width } + horizontalGap * (row.last - row.first) } ?: 0
+        )
+        layout(layoutWidth, height.coerceIn(constraints.minHeight, constraints.maxHeight)) {
             var top = 0
             rows.forEachIndexed { index, row ->
                 var start = 0
@@ -55,6 +92,8 @@ internal fun EntityTagPreview(modifier: Modifier = Modifier, chips: @Composable 
         }
     }
 }
+
+private data class OverflowLabel(val text: String, val accessibleText: String, val width: Int)
 
 internal fun visibleEntityTagCount(
     widths: List<Int>,

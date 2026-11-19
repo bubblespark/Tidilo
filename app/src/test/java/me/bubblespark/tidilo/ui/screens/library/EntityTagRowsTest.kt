@@ -6,6 +6,9 @@ import org.junit.Test
 class EntityTagRowsTest {
     @Test fun keepsAllTagsThatFitExactly() {
         assertEquals(listOf(0..1, 2..3, 4..5), entityTagRows(List(6) { 45 }, 100, 10))
+        assertEquals(6, visibleEntityTagCount(List(6) { 45 }, 100, 10) {
+            error("All tags fit without an overflow label")
+        })
     }
 
     @Test fun countsTheTagDisplacedByTheOverflowLabel() {

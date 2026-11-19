@@ -1,8 +1,12 @@
 package me.bubblespark.tidilo.data
 
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -22,6 +26,7 @@ import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItemCard
 import me.bubblespark.tidilo.ui.screens.library.BookmarkDetailScreen
+import me.bubblespark.tidilo.ui.screens.library.EntityTagPreview
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewMode
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
 import me.bubblespark.tidilo.ui.screens.library.SearchScreen
@@ -32,6 +37,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BookmarkListPreviewTest {
+    @Test fun tagPreviewReportsContentWidthWithUnboundedHorizontalSpace(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        try {
+            host.main {
+                activity.setContent {
+                    TidiloTheme {
+                        Row(Modifier.horizontalScroll(rememberScrollState())) {
+                            EntityTagPreview { repeat(4) { Text("Preview tag ${it + 1}") } }
+                        }
+                    }
+                }
+            }
+            val first = host.await(activity) { host.text(it, "Preview tag 1") && it.layoutInfo.isPlaced }
+            val last = host.await(activity) { host.text(it, "Preview tag 4") && it.layoutInfo.isPlaced }
+            host.main {
+                assertEquals(first.boundsInRoot.top, last.boundsInRoot.top, 1f)
+                assertTrue(last.boundsInRoot.left > first.boundsInRoot.left)
+            }
+        } finally {
+            host.main { activity.finish() }
+        }
+    }
+
     @Test fun modernDetailEditorShowsAnUnbrokenTagInFull(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()

@@ -417,6 +417,7 @@
     <string name="search_match_url">URL</string>
     <string name="search_match_classification">Classification</string>
     <string name="search_match_entity_tags">Entity tags</string>
+    <string name="bookmark_remaining_entity_tags_compact">+%1$d</string>
     <plurals name="bookmark_remaining_entity_tags">
         <item quantity="one">+%1$d tag</item>
         <item quantity="other">+%1$d tags</item>

@@ -22,17 +22,19 @@
 - **Drawing Order & Scoped Accent**: Shadows draw outside rounded clipping, wash behind content, and rim over content so images never obscure the illuminated edge. Domain/RSS drill-downs pass their beam `domainColor` via `LocalCardAccentColor` (`BookmarkCardStyle.kt`) scoped inside each animated destination; unspecified destinations default to `MaterialTheme.colorScheme.primary`.
 - **Interactions**: `800ms` click debounce + `Lifecycle.State.RESUMED` navigation gate in `TidiloNavGraph` prevents duplicate Detail entries. Each card exposes a `20.dp` Like toggle inside a `48.dp` touch target without navigating to Detail.
 - **Hierarchy**:
-  1. Title (keyword-highlighted in Search) + Like button.
+  1. Title (up to 3 lines, ellipsis on overflow, keyword-highlighted in Search) + Like button.
   2. URL (1 line, ellipsis).
-  3. Description (`MaterialTheme.typography.bodyMedium`, keyword-highlighted in Search).
+  3. Saved summary (`MaterialTheme.typography.bodyMedium`, up to 3 lines with ellipsis on overflow, keyword-highlighted in Search). Blank summaries leave no space.
   4. Tag row: `FlowRow` of `[Category] > [Subcategory]` (+ `Icons.Default.Lock` `Private` badge when `bookmark.isPrivate == true`, `SurfaceTone.NORMAL`, `resolveChipColors` with `secondaryContainer`/`onSecondaryContainer` fallback), wrapping cleanly on narrow cards and `2f` font scales.
-  5. Entity tags: `FlowRow` of `CompactTagBadge` chips with `#` icon.
+  5. Entity tags wrap in saved order into at most 3 rows. The localized remaining count fits inside those rows and counts omitted chips. Long labels can ellipsize within a visible chip. Open the card to see the full text and all tags in Detail.
+
+Search List places one localized match caption above the card inside the same keyed paging item. It lists the matching fields in the order Title, Summary, URL, Classification, and Entity tags. It reflects the query that loaded the row, including matches outside the preview. The caption wraps at narrow widths or large font sizes. A query with no effective terms leaves no caption.
 
 ---
 
 ## 3. `CompactTagBadge`
 
-- **Geometry**: Fixed `26.dp` height (`Modifier.height(26.dp)`), vertically centered, `RoundedCornerShape(12.dp)`.
+- **Geometry**: Vertically centered, `RoundedCornerShape(12.dp)`, with a standard `26.dp` height. List entity badges use `26.dp` as a minimum so enlarged text can fit.
 - **Layout**: `14.dp` vector icon + `6.dp` spacer + single-line label with `10.dp` horizontal padding.
 - **Search Match Highlight**: Matching query tokens transition container and content to high-contrast tonal colors.
 

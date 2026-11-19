@@ -32,6 +32,7 @@ import android.content.Context
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.data.BookmarkSource
 import me.bubblespark.tidilo.data.BookmarkRepository
+import me.bubblespark.tidilo.data.BookmarkSearchResult
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyStore
@@ -301,10 +302,10 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         query: String,
         visible: Boolean,
         ready: Boolean
-    ): PagingGeneration {
+    ): PagingGeneration<BookmarkSearchResult> {
         val key = buildSearchQueryKey(query, visible)
         val flow = if (ready) {
-            bookmarkRepository.pagedBookmarks(query, null, visible)
+            bookmarkRepository.pagedSearchResults(query, visible)
         } else {
             flowOf(loadingPage())
         }
@@ -312,13 +313,13 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         return PagingGeneration(key, flow.cachedIn(scope))
     }
 
-    private var activeSearchGeneration: PagingGeneration? = null
+    private var activeSearchGeneration: PagingGeneration<BookmarkSearchResult>? = null
     private var activeSearchReady: Boolean = false
 
     /**
      * Active generation of search bookmarks, associating the flow with its debounced query key.
      */
-    val searchGeneration: StateFlow<PagingGeneration> = combine(
+    internal val searchGeneration: StateFlow<PagingGeneration<BookmarkSearchResult>> = combine(
         debouncedSearchQuery,
         AppConfig.isPrivateContentVisible,
         bookmarkRepository.isInitialized
@@ -509,7 +510,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         }
     }
 
-    private fun loadingPage(): PagingData<BookmarkItem> = PagingData.empty(
+    private fun <T : Any> loadingPage(): PagingData<T> = PagingData.empty(
         sourceLoadStates = LoadStates(LoadState.Loading, LoadState.NotLoading(false), LoadState.NotLoading(false))
     )
 

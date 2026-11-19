@@ -595,6 +595,17 @@ class BookmarkDatabaseTest {
                         db.bookmarkDao().observeCount(BookmarkQueries.count(query, showPrivate)).first())
                 }
             }
+            val mixedQuery = "École　#Kot #記事"
+            val matched = results(db, mixedQuery).single()
+            assertEquals("a", matched.id)
+            assertEquals(
+                setOf(BookmarkMatchField.SUMMARY, BookmarkMatchField.CLASSIFICATION, BookmarkMatchField.ENTITY_TAGS),
+                BookmarkSearchTerms.parse(mixedQuery).matchingFields(matched)
+            )
+            assertEquals(1, db.bookmarkDao().observeCount(BookmarkQueries.count(mixedQuery, true)).first())
+            assertEquals(setOf(BookmarkMatchField.URL),
+                BookmarkSearchTerms.parse("www.example").matchingFields(results(db, "www.example").single()))
+            assertTrue(BookmarkSearchTerms.parse("#").matchingFields(matched).isEmpty())
             assertEquals(listOf("c", "b", "a"), results(db, "").map { it.id })
             val counts = db.bookmarkDao().tagCounts(BookmarkQueries.tags(setOf("Tech"), false, TagKind.ENTITY)).first()
             assertEquals(1, counts.single { it.value == "Kotlin" }.count)

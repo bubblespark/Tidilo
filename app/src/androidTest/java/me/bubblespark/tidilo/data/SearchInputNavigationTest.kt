@@ -305,15 +305,26 @@ class SearchInputNavigationTest {
                 assertNotNull(targetNode)
                 host.main { click(targetNode!!) }
                 host.await(activity) {
-                    it.config.getOrNull(SemanticsProperties.Text)?.any { text -> text.text.startsWith("https://roundtrip.invalid") } == true
+                    host.description(it, host.context.getString(R.string.detail_edit_tags))
                 }
 
-                val backFromDetail = host.await(activity) {
-                    host.description(it, host.context.getString(R.string.common_back))
-                }
-                host.main { click(backFromDetail) }
+                host.main { activity.onBackPressedDispatcher.onBackPressed() }
                 phase = "detail return"
-            val restored = host.await(activity) { host.text(it, visibleTitle) && it.boundsInRoot.top > 0f && it.boundsInRoot.height > 0f }
+                withTimeout(5000) {
+                    while (true) {
+                        var detailStillVisible = true
+                        host.main {
+                            detailStillVisible = host.nodes(activity).any {
+                                host.description(it, host.context.getString(R.string.detail_edit_tags))
+                            }
+                        }
+                        if (!detailStillVisible) break
+                        delay(30)
+                    }
+                }
+                val restored = host.await(activity) {
+                    host.text(it, visibleTitle) && it.boundsInRoot.top > 0f && it.boundsInRoot.height > 0f
+                }
                 assertEquals("Back from Detail must restore the same bookmark position", visibleTop, restored.boundsInRoot.top, 2f)
 
                 val inputAfterDetail = host.nodes(activity).firstOrNull {

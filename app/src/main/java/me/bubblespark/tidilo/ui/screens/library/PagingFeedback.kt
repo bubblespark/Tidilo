@@ -91,7 +91,7 @@ internal fun buildSearchQueryKey(
  * UI components observe this generation state to collect matching PagingData
  * without handoff race conditions across filter transitions.
  */
-data class PagingGeneration(
+data class PagingGeneration<T : Any>(
     val key: String,
-    val flow: Flow<PagingData<BookmarkItem>>
+    val flow: Flow<PagingData<T>>
 )

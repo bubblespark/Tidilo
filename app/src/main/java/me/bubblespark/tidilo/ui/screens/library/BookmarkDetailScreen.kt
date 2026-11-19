@@ -107,7 +107,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -211,14 +210,22 @@ fun BookmarkDetailScreen(
         DebouncedAutosaver<String>(
             scope = viewModel.viewModelScope,
             isStored = { it == edit.originalNote }
-        ) { note -> viewModel.saveNote(bookmark.id, note) }
+        ) { note ->
+            viewModel.saveNote(bookmark.id, note)
+            // Advance the stored baseline now rather than waiting for Room's emission, so an
+            // immediate revert is still written and the late emission cannot overwrite it.
+            edit.originalNote = note
+        }
     }
     val noteSaveStatus by noteAutosaver.status.collectAsStateWithLifecycle()
-    LaunchedEffect(noteAutosaver) {
-        snapshotFlow { noteText }.collect { noteAutosaver.submit(it) }
-    }
+    // A draft restored after recreation may not be stored yet.
+    LaunchedEffect(noteAutosaver) { noteAutosaver.submit(edit.noteText.value) }
     DisposableEffect(noteAutosaver) {
-        onDispose { noteAutosaver.flush() }
+        onDispose {
+            // Submit synchronously so the latest keystroke is included in the final write.
+            noteAutosaver.submit(edit.noteText.value)
+            noteAutosaver.flush()
+        }
     }
     var showTagEditDialog by edit.showTagEditDialog
     var showAddEntityDialog by edit.showAddEntityDialog
@@ -961,6 +968,7 @@ fun BookmarkDetailScreen(
                         onValueChange = { input ->
                             val limited = if (input.length > 200) input.take(200) else input
                             noteText = limited
+                            noteAutosaver.submit(limited)
                         },
                         placeholder = {
                             Text(

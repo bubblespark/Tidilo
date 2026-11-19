@@ -67,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.ui.theme.ThemeSurfaceState
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.Subcategory
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -147,6 +148,7 @@ fun BookmarkTagEditDialog(
                         TidiloSurface(
                             onClick = { isCategoryDropdownExpanded = true },
                             role = SurfaceRole.INPUT,
+                            state = ThemeSurfaceState(enabled = !saving),
                             modifier = Modifier
                                 .fillMaxWidth()
                         ) {
@@ -235,6 +237,7 @@ fun BookmarkTagEditDialog(
                         TidiloSurface(
                             onClick = { isSubcategoryDropdownExpanded = true },
                             role = SurfaceRole.INPUT,
+                            state = ThemeSurfaceState(enabled = !saving),
                             modifier = Modifier
                                 .fillMaxWidth()
                         ) {
@@ -326,7 +329,8 @@ fun BookmarkTagEditDialog(
 
                         Switch(
                             checked = isPrivate,
-                            onCheckedChange = onPrivateChanged
+                            onCheckedChange = onPrivateChanged,
+                            enabled = !saving
                         )
                     }
 
@@ -380,6 +384,7 @@ fun BookmarkTagEditDialog(
                                     showInlineLimitError = selectedEntities.size >= Tag.MAX_ENTITIES
                                     onAddEntityClick()
                                 },
+                                enabled = !saving,
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
@@ -395,6 +400,7 @@ fun BookmarkTagEditDialog(
                             // "Select" icon button without background (List Alt icon)
                             IconButton(
                                 onClick = onOpenEntityPickerClick,
+                                enabled = !saving,
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(

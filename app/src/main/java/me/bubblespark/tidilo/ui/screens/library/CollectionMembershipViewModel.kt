@@ -37,15 +37,17 @@ class CollectionMembershipViewModel internal constructor(
     private var stored: Set<String> = emptySet()
     /** Optimistic values for toggles that are in flight or not yet reflected by Room. */
     private val overrides = mutableMapOf<String, Boolean>()
-    private var failedChange: Pair<String, Boolean>? = null
+    /** Unresolved failed changes per collection, kept until retried or superseded by a new toggle of that row. */
+    private val failedChanges = linkedMapOf<String, Boolean>()
 
     init { retry() }
 
-    /** Reloads after a read failure, or re-applies the last failed membership change. */
+    /** Reloads after a read failure, or re-applies every unresolved failed membership change. */
     fun retry() {
-        failedChange?.let { (id, member) ->
-            failedChange = null
-            apply(id, member)
+        if (failedChanges.isNotEmpty()) {
+            val changes = failedChanges.toMap()
+            failedChanges.clear()
+            changes.forEach { (id, member) -> apply(id, member) }
             return
         }
         observation?.cancel()
@@ -71,13 +73,14 @@ class CollectionMembershipViewModel internal constructor(
         val current = state.value
         if (current.loading || current.error == "load" || id in current.pendingIds ||
             current.rows.none { it.collection.id == id }) return
-        failedChange = null
+        failedChanges.remove(id)
         apply(id, id !in current.selectedIds)
     }
 
     private fun apply(id: String, member: Boolean) {
         overrides[id] = member
-        mutable.value = state.value.copy(selectedIds = selection(), pendingIds = state.value.pendingIds + id, error = null)
+        mutable.value = state.value.copy(selectedIds = selection(), pendingIds = state.value.pendingIds + id,
+            error = if (failedChanges.isNotEmpty()) "save" else null)
         viewModelScope.launch {
             val error = try {
                 if (store.setMembership(bookmarkId, id, member)) null else "missing"
@@ -85,10 +88,17 @@ class CollectionMembershipViewModel internal constructor(
             catch (_: Exception) { "save" }
             if (error != null) {
                 overrides.remove(id)
-                failedChange = if (error == "save") id to member else null
+                if (error == "save") failedChanges[id] = member
+            } else if ((id in stored) == member) {
+                // Room may already have emitted this change while the write was pending.
+                overrides.remove(id)
             }
             mutable.value = state.value.copy(selectedIds = selection(), pendingIds = state.value.pendingIds - id,
-                error = error ?: state.value.error)
+                error = when {
+                    error == "missing" -> "missing"
+                    failedChanges.isNotEmpty() -> "save"
+                    else -> state.value.error.takeUnless { it == "save" }
+                })
         }
     }
 

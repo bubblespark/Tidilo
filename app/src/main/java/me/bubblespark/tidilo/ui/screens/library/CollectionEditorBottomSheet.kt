@@ -92,7 +92,7 @@ internal fun CollectionEditorContent(
                 OutlinedTextField(draft.description, { onEdit(draft.copy(description = it)) },
                     label = { Text(stringResource(R.string.collection_desc_label)) }, minLines = 2, maxLines = 2,
                     enabled = canEdit, modifier = Modifier.fillMaxWidth())
-                if (editing) {
+                if (editing && !state.missing) {
                     // The blank-title error is shown on the title field itself.
                     AutosaveStatusLine(
                         status = if (autosaveStatus == AutosaveStatus.Invalid) AutosaveStatus.Idle else autosaveStatus,

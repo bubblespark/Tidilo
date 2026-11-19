@@ -114,12 +114,15 @@ internal class DebouncedAutosaver<T>(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
-                    // A newer draft supersedes the failed one; otherwise keep it for Retry.
-                    if (pending == null) {
-                        failed = slot
-                        mutableStatus.value = AutosaveStatus.Failed
-                    } else {
-                        mutableStatus.value = AutosaveStatus.Pending
+                    // A newer draft (pending, queued behind this write, or invalid) supersedes the
+                    // failed one; only an unsuperseded failure is kept for Retry.
+                    mutableStatus.value = when {
+                        pending != null || inFlight > 1 -> AutosaveStatus.Pending
+                        invalid -> AutosaveStatus.Invalid
+                        else -> {
+                            failed = slot
+                            AutosaveStatus.Failed
+                        }
                     }
                 }
             }

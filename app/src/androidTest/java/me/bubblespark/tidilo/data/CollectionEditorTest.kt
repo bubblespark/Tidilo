@@ -177,4 +177,26 @@ class CollectionEditorTest {
             withTimeout(5000) { while (db.collectionDao().getById("a")?.title != "Pending at close") delay(20) }
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
+
+    @Test fun recreatedEditorResubmitsRestoredDraft() = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
+        val store = ViewModelStore()
+        lateinit var vm: CollectionEditorViewModel
+        fun create(saved: SavedStateHandle) = host.runOnMainSync {
+            vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(saved, CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java]
+        }
+        try {
+            db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "Stored", "", "folder", null, 0, 1, 1))
+            // A blank title restored after recreation keeps its recoverable-draft error.
+            create(SavedStateHandle(mapOf("loaded" to true, "title" to "", "description" to "", "icon" to "folder", "color" to 0)))
+            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            withTimeout(5000) { while (vm.autosaveStatus.value != me.bubblespark.tidilo.ui.screens.library.AutosaveStatus.Invalid) delay(20) }
+            assertEquals("Stored", db.collectionDao().getById("a")?.title)
+            host.runOnMainSync { store.clear() }
+            // A valid unsaved draft restored after recreation is written without further input.
+            create(SavedStateHandle(mapOf("loaded" to true, "title" to "Restored", "description" to "", "icon" to "folder", "color" to 0)))
+            withTimeout(5000) { while (db.collectionDao().getById("a")?.title != "Restored") delay(20) }
+        } finally { host.runOnMainSync { store.clear() }; db.close() }
+    }
 }

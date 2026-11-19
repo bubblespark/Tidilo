@@ -18,6 +18,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import me.bubblespark.tidilo.R
@@ -57,10 +58,13 @@ internal fun AutosaveStatusLine(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (text != null) {
+            // Weighted without filling, so wrapped text at large font scales never pushes Retry off-screen.
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
+                color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                textAlign = TextAlign.End,
+                modifier = Modifier.weight(1f, fill = false)
             )
         }
         if (status == AutosaveStatus.Failed) {

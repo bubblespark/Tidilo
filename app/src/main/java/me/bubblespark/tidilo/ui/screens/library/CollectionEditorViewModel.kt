@@ -43,13 +43,17 @@ class CollectionEditorViewModel(
     val state = mutable.asStateFlow()
     private var loadJob: Job? = null
     private var storedDraft: CollectionDraft? = null
+    private var restoredDraftSubmitted = false
     private val autosaver: DebouncedAutosaver<CollectionDraft>? = collectionId?.let { id ->
         DebouncedAutosaver(
             scope = saveScope,
             isValid = { it.title.isNotBlank() },
             isStored = { draft -> runCatching { CollectionPolicy.normalize(draft) }.getOrNull() == storedDraft }
         ) { draft ->
-            if (!repository.update(id, draft, System.currentTimeMillis())) {
+            if (repository.update(id, draft, System.currentTimeMillis())) {
+                // Advance the baseline now so an immediate revert is not mistaken for the stored value.
+                storedDraft = CollectionPolicy.normalize(draft)
+            } else {
                 mutable.value = state.value.copy(missing = true)
             }
         }
@@ -80,6 +84,10 @@ class CollectionEditorViewModel(
                             storedDraft = stored
                             if (saved.get<Boolean>("loaded") != true) {
                                 applyDraft(stored)
+                            } else if (!restoredDraftSubmitted) {
+                                // A draft restored after rotation or process recreation may be unsaved or invalid.
+                                restoredDraftSubmitted = true
+                                autosaver?.submit(state.value.draft)
                             }
                             mutable.value = mutable.value.copy(loading = false, missing = false)
                         }

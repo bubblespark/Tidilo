@@ -170,4 +170,50 @@ class DebouncedAutosaverTest {
 
         assertTrue(writes.isEmpty())
     }
+
+    @Test
+    fun failureOfASupersededWriteNeitherMasksInvalidNorOffersRetry() = autosaveTest { scope ->
+        val gate = CompletableDeferred<Unit>()
+        val writes = mutableListOf<String>()
+        val saver = DebouncedAutosaver<String>(scope, delayMillis = 10_000, isValid = { it.isNotBlank() }) { value ->
+            gate.await()
+            error("write failed for $value")
+        }
+
+        saver.submit("Old title")
+        saver.flush()
+        repeat(3) { yield() }
+        // The user clears the required field while the earlier write is still running.
+        saver.submit("")
+        gate.complete(Unit)
+        delay(50)
+
+        assertEquals(AutosaveStatus.Invalid, saver.status.value)
+        saver.retry()
+        delay(20)
+        assertTrue("Retry must not resubmit a superseded draft", writes.isEmpty())
+        assertEquals(AutosaveStatus.Invalid, saver.status.value)
+    }
+
+    @Test
+    fun failureWithANewerWriteQueuedStaysPendingUntilTheNewerOneLands() = autosaveTest { scope ->
+        val gate = CompletableDeferred<Unit>()
+        val writes = mutableListOf<String>()
+        val saver = DebouncedAutosaver<String>(scope, delayMillis = 10_000) { value ->
+            if (value == "old") { gate.await(); error("old failed") }
+            writes += value
+        }
+
+        saver.submit("old")
+        saver.flush()
+        repeat(3) { yield() }
+        saver.submit("new")
+        saver.flush()
+        repeat(3) { yield() }
+        gate.complete(Unit)
+        delay(50)
+
+        assertEquals(listOf("new"), writes)
+        assertEquals(AutosaveStatus.Saved, saver.status.value)
+    }
 }

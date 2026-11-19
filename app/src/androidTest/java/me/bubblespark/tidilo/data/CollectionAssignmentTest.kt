@@ -70,4 +70,31 @@ class CollectionAssignmentTest {
             assertNull(db.collectionDao().getById("a"))
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
+
+    @Test fun everyUnresolvedFailureStaysRetryableUntilRetried() = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
+        val store = ViewModelStore()
+        lateinit var vm: CollectionMembershipViewModel
+        try {
+            listOf("a", "b", "c").forEach { db.collectionDao().insert(CollectionEntity(it, it, "", "folder", null, 0, 1, 1)) }
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity("one", "One", "https://example.com/one", "", createdAt = 1, updatedAt = 1))
+            host.runOnMainSync { vm = model(store, db) }
+            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_ab BEFORE INSERT ON bookmark_collection_cross_ref WHEN NEW.collectionId IN ('a','b') BEGIN SELECT RAISE(ABORT,'injected'); END")
+            host.runOnMainSync { vm.toggle("a"); vm.toggle("b") }
+            withTimeout(5000) { while (vm.state.value.pendingIds.isNotEmpty()) delay(20) }
+            assertEquals("save", vm.state.value.error)
+            // A successful change to another row neither hides the error nor drops the failures.
+            host.runOnMainSync { vm.toggle("c") }
+            withTimeout(5000) { while (db.collectionDao().observeMembershipIds("one").first() != listOf("c")) delay(20) }
+            withTimeout(5000) { while (vm.state.value.pendingIds.isNotEmpty()) delay(20) }
+            assertEquals("save", vm.state.value.error)
+            db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_ab")
+            host.runOnMainSync { vm.retry() }
+            withTimeout(5000) { while (db.collectionDao().observeMembershipIds("one").first().toSet() != setOf("a", "b", "c")) delay(20) }
+            withTimeout(5000) { while (vm.state.value.error != null) delay(20) }
+            assertEquals(setOf("a", "b", "c"), vm.state.value.selectedIds)
+        } finally { host.runOnMainSync { store.clear() }; db.close() }
+    }
 }

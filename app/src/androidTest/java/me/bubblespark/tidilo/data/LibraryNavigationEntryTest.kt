@@ -13,8 +13,10 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.R
@@ -91,6 +93,21 @@ class LibraryNavigationEntryTest {
         val prefix = java.util.UUID.randomUUID().toString()
         val domain = "$prefix.invalid"
         val ids = (0..19).map { "$prefix-$it" }
+        val summaryTitle = activity.getString(R.string.detail_section_summary)
+        val editTags = activity.getString(R.string.detail_edit_tags)
+        val openNavigation = activity.getString(R.string.navigation_open)
+
+        fun isSummaryPeek(node: SemanticsNode): Boolean =
+            node.config.getOrNull(SemanticsProperties.PaneTitle) == summaryTitle
+
+        suspend fun awaitStep(description: String, predicate: (SemanticsNode) -> Boolean) {
+            try {
+                host.await(activity, predicate)
+            } catch (timeout: TimeoutCancellationException) {
+                throw AssertionError("Timed out waiting for $description", timeout)
+            }
+        }
+
         var primaryFailure: Throwable? = null
         try {
             ids.forEachIndexed { index, id -> dao.insertOrUpdate(me.bubblespark.tidilo.data.db.BookmarkEntity(
@@ -101,7 +118,7 @@ class LibraryNavigationEntryTest {
                 model.setFilterMode(me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.DOMAIN)
                 model.selectDomainFilter(domain)
             }
-            host.await(activity) { host.text(it, "Group fixture 19") }
+            awaitStep("bookmark cards in the selected domain") { host.text(it, "Group fixture 19") }
             delay(350)
             host.capture("navigation-domain-up")
             host.scroll(activity, 500f)
@@ -121,12 +138,12 @@ class LibraryNavigationEntryTest {
                 }
                 assertTrue(action.invoke())
             }
-            host.await(activity) { host.text(it, host.context.getString(R.string.detail_action_ai_summary)) }
+            awaitStep("Summary Peek after long-pressing the card", ::isSummaryPeek)
             host.main { activity.onBackPressedDispatcher.onBackPressed() }
             delay(300)
             org.junit.Assert.assertEquals("Back must dismiss Peek before leaving the group", domain, model.selectedDomainFilter.value)
             host.main {
-                org.junit.Assert.assertFalse(host.nodes(activity).any { host.text(it, host.context.getString(R.string.detail_action_ai_summary)) })
+                org.junit.Assert.assertFalse("Back must dismiss Summary Peek", host.nodes(activity).any(::isSummaryPeek))
                 val visible = host.nodes(activity).first { host.text(it, visibleTitle) }
                 val action = checkNotNull(generateSequence(visible) { it.parent }
                     .mapNotNull { it.config.getOrNull(SemanticsActions.OnClick)?.action }.firstOrNull()) {
@@ -134,10 +151,10 @@ class LibraryNavigationEntryTest {
                 }
                 assertTrue(action.invoke())
             }
-            host.await(activity) { host.description(it, host.context.getString(R.string.detail_edit_tags)) }
+            awaitStep("Bookmark Detail after tapping the card") { host.description(it, editTags) }
             delay(350)
             host.main { activity.onBackPressedDispatcher.onBackPressed() }
-            host.await(activity) {
+            awaitStep("the card at its previous position after returning from Detail") {
                 host.text(it, visibleTitle) && kotlin.math.abs(it.boundsInRoot.top - visibleTop) <= 2f
             }
             host.main {
@@ -146,7 +163,7 @@ class LibraryNavigationEntryTest {
                 org.junit.Assert.assertEquals("Detail Back must retain the group scroll position", visibleTop, restored.boundsInRoot.top, 2f)
                 activity.onBackPressedDispatcher.onBackPressed()
             }
-            host.await(activity) { host.description(it, host.context.getString(R.string.navigation_open)) }
+            awaitStep("the Library menu after leaving the selected domain") { host.description(it, openNavigation) }
             org.junit.Assert.assertNull(model.selectedDomainFilter.value)
         } catch (error: Throwable) {
             primaryFailure = error

@@ -30,8 +30,9 @@ class BookmarkEngagementPersistenceTest {
                 assertEquals(4, b.summaryPeekCount)
                 assertEquals(1234L, b.lastInteractedAt)
             }
-            repository.updateBookmarkDetails(id, "Edited", Tag.createEmpty(), false)
-            repository.updateBookmarkFields(id, description = "Updated")
+            repository.saveNote(id, "Edited")
+            repository.updateBookmarkTags(id, Tag.createEmpty(), false)
+            repository.applyAiProposal(id, description = "Updated")
             check(db.bookmarkDao().getBookmarkById(id)!!.toBookmarkItem())
             repository.addBookmarkAndAwait(BookmarkItem(id = "new-$id", title = "Promoted", url = url,
                 description = "Promoted", tag = Tag.createEmpty()))

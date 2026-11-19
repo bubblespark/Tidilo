@@ -36,7 +36,7 @@ class CollectionEditorTest {
                 vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(saved, CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java]
             }
             withTimeout(5000) { while (vm.state.value.error != "load") delay(20) }
-            host.runOnMainSync { vm.edit(CollectionDraft("Blocked")); vm.save(); vm.delete() }
+            host.runOnMainSync { vm.edit(CollectionDraft("Blocked")); vm.delete() }
             assertFalse(vm.state.value.pending)
             assertFalse(vm.state.value.done)
             db.openHelper.writableDatabase.execSQL("ALTER TABLE unavailable_collections RENAME TO collections")
@@ -47,9 +47,9 @@ class CollectionEditorTest {
             assertEquals(if (restored) "Draft description" else "Stored description", vm.state.value.draft.description)
             assertEquals(if (restored) "code" else "work", vm.state.value.draft.presetIconId)
             assertEquals(if (restored) 7 else 2, vm.state.value.draft.colorIndex)
-            host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "Saved after retry")); vm.save() }
-            withTimeout(5000) { while (!vm.state.value.done) delay(20) }
-            assertEquals("Saved after retry", db.collectionDao().getById("a")?.title)
+            host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "Saved after retry")) }
+            withTimeout(5000) { while (db.collectionDao().getById("a")?.title != "Saved after retry") delay(20) }
+            assertFalse("Autosave keeps the editor open", vm.state.value.done)
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
 
@@ -123,7 +123,7 @@ class CollectionEditorTest {
             instrumentation.runOnMainSync { store.clear() }
             instrumentation.runOnMainSync {
                 vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(snapshot), repo, null) } })[CollectionEditorViewModel::class.java]
-                vm.save(); vm.save()
+                vm.create(); vm.create()
             }
             withTimeout(5000) { while (!vm.state.value.done) delay(20) }
             assertEquals(1, db.collectionDao().observeCollections(true).first().size)
@@ -139,17 +139,42 @@ class CollectionEditorTest {
             instrumentation.runOnMainSync { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), "missing") } })[CollectionEditorViewModel::class.java] }
             withTimeout(5000) { while (vm.state.value.loading) delay(20) }
             assertTrue(vm.state.value.missing)
-            instrumentation.runOnMainSync { vm.edit(CollectionDraft("Keep")); vm.save() }
+            instrumentation.runOnMainSync { vm.edit(CollectionDraft("Keep")) }
+            delay(800)
             assertNull(db.collectionDao().getById("missing"))
             instrumentation.runOnMainSync { store.clear() }
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_create BEFORE INSERT ON collections BEGIN SELECT RAISE(ABORT, 'injected'); END")
             instrumentation.runOnMainSync {
                 vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), null) } })[CollectionEditorViewModel::class.java]
-                vm.edit(CollectionDraft("Keep")); vm.save()
+                vm.edit(CollectionDraft("Keep")); vm.create()
             }
             withTimeout(5000) { while (vm.state.value.error == null) delay(20) }
             assertEquals("Keep", vm.state.value.draft.title)
             assertFalse(vm.state.value.done)
         } finally { instrumentation.runOnMainSync { store.clear() }; db.close() }
+    }
+
+    @Test fun existingCollectionAutosavesValidDraftsAndKeepsBlankTitleAsDraft() = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
+        val store = ViewModelStore()
+        lateinit var vm: CollectionEditorViewModel
+        try {
+            db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "Stored", "", "folder", null, 0, 1, 1))
+            host.runOnMainSync { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java] }
+            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "Renamed", colorIndex = 3)) }
+            withTimeout(5000) { while (db.collectionDao().getById("a")?.title != "Renamed") delay(20) }
+            assertEquals(3, db.collectionDao().getById("a")?.colorIndex)
+            host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "")) }
+            delay(1000)
+            assertEquals("A blank title is never written", "Renamed", db.collectionDao().getById("a")?.title)
+            assertEquals("The blank draft stays recoverable", "", vm.state.value.draft.title)
+            assertEquals(me.bubblespark.tidilo.ui.screens.library.AutosaveStatus.Invalid, vm.autosaveStatus.value)
+            host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "Pending at close")) }
+            // Closing before the pause must still persist the last valid draft.
+            host.runOnMainSync { store.clear() }
+            withTimeout(5000) { while (db.collectionDao().getById("a")?.title != "Pending at close") delay(20) }
+        } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
 }

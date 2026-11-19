@@ -210,10 +210,12 @@ fun BookmarkAiReviewScreen(
                         onClick = {
                             if (isSaving) return@Surface
                             isSaving = true
+                            // Only fields taken from the proposal are written; null keeps the stored value,
+                            // so a concurrently saved edit is never reverted from this screen's snapshot.
                             val finalSummary = if (selectedSummarySource == ProposalSource.PROPOSAL) {
                                 proposal.summary
                             } else {
-                                bookmark.description
+                                null
                             }
 
                             val finalTag = if (selectedTagSource == ProposalSource.PROPOSAL) {
@@ -223,12 +225,12 @@ fun BookmarkAiReviewScreen(
                                     entities = proposal.entities
                                 )
                             } else {
-                                bookmark.tag
+                                null
                             }
 
                             persistenceScope.launch {
                                 try {
-                                    viewModel.updateBookmarkFields(
+                                    viewModel.applyAiProposal(
                                         id = bookmark.id,
                                         description = finalSummary,
                                         tag = finalTag

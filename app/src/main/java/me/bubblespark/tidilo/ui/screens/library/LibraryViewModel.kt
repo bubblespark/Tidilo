@@ -399,13 +399,13 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         .catch { emit(EntityLibraryState(loading = false, error = it)) }
         .onStart { emit(EntityLibraryState()) }
 
-    suspend fun updateBookmarkNote(id: String, note: String) = bookmarkRepository.updateBookmarkNote(id, note)
+    suspend fun saveNote(id: String, note: String) = bookmarkRepository.saveNote(id, note)
 
-    suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) =
-        bookmarkRepository.updateBookmarkFields(id, description, tag)
+    suspend fun applyAiProposal(id: String, description: String? = null, tag: Tag? = null) =
+        bookmarkRepository.applyAiProposal(id, description, tag)
 
-    suspend fun updateBookmarkDetails(id: String, note: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String> = emptyMap()) =
-        bookmarkRepository.updateBookmarkDetails(id, note, tag, isPrivate, replacements)
+    suspend fun updateBookmarkTags(id: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String> = emptyMap()) =
+        bookmarkRepository.updateBookmarkTags(id, tag, isPrivate, replacements)
 
     suspend fun deleteBookmark(id: String): Boolean = bookmarkRepository.moveToTrash(id)
 

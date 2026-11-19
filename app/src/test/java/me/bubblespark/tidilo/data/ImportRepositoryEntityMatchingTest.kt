@@ -90,6 +90,8 @@ class ImportRepositoryEntityMatchingTest {
         override suspend fun recordSummaryPeek(id: String, now: Long) = Unit
         override suspend fun entityRowsForReplacement(skeletonKey: String, afterId: String?): List<me.bubblespark.tidilo.data.db.BookmarkEntityTags> = emptyList()
         override suspend fun updateEntityRows(rows: List<me.bubblespark.tidilo.data.db.BookmarkEntityTagUpdate>) {}
+        override suspend fun updateTagPrivateRow(row: me.bubblespark.tidilo.data.db.BookmarkTagPrivateUpdate) {}
+        override suspend fun updateDescriptionTagRow(row: me.bubblespark.tidilo.data.db.BookmarkDescriptionTagUpdate) {}
         override suspend fun insertOccurrences(rows: List<BookmarkEntityOccurrence>) {}
         override suspend fun deleteOccurrences(id: String) {}
         override suspend fun deleteOccurrencesForBookmarks(bookmarkIds: List<String>) {}

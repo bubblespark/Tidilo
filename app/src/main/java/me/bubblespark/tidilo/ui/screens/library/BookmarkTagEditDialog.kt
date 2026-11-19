@@ -71,6 +71,10 @@ import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.Subcategory
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -87,7 +91,9 @@ fun BookmarkTagEditDialog(
     onOpenEntityPickerClick: () -> Unit,
     blurBackground: Boolean = true,
     onConfirm: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    saving: Boolean = false,
+    saveFailed: Boolean = false
 ) {
     val context = LocalContext.current
     var isCategoryDropdownExpanded by remember { mutableStateOf(false) }
@@ -112,7 +118,7 @@ fun BookmarkTagEditDialog(
     TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
         blurBackground = blurBackground,
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving) onDismiss() },
         title = {
             Text(
                 text = stringResource(R.string.detail_tag_dialog_title),
@@ -478,19 +484,31 @@ fun BookmarkTagEditDialog(
                         }
                     }
                 }
+                if (saveFailed && !saving) {
+                    Text(
+                        text = stringResource(R.string.common_save_failed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(
-                    text = stringResource(R.string.common_ok),
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+            TextButton(onClick = onConfirm, enabled = !saving) {
+                if (saving) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Text(
+                        text = stringResource(R.string.common_ok),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !saving) {
                 Text(text = stringResource(R.string.common_cancel))
             }
         },

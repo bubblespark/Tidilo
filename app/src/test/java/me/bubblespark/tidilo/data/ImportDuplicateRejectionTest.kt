@@ -133,6 +133,8 @@ class ImportDuplicateRejectionTest {
 
         override suspend fun entityRowsForReplacement(skeletonKey: String, afterId: String?): List<me.bubblespark.tidilo.data.db.BookmarkEntityTags> = emptyList()
         override suspend fun updateEntityRows(rows: List<me.bubblespark.tidilo.data.db.BookmarkEntityTagUpdate>) {}
+        override suspend fun updateTagPrivateRow(row: me.bubblespark.tidilo.data.db.BookmarkTagPrivateUpdate) {}
+        override suspend fun updateDescriptionTagRow(row: me.bubblespark.tidilo.data.db.BookmarkDescriptionTagUpdate) {}
         override suspend fun canonicalEntityValue(skeletonKey: String): String? =
             bookmarks.values.flatMap { it.entities }.firstOrNull { entitySkeletonKey(it) == skeletonKey }
 

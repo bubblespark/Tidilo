@@ -506,6 +506,26 @@ class BookmarkRepositoryTest {
                 this.rows[update.id] = current.copy(entities = update.entities, updatedAt = update.updatedAt)
             }
         }
+        override suspend fun updateTagPrivateRow(row: me.bubblespark.tidilo.data.db.BookmarkTagPrivateUpdate) {
+            val current = rows[row.id] ?: return
+            rows[row.id] = current.copy(category = row.category, subcategory = row.subcategory, entities = row.entities,
+                isPrivate = row.isPrivate, searchCategory = row.searchCategory,
+                searchSubcategory = row.searchSubcategory, updatedAt = row.updatedAt)
+        }
+        override suspend fun updateDescriptionTagRow(row: me.bubblespark.tidilo.data.db.BookmarkDescriptionTagUpdate) {
+            val current = rows[row.id] ?: return
+            rows[row.id] = current.copy(description = row.description, searchDescription = row.searchDescription,
+                category = row.category, subcategory = row.subcategory, entities = row.entities,
+                searchCategory = row.searchCategory, searchSubcategory = row.searchSubcategory, updatedAt = row.updatedAt)
+        }
+        override suspend fun updateNote(id: String, note: String, updatedAt: Long) {
+            val current = rows[id] ?: return
+            rows[id] = current.copy(note = note, updatedAt = updatedAt)
+        }
+        override suspend fun toggleLike(id: String, now: Long) {
+            val current = rows[id] ?: return
+            rows[id] = current.copy(isLiked = !current.isLiked)
+        }
         override suspend fun deleteById(id: String) {
             rows.remove(id)
             occurrences.remove(id)
@@ -653,7 +673,7 @@ class BookmarkRepositoryTest {
     }
 
     @Test
-    fun updateBookmarkDetailsReplacesSpellingsAndSyncsOccurrences() = runBlocking {
+    fun updateBookmarkTagsReplacesSpellingsAndSyncsOccurrences() = runBlocking {
         val bookmarkDao = InMemoryBookmarkDao()
         val trashDao = InMemoryTrashDao()
         val scope = CoroutineScope(coroutineContext + SupervisorJob())
@@ -674,9 +694,9 @@ class BookmarkRepositoryTest {
                 )
             )
 
-            repository.updateBookmarkDetails(
+            bookmarkDao.updateNote("b1", "Autosaved note", 50L)
+            repository.updateBookmarkTags(
                 id = "b1",
-                note = "Updated note",
                 tag = Tag("Tool", "Tech", listOf("GitHub", "Android")),
                 isPrivate = true,
                 replacements = mapOf("github" to "git-hub"),
@@ -684,7 +704,7 @@ class BookmarkRepositoryTest {
             )
 
             val b1 = bookmarkDao.rows.getValue("b1")
-            assertEquals("Updated note", b1.note)
+            assertEquals("Tag OK must not rewrite the independently autosaved note", "Autosaved note", b1.note)
             assertEquals("Tool", b1.category)
             assertTrue(b1.isPrivate)
             assertEquals(99L, b1.updatedAt)
@@ -694,7 +714,7 @@ class BookmarkRepositoryTest {
             assertEquals(listOf("git-hub"), bookmarkDao.occurrences.getValue("b2").map { it.value })
 
             val missingError = runCatching {
-                repository.updateBookmarkDetails("missing", "", Tag(), false, updatedAt = 100L)
+                repository.updateBookmarkTags("missing", Tag(), false, updatedAt = 100L)
             }.exceptionOrNull()
             assertTrue(missingError is IllegalArgumentException)
 
@@ -721,9 +741,8 @@ class BookmarkRepositoryTest {
                 }
             )
             val invalidReplacement = runCatching {
-                rollbackRepository.updateBookmarkDetails(
+                rollbackRepository.updateBookmarkTags(
                     id = "b1",
-                    note = "Should rollback",
                     tag = Tag("Tool", "Tech", listOf("git-hub")),
                     isPrivate = false,
                     replacements = mapOf("github" to "Different"),
@@ -732,8 +751,73 @@ class BookmarkRepositoryTest {
             }.exceptionOrNull()
             assertTrue(invalidReplacement is IllegalArgumentException)
             assertEquals(1, transactionCount)
-            assertEquals("Updated note", bookmarkDao.rows.getValue("b1").note)
+            assertEquals("Autosaved note", bookmarkDao.rows.getValue("b1").note)
+            assertTrue("A failed tag commit must keep the previous Private value", bookmarkDao.rows.getValue("b1").isPrivate)
             assertEquals(listOf("git-hub", "Android"), bookmarkDao.occurrences.getValue("b1").map { it.value })
+            assertEquals("No partial cross-bookmark replacement", listOf("git-hub"), bookmarkDao.rows.getValue("b2").entities)
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun independentEditsKeepEachOthersCommittedFields() = runBlocking {
+        val bookmarkDao = InMemoryBookmarkDao()
+        val trashDao = InMemoryTrashDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val repository = testRepository(bookmarkDao, trashDao, scope)
+            bookmarkDao.insertAll(listOf(BookmarkEntity(
+                id = "b1", title = "One", url = "https://example.com/1", description = "Original summary",
+                category = "Article", subcategory = "Tech", entities = listOf("Kotlin"),
+                createdAt = 1L, updatedAt = 1L
+            )))
+
+            repository.saveNote("b1", "Note draft")
+            repository.toggleLike("b1", 5L)
+            repository.updateBookmarkTags("b1", Tag("Tool", "Tech", listOf("Android")), isPrivate = true, updatedAt = 10L)
+            repository.applyAiProposal("b1", description = "AI summary", tag = null)
+            repository.saveNote("b1", "Final note")
+
+            val row = bookmarkDao.rows.getValue("b1")
+            assertEquals("Final note", row.note)
+            assertTrue(row.isLiked)
+            assertTrue(row.isPrivate)
+            assertEquals("Tool", row.category)
+            assertEquals(listOf("Android"), row.entities)
+            assertEquals("AI summary", row.description)
+            assertEquals(me.bubblespark.tidilo.data.db.bookmarkSearchKey("AI summary"), row.searchDescription)
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun applyAiProposalWritesOnlyTheChosenFields() = runBlocking {
+        val bookmarkDao = InMemoryBookmarkDao()
+        val trashDao = InMemoryTrashDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val repository = testRepository(bookmarkDao, trashDao, scope)
+            bookmarkDao.insertAll(listOf(BookmarkEntity(
+                id = "b1", title = "One", url = "https://example.com/1", description = "Stored summary",
+                category = "Article", subcategory = "Tech", entities = listOf("Kotlin"),
+                createdAt = 1L, updatedAt = 1L, note = "Keep me", isPrivate = true
+            )))
+
+            repository.applyAiProposal("b1", description = null, tag = Tag("Tool", "Tech", listOf("Gemini")))
+            val tagOnly = bookmarkDao.rows.getValue("b1")
+            assertEquals("Stored summary", tagOnly.description)
+            assertEquals("Tool", tagOnly.category)
+            assertEquals(listOf("Gemini"), tagOnly.entities)
+            assertEquals(listOf("Gemini"), bookmarkDao.occurrences.getValue("b1").map { it.value })
+            assertEquals("Keep me", tagOnly.note)
+            assertTrue(tagOnly.isPrivate)
+
+            repository.applyAiProposal("b1", description = "New summary", tag = null)
+            val summaryOnly = bookmarkDao.rows.getValue("b1")
+            assertEquals("New summary", summaryOnly.description)
+            assertEquals(listOf("Gemini"), summaryOnly.entities)
         } finally {
             scope.coroutineContext[Job]?.cancelAndJoin()
         }

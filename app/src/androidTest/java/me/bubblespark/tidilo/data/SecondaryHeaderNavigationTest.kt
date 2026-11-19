@@ -102,7 +102,7 @@ class SecondaryHeaderNavigationTest {
         } finally { host.main { activity.finish() }; db.bookmarkDao().deleteById(id) }
     }
 
-    @Test fun detailBackAndSaveRemainAvailableAfterScrolling(): Unit = runBlocking {
+    @Test fun detailBackRemainsFixedAndNoteAutosavesWhenLeaving(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()
         val db = AppDatabase.getInstance(host.context)
@@ -125,15 +125,17 @@ class SecondaryHeaderNavigationTest {
             host.main {
                 assertTrue(note.config[SemanticsActions.SetText].action?.invoke(androidx.compose.ui.text.AnnotatedString("Saved from fixed header")) == true)
             }
-            val save = host.await(activity) { host.description(it, host.context.getString(R.string.detail_save)) }
-            delay(100)
+            // Leave right after typing: Back needs no confirmation and disposal flushes the pending note.
             host.main {
-                var node = save
+                var node = after
                 while (node.config.getOrNull(SemanticsActions.OnClick) == null) node = requireNotNull(node.parent)
                 assertTrue(node.config[SemanticsActions.OnClick].action?.invoke() == true)
+                activity.setContent { }
             }
             withTimeout(5000) { while (!returned) delay(30) }
-            assertEquals("Saved from fixed header", db.bookmarkDao().getBookmarkById(id)?.note)
+            withTimeout(5000) {
+                while (db.bookmarkDao().getBookmarkById(id)?.note != "Saved from fixed header") delay(30)
+            }
         } finally { host.main { activity.finish() }; db.bookmarkDao().deleteById(id) }
     }
 

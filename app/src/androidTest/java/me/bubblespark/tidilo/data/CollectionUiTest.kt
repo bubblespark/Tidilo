@@ -31,21 +31,20 @@ import org.junit.Test
 import java.util.UUID
 
 class CollectionUiTest {
-    @Test fun failedInitialMembershipLoadCanCloseWithoutSaving() = verifyFailedLoadDismissal(false)
+    @Test fun failedInitialMembershipLoadCanClose() = verifyFailedLoadDismissal(false)
 
-    @Test fun closeDuringMembershipLoadStillExitsIfLoadFails() = verifyFailedLoadDismissal(true)
+    @Test fun closeDuringMembershipLoadExitsImmediately() = verifyFailedLoadDismissal(true)
 
     private fun verifyFailedLoadDismissal(initiallyLoading: Boolean): Unit = runBlocking {
         val activity = host.launch()
         val shown = mutableStateOf(true)
         val state = mutableStateOf(CollectionMembershipState(loading = initiallyLoading,
             error = if (initiallyLoading) null else "load"))
-        val saves = java.util.concurrent.atomic.AtomicInteger()
         val closes = java.util.concurrent.atomic.AtomicInteger()
         try {
             host.main { activity.setContent { MaterialTheme {
                 if (shown.value) CollectionMembershipSheet("failed-load", state.value, {},
-                    { saves.incrementAndGet() }, {}, { closes.incrementAndGet(); shown.value = false }, {})
+                    {}, { closes.incrementAndGet(); shown.value = false }, {})
             } } }
             phase = "failed-load heading ($initiallyLoading)"
             await { host.text(it, "Choose collections") }
@@ -53,13 +52,8 @@ class CollectionUiTest {
             phase = "failed-load dismiss ($initiallyLoading)"
             val dismiss = await { it.config.getOrNull(SemanticsActions.Dismiss) != null }
             host.main { dismiss.config[SemanticsActions.Dismiss].action?.invoke() }
-            if (initiallyLoading) {
-                delay(100)
-                assertTrue(shown.value)
-                host.main { state.value = state.value.copy(loading = false, error = "load") }
-            }
+            // Closing never writes memberships, so it need not wait for the initial read.
             withTimeout(5000) { while (shown.value) delay(20) }
-            assertEquals("Unknown memberships must never be overwritten", 0, saves.get())
             assertEquals(1, closes.get())
         } finally { host.main { activity.finish() } }
     }
@@ -193,7 +187,7 @@ class CollectionUiTest {
         } finally { host.main { activity.finish() } }
     }
 
-    @Test fun loadFailureOffersRetryAndKeepsSaveDisabled(): Unit = runBlocking {
+    @Test fun loadFailureOffersRetryWithoutSaveAction(): Unit = runBlocking {
         val activity = host.launch()
         val retries = java.util.concurrent.atomic.AtomicInteger()
         try {
@@ -201,13 +195,8 @@ class CollectionUiTest {
                 CollectionEditorContent(CollectionEditorState(draft = CollectionDraft("Draft"), error = "load"),
                     true, {}, {}, {}, {}, {}, onRetry = { retries.incrementAndGet() })
             } } }
-            val save = await { host.text(it, "Save") }
-            host.main {
-                var button = save
-                while (button.config.getOrNull(SemanticsActions.OnClick) == null) button = requireNotNull(button.parent)
-                assertTrue(button.config.contains(SemanticsProperties.Disabled))
-            }
             action(await { host.text(it, "Retry") })
+            host.main { assertTrue("Existing collections autosave; there is no Save action", allNodes().none { host.text(it, "Save") }) }
             assertEquals(1, retries.get())
         } finally { host.main { activity.finish() } }
     }
@@ -298,7 +287,9 @@ class CollectionUiTest {
                 if (shown.value) CollectionMembershipBottomSheet(id, { shown.value = false }, {})
             } } }
             action(await { host.text(it, title) })
-            delay(700)
+            // The toggle persists immediately; let Room's emission settle before closing.
+            withTimeout(5000) { while (db.collectionDao().observeMembershipIds(id).first() != listOf(id)) delay(20) }
+            delay(1500)
             val positions = mutableListOf<Float>()
             host.main { positions += allNodes().first { host.text(it, "Choose collections") }.boundsInWindow.top }
             val dismiss = await { it.config.getOrNull(SemanticsActions.Dismiss) != null }
@@ -324,7 +315,7 @@ class CollectionUiTest {
         }
     }
 
-    @Test fun dismissingMembershipSheetCommitsSelectionAndRemoval(): Unit = runBlocking {
+    @Test fun membershipTogglesPersistBeforeTheSheetCloses(): Unit = runBlocking {
         val db = AppDatabase.getInstance(host.context)
         val id = UUID.randomUUID().toString()
         val title = "Auto ${id.take(8)}"
@@ -337,12 +328,14 @@ class CollectionUiTest {
                 if (shown.value) CollectionMembershipBottomSheet(id, { shown.value = false }, {})
             } } }
             action(await { host.text(it, title) })
-            assertTrue(db.collectionDao().observeMembershipIds(id).first().isEmpty())
+            withTimeout(5000) { while (db.collectionDao().observeMembershipIds(id).first() != listOf(id)) delay(20) }
+            assertTrue("The toggle alone persists; the sheet stays open", shown.value)
             dismissSheet()
             withTimeout(5000) { while (shown.value) delay(20) }
             assertEquals(listOf(id), db.collectionDao().observeMembershipIds(id).first())
             host.main { shown.value = true }
             action(await { host.text(it, title) })
+            withTimeout(5000) { while (db.collectionDao().observeMembershipIds(id).first().isNotEmpty()) delay(20) }
             host.instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
             withTimeout(5000) { while (shown.value) delay(20) }
             assertTrue(db.collectionDao().observeMembershipIds(id).first().isEmpty())
@@ -350,7 +343,7 @@ class CollectionUiTest {
         } finally { host.main { activity.finish() }; db.collectionDao().delete(id); db.bookmarkDao().deleteById(id) }
     }
 
-    @Test fun failedDismissKeepsMembershipSheetOpenForRetry(): Unit = runBlocking {
+    @Test fun failedToggleOffersRetryWhileTheSheetStaysOpen(): Unit = runBlocking {
         val db = AppDatabase.getInstance(host.context)
         val id = UUID.randomUUID().toString()
         val trigger = "fail_collection_close_${id.replace("-", "")}"
@@ -365,14 +358,14 @@ class CollectionUiTest {
             } } }
             action(await { host.text(it, title) })
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER $trigger BEFORE INSERT ON bookmark_collection_cross_ref WHEN NEW.bookmarkId = '$id' BEGIN SELECT RAISE(ABORT,'injected close failure'); END")
-            dismissSheet()
-            assertTrue("Failed commit must keep the sheet visible", shown.value)
+            action(await { host.text(it, title) })
             await { host.text(it, "Could not save your changes. Please try again.") }
+            assertTrue("A failed toggle keeps the sheet visible", shown.value)
             assertTrue(db.collectionDao().observeMembershipIds(id).first().isEmpty())
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER $trigger")
             action(await { host.text(it, "Retry") })
-            withTimeout(5000) { while (shown.value) delay(20) }
-            assertEquals(listOf(id), db.collectionDao().observeMembershipIds(id).first())
+            withTimeout(5000) { while (db.collectionDao().observeMembershipIds(id).first() != listOf(id)) delay(20) }
+            assertTrue(shown.value)
         } finally {
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER IF EXISTS $trigger")
             host.main { activity.finish() }; db.collectionDao().delete(id); db.bookmarkDao().deleteById(id)
@@ -394,7 +387,7 @@ class CollectionUiTest {
         } finally { host.main { activity.finish() } }
     }
 
-    @Test fun onlyEditorHasSaveAndSheetHeadersStayFixed(): Unit = runBlocking {
+    @Test fun onlyCreateHasHeaderActionAndSheetHeadersStayFixed(): Unit = runBlocking {
         val activity = host.launch()
         val variant = mutableIntStateOf(0)
         val scale = mutableFloatStateOf(1f)
@@ -406,7 +399,7 @@ class CollectionUiTest {
                     MaterialTheme(colorScheme = if (dark.value) darkColorScheme() else lightColorScheme()) {
                         key(variant.intValue) {
                             if (variant.intValue == 0) CollectionEditorContent(
-                                CollectionEditorState(draft = CollectionDraft("Draft")), true, {}, {}, {}, {}, {})
+                                CollectionEditorState(draft = CollectionDraft("Draft")), false, {}, {}, {}, {}, {})
                             else CollectionMembershipContent(CollectionMembershipState(rows = rows, loading = false), {}, {}, {}, {}, onClosed = {})
                         }
                     }
@@ -414,8 +407,8 @@ class CollectionUiTest {
             } }
             for (sheet in 0..1) for (night in listOf(false, true)) for (font in listOf(1f, 2f)) {
                 host.main { variant.intValue = sheet; scale.floatValue = font; dark.value = night }
-                val title = await { host.text(it, if (sheet == 0) "Edit Collection" else "Choose collections") }
-                val save = if (sheet == 0) await { host.text(it, "Save") } else null
+                val title = await { host.text(it, if (sheet == 0) "New Collection" else "Choose collections") }
+                val save = if (sheet == 0) await { host.text(it, "Create") } else null
                 // Settle the sheet's entrance and anchor changes before measuring scroll stability.
                 delay(700)
                 var beside = false
@@ -424,11 +417,11 @@ class CollectionUiTest {
                 host.main {
                     beside = if (save != null) save.boundsInWindow.left >= title.boundsInWindow.right &&
                         kotlin.math.abs(save.boundsInWindow.center.y - title.boundsInWindow.center.y) < 3f
-                        else allNodes().none { host.text(it, "Save") }
+                        else allNodes().none { host.text(it, "Save") || host.text(it, "Create") }
                     hasCancel = allNodes().any { host.text(it, "Cancel") }
                     before = (save ?: title).boundsInWindow.top
                 }
-                assertTrue("Only editor has a title-right Save action", beside)
+                assertTrue("Only the create editor has a title-right action", beside)
                 assertFalse("Sheet must not contain Cancel", hasCancel)
                 val scroll = await { it.config.getOrNull(SemanticsActions.ScrollBy) != null }
                 host.main { scroll.config[SemanticsActions.ScrollBy].action?.invoke(0f, 2000f) }
@@ -515,7 +508,7 @@ class CollectionUiTest {
         }
     }
 
-    @Test fun openCollectionsProtectsUnsavedDetailDraft(): Unit = runBlocking {
+    @Test fun openCollectionsLeavesImmediatelyAndKeepsTypedNote(): Unit = runBlocking {
         val db = AppDatabase.getInstance(host.context)
         org.junit.Assume.assumeTrue(db.collectionDao().observeCollections(true).first().isEmpty())
         val id = UUID.randomUUID().toString()
@@ -533,16 +526,10 @@ class CollectionUiTest {
             host.main { check(note.config[SemanticsActions.SetText].action?.invoke(AnnotatedString("Unsaved note")) == true) }
             action(await { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Choose collections") == true })
             action(await { host.text(it, "Open collections") })
-            delay(400)
-            assertEquals("Navigation must wait for discard approval", 0, collections.get())
-            await { host.text(it, "Discard changes?") }
-            action(await { host.text(it, "Cancel") })
-            await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == "Unsaved note" }
-            assertEquals("Initial note", requireNotNull(db.bookmarkDao().getBookmarkById(id)).note)
-            action(await { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Choose collections") == true })
-            action(await { host.text(it, "Open collections") })
-            action(await { host.text(it, "OK") })
+            // No discard prompt: the note is autosaved, so leaving needs no confirmation.
             withTimeout(5000) { while (collections.get() != 1) delay(20) }
+            host.main { assertTrue(allNodes().none { host.text(it, "Discard changes?") }) }
+            withTimeout(5000) { while (requireNotNull(db.bookmarkDao().getBookmarkById(id)).note != "Unsaved note") delay(20) }
             assertEquals(0, backs.get())
         } finally { host.main { activity.finish() }; db.bookmarkDao().deleteById(id) }
     }
@@ -606,14 +593,12 @@ class CollectionUiTest {
             val scroll = await { it.config.getOrNull(SemanticsActions.ScrollBy) != null }
             host.main { check(scroll.config[SemanticsActions.ScrollBy].action?.invoke(0f, 5000f) == true) }
             delay(600)
-            phase = "edit save"
-            val save = await { host.text(it, "Save") }
-            var bottom = 0f
-            host.main { bottom = save.boundsInWindow.bottom }
-            assertTrue(bottom <= activity.resources.displayMetrics.heightPixels)
+            phase = "edit autosave"
             capture("editor-large-bottom")
-            action(save)
+            // Existing collections autosave; there is no Save action to reach.
             withTimeout(5000) { while (db.collectionDao().getById(id)?.title != "Edited ${id.take(8)}") delay(30) }
+            host.main { assertTrue(allNodes().none { host.text(it, "Save") }) }
+            dismissSheet()
             withTimeout(5000) { while (show.value) delay(30) }
             phase = "add card"
             action(await { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("New Collection") == true })

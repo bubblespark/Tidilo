@@ -23,29 +23,9 @@ class BookmarkDetailEditStateTest {
     )
 
     @Test
-    fun syncWithBookmark_updatesTagAndPrivate_whenNoUserChanges() {
-        val initialBookmark = createBookmark()
-        val edit = BookmarkDetailEditState(initialBookmark.note, initialBookmark.tag, initialBookmark.isPrivate)
-
-        val updatedTag = Tag("Media", "Game", listOf("Nintendo"))
-        val updatedBookmark = initialBookmark.copy(
-            tag = updatedTag,
-            isPrivate = true,
-            updatedAt = 2000L
-        )
-
-        edit.syncWithBookmark(updatedBookmark)
-
-        assertEquals("Tag should be updated to latest bookmark tag", updatedTag, edit.editedTag.value)
-        assertEquals("Original tag should be updated to latest bookmark tag", updatedTag, edit.originalTag)
-        assertEquals("Private should be updated to latest bookmark isPrivate", true, edit.editedIsPrivate.value)
-        assertEquals("Original Private should be updated to latest bookmark isPrivate", true, edit.originalPrivate)
-    }
-
-    @Test
     fun syncWithBookmark_preservesUserEditedNote_whenNoteHasUnsavedChanges() {
         val initialBookmark = createBookmark(note = "Initial note")
-        val edit = BookmarkDetailEditState(initialBookmark.note, initialBookmark.tag, initialBookmark.isPrivate)
+        val edit = BookmarkDetailEditState(initialBookmark.note)
 
         // User typed a draft note
         edit.noteText.value = "User draft note in progress"
@@ -64,7 +44,7 @@ class BookmarkDetailEditStateTest {
     @Test
     fun syncWithBookmark_updatesNote_whenUserHasNotEditedNote() {
         val initialBookmark = createBookmark(note = "Initial note")
-        val edit = BookmarkDetailEditState(initialBookmark.note, initialBookmark.tag, initialBookmark.isPrivate)
+        val edit = BookmarkDetailEditState(initialBookmark.note)
 
         val updatedBookmark = initialBookmark.copy(
             note = "External updated note",
@@ -78,22 +58,41 @@ class BookmarkDetailEditStateTest {
     }
 
     @Test
-    fun syncWithBookmark_preservesUserEditedTag_whenTagHasUnsavedChanges() {
-        val initialBookmark = createBookmark()
-        val edit = BookmarkDetailEditState(initialBookmark.note, initialBookmark.tag, initialBookmark.isPrivate)
+    fun openTagEditor_startsDraftFromStoredValues() {
+        val bookmark = createBookmark(tag = Tag("Media", "Game", listOf("Nintendo")), isPrivate = true)
+        val edit = BookmarkDetailEditState(bookmark.note)
+        edit.draftReplacements.value = mapOf("stale" to "Stale")
+        edit.tagSaveFailed.value = true
 
-        // User manually customized tag
-        val userEditedTag = Tag("Tool", "Tech", listOf("Custom"))
-        edit.editedTag.value = userEditedTag
+        edit.openTagEditor(bookmark.tag, bookmark.isPrivate)
 
-        val updatedBookmark = initialBookmark.copy(
-            tag = Tag("Media", "Game", listOf("Nintendo")),
-            updatedAt = 2000L
-        )
+        assertEquals("Media", edit.draftCategory.value)
+        assertEquals("Game", edit.draftSubcategory.value)
+        assertEquals(listOf("Nintendo"), edit.draftEntities.value)
+        assertEquals(true, edit.draftIsPrivate.value)
+        assertEquals(emptyMap<String, String>(), edit.draftReplacements.value)
+        assertEquals(false, edit.tagSaveFailed.value)
+        assertEquals(true, edit.showTagEditDialog.value)
+    }
 
-        edit.syncWithBookmark(updatedBookmark)
+    @Test
+    fun closeTagEditor_discardsNestedPickerSelectionsAndStagedReplacements() {
+        val bookmark = createBookmark()
+        val edit = BookmarkDetailEditState(bookmark.note)
+        edit.openTagEditor(bookmark.tag, bookmark.isPrivate)
+        edit.noteText.value = "Independent note draft"
+        // Nested picker OK only edits the parent draft.
+        edit.showEntityBottomSheet.value = true
+        edit.draftEntities.value = listOf("AI", "Picked")
+        edit.draftReplacements.value = mapOf("ai" to "A.I.")
+        edit.showEntityBottomSheet.value = false
 
-        assertEquals("User's manually edited tag must not be overwritten", userEditedTag, edit.editedTag.value)
-        assertEquals("Original tag baseline should track the new remote tag", updatedBookmark.tag, edit.originalTag)
+        edit.closeTagEditor()
+
+        assertEquals(false, edit.showTagEditDialog.value)
+        assertEquals(emptyMap<String, String>(), edit.draftReplacements.value)
+        edit.openTagEditor(bookmark.tag, bookmark.isPrivate)
+        assertEquals("Reopening starts again from the stored tag", listOf("AI"), edit.draftEntities.value)
+        assertEquals("Cancelling the tag dialog never touches the note", "Independent note draft", edit.noteText.value)
     }
 }

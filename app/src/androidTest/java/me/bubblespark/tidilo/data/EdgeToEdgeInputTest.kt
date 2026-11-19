@@ -187,7 +187,7 @@ class EdgeToEdgeInputTest {
                 assertTrue("Focused field $field must fit above IME $bottom", field.bottom <= bottom + 1f)
                 if (detail) {
                     assertTrue(host.nodes(activity).none { host.description(it, host.context.getString(me.bubblespark.tidilo.R.string.detail_action_delete)) })
-                    assertTrue(host.nodes(activity).any { host.description(it, host.context.getString(me.bubblespark.tidilo.R.string.detail_save)) })
+                    assertTrue(host.nodes(activity).any { host.description(it, host.context.getString(me.bubblespark.tidilo.R.string.common_back)) })
                 }
             }
             host.main { keyboard?.hide() }

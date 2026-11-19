@@ -28,41 +28,36 @@ import java.util.UUID
 fun CollectionMembershipBottomSheet(bookmarkId: String, onDismiss: () -> Unit, onOpenCollections: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val session = rememberSaveable(bookmarkId) { UUID.randomUUID().toString() }
-    val model = collectionSheetModel("collection-membership-$session") { saved ->
-        CollectionMembershipViewModel(saved, CollectionRepository(AppDatabase.getInstance(context)), bookmarkId)
+    val model = collectionSheetModel("collection-membership-$session") { _ ->
+        CollectionMembershipViewModel(CollectionRepository(AppDatabase.getInstance(context)).asMembershipStore(), bookmarkId)
     }
     val state by model.state.collectAsStateWithLifecycle()
-    CollectionMembershipSheet(bookmarkId, state, model::toggle, model::save, model::retry,
+    CollectionMembershipSheet(bookmarkId, state, model::toggle, model::retry,
         onDismiss, onOpenCollections, modifier)
 }
 
+internal fun CollectionRepository.asMembershipStore(): MembershipStore = object : MembershipStore {
+    override fun observeCollections() = this@asMembershipStore.observeCollections(true)
+    override fun observeMembershipIds(bookmarkId: String) = this@asMembershipStore.observeMembershipIds(bookmarkId)
+    override suspend fun setMembership(bookmarkId: String, collectionId: String, member: Boolean) =
+        if (member) addMembership(bookmarkId, collectionId) else removeMembership(bookmarkId, collectionId)
+}
+
+/** Checkbox changes persist as they are made, so every close path simply hides the sheet. */
 @Composable
 internal fun CollectionMembershipSheet(
     bookmarkId: String, state: CollectionMembershipState, onToggle: (String) -> Unit,
-    onSave: () -> Unit, onRetry: () -> Unit, onDismiss: () -> Unit,
+    onRetry: () -> Unit, onDismiss: () -> Unit,
     onOpenCollections: () -> Unit, modifier: Modifier = Modifier
 ) {
-    val currentState by rememberUpdatedState(state)
-    var closeRequested by rememberSaveable(bookmarkId) { mutableStateOf(false) }
-    var closeWithoutSaving by rememberSaveable(bookmarkId) { mutableStateOf(false) }
+    var closing by rememberSaveable(bookmarkId) { mutableStateOf(false) }
     var openCollectionsAfterClose by rememberSaveable(bookmarkId) { mutableStateOf(false) }
-    fun requestClose(openCollections: Boolean = false) {
-        if (currentState.pending || currentState.done || closeRequested || closeWithoutSaving) return
-        openCollectionsAfterClose = openCollectionsAfterClose || openCollections
-        closeRequested = true
-    }
-    LaunchedEffect(closeRequested, state.loading, state.error) {
-        if (closeRequested && !state.loading) {
-            closeRequested = false
-            if (state.error == "load") closeWithoutSaving = true else onSave()
-        }
-    }
-    CollectionMembershipContent(state, onToggle,
-        { if (currentState.error == "load") onRetry() else requestClose() },
-        { requestClose() }, { requestClose(openCollections = true) },
+    CollectionMembershipContent(state, onToggle, onRetry,
+        onDismiss = { closing = true },
+        onOpenCollections = { openCollectionsAfterClose = true; closing = true },
         onClosed = {
             if (openCollectionsAfterClose) onOpenCollections() else onDismiss()
-        }, modifier = modifier, closeWithoutSaving = closeWithoutSaving)
+        }, modifier = modifier, closing = closing)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,17 +65,16 @@ internal fun CollectionMembershipSheet(
 internal fun CollectionMembershipContent(
     state: CollectionMembershipState, onToggle: (String) -> Unit,
     onRetry: () -> Unit, onDismiss: () -> Unit, onOpenCollections: () -> Unit,
-    onClosed: () -> Unit, modifier: Modifier = Modifier, closeWithoutSaving: Boolean = false
+    onClosed: () -> Unit, modifier: Modifier = Modifier, closing: Boolean = false
 ) {
-    val pending by rememberUpdatedState(state.pending)
-    val closing by rememberUpdatedState(state.done || closeWithoutSaving)
+    val isClosing by rememberUpdatedState(closing)
     val requestClose by rememberUpdatedState(onDismiss)
     val currentOnClosed by rememberUpdatedState(onClosed)
     var closeNotified by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
         confirmValueChange = { target ->
-            if (target == SheetValue.Hidden && !closing) {
-                if (!pending) requestClose()
+            if (target == SheetValue.Hidden && !isClosing) {
+                requestClose()
                 false
             } else true
         })
@@ -90,16 +84,16 @@ internal fun CollectionMembershipContent(
             currentOnClosed()
         }
     }
-    LaunchedEffect(state.done || closeWithoutSaving, sheetState) {
-        if (state.done || closeWithoutSaving) {
+    LaunchedEffect(closing, sheetState) {
+        if (closing) {
             sheetState.hide()
             notifyClosed()
         }
     }
     TidiloModalBottomSheet(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.SHEET).containerColor,
-            shape = currentThemeSurfaces().resolve(SurfaceRole.SHEET).shape,onDismissRequest = { if (closing) notifyClosed() else if (!pending) onDismiss() },
-        modifier = modifier, sheetState = sheetState, sheetGesturesEnabled = !pending && !closing) {
+            shape = currentThemeSurfaces().resolve(SurfaceRole.SHEET).shape,onDismissRequest = { if (closing) notifyClosed() else onDismiss() },
+        modifier = modifier, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             Text(stringResource(R.string.collection_assign_title),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
@@ -109,7 +103,7 @@ internal fun CollectionMembershipContent(
                 if (state.loading) CircularProgressIndicator()
                 else if (state.rows.isEmpty() && state.error == null) {
                     Text(stringResource(R.string.collection_assign_empty))
-                    val canOpenCollections = !state.pending && !closing
+                    val canOpenCollections = !closing
                     Button(onClick = onOpenCollections, enabled = canOpenCollections, modifier = Modifier.fillMaxWidth()) {
                         Text(
                             stringResource(R.string.collection_open_library),
@@ -120,7 +114,8 @@ internal fun CollectionMembershipContent(
                 state.rows.forEach { row ->
                     key(row.collection.id) {
                         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
-                            .toggleable(value = row.collection.id in state.selectedIds, enabled = !state.pending && !closing,
+                            .toggleable(value = row.collection.id in state.selectedIds,
+                                enabled = row.collection.id !in state.pendingIds && !closing,
                                 role = Role.Checkbox, onValueChange = { onToggle(row.collection.id) }).padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = row.collection.id in state.selectedIds, onCheckedChange = null)
@@ -130,7 +125,7 @@ internal fun CollectionMembershipContent(
                 }
                 if (state.error != null) {
                     Text(stringResource(if (state.error == "load") R.string.collection_load_failed else R.string.collection_save_failed), color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = onRetry, enabled = !state.pending && !closing) {
+                    TextButton(onClick = onRetry, enabled = state.pendingIds.isEmpty() && !closing) {
                         Text(stringResource(R.string.common_retry))
                     }
                 }

@@ -5,6 +5,7 @@ import androidx.paging.PagingConfig
 import androidx.paging.map
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -31,7 +32,8 @@ class CollectionRepository(private val database: AppDatabase) {
         id
     }
 
-    suspend fun update(id: String, draft: CollectionDraft, now: Long): Boolean = withContext(Dispatchers.IO) {
+    /** Completes even if the editor closes mid-write, so an autosaved draft is never half-applied. */
+    suspend fun update(id: String, draft: CollectionDraft, now: Long): Boolean = withContext(NonCancellable + Dispatchers.IO) {
         val value = CollectionPolicy.normalize(draft)
         database.withTransaction {
             val old = dao.getById(id) ?: return@withTransaction false
@@ -58,7 +60,8 @@ class CollectionRepository(private val database: AppDatabase) {
     suspend fun removeMembership(bookmarkId: String, collectionId: String) = changeMembership(bookmarkId, collectionId, false)
     suspend fun toggleMembership(bookmarkId: String, collectionId: String) = changeMembership(bookmarkId, collectionId, null)
 
-    private suspend fun changeMembership(bookmarkId: String, collectionId: String, add: Boolean?): Boolean = withContext(Dispatchers.IO) {
+    /** Each checkbox change is persisted on its own and survives the sheet closing mid-write. */
+    private suspend fun changeMembership(bookmarkId: String, collectionId: String, add: Boolean?): Boolean = withContext(NonCancellable + Dispatchers.IO) {
         database.withTransaction {
             if (database.bookmarkDao().getBookmarkById(bookmarkId) == null || dao.getById(collectionId) == null) return@withTransaction false
             val shouldAdd = add ?: (collectionId !in dao.membershipIds(bookmarkId))

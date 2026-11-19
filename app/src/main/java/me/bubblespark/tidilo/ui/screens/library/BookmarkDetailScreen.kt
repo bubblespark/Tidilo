@@ -106,6 +106,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.snapshotFlow
+import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -176,11 +179,7 @@ fun BookmarkDetailScreen(
         TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(),
             modifier = modifier,
             header = {
-                DetailFloatingHeaderOverlay(
-                    onBackClick = onNavigateBack,
-                    backEnabled = true,
-                    showSave = false
-                )
+                DetailFloatingHeaderOverlay(onBackClick = onNavigateBack)
             }
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
@@ -197,17 +196,30 @@ fun BookmarkDetailScreen(
     }
 
     val edit = rememberSaveable(bookmark.id, saver = BookmarkDetailEditState.Saver) {
-        BookmarkDetailEditState(bookmark.note, bookmark.tag, bookmark.isPrivate)
+        BookmarkDetailEditState(bookmark.note)
     }
-    LaunchedEffect(bookmark.id, bookmark.note, bookmark.tag, bookmark.isPrivate) {
+    LaunchedEffect(bookmark.id, bookmark.note) {
         edit.syncWithBookmark(bookmark)
     }
     val hasCollection by remember(viewModel, bookmark.id) { viewModel.bookmarkHasCollections(bookmark.id) }
         .collectAsStateWithLifecycle(initialValue = false)
     var noteText by edit.noteText
-    var editedTag by edit.editedTag
-    var editedIsPrivate by edit.editedIsPrivate
-    var pendingReplacements by edit.pendingReplacements
+    val storedTag = bookmark.tag
+    val storedIsPrivate = bookmark.isPrivate
+    // The note autosaves on the shared ViewModel scope so a pending write outlives this screen.
+    val noteAutosaver = remember(viewModel, bookmark.id) {
+        DebouncedAutosaver<String>(
+            scope = viewModel.viewModelScope,
+            isStored = { it == edit.originalNote }
+        ) { note -> viewModel.saveNote(bookmark.id, note) }
+    }
+    val noteSaveStatus by noteAutosaver.status.collectAsStateWithLifecycle()
+    LaunchedEffect(noteAutosaver) {
+        snapshotFlow { noteText }.collect { noteAutosaver.submit(it) }
+    }
+    DisposableEffect(noteAutosaver) {
+        onDispose { noteAutosaver.flush() }
+    }
     var showTagEditDialog by edit.showTagEditDialog
     var showAddEntityDialog by edit.showAddEntityDialog
     var showEntityBottomSheet by edit.showEntityBottomSheet
@@ -219,40 +231,25 @@ fun BookmarkDetailScreen(
     var entityInput by edit.entityInput
     var conflictInput by edit.conflictInput
     var conflictExisting by edit.conflictExisting
-    var showDiscardConfirmDialog by rememberSaveable(bookmark.id) { mutableStateOf(false) }
-    var discardToCollections by rememberSaveable(bookmark.id) { mutableStateOf(false) }
+    var tagSaveFailed by edit.tagSaveFailed
+    var isTagSaving by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showCollectionMembership by rememberSaveable(bookmark.id) { mutableStateOf(false) }
-    var isSaving by remember { mutableStateOf(false) }
     var entityLibraryRetry by remember { mutableStateOf(0) }
     val libraryFlow = remember(viewModel, entityLibraryRetry) { viewModel.entityLibrary() }
     val libraryState = rememberEntityLibraryState(showAddEntityDialog || showEntityBottomSheet, libraryFlow)
 
     val isPrivateContentVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
 
-    val hasChanges = noteText != edit.originalNote || editedTag != edit.originalTag ||
-        editedIsPrivate != edit.originalPrivate || pendingReplacements.isNotEmpty()
-
-    fun requestExit(toCollections: Boolean = false) {
-        if (isSaving) return
-        discardToCollections = toCollections
-        if (hasChanges) showDiscardConfirmDialog = true
-        else if (toCollections) onOpenCollections() else onNavigateBack()
-    }
     if (showCollectionMembership) CollectionMembershipBottomSheet(bookmark.id,
         onDismiss = { showCollectionMembership = false },
-        onOpenCollections = { showCollectionMembership = false; requestExit(toCollections = true) })
+        onOpenCollections = { showCollectionMembership = false; onOpenCollections() })
 
-    // Intercept swipe-back (system gesture back)
-    BackHandler(enabled = isSaving || hasChanges) {
-        requestExit()
+    val localizedCategory = remember(storedTag.category, context) {
+        storedTag.category?.let { Category.toLocalized(it, context) } ?: ""
     }
-
-    val localizedCategory = remember(editedTag.category, context) {
-        editedTag.category?.let { Category.toLocalized(it, context) } ?: ""
-    }
-    val localizedSubcategory = remember(editedTag.subcategory, context) {
-        editedTag.subcategory?.let { Subcategory.toLocalized(it, context) } ?: ""
+    val localizedSubcategory = remember(storedTag.subcategory, context) {
+        storedTag.subcategory?.let { Subcategory.toLocalized(it, context) } ?: ""
     }
 
     val formattedCreatedAt = remember(bookmark.createdAt) {
@@ -295,8 +292,8 @@ fun BookmarkDetailScreen(
         if (domainDisplayName.isNotBlank()) "$domainDisplayName • $relativeCreatedAt" else relativeCreatedAt
     }
     val privateLabel = stringResource(R.string.detail_tag_private_label)
-    val classificationBreadcrumb = remember(localizedCategory, localizedSubcategory, editedIsPrivate, privateLabel) {
-        formatClassificationBreadcrumb(localizedCategory, localizedSubcategory, editedIsPrivate, privateLabel)
+    val classificationBreadcrumb = remember(localizedCategory, localizedSubcategory, storedIsPrivate, privateLabel) {
+        formatClassificationBreadcrumb(localizedCategory, localizedSubcategory, storedIsPrivate, privateLabel)
     }
 
     val ogFilename = bookmark.ogImageFilename
@@ -321,13 +318,30 @@ fun BookmarkDetailScreen(
     val surfaces = currentThemeSurfaces()
     val darkLighting = surfaces.isDark
 
-    fun openTagEditorDialog() {
-        draftCategory = editedTag.category
-        draftSubcategory = editedTag.subcategory
-        draftEntities = editedTag.entities
-        draftIsPrivate = editedIsPrivate
-        draftReplacements = pendingReplacements
-        showTagEditDialog = true
+    fun openTagEditorDialog() = edit.openTagEditor(storedTag, storedIsPrivate)
+
+    fun cancelTagEditor() {
+        if (!isTagSaving) edit.closeTagEditor()
+    }
+
+    fun confirmTagEditor() {
+        if (isTagSaving) return
+        isTagSaving = true
+        tagSaveFailed = false
+        val tag = Tag.fromDisplayValues(draftCategory, draftSubcategory, draftEntities)
+        val isPrivate = draftIsPrivate
+        val replacements = draftReplacements
+        coroutineScope.launch {
+            try {
+                viewModel.updateBookmarkTags(bookmark.id, tag, isPrivate, replacements)
+                edit.closeTagEditor()
+            } catch (e: Exception) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                tagSaveFailed = true
+            } finally {
+                isTagSaving = false
+            }
+        }
     }
 
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(),
@@ -345,33 +359,13 @@ fun BookmarkDetailScreen(
         hideHeaderOnScroll = false,
         header = {
             DetailFloatingHeaderOverlay(
-                onBackClick = { requestExit() },
-                backEnabled = !isSaving,
-                showSave = true,
-                saveEnabled = hasChanges && !isSaving,
-                isSaving = isSaving,
+                onBackClick = onNavigateBack,
                 topScrimColorProvider = {
                     val topEdge = heroPaletteState.value.topEdgeColor
                     if (ogBitmap != null && topEdge != Color.Transparent) {
                         topEdge
                     } else {
                         surfaces.canvasColor
-                    }
-                },
-                onSaveClick = {
-                    if (hasChanges && !isSaving) {
-                        isSaving = true
-                        coroutineScope.launch {
-                            try {
-                                viewModel.updateBookmarkDetails(bookmark.id, noteText, editedTag, editedIsPrivate, pendingReplacements)
-                                onNavigateBack()
-                            } catch (e: Exception) {
-                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                                Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
-                            } finally {
-                                isSaving = false
-                            }
-                        }
                     }
                 }
             )
@@ -444,51 +438,6 @@ fun BookmarkDetailScreen(
 
             }
 
-            // Discard changes confirmation dialog
-            if (showDiscardConfirmDialog) {
-                TidiloAlertDialog(
-            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
-            shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
-                    onDismissRequest = { showDiscardConfirmDialog = false; discardToCollections = false },
-                    title = {
-                        Text(
-                            text = stringResource(R.string.detail_dialog_discard_title),
-                            fontWeight = FontWeight.Bold
-                        )
-                    },
-                    text = {
-                        Text(
-                            text = stringResource(R.string.detail_dialog_discard_message)
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                showDiscardConfirmDialog = false
-                                val toCollections = discardToCollections
-                                discardToCollections = false
-                                if (toCollections) onOpenCollections() else onNavigateBack()
-                            }
-                        ) {
-                            Text(
-                                text = stringResource(R.string.common_ok),
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(
-                            onClick = { showDiscardConfirmDialog = false; discardToCollections = false }
-                        ) {
-                            Text(
-                                text = stringResource(R.string.common_cancel)
-                            )
-                        }
-                    }
-                )
-            }
-
             // Delete confirmation dialog
             if (showDeleteConfirmDialog) {
                 TidiloAlertDialog(
@@ -549,15 +498,10 @@ fun BookmarkDetailScreen(
                     onPrivateChanged = { draftIsPrivate = it },
                     onAddEntityClick = { entityInput = ""; showAddEntityDialog = true },
                     onOpenEntityPickerClick = { showEntityBottomSheet = true },
-                    onConfirm = {
-                        editedTag = Tag.fromDisplayValues(
-                            draftCategory, draftSubcategory, draftEntities
-                        )
-                        editedIsPrivate = draftIsPrivate
-                        pendingReplacements = draftReplacements
-                        showTagEditDialog = false
-                    },
-                    onDismiss = { showTagEditDialog = false }
+                    onConfirm = { confirmTagEditor() },
+                    onDismiss = { cancelTagEditor() },
+                    saving = isTagSaving,
+                    saveFailed = tagSaveFailed
                 )
             }
 
@@ -839,10 +783,10 @@ fun BookmarkDetailScreen(
                             .weight(1f)
                             .padding(end = 12.dp)
                     ) {
-                        if (editedTag.entities.isNotEmpty()) {
+                        if (storedTag.entities.isNotEmpty()) {
                             TidiloClassificationContent(
                                 decorated = {
-                                    BookmarkEntityChipsFlow(entities = editedTag.entities)
+                                    BookmarkEntityChipsFlow(entities = storedTag.entities)
                                 },
                                 material = {
                                     CompositionLocalProvider(
@@ -853,7 +797,7 @@ fun BookmarkDetailScreen(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            editedTag.entities.forEach { entity ->
+                                            storedTag.entities.forEach { entity ->
                                                 AssistChip(
                                                     onClick = {},
                                                     label = { Text(entity) },
@@ -1029,6 +973,7 @@ fun BookmarkDetailScreen(
                             .fillMaxWidth()
                             .heightIn(min = 100.dp, max = 150.dp)
                             .onFocusChanged { focusState ->
+                                if (isNoteFocused && !focusState.isFocused) noteAutosaver.flush()
                                 isNoteFocused = focusState.isFocused
                             },
                         shape = themeCorner(ThemeCorner.FIELD),
@@ -1038,6 +983,12 @@ fun BookmarkDetailScreen(
                             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
                         )
+                    )
+
+                    AutosaveStatusLine(
+                        status = noteSaveStatus,
+                        onRetry = noteAutosaver::retry,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                     )
                 }
 
@@ -1101,17 +1052,13 @@ fun BookmarkDetailScreen(
 
 /**
  * Persistent top overlay for [BookmarkDetailScreen] providing a status-bar protection gradient scrim
- * and fixed circular floating **Back** (top-left) and **Save** (top-right, floppy-disk icon) actions.
+ * and a fixed circular floating **Back** action (top-left). Edits persist through autosave or their
+ * own dialogs, so there is no screen-wide Save action.
  */
 @Composable
 private fun DetailFloatingHeaderOverlay(
     onBackClick: () -> Unit,
-    backEnabled: Boolean,
-    showSave: Boolean,
-    saveEnabled: Boolean = false,
-    isSaving: Boolean = false,
-    topScrimColorProvider: () -> Color = { Color.Unspecified },
-    onSaveClick: () -> Unit = {}
+    topScrimColorProvider: () -> Color = { Color.Unspecified }
 ) {
     val surfaces = currentThemeSurfaces()
     val fallbackScrimColor = surfaces.canvasColor
@@ -1160,13 +1107,12 @@ private fun DetailFloatingHeaderOverlay(
                     top = 10.dp,
                     bottom = 8.dp
                 ),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically
         ) {
             TidiloSurface(
                 onClick = onBackClick,
                 role = SurfaceRole.FLOATING_BAR,
-                state = ThemeSurfaceState(enabled = backEnabled),
                 blurBackground = true,
                 modifier = Modifier.size(48.dp)
             ) {
@@ -1174,47 +1120,10 @@ private fun DetailFloatingHeaderOverlay(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.common_back),
-                        tint = if (!backEnabled) {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
+                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(22.dp)
                     )
                 }
-            }
-
-            if (showSave) {
-                TidiloSurface(
-                    onClick = onSaveClick,
-                    role = if (saveEnabled || isSaving) SurfaceRole.PRIMARY_ACTION else SurfaceRole.FLOATING_BAR,
-                    state = ThemeSurfaceState(enabled = saveEnabled, selected = saveEnabled),
-                    blurBackground = true,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        if (isSaving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = LocalContentColor.current
-                            )
-                        } else {
-                            Icon(
-                                imageVector = ImageVector.vectorResource(R.drawable.ic_save),
-                                contentDescription = stringResource(R.string.detail_save),
-                                tint = if (saveEnabled) {
-                                    LocalContentColor.current
-                                } else {
-                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                },
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-                }
-            } else {
-                Spacer(modifier = Modifier.size(48.dp))
             }
         }
     }

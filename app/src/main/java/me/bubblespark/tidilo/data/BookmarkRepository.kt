@@ -34,6 +34,7 @@ import me.bubblespark.tidilo.ui.screens.library.Tag
 import me.bubblespark.tidilo.ui.screens.library.TrashedBookmarkItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -176,8 +177,11 @@ class BookmarkRepository internal constructor(
         }
     }
 
-    /** Updates the durable row by ID; no loaded page is required. */
-    suspend fun updateBookmarkNote(id: String, note: String) = withContext(Dispatchers.IO) {
+    /**
+     * Autosaves only the note column by ID; no loaded page is required.
+     * The write completes even if the caller leaves the screen mid-save.
+     */
+    suspend fun saveNote(id: String, note: String) = withContext(NonCancellable + Dispatchers.IO) {
         bookmarkDao.updateNote(id, note, clock())
     }
 
@@ -197,34 +201,32 @@ class BookmarkRepository internal constructor(
         bookmarkDao.recordSummaryPeek(id, now)
     }
 
-    /** Applies optional fields atomically against the current durable row. */
-    suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) = withContext(Dispatchers.IO) {
-        transactionRunner.run {
-            val target = bookmarkDao.getBookmarkById(id) ?: return@run
-            bookmarkDao.updateFields(id, description ?: target.description,
-                tag?.category ?: if (tag == null) target.category else null,
-                tag?.subcategory ?: if (tag == null) target.subcategory else null,
-                tag?.entities ?: target.entities, clock())
+    /**
+     * Applies a chosen AI proposal atomically. A null [description] or [tag] keeps the stored value,
+     * so fields the user did not take from the proposal are never rewritten from a stale snapshot.
+     */
+    suspend fun applyAiProposal(id: String, description: String? = null, tag: Tag? = null) =
+        withContext(NonCancellable + Dispatchers.IO) {
+            transactionRunner.run { bookmarkDao.updateDescriptionAndTag(id, description, tag, clock()) }
         }
-    }
 
     /**
-     * Updates note, tag, and Private status of a bookmark and persists the change atomically.
+     * Commits a tag-dialog edit: classification, Private status, and staged cross-bookmark spelling
+     * replacements persist together or not at all. The note and other fields are left untouched.
      * Applies explicit library spellings before re-resolving a possibly stale display-value draft.
      */
-    suspend fun updateBookmarkDetails(
+    suspend fun updateBookmarkTags(
         id: String,
-        note: String,
         tag: Tag,
         isPrivate: Boolean,
         replacements: Map<String, String> = emptyMap(),
         updatedAt: Long = clock()
-    ) = withContext(Dispatchers.IO) {
+    ) = withContext(NonCancellable + Dispatchers.IO) {
         transactionRunner.run {
             requireNotNull(bookmarkDao.getBookmarkById(id)) { "Bookmark no longer exists" }
             bookmarkDao.replaceEntitySpellings(replacements, updatedAt)
             val entities = tag.entities.map { replacements[entitySkeletonKey(it)] ?: it }
-            bookmarkDao.updateNoteAndTag(id, note, tag.category, tag.subcategory, entities, isPrivate, updatedAt)
+            bookmarkDao.updateTagAndPrivate(id, tag.category, tag.subcategory, entities, isPrivate, updatedAt)
         }
     }
 

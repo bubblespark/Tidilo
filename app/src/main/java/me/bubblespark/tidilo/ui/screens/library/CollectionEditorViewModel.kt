@@ -4,7 +4,11 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -20,10 +24,16 @@ data class CollectionEditorState(
     val error: String? = null, val confirmDelete: Boolean = false
 )
 
+/**
+ * Creating a collection keeps an explicit Create action. Editing an existing collection autosaves each
+ * valid draft after a short pause; a blank title stays a recoverable draft and is never written.
+ */
 class CollectionEditorViewModel(
     private val saved: SavedStateHandle,
     private val repository: CollectionRepository,
-    private val collectionId: String?
+    private val collectionId: String?,
+    // Not cancelled with the ViewModel, so the final flush in onCleared can still start its write.
+    saveScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 ) : ViewModel() {
     private val createId = saved.get<String>("createId") ?: UUID.randomUUID().toString().also { saved["createId"] = it }
     private fun restored() = CollectionDraft(saved["title"] ?: "", saved["description"] ?: "",
@@ -32,6 +42,21 @@ class CollectionEditorViewModel(
         confirmDelete = saved["confirmDelete"] ?: false))
     val state = mutable.asStateFlow()
     private var loadJob: Job? = null
+    private var storedDraft: CollectionDraft? = null
+    private val autosaver: DebouncedAutosaver<CollectionDraft>? = collectionId?.let { id ->
+        DebouncedAutosaver(
+            scope = saveScope,
+            isValid = { it.title.isNotBlank() },
+            isStored = { draft -> runCatching { CollectionPolicy.normalize(draft) }.getOrNull() == storedDraft }
+        ) { draft ->
+            if (!repository.update(id, draft, System.currentTimeMillis())) {
+                mutable.value = state.value.copy(missing = true)
+            }
+        }
+    }
+
+    /** Autosave progress for an existing collection; always Idle while creating. */
+    val autosaveStatus: StateFlow<AutosaveStatus> = autosaver?.status ?: MutableStateFlow(AutosaveStatus.Idle)
 
     init {
         load()
@@ -51,8 +76,10 @@ class CollectionEditorViewModel(
                     repository.observeCollection(collectionId).collect { row ->
                         if (row == null) mutable.value = mutable.value.copy(loading = false, missing = true)
                         else {
+                            val stored = CollectionDraft(row.title, row.description, row.presetIconId, row.customSymbol, row.colorIndex)
+                            storedDraft = stored
                             if (saved.get<Boolean>("loaded") != true) {
-                                applyDraft(CollectionDraft(row.title, row.description, row.presetIconId, row.customSymbol, row.colorIndex))
+                                applyDraft(stored)
                             }
                             mutable.value = mutable.value.copy(loading = false, missing = false)
                         }
@@ -71,6 +98,12 @@ class CollectionEditorViewModel(
     fun edit(draft: CollectionDraft) {
         if (state.value.pending || state.value.loading || state.value.missing || state.value.error == "load") return
         applyDraft(draft)
+        autosaver?.submit(state.value.draft)
+    }
+
+    /** Re-attempts a failed autosave of the current draft. */
+    fun retrySave() {
+        autosaver?.retry()
     }
 
     private fun applyDraft(draft: CollectionDraft) {
@@ -88,19 +121,23 @@ class CollectionEditorViewModel(
         mutable.value = state.value.copy(confirmDelete = value)
     }
 
-    fun save() {
-        if (state.value.pending || state.value.loading || state.value.missing || state.value.error == "load" || state.value.done || state.value.draft.title.isBlank()) return
+    /** Explicit Create for a new collection; existing collections autosave instead. */
+    fun create() {
+        if (collectionId != null || state.value.pending || state.value.loading || state.value.done || state.value.draft.title.isBlank()) return
         val draft = state.value.draft
-        write {
-            if (collectionId == null) { repository.create(createId, draft, System.currentTimeMillis()); true }
-            else repository.update(collectionId, draft, System.currentTimeMillis())
-        }
+        write { repository.create(createId, draft, System.currentTimeMillis()); true }
     }
 
     fun delete() {
         val id = collectionId ?: return
         if (state.value.pending || state.value.loading || state.value.missing || state.value.error == "load") return
+        autosaver?.cancel()
         write { repository.delete(id) }
+    }
+
+    override fun onCleared() {
+        // Closing the sheet or recreating it must not drop the last valid draft.
+        if (!state.value.done) autosaver?.flush()
     }
 
     private fun write(action: suspend () -> Boolean) {

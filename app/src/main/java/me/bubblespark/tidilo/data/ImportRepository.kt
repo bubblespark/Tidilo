@@ -39,6 +39,7 @@ import me.bubblespark.tidilo.data.db.ImportTaskEntity
 
 import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.parser.ArticleAcquirer
+import me.bubblespark.tidilo.parser.DirectArticleNetwork
 import me.bubblespark.tidilo.parser.ParsedWebPage
 import me.bubblespark.tidilo.parser.classifyStandardMetadata
 import me.bubblespark.tidilo.parser.ArticlePreparation
@@ -1177,6 +1178,7 @@ class ImportRepository internal constructor(
 
         private fun createProductionInstance(appContext: Context): ImportRepository {
             val db = AppDatabase.getInstance(appContext)
+            val directNetwork = DirectArticleNetwork(appContext)
             val isPrivateBookmarkable: () -> Boolean = {
                 me.bubblespark.tidilo.config.AppConfig.isPrivateContentBookmarkable.value
             }
@@ -1186,6 +1188,7 @@ class ImportRepository internal constructor(
                 bookmarkDao = db.bookmarkDao(),
                 notificationDao = db.importNotificationDao(),
                 database = db,
+                articleAcquirer = { ArticleAcquirer.acquire(it, directNetwork) },
                 domainPolicyAdapter = object : ImportDomainPolicyAdapter {
                     override suspend fun awaitReady() =
                         DomainPolicyStore.getInstance(appContext).awaitReady()

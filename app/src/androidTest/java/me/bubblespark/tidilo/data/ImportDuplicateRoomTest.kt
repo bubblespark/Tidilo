@@ -13,9 +13,13 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -26,6 +30,11 @@ import me.bubblespark.tidilo.data.db.ImportNotificationEntity
 import me.bubblespark.tidilo.data.db.ImportTaskDao
 import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.parser.ParsedWebPage
+import me.bubblespark.tidilo.parser.ArticleAcquirer
+import me.bubblespark.tidilo.parser.DirectArticleNetwork
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.SocketException
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -36,6 +45,72 @@ import org.junit.Before
 import org.junit.Test
 
 class ImportDuplicateRoomTest {
+    @Test fun timedOutDirectRequestsFreeAllSlotsForAHealthyImport() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val repositoryJob = SupervisorJob()
+        val listener = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
+        val baseUrl = "http://127.0.0.1:${listener.localPort}"
+        val requests = List(4) { CompletableDeferred<Unit>() }
+        val disconnected = List(4) { CompletableDeferred<Unit>() }
+        val server = launch(Dispatchers.IO) {
+            try {
+                repeat(6) {
+                    val socket = listener.accept()
+                    launch {
+                        socket.use { connection ->
+                            connection.soTimeout = 10_000
+                            val input = connection.getInputStream().bufferedReader()
+                            val path = checkNotNull(input.readLine()).split(' ')[1]
+                            while (!input.readLine().isNullOrEmpty()) { /* Read through the request headers. */ }
+                            if (path == "/healthy") {
+                                connection.getOutputStream().write(
+                                    "HTTP/1.1 302 Found\r\nLocation: /article\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                            } else if (path == "/article") {
+                                val body = "<html><head><title>Healthy article</title></head><body>Page</body></html>"
+                                val headers = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n" +
+                                    "Content-Length: ${body.toByteArray().size}\r\nConnection: close\r\n\r\n"
+                                connection.getOutputStream().write((headers + body).toByteArray())
+                            } else {
+                                val index = path.substringAfterLast('/').toInt()
+                                if (index % 2 == 0) {
+                                    connection.getOutputStream().write(
+                                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 4096\r\n\r\n<html>".toByteArray())
+                                }
+                                requests[index].complete(Unit)
+                                val peerClosed = try { input.read() == -1 } catch (_: SocketException) { true }
+                                assertTrue("Timed-out request must close its connection", peerClosed)
+                                disconnected[index].complete(Unit)
+                            }
+                        }
+                    }
+                }
+            } catch (closed: SocketException) {
+                if (!listener.isClosed) throw closed
+            }
+        }
+        try {
+            val network = DirectArticleNetwork(context)
+            val repository = ImportRepository(taskDao = database.importTaskDao(), bookmarkDao = database.bookmarkDao(),
+                database = database, repositoryScope = CoroutineScope(Dispatchers.IO + repositoryJob),
+                acquisitionTimeoutMillis = 4000, articleAcquirer = { ArticleAcquirer.acquire(it, network) })
+            withTimeout(12_000) {
+                val stalled = requests.indices.map { index -> async { repository.importManually("$baseUrl/stalled/$index") } }
+                requests.forEach { it.await() }
+                assertTrue(stalled.all { !it.isCompleted })
+                stalled.forEach { attempt -> assertNotNull((attempt.await() as ImportOutcome.Failed).retryTaskId) }
+                val saved = repository.importManually("$baseUrl/healthy") as ImportOutcome.BookmarkSaved
+                assertEquals("$baseUrl/article", saved.url)
+                assertEquals("Healthy article", database.bookmarkDao().getBookmarkById(saved.bookmarkId)?.title)
+                assertEquals(1, database.bookmarkDao().getCount())
+                disconnected.forEach { it.await() }
+            }
+        } finally {
+            listener.close()
+            repositoryJob.cancelAndJoin()
+            server.cancelAndJoin()
+        }
+    }
+
     @Test fun recoveryKeepsGoingAfterClaimFailureAndRejectsDeletedFeed() = runBlocking {
         val job = kotlinx.coroutines.SupervisorJob()
         val tasks = database.importTaskDao()

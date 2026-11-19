@@ -18,6 +18,10 @@ enum class AutosaveStatus { Idle, Pending, Saving, Saved, Failed, Invalid }
  * Persists the latest valid draft after a typing pause. Writes are serialized in submission order,
  * so an older value never lands after a newer one. Invalid drafts are kept by the caller and never written.
  *
+ * Pass one shared [writeLock] to every autosaver that writes the same records: it is acquired on the
+ * calling (main) thread when a write is submitted, so ordering also holds across autosaver instances,
+ * e.g. a final write flushed by a disposed screen and the first write of its recreated replacement.
+ *
  * Must be driven from a single thread (the main thread in UI usage).
  *
  * @param isStored returns true when a value already equals the stored value; such a value is not
@@ -28,12 +32,12 @@ internal class DebouncedAutosaver<T>(
     private val delayMillis: Long = DEFAULT_DELAY_MILLIS,
     private val isValid: (T) -> Boolean = { true },
     private val isStored: (T) -> Boolean = { false },
+    private val writeLock: Mutex = Mutex(),
     private val write: suspend (T) -> Unit
 ) {
     private val mutableStatus = MutableStateFlow(AutosaveStatus.Idle)
     val status: StateFlow<AutosaveStatus> = mutableStatus.asStateFlow()
 
-    private val writeLock = Mutex()
     private var pending: Slot<T>? = null
     private var failed: Slot<T>? = null
     private var debounceJob: Job? = null

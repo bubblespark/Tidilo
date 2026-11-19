@@ -7,7 +7,6 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -37,13 +36,12 @@ class CollectionRepository(private val database: AppDatabase) {
     /** Completes even if the editor closes mid-write, so an autosaved draft is never half-applied. */
     suspend fun update(id: String, draft: CollectionDraft, now: Long): Boolean = withContext(NonCancellable + Dispatchers.IO) {
         val value = CollectionPolicy.normalize(draft)
-        // Editor instances come and go (rotation, reopen); one fair lock keeps their writes in order.
-        updateLock.withLock { database.withTransaction {
+        database.withTransaction {
             val old = dao.getById(id) ?: return@withTransaction false
             dao.update(old.copy(title = value.title, description = value.description,
                 presetIconId = value.presetIconId, customSymbol = value.customSymbol,
                 colorIndex = value.colorIndex, updatedAt = now)) > 0
-        } }
+        }
     }
 
     suspend fun delete(id: String): Boolean = withContext(Dispatchers.IO) { dao.delete(id) > 0 }
@@ -74,7 +72,11 @@ class CollectionRepository(private val database: AppDatabase) {
         }
     }
 
-    private companion object {
-        val updateLock = Mutex()
+    internal companion object {
+        /**
+         * Shared by every collection editor autosaver. It is taken on the main thread at submission,
+         * before any dispatch, so writes from a closing and a recreated editor keep their order.
+         */
+        val editorWriteLock = Mutex()
     }
 }

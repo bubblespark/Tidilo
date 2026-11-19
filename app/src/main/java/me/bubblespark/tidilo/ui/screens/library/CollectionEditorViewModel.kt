@@ -48,7 +48,8 @@ class CollectionEditorViewModel(
         DebouncedAutosaver(
             scope = saveScope,
             isValid = { it.title.isNotBlank() },
-            isStored = { draft -> runCatching { CollectionPolicy.normalize(draft) }.getOrNull() == storedDraft }
+            isStored = { draft -> runCatching { CollectionPolicy.normalize(draft) }.getOrNull() == storedDraft },
+            writeLock = CollectionRepository.editorWriteLock
         ) { draft ->
             if (repository.update(id, draft, System.currentTimeMillis())) {
                 // Advance the baseline now so an immediate revert is not mistaken for the stored value.
@@ -81,6 +82,7 @@ class CollectionEditorViewModel(
                         if (row == null) mutable.value = mutable.value.copy(loading = false, missing = true)
                         else {
                             val stored = CollectionDraft(row.title, row.description, row.presetIconId, row.customSymbol, row.colorIndex)
+                            val previous = storedDraft
                             storedDraft = stored
                             // Only the first successful load decides whether a restored draft needs saving;
                             // later emissions (autosave echoes, other editors) must not resubmit it.
@@ -88,6 +90,8 @@ class CollectionEditorViewModel(
                                 restoredDraftSubmitted = true
                                 if (saved.get<Boolean>("loaded") != true) applyDraft(stored)
                                 else autosaver?.submit(state.value.draft)
+                            } else if (previous != null && previous != stored) {
+                                adoptUntouchedFields(previous, stored)
                             }
                             mutable.value = mutable.value.copy(loading = false, missing = false)
                         }
@@ -122,6 +126,22 @@ class CollectionEditorViewModel(
         saved["icon"] = bounded.presetIconId; saved["symbol"] = bounded.customSymbol; saved["color"] = bounded.colorIndex
         saved["loaded"] = true
         mutable.value = state.value.copy(draft = bounded, error = null)
+    }
+
+    /**
+     * Applies a newer stored row to every field the user has not changed since [previous], so a later
+     * autosave of an edited field never writes stale values back over another editor's change.
+     */
+    private fun adoptUntouchedFields(previous: CollectionDraft, latest: CollectionDraft) {
+        val draft = state.value.draft
+        val merged = CollectionDraft(
+            title = if (draft.title == previous.title) latest.title else draft.title,
+            description = if (draft.description == previous.description) latest.description else draft.description,
+            presetIconId = if (draft.presetIconId == previous.presetIconId) latest.presetIconId else draft.presetIconId,
+            customSymbol = if (draft.customSymbol == previous.customSymbol) latest.customSymbol else draft.customSymbol,
+            colorIndex = if (draft.colorIndex == previous.colorIndex) latest.colorIndex else draft.colorIndex
+        )
+        if (merged != draft) applyDraft(merged)
     }
 
     fun confirmDelete(value: Boolean) {

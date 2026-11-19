@@ -209,7 +209,8 @@ fun BookmarkDetailScreen(
     val noteAutosaver = remember(viewModel, bookmark.id) {
         DebouncedAutosaver<String>(
             scope = viewModel.viewModelScope,
-            isStored = { it == edit.originalNote }
+            isStored = { it == edit.originalNote },
+            writeLock = viewModel.noteWriteLock
         ) { note ->
             viewModel.saveNote(bookmark.id, note)
             // Advance the stored baseline now rather than waiting for Room's emission, so an
@@ -242,8 +243,9 @@ fun BookmarkDetailScreen(
     // The commit runs on the shared ViewModel, so its saving state and result survive rotation.
     val tagSaves by viewModel.tagSaves.collectAsStateWithLifecycle()
     val tagSave = tagSaves[bookmark.id]
-    val isTagSaving = tagSave == TagSaveStatus.Saving
-    LaunchedEffect(tagSave) {
+    // Saved still blocks the dialog until the effect below closes it, so no frame re-enables OK/Cancel.
+    val isTagSaving = tagSave == TagSaveStatus.Saving || (showTagEditDialog && tagSave == TagSaveStatus.Saved)
+    LaunchedEffect(bookmark.id, tagSave) {
         when (tagSave) {
             TagSaveStatus.Saved -> { edit.closeTagEditor(); viewModel.consumeTagSave(bookmark.id) }
             TagSaveStatus.Failed -> { tagSaveFailed = true; viewModel.consumeTagSave(bookmark.id) }

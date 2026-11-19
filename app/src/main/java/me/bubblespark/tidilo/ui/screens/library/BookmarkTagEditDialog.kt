@@ -724,7 +724,10 @@ private fun Modifier.verticalScrollbar(
     }
 }
 
-/** Replacement choices are staged locally until the detail screen is saved. */
+/**
+ * Replacement choices stay in the parent tag-dialog draft; they are persisted, together with the rest
+ * of the tag edit, only when the parent dialog's OK commits it.
+ */
 @Composable
 fun EntityTagConflictDialog(
     entered: String,

@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.db.TagKind
@@ -404,12 +403,12 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         .onStart { emit(EntityLibraryState()) }
 
     /**
-     * Note writes from every Detail instance share one fair lock, so a final write flushed by a
-     * disposed screen (rotation, quick reopen) can never land after a newer write.
+     * Shared by every Detail note autosaver, so a final write flushed by a disposed screen (rotation,
+     * quick reopen) can never land after a newer write from its replacement.
      */
-    private val noteWriteLock = Mutex()
+    internal val noteWriteLock = Mutex()
 
-    suspend fun saveNote(id: String, note: String) = noteWriteLock.withLock { bookmarkRepository.saveNote(id, note) }
+    suspend fun saveNote(id: String, note: String) = bookmarkRepository.saveNote(id, note)
 
     private val mutableTagSaves = MutableStateFlow<Map<String, TagSaveStatus>>(emptyMap())
 

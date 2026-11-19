@@ -216,4 +216,21 @@ class CollectionEditorTest {
             assertEquals(me.bubblespark.tidilo.ui.screens.library.AutosaveStatus.Idle, vm.autosaveStatus.value)
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
+
+    @Test fun editingOneFieldKeepsAnotherEditorsChangeToUntouchedFields() = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
+        val store = ViewModelStore()
+        lateinit var vm: CollectionEditorViewModel
+        try {
+            db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "A", "Old description", "folder", null, 0, 1, 1))
+            host.runOnMainSync { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java] }
+            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            CollectionRepository(db).update("a", CollectionDraft("B", "Old description"), 2)
+            withTimeout(5000) { while (vm.state.value.draft.title != "B") delay(20) }
+            host.runOnMainSync { vm.edit(vm.state.value.draft.copy(description = "New description")) }
+            withTimeout(5000) { while (db.collectionDao().getById("a")?.description != "New description") delay(20) }
+            assertEquals("The untouched title keeps the other editor's change", "B", db.collectionDao().getById("a")?.title)
+        } finally { host.runOnMainSync { store.clear() }; db.close() }
+    }
 }

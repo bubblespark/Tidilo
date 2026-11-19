@@ -216,4 +216,27 @@ class DebouncedAutosaverTest {
         assertEquals(listOf("new"), writes)
         assertEquals(AutosaveStatus.Saved, saver.status.value)
     }
+
+    @Test
+    fun sharedLockKeepsSubmissionOrderAcrossAutosaverInstances() = autosaveTest { scope ->
+        val lock = kotlinx.coroutines.sync.Mutex()
+        val gate = CompletableDeferred<Unit>()
+        val writes = mutableListOf<String>()
+        val write: suspend (String) -> Unit = { value -> if (value == "A") gate.await(); writes += value }
+        val disposed = DebouncedAutosaver(scope, delayMillis = 10_000, writeLock = lock, write = write)
+        val recreated = DebouncedAutosaver(scope, delayMillis = 10_000, writeLock = lock, write = write)
+
+        // The old screen's write A is running and its final write B is queued behind it.
+        disposed.submit("A"); disposed.flush()
+        repeat(3) { yield() }
+        disposed.submit("B"); disposed.flush()
+        repeat(3) { yield() }
+        // The recreated screen then submits newer text C.
+        recreated.submit("C"); recreated.flush()
+        repeat(3) { yield() }
+        gate.complete(Unit)
+        delay(50)
+
+        assertEquals("The newest write must land last", listOf("A", "B", "C"), writes)
+    }
 }

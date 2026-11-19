@@ -1,16 +1,11 @@
 package me.bubblespark.tidilo
 
 import android.content.Intent
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
@@ -76,9 +71,6 @@ import me.bubblespark.tidilo.config.AppLanguage
 
 class MainActivity : ComponentActivity() {
     private val notificationDestination = mutableStateOf<String?>(null)
-    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        lifecycleScope.launch(Dispatchers.IO) { NotificationCoordinator.getInstance(this@MainActivity).refresh() }
-    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -106,12 +98,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         notificationDestination.value = notificationRoute(intent)
-        val notificationPrefs = getSharedPreferences("tidilo_notifications", MODE_PRIVATE)
-        if (!notificationPrefs.getBoolean("permission_requested", false) &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            notificationPrefs.edit().putBoolean("permission_requested", true).apply()
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
 
         // Ensure Activity resources are initialized with the configured language
         val initialLang = AppConfig.currentLanguage.value
@@ -149,7 +135,8 @@ class MainActivity : ComponentActivity() {
 
             CompositionLocalProvider(
                 LocalConfiguration provides updatedConfig,
-                LocalContext provides localizedContext
+                LocalContext provides localizedContext,
+                LocalActivityResultRegistryOwner provides this@MainActivity
             ) {
                 val selectedTheme by AppConfig.currentTheme.collectAsStateWithLifecycle()
                 val blurEnabled by AppConfig.overlayBlurEnabled.collectAsStateWithLifecycle()
@@ -310,7 +297,8 @@ fun TidiloApp(
                     onOpenNavigation = { navigationScope.launch {
                         androidx.compose.runtime.withFrameNanos { }
                         railState.expand()
-                    } }
+                    } },
+                    onOpenManualImport = { showManualImport = true }
                 )
 
                 // Status bar protection gradient scrim when header is hidden

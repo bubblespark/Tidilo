@@ -1,24 +1,38 @@
 package me.bubblespark.tidilo.data
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.MainActivity
+import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.data.rss.RssSettings
 import me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent
 import me.bubblespark.tidilo.ui.screens.settings.StorageLoad
+import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -546,5 +560,483 @@ class RssSettingsScreenTest {
             click(node("Back") { it.contentDescription?.toString() == activity.getString(me.bubblespark.tidilo.R.string.common_back) })
             assertTrue(backed)
         } finally { instrumentation.runOnMainSync { activity.finish() } }
+    }
+
+    @Test fun enablingDailyFetchAndCompletingRegistrationOfferOneTimeNotificationRationaleWithoutBlocking(): Unit = runBlocking {
+        val notificationPrefs = context.getSharedPreferences(
+            me.bubblespark.tidilo.data.notifications.NOTIFICATION_PREFS_NAME,
+            android.content.Context.MODE_PRIVATE
+        )
+        val hadRequestedKey = notificationPrefs.contains(
+            me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED
+        )
+        val previousRequestedValue = notificationPrefs.getBoolean(
+            me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED,
+            false
+        )
+        val previousAppLanguage = me.bubblespark.tidilo.config.AppConfig.currentLanguage.value
+        val previousAppResourcesConfig = Configuration(context.applicationContext.resources.configuration)
+        val rssPreferences = me.bubblespark.tidilo.data.rss.RssPreferences.getInstance(context)
+        rssPreferences.initialize()
+        val previousRssSettings = rssPreferences.state.value
+        assertTrue(
+            notificationPrefs.edit()
+                .remove(me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED)
+                .commit()
+        )
+        rssPreferences.save(previousRssSettings.copy(dailyEnabled = false))
+
+        var activity: ComponentActivity? = null
+        var inMemoryDb: me.bubblespark.tidilo.data.db.AppDatabase? = null
+        try {
+            activity = instrumentation.startActivitySync(
+                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ) as ComponentActivity
+            node("Cold launch Library") {
+                it.contentDescription?.toString() == activity.getString(me.bubblespark.tidilo.R.string.navigation_open)
+            }
+            assertFalse(
+                "Cold launch must not request or mark notification permission as requested",
+                notificationPrefs.getBoolean(
+                    me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED,
+                    false
+                )
+            )
+
+            // Navigate via the real MainActivity host to confirm RssSettingsScreen mounts with LocalActivityResultRegistryOwner.
+            click(node("Open navigation") {
+                it.contentDescription?.toString() == activity.getString(me.bubblespark.tidilo.R.string.navigation_open)
+            })
+            click(node("Settings entry") {
+                it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.title_settings)
+            })
+            node("Settings content") {
+                it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.settings_language_title)
+            }
+            repeat(10) {
+                if (find { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_subtitle) } == null) {
+                    find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                    delay(150)
+                }
+            }
+            click(node("RSS settings entry") {
+                it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_subtitle)
+            })
+            node("RSS daily time heading") {
+                it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_schedule)
+            }
+            instrumentation.runOnMainSync { activity.onBackPressedDispatcher.onBackPressed() }
+            withTimeout(3000) {
+                while (find { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch) } != null) {
+                    delay(20)
+                }
+            }
+
+            val dailyModel = me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel(activity.application)
+            var permissionLaunches = 0
+            instrumentation.runOnMainSync {
+                activity.setContent {
+                    MaterialTheme {
+                        me.bubblespark.tidilo.ui.screens.settings.RssSettingsScreen(
+                            onNavigateBack = {},
+                            model = dailyModel,
+                            isNotificationPermissionGranted = { false },
+                            onLaunchNotificationPermission = { permissionLaunches++ }
+                        )
+                    }
+                }
+            }
+            node("Daily fetch switch") { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch) }
+            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch))
+            withTimeout(3000) { while (!dailyModel.settings.value.dailyEnabled) delay(20) }
+            node("Notification rationale title") {
+                it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title)
+            }
+            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_later))
+            withTimeout(3000) {
+                while (find { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title) } != null ||
+                    !notificationPrefs.getBoolean(
+                        me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED,
+                        false
+                    )
+                ) {
+                    delay(20)
+                }
+            }
+            assertEquals(0, permissionLaunches)
+            assertTrue("Dismissing notification rationale must not block Daily fetch", dailyModel.settings.value.dailyEnabled)
+
+            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch))
+            withTimeout(3000) { while (dailyModel.settings.value.dailyEnabled) delay(20) }
+            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch))
+            withTimeout(3000) { while (!dailyModel.settings.value.dailyEnabled) delay(20) }
+            delay(300)
+            assertNull(
+                "Notification rationale must appear only once",
+                find { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title) }
+            )
+
+            assertTrue(
+                notificationPrefs.edit()
+                    .putBoolean(me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
+                    .commit()
+            )
+            val initialModel = me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel(
+                activity.application,
+                androidx.lifecycle.SavedStateHandle(mapOf("initialFeed" to "initial-test-feed"))
+            )
+            instrumentation.runOnMainSync {
+                activity.setContent {
+                    MaterialTheme {
+                        me.bubblespark.tidilo.ui.screens.settings.RssSettingsScreen(
+                            onNavigateBack = {},
+                            model = initialModel,
+                            isNotificationPermissionGranted = { false },
+                            onLaunchNotificationPermission = {
+                                assertTrue(
+                                    "KEY_NOTIFICATION_PERMISSION_REQUESTED must already be persisted before launching OS prompt",
+                                    notificationPrefs.getBoolean(
+                                        me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED,
+                                        false
+                                    )
+                                )
+                                assertFalse(
+                                    "Rationale state must already be cleared before launching OS prompt",
+                                    initialModel.notificationRationale.value
+                                )
+                                permissionLaunches++
+                            }
+                        )
+                    }
+                }
+            }
+            node("Initial fetch dialog") { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_initial_title) }
+            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_later))
+            node("Notification rationale after registration") {
+                it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title)
+            }
+            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_allow))
+            withTimeout(3000) {
+                while (permissionLaunches == 0 ||
+                    find { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title) } != null ||
+                    !notificationPrefs.getBoolean(
+                        me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED,
+                        false
+                    )
+                ) {
+                    delay(20)
+                }
+            }
+            assertEquals(1, permissionLaunches)
+
+            assertTrue(
+                notificationPrefs.edit()
+                    .putBoolean(me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
+                    .commit()
+            )
+            val testDb = androidx.room.Room.inMemoryDatabaseBuilder(
+                context,
+                me.bubblespark.tidilo.data.db.AppDatabase::class.java
+            ).build().also { inMemoryDb = it }
+            val fetchNowFeed = me.bubblespark.tidilo.data.db.RssFeedEntity(
+                "fetch-now-test",
+                "https://xml.invalid/feed",
+                "Fetch Now Feed"
+            )
+            testDb.rssDao().putFeed(fetchNowFeed)
+            val enqueuedInitial = java.util.concurrent.CopyOnWriteArrayList<Triple<String, String, Boolean>>()
+            val testRepo = me.bubblespark.tidilo.data.rss.RssRepository(
+                context = context,
+                db = testDb,
+                scheduleChanged = {},
+                enqueueInitial = { id, op, mobile -> enqueuedInitial.add(Triple(id, op, mobile)) }
+            )
+            val fetchNowModel = me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel(
+                activity.application,
+                androidx.lifecycle.SavedStateHandle(mapOf("initialFeed" to fetchNowFeed.id)),
+                testRepo,
+                networkStateOverride = { true to true }
+            )
+            var deniedDispatches = 0
+            val deniedRegistryOwner = object : androidx.activity.result.ActivityResultRegistryOwner {
+                override val activityResultRegistry = object : androidx.activity.result.ActivityResultRegistry() {
+                    override fun <I, O> onLaunch(
+                        requestCode: Int,
+                        contract: androidx.activity.result.contract.ActivityResultContract<I, O>,
+                        input: I,
+                        options: androidx.core.app.ActivityOptionsCompat?
+                    ) {
+                        assertTrue(
+                            "KEY_NOTIFICATION_PERMISSION_REQUESTED must already be persisted before launching OS prompt",
+                            notificationPrefs.getBoolean(
+                                me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED,
+                                false
+                            )
+                        )
+                        assertFalse(
+                            "Rationale state must already be cleared before launching OS prompt",
+                            fetchNowModel.notificationRationale.value
+                        )
+                        permissionLaunches++
+                        deniedDispatches++
+                        dispatchResult(requestCode, false)
+                    }
+                }
+            }
+            instrumentation.runOnMainSync {
+                activity.setContent {
+                    MaterialTheme {
+                        CompositionLocalProvider(
+                            androidx.activity.compose.LocalActivityResultRegistryOwner provides deniedRegistryOwner
+                        ) {
+                            me.bubblespark.tidilo.ui.screens.settings.RssSettingsScreen(
+                                onNavigateBack = {},
+                                model = fetchNowModel,
+                                isNotificationPermissionGranted = { false }
+                            )
+                        }
+                    }
+                }
+            }
+            node("Fetch now dialog") { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_initial_title) }
+            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_fetch_now))
+            node("Notification rationale after Fetch now") {
+                it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title)
+            }
+            assertEquals("Initial fetch must be enqueued before rationale is answered", 1, enqueuedInitial.size)
+            assertEquals(fetchNowFeed.id, enqueuedInitial.single().first)
+            assertNotNull(testDb.rssDao().feed(fetchNowFeed.id)?.acquisitionId)
+            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_allow))
+            withTimeout(3000) {
+                while (deniedDispatches == 0 ||
+                    find { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title) } != null
+                ) {
+                    delay(20)
+                }
+            }
+            assertEquals(2, permissionLaunches)
+            assertNotNull(
+                "Denying notification permission must not unschedule or block initial fetch",
+                testDb.rssDao().feed(fetchNowFeed.id)?.acquisitionId
+            )
+
+            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch))
+            withTimeout(3000) { while (fetchNowModel.settings.value.dailyEnabled || fetchNowModel.busy.value) delay(20) }
+            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch))
+            withTimeout(3000) { while (!fetchNowModel.settings.value.dailyEnabled || fetchNowModel.busy.value) delay(20) }
+            delay(300)
+            assertFalse(fetchNowModel.notificationRationale.value)
+            assertNull(
+                "Denied permission must not re-open notification rationale on subsequent Daily fetch enable",
+                find { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title) }
+            )
+
+            val staleSavedState = androidx.lifecycle.SavedStateHandle(mapOf("notificationRationale" to true))
+            val restoredStaleModel = me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel(
+                activity.application,
+                staleSavedState,
+                testRepo,
+                permissionGrantedProvider = { false }
+            )
+            assertFalse(
+                "Restored rationale must stay hidden before recheck when already requested",
+                restoredStaleModel.notificationRationale.value
+            )
+            withTimeout(3000) {
+                while (staleSavedState.get<Boolean>("notificationRationale") != false) {
+                    delay(20)
+                }
+            }
+            assertFalse(restoredStaleModel.notificationRationale.value)
+
+            assertTrue(
+                notificationPrefs.edit()
+                    .putBoolean(me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
+                    .commit()
+            )
+            val persistStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val allowPersistFinish = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val recreationState = androidx.lifecycle.SavedStateHandle(mapOf("notificationRationale" to true))
+            val recreationModel = me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel(
+                activity.application,
+                recreationState,
+                testRepo,
+                permissionGrantedProvider = { false },
+                persistPermissionRequested = {
+                    persistStarted.complete(Unit)
+                    allowPersistFinish.await()
+                    notificationPrefs.edit()
+                        .putBoolean(me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED, true)
+                        .commit()
+                }
+            )
+            val screenGeneration = mutableStateOf(1)
+            val firstDisposed = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val secondApplied = kotlinx.coroutines.CompletableDeferred<Unit>()
+            var firstOwnerLaunches = 0
+            var secondOwnerLaunches = 0
+            val firstRegistryOwner = object : androidx.activity.result.ActivityResultRegistryOwner {
+                override val activityResultRegistry = object : androidx.activity.result.ActivityResultRegistry() {
+                    override fun <I, O> onLaunch(
+                        requestCode: Int,
+                        contract: androidx.activity.result.contract.ActivityResultContract<I, O>,
+                        input: I,
+                        options: androidx.core.app.ActivityOptionsCompat?
+                    ) {
+                        firstOwnerLaunches++
+                        dispatchResult(requestCode, false)
+                    }
+                }
+            }
+            val secondRegistryOwner = object : androidx.activity.result.ActivityResultRegistryOwner {
+                override val activityResultRegistry = object : androidx.activity.result.ActivityResultRegistry() {
+                    override fun <I, O> onLaunch(
+                        requestCode: Int,
+                        contract: androidx.activity.result.contract.ActivityResultContract<I, O>,
+                        input: I,
+                        options: androidx.core.app.ActivityOptionsCompat?
+                    ) {
+                        assertTrue(
+                            "KEY_NOTIFICATION_PERMISSION_REQUESTED must already be persisted before second screen launches OS prompt",
+                            notificationPrefs.getBoolean(
+                                me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED,
+                                false
+                            )
+                        )
+                        secondOwnerLaunches++
+                        dispatchResult(requestCode, false)
+                    }
+                }
+            }
+            try {
+                instrumentation.runOnMainSync {
+                    activity.setContent {
+                        MaterialTheme {
+                            if (screenGeneration.value == 1) {
+                                androidx.compose.runtime.DisposableEffect(Unit) {
+                                    onDispose { firstDisposed.complete(Unit) }
+                                }
+                                CompositionLocalProvider(
+                                    androidx.activity.compose.LocalActivityResultRegistryOwner provides firstRegistryOwner
+                                ) {
+                                    me.bubblespark.tidilo.ui.screens.settings.RssSettingsScreen(
+                                        onNavigateBack = {},
+                                        model = recreationModel,
+                                        isNotificationPermissionGranted = { false }
+                                    )
+                                }
+                            } else {
+                                CompositionLocalProvider(
+                                    androidx.activity.compose.LocalActivityResultRegistryOwner provides secondRegistryOwner
+                                ) {
+                                    me.bubblespark.tidilo.ui.screens.settings.RssSettingsScreen(
+                                        onNavigateBack = {},
+                                        model = recreationModel,
+                                        isNotificationPermissionGranted = { false }
+                                    )
+                                }
+                                androidx.compose.runtime.SideEffect {
+                                    secondApplied.complete(Unit)
+                                }
+                            }
+                        }
+                    }
+                }
+                node("Restored eligible rationale") {
+                    it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title)
+                }
+                clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_allow))
+                withTimeout(3000) { persistStarted.await() }
+                instrumentation.runOnMainSync { screenGeneration.value = 2 }
+                withTimeout(3000) {
+                    firstDisposed.await()
+                    secondApplied.await()
+                }
+                allowPersistFinish.complete(Unit)
+                withTimeout(3000) {
+                    while (secondOwnerLaunches == 0) delay(20)
+                }
+                assertEquals("Disposed composition launcher must not be called", 0, firstOwnerLaunches)
+                assertEquals("Resumed recreated screen launcher must be invoked once", 1, secondOwnerLaunches)
+            } finally {
+                allowPersistFinish.complete(Unit)
+            }
+
+            me.bubblespark.tidilo.config.AppConfig.setLanguage(me.bubblespark.tidilo.config.AppLanguage.ENGLISH)
+            val jaLocale = Locale.JAPANESE
+            val jaConfig = Configuration(context.resources.configuration).apply {
+                setLocale(jaLocale)
+                setLayoutDirection(jaLocale)
+                fontScale = 2f
+                screenWidthDp = 360
+                smallestScreenWidthDp = 360
+            }
+            val jaContext = context.createConfigurationContext(jaConfig)
+            val jaTitle = jaContext.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title)
+            val jaMessage = jaContext.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_message)
+            val jaAllow = jaContext.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_allow)
+            val jaLater = jaContext.getString(me.bubblespark.tidilo.R.string.rss_later)
+            var dialogAllows = 0
+            me.bubblespark.tidilo.config.AppConfig.setLanguage(me.bubblespark.tidilo.config.AppLanguage.JAPANESE)
+            instrumentation.runOnMainSync {
+                @Suppress("DEPRECATION")
+                activity.resources.updateConfiguration(jaConfig, activity.resources.displayMetrics)
+                @Suppress("DEPRECATION")
+                activity.applicationContext.resources.updateConfiguration(jaConfig, activity.applicationContext.resources.displayMetrics)
+                activity.setContent {
+                    TidiloTheme(darkTheme = true, dynamicColor = false, theme = AppTheme.MODERN) {
+                        CompositionLocalProvider(
+                            LocalConfiguration provides jaConfig,
+                            LocalContext provides jaContext,
+                            LocalDensity provides Density(activity.resources.displayMetrics.density, 2f)
+                        ) {
+                            me.bubblespark.tidilo.ui.screens.settings.RssNotificationPermissionDialog(
+                                onAllow = { dialogAllows++ },
+                                onDismiss = {},
+                                modifier = Modifier.widthIn(max = 360.dp)
+                            )
+                        }
+                    }
+                }
+            }
+            instrumentation.waitForIdleSync()
+            node("Large font title") { it.text?.toString() == jaTitle }
+            node("Large font body") { it.text?.toString() == jaMessage }
+            val density = activity.resources.displayMetrics.density
+            val laterButton = node("Large font Later button") { it.text?.toString() == jaLater }
+            var laterClickable: AccessibilityNodeInfo? = laterButton
+            while (laterClickable != null && !laterClickable.isClickable) laterClickable = laterClickable.parent
+            val laterBounds = android.graphics.Rect().also { requireNotNull(laterClickable).getBoundsInScreen(it) }
+            assertTrue("Dialog dismiss button must meet 48dp touch height", laterBounds.height() >= 47.5f * density)
+
+            val allowButton = node("Large font Allow button") { it.text?.toString() == jaAllow }
+            var allowClickable: AccessibilityNodeInfo? = allowButton
+            while (allowClickable != null && !allowClickable.isClickable) allowClickable = allowClickable.parent
+            val allowBounds = android.graphics.Rect().also { requireNotNull(allowClickable).getBoundsInScreen(it) }
+            assertTrue("Dialog confirm button must meet 48dp touch height", allowBounds.height() >= 47.5f * density)
+            clickText(jaAllow)
+            withTimeout(3000) { while (dialogAllows == 0) delay(20) }
+        } finally {
+            inMemoryDb?.close()
+            activity?.let { current -> instrumentation.runOnMainSync { current.finish() } }
+            me.bubblespark.tidilo.config.AppConfig.setLanguage(previousAppLanguage)
+            @Suppress("DEPRECATION")
+            context.applicationContext.resources.updateConfiguration(
+                previousAppResourcesConfig,
+                context.applicationContext.resources.displayMetrics
+            )
+            rssPreferences.save(previousRssSettings)
+            me.bubblespark.tidilo.data.rss.RssScheduler.reschedule(context)
+            val restore = notificationPrefs.edit()
+            if (hadRequestedKey) {
+                restore.putBoolean(
+                    me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED,
+                    previousRequestedValue
+                )
+            } else {
+                restore.remove(me.bubblespark.tidilo.data.notifications.KEY_NOTIFICATION_PERMISSION_REQUESTED)
+            }
+            assertTrue(restore.commit())
+        }
     }
 }

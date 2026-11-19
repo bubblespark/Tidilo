@@ -1,6 +1,9 @@
 package me.bubblespark.tidilo.ui.screens.settings
 
+import android.Manifest
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 
 import me.bubblespark.tidilo.ui.components.TidiloModalBottomSheet
@@ -60,6 +63,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import java.util.Locale
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import me.bubblespark.tidilo.data.notifications.hasPostNotificationsPermission
 import me.bubblespark.tidilo.data.rss.replaceRssTriggerTime
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.RssFeedEntity
@@ -71,7 +75,13 @@ import me.bubblespark.tidilo.ui.theme.DestructiveActionColors
 private val TRIGGER_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
 @Composable
-fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = viewModel()) {
+fun RssSettingsScreen(
+    onNavigateBack: () -> Unit,
+    model: RssSettingsViewModel = viewModel(),
+    isNotificationPermissionGranted: (Context) -> Boolean = ::hasPostNotificationsPermission,
+    onLaunchNotificationPermission: (() -> Unit)? = null
+) {
+    val context = LocalContext.current
     val feeds by model.feeds.collectAsStateWithLifecycle()
     val settings by model.settings.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle()
@@ -80,21 +90,105 @@ fun RssSettingsScreen(onNavigateBack: () -> Unit, model: RssSettingsViewModel = 
     val wifi by model.wifi.collectAsStateWithLifecycle()
     val registration by model.registration.collectAsStateWithLifecycle()
     val initialFetch by model.initialFetch.collectAsStateWithLifecycle()
+    val notificationRationale by model.notificationRationale.collectAsStateWithLifecycle()
+    val permissionLaunchPending by model.permissionLaunchPending.collectAsStateWithLifecycle()
     val online by model.online.collectAsStateWithLifecycle()
-    LifecycleResumeEffect(model) {
-        model.startListening()
-        onPauseOrDispose { model.stopListening() }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+        model::onNotificationPermissionResult
+    )
+    var isResumed by remember { mutableStateOf(false) }
+    val currentLaunchOverride by rememberUpdatedState(onLaunchNotificationPermission)
+    LaunchedEffect(permissionLaunchPending, isResumed, permissionLauncher) {
+        if (permissionLaunchPending && isResumed && model.consumePermissionLaunchRequest()) {
+            val override = currentLaunchOverride
+            if (override != null) {
+                override()
+            } else {
+                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
     }
-    RssSettingsContent(feeds, settings, busy, error, wifi, onNavigateBack, model::retry,
-        model::saveSettings, model::saveFeed, model::deleteFeed, model::fetchNow, model::clearError, model::setEnabled, manualFetch)
+    LifecycleResumeEffect(model) {
+        isResumed = true
+        model.startListening()
+        onPauseOrDispose {
+            isResumed = false
+            model.stopListening()
+        }
+    }
+    RssSettingsContent(
+        feeds = feeds,
+        settings = settings,
+        busy = busy,
+        error = error,
+        wifi = wifi,
+        onBack = onNavigateBack,
+        onRetry = model::retry,
+        onSettings = { updated -> model.saveSettings(updated, isNotificationPermissionGranted(context)) },
+        onFeed = model::saveFeed,
+        onDelete = model::deleteFeed,
+        onFetch = model::fetchNow,
+        onDismissError = model::clearError,
+        onEnabled = model::setEnabled,
+        manualFetch = manualFetch
+    )
     if (initialFetch != null) {
         val mobileNotice = settings.wifiOnly && wifi == false
-        RssInitialFetchDialog(mobileNotice, online == true && wifi != null, busy,
-            onFetch = { model.fetchInitial(mobileNotice) }, onLater = model::dismissInitialFetch)
+        RssInitialFetchDialog(
+            mobileNotice = mobileNotice,
+            connected = online == true && wifi != null,
+            busy = busy,
+            onFetch = { model.fetchInitial(mobileNotice, isNotificationPermissionGranted(context)) },
+            onLater = { model.dismissInitialFetch(isNotificationPermissionGranted(context)) }
+        )
     }
     registration?.let {
         RssRegistrationDialog(it.snapshot.savedCount, busy, model::confirmRegistration, model::dismissRegistration)
     }
+    if (notificationRationale && initialFetch == null) {
+        RssNotificationPermissionDialog(
+            onAllow = { model.consumeNotificationRationale(requestPermission = true) },
+            onDismiss = { model.consumeNotificationRationale(requestPermission = false) }
+        )
+    }
+}
+
+@Composable
+internal fun RssNotificationPermissionDialog(
+    onAllow: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    TidiloAlertDialog(
+        modifier = modifier,
+        containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+        shape = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).shape,
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.rss_notification_permission_title)) },
+        text = {
+            Text(
+                text = stringResource(R.string.rss_notification_permission_message),
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onAllow,
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
+                Text(stringResource(R.string.rss_notification_permission_allow))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
+                Text(stringResource(R.string.rss_later))
+            }
+        }
+    )
 }
 
 @Composable

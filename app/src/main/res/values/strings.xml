@@ -105,7 +105,8 @@
     <string name="library_subtitle_domains">Domains (%1$d)</string>
     <string name="library_subtitle_domain_bookmarks">Domain Bookmarks (%1$d)</string>
     <string name="library_empty_title">No bookmarks yet</string>
-    <string name="library_empty_hint">Enqueued bookmarks will appear here after processing.</string>
+    <string name="library_empty_hint">Save a URL here or share a page to Tidilo from your browser\'s share menu.</string>
+    <string name="library_empty_save_url">Save URL</string>
     <string name="library_back_to_domains">Back to Domains</string>
     <string name="library_view_mode_menu_desc">View style</string>
     <string name="library_view_mode_list">List</string>
@@ -338,6 +339,9 @@
     <string name="rss_initial_mobile">This fetch will use mobile data. Your Wi-Fi-only setting will stay on.</string>
     <string name="rss_initial_offline">A validated Internet connection is required to fetch now.</string>
     <string name="rss_later">Later</string>
+    <string name="rss_notification_permission_title">Enable notifications?</string>
+    <string name="rss_notification_permission_message">Allow notifications to receive alerts when scheduled RSS fetches complete or when feed or article imports fail.</string>
+    <string name="rss_notification_permission_allow">Allow</string>
     <string name="rss_xml_fetch_failed">Could not fetch feed XML. This feed was automatically disabled.</string>
 
     <string name="rss_back_to_feeds">Back to feeds</string>

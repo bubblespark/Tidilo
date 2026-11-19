@@ -28,7 +28,7 @@ app/src/main/java/me/bubblespark/tidilo/
 │   ├── db/                              # AppDatabase, DAOs (Bookmark/Collection/DomainPolicy/Import*/Rss*/Trash), Entities, BookmarkQueries, Migrations
 │   ├── debug/                           # CrashLogManager
 │   ├── maintenance/                     # RetentionPolicy, LibraryMaintenanceRepository, Scheduler, Worker
-│   ├── notifications/                   # NotificationCoordinator, NotificationErrorDetail, RssNotificationRunPolicy
+│   ├── notifications/                   # NotificationCoordinator, NotificationErrorDetail, NotificationPermissionPolicy, RssNotificationRunPolicy
 │   └── rss/                             # RssRepository, RssIngestionStore, RssFeedFetcher, RssFetchWorker, RssHttpClient, RssPolicy, RssPreferences, RssScheduler, RssTriggerTimePolicy
 │
 ├── parser/                              # HTML/RSS extraction & standard metadata classification

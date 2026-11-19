@@ -101,7 +101,8 @@
     <string name="library_subtitle_domains">ドメイン (%1$d)</string>
     <string name="library_subtitle_domain_bookmarks">ドメイン内のブックマーク (%1$d)</string>
     <string name="library_empty_title">ブックマークがありません</string>
-    <string name="library_empty_hint">インポートされたブックマークは処理が完了するとここに表示されます。</string>
+    <string name="library_empty_hint">ここからURLを保存するか、ブラウザの共有メニューからTidiloにページを共有できます。</string>
+    <string name="library_empty_save_url">URLを保存</string>
     <string name="library_back_to_domains">ドメインに戻る</string>
     <string name="library_view_mode_menu_desc">表示スタイル</string>
     <string name="library_view_mode_list">リスト</string>
@@ -337,6 +338,9 @@
     <string name="rss_initial_mobile">モバイルデータ通信を使用します（Wi-Fi専用設定は維持されます）。</string>
     <string name="rss_initial_offline">今すぐ取得するにはインターネット接続が必要です。</string>
     <string name="rss_later">あとで</string>
+    <string name="rss_notification_permission_title">通知を有効にしますか？</string>
+    <string name="rss_notification_permission_message">定期取得の完了や、フィード・記事の取得エラーをお知らせするために通知を許可してください。</string>
+    <string name="rss_notification_permission_allow">許可する</string>
     <string name="rss_xml_fetch_failed">フィードの取得に失敗したため、自動的に無効化されました。</string>
 
     <string name="rss_back_to_feeds">フィード一覧に戻る</string>

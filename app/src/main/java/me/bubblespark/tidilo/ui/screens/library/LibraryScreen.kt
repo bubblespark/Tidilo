@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -45,9 +46,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import me.bubblespark.tidilo.ui.components.TidiloDropdownMenu
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -86,6 +89,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -119,6 +123,7 @@ private sealed interface LibraryDisplayState {
 fun LibraryScreen(
     viewModel: LibraryViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     onOpenNavigation: () -> Unit = {},
+    onOpenManualImport: () -> Unit = {},
     onNavigateToSearch: () -> Unit = {},
     onNavigateToDetail: (String) -> Unit = {},
     modifier: Modifier = Modifier
@@ -601,13 +606,10 @@ fun LibraryScreen(
                         is LibraryDisplayState.DomainGrid, is LibraryDisplayState.RssFeedGrid -> {
                             val rss = state is LibraryDisplayState.RssFeedGrid
                             if (if (rss) rssFeedGroups.isEmpty() else domainGroups.isEmpty()) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(top = headerHeight, start = 20.dp, end = 20.dp)
-                                ) {
-                                    EmptyLibraryMessage()
-                                }
+                                EmptyLibraryMessage(
+                                    onSaveUrl = onOpenManualImport,
+                                    contentPadding = contentPadding
+                                )
                             } else {
                                 LazyVerticalGrid(
                                     state = if (rss) rssFeedGridState else domainGridState,
@@ -657,13 +659,10 @@ fun LibraryScreen(
                                     modifier = Modifier.fillMaxSize()
                                 ) {
                                     if (domainBookmarks.itemCount == 0) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(top = headerHeight, start = 20.dp, end = 20.dp)
-                                        ) {
-                                            EmptyLibraryMessage()
-                                        }
+                                        EmptyLibraryMessage(
+                                            onSaveUrl = onOpenManualImport,
+                                            contentPadding = contentPadding
+                                        )
                                     } else {
                                         AnimatedContent(
                                             targetState = viewMode,
@@ -732,13 +731,10 @@ fun LibraryScreen(
                         }
                         is LibraryDisplayState.NewestFirst -> {
                             if (bookmarks.itemCount == 0) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(top = headerHeight, start = 20.dp, end = 20.dp)
-                                ) {
-                                    EmptyLibraryMessage()
-                                }
+                                EmptyLibraryMessage(
+                                    onSaveUrl = onOpenManualImport,
+                                    contentPadding = contentPadding
+                                )
                             } else {
                                 AnimatedContent(
                                     targetState = viewMode,
@@ -820,41 +816,70 @@ fun LibraryScreen(
 }
 
 @Composable
-private fun EmptyLibraryMessage() {
-    Card(
+private fun EmptyLibraryMessage(
+    onSaveUrl: () -> Unit,
+    contentPadding: PaddingValues = PaddingValues(0.dp)
+) {
+    Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 24.dp),
-        shape = themeCorner(ThemeCorner.CARD),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-        )
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(contentPadding)
     ) {
-        Column(
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(top = 24.dp),
+            shape = themeCorner(ThemeCorner.CARD),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+            )
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Inbox,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.size(36.dp)
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = stringResource(R.string.library_empty_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = stringResource(R.string.library_empty_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Inbox,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(36.dp)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = stringResource(R.string.library_empty_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.library_empty_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    textAlign = TextAlign.Center
+                )
+                Button(
+                    onClick = onSaveUrl,
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .heightIn(min = 48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddLink,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.library_empty_save_url),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
         }
     }
 }

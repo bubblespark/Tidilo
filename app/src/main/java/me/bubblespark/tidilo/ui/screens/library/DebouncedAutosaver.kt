@@ -18,9 +18,12 @@ enum class AutosaveStatus { Idle, Pending, Saving, Saved, Failed, Invalid }
  * Persists the latest valid draft after a typing pause. Writes are serialized in submission order,
  * so an older value never lands after a newer one. Invalid drafts are kept by the caller and never written.
  *
- * Pass one shared [writeLock] to every autosaver that writes the same records: it is acquired on the
- * calling (main) thread when a write is submitted, so ordering also holds across autosaver instances,
- * e.g. a final write flushed by a disposed screen and the first write of its recreated replacement.
+ * Pass one shared [writeLock] to every autosaver that writes the same records, so ordering also holds
+ * across autosaver instances, e.g. a final write flushed by a disposed screen and the first write of its
+ * recreated replacement. The lock is entered when a write starts (debounce, [flush] or [retry]); [scope]
+ * must use an immediate main dispatcher (`Dispatchers.Main.immediate`) so that [flush] queues on the lock
+ * synchronously and writes keep their call order. While the lock is held anywhere, a value equal to the
+ * stored one is still written, because another instance's queued write may yet replace it.
  *
  * Must be driven from a single thread (the main thread in UI usage).
  *
@@ -58,7 +61,7 @@ internal class DebouncedAutosaver<T>(
             mutableStatus.value = AutosaveStatus.Invalid
             return
         }
-        if (inFlight == 0 && isStored(value)) {
+        if (inFlight == 0 && !writeLock.isLocked && isStored(value)) {
             pending = null
             if (mutableStatus.value != AutosaveStatus.Saved) mutableStatus.value = AutosaveStatus.Idle
             return

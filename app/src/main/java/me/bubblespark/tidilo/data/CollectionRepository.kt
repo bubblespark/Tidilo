@@ -74,8 +74,9 @@ class CollectionRepository(private val database: AppDatabase) {
 
     internal companion object {
         /**
-         * Shared by every collection editor autosaver. It is taken on the main thread at submission,
-         * before any dispatch, so writes from a closing and a recreated editor keep their order.
+         * Shared by every collection editor autosaver, so writes from a closing and a recreated editor keep
+         * their order. Autosavers enter it on `Dispatchers.Main.immediate` when a write starts, before any
+         * dispatch to IO.
          */
         val editorWriteLock = Mutex()
     }

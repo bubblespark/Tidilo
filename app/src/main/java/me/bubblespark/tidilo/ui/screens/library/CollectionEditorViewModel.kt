@@ -141,7 +141,11 @@ class CollectionEditorViewModel(
             customSymbol = if (draft.customSymbol == previous.customSymbol) latest.customSymbol else draft.customSymbol,
             colorIndex = if (draft.colorIndex == previous.colorIndex) latest.colorIndex else draft.colorIndex
         )
-        if (merged != draft) applyDraft(merged)
+        if (merged != draft) {
+            applyDraft(merged)
+            // Replace any pending or failed snapshot so the next write carries the adopted fields.
+            autosaver?.submit(state.value.draft)
+        }
     }
 
     fun confirmDelete(value: Boolean) {

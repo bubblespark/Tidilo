@@ -239,4 +239,27 @@ class DebouncedAutosaverTest {
 
         assertEquals("The newest write must land last", listOf("A", "B", "C"), writes)
     }
+
+    @Test
+    fun revertToStoredValueIsWrittenWhileAnotherInstanceHoldsTheSharedLock() = autosaveTest { scope ->
+        val lock = kotlinx.coroutines.sync.Mutex()
+        val gate = CompletableDeferred<Unit>()
+        var stored = "A"
+        val writes = mutableListOf<String>()
+        val write: suspend (String) -> Unit = { value -> if (value == "B") gate.await(); writes += value; stored = value }
+        val disposed = DebouncedAutosaver(scope, delayMillis = 10_000, writeLock = lock, write = write)
+        val recreated = DebouncedAutosaver(scope, delayMillis = 10_000, isStored = { it == stored }, writeLock = lock, write = write)
+
+        // The old screen is still writing B; the recreated screen read A before B committed.
+        disposed.submit("B"); disposed.flush()
+        repeat(3) { yield() }
+        recreated.submit("C")
+        recreated.submit("A")
+        recreated.flush()
+        repeat(3) { yield() }
+        gate.complete(Unit)
+        delay(50)
+
+        assertEquals("The user's revert to A must land after the old write", listOf("B", "A"), writes)
+    }
 }

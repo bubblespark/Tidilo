@@ -18,10 +18,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.ui.components.ScreenBackdropScope
 import me.bubblespark.tidilo.ui.components.screenBackdropSource
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
@@ -36,7 +39,18 @@ import kotlin.math.roundToInt
 
 class BookmarkSummaryPeekRenderingTest {
     @Test
-    fun previewSoftensTheBackdropAndUsesTheExpectedFallbacks(): Unit = runBlocking {
+    fun defaultLightBackdrop(): Unit = runBlocking { verifyBackdrop(AppTheme.DEFAULT, dark = false) }
+
+    @Test
+    fun defaultDarkBackdrop(): Unit = runBlocking { verifyBackdrop(AppTheme.DEFAULT, dark = true) }
+
+    @Test
+    fun modernLightBackdrop(): Unit = runBlocking { verifyBackdrop(AppTheme.MODERN, dark = false) }
+
+    @Test
+    fun modernDarkBackdrop(): Unit = runBlocking { verifyBackdrop(AppTheme.MODERN, dark = true) }
+
+    private suspend fun verifyBackdrop(theme: AppTheme, dark: Boolean) {
         val host = HeaderTestHost()
         val activity = host.launch()
         val saved = BookmarkItem(
@@ -54,7 +68,7 @@ class BookmarkSummaryPeekRenderingTest {
                 val softwareView = View(activity)
                 assertFalse(softwareView.isHardwareAccelerated)
                 activity.setContent {
-                    TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = enabled) {
+                    TidiloTheme(darkTheme = dark, dynamicColor = false, theme = theme, blurEnabled = enabled) {
                         val background = MaterialTheme.colorScheme.background.toArgb()
                         val text = MaterialTheme.colorScheme.onBackground.toArgb()
                         SideEffect {
@@ -78,6 +92,7 @@ class BookmarkSummaryPeekRenderingTest {
                 }
             }
             val paragraph = host.await(activity) { host.text(it, saved.description) }
+            val heading = host.await(activity) { host.text(it, activity.getString(R.string.detail_section_summary)) }
 
             fun sample(): Pair<Int, Int> {
                 val image = host.instrumentation.uiAutomation.takeScreenshot()
@@ -91,8 +106,8 @@ class BookmarkSummaryPeekRenderingTest {
             fun edgeContrast(pixels: Pair<Int, Int>): Int =
                 abs(PixelColor.red(pixels.second) - PixelColor.red(pixels.first))
 
-            fun sharpTextPixels(): Int {
-                val bounds = paragraph.boundsInWindow
+            fun sharpTextPixels(text: SemanticsNode): Int {
+                val bounds = text.boundsInWindow
                 val image = host.instrumentation.uiAutomation.takeScreenshot()
                 return try {
                     var count = 0
@@ -123,12 +138,15 @@ class BookmarkSummaryPeekRenderingTest {
             val disabled = awaitSamples("85% opacity leaves 15% of a black-to-white edge") {
                 edgeContrast(it) in 37..40
             }
-            val disabledTextPixels = sharpTextPixels()
+            val disabledTextPixels = sharpTextPixels(paragraph)
+            val disabledHeadingPixels = sharpTextPixels(heading)
             assertTrue("The fixture must contain unblended foreground pixels", disabledTextPixels > 0)
+            assertTrue("The heading uses the theme reading color with blur off", disabledHeadingPixels > 0)
             host.main { enabled = true }
             fun blurred(pixels: Pair<Int, Int>) = edgeContrast(pixels) in 1..16
             awaitSamples("Enabled blur softens the edge", ::blurred)
-            assertTrue("The summary foreground stays sharp", sharpTextPixels() >= disabledTextPixels * 0.85f)
+            assertTrue("The summary foreground stays sharp", sharpTextPixels(paragraph) >= disabledTextPixels * 0.85f)
+            assertTrue("The heading stays sharp with the theme reading color", sharpTextPixels(heading) >= disabledHeadingPixels * 0.85f)
 
             host.main { captureSource = false }
             awaitSamples("A missing capture clears to the opaque theme background") {

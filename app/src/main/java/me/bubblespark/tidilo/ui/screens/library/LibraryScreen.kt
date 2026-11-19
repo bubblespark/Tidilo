@@ -901,14 +901,23 @@ internal fun BookmarkSummaryPeekOverlay(bookmark: BookmarkItem?, headerHeight: a
         exit = fadeOut(animationSpec = tween(160)),
         modifier = Modifier.fillMaxSize()
     ) {
-        val currentPeek = bookmark
+        val isOpen = bookmark != null
+        var lastPeek by remember { mutableStateOf(bookmark) }
+        SideEffect {
+            if (bookmark != null) lastPeek = bookmark
+        }
+        val currentPeek = bookmark ?: lastPeek
         val summaryTitle = stringResource(R.string.detail_section_summary)
-        val pane = if (currentPeek != null) Modifier.semantics { paneTitle = summaryTitle } else Modifier
+        val pane = if (isOpen) {
+            Modifier.pointerInput(Unit) { detectTapGestures { dismiss() } }
+                .semantics { paneTitle = summaryTitle }
+        } else {
+            Modifier.clearAndSetSemantics {}
+        }
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) { detectTapGestures { dismiss() } }
                 .then(pane)
         ) {
             val background = MaterialTheme.colorScheme.background
@@ -921,18 +930,23 @@ internal fun BookmarkSummaryPeekOverlay(bookmark: BookmarkItem?, headerHeight: a
             )
             if (currentPeek != null) {
                 val closeLabel = stringResource(R.string.common_close)
+                val closeAction = if (isOpen) {
+                    Modifier.semantics {
+                        customActions = listOf(CustomAccessibilityAction(closeLabel) {
+                            dismiss()
+                            true
+                        })
+                    }
+                } else {
+                    Modifier
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(top = headerHeight)
                         .padding(horizontal = 24.dp)
-                        .semantics {
-                            customActions = listOf(CustomAccessibilityAction(closeLabel) {
-                                dismiss()
-                                true
-                            })
-                        }
-                        .verticalScroll(rememberScrollState())
+                        .then(closeAction)
+                        .verticalScroll(rememberScrollState(), enabled = isOpen)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -949,7 +963,7 @@ internal fun BookmarkSummaryPeekOverlay(bookmark: BookmarkItem?, headerHeight: a
                             modifier = Modifier.semantics { heading() },
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                     }
 

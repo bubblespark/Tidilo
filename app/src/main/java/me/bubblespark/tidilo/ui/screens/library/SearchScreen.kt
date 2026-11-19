@@ -459,6 +459,8 @@ fun SearchScreen(
                                 context = context,
                                 onToggleLike = { viewModel.toggleLike(item.id) },
                                 onLongClick = {
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
                                     peekBookmark = item
                                     viewModel.recordSummaryPeek(item.id)
                                 },

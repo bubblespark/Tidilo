@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.data
 
 import android.content.res.Configuration
+import android.accessibilityservice.AccessibilityService
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -14,6 +15,8 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.dp
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.ViewModelProvider
 import java.util.Locale
 import java.util.UUID
@@ -59,7 +62,8 @@ class BookmarkSummaryPeekInteractionTest {
             host.main {
                 val nodes = host.nodes(activity)
                 assertFalse(nodes.any { host.text(it, activity.getString(R.string.detail_action_ai_summary)) })
-                check(nodes.any { host.text(it, activity.getString(R.string.detail_section_summary)) })
+                assertTrue("The preview displays the localized reading heading",
+                    nodes.any { host.text(it, activity.getString(R.string.detail_section_summary)) })
             }
             val japanese = activity.createConfigurationContext(Configuration(activity.resources.configuration).apply {
                 setLocale(Locale.JAPANESE)
@@ -212,10 +216,39 @@ class BookmarkSummaryPeekInteractionTest {
             assertReturnedTo(firstAnchor)
 
             host.main { blurEnabled = true }
+            if (libraryMode == null) {
+                host.main { model.triggerSearchFocus() }
+                host.await(activity) {
+                    it.config.getOrNull(SemanticsActions.SetText) != null &&
+                        it.config.getOrNull(SemanticsProperties.Focused) == true &&
+                        ViewCompat.getRootWindowInsets(activity.window.decorView)
+                            ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+                }
+            }
             val secondAnchor = openPreview()
             awaitEngagement(2)
-            scrollPreviewToEnd()
-            host.instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            if (libraryMode == null) {
+                withTimeout(8000) {
+                    var imeVisible = true
+                    do {
+                        host.main {
+                            imeVisible = ViewCompat.getRootWindowInsets(activity.window.decorView)
+                                ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+                        }
+                        if (imeVisible) delay(30)
+                    } while (imeVisible)
+                }
+                host.main {
+                    assertFalse("Search input loses focus when the preview opens", host.nodes(activity).any {
+                        it.config.getOrNull(SemanticsActions.SetText) != null &&
+                            it.config.getOrNull(SemanticsProperties.Focused) == true
+                    })
+                }
+                assertTrue(host.instrumentation.uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
+            } else {
+                scrollPreviewToEnd()
+                host.instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            }
             assertReturnedTo(secondAnchor)
 
             val tapAnchor = openPreview()

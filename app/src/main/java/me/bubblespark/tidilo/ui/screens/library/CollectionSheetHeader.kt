@@ -18,15 +18,17 @@ import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 
 @Composable
 internal fun CollectionSheetHeader(
-    title: String, actionLabel: String, enabled: Boolean, onSave: () -> Unit,
+    title: String, actionLabel: String?, enabled: Boolean, onSave: () -> Unit,
     colors: ButtonColors, modifier: Modifier = Modifier
 ) {
     Row(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(title, modifier = Modifier.weight(1f), style = modernRaisedTextStyle(MaterialTheme.typography.titleLarge),
             maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Button(onClick = onSave, enabled = enabled, colors = colors) {
-            Text(actionLabel, style = modernRaisedTextStyle(LocalTextStyle.current, enabled))
+        if (actionLabel != null) {
+            Button(onClick = onSave, enabled = enabled, colors = colors) {
+                Text(actionLabel, style = modernRaisedTextStyle(LocalTextStyle.current, enabled))
+            }
         }
     }
 }

@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.db.TagKind
 import androidx.lifecycle.ViewModel
@@ -399,13 +402,43 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         .catch { emit(EntityLibraryState(loading = false, error = it)) }
         .onStart { emit(EntityLibraryState()) }
 
-    suspend fun updateBookmarkNote(id: String, note: String) = bookmarkRepository.updateBookmarkNote(id, note)
+    /**
+     * Shared by every Detail note autosaver, so a final write flushed by a disposed screen (rotation,
+     * quick reopen) can never land after a newer write from its replacement.
+     */
+    internal val noteWriteLock = Mutex()
 
-    suspend fun updateBookmarkFields(id: String, description: String? = null, tag: Tag? = null) =
-        bookmarkRepository.updateBookmarkFields(id, description, tag)
+    suspend fun saveNote(id: String, note: String) = bookmarkRepository.saveNote(id, note)
 
-    suspend fun updateBookmarkDetails(id: String, note: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String> = emptyMap()) =
-        bookmarkRepository.updateBookmarkDetails(id, note, tag, isPrivate, replacements)
+    private val mutableTagSaves = MutableStateFlow<Map<String, TagSaveStatus>>(emptyMap())
+
+    /** Tag-dialog commits per bookmark; kept here so a commit and its result survive Detail recreation. */
+    internal val tagSaves: StateFlow<Map<String, TagSaveStatus>> = mutableTagSaves.asStateFlow()
+
+    /** Commits a tag-dialog edit once; the result stays in [tagSaves] until [consumeTagSave]. */
+    fun commitBookmarkTags(id: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String>) {
+        if (mutableTagSaves.value[id] == TagSaveStatus.Saving) return
+        mutableTagSaves.update { it + (id to TagSaveStatus.Saving) }
+        viewModelScope.launch {
+            val result = try {
+                bookmarkRepository.updateBookmarkTags(id, tag, isPrivate, replacements)
+                TagSaveStatus.Saved
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                TagSaveStatus.Failed
+            }
+            mutableTagSaves.update { it + (id to result) }
+        }
+    }
+
+    fun consumeTagSave(id: String) {
+        mutableTagSaves.update { it - id }
+    }
+
+    suspend fun applyAiProposal(id: String, description: String? = null, tag: Tag? = null) =
+        bookmarkRepository.applyAiProposal(id, description, tag)
+
 
     suspend fun deleteBookmark(id: String): Boolean = bookmarkRepository.moveToTrash(id)
 
@@ -601,3 +634,6 @@ data class BookmarkDetailState(val bookmark: BookmarkItem? = null, val loading: 
 data class EntityLibraryState(val spellings: Map<String, String> = emptyMap(), val loading: Boolean = true, val error: Throwable? = null)
 
 data class CollectionLibraryState(val rows: List<me.bubblespark.tidilo.data.db.CollectionWithCount> = emptyList(), val loading: Boolean = true, val error: Throwable? = null)
+
+/** Progress of a tag-dialog commit for one bookmark. */
+internal enum class TagSaveStatus { Saving, Saved, Failed }

@@ -134,7 +134,7 @@ class LibraryNavigationEntryTest {
                 }
                 assertTrue(action.invoke())
             }
-            host.await(activity) { host.description(it, host.context.getString(R.string.detail_save)) }
+            host.await(activity) { host.description(it, host.context.getString(R.string.detail_edit_tags)) }
             delay(350)
             host.main { activity.onBackPressedDispatcher.onBackPressed() }
             host.await(activity) {

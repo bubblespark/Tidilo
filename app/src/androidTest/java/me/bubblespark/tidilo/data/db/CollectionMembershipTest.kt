@@ -32,7 +32,9 @@ class CollectionMembershipTest {
         dao.insertOrUpdate(row.copy(description = "Changed"))
         assertEquals(listOf("a", "b"), db.collectionDao().observeMembershipIds("one").first())
         dao.insertAll(listOf(row.copy(note = "Batch")))
-        dao.updateFields("one", "Edited", null, null, listOf("Tag"), 2)
+        dao.updateDescriptionAndTag("one", "Edited", me.bubblespark.tidilo.ui.screens.library.Tag(null, null, listOf("Tag")), 2)
+        dao.updateTagAndPrivate("one", null, null, listOf("Tag"), false, 2)
+        dao.updateNote("one", "Autosaved", 2)
         dao.replaceEntitySpellings(mapOf(me.bubblespark.tidilo.data.entitySkeletonKey("Tag") to "TAG"), 3)
         assertEquals(listOf("a", "b"), db.collectionDao().observeMembershipIds("one").first())
     } }

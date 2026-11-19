@@ -53,6 +53,8 @@ internal open class StubBookmarkDao(
     override suspend fun insertCollectionMembership(row: BookmarkCollectionCrossRef) = Unit
     override suspend fun entityRowsForReplacement(skeletonKey: String, afterId: String?): List<BookmarkEntityTags> = emptyList()
     override suspend fun updateEntityRows(rows: List<BookmarkEntityTagUpdate>) = Unit
+    override suspend fun updateTagPrivateRow(row: me.bubblespark.tidilo.data.db.BookmarkTagPrivateUpdate) = Unit
+    override suspend fun updateDescriptionTagRow(row: me.bubblespark.tidilo.data.db.BookmarkDescriptionTagUpdate) = Unit
     override suspend fun updateNote(id: String, note: String, updatedAt: Long) = Unit
     override suspend fun deleteById(id: String) = Unit
     override suspend fun deleteByIdOrUrl(id: String, url: String) = Unit

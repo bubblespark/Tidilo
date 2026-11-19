@@ -138,12 +138,8 @@ class BookmarkDetailLightingTest {
                 assertTrue("$dark ${item.title}: outside-banner glow must follow OG hue, delta=$difference", difference > 5)
                 if (index == 1) {
                     val backLabel = context.getString(R.string.common_back)
-                    val saveLabel = context.getString(R.string.detail_save)
                     val backBefore = Rect().also { rect ->
                         requireNotNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, backLabel) }).getBoundsInScreen(rect)
-                    }
-                    val saveBefore = Rect().also { rect ->
-                        requireNotNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, saveLabel) }).getBoundsInScreen(rect)
                     }
                     val before = instrumentation.uiAutomation.takeScreenshot()
                     try {
@@ -174,11 +170,7 @@ class BookmarkDetailLightingTest {
                         val backAfter = Rect().also { rect ->
                             requireNotNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, backLabel) }).getBoundsInScreen(rect)
                         }
-                        val saveAfter = Rect().also { rect ->
-                            requireNotNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, saveLabel) }).getBoundsInScreen(rect)
-                        }
                         assertTrue("The floating Back button remains fixed while the image scrolls", backBefore == backAfter)
-                        assertTrue("The floating Save button remains fixed while the image scrolls", saveBefore == saveAfter)
                         val after = instrumentation.uiAutomation.takeScreenshot()
                         try {
                             var changed = 0

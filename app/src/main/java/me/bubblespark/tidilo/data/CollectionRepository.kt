@@ -5,6 +5,8 @@ import androidx.paging.PagingConfig
 import androidx.paging.map
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -31,7 +33,8 @@ class CollectionRepository(private val database: AppDatabase) {
         id
     }
 
-    suspend fun update(id: String, draft: CollectionDraft, now: Long): Boolean = withContext(Dispatchers.IO) {
+    /** Completes even if the editor closes mid-write, so an autosaved draft is never half-applied. */
+    suspend fun update(id: String, draft: CollectionDraft, now: Long): Boolean = withContext(NonCancellable + Dispatchers.IO) {
         val value = CollectionPolicy.normalize(draft)
         database.withTransaction {
             val old = dao.getById(id) ?: return@withTransaction false
@@ -40,6 +43,25 @@ class CollectionRepository(private val database: AppDatabase) {
                 colorIndex = value.colorIndex, updatedAt = now)) > 0
         }
     }
+
+    /**
+     * Autosave write of exactly the fields the user edited. Every other column keeps the current row, so a
+     * concurrent change to another field (committed before or while this write runs) is never overwritten.
+     * Returns the stored values after the write, or null when the collection is gone.
+     */
+    suspend fun updateFields(id: String, draft: CollectionDraft, fields: Set<CollectionField>, now: Long): CollectionDraft? =
+        withContext(NonCancellable + Dispatchers.IO) {
+            val value = CollectionPolicy.normalize(draft)
+            database.withTransaction {
+                val old = dao.getById(id) ?: return@withTransaction null
+                val current = CollectionDraft(old.title, old.description, old.presetIconId, old.customSymbol, old.colorIndex)
+                val merged = current.withFields(value, fields)
+                val updated = dao.update(old.copy(title = merged.title, description = merged.description,
+                    presetIconId = merged.presetIconId, customSymbol = merged.customSymbol,
+                    colorIndex = merged.colorIndex, updatedAt = now)) > 0
+                if (updated) merged else null
+            }
+        }
 
     suspend fun delete(id: String): Boolean = withContext(Dispatchers.IO) { dao.delete(id) > 0 }
 
@@ -58,7 +80,8 @@ class CollectionRepository(private val database: AppDatabase) {
     suspend fun removeMembership(bookmarkId: String, collectionId: String) = changeMembership(bookmarkId, collectionId, false)
     suspend fun toggleMembership(bookmarkId: String, collectionId: String) = changeMembership(bookmarkId, collectionId, null)
 
-    private suspend fun changeMembership(bookmarkId: String, collectionId: String, add: Boolean?): Boolean = withContext(Dispatchers.IO) {
+    /** Each checkbox change is persisted on its own and survives the sheet closing mid-write. */
+    private suspend fun changeMembership(bookmarkId: String, collectionId: String, add: Boolean?): Boolean = withContext(NonCancellable + Dispatchers.IO) {
         database.withTransaction {
             if (database.bookmarkDao().getBookmarkById(bookmarkId) == null || dao.getById(collectionId) == null) return@withTransaction false
             val shouldAdd = add ?: (collectionId !in dao.membershipIds(bookmarkId))
@@ -66,5 +89,14 @@ class CollectionRepository(private val database: AppDatabase) {
             else dao.removeMembership(bookmarkId, collectionId)
             true
         }
+    }
+
+    internal companion object {
+        /**
+         * Shared by every collection editor autosaver, so writes from a closing and a recreated editor keep
+         * their order. Autosavers enter it on `Dispatchers.Main.immediate` when a write starts, before any
+         * dispatch to IO.
+         */
+        val editorWriteLock = Mutex()
     }
 }

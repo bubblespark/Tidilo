@@ -67,10 +67,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.ui.theme.ThemeSurfaceState
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.Subcategory
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -87,7 +92,9 @@ fun BookmarkTagEditDialog(
     onOpenEntityPickerClick: () -> Unit,
     blurBackground: Boolean = true,
     onConfirm: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    saving: Boolean = false,
+    saveFailed: Boolean = false
 ) {
     val context = LocalContext.current
     var isCategoryDropdownExpanded by remember { mutableStateOf(false) }
@@ -112,7 +119,7 @@ fun BookmarkTagEditDialog(
     TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
         blurBackground = blurBackground,
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving) onDismiss() },
         title = {
             Text(
                 text = stringResource(R.string.detail_tag_dialog_title),
@@ -141,6 +148,7 @@ fun BookmarkTagEditDialog(
                         TidiloSurface(
                             onClick = { isCategoryDropdownExpanded = true },
                             role = SurfaceRole.INPUT,
+                            state = ThemeSurfaceState(enabled = !saving),
                             modifier = Modifier
                                 .fillMaxWidth()
                         ) {
@@ -229,6 +237,7 @@ fun BookmarkTagEditDialog(
                         TidiloSurface(
                             onClick = { isSubcategoryDropdownExpanded = true },
                             role = SurfaceRole.INPUT,
+                            state = ThemeSurfaceState(enabled = !saving),
                             modifier = Modifier
                                 .fillMaxWidth()
                         ) {
@@ -320,7 +329,8 @@ fun BookmarkTagEditDialog(
 
                         Switch(
                             checked = isPrivate,
-                            onCheckedChange = onPrivateChanged
+                            onCheckedChange = onPrivateChanged,
+                            enabled = !saving
                         )
                     }
 
@@ -374,6 +384,7 @@ fun BookmarkTagEditDialog(
                                     showInlineLimitError = selectedEntities.size >= Tag.MAX_ENTITIES
                                     onAddEntityClick()
                                 },
+                                enabled = !saving,
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
@@ -389,6 +400,7 @@ fun BookmarkTagEditDialog(
                             // "Select" icon button without background (List Alt icon)
                             IconButton(
                                 onClick = onOpenEntityPickerClick,
+                                enabled = !saving,
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
@@ -478,19 +490,31 @@ fun BookmarkTagEditDialog(
                         }
                     }
                 }
+                if (saveFailed && !saving) {
+                    Text(
+                        text = stringResource(R.string.common_save_failed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(
-                    text = stringResource(R.string.common_ok),
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+            TextButton(onClick = onConfirm, enabled = !saving) {
+                if (saving) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Text(
+                        text = stringResource(R.string.common_ok),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !saving) {
                 Text(text = stringResource(R.string.common_cancel))
             }
         },
@@ -700,7 +724,10 @@ private fun Modifier.verticalScrollbar(
     }
 }
 
-/** Replacement choices are staged locally until the detail screen is saved. */
+/**
+ * Replacement choices stay in the parent tag-dialog draft; they are persisted, together with the rest
+ * of the tag edit, only when the parent dialog's OK commits it.
+ */
 @Composable
 fun EntityTagConflictDialog(
     entered: String,

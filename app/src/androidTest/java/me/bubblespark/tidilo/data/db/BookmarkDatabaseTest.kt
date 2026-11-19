@@ -610,7 +610,7 @@ class BookmarkDatabaseTest {
             val counts = db.bookmarkDao().tagCounts(BookmarkQueries.tags(setOf("Tech"), false, TagKind.ENTITY)).first()
             assertEquals(1, counts.single { it.value == "Kotlin" }.count)
             assertEquals(listOf("example.com"), db.bookmarkDao().distinctDomains())
-            db.bookmarkDao().updateFields("a", "New description", "Tool", "Life", listOf("Updated"), 3)
+            db.bookmarkDao().updateDescriptionAndTag("a", "New description", me.bubblespark.tidilo.ui.screens.library.Tag("Tool", "Life", listOf("Updated")), 3)
             assertTrue(results(db, "#Kotlin", false).isEmpty())
             assertEquals(listOf("a"), results(db, "#Updated New", false).map { it.id })
             db.bookmarkDao().deleteById("a")

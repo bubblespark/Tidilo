@@ -162,7 +162,6 @@
     <!-- Bookmark Detail Screen -->
     <string name="detail_item_not_found">Item not found</string>
     <string name="detail_title">Details</string>
-    <string name="detail_save">Save</string>
     <string name="detail_open_url">Open URL</string>
     <string name="detail_url_copied">URL copied to clipboard</string>
     <string name="detail_section_tags">Category &amp; Tags</string>
@@ -173,8 +172,6 @@
     <string name="detail_updated_at">Updated: %1$s</string>
     <string name="detail_action_delete">Delete</string>
     <string name="detail_action_ai_summary">AI Summary</string>
-    <string name="detail_dialog_discard_title">Discard changes?</string>
-    <string name="detail_dialog_discard_message">Unsaved changes will be discarded.</string>
     <string name="detail_dialog_delete_title">Delete Bookmark</string>
     <string name="detail_dialog_delete_message">Move this bookmark to trash?\n(Kept for 30 days before permanent deletion)</string>
     <string name="detail_edit_tags">Edit category and tags</string>
@@ -286,6 +283,9 @@
     <string name="subcategory_adult">Adult</string>
     <string name="subcategory_education">Education</string>
     <string name="common_save_failed">Could not save changes. Please try again.</string>
+    <string name="common_saving">Saving…</string>
+    <string name="common_saved">Saved</string>
+    <string name="collection_title_required">Enter a collection name. The last saved name is kept until then.</string>
     <string name="library_load_failed">Could not load bookmarks.</string>
     <string name="summary_title">Storage</string>
     <string name="summary_subtitle">Bookmark counts and cache storage</string>
@@ -366,7 +366,7 @@
     </plurals>
     <string name="entity_conflict_title">Tag spelling already exists</string>
     <string name="entity_conflict_spellings">Entered: %1$s\nExisting: %2$s</string>
-    <string name="entity_conflict_save_notice">Replace across all bookmarks applies only after you tap Save on the detail screen.</string>
+    <string name="entity_conflict_save_notice">Replace across all bookmarks applies when you tap OK in the tag editor.</string>
     <string name="entity_conflict_use_existing">Use existing tag</string>
     <string name="entity_conflict_replace">Replace across all bookmarks</string>
     <string name="entity_library_failed">Could not load existing tags. Retry before adding a tag.</string>
@@ -388,7 +388,6 @@
     <string name="collection_custom_char_placeholder">Emoji / 1 char</string>
     <string name="collection_color_label">Color Palette</string>
     <string name="collection_create_action">Create</string>
-    <string name="collection_edit_action">Save</string>
     <string name="collection_missing">This collection is no longer available.</string>
     <string name="collection_save_failed">Could not save your changes. Please try again.</string>
     <string name="collection_load_failed">Could not load this collection. Please try again.</string>

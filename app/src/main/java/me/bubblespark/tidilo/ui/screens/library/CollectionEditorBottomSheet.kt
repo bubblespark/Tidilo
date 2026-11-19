@@ -43,9 +43,11 @@ fun CollectionEditorBottomSheet(collectionId: String?, onDismiss: () -> Unit, mo
         CollectionEditorViewModel(saved, CollectionRepository(AppDatabase.getInstance(context)), collectionId)
     }
     val state by model.state.collectAsStateWithLifecycle()
+    val autosaveStatus by model.autosaveStatus.collectAsStateWithLifecycle()
     LaunchedEffect(state.done) { if (state.done) onDismiss() }
-    CollectionEditorContent(state, collectionId != null, model::edit, model::save,
-        model::confirmDelete, model::delete, { if (!state.pending) onDismiss() }, modifier, onRetry = model::retryLoad)
+    CollectionEditorContent(state, collectionId != null, model::edit, model::create,
+        model::confirmDelete, model::delete, { if (!state.pending) onDismiss() }, modifier, onRetry = model::retryLoad,
+        autosaveStatus = autosaveStatus, onRetrySave = model::retrySave)
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -53,7 +55,8 @@ fun CollectionEditorBottomSheet(collectionId: String?, onDismiss: () -> Unit, mo
 internal fun CollectionEditorContent(
     state: CollectionEditorState, editing: Boolean, onEdit: (CollectionDraft) -> Unit,
     onSave: () -> Unit, onConfirmDelete: (Boolean) -> Unit, onDelete: () -> Unit,
-    onDismiss: () -> Unit, modifier: Modifier = Modifier, onRetry: () -> Unit = {}
+    onDismiss: () -> Unit, modifier: Modifier = Modifier, onRetry: () -> Unit = {},
+    autosaveStatus: AutosaveStatus = AutosaveStatus.Idle, onRetrySave: () -> Unit = {}
 ) {
     val draft = state.draft
     val pending by rememberUpdatedState(state.pending)
@@ -70,19 +73,33 @@ internal fun CollectionEditorContent(
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             CollectionSheetHeader(
                 title = stringResource(if (editing) R.string.collection_edit_title else R.string.collection_create_title),
-                actionLabel = stringResource(if (editing) R.string.collection_edit_action else R.string.collection_create_action),
+                // Existing collections autosave; only creation keeps an explicit action.
+                actionLabel = if (editing) null else stringResource(R.string.collection_create_action),
                 enabled = draft.title.isNotBlank() && canEdit, onSave = onSave,
                 colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = MaterialTheme.colorScheme.scrim))
             Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (state.loading) CircularProgressIndicator()
                 if (state.missing) Text(stringResource(R.string.collection_missing))
+                val titleMissing = editing && autosaveStatus == AutosaveStatus.Invalid
                 OutlinedTextField(draft.title, { onEdit(draft.copy(title = it)) },
                     label = { Text(stringResource(R.string.collection_name_label)) }, singleLine = true,
+                    isError = titleMissing,
+                    supportingText = if (titleMissing) {
+                        { Text(stringResource(R.string.collection_title_required)) }
+                    } else null,
                     enabled = canEdit, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(draft.description, { onEdit(draft.copy(description = it)) },
                     label = { Text(stringResource(R.string.collection_desc_label)) }, minLines = 2, maxLines = 2,
                     enabled = canEdit, modifier = Modifier.fillMaxWidth())
+                if (editing && !state.missing) {
+                    // The blank-title error is shown on the title field itself.
+                    AutosaveStatusLine(
+                        status = if (autosaveStatus == AutosaveStatus.Invalid) AutosaveStatus.Idle else autosaveStatus,
+                        onRetry = onRetrySave,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 Text(stringResource(R.string.collection_icon_label), style = MaterialTheme.typography.labelLarge)
                 FlowRow(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     CollectionPresetIcon.entries.forEach { preset ->

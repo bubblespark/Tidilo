@@ -28,11 +28,11 @@ class BookmarkDetailTagLayoutTest {
     @Test fun subcategoryOnlyTagsRetainTheClassificationLine() = verifyTags(subcategory = "Tech")
     @Test fun privateOnlyTagsRetainTheClassificationLine() = verifyTags(isPrivate = true)
     @Test fun emptyTagsRetainTheSectionAndEditAction() = verifyTags()
-    @Test fun editingTagsUpdatesBreadcrumbAndEntitiesInMemoryAndEnablesSave() = verifyTags(
+    @Test fun tagDialogOkPersistsBreadcrumbAndEntitiesWithoutDetailSave() = verifyTags(
         category = "Article",
         subcategory = "Tech",
         entities = listOf("InitialEntity"),
-        verifyInMemoryEdit = true
+        verifyTagCommit = true
     )
 
     private fun verifyTags(
@@ -40,7 +40,7 @@ class BookmarkDetailTagLayoutTest {
         subcategory: String? = null,
         isPrivate: Boolean = false,
         entities: List<String> = emptyList(),
-        verifyInMemoryEdit: Boolean = false
+        verifyTagCommit: Boolean = false
     ): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -124,17 +124,7 @@ class BookmarkDetailTagLayoutTest {
                 } == true
             )
 
-            if (verifyInMemoryEdit) {
-                val saveLabel = context.getString(R.string.detail_save)
-                fun isSaveClickableEnabled(): Boolean {
-                    var target = instrumentation.uiAutomation.rootInActiveWindow?.let {
-                        findNode(it) { n -> n.contentDescription?.toString() == saveLabel }
-                    }
-                    while (target != null && !target.isClickable) target = target.parent
-                    return target?.isEnabled == true
-                }
-                assertTrue("Save button starts disabled before edits", !isSaveClickableEnabled())
-
+            if (verifyTagCommit) {
                 clickNode(editLabel)
                 // Toggle Private switch inside BookmarkTagEditDialog
                 withTimeout(10000) {
@@ -169,7 +159,14 @@ class BookmarkDetailTagLayoutTest {
                 assertTrue("Updated classification breadcrumb with Private appears above title", updatedBreadcrumbBounds.top < titleBounds.top)
                 val addedEntityBounds = bounds(newEntity)
                 assertTrue("Added entity chip appears below title", addedEntityBounds.top > titleBounds.bottom)
-                assertTrue("Floppy Save button is enabled after confirming tag edits", isSaveClickableEnabled())
+                // Parent OK is the final persistence step: no Detail-level Save is needed.
+                withTimeout(5000) {
+                    while (true) {
+                        val stored = db.bookmarkDao().getBookmarkById(id)
+                        if (stored?.isPrivate == true && newEntity in stored.entities) break
+                        delay(30)
+                    }
+                }
             }
         } finally {
             activity?.let { host -> instrumentation.runOnMainSync { host.finish() } }

@@ -13,6 +13,7 @@ import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 import me.bubblespark.tidilo.data.EntityTagPolicy
 import me.bubblespark.tidilo.data.entitySkeletonKey
+import me.bubblespark.tidilo.ui.screens.library.Tag
 
 /**
  * Canonicalizing persistence boundary for active bookmarks.
@@ -187,24 +188,52 @@ abstract class BookmarkDao {
     @Query("UPDATE bookmarks SET note = :note, updatedAt = :updatedAt WHERE id = :id")
     abstract suspend fun updateNote(id: String, note: String, updatedAt: Long)
 
+    @Update(entity = BookmarkEntity::class)
+    protected abstract suspend fun updateTagPrivateRow(row: BookmarkTagPrivateUpdate)
+
+    @Update(entity = BookmarkEntity::class)
+    protected abstract suspend fun updateDescriptionTagRow(row: BookmarkDescriptionTagUpdate)
+
+    /**
+     * Writes only classification, Private, derived search columns, and entity occurrences.
+     * Note, Like, description, and engagement columns are never rewritten from a snapshot.
+     */
     @Transaction
-    open suspend fun updateFields(
-        id: String, description: String, category: String?, subcategory: String?,
-        entities: List<String>, updatedAt: Long
-    ) {
-        val current = getBookmarkById(id) ?: return
-        insertOrUpdate(current.copy(description = description, category = category,
-            subcategory = subcategory, entities = entities, updatedAt = updatedAt))
+    open suspend fun updateTagAndPrivate(
+        id: String, category: String?, subcategory: String?,
+        entities: List<String>, isPrivate: Boolean, updatedAt: Long
+    ): Boolean {
+        val current = getBookmarkById(id) ?: return false
+        val next = current.copy(category = category, subcategory = subcategory,
+            entities = canonicalizeEntities(entities), isPrivate = isPrivate, updatedAt = updatedAt).withSearchFields()
+        updateTagPrivateRow(BookmarkTagPrivateUpdate(next.id, next.category, next.subcategory, next.entities,
+            next.isPrivate, next.searchCategory, next.searchSubcategory, next.updatedAt))
+        replaceOccurrences(next)
+        return true
     }
 
+    /** Applies an AI proposal; a null field keeps its stored value and its columns untouched. */
     @Transaction
-    open suspend fun updateNoteAndTag(
-        id: String, note: String, category: String?, subcategory: String?,
-        entities: List<String>, isPrivate: Boolean, updatedAt: Long
-    ) {
-        val current = getBookmarkById(id) ?: return
-        insertOrUpdate(current.copy(note = note, category = category, subcategory = subcategory,
-            entities = entities, isPrivate = isPrivate, updatedAt = updatedAt))
+    open suspend fun updateDescriptionAndTag(id: String, description: String?, tag: Tag?, updatedAt: Long): Boolean {
+        val current = getBookmarkById(id) ?: return false
+        if (description == null && tag == null) return true
+        val next = current.copy(
+            description = description ?: current.description,
+            category = if (tag != null) tag.category else current.category,
+            subcategory = if (tag != null) tag.subcategory else current.subcategory,
+            entities = if (tag != null) canonicalizeEntities(tag.entities) else current.entities,
+            updatedAt = updatedAt
+        ).withSearchFields()
+        updateDescriptionTagRow(BookmarkDescriptionTagUpdate(next.id, next.description, next.searchDescription,
+            next.category, next.subcategory, next.entities, next.searchCategory, next.searchSubcategory, next.updatedAt))
+        if (tag != null) replaceOccurrences(next)
+        return true
+    }
+
+    private suspend fun replaceOccurrences(bookmark: BookmarkEntity) {
+        deleteOccurrences(bookmark.id)
+        val rows = occurrences(bookmark)
+        if (rows.isNotEmpty()) insertOccurrences(rows)
     }
 
     @Query("DELETE FROM bookmarks WHERE id = :id")
@@ -255,3 +284,16 @@ data class BookmarkEntitySpelling(val skeletonKey: String, val value: String)
 
 /** Partial Room update preserves every column unrelated to entity spelling. */
 data class BookmarkEntityTagUpdate(val id: String, val entities: List<String>, val updatedAt: Long)
+
+/** Partial Room update for the tag dialog; unrelated columns such as note and Like stay intact. */
+data class BookmarkTagPrivateUpdate(
+    val id: String, val category: String?, val subcategory: String?, val entities: List<String>,
+    val isPrivate: Boolean, val searchCategory: String?, val searchSubcategory: String?, val updatedAt: Long
+)
+
+/** Partial Room update for AI proposal Apply; note, Private, and Like stay intact. */
+data class BookmarkDescriptionTagUpdate(
+    val id: String, val description: String, val searchDescription: String,
+    val category: String?, val subcategory: String?, val entities: List<String>,
+    val searchCategory: String?, val searchSubcategory: String?, val updatedAt: Long
+)

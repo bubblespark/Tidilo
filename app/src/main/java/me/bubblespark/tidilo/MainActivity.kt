@@ -275,6 +275,7 @@ fun TidiloApp(
         Scaffold(
             modifier = modifier.fillMaxSize(),
             containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onBackground,
             contentWindowInsets = WindowInsets(0, 0, 0, 0)
         ) { _ ->
             Box(

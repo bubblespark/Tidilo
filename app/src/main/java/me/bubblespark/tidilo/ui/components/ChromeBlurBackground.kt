@@ -27,9 +27,14 @@ internal fun ChromeBlurBackground(
     containerColor: Color,
     modifier: Modifier = Modifier,
     mask: Brush? = null,
-    outline: Boolean = true
+    outline: Boolean = true,
+    unavailableColor: Color = Color.Unspecified
 ) {
-    val input = rememberScreenBackdropInput() ?: return
+    val input = rememberScreenBackdropInput()
+    if (input == null) {
+        if (unavailableColor != Color.Unspecified) Box(modifier.background(unavailableColor, shape))
+        return
+    }
     val dark = currentThemeSurfaces().isDark
     val tint = containerColor.copy(alpha = containerColor.alpha * if (dark) .78f else .82f)
     val edge = MaterialTheme.colorScheme.onSurface.copy(alpha = if (dark) .32f else .24f)

@@ -117,6 +117,7 @@
     <string name="library_view_mode_menu_desc">表示スタイル</string>
     <string name="library_view_mode_list">リスト</string>
     <string name="library_view_mode_grid">グリッド</string>
+    <string name="library_summary_peek_open">要約を開く</string>
     <string name="time_just_now">たった今</string>
     <string name="time_minute_ago">1分前</string>
     <string name="time_minutes_ago">%1$d分前</string>

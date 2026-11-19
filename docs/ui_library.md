@@ -51,7 +51,8 @@ Search List places one localized caption above the card inside the same keyed pa
   1. **Domain**: `labelSmall` (`11.sp`, `lineHeight = 15.sp`, `outline`, 1-line ellipsis).
   2. **Title**: Reserved 3 lines (`minLines = 3, maxLines = 3`, `titleSmall`, `SemiBold`, ellipsis).
   3. **Relative Time**: Bottom-aligned via `Spacer(Modifier.weight(1f))` in `labelSmall` (`outline`), formatted by `TimeFormatter.kt`: `< 1m` (`Just now`), `1–59m` (`1 minute ago` / `%d minutes ago`), `1–23h` (`1 hour ago` / `%d hours ago`), `1–29d` (`1 day ago` / `%d days ago`), `>= 30d` (`yyyy/MM/dd`).
-- **Summary Peek Overlay**: Long-pressing a grid card hides bars/header and shows a borderless `background.copy(alpha = 0.85f)` overlay (no blur, preserving crisp text) at normal top body clearance (`statusBars + 104.dp`) with `✨ AI Summary` badge and `bodyMedium` (`lineHeight = 24.sp`) summary text. Tap or Back dismisses it cleanly.
+- **Summary Peek Overlay**: Long-press a grid card with a saved description in Library or Search to read it under the localized **Summary** / **要約** heading and document icon. The borderless preview sits at normal top body clearance (`statusBars + 104.dp`) and uses `bodyMedium` with `24.sp` line height. With blur enabled, the screen's own card backdrop is blurred at `20.dp` and covered by a neutral theme tint. The heading, icon, and text stay sharp. Blur OFF or unsupported rendering uses the theme background at 85% opacity. If an enabled capture temporarily disappears, the preview uses the opaque theme background.
+- **Summary Peek Interaction**: Scroll to read, then tap, press Back, or use the accessible Close action. The preview takes over accessibility traversal while open and returns to the same underlying grid position after dismissal. Opening records the existing summary-peek engagement event and reads the saved description directly.
 
 ---
 

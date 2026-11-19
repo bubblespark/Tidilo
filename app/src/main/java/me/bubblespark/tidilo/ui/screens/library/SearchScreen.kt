@@ -71,6 +71,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -275,14 +276,18 @@ fun SearchScreen(
         filteredBookmarks.itemCount == 0 -> ({ EmptySearchResult(query = searchQuery) })
         else -> null
     }
+    val peekOpen = peekBookmark != null
+    val backgroundSemantics = if (peekOpen) Modifier.clearAndSetSemantics {} else Modifier
+    val screenModifier = if (peekOpen) modifier else modifier.clickable(
+        interactionSource = remember { MutableInteractionSource() }, indication = null
+    ) { focusManager.clearFocus() }
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), avoidIme = true,
-        modifier = modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() }, indication = null
-        ) { focusManager.clearFocus() },
+        modifier = screenModifier,
+        bodyModifier = backgroundSemantics,
         hideHeaderOnScroll = true,
-        headerVisible = peekBookmark == null,
+        headerVisible = !peekOpen,
         bottomContentPadding = 24.dp,
-        header = { TidiloFrostedHeader(navigationIcon = {
+        header = { TidiloFrostedHeader(modifier = backgroundSemantics, navigationIcon = {
             IconButton(onClick = onNavigateBack, modifier = Modifier.padding(end = 4.dp).size(48.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back),
                     tint = MaterialTheme.colorScheme.onBackground)

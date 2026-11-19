@@ -121,6 +121,7 @@
     <string name="library_view_mode_menu_desc">View style</string>
     <string name="library_view_mode_list">List</string>
     <string name="library_view_mode_grid">Grid</string>
+    <string name="library_summary_peek_open">Open summary</string>
     <string name="time_just_now">Just now</string>
     <string name="time_minute_ago">1 minute ago</string>
     <string name="time_minutes_ago">%1$d minutes ago</string>

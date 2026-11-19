@@ -17,10 +17,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,7 +45,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddLink
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import me.bubblespark.tidilo.ui.components.TidiloDropdownMenu
 import androidx.compose.material3.Button
@@ -69,6 +66,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -83,9 +81,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -96,6 +100,7 @@ import androidx.compose.ui.unit.sp
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.DomainPolicyManager
+import me.bubblespark.tidilo.ui.components.ChromeBlurBackground
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
 import me.bubblespark.tidilo.ui.components.RememberAmbientLighting
@@ -307,9 +312,10 @@ fun LibraryScreen(
         }
     }
 
-    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), 
+    val backgroundSemantics = if (radialMenuOpen || peekBookmark != null) Modifier.clearAndSetSemantics {} else Modifier
+    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(),
         modifier = modifier,
-        bodyModifier = if (radialMenuOpen) Modifier.clearAndSetSemantics {} else Modifier,
+        bodyModifier = backgroundSemantics,
         hideHeaderOnScroll = true,
         bottomContentPadding = HeaderDefaults.LibraryActionClearance,
         headerVisible = peekBookmark == null,
@@ -331,7 +337,7 @@ fun LibraryScreen(
         },
         // Expressive Header (slides out/in from top screen edge linked with scrolling, hidden during peek)
         header = {
-            Box(if (radialMenuOpen) Modifier.clearAndSetSemantics {} else Modifier) {
+            Box(backgroundSemantics) {
             TidiloFrostedHeader(
                 scrollState = activeScrollState,
                 onTitleClick = {
@@ -888,6 +894,7 @@ private fun EmptyLibraryMessage(
 /** Shared borderless summary preview for library and search grid cards. */
 @Composable
 internal fun BookmarkSummaryPeekOverlay(bookmark: BookmarkItem?, headerHeight: androidx.compose.ui.unit.Dp, onDismiss: () -> Unit) {
+    val dismiss by rememberUpdatedState(onDismiss)
     AnimatedVisibility(
         visible = bookmark != null,
         enter = fadeIn(animationSpec = tween(200)),
@@ -895,43 +902,51 @@ internal fun BookmarkSummaryPeekOverlay(bookmark: BookmarkItem?, headerHeight: a
         modifier = Modifier.fillMaxSize()
     ) {
         val currentPeek = bookmark
+        val summaryTitle = stringResource(R.string.detail_section_summary)
+        val pane = if (currentPeek != null) Modifier.semantics { paneTitle = summaryTitle } else Modifier
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.85f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = { onDismiss() }
-                )
+                .pointerInput(Unit) { detectTapGestures { dismiss() } }
+                .then(pane)
         ) {
+            val background = MaterialTheme.colorScheme.background
+            ChromeBlurBackground(
+                shape = RectangleShape,
+                containerColor = background,
+                modifier = Modifier.matchParentSize(),
+                outline = false,
+                unavailableColor = background.copy(alpha = 0.85f)
+            )
             if (currentPeek != null) {
+                val closeLabel = stringResource(R.string.common_close)
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(top = headerHeight)
                         .padding(horizontal = 24.dp)
+                        .semantics {
+                            customActions = listOf(CustomAccessibilityAction(closeLabel) {
+                                dismiss()
+                                true
+                            })
+                        }
                         .verticalScroll(rememberScrollState())
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { onDismiss() }
-                        )
                 ) {
-                    // Badge: AI Summary
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.AutoAwesome,
+                            imageVector = ImageVector.vectorResource(R.drawable.ic_summarize),
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = stringResource(R.string.detail_action_ai_summary),
+                            text = summaryTitle,
+                            modifier = Modifier.semantics { heading() },
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary

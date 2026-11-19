@@ -49,6 +49,7 @@ fun TidiloSurface(
     interactionSource: MutableInteractionSource? = null,
     onLongClick: (() -> Unit)? = null,
     blurBackground: Boolean = false,
+    onLongClickLabel: String? = null,
     content: @Composable () -> Unit
 ) {
     val style = currentThemeSurfaces().resolve(role, variant, state, accent)
@@ -58,6 +59,7 @@ fun TidiloSurface(
             modifier = modifier.decoration(style).shadow(style.materialElevation(), style.shape, clip = false)
                 .clip(style.shape).combinedClickable(
                 enabled = state.enabled, role = Role.Button, onClick = onClick, onLongClick = onLongClick,
+                onLongClickLabel = onLongClickLabel,
                 interactionSource = interactionSource, indication = ripple()),
             shape = style.shape, color = if (frosted) Color.Transparent else style.materialColor(), contentColor = style.contentColor,
             shadowElevation = 0.dp, tonalElevation = if (frosted) 0.dp else style.tonalElevation,

@@ -251,4 +251,22 @@ class CollectionEditorTest {
             assertEquals("B", vm.state.value.draft.title)
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
+
+    @Test fun autosaveWritesOnlyChangedFieldsOverAConcurrentCommit() = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
+        try {
+            db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "A", "Old description", "folder", null, 0, 1, 1))
+            val repository = CollectionRepository(db)
+            val base = CollectionDraft("A", "Old description")
+            // Another editor commits a new title before this editor's write (based on the old row) runs.
+            repository.update("a", CollectionDraft("B", "Old description"), 2)
+            val stored = repository.updateChangedFields("a", CollectionDraft("A", "New description"), base, 3)
+            assertEquals(CollectionDraft("B", "New description"), stored)
+            val row = requireNotNull(db.collectionDao().getById("a"))
+            assertEquals("The untouched title keeps the concurrent change", "B", row.title)
+            assertEquals("New description", row.description)
+            assertNull(repository.updateChangedFields("missing", CollectionDraft("X"), null, 4))
+        } finally { db.close() }
+    }
 }

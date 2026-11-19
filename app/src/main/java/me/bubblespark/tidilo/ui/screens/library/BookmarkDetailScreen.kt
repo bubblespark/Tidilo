@@ -197,9 +197,6 @@ fun BookmarkDetailScreen(
     val edit = rememberSaveable(bookmark.id, saver = BookmarkDetailEditState.Saver) {
         BookmarkDetailEditState(bookmark.note)
     }
-    LaunchedEffect(bookmark.id, bookmark.note) {
-        edit.syncWithBookmark(bookmark)
-    }
     val hasCollection by remember(viewModel, bookmark.id) { viewModel.bookmarkHasCollections(bookmark.id) }
         .collectAsStateWithLifecycle(initialValue = false)
     var noteText by edit.noteText
@@ -219,6 +216,9 @@ fun BookmarkDetailScreen(
         }
     }
     val noteSaveStatus by noteAutosaver.status.collectAsStateWithLifecycle()
+    LaunchedEffect(bookmark.id, bookmark.note) {
+        edit.syncWithBookmark(bookmark, keepDraft = noteAutosaver.isBusy)
+    }
     // A draft restored after recreation may not be stored yet.
     LaunchedEffect(noteAutosaver) { noteAutosaver.submit(edit.noteText.value) }
     DisposableEffect(noteAutosaver) {

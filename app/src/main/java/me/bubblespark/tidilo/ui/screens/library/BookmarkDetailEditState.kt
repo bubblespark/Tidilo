@@ -28,9 +28,13 @@ internal class BookmarkDetailEditState(initialNote: String) {
     val conflictInput = mutableStateOf<String?>(null)
     val conflictExisting = mutableStateOf<String?>(null)
 
-    /** Synchronizes remote bookmark updates while preserving a note draft that is not yet stored. */
-    fun syncWithBookmark(bookmark: BookmarkItem) {
-        if (noteText.value == originalNote) {
+    /**
+     * Synchronizes remote bookmark updates while preserving a note draft that is not yet stored.
+     * With [keepDraft] (a note write is pending or running) the visible note is never replaced, even when
+     * it equals the old baseline: it may be a revert that still has to be written.
+     */
+    fun syncWithBookmark(bookmark: BookmarkItem, keepDraft: Boolean = false) {
+        if (!keepDraft && noteText.value == originalNote) {
             noteText.value = bookmark.note
         }
         originalNote = bookmark.note

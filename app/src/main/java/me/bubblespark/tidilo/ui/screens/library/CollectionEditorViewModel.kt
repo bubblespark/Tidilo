@@ -44,20 +44,31 @@ class CollectionEditorViewModel(
     private var loadJob: Job? = null
     private var storedDraft: CollectionDraft? = null
     private var restoredDraftSubmitted = false
-    private val autosaver: DebouncedAutosaver<CollectionDraft>? = collectionId?.let { id ->
+    /** An autosave snapshot: the edited draft plus the stored values it started from. */
+    private data class EditorWrite(val draft: CollectionDraft, val base: CollectionDraft?)
+
+    private val autosaver: DebouncedAutosaver<EditorWrite>? = collectionId?.let { id ->
         DebouncedAutosaver(
             scope = saveScope,
-            isValid = { it.title.isNotBlank() },
-            isStored = { draft -> runCatching { CollectionPolicy.normalize(draft) }.getOrNull() == storedDraft },
+            isValid = { it.draft.title.isNotBlank() },
+            isStored = { write -> runCatching { CollectionPolicy.normalize(write.draft) }.getOrNull() == storedDraft },
             writeLock = CollectionRepository.editorWriteLock
-        ) { draft ->
-            if (repository.update(id, draft, System.currentTimeMillis())) {
-                // Advance the baseline now so an immediate revert is not mistaken for the stored value.
-                storedDraft = CollectionPolicy.normalize(draft)
-            } else {
+        ) { write ->
+            val stored = repository.updateChangedFields(id, write.draft, write.base, System.currentTimeMillis())
+            if (stored == null) {
                 mutable.value = state.value.copy(missing = true)
+            } else {
+                // Advance the baseline now so an immediate revert is not mistaken for the stored value,
+                // and show fields another editor changed that this write deliberately kept.
+                val previous = storedDraft
+                storedDraft = stored
+                if (previous != null && previous != stored) adoptUntouchedFields(previous, stored)
             }
         }
+    }
+
+    private fun submitDraft() {
+        autosaver?.submit(EditorWrite(state.value.draft, storedDraft))
     }
 
     /** Autosave progress for an existing collection; always Idle while creating. */
@@ -89,7 +100,7 @@ class CollectionEditorViewModel(
                             if (!restoredDraftSubmitted) {
                                 restoredDraftSubmitted = true
                                 if (saved.get<Boolean>("loaded") != true) applyDraft(stored)
-                                else autosaver?.submit(state.value.draft)
+                                else submitDraft()
                             } else if (previous != null && previous != stored) {
                                 adoptUntouchedFields(previous, stored)
                             }
@@ -110,7 +121,7 @@ class CollectionEditorViewModel(
     fun edit(draft: CollectionDraft) {
         if (state.value.pending || state.value.loading || state.value.missing || state.value.error == "load") return
         applyDraft(draft)
-        autosaver?.submit(state.value.draft)
+        submitDraft()
     }
 
     /** Re-attempts a failed autosave of the current draft. */
@@ -144,7 +155,7 @@ class CollectionEditorViewModel(
         if (merged != draft) {
             applyDraft(merged)
             // Replace any pending or failed snapshot so the next write carries the adopted fields.
-            autosaver?.submit(state.value.draft)
+            submitDraft()
         }
     }
 

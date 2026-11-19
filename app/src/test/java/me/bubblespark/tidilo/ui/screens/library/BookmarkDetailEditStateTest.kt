@@ -95,4 +95,17 @@ class BookmarkDetailEditStateTest {
         assertEquals("Reopening starts again from the stored tag", listOf("AI"), edit.draftEntities.value)
         assertEquals("Cancelling the tag dialog never touches the note", "Independent note draft", edit.noteText.value)
     }
+
+    @Test
+    fun syncWithBookmark_keepsAPendingRevertEvenWhenItEqualsTheOldBaseline() {
+        val bookmark = createBookmark(note = "A")
+        val edit = BookmarkDetailEditState(bookmark.note)
+        // The user reverted to A while another screen's write of B was still running; A is pending.
+        edit.noteText.value = "A"
+
+        edit.syncWithBookmark(bookmark.copy(note = "B", updatedAt = 2000L), keepDraft = true)
+
+        assertEquals("A pending revert must not be replaced by the older write", "A", edit.noteText.value)
+        assertEquals("The baseline still follows Room so A is written", "B", edit.originalNote)
+    }
 }

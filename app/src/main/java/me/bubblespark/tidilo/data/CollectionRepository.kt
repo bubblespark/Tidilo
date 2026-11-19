@@ -44,6 +44,31 @@ class CollectionRepository(private val database: AppDatabase) {
         }
     }
 
+    /**
+     * Autosave write that applies only the fields the editor changed relative to [base], the stored
+     * values its draft started from. Other fields keep the current row, so a concurrent editor's change
+     * that committed while this write was pending or in flight is never overwritten with stale values.
+     * A null [base] writes every field. Returns the stored values, or null when the collection is gone.
+     */
+    suspend fun updateChangedFields(id: String, draft: CollectionDraft, base: CollectionDraft?, now: Long): CollectionDraft? =
+        withContext(NonCancellable + Dispatchers.IO) {
+            val value = CollectionPolicy.normalize(draft)
+            database.withTransaction {
+                val old = dao.getById(id) ?: return@withTransaction null
+                val merged = if (base == null) value else CollectionDraft(
+                    title = if (value.title != base.title) value.title else old.title,
+                    description = if (value.description != base.description) value.description else old.description,
+                    presetIconId = if (value.presetIconId != base.presetIconId) value.presetIconId else old.presetIconId,
+                    customSymbol = if (value.customSymbol != base.customSymbol) value.customSymbol else old.customSymbol,
+                    colorIndex = if (value.colorIndex != base.colorIndex) value.colorIndex else old.colorIndex
+                )
+                val updated = dao.update(old.copy(title = merged.title, description = merged.description,
+                    presetIconId = merged.presetIconId, customSymbol = merged.customSymbol,
+                    colorIndex = merged.colorIndex, updatedAt = now)) > 0
+                if (updated) merged else null
+            }
+        }
+
     suspend fun delete(id: String): Boolean = withContext(Dispatchers.IO) { dao.delete(id) > 0 }
 
     /** Validates every target before replacing anything; a failure rolls back the old membership. */

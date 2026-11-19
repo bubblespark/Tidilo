@@ -7,6 +7,7 @@ import me.bubblespark.tidilo.data.db.logicalBookmarkTag
 import me.bubblespark.tidilo.data.db.TrashBookmarkRow
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
+import androidx.paging.PagingSource
 import androidx.paging.PagingData
 import androidx.paging.map
 import kotlinx.coroutines.flow.Flow
@@ -16,7 +17,9 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import me.bubblespark.tidilo.data.db.BookmarkMatchField
 import me.bubblespark.tidilo.data.db.BookmarkQueries
+import me.bubblespark.tidilo.data.db.BookmarkSearchTerms
 import me.bubblespark.tidilo.data.db.TagKind
 import me.bubblespark.tidilo.data.db.normalizeTagCounts
 import me.bubblespark.tidilo.data.db.TagCount
@@ -295,14 +298,32 @@ class BookmarkRepository internal constructor(
 
     /** Each input generation owns a Pager; callers switch generations before caching in the ViewModel. */
     fun pagedBookmarks(query: String, domain: String?, showPrivate: Boolean, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): Flow<PagingData<BookmarkItem>> =
-        Pager(PagingConfig(pageSize = 30, prefetchDistance = 10, initialLoadSize = 60,
-            maxSize = 150, enablePlaceholders = false)) {
+        bookmarkPager {
             when {
                 query.isNotBlank() || source != BookmarkSource.ALL || rssFeedId != null -> bookmarkDao.search(BookmarkQueries.results(query, showPrivate, domain, source, rssFeedId))
                 domain != null -> bookmarkDao.byDomain(domain, showPrivate)
                 else -> bookmarkDao.timeline(showPrivate)
             }
         }.flow.map { page -> page.map { it.toBookmarkItem() } }
+
+    internal fun pagedSearchResults(query: String, showPrivate: Boolean): Flow<PagingData<BookmarkSearchResult>> {
+        val terms = BookmarkSearchTerms.parse(query)
+        return bookmarkPager {
+            if (query.isBlank()) bookmarkDao.timeline(showPrivate)
+            else bookmarkDao.search(BookmarkQueries.results(terms, showPrivate))
+        }.flow.map { page ->
+            page.map { row -> BookmarkSearchResult(row.toBookmarkItem(), terms.matchingFields(row)) }
+        }
+    }
+
+    private fun bookmarkPager(source: () -> PagingSource<Int, BookmarkEntity>) =
+        Pager(
+            config = PagingConfig(
+                pageSize = 30, prefetchDistance = 10, initialLoadSize = 60,
+                maxSize = 150, enablePlaceholders = false
+            ),
+            pagingSourceFactory = source
+        )
 
     fun observeBookmark(id: String): Flow<BookmarkItem?> = bookmarkDao.observeById(id).map { it?.toBookmarkItem() }
 
@@ -610,3 +631,5 @@ internal fun mergeWithExistingBookmark(
         lastInteractedAt = existing.lastInteractedAt
     )
 }
+
+internal data class BookmarkSearchResult(val bookmark: BookmarkItem, val matchedFields: Set<BookmarkMatchField>)

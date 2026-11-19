@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -135,6 +136,8 @@ fun BookmarkItemCard(
                 if (wordKeywords.isEmpty()) {
                     Text(
                         text = bookmark.title,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -147,6 +150,8 @@ fun BookmarkItemCard(
                     )
                     Text(
                         text = highlightedTitle,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -186,37 +191,46 @@ fun BookmarkItemCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            if (bookmark.description.isNotBlank()) {
+                Spacer(modifier = Modifier.height(10.dp))
 
-            if (wordKeywords.isEmpty()) {
-                Text(
-                    text = bookmark.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                val highlightedDescription = rememberHighlightedText(
-                    text = bookmark.description,
-                    keywords = wordKeywords
-                )
-                Text(
-                    text = highlightedDescription,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (wordKeywords.isEmpty()) {
+                    Text(
+                        text = bookmark.description,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    val highlightedDescription = rememberHighlightedText(
+                        text = bookmark.description,
+                        keywords = wordKeywords
+                    )
+                    Text(
+                        text = highlightedDescription,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            BookmarkTagSection(
-                tag = bookmark.tag,
-                localizedCategory = localizedCategory,
-                localizedSubcategory = localizedSubcategory,
-                isPrivate = bookmark.isPrivate,
-                isCategoryMatched = isCategoryMatched,
-                isSubcategoryMatched = isSubcategoryMatched,
-                tagKeywords = tagKeywords
-            )
+            if (localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() ||
+                bookmark.isPrivate || bookmark.tag.entities.isNotEmpty()
+            ) {
+                Spacer(modifier = Modifier.height(14.dp))
+                BookmarkTagSection(
+                    tag = bookmark.tag,
+                    localizedCategory = localizedCategory,
+                    localizedSubcategory = localizedSubcategory,
+                    isPrivate = bookmark.isPrivate,
+                    isCategoryMatched = isCategoryMatched,
+                    isSubcategoryMatched = isSubcategoryMatched,
+                    tagKeywords = tagKeywords
+                )
+            }
         }
     }
 }
@@ -364,7 +378,8 @@ fun BookmarkTagSection(
         if (tag.entities.isNotEmpty()) {
             BookmarkEntityChipsFlow(
                 entities = tag.entities,
-                tagKeywords = tagKeywords
+                tagKeywords = tagKeywords,
+                boundedPreview = true
             )
         }
     }
@@ -378,7 +393,8 @@ fun BookmarkTagSection(
 fun BookmarkEntityChipsFlow(
     entities: List<String>,
     modifier: Modifier = Modifier,
-    tagKeywords: List<String> = emptyList()
+    tagKeywords: List<String> = emptyList(),
+    boundedPreview: Boolean = false
 ) {
     if (entities.isEmpty()) return
     val surfaces = currentThemeSurfaces()
@@ -400,11 +416,7 @@ fun BookmarkEntityChipsFlow(
         fallbackContentColor = MaterialTheme.colorScheme.onTertiaryContainer
     )
 
-    FlowRow(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
+    val chips: @Composable () -> Unit = {
         entities.forEach { entity ->
             val cleanEntity = entity.removePrefix("#")
             val isEntityMatched = if (tagKeywords.isEmpty()) false else tagKeywords.any { it.equals(cleanEntity, ignoreCase = true) }
@@ -417,9 +429,20 @@ fun BookmarkEntityChipsFlow(
                 containerColor = entityColors.containerColor,
                 contentColor = entityColors.contentColor,
                 matchedContainerColor = matchedEntityColors.containerColor,
-                matchedContentColor = matchedEntityColors.contentColor
+                matchedContentColor = matchedEntityColors.contentColor,
+                preview = boundedPreview
             )
         }
+    }
+
+    if (boundedPreview && entities.size > MAX_ENTITY_PREVIEW_ROWS) {
+        EntityTagPreview(modifier.fillMaxWidth(), chips)
+    } else {
+        FlowRow(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(ENTITY_TAG_HORIZONTAL_GAP),
+            verticalArrangement = Arrangement.spacedBy(ENTITY_TAG_VERTICAL_GAP)
+        ) { chips() }
     }
 }
 
@@ -438,14 +461,15 @@ fun CompactTagBadge(
     modifier: Modifier = Modifier,
     iconTint: Color? = null,
     role: SurfaceRole = SurfaceRole.CLASSIFICATION_CHIP,
-    tone: SurfaceTone = SurfaceTone.NORMAL
+    tone: SurfaceTone = SurfaceTone.NORMAL,
+    preview: Boolean = false
 ) {
     TidiloBadgeSurface(
         role = role,
         state = ThemeSurfaceState(selected = isMatched, tone = tone),
         colors = ChipResolvedColors(if (isMatched) matchedContainerColor else containerColor,
             if (isMatched) matchedContentColor else contentColor),
-        modifier = modifier.height(26.dp)
+        modifier = if (preview) modifier.heightIn(min = 26.dp) else modifier.height(26.dp)
     ) {
         Box(Modifier.padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
         Row(
@@ -465,7 +489,8 @@ fun CompactTagBadge(
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = if (isMatched) FontWeight.Bold else FontWeight.Medium,
                 color = LocalContentColor.current,
-                maxLines = 1
+                maxLines = 1,
+                overflow = if (preview) TextOverflow.Ellipsis else TextOverflow.Clip
             )
         }
     }

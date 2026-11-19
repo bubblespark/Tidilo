@@ -365,4 +365,13 @@
     <string name="settings_theme_dialog_title">テーマの選択</string>
     <string name="settings_theme_default">デフォルト</string>
     <string name="settings_theme_modern">モダン</string>
+    <string name="search_match_separator">"・"</string>
+    <string name="search_match_title">タイトル</string>
+    <string name="search_match_url">URL</string>
+    <string name="search_match_classification">分類</string>
+    <string name="search_match_entity_tags">固有タグ</string>
+    <string name="bookmark_remaining_entity_tags_compact">+%1$d</string>
+    <plurals name="bookmark_remaining_entity_tags">
+        <item quantity="other">+%1$d 件の固有タグ</item>
+    </plurals>
 </resources>

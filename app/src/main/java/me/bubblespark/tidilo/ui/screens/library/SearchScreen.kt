@@ -67,15 +67,19 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.data.db.BookmarkMatchField
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
@@ -160,6 +164,15 @@ fun SearchScreen(
         }
     }
 
+    val matchFieldNames = searchMatchFieldNames()
+    val matchFieldSeparator = stringResource(R.string.search_match_separator)
+    val captionBaseStyle = MaterialTheme.typography.bodySmall
+    val configurationLocales = LocalConfiguration.current.locales
+    val captionLanguage = if (configurationLocales.isEmpty) null else configurationLocales[0].toLanguageTag()
+    val captionStyle = remember(captionBaseStyle, captionLanguage) {
+        if (captionLanguage == null) captionBaseStyle
+        else captionBaseStyle.copy(localeList = LocaleList(captionLanguage))
+    }
     val headerHeight = HeaderDefaults.bodyTopPadding()
 
     val isPrivateVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
@@ -430,10 +443,11 @@ fun SearchScreen(
                     }
                 } else {
                     items(count = filteredBookmarks.itemCount,
-                        key = filteredBookmarks.itemKey { "bookmark:${it.id}" },
+                        key = filteredBookmarks.itemKey { "bookmark:${it.bookmark.id}" },
                         contentType = { if (showingGrid) "bookmark_grid_card" else "bookmark_card" }
                     ) { index ->
-                        val item = filteredBookmarks[index] ?: return@items
+                        val result = filteredBookmarks[index] ?: return@items
+                        val item = result.bookmark
                         if (showingGrid) {
                             BookmarkGridCard(
                                 bookmark = item,
@@ -451,20 +465,23 @@ fun SearchScreen(
                                 }
                             )
                         } else {
-                            BookmarkItemCard(
-                                bookmark = item,
-                                wordKeywords = wordKeywords,
-                                tagKeywords = tagKeywords,
-                                currentLanguage = currentLanguage,
-                                context = context,
-                                onToggleLike = { viewModel.toggleLike(item.id) },
-                                onClick = {
-                                    viewModel.addSearchHistory(searchQuery)
-                                    focusManager.clearFocus()
-                                    keyboardController?.hide()
-                                    onNavigateToDetail(item.id)
-                                }
-                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                SearchMatchCaption(result.matchedFields, matchFieldNames, matchFieldSeparator, captionStyle)
+                                BookmarkItemCard(
+                                    bookmark = item,
+                                    wordKeywords = wordKeywords,
+                                    tagKeywords = tagKeywords,
+                                    currentLanguage = currentLanguage,
+                                    context = context,
+                                    onToggleLike = { viewModel.toggleLike(item.id) },
+                                    onClick = {
+                                        viewModel.addSearchHistory(searchQuery)
+                                        focusManager.clearFocus()
+                                        keyboardController?.hide()
+                                        onNavigateToDetail(item.id)
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -475,4 +492,42 @@ fun SearchScreen(
             }
         }
     }
+}
+
+@Composable
+private fun searchMatchFieldNames(): Map<BookmarkMatchField, String> {
+    val title = stringResource(R.string.search_match_title)
+    val summary = stringResource(R.string.detail_section_summary)
+    val url = stringResource(R.string.search_match_url)
+    val classification = stringResource(R.string.search_match_classification)
+    val entityTags = stringResource(R.string.search_match_entity_tags)
+    return remember(title, summary, url, classification, entityTags) {
+        mapOf(
+            BookmarkMatchField.TITLE to title,
+            BookmarkMatchField.SUMMARY to summary,
+            BookmarkMatchField.URL to url,
+            BookmarkMatchField.CLASSIFICATION to classification,
+            BookmarkMatchField.ENTITY_TAGS to entityTags
+        )
+    }
+}
+
+@Composable
+private fun SearchMatchCaption(
+    fields: Set<BookmarkMatchField>,
+    fieldNames: Map<BookmarkMatchField, String>,
+    separator: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier
+) {
+    if (fields.isEmpty()) return
+    val names = remember(fields, fieldNames, separator) {
+        fieldNames.filterKeys { it in fields }.values.joinToString(separator)
+    }
+    Text(
+        text = names,
+        modifier = modifier.padding(horizontal = 8.dp),
+        style = style,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }

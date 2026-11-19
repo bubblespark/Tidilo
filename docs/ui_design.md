@@ -103,6 +103,7 @@ Drill-downs publish active colors (`ownerId = "library_drilldown"`) via `Remembe
 - `AppThemeStyle` defines optional light/dark palettes (preserving Dynamic Color when unspecified), `ThemeShapeScale` (`6/8/10/12/14/16/20/22/24/28/32/36dp`), and per-role `SurfaceStyleOverride` values.
 - `ResolvedThemeSurfaces.resolve` enforces full foreground/container/edge/shadow tokens; semantic error, matched chip, and selected filter pairs supersede neutral overrides.
 - `SurfaceTreatment` selects native vs. decorated drawing independently of elevation (`TidiloSurface` places shadows outside content/ripple clips; individual screens do not force containers transparent).
+- Clickable `TidiloSurface` exposes `Role.Button` on its click node with or without a long-press action. A role set through the caller's `Modifier.semantics` takes precedence.
 
 ### 7.4 Component Coverage and Supported Parameters
 

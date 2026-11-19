@@ -19,10 +19,13 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -103,6 +106,46 @@ class ThemeConsumerRegressionTest {
         val image = host.instrumentation.uiAutomation.takeScreenshot()
         return try { image.getPixel(x.toInt(), y.toInt()) } finally { image.recycle() }
     }
+
+    @Test fun clickableSurfaceExposesDefaultAndCallerRolesWithBothActions() = scene(content = {
+        TidiloSurface(onClick = {}, role = SurfaceRole.TOOLBAR, modifier = Modifier.testTag("tap")) {
+            Text("Tap only")
+        }
+        TidiloSurface(onClick = {}, role = SurfaceRole.TOOLBAR, modifier = Modifier.testTag("longPress"),
+            onLongClick = {}, onLongClickLabel = "Edit") {
+            Text("Tap and long press")
+        }
+        TidiloSurface(onClick = {}, role = SurfaceRole.INPUT,
+            modifier = Modifier.testTag("customTap").semantics { role = Role.DropdownList }) {
+            Text("Custom tap only")
+        }
+        TidiloSurface(onClick = {}, role = SurfaceRole.INPUT,
+            modifier = Modifier.testTag("customLongPress").semantics { role = Role.DropdownList },
+            onLongClick = {}, onLongClickLabel = "Edit") {
+            Text("Custom tap and long press")
+        }
+    }, verify = { host, activity ->
+        val tap = tagged(host, activity, "tap")
+        val longPress = tagged(host, activity, "longPress")
+        val customTap = tagged(host, activity, "customTap")
+        val customLongPress = tagged(host, activity, "customLongPress")
+        host.main {
+            for (node in listOf(tap, longPress, customTap, customLongPress)) {
+                assertNotNull(node.config.getOrNull(SemanticsActions.OnClick)?.action)
+            }
+            assertEquals(Role.Button, tap.config.getOrNull(SemanticsProperties.Role))
+            assertEquals(Role.Button, longPress.config.getOrNull(SemanticsProperties.Role))
+            assertEquals(Role.DropdownList, customTap.config.getOrNull(SemanticsProperties.Role))
+            assertEquals(Role.DropdownList, customLongPress.config.getOrNull(SemanticsProperties.Role))
+            assertNull(tap.config.getOrNull(SemanticsActions.OnLongClick))
+            assertNull(customTap.config.getOrNull(SemanticsActions.OnLongClick))
+            for (node in listOf(longPress, customLongPress)) {
+                val action = node.config.getOrNull(SemanticsActions.OnLongClick)
+                assertEquals("Edit", action?.label)
+                assertNotNull(action?.action)
+            }
+        }
+    })
 
     @Test fun foregroundRemainsOpaqueWithTranslucentBackground() = scene(content = {
         ResolvedTidiloSurface(ResolvedSurfaceStyle(containerColor = Color.Red, opacity = 0.2f,

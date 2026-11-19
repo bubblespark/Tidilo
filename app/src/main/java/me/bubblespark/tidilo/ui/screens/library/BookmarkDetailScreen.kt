@@ -199,33 +199,33 @@ fun BookmarkDetailScreen(
     }
     val hasCollection by remember(viewModel, bookmark.id) { viewModel.bookmarkHasCollections(bookmark.id) }
         .collectAsStateWithLifecycle(initialValue = false)
-    var noteText by edit.noteText
+    val noteText by edit.noteText
     val storedTag = bookmark.tag
     val storedIsPrivate = bookmark.isPrivate
     // The note autosaves on the shared ViewModel scope so a pending write outlives this screen.
     val noteAutosaver = remember(viewModel, bookmark.id) {
-        DebouncedAutosaver<String>(
+        DebouncedAutosaver<NoteWrite>(
             scope = viewModel.viewModelScope,
-            isStored = { it == edit.originalNote },
             writeLock = viewModel.noteWriteLock
-        ) { note ->
-            viewModel.saveNote(bookmark.id, note)
-            // Advance the stored baseline now rather than waiting for Room's emission, so an
-            // immediate revert is still written and the late emission cannot overwrite it.
-            edit.originalNote = note
+        ) { write ->
+            viewModel.saveNote(bookmark.id, write.text)
+            edit.onNoteWritten(write)
         }
     }
     val noteSaveStatus by noteAutosaver.status.collectAsStateWithLifecycle()
+    // Room only drives the note while the user has no unsaved edit (EditedFields model).
     LaunchedEffect(bookmark.id, bookmark.note) {
-        edit.syncWithBookmark(bookmark, keepDraft = noteAutosaver.isBusy)
+        edit.onNoteStored(bookmark.note)
     }
     // A draft restored after recreation may not be stored yet.
-    LaunchedEffect(noteAutosaver) { noteAutosaver.submit(edit.noteText.value) }
+    LaunchedEffect(noteAutosaver) { edit.pendingNoteWrite()?.let(noteAutosaver::submit) }
     DisposableEffect(noteAutosaver) {
         onDispose {
-            // Submit synchronously so the latest keystroke is included in the final write.
-            noteAutosaver.submit(edit.noteText.value)
-            noteAutosaver.flush()
+            // Owe nothing → write nothing; otherwise send the latest edit (also re-sends a failed one).
+            edit.pendingNoteWrite()?.let { write ->
+                noteAutosaver.submit(write)
+                noteAutosaver.flush()
+            }
         }
     }
     var showTagEditDialog by edit.showTagEditDialog
@@ -966,8 +966,7 @@ fun BookmarkDetailScreen(
                         value = noteText,
                         onValueChange = { input ->
                             val limited = if (input.length > 200) input.take(200) else input
-                            noteText = limited
-                            noteAutosaver.submit(limited)
+                            noteAutosaver.submit(edit.onNoteTyped(limited))
                         },
                         placeholder = {
                             Text(

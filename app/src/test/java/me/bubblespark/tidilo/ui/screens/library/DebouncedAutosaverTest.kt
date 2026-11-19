@@ -115,49 +115,6 @@ class DebouncedAutosaverTest {
     }
 
     @Test
-    fun valueEqualToStoredIsNotRewrittenWhenNothingIsPending() = autosaveTest { scope ->
-        var stored = "saved"
-        val writes = mutableListOf<String>()
-        val saver = DebouncedAutosaver<String>(scope, delayMillis = 10, isStored = { it == stored }) {
-            writes += it
-            stored = it
-        }
-
-        saver.submit("saved")
-        delay(50)
-        assertTrue("Opening the editor must not rewrite the stored value", writes.isEmpty())
-        assertEquals(AutosaveStatus.Idle, saver.status.value)
-
-        saver.submit("typed")
-        saver.submit("saved")
-        delay(50)
-        assertTrue("Reverting before the pause cancels the pending write", writes.isEmpty())
-    }
-
-    @Test
-    fun revertingWhileAWriteIsInFlightStillPersistsTheRevert() = autosaveTest { scope ->
-        var stored = "a"
-        val gate = CompletableDeferred<Unit>()
-        val writes = mutableListOf<String>()
-        val saver = DebouncedAutosaver<String>(scope, delayMillis = 10_000, isStored = { it == stored }) { value ->
-            if (value == "ab") gate.await()
-            writes += value
-            stored = value
-        }
-
-        saver.submit("ab")
-        saver.flush()
-        repeat(3) { yield() }
-        // Room has not reflected "ab" yet, so "a" still looks stored; the in-flight write must not win.
-        saver.submit("a")
-        saver.flush()
-        gate.complete(Unit)
-        delay(50)
-
-        assertEquals(listOf("ab", "a"), writes)
-    }
-
-    @Test
     fun cancelDropsAPendingDraft() = autosaveTest { scope ->
         val writes = mutableListOf<String>()
         val saver = DebouncedAutosaver<String>(scope, delayMillis = 10) { writes += it }
@@ -240,26 +197,4 @@ class DebouncedAutosaverTest {
         assertEquals("The newest write must land last", listOf("A", "B", "C"), writes)
     }
 
-    @Test
-    fun revertToStoredValueIsWrittenWhileAnotherInstanceHoldsTheSharedLock() = autosaveTest { scope ->
-        val lock = kotlinx.coroutines.sync.Mutex()
-        val gate = CompletableDeferred<Unit>()
-        var stored = "A"
-        val writes = mutableListOf<String>()
-        val write: suspend (String) -> Unit = { value -> if (value == "B") gate.await(); writes += value; stored = value }
-        val disposed = DebouncedAutosaver(scope, delayMillis = 10_000, writeLock = lock, write = write)
-        val recreated = DebouncedAutosaver(scope, delayMillis = 10_000, isStored = { it == stored }, writeLock = lock, write = write)
-
-        // The old screen is still writing B; the recreated screen read A before B committed.
-        disposed.submit("B"); disposed.flush()
-        repeat(3) { yield() }
-        recreated.submit("C")
-        recreated.submit("A")
-        recreated.flush()
-        repeat(3) { yield() }
-        gate.complete(Unit)
-        delay(50)
-
-        assertEquals("The user's revert to A must land after the old write", listOf("B", "A"), writes)
-    }
 }

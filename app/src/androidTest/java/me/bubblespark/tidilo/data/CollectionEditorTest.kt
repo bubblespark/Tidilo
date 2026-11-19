@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.room.Room
+import kotlinx.coroutines.launch
+import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -25,7 +27,7 @@ class CollectionEditorTest {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
         val store = ViewModelStore()
-        val saved = if (restored) SavedStateHandle(mapOf("loaded" to true, "title" to "Unsaved draft",
+        val saved = if (restored) SavedStateHandle(mapOf("loaded" to true, "edited" to arrayListOf("TITLE", "DESCRIPTION", "ICON", "COLOR"), "title" to "Unsaved draft",
             "description" to "Draft description", "icon" to "code", "color" to 7)) else SavedStateHandle()
         lateinit var vm: CollectionEditorViewModel
         try {
@@ -189,13 +191,13 @@ class CollectionEditorTest {
         try {
             db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "Stored", "", "folder", null, 0, 1, 1))
             // A blank title restored after recreation keeps its recoverable-draft error.
-            create(SavedStateHandle(mapOf("loaded" to true, "title" to "", "description" to "", "icon" to "folder", "color" to 0)))
+            create(SavedStateHandle(mapOf("loaded" to true, "edited" to arrayListOf("TITLE"), "title" to "", "description" to "", "icon" to "folder", "color" to 0)))
             withTimeout(5000) { while (vm.state.value.loading) delay(20) }
             withTimeout(5000) { while (vm.autosaveStatus.value != me.bubblespark.tidilo.ui.screens.library.AutosaveStatus.Invalid) delay(20) }
             assertEquals("Stored", db.collectionDao().getById("a")?.title)
             host.runOnMainSync { store.clear() }
             // A valid unsaved draft restored after recreation is written without further input.
-            create(SavedStateHandle(mapOf("loaded" to true, "title" to "Restored", "description" to "", "icon" to "folder", "color" to 0)))
+            create(SavedStateHandle(mapOf("loaded" to true, "edited" to arrayListOf("TITLE"), "title" to "Restored", "description" to "", "icon" to "folder", "color" to 0)))
             withTimeout(5000) { while (db.collectionDao().getById("a")?.title != "Restored") delay(20) }
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
@@ -252,21 +254,46 @@ class CollectionEditorTest {
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
 
-    @Test fun autosaveWritesOnlyChangedFieldsOverAConcurrentCommit() = runBlocking {
+    @Test fun autosaveWritesOnlyEditedFieldsOverAConcurrentCommit() = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
         try {
             db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "A", "Old description", "folder", null, 0, 1, 1))
             val repository = CollectionRepository(db)
-            val base = CollectionDraft("A", "Old description")
-            // Another editor commits a new title before this editor's write (based on the old row) runs.
+            // Another editor commits a new title before this editor's description-only write runs.
             repository.update("a", CollectionDraft("B", "Old description"), 2)
-            val stored = repository.updateChangedFields("a", CollectionDraft("A", "New description"), base, 3)
+            val stored = repository.updateFields("a", CollectionDraft("A", "New description"),
+                setOf(me.bubblespark.tidilo.data.CollectionField.DESCRIPTION), 3)
             assertEquals(CollectionDraft("B", "New description"), stored)
             val row = requireNotNull(db.collectionDao().getById("a"))
-            assertEquals("The untouched title keeps the concurrent change", "B", row.title)
+            assertEquals("The unedited title keeps the concurrent change", "B", row.title)
             assertEquals("New description", row.description)
-            assertNull(repository.updateChangedFields("missing", CollectionDraft("X"), null, 4))
+            assertNull(repository.updateFields("missing", CollectionDraft("X"), setOf(me.bubblespark.tidilo.data.CollectionField.TITLE), 4))
         } finally { db.close() }
+    }
+
+    @Test fun revertDuringAnInFlightWriteIsPersistedAndShown() = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
+        val store = ViewModelStore()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        lateinit var vm: CollectionEditorViewModel
+        try {
+            db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "A", "", "folder", null, 0, 1, 1))
+            host.runOnMainSync { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java] }
+            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            // Hold the database so the next write stays in flight.
+            val blocker = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) { db.withTransaction { gate.await() } }
+            delay(200)
+            host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "B")) }
+            withTimeout(5000) { while (vm.autosaveStatus.value != me.bubblespark.tidilo.ui.screens.library.AutosaveStatus.Saving) delay(20) }
+            host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "A")) }
+            gate.complete(Unit)
+            blocker.join()
+            withTimeout(5000) { while (vm.autosaveStatus.value != me.bubblespark.tidilo.ui.screens.library.AutosaveStatus.Saved) delay(20) }
+            delay(300)
+            assertEquals("The revert is stored", "A", db.collectionDao().getById("a")?.title)
+            assertEquals("The revert is shown", "A", vm.state.value.draft.title)
+        } finally { gate.complete(Unit); host.runOnMainSync { store.clear() }; db.close() }
     }
 }

@@ -23,38 +23,64 @@ class BookmarkDetailEditStateTest {
     )
 
     @Test
-    fun syncWithBookmark_preservesUserEditedNote_whenNoteHasUnsavedChanges() {
-        val initialBookmark = createBookmark(note = "Initial note")
-        val edit = BookmarkDetailEditState(initialBookmark.note)
-
-        // User typed a draft note
-        edit.noteText.value = "User draft note in progress"
-
-        val updatedBookmark = initialBookmark.copy(
-            note = "External updated note",
-            updatedAt = 2000L
-        )
-
-        edit.syncWithBookmark(updatedBookmark)
-
-        assertEquals("User's in-progress note draft must not be overwritten", "User draft note in progress", edit.noteText.value)
-        assertEquals("Original note baseline should track the new remote note", "External updated note", edit.originalNote)
+    fun noteFollowsStoredValueUntilTheUserTypes() {
+        val edit = BookmarkDetailEditState("Initial")
+        edit.onNoteStored("External")
+        assertEquals("External", edit.noteText.value)
+        assertEquals(null, edit.pendingNoteWrite())
     }
 
     @Test
-    fun syncWithBookmark_updatesNote_whenUserHasNotEditedNote() {
-        val initialBookmark = createBookmark(note = "Initial note")
-        val edit = BookmarkDetailEditState(initialBookmark.note)
+    fun storedValueNeverReplacesAnUnsavedEdit() {
+        val edit = BookmarkDetailEditState("A")
+        edit.onNoteTyped("Draft")
+        edit.onNoteStored("External")
+        assertEquals("Draft", edit.noteText.value)
+    }
 
-        val updatedBookmark = initialBookmark.copy(
-            note = "External updated note",
-            updatedAt = 2000L
-        )
+    @Test
+    fun revertDuringAnInFlightWriteStaysOwedAndVisible() {
+        // A -> B (write starts) -> back to A before B completes.
+        val edit = BookmarkDetailEditState("A")
+        val writeB = edit.onNoteTyped("B")
+        val writeA = edit.onNoteTyped("A")
+        edit.onNoteWritten(writeB)
+        edit.onNoteStored("B")
+        assertEquals("The revert is still shown", "A", edit.noteText.value)
+        assertEquals("The revert is still owed", writeA, edit.pendingNoteWrite())
+        edit.onNoteWritten(writeA)
+        assertEquals(null, edit.pendingNoteWrite())
+        edit.onNoteStored("A")
+        assertEquals("A", edit.noteText.value)
+    }
 
-        edit.syncWithBookmark(updatedBookmark)
+    @Test
+    fun anOlderScreensWriteCannotReplaceARevertThatIsStillOwed() {
+        // The recreated screen read A, the old screen is still writing B, the user edits then reverts to A.
+        val edit = BookmarkDetailEditState("A")
+        edit.onNoteTyped("C")
+        edit.onNoteTyped("A")
+        edit.onNoteStored("B")
+        assertEquals("A", edit.noteText.value)
+        assertEquals("A", edit.pendingNoteWrite()?.text)
+    }
 
-        assertEquals("Unedited note should sync with latest bookmark", "External updated note", edit.noteText.value)
-        assertEquals("Original note baseline should track the new remote note", "External updated note", edit.originalNote)
+    @Test
+    fun failedWriteKeepsTheDraftVisibleAndOwed() {
+        val edit = BookmarkDetailEditState("A")
+        val write = edit.onNoteTyped("Reverted")
+        // The write failed (onNoteWritten not called); a late emission arrives.
+        edit.onNoteStored("B")
+        assertEquals("Reverted", edit.noteText.value)
+        assertEquals(write, edit.pendingNoteWrite())
+    }
+
+    @Test
+    fun restoredEditedNoteIsStillOwed() {
+        val edit = BookmarkDetailEditState("Unsaved", noteEdited = true)
+        edit.onNoteStored("Stored")
+        assertEquals("Unsaved", edit.noteText.value)
+        assertEquals("Unsaved", edit.pendingNoteWrite()?.text)
     }
 
     @Test
@@ -94,18 +120,5 @@ class BookmarkDetailEditStateTest {
         edit.openTagEditor(bookmark.tag, bookmark.isPrivate)
         assertEquals("Reopening starts again from the stored tag", listOf("AI"), edit.draftEntities.value)
         assertEquals("Cancelling the tag dialog never touches the note", "Independent note draft", edit.noteText.value)
-    }
-
-    @Test
-    fun syncWithBookmark_keepsAPendingRevertEvenWhenItEqualsTheOldBaseline() {
-        val bookmark = createBookmark(note = "A")
-        val edit = BookmarkDetailEditState(bookmark.note)
-        // The user reverted to A while another screen's write of B was still running; A is pending.
-        edit.noteText.value = "A"
-
-        edit.syncWithBookmark(bookmark.copy(note = "B", updatedAt = 2000L), keepDraft = true)
-
-        assertEquals("A pending revert must not be replaced by the older write", "A", edit.noteText.value)
-        assertEquals("The baseline still follows Room so A is written", "B", edit.originalNote)
     }
 }

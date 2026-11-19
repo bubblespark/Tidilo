@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import me.bubblespark.tidilo.data.CollectionDraft
+import me.bubblespark.tidilo.data.CollectionField
+import me.bubblespark.tidilo.data.changedFields
+import me.bubblespark.tidilo.data.withFields
 import me.bubblespark.tidilo.data.CollectionPolicy
 import me.bubblespark.tidilo.data.CollectionRepository
 import java.util.UUID
@@ -25,8 +28,12 @@ data class CollectionEditorState(
 )
 
 /**
- * Creating a collection keeps an explicit Create action. Editing an existing collection autosaves each
- * valid draft after a short pause; a blank title stays a recoverable draft and is never written.
+ * Creating a collection keeps an explicit Create action. Editing an existing collection autosaves the
+ * fields the user edited after a short pause; a blank title stays a recoverable draft and is never written.
+ *
+ * Fields the user has not edited follow the stored row; edited fields keep the user's value until a write
+ * of their latest edit succeeds ([EditedFields]). Writes touch only edited fields, so another editor's change
+ * to any other field is never overwritten.
  */
 class CollectionEditorViewModel(
     private val saved: SavedStateHandle,
@@ -42,33 +49,46 @@ class CollectionEditorViewModel(
         confirmDelete = saved["confirmDelete"] ?: false))
     val state = mutable.asStateFlow()
     private var loadJob: Job? = null
-    private var storedDraft: CollectionDraft? = null
-    private var restoredDraftSubmitted = false
-    /** An autosave snapshot: the edited draft plus the stored values it started from. */
-    private data class EditorWrite(val draft: CollectionDraft, val base: CollectionDraft?)
+    /** Latest stored row; drives every field the user has not edited. */
+    private var stored: CollectionDraft? = null
+    private var firstLoad = true
+    private val edits = EditedFields(saved.get<ArrayList<String>>("edited").orEmpty().map(CollectionField::valueOf))
 
-    private val autosaver: DebouncedAutosaver<EditorWrite>? = collectionId?.let { id ->
+    /** An autosave snapshot: the draft plus the edited fields (and their edit versions) it persists. */
+    private data class FieldWrite(val draft: CollectionDraft, val edits: Map<CollectionField, Long>)
+
+    private val autosaver: DebouncedAutosaver<FieldWrite>? = collectionId?.let { id ->
         DebouncedAutosaver(
             scope = saveScope,
             isValid = { it.draft.title.isNotBlank() },
-            isStored = { write -> runCatching { CollectionPolicy.normalize(write.draft) }.getOrNull() == storedDraft },
             writeLock = CollectionRepository.editorWriteLock
         ) { write ->
-            val stored = repository.updateChangedFields(id, write.draft, write.base, System.currentTimeMillis())
-            if (stored == null) {
+            val result = repository.updateFields(id, write.draft, write.edits.keys, System.currentTimeMillis())
+            if (result == null) {
                 mutable.value = state.value.copy(missing = true)
             } else {
-                // Advance the baseline now so an immediate revert is not mistaken for the stored value,
-                // and show fields another editor changed that this write deliberately kept.
-                val previous = storedDraft
-                storedDraft = stored
-                if (previous != null && previous != stored) adoptUntouchedFields(previous, stored)
+                edits.onWritten(write.edits)
+                saveEdits()
+                stored = result
+                showStored()
             }
         }
     }
 
-    private fun submitDraft() {
-        autosaver?.submit(EditorWrite(state.value.draft, storedDraft))
+    private fun submitEdits() {
+        if (edits.isEmpty) return
+        autosaver?.submit(FieldWrite(state.value.draft, edits.snapshot()))
+    }
+
+    private fun saveEdits() {
+        saved["edited"] = ArrayList(edits.fields.map { it.name })
+    }
+
+    /** Shows the stored value in every field the user has not edited. */
+    private fun showStored() {
+        val row = stored ?: return
+        val display = row.withFields(state.value.draft, edits.fields)
+        if (display != state.value.draft) applyDraft(display)
     }
 
     /** Autosave progress for an existing collection; always Idle while creating. */
@@ -92,17 +112,13 @@ class CollectionEditorViewModel(
                     repository.observeCollection(collectionId).collect { row ->
                         if (row == null) mutable.value = mutable.value.copy(loading = false, missing = true)
                         else {
-                            val stored = CollectionDraft(row.title, row.description, row.presetIconId, row.customSymbol, row.colorIndex)
-                            val previous = storedDraft
-                            storedDraft = stored
-                            // Only the first successful load decides whether a restored draft needs saving;
-                            // later emissions (autosave echoes, other editors) must not resubmit it.
-                            if (!restoredDraftSubmitted) {
-                                restoredDraftSubmitted = true
-                                if (saved.get<Boolean>("loaded") != true) applyDraft(stored)
-                                else submitDraft()
-                            } else if (previous != null && previous != stored) {
-                                adoptUntouchedFields(previous, stored)
+                            stored = CollectionDraft(row.title, row.description, row.presetIconId, row.customSymbol, row.colorIndex)
+                            showStored()
+                            if (firstLoad) {
+                                firstLoad = false
+                                saved["loaded"] = true
+                                // Edits restored after rotation or process recreation are still owed.
+                                submitEdits()
                             }
                             mutable.value = mutable.value.copy(loading = false, missing = false)
                         }
@@ -120,8 +136,14 @@ class CollectionEditorViewModel(
 
     fun edit(draft: CollectionDraft) {
         if (state.value.pending || state.value.loading || state.value.missing || state.value.error == "load") return
+        val before = state.value.draft
         applyDraft(draft)
-        submitDraft()
+        if (collectionId == null) return
+        val changed = state.value.draft.changedFields(before)
+        if (changed.isEmpty()) return
+        edits.markEdited(changed)
+        saveEdits()
+        submitEdits()
     }
 
     /** Re-attempts a failed autosave of the current draft. */
@@ -137,26 +159,6 @@ class CollectionEditorViewModel(
         saved["icon"] = bounded.presetIconId; saved["symbol"] = bounded.customSymbol; saved["color"] = bounded.colorIndex
         saved["loaded"] = true
         mutable.value = state.value.copy(draft = bounded, error = null)
-    }
-
-    /**
-     * Applies a newer stored row to every field the user has not changed since [previous], so a later
-     * autosave of an edited field never writes stale values back over another editor's change.
-     */
-    private fun adoptUntouchedFields(previous: CollectionDraft, latest: CollectionDraft) {
-        val draft = state.value.draft
-        val merged = CollectionDraft(
-            title = if (draft.title == previous.title) latest.title else draft.title,
-            description = if (draft.description == previous.description) latest.description else draft.description,
-            presetIconId = if (draft.presetIconId == previous.presetIconId) latest.presetIconId else draft.presetIconId,
-            customSymbol = if (draft.customSymbol == previous.customSymbol) latest.customSymbol else draft.customSymbol,
-            colorIndex = if (draft.colorIndex == previous.colorIndex) latest.colorIndex else draft.colorIndex
-        )
-        if (merged != draft) {
-            applyDraft(merged)
-            // Replace any pending or failed snapshot so the next write carries the adopted fields.
-            submitDraft()
-        }
     }
 
     fun confirmDelete(value: Boolean) {
@@ -179,8 +181,11 @@ class CollectionEditorViewModel(
     }
 
     override fun onCleared() {
-        // Closing the sheet or recreating it must not drop the last valid draft.
-        if (!state.value.done) autosaver?.flush()
+        // Closing the sheet or recreating it must not drop owed edits (this also re-sends a failed one).
+        if (!state.value.done && !edits.isEmpty) {
+            submitEdits()
+            autosaver?.flush()
+        }
     }
 
     private fun write(action: suspend () -> Boolean) {

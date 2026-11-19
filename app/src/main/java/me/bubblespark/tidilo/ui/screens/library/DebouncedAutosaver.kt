@@ -15,26 +15,23 @@ import kotlinx.coroutines.sync.withLock
 enum class AutosaveStatus { Idle, Pending, Saving, Saved, Failed, Invalid }
 
 /**
- * Persists the latest valid draft after a typing pause. Writes are serialized in submission order,
- * so an older value never lands after a newer one. Invalid drafts are kept by the caller and never written.
+ * Persists the latest valid snapshot after a typing pause. Writes are serialized in submission order,
+ * so an older snapshot never lands after a newer one. Invalid snapshots are kept by the caller and never
+ * written. Callers decide what is owed (see [EditedFields]); every submitted snapshot is written, there is
+ * no "already stored" shortcut.
  *
  * Pass one shared [writeLock] to every autosaver that writes the same records, so ordering also holds
  * across autosaver instances, e.g. a final write flushed by a disposed screen and the first write of its
  * recreated replacement. The lock is entered when a write starts (debounce, [flush] or [retry]); [scope]
  * must use an immediate main dispatcher (`Dispatchers.Main.immediate`) so that [flush] queues on the lock
- * synchronously and writes keep their call order. While the lock is held anywhere, a value equal to the
- * stored one is still written, because another instance's queued write may yet replace it.
+ * synchronously and writes keep their call order.
  *
  * Must be driven from a single thread (the main thread in UI usage).
- *
- * @param isStored returns true when a value already equals the stored value; such a value is not
- *   rewritten unless an earlier write is still pending or in flight.
  */
 internal class DebouncedAutosaver<T>(
     private val scope: CoroutineScope,
     private val delayMillis: Long = DEFAULT_DELAY_MILLIS,
     private val isValid: (T) -> Boolean = { true },
-    private val isStored: (T) -> Boolean = { false },
     private val writeLock: Mutex = Mutex(),
     private val write: suspend (T) -> Unit
 ) {
@@ -47,9 +44,6 @@ internal class DebouncedAutosaver<T>(
     private var inFlight = 0
     private var invalid = false
 
-    /** True while a draft waits for its pause or a write is still running. */
-    val isBusy: Boolean get() = pending != null || inFlight > 0
-
     /** Records the newest draft and restarts the typing-pause timer. */
     fun submit(value: T) {
         debounceJob?.cancel()
@@ -59,11 +53,6 @@ internal class DebouncedAutosaver<T>(
         if (invalid) {
             pending = null
             mutableStatus.value = AutosaveStatus.Invalid
-            return
-        }
-        if (inFlight == 0 && !writeLock.isLocked && isStored(value)) {
-            pending = null
-            if (mutableStatus.value != AutosaveStatus.Saved) mutableStatus.value = AutosaveStatus.Idle
             return
         }
         pending = Slot(value)

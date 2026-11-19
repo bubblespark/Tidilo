@@ -2,19 +2,24 @@ package me.bubblespark.tidilo.ui.screens.library
 
 import android.os.Bundle
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.Saver
+
+/** A note autosave snapshot; [edits] identifies the edit it persists. */
+internal data class NoteWrite(val text: String, val edits: Map<Unit, Long>)
 
 /**
  * Saves the autosaved note draft and the unconfirmed tag-dialog draft as one unit.
  * Tags and Private status are not drafted at screen level: the tag dialog's OK persists them directly.
+ *
+ * The note follows the stored value until the user types; from then on it is Edited and Room emissions
+ * never replace it, until a write of the latest edit succeeds (see [EditedFields]).
  */
 @Stable
-internal class BookmarkDetailEditState(initialNote: String) {
-    var originalNote by mutableStateOf(initialNote)
-    val noteText = mutableStateOf(originalNote)
+internal class BookmarkDetailEditState(initialNote: String, noteEdited: Boolean = false) {
+    val noteText = mutableStateOf(initialNote)
+    private val noteEdits = EditedFields(if (noteEdited) listOf(Unit) else emptyList())
+    val isNoteEdited: Boolean get() = noteEdits.isEdited(Unit)
     val showTagEditDialog = mutableStateOf(false)
     val showAddEntityDialog = mutableStateOf(false)
     val showEntityBottomSheet = mutableStateOf(false)
@@ -28,16 +33,24 @@ internal class BookmarkDetailEditState(initialNote: String) {
     val conflictInput = mutableStateOf<String?>(null)
     val conflictExisting = mutableStateOf<String?>(null)
 
-    /**
-     * Synchronizes remote bookmark updates while preserving a note draft that is not yet stored.
-     * With [keepDraft] (a note write is pending or running) the visible note is never replaced, even when
-     * it equals the old baseline: it may be a revert that still has to be written.
-     */
-    fun syncWithBookmark(bookmark: BookmarkItem, keepDraft: Boolean = false) {
-        if (!keepDraft && noteText.value == originalNote) {
-            noteText.value = bookmark.note
-        }
-        originalNote = bookmark.note
+    /** Records a user edit and returns the snapshot to autosave. */
+    fun onNoteTyped(text: String): NoteWrite {
+        noteText.value = text
+        noteEdits.markEdited(listOf(Unit))
+        return NoteWrite(text, noteEdits.snapshot())
+    }
+
+    /** The write still owed for an Edited note, or null while the note follows the stored value. */
+    fun pendingNoteWrite(): NoteWrite? = if (noteEdits.isEmpty) null else NoteWrite(noteText.value, noteEdits.snapshot())
+
+    /** Shows a stored note only while the user has no unsaved edit. */
+    fun onNoteStored(note: String) {
+        if (!isNoteEdited) noteText.value = note
+    }
+
+    /** After a successful write the note follows Room again unless the user typed since. */
+    fun onNoteWritten(write: NoteWrite) {
+        noteEdits.onWritten(write.edits)
     }
 
     /** Starts a tag-dialog draft from the stored classification. */
@@ -66,8 +79,8 @@ internal class BookmarkDetailEditState(initialNote: String) {
     companion object {
         val Saver = Saver<BookmarkDetailEditState, Bundle>(
             save = { state -> Bundle().apply {
-                putString("originalNote", state.originalNote)
                 putString("note", state.noteText.value)
+                putBoolean("noteEdited", state.isNoteEdited)
                 putBoolean("editor", state.showTagEditDialog.value)
                 putBoolean("add", state.showAddEntityDialog.value)
                 putBoolean("picker", state.showEntityBottomSheet.value)
@@ -79,8 +92,7 @@ internal class BookmarkDetailEditState(initialNote: String) {
                 putString("conflictInput", state.conflictInput.value)
                 putString("conflictExisting", state.conflictExisting.value)
             } },
-            restore = { saved -> BookmarkDetailEditState(saved.getString("originalNote").orEmpty()).apply {
-                noteText.value = saved.getString("note").orEmpty()
+            restore = { saved -> BookmarkDetailEditState(saved.getString("note").orEmpty(), saved.getBoolean("noteEdited")).apply {
                 showTagEditDialog.value = saved.getBoolean("editor")
                 showAddEntityDialog.value = saved.getBoolean("add")
                 showEntityBottomSheet.value = saved.getBoolean("picker")

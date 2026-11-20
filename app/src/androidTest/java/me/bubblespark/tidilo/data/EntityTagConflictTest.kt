@@ -25,6 +25,7 @@ import java.util.UUID
 
 class EntityTagConflictTest {
     private val host = HeaderTestHost()
+    private val addEntityDialog = AddEntityDialogTestControls(host)
     private var stage = "mount"
     private fun find(predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
         fun visit(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -157,10 +158,15 @@ class EntityTagConflictTest {
         }
         suspend fun conflict() {
             click(host.context.getString(R.string.detail_edit_tags))
-            click(host.context.getString(R.string.detail_tag_add_entity))
-            enter(variant)
-            click("OK")
+            addEntity(variant)
             node { it.text?.toString() == "Replace across all bookmarks" }
+        }
+        suspend fun addEntity(value: String) {
+            click(host.context.getString(R.string.detail_tag_add_entity))
+            stage = "enter text in Add Entity"
+            addEntityDialog.enter(value)
+            stage = "confirm Add Entity"
+            addEntityDialog.confirm()
         }
         suspend fun spelling(bookmark: String = other) = requireNotNull(db.bookmarkDao().getBookmarkById(bookmark)).entities.single()
         /** Parent tag-dialog OK is the final persistence step; there is no Detail-level Save. */
@@ -246,7 +252,7 @@ class EntityTagConflictTest {
         conflict(); click("Replace across all bookmarks"); accept()
         await { spelling() == variant }
         click(host.context.getString(R.string.detail_edit_tags))
-        click(host.context.getString(R.string.detail_tag_add_entity)); enter(canonical); click("OK")
+        addEntity(canonical)
         click("Replace across all bookmarks"); accept()
         await { spelling(id) == canonical }
         assertEquals(canonical, spelling())

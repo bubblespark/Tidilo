@@ -3,7 +3,7 @@ package me.bubblespark.tidilo.data
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.lifecycle.ViewModelProvider
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.RssFeedEntity
@@ -25,18 +25,24 @@ class MainTabHeaderTest {
                 oldMode = vm.filterMode.value
                 activity.setContent { MaterialTheme { LibraryScreen(vm) } }
             }
-            val centers = mutableListOf<Float>()
+            val centers = linkedMapOf<String, Float>()
+            val viewStyle = host.context.getString(R.string.library_view_mode_menu_desc)
             for (title in listOf<String?>(null, "IGN", "IGN PC Articles", "あ".repeat(40))) {
                 host.main {
                     vm.setFilterMode(if (title == null) LibraryFilterMode.NEWEST_FIRST else LibraryFilterMode.RSS)
                     vm.selectRssFeedFilter(title?.let { RssFeedEntity("header-test", "https://header.invalid/rss", it, enabled = false) })
                 }
-                delay(450)
-                val action = host.await(activity) { host.description(it, host.context.getString(R.string.title_settings)) }
-                host.main { centers += action.boundsInRoot.center.y }
+                val expectedTitle = title ?: host.context.getString(R.string.library_header_title)
+                try {
+                    host.await(activity) { host.text(it, expectedTitle) }
+                    val action = host.await(activity) { host.description(it, viewStyle) }
+                    host.main { centers[expectedTitle] = action.boundsInRoot.center.y }
+                } catch (error: TimeoutCancellationException) {
+                    throw AssertionError("Missing title or view style action for $expectedTitle", error)
+                }
                 if (title == null || title == "IGN PC Articles") host.capture(if (title == null) "library-root" else "rss-drilldown")
             }
-            assertEquals("Titles must not move action icons vertically", centers.min(), centers.max(), 1f)
+            assertEquals("Titles must not move the view style action vertically: $centers", centers.values.min(), centers.values.max(), 1f)
         } finally {
             host.main { vm.selectRssFeedFilter(null); vm.setFilterMode(oldMode); activity.finish() }
         }

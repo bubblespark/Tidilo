@@ -43,10 +43,18 @@ class StorageScreenTest {
         return instrumentation.uiAutomation.rootInActiveWindow?.let(::visit)
     }
 
-    private suspend fun awaitNode(label: String, predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo = try {
+    private suspend fun awaitNode(
+        label: String,
+        onMissing: () -> Unit = {},
+        predicate: (AccessibilityNodeInfo) -> Boolean
+    ): AccessibilityNodeInfo = try {
         withTimeout(8000) {
             var node = find(predicate)
-            while (node == null) { delay(50); node = find(predicate) }
+            while (node == null) {
+                onMissing()
+                delay(50)
+                node = find(predicate)
+            }
             node
         }
     } catch (error: TimeoutCancellationException) {
@@ -66,9 +74,21 @@ class StorageScreenTest {
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         ) as ComponentActivity
         try {
-            val settings = activity.getString(R.string.title_settings)
-            click(awaitNode("Settings button") { it.contentDescription?.toString() == settings })
-            awaitNode("Settings heading: ${activity.getString(R.string.settings_title)}") { it.text?.toString() == activity.getString(R.string.settings_title) }
+            click(awaitNode("Library menu") {
+                it.contentDescription?.toString() == activity.getString(R.string.navigation_open)
+            })
+            awaitNode("Library rail filters") {
+                it.isVisibleToUser && it.text?.toString() == activity.getString(R.string.navigation_filters)
+            }
+            click(awaitNode("Rail Settings entry", onMissing = {
+                find { it.isVisibleToUser && it.isScrollable }
+                    ?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            }) {
+                it.isVisibleToUser && it.text?.toString() == activity.getString(R.string.title_settings)
+            })
+            awaitNode("Settings language entry") {
+                it.isVisibleToUser && it.text?.toString() == activity.getString(R.string.settings_language_title)
+            }
             repeat(10) {
                 if (find { it.text?.toString()?.startsWith(activity.getString(R.string.summary_title)) == true } == null) {
                     find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)

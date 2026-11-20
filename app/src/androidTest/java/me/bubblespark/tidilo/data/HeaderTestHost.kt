@@ -27,10 +27,14 @@ internal class HeaderTestHost {
         is ViewGroup -> (0 until view.childCount).flatMap { roots(view.getChildAt(it)) }
         else -> emptyList()
     }
-    fun nodes(activity: ComponentActivity, useUnmergedTree: Boolean = true): List<SemanticsNode> {
+    fun nodes(
+        activity: ComponentActivity,
+        useUnmergedTree: Boolean = true,
+        includeOtherWindows: Boolean = true
+    ): List<SemanticsNode> {
         fun visit(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::visit)
         val activityRoots = roots(activity.window.decorView)
-        val windowRoots = runCatching {
+        val windowRoots = if (!includeOtherWindows) emptyList() else runCatching {
             val wmg = Class.forName("android.view.WindowManagerGlobal")
             val instance = wmg.getMethod("getInstance").invoke(null)
             val mViews = wmg.getDeclaredField("mViews").apply { isAccessible = true }

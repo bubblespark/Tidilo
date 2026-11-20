@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.ui.screens.library.AddEntityDialog
 import me.bubblespark.tidilo.ui.screens.library.EntityLibraryState
 import me.bubblespark.tidilo.ui.screens.library.EntityTagConflictDialog
@@ -130,6 +131,7 @@ class EntityTagConflictLayoutTest {
 
     @Test fun suggestionChipsAppendToInputAndClearResetsInput(): Unit = runBlocking {
         val activity = host.launch()
+        val dialog = AddEntityDialogTestControls(host)
         val textState = mutableStateOf("")
         var confirmed: String? = null
         try {
@@ -144,24 +146,16 @@ class EntityTagConflictLayoutTest {
                     candidates = listOf("iPhone", "16", "発売")
                 )
             } } }
-            host.instrumentation.waitForIdleSync()
-            assertTrue(button("iPhone").performAction(AccessibilityNodeInfo.ACTION_CLICK))
-            host.instrumentation.waitForIdleSync()
-            withTimeout(5000) { while (textState.value != "iPhone") delay(30) }
-            val clearBtn = button("Clear")
-            assertTrue(clearBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-            host.instrumentation.waitForIdleSync()
-            withTimeout(5000) { while (textState.value.isNotEmpty()) delay(30) }
-            assertTrue(button("iPhone").performAction(AccessibilityNodeInfo.ACTION_CLICK))
-            host.instrumentation.waitForIdleSync()
-            withTimeout(5000) { while (textState.value != "iPhone") delay(30) }
-            assertTrue(button("16").performAction(AccessibilityNodeInfo.ACTION_CLICK))
-            host.instrumentation.waitForIdleSync()
-            withTimeout(5000) { while (textState.value != "iPhone 16") delay(30) }
-            assertTrue(button("OK").performAction(AccessibilityNodeInfo.ACTION_CLICK))
-            host.instrumentation.waitForIdleSync()
-            withTimeout(5000) { while (confirmed == null) delay(30) }
-            assertEquals("iPhone 16", confirmed)
+            dialog.clickLabel("iPhone")
+            dialog.awaitInput("iPhone")
+            dialog.clickLabel(activity.getString(R.string.common_clear))
+            dialog.awaitInput("")
+            dialog.clickLabel("iPhone")
+            dialog.awaitInput("iPhone")
+            dialog.clickLabel("16")
+            dialog.awaitInput("iPhone 16")
+            dialog.confirm()
+            host.main { assertEquals("iPhone 16", confirmed) }
         } finally { host.main { activity.finish() } }
     }
 }

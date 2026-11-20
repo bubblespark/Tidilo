@@ -146,3 +146,7 @@ Use standard Conventional Commits in English:
 - `docs(<scope>)`: Documentation and specification changes.
 - `test(<scope>)`: Unit or instrumentation tests.
 - `chore(<scope>)`: Maintenance, Gradle scripts, or configuration tweaks.
+
+### 6.2 File-Backed Test Fixtures
+
+When a test uses a temporary directory, pass it explicitly to the store under test. Use the same resolved path for fixture setup, assertions, and cleanup. When using a `ContextWrapper`, verify the path the store actually resolves, including any lookup through `applicationContext`.

@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -53,20 +54,34 @@ class ScreenInsetsLayoutTest {
         val host = HeaderTestHost()
         val activity = host.launch()
         try {
-            for (consumed in listOf(0, 100)) {
-                var top = 0f
+            val fixtureTop = 100
+            for (consumed in listOf(0, 40, fixtureTop)) {
+                var scaffoldTop = Float.NaN
+                var contentTop = Float.NaN
                 var chrome = 0f
                 host.main { activity.setContent { MaterialTheme {
                     val density = LocalDensity.current
                     chrome = with(density) { (HeaderDefaults.rowHeight() + HeaderDefaults.FadeHeight + HeaderDefaults.ClearanceGap).toPx() }
                     Box(Modifier.fillMaxSize().consumeWindowInsets(WindowInsets(top = consumed))) {
-                        TidiloScreenScaffold(header = {}, contentWindowInsets = WindowInsets(top = 100)) { padding ->
-                            Box(Modifier.fillMaxSize().padding(padding).onGloballyPositioned { top = it.boundsInWindow().top })
+                        TidiloScreenScaffold(
+                            header = {},
+                            modifier = Modifier.onGloballyPositioned { scaffoldTop = it.positionInRoot().y },
+                            contentWindowInsets = WindowInsets(top = fixtureTop)
+                        ) { padding ->
+                            Box(Modifier.fillMaxSize().padding(padding)
+                                .onGloballyPositioned { contentTop = it.positionInRoot().y })
                         }
                     }
                 } } }
                 delay(400)
-                host.main { assertEquals(chrome + 100 - consumed, top, 1f) }
+                host.main {
+                    assertEquals(
+                        "Top clearance with $consumed px consumed by the parent",
+                        chrome + fixtureTop - consumed,
+                        contentTop - scaffoldTop,
+                        1f
+                    )
+                }
             }
         } finally { host.main { activity.finish() } }
     }

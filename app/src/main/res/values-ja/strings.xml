@@ -147,7 +147,7 @@
 
     <!-- Tag Selection Screen -->
     <string name="tag_selection_title">Tag Selection</string>
-    <string name="tag_selection_subtitle">Mutual AND Filter (%1$d selected)</string>
+    <string name="tag_selection_subtitle">%1$d件選択中</string>
     <string name="tag_selection_search_placeholder">タグを検索…</string>
     <string name="tag_selection_search_content_desc">タグを検索</string>
     <string name="tag_selection_back_and_apply">適用して戻る</string>
@@ -189,6 +189,7 @@
     <string name="detail_add_entity_suggestions_label">候補</string>
     <string name="detail_entity_picker_title">固有タグの選択</string>
     <string name="detail_entity_picker_selected">選択中</string>
+    <string name="detail_entity_picker_no_selection">タグが選択されていません</string>
     <string name="detail_entity_picker_all">すべてのタグ</string>
     <string name="detail_entity_picker_empty">利用可能なタグがありません</string>
     <string name="detail_tag_remove_entity">%1$sを削除</string>

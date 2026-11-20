@@ -148,7 +148,7 @@
 
     <!-- Tag Selection Screen -->
     <string name="tag_selection_title">Tag Selection</string>
-    <string name="tag_selection_subtitle">Mutual AND Filter (%1$d selected)</string>
+    <string name="tag_selection_subtitle">%1$d selected</string>
     <string name="tag_selection_search_placeholder">Search tags...</string>
     <string name="tag_selection_search_content_desc">Search Tags</string>
     <string name="tag_selection_back_and_apply">Back and apply tags</string>
@@ -190,6 +190,7 @@
     <string name="detail_add_entity_suggestions_label">Suggestions</string>
     <string name="detail_entity_picker_title">Select Entity Tags</string>
     <string name="detail_entity_picker_selected">Selected</string>
+    <string name="detail_entity_picker_no_selection">No tags selected</string>
     <string name="detail_entity_picker_all">All Entities</string>
     <string name="detail_entity_picker_empty">No entity tags available</string>
     <string name="detail_tag_remove_entity">Remove %1$s</string>

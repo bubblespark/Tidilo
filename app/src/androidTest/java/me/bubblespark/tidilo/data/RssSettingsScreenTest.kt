@@ -17,8 +17,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
@@ -436,47 +440,69 @@ class RssSettingsScreenTest {
     }
 
     @Test fun feedCardShowsCompactMetadataAndBottomRightSwitch(): Unit = runBlocking {
-        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val controls = RssTriggerTestControls(host, activity)
         val feed = mutableStateOf(me.bubblespark.tidilo.data.db.RssFeedEntity("feed", "https://example.com/feed", "Example",
             retentionLimit = null, error = "HTTP 500", lastAttemptAt = 100, lastSuccessAt = 50))
+        fun descendants(node: SemanticsNode): List<SemanticsNode> =
+            node.children.flatMap { listOf(it) + descendants(it) }
+        fun isFeedCard(candidate: SemanticsNode): Boolean =
+            SemanticsActions.OnLongClick in candidate.config &&
+                descendants(candidate).any { host.text(it, "Example") }
+        val modeLabel = activity.getString(R.string.rss_direct_mode)
+        val retentionLabel = activity.getString(R.string.rss_retention_compact)
+        val enabled = controls.description(R.string.rss_enabled)
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
-                RssSettingsContent(StorageLoad.Ready(listOf(feed.value)), RssSettings(), false, null, true,
-                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> }, onDelete = {},
-                    onFetch = {}, onDismissError = {}, onEnabled = { id, value ->
-                        assertEquals("feed", id); feed.value = feed.value.copy(enabled = value)
-                    })
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 1f)) {
+                    RssSettingsContent(StorageLoad.Ready(listOf(feed.value)), RssSettings(), false, null, true,
+                        onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> }, onDelete = {},
+                        onFetch = {}, onDismissError = {}, onEnabled = { id, value ->
+                            assertEquals("feed", id)
+                            feed.value = feed.value.copy(enabled = value)
+                        })
+                }
             } } }
             assertNull(find { it.text?.toString()?.startsWith("Maximum AI queue:") == true })
-            repeat(8) {
-                if (find { it.text?.toString() == "Direct" } == null) {
-                    find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-                    delay(100)
+            controls.reveal("Example feed card", ::isFeedCard)
+            host.main {
+                val nodes = host.nodes(activity, includeOtherWindows = false)
+                val card = nodes.single(::isFeedCard)
+                val content = descendants(card)
+                val mode = content.single { host.text(it, modeLabel) }
+                val retention = content.single { host.text(it, retentionLabel) }
+                val error = content.single { host.text(it, "HTTP 500") }
+                val toggle = content.single(enabled)
+                val cardBounds = card.boundsInRoot
+                val modeBounds = mode.boundsInRoot
+                val retentionBounds = retention.boundsInRoot
+                val toggleBounds = toggle.boundsInRoot
+                val geometry = "card=$cardBounds, mode=$modeBounds, retention=$retentionBounds, switch=$toggleBounds"
+                for (node in listOf(card, mode, retention, error, toggle)) {
+                    val bounds = node.boundsInRoot
+                    assertTrue("Expected full bounds for ${node.config}: $bounds, size=${node.size}. $geometry",
+                        node.layoutInfo.isPlaced && bounds.height > 0f && bounds.width > 0f &&
+                            bounds.height >= node.size.height - 1 && bounds.width >= node.size.width - 1)
                 }
+                assertEquals(geometry, modeBounds.center.y, retentionBounds.center.y, 1f)
+                assertTrue(geometry, retentionBounds.left > modeBounds.right)
+                assertTrue(geometry, toggleBounds.left > retentionBounds.right &&
+                    toggleBounds.center.y > cardBounds.center.y && toggleBounds.top >= error.boundsInRoot.bottom)
+                val texts = content.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }
+                assertFalse(texts.any { it.text.startsWith("Last attempt:") || it.text.startsWith("Last success:") })
+                assertEquals(Role.Switch, toggle.config[SemanticsProperties.Role])
+                assertEquals(ToggleableState.On, toggle.config[SemanticsProperties.ToggleableState])
+                assertTrue(toggle.config[SemanticsActions.OnClick].action?.invoke() == true)
             }
-            val mode = node("Compact mode") { it.text?.toString() == "Direct" }
-            val retention = node("Compact retention") { it.text?.toString() == "Unread 10d · Read 30d" }
-            val modeBounds = android.graphics.Rect()
-            val retentionBounds = android.graphics.Rect()
-            mode.getBoundsInScreen(modeBounds)
-            retention.getBoundsInScreen(retentionBounds)
-            assertEquals(modeBounds.centerY(), retentionBounds.centerY())
-            assertTrue(retentionBounds.left > modeBounds.right)
-            node("Fetch error") { it.text?.toString() == "HTTP 500" }
-            assertNull(find { it.text?.toString()?.startsWith("Last attempt:") == true || it.text?.toString()?.startsWith("Last success:") == true })
-            var toggle: AccessibilityNodeInfo? = node("Enabled switch") { it.contentDescription?.toString() == "Enabled" }
-            while (toggle != null && !toggle.isCheckable) toggle = toggle.parent
-            assertNotNull(toggle)
-            val toggleBounds = android.graphics.Rect()
-            toggle!!.getBoundsInScreen(toggleBounds)
-            assertTrue(toggleBounds.left > retentionBounds.right)
-            click(toggle)
             withTimeout(3000) { while (feed.value.enabled) delay(20) }
             instrumentation.runOnMainSync { feed.value = feed.value.copy(error = null, retentionLimit = 30) }
-            node("Fixed retention") { it.text?.toString() == "Unread 10d · Read 30d" }
-            click(node("Feed title") { it.text?.toString() == "Example" })
-            node("Delete in editor") { it.text?.toString() == "Delete feed" }
+            controls.clickRow("Updated Example feed card") { candidate ->
+                isFeedCard(candidate) && descendants(candidate).let { content ->
+                    content.any { host.text(it, retentionLabel) } && content.none { host.text(it, "HTTP 500") }
+                }
+            }
+            node("Delete in editor") { it.text?.toString() == activity.getString(R.string.rss_delete) }
             delay(250)
             val screenshot = instrumentation.uiAutomation.takeScreenshot()
             try { File(context.getExternalFilesDir(null), "issue96-compact-feed.png").outputStream().use {

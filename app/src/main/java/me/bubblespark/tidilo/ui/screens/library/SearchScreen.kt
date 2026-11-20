@@ -59,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +69,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -86,6 +88,9 @@ import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
+
+private val SearchTrailingPadding = 24.dp
+private const val SearchInputKey = "search_input"
 
 /**
  * Secondary Search screen
@@ -113,10 +118,13 @@ fun SearchScreen(
     val historyState = rememberLazyGridState()
     val resultListState = rememberLazyGridState()
     val resultGridState = rememberLazyGridState()
+    val resultGridAnchor = rememberBookmarkGridAnchor()
+    var measuredSearchInput by rememberSaveable { mutableStateOf<Pair<String, Int>?>(null) }
     var lastScrollQuery by rememberSaveable { mutableStateOf(searchQuery) }
     var peekBookmark by remember { mutableStateOf<BookmarkItem?>(null) }
     LaunchedEffect(searchQuery) {
         if (lastScrollQuery != searchQuery) {
+            resultGridAnchor.clear()
             resultListState.requestScrollToItem(0)
             resultGridState.requestScrollToItem(0)
             lastScrollQuery = searchQuery
@@ -286,7 +294,7 @@ fun SearchScreen(
         bodyModifier = backgroundSemantics,
         hideHeaderOnScroll = true,
         headerVisible = !peekOpen,
-        bottomContentPadding = 24.dp,
+        bottomContentPadding = SearchTrailingPadding,
         header = { TidiloFrostedHeader(modifier = backgroundSemantics, navigationIcon = {
             IconButton(onClick = onNavigateBack, modifier = Modifier.padding(end = 4.dp).size(48.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back),
@@ -322,11 +330,40 @@ fun SearchScreen(
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val showingHistory = searchQuery.isBlank()
             val showingGrid = !showingHistory && viewMode == LibraryViewMode.GRID
-            val itemSpacing = if (showingHistory) 4.dp else if (showingGrid) 10.dp else 16.dp
+            val itemSpacing = if (showingHistory) 4.dp else if (showingGrid) BookmarkGridVerticalGap else 16.dp
+            val gridLayout = if (showingGrid) {
+                val density = LocalDensity.current
+                val minimumInputHeight = with(density) { SEARCH_INPUT_HEIGHT.roundToPx() }
+                val inputLayoutKey = "${constraints.maxWidth}:${density.density}:${density.fontScale}:$currentLanguage"
+                val inputHeight = measuredSearchInput?.takeIf { it.first == inputLayoutKey }?.second ?: minimumInputHeight
+                // The full-span input keeps its width when the bookmark columns change.
+                LaunchedEffect(resultGridState, inputLayoutKey) {
+                    snapshotFlow {
+                        resultGridState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == SearchInputKey }
+                            ?.size?.height
+                    }.filterNotNull().collect { measuredSearchInput = inputLayoutKey to it }
+                }
+                bookmarkGridLayout(
+                    contentPadding = contentPadding,
+                    trailingPadding = SearchTrailingPadding,
+                    leadingContentHeightPx = inputHeight + with(density) { itemSpacing.roundToPx() }
+                )
+            } else null
+            if (gridLayout != null && feedback == null) {
+                RestoreBookmarkGridAnchor(
+                    state = resultGridState,
+                    anchor = resultGridAnchor,
+                    generation = searchGeneration.key,
+                    layout = gridLayout,
+                    leadingItems = 1
+                ) { key ->
+                    filteredBookmarks.itemSnapshotList.items.indexOfFirst { "bookmark:${it.bookmark.id}" == key }
+                }
+            }
             // One lazy parent keeps the input node focused across blank/nonblank queries.
             // Separate states retain history, list, and grid scroll windows independently.
             LazyVerticalGrid(
-                columns = GridCells.Fixed(if (showingGrid) 2 else 1),
+                columns = GridCells.Fixed(gridLayout?.columns ?: 1),
                 state = when {
                     showingHistory -> historyState
                     showingGrid -> resultGridState
@@ -334,10 +371,10 @@ fun SearchScreen(
                 },
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = contentPadding,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(BookmarkGridHorizontalGap),
                 verticalArrangement = Arrangement.spacedBy(itemSpacing)
             ) {
-                item(key = "search_input", span = { GridItemSpan(maxLineSpan) }, contentType = "search_input") { searchInput() }
+                item(key = SearchInputKey, span = { GridItemSpan(maxLineSpan) }, contentType = "search_input") { searchInput() }
                 if (showingHistory) {
                     item(key = "search_history_header", contentType = "history_header") {
                         Row(
@@ -457,6 +494,7 @@ fun SearchScreen(
                             BookmarkGridCard(
                                 bookmark = item,
                                 context = context,
+                                layout = gridLayout,
                                 onToggleLike = { viewModel.toggleLike(item.id) },
                                 onLongClick = {
                                     focusManager.clearFocus()

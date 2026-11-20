@@ -7,6 +7,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import com.google.mlkit.genai.common.FeatureStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -21,7 +22,7 @@ class AiAnalysisScreenTest {
     private val host = HeaderTestHost()
 
     @Test fun unavailableAndCheckingNeverReplaceSavedSelection(): Unit = runBlocking {
-        val result = CompletableDeferred<Boolean>()
+        val result = CompletableDeferred<AiCoreReadiness>()
         withScreen({ result.await() }) { activity ->
             host.await(activity) { host.text(it, "Checking AICore availability…") }
             val checking = radio(activity, "AICore")
@@ -30,7 +31,7 @@ class AiAnalysisScreenTest {
             assertEquals(androidx.compose.ui.semantics.Role.RadioButton, checking.config[SemanticsProperties.Role])
             assertTrue(checking.boundsInRoot.height >= 48f * host.context.resources.displayMetrics.density)
             assertNull(radio(activity, "Disable").config.getOrNull(SemanticsProperties.Disabled))
-            result.complete(false)
+            result.complete(AiCoreReadiness.Status(FeatureStatus.UNAVAILABLE))
             host.await(activity) { host.text(it, "AICore is currently unavailable.") }
             assertNotNull(radio(activity, "AICore").config.getOrNull(SemanticsProperties.Disabled))
             assertEquals(AiAnalysisMode.AICORE, AppConfig.aiAnalysisMode.value)
@@ -39,8 +40,18 @@ class AiAnalysisScreenTest {
         }
     }
 
+    @Test fun checkFailureKeepsSavedSelection(): Unit = runBlocking {
+        withScreen({ AiCoreReadiness.Failed }) { activity ->
+            host.await(activity) { host.text(it, "Could not check AICore availability.") }
+            val choice = radio(activity, "AICore")
+            assertNotNull(choice.config.getOrNull(SemanticsProperties.Disabled))
+            assertTrue(choice.config[SemanticsProperties.Selected])
+            assertEquals(AiAnalysisMode.AICORE, AppConfig.aiAnalysisMode.value)
+        }
+    }
+
     @Test fun modeSwitchHidesOnlyAiSectionsAndPreservesPreferences(): Unit = runBlocking {
-        withScreen({ true }) { activity ->
+        withScreen({ AiCoreReadiness.Status(FeatureStatus.AVAILABLE) }) { activity ->
             host.await(activity) { host.text(it, "Summarize and categorize bookmarks using on-device Gemini Nano") }
 
 
@@ -65,11 +76,11 @@ class AiAnalysisScreenTest {
     @Test fun reopeningRechecksReadinessAndBackDoesNotChangeMode(): Unit = runBlocking {
         var checks = 0
         var backs = 0
-        withScreen({ ++checks > 1 }, onBack = { backs++ }) { activity ->
+        withScreen({ AiCoreReadiness.Status(if (++checks > 1) FeatureStatus.AVAILABLE else FeatureStatus.UNAVAILABLE) }, onBack = { backs++ }) { activity ->
             host.await(activity) { host.text(it, "AICore is currently unavailable.") }
             host.main { activity.setContent { MaterialTheme {
                 AiAnalysisScreen(onNavigateBack = { backs++ }, onNavigateToGenerateContentRequest = {},
-                    checkAiCoreAvailable = { ++checks > 1 })
+                    checkAiCoreReadiness = { AiCoreReadiness.Status(if (++checks > 1) FeatureStatus.AVAILABLE else FeatureStatus.UNAVAILABLE) })
             } } }
             host.await(activity) { host.text(it, "Summarize and categorize bookmarks using on-device Gemini Nano") }
             assertNull(radio(activity, "AICore").config.getOrNull(SemanticsProperties.Disabled))
@@ -83,7 +94,7 @@ class AiAnalysisScreenTest {
 
     @Test fun parameterRowKeepsItsDestination(): Unit = runBlocking {
         var parameters = 0
-        withScreen({ true }, onParameters = { parameters++ }) { activity ->
+        withScreen({ AiCoreReadiness.Status(FeatureStatus.AVAILABLE) }, onParameters = { parameters++ }) { activity ->
             host.await(activity) { host.text(it, "GenerateContentRequest") }
             click(activity, "GenerateContentRequest")
             assertEquals(1, parameters)
@@ -109,7 +120,7 @@ class AiAnalysisScreenTest {
     }
 
     private suspend fun withScreen(
-        checkAvailable: suspend () -> Boolean,
+        checkReadiness: suspend () -> AiCoreReadiness,
         onBack: () -> Unit = {},
         onParameters: () -> Unit = {},
         block: suspend (ComponentActivity) -> Unit
@@ -126,7 +137,7 @@ class AiAnalysisScreenTest {
             activity = launched
             host.main { launched.setContent { MaterialTheme {
                 AiAnalysisScreen(onNavigateBack = onBack, onNavigateToGenerateContentRequest = onParameters,
-                    checkAiCoreAvailable = checkAvailable)
+                    checkAiCoreReadiness = checkReadiness)
             } } }
             block(launched)
         } finally {

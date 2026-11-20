@@ -24,7 +24,7 @@ class SettingsHeaderTest {
         val host = HeaderTestHost()
         val activity = host.launch()
         try {
-            host.main { activity.setContent { MaterialTheme { SettingsDebugScreen(onNavigateBack = {}) } } }
+            host.main { activity.setContent { MaterialTheme { SettingsDebugScreen(onNavigateBack = {}, checkAiCoreReadiness = { AiCoreReadiness.Failed }) } } }
             host.await(activity) { host.text(it, host.context.getString(R.string.settings_debug_subtitle)) }
             host.main { activity.setContent { MaterialTheme { GenerateContentRequestScreen(onNavigateBack = {}) } } }
             val reset = host.await(activity) { host.description(it, host.context.getString(R.string.gcr_reset_default_content_desc)) }
@@ -47,9 +47,9 @@ class SettingsHeaderTest {
     }
 
     @Test fun settingsHeaderStaysFixed() = verify { back -> SettingsScreen(onNavigateBack = back, onNavigateToAiAnalysis = {}) }
-    @Test fun aiAnalysisHeaderStaysFixed() = verify { back -> AiAnalysisScreen(onNavigateBack = back, onNavigateToGenerateContentRequest = {}, checkAiCoreAvailable = { true }) }
+    @Test fun aiAnalysisHeaderStaysFixed() = verify { back -> AiAnalysisScreen(onNavigateBack = back, onNavigateToGenerateContentRequest = {}, checkAiCoreReadiness = { AiCoreReadiness.Failed }) }
     @Test fun privateHeaderStaysFixed() = verify { back -> PrivateSettingsScreen(onNavigateBack = back) }
-    @Test fun debugHeaderStaysFixed() = verify { back -> SettingsDebugScreen(onNavigateBack = back) }
+    @Test fun debugHeaderStaysFixed() = verify { back -> SettingsDebugScreen(onNavigateBack = back, checkAiCoreReadiness = { AiCoreReadiness.Failed }) }
     @Test fun generationHeaderStaysFixed() = verify { back -> GenerateContentRequestScreen(onNavigateBack = back) }
     @Test fun storageHeaderStaysFixed() = verify { back -> StorageScreen(onNavigateBack = back) }
     @Test fun rssHeaderStaysFixed() = verify { back -> RssSettingsScreen(onNavigateBack = back) }

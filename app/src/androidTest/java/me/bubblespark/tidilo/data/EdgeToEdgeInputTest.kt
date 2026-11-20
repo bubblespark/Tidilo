@@ -26,7 +26,7 @@ class EdgeToEdgeInputTest {
     @Test fun tagSelectionViewportAvoidsIme() = verifyViewport { host, activity ->
         TagSelectionScreen(ViewModelProvider(activity)[LibraryViewModel::class.java], {})
     }
-    @Test fun debugViewportAvoidsIme() = verifyViewport { _, _ -> SettingsDebugScreen({}) }
+    @Test fun debugViewportAvoidsIme() = verifyViewport { _, _ -> SettingsDebugScreen({}, checkAiCoreReadiness = { AiCoreReadiness.Failed }) }
     @Test fun parameterViewportAvoidsIme() = verifyViewport { _, _ -> GenerateContentRequestScreen({}) }
 
     @Test fun detailMemoHidesOnlyLowerActionsWhileImeIsVisible(): Unit = runBlocking {
@@ -94,7 +94,7 @@ class EdgeToEdgeInputTest {
         try {
             host.main { activity.setContent { MaterialTheme {
                 keyboard = LocalSoftwareKeyboardController.current
-                SettingsDebugScreen({})
+                SettingsDebugScreen({}, checkAiCoreReadiness = { AiCoreReadiness.Failed })
             } } }
             host.await(activity) { it.config.getOrNull(SemanticsProperties.EditableText) != null }
             host.scroll(activity, 2000f)

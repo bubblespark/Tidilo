@@ -163,8 +163,8 @@ Manual review displays generation failures in the review UI. Acquisition and per
 
 ## 9. Diagnostic & Test Tooling
 
-- **`DebugPromptTester.kt`**: Low-level status checker (`checkStatus()`) and raw single-shot prompt tester with custom hyperparameter overrides.
-- **Settings ➔ Debug ➔ ML Kit GenAI Prompt API Test**: Live UI in `SettingsDebugScreen.kt` to verify latency, status codes, and model output on physical Pixel devices.
+- **`AiCoreAvailability.kt`**: Shared passive Prompt API status query for Debug and AI Analysis. Debug displays SDK status details and AI Analysis uses availability to control model selection. Both distinguish a failed check from unavailability.
+- **Settings ➔ Debug**: Status inspection checks on entry and supports manual refresh. The ML Kit GenAI Prompt API Test card runs a single explicit prompt through `DebugPromptTester.kt` to inspect latency and output on supported physical devices.
 
 ### Release SDK initialization and shrinking
 

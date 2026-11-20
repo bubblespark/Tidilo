@@ -40,28 +40,29 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.AiCoreAvailability
+import me.bubblespark.tidilo.data.AiCoreReadiness
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 /** Availability restricts selection without changing the user's persisted mode. */
 @Composable
-fun AiAnalysisScreen(
+internal fun AiAnalysisScreen(
     onNavigateBack: () -> Unit,
     onNavigateToGenerateContentRequest: () -> Unit,
     modifier: Modifier = Modifier,
-    checkAiCoreAvailable: suspend () -> Boolean = { AiCoreAvailability.check() }
+    checkAiCoreReadiness: suspend () -> AiCoreReadiness = { AiCoreAvailability.inspect() }
 ) {
     val mode by AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
 
-    var available by remember { mutableStateOf<Boolean?>(null) }
-    val currentCheck by rememberUpdatedState(checkAiCoreAvailable)
-    LaunchedEffect(Unit) { available = currentCheck() }
+    var readiness by remember { mutableStateOf<AiCoreReadiness?>(null) }
+    val currentCheck by rememberUpdatedState(checkAiCoreReadiness)
+    LaunchedEffect(Unit) { readiness = currentCheck() }
 
     AiAnalysisContent(
         mode = mode,
 
-        available = available,
+        readiness = readiness,
         onNavigateBack = onNavigateBack,
         onModeChange = AppConfig::setAiAnalysisMode,
 
@@ -74,7 +75,7 @@ fun AiAnalysisScreen(
 internal fun AiAnalysisContent(
     mode: AiAnalysisMode,
 
-    available: Boolean?,
+    readiness: AiCoreReadiness?,
     onNavigateBack: () -> Unit,
     onModeChange: (AiAnalysisMode) -> Unit,
 
@@ -87,7 +88,7 @@ internal fun AiAnalysisContent(
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding)
             .padding(bottom = 32.dp)) {
             SettingsSectionTitle(stringResource(R.string.settings_ai_analysis_using_model_title))
-            AiModelChoices(mode, available, onModeChange)
+            AiModelChoices(mode, readiness, onModeChange)
             AnimatedVisibility(visible = mode == AiAnalysisMode.AICORE,
                 enter = slideInVertically(spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow)) { -it / 3 } +
                     fadeIn(spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow)) +
@@ -109,15 +110,19 @@ internal fun AiAnalysisContent(
 }
 
 @Composable
-private fun AiModelChoices(mode: AiAnalysisMode, available: Boolean?, onModeChange: (AiAnalysisMode) -> Unit) {
+private fun AiModelChoices(mode: AiAnalysisMode, readiness: AiCoreReadiness?, onModeChange: (AiAnalysisMode) -> Unit) {
     SettingsGroup(Modifier.selectableGroup()) {
         SettingsRadioRow(stringResource(R.string.settings_ai_analysis_aicore), mode == AiAnalysisMode.AICORE,
-            onClick = { onModeChange(AiAnalysisMode.AICORE) }, enabled = available == true,
-            subtitle = stringResource(when (available) {
+            onClick = { onModeChange(AiAnalysisMode.AICORE) }, enabled = readiness?.isAvailable == true,
+            subtitle = stringResource(when (readiness) {
                 null -> R.string.settings_ai_analysis_checking
-                false -> R.string.settings_ai_analysis_unavailable
-                true -> R.string.settings_ai_analysis_aicore_desc
-            }), isError = available == false)
+                AiCoreReadiness.Failed -> R.string.settings_ai_analysis_check_failed
+                is AiCoreReadiness.Status -> if (readiness.isAvailable) {
+                    R.string.settings_ai_analysis_aicore_desc
+                } else {
+                    R.string.settings_ai_analysis_unavailable
+                }
+            }), isError = readiness?.isAvailable == false)
         SettingsDivider()
         SettingsRadioRow(stringResource(R.string.settings_ai_analysis_disable), mode == AiAnalysisMode.DISABLE,
             onClick = { onModeChange(AiAnalysisMode.DISABLE) }, subtitle = stringResource(R.string.settings_ai_analysis_disable_desc))

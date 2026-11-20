@@ -51,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,7 +61,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.google.mlkit.genai.common.FeatureStatus
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.data.AiCoreAvailability
+import me.bubblespark.tidilo.data.AiCoreReadiness
 import me.bubblespark.tidilo.data.debug.CrashLogEntry
 import me.bubblespark.tidilo.data.debug.CrashLogManager
 import me.bubblespark.tidilo.ui.screens.debug.DebugPromptTester
@@ -75,12 +79,18 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun SettingsDebugScreen(
+internal fun SettingsDebugScreen(
     onNavigateBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    checkAiCoreReadiness: suspend () -> AiCoreReadiness = { AiCoreAvailability.inspect() }
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val applicationInfo = context.applicationInfo
+    var readiness by remember { mutableStateOf<AiCoreReadiness?>(null) }
+    var statusRequest by remember { mutableStateOf(0) }
+    val currentCheck by rememberUpdatedState(checkAiCoreReadiness)
+    LaunchedEffect(statusRequest) { readiness = currentCheck() }
     var genAiState by remember { mutableStateOf<GenAiTestState>(GenAiTestState.Idle) }
     var crashLogs by remember { mutableStateOf<List<CrashLogEntry>>(emptyList()) }
     LaunchedEffect(Unit) {
@@ -143,11 +153,30 @@ fun SettingsDebugScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    InfoRow(label = "Device Model", value = "${Build.MANUFACTURER} ${Build.MODEL}")
-                    InfoRow(label = "Android OS", value = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-                    InfoRow(label = "Minimum SDK", value = "API 34 (Android 14)")
-                    InfoRow(label = "Target / Compile SDK", value = "API 36")
-                    InfoRow(label = "Device Agnostic", value = "Generic Android 14+ AICore support")
+                    InfoRow(
+                        label = stringResource(R.string.debug_device_model),
+                        value = "${Build.MANUFACTURER} ${Build.MODEL}"
+                    )
+                    InfoRow(
+                        label = stringResource(R.string.debug_android_os),
+                        value = stringResource(R.string.debug_android_os_value, Build.VERSION.RELEASE, Build.VERSION.SDK_INT)
+                    )
+                    InfoRow(
+                        label = stringResource(R.string.debug_app_min_sdk),
+                        value = stringResource(R.string.debug_api_level, applicationInfo.minSdkVersion)
+                    )
+                    InfoRow(
+                        label = stringResource(R.string.debug_app_target_sdk),
+                        value = stringResource(R.string.debug_api_level, applicationInfo.targetSdkVersion)
+                    )
+                    InfoRow(
+                        label = stringResource(R.string.debug_app_compile_sdk),
+                        value = if (applicationInfo.compileSdkVersion > 0) {
+                            stringResource(R.string.debug_api_level, applicationInfo.compileSdkVersion)
+                        } else {
+                            stringResource(R.string.debug_sdk_unspecified)
+                        }
+                    )
                 }
             }
 
@@ -180,10 +209,41 @@ fun SettingsDebugScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    InfoRow(label = "AICore Availability", value = "Supported (API >= 34)")
-                    InfoRow(label = "On-Device Model", value = "Gemini Nano (System Service)")
-                    InfoRow(label = "Inference Constraint", value = "Foreground Execution Only")
-                    InfoRow(label = "Engine Pipeline", value = "URL fetch -> Text Extract -> Nano Prompt API")
+                    val result = readiness
+                    InfoRow(
+                        label = stringResource(R.string.debug_prompt_api_readiness),
+                        value = stringResource(when (result) {
+                            null -> R.string.settings_ai_analysis_checking
+                            AiCoreReadiness.Failed -> R.string.settings_ai_analysis_check_failed
+                            is AiCoreReadiness.Status -> when (result.code) {
+                                FeatureStatus.AVAILABLE -> R.string.debug_prompt_api_ready
+                                FeatureStatus.DOWNLOADABLE -> R.string.debug_prompt_api_download_required
+                                FeatureStatus.DOWNLOADING -> R.string.debug_prompt_api_downloading
+                                FeatureStatus.UNAVAILABLE -> R.string.settings_ai_analysis_unavailable
+                                else -> R.string.debug_prompt_api_unknown_status
+                            }
+                        })
+                    )
+                    if (result is AiCoreReadiness.Status) {
+                        InfoRow(
+                            label = stringResource(R.string.debug_prompt_api_status_code),
+                            value = result.code.toString()
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            if (readiness != null) {
+                                readiness = null
+                                statusRequest++
+                            }
+                        },
+                        enabled = result != null,
+                        shape = themeCorner(ThemeCorner.FIELD)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.debug_prompt_api_check_status))
+                    }
                 }
             }
 
@@ -214,86 +274,49 @@ fun SettingsDebugScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Verify on-device Gemini Nano connectivity via Android AICore Prompt API.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Action Buttons Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                genAiState = GenAiTestState.Loading("Running on-device inference via AICore...")
+                                try {
+                                    val currentConfig = DebugPromptTester.loadCurrentConfig(context)
+                                    val (output, latency) = DebugPromptTester.testGenerateContent(
+                                        prompt = "Reply with 'Hello from Gemini Nano!' in English.",
+                                        config = currentConfig
+                                    )
+                                    genAiState = GenAiTestState.InferenceResult(output, latency)
+                                } catch (e: Exception) {
+                                    genAiState = GenAiTestState.Error(
+                                        errorMessage = e.message ?: "Unknown inference error",
+                                        cause = e
+                                    )
+                                }
+                            }
+                        },
+                        enabled = genAiState !is GenAiTestState.Loading,
+                        shape = themeCorner(ThemeCorner.FIELD),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
                     ) {
-                        // 1. Check Status Button
-                        OutlinedButton(
-                            onClick = {
-                                coroutineScope.launch {
-                                    genAiState = GenAiTestState.Loading("Checking Gemini Nano status...")
-                                    val (statusText, code) = DebugPromptTester.checkStatus()
-                                    genAiState = GenAiTestState.StatusResult(statusText, code)
-                                }
-                            },
-                            enabled = genAiState !is GenAiTestState.Loading,
-                            shape = themeCorner(ThemeCorner.FIELD),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Check Status")
-                        }
-
-                        // 2. Run Test Inference Button
-                        Button(
-                            onClick = {
-                                coroutineScope.launch {
-                                    genAiState = GenAiTestState.Loading("Running on-device inference via AICore...")
-                                    try {
-                                        val currentConfig = DebugPromptTester.loadCurrentConfig(context)
-                                        val (output, latency) = DebugPromptTester.testGenerateContent(
-                                            prompt = "Reply with 'Hello from Gemini Nano!' in English.",
-                                            config = currentConfig
-                                        )
-                                        genAiState = GenAiTestState.InferenceResult(output, latency)
-                                    } catch (e: Exception) {
-                                        genAiState = GenAiTestState.Error(
-                                            errorMessage = e.message ?: "Unknown inference error",
-                                            cause = e
-                                        )
-                                    }
-                                }
-                            },
-                            enabled = genAiState !is GenAiTestState.Loading,
-                            shape = themeCorner(ThemeCorner.FIELD),
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Run Test")
-                        }
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.debug_prompt_api_run_test))
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Result / Status Area
+                    // Inference Result Area
                     when (val state = genAiState) {
                         is GenAiTestState.Idle -> {
                             Text(
-                                text = "Tap 'Check Status' or 'Run Test' to initiate diagnostics.",
+                                text = stringResource(R.string.debug_prompt_api_test_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -314,27 +337,6 @@ fun SettingsDebugScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                            }
-                        }
-                        is GenAiTestState.StatusResult -> {
-                            Surface(
-                                shape = themeCorner(ThemeCorner.FIELD),
-                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(
-                                        text = "Status: ${state.statusText}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
-                                    Text(
-                                        text = "FeatureStatus code: ${state.statusCode}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                                    )
-                                }
                             }
                         }
                         is GenAiTestState.InferenceResult -> {
@@ -733,12 +735,12 @@ object CrashLogUiFormatter {
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
-    Row(
+internal fun InfoRow(label: String, value: String) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text(
             text = label,

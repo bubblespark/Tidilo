@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.google.mlkit.genai.common.FeatureStatus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -89,7 +90,9 @@ class SettingsRedesignTest {
                                         if (page == "settings") SettingsScreen({}, {}, onNavigateToDebug = { finalClicks++ })
                                         else AiAnalysisContent(
                                             mode = if (page == "ai") AiAnalysisMode.AICORE else AiAnalysisMode.DISABLE,
-                                            available = page == "ai", onNavigateBack = {},
+                                            readiness = AiCoreReadiness.Status(
+                                                if (page == "ai") FeatureStatus.AVAILABLE else FeatureStatus.UNAVAILABLE
+                                            ), onNavigateBack = {},
                                             onModeChange = { if (page == "disabled") finalClicks++ },
                                             onNavigateToParameters = { if (page == "ai") finalClicks++ })
                                     } }

@@ -9,10 +9,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.BroadcastFrameClock
 import androidx.compose.runtime.Recomposer
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.platform.AndroidUiDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
@@ -20,6 +24,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
@@ -37,18 +42,25 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import org.junit.Assert.*
 import org.junit.Test
+import kotlin.math.abs
 
 /** Menu-only fixture. Effective semantics deliberately use the merged Activity root. */
 internal class RadialMenuFixture(val direction: LayoutDirection = LayoutDirection.Ltr,
     theme: AppTheme = AppTheme.DEFAULT, dark: Boolean = false, blur: Boolean = true,
-    fontScale: Float? = null, motionScale: Float? = null) : AutoCloseable {
+    fontScale: Float? = null, motionScale: Float? = null,
+    private val frameClock: BroadcastFrameClock? = null) : AutoCloseable {
     val host = HeaderTestHost()
     val activity = host.launch()
     val state = LibraryRadialMenuState()
     val actions = mutableListOf<String>()
     private var pointerDown = false
     private var ready = false
-    private val motionScope = motionScale?.let { CoroutineScope(AndroidUiDispatcher.Main + SupervisorJob()) }
+    private val motionScope = motionScale?.let {
+        val context = if (frameClock == null) AndroidUiDispatcher.Main else Dispatchers.Main.immediate + frameClock
+        CoroutineScope(context + SupervisorJob())
+    }
+    private var composeRoot: ViewRootForTest? = null
+    private var frameTimeMillis = 0L
     private val recomposer = motionScope?.let { scope -> Recomposer(scope.coroutineContext + object : MotionDurationScale {
         override val scaleFactor: Float = requireNotNull(motionScale)
     }) }
@@ -57,6 +69,10 @@ internal class RadialMenuFixture(val direction: LayoutDirection = LayoutDirectio
     init {
         recomposer?.let { active -> motionScope!!.launch { active.runRecomposeAndApplyChanges() } }
         host.main { activity.setContent(parent = recomposer) {
+            if (frameClock != null) {
+                val view = LocalView.current
+                SideEffect { composeRoot = view as ViewRootForTest }
+            }
             TidiloTheme(dynamicColor = false, theme = theme, darkTheme = dark, blurEnabled = blur) {
                 val currentDensity = LocalDensity.current
                 CompositionLocalProvider(LocalLayoutDirection provides direction,
@@ -71,6 +87,15 @@ internal class RadialMenuFixture(val direction: LayoutDirection = LayoutDirectio
         } }
     }
 
+    fun advanceFrame(frameMillis: Long): Long {
+        frameTimeMillis += frameMillis
+        Snapshot.sendApplyNotifications()
+        requireNotNull(frameClock).sendFrame(frameTimeMillis * 1_000_000L)
+        Snapshot.sendApplyNotifications()
+        composeRoot?.measureAndLayoutForTest()
+        return frameTimeMillis
+    }
+
     suspend fun node(suffix: String): SemanticsNode {
         if (!ready) {
             withTimeout(4000) {
@@ -81,6 +106,7 @@ internal class RadialMenuFixture(val direction: LayoutDirection = LayoutDirectio
                 }
             }
             host.instrumentation.waitForIdleSync()
+            if (frameClock != null) host.main { advanceFrame(16) }
             ready = true
         }
         try {
@@ -182,75 +208,55 @@ class LibraryRadialMenuInteractionTest {
     }
 
     @Test fun reversingDuringMotionKeepsContinuousFramePositions() = runBlocking {
-        run {
-            RadialMenuFixture(motionScale = 10f).use { fixture ->
-                val trigger = fixture.center("trigger")
-                val button = fixture.node("trigger")
-                fun toggle() = fixture.host.main { button.config[SemanticsActions.OnClick].action!!.invoke() }
-                toggle()
-                awaitProgress(fixture, trigger, .4f.. .6f)
-                data class FrameSample(val progress: Float, val observedAtNanos: Long)
-                val samples = java.util.concurrent.CopyOnWriteArrayList<FrameSample>()
-                var generation = 0
-                fun assertFrameContinuity(before: Float, toggledAt: Long) {
-                    assertTrue("No drawn frame sampled after reversal", samples.isNotEmpty())
-                    var previous = FrameSample(before, toggledAt)
-                    for (sample in samples) {
-                        val elapsedMillis = (sample.observedAtNanos - previous.observedAtNanos) / 1_000_000f
-                        // Bound the easing derivative by 5 and allow two pixels of rounding.
-                        // This checks the first post-toggle frame and subsequent frames too.
-                        val rounding = 2f / (150f * fixture.activity.resources.displayMetrics.density)
-                        val tolerance = 5f * elapsedMillis / (230f * 10f) + rounding
-                        assertTrue("Drawn frame jumped: ${previous.progress} -> ${sample.progress}, elapsed=$elapsedMillis, tolerance=$tolerance",
-                            kotlin.math.abs(sample.progress - previous.progress) <= tolerance)
-                        previous = sample
-                    }
-                }
-                var sampling = true
-                val callback = object : android.view.Choreographer.FrameCallback {
-                    override fun doFrame(time: Long) {
-                        val frameGeneration = generation
-                        // Run after this frame's traversal/draw, not before placement.
-                        fixture.activity.window.decorView.post {
-                            if (sampling && frameGeneration == generation) {
-                                samples += FrameSample(readProgress(fixture, trigger), System.nanoTime())
-                            }
-                        }
-                        if (sampling) android.view.Choreographer.getInstance().postFrameCallback(this)
-                    }
-                }
-                try {
-                    fixture.host.main { android.view.Choreographer.getInstance().postFrameCallback(callback) }
-                    var beforeClose = 0f
-                    var closeTime = 0L
+        val frameClock = BroadcastFrameClock()
+        val motionScale = 10f
+        RadialMenuFixture(motionScale = motionScale, frameClock = frameClock).use { fixture ->
+            val trigger = fixture.center("trigger")
+            val button = fixture.node("trigger")
+            val frameMillis = 16L
+            val rounding = 2f / (150f * fixture.activity.resources.displayMetrics.density)
+            // The easing derivative is bounded by 5. Compare positions from adjacent clock steps.
+            val tolerance = 5f * frameMillis / (230f * motionScale) + rounding
+
+            fun toggle() = fixture.host.main {
+                assertTrue(button.config[SemanticsActions.OnClick].action!!.invoke())
+            }
+
+            fun advanceUntil(target: ClosedFloatingPointRange<Float>): Float {
+                var previous = progress(fixture, trigger)
+                val initial = previous
+                // Each reversal starts at an intermediate position. Its first step is checked too.
+                repeat(150) {
+                    var current = 0f
+                    var frameTimeMillis = 0L
                     fixture.host.main {
-                        beforeClose = readProgress(fixture, trigger)
-                        generation++
-                        samples.clear()
-                        closeTime = System.nanoTime()
-                        button.config[SemanticsActions.OnClick].action!!.invoke()
+                        frameTimeMillis = fixture.advanceFrame(frameMillis)
+                        current = readProgress(fixture, trigger)
                     }
-                    assertTrue("Close must interrupt expansion", beforeClose in .05f.. .9f)
-                    val contracting = awaitProgress(fixture, trigger, .15f.. .3f, increasing = false)
-                    assertFrameContinuity(beforeClose, closeTime)
-                    assertTrue("Retraction must not reset to either endpoint", samples.isNotEmpty() && samples.all { it.progress > 0f && it.progress <= beforeClose + .1f })
-                    var beforeOpen = 0f
-                    var openTime = 0L
-                    fixture.host.main {
-                        beforeOpen = readProgress(fixture, trigger)
-                        generation++
-                        samples.clear()
-                        openTime = System.nanoTime()
-                        button.config[SemanticsActions.OnClick].action!!.invoke()
+                    assertTrue(
+                        "Shortcut position jumped: $previous -> $current at $frameTimeMillis ms",
+                        abs(current - previous) <= tolerance,
+                    )
+                    if (initial > 0f) {
+                        assertTrue("Shortcut reached an endpoint during reversal: $current", current > 0f && current < 1f)
                     }
-                    awaitProgress(fixture, trigger, .7f.. .9f)
-                    assertFrameContinuity(beforeOpen, openTime)
-                    assertTrue(beforeClose > contracting)
-                    assertTrue(beforeOpen < .4f)
-                    assertTrue(samples.size > 2)
-                    assertTrue("Reopening must continue from the contracted position", samples.all { it.progress > 0f && it.progress >= beforeOpen - .1f && it.progress < 1f })
-                    fixture.host.main { assertTrue(fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
-                } finally { fixture.host.main { sampling = false; android.view.Choreographer.getInstance().removeFrameCallback(callback) } }
+                    if (current in target) return current
+                    previous = current
+                }
+                throw AssertionError("Shortcut did not reach $target from $initial, last position $previous")
+            }
+
+            toggle()
+            val expanding = advanceUntil(.4f.. .6f)
+            toggle()
+            val contracting = advanceUntil(.15f.. .3f)
+            toggle()
+            val reopening = advanceUntil(.7f.. .9f)
+            assertTrue(expanding > contracting)
+            assertTrue(reopening > contracting)
+            fixture.host.main {
+                assertTrue(fixture.state.isOpen)
+                assertTrue(fixture.actions.isEmpty())
             }
         }
     }

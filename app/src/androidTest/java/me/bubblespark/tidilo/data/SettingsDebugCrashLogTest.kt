@@ -159,7 +159,7 @@ class SettingsDebugCrashLogTest {
             host.main {
                 activity.setContent {
                     TidiloTheme {
-                        SettingsDebugScreen(onNavigateBack = {})
+                        SettingsDebugScreen(onNavigateBack = {}, checkAiCoreReadiness = { AiCoreReadiness.Failed })
                     }
                 }
             }

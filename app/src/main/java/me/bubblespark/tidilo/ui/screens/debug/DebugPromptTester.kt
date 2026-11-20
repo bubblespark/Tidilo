@@ -3,8 +3,6 @@ package me.bubblespark.tidilo.ui.screens.debug
 import me.bubblespark.tidilo.data.AiCoreUsageRepository
 import me.bubblespark.tidilo.data.AiUsageSource
 import android.content.Context
-import com.google.mlkit.genai.common.FeatureStatus
-import com.google.mlkit.genai.common.GenAiException
 import com.google.mlkit.genai.prompt.Generation
 import com.google.mlkit.genai.prompt.GenerativeModel
 import com.google.mlkit.genai.prompt.TextPart
@@ -17,7 +15,6 @@ import kotlinx.coroutines.withContext
 sealed class GenAiTestState {
     data object Idle : GenAiTestState()
     data class Loading(val message: String) : GenAiTestState()
-    data class StatusResult(val statusText: String, val statusCode: Int) : GenAiTestState()
     data class InferenceResult(val responseText: String, val latencyMs: Long) : GenAiTestState()
     data class Error(val errorMessage: String, val cause: Throwable? = null) : GenAiTestState()
 }
@@ -27,29 +24,6 @@ sealed class GenAiTestState {
  * Isolated within the debug package to avoid mixing with production logic.
  */
 object DebugPromptTester {
-
-    /**
-     * Checks model availability status of Gemini Nano (AICore).
-     */
-    suspend fun checkStatus(): Pair<String, Int> = withContext(Dispatchers.IO) {
-        var model: GenerativeModel? = null
-        try {
-            model = Generation.getClient()
-            val status = model.checkStatus()
-            val text = when (status) {
-                FeatureStatus.AVAILABLE -> "AVAILABLE (Ready for inference)"
-                FeatureStatus.DOWNLOADABLE -> "DOWNLOADABLE (Model requires download)"
-                FeatureStatus.DOWNLOADING -> "DOWNLOADING (Download in progress)"
-                FeatureStatus.UNAVAILABLE -> "UNAVAILABLE (Device or AICore unsupported)"
-                else -> "UNKNOWN ($status)"
-            }
-            text to status
-        } catch (e: Exception) {
-            "ERROR: ${e.message ?: e.javaClass.simpleName}" to -1
-        } finally {
-            model?.close()
-        }
-    }
 
     /**
      * Sends a one-off test request and receives the response.

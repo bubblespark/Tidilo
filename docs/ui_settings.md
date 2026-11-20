@@ -29,12 +29,17 @@
 ## 3. AI Analysis Settings (`SettingsScreen` -> `AI Analysis`)
 
 - **Sections**: `Using AI Model` and conditional `AICore parameters` inside a fixed-header secondary page.
-- **Model Selector**: Inline `AICore` and `Disable` radio rows (`>= 48.dp` high). Fresh installs default to `AICore` only when initial readiness returns `AVAILABLE` (else `Disable`); manual choices persist. Re-entering checks readiness without writing mode, downloading models, generating content, or recording usage; while checking/unavailable, `AICore` is disabled (`0.38` alpha) with status/error guidance while `Disable` stays enabled.
+- **Model Selector**: Inline `AICore` and `Disable` radio rows (`>= 48.dp` high). Fresh installs default to `AICore` only when initial readiness returns `AVAILABLE` (else `Disable`); manual choices persist. Re-entering checks readiness without writing mode, downloading models, generating content, or recording usage; while checking, unavailable, or after a failed check, `AICore` is disabled (`0.38` alpha) with status/error guidance while `Disable` stays enabled.
 - **Conditional Section**: `AICore parameters` appears only when `AICore` is selected. Switching to `Disable` animates it out (sliding upward 1/3 height, fading, shrinking vertically with `NoBouncy` / `MediumLow` springs) while preserving saved preferences; rows expand cleanly on large fonts above navigation clearance.
 
 ---
 
-## 4. Debug Web Parser
+## 4. Debug Diagnostics
+
+- **Device & SDK**: Device model and Android runtime SDK come from the device. The app minimum, target, and compile SDK come from installed application metadata. Compile SDK is marked unspecified when the package provides no value. Diagnostic labels sit above full-width, wrapping values.
+- **Prompt API status**: Debug checks model readiness on entry with the same passive query used by AI Analysis. Check Status refreshes the displayed result. Debug includes the returned SDK status code and distinguishes a required download from one in progress. Run Test explicitly sends a sample prompt. Opening the screen or refreshing status does not start inference or a download.
+
+## 5. Debug Web Parser
 
 - **Body Text Modes**: Toggleable `Readability4J` (original extraction), `Jsoup Clean`, and `Prompt` (full ad-filtered `ParsedWebPage.promptBodyText` prior to `800`-char snippet truncation, excluding prompt instructions/metadata).
 - **Controls & Resilience**: `Copy Body` copies exactly what the active mode displays. Filter chips wrap across rows on narrow widths or large font scales; detail blocks span full width above the copy button. HTTP error bodies remain inspectable and copyable without invoking preparation or AICore.

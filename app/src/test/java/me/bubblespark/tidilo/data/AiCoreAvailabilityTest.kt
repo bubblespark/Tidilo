@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.data
 import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.prompt.GenerativeModel
 import java.lang.reflect.Proxy
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -19,19 +20,21 @@ class AiCoreAvailabilityTest {
                 when (method.name) {
                     "checkStatus" -> status
                     "close" -> { closed = true; null }
-                    else -> error("Unexpected inference/download: ${method.name}")
+                    else -> throw AssertionError("Unexpected inference/download: ${method.name}")
                 }
             } as GenerativeModel
-            assertEquals(status == FeatureStatus.AVAILABLE, AiCoreAvailability.check(openModel = { model }))
+            val result = AiCoreAvailability.inspect(openModel = { model })
+            assertEquals(AiCoreReadiness.Status(status), result)
+            assertEquals(status == FeatureStatus.AVAILABLE, result.isAvailable)
             assertTrue(closed)
         }
     }
 
-    @Test fun initializationFailureIsUnavailable() = runBlocking {
-        assertFalse(AiCoreAvailability.check(openModel = { error("AICore unsupported") }))
+    @Test fun initializationFailureIsReported() = runBlocking {
+        assertEquals(AiCoreReadiness.Failed, AiCoreAvailability.inspect(openModel = { error("Client unavailable") }))
     }
 
-    @Test fun statusFailureAndTimeoutAreUnavailableAndCloseTheClient() = runBlocking {
+    @Test fun statusFailureAndTimeoutAreReportedAndCloseTheClient() = runBlocking {
         for (timeout in listOf(false, true)) {
             var closed = false
             val model = Proxy.newProxyInstance(GenerativeModel::class.java.classLoader, arrayOf(GenerativeModel::class.java)) { _, method, args ->
@@ -45,11 +48,29 @@ class AiCoreAvailabilityTest {
                         suspended.startCoroutine(continuation)
                         COROUTINE_SUSPENDED
                     }
-                    else -> error("Unexpected inference/download: ${method.name}")
+                    else -> throw AssertionError("Unexpected inference/download: ${method.name}")
                 }
             } as GenerativeModel
-            assertFalse(AiCoreAvailability.check(openModel = { model }, timeoutMillis = 20))
+            assertEquals(AiCoreReadiness.Failed, AiCoreAvailability.inspect(openModel = { model }, timeoutMillis = 200))
             assertTrue(closed)
         }
+    }
+
+    @Test fun cancellationIsPropagatedAndClosesTheClient() = runBlocking {
+        var closed = false
+        val model = Proxy.newProxyInstance(
+            GenerativeModel::class.java.classLoader,
+            arrayOf(GenerativeModel::class.java)
+        ) { _, method, _ ->
+            when (method.name) {
+                "checkStatus" -> throw CancellationException("Check cancelled")
+                "close" -> { closed = true; null }
+                else -> throw AssertionError("Unexpected model call: ${method.name}")
+            }
+        } as GenerativeModel
+
+        val result = runCatching { AiCoreAvailability.inspect(openModel = { model }) }
+        assertTrue(result.exceptionOrNull() is CancellationException)
+        assertTrue(closed)
     }
 }

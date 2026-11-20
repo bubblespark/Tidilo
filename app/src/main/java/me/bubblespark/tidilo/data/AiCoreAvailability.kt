@@ -8,24 +8,37 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
+internal sealed interface AiCoreReadiness {
+    data class Status(val code: Int) : AiCoreReadiness
+    data object Failed : AiCoreReadiness
+
+    val isAvailable: Boolean
+        get() = this is Status && code == FeatureStatus.AVAILABLE
+}
+
 /** Checks readiness only; never starts a download or inference. */
 internal object AiCoreAvailability {
     suspend fun check(
         openModel: () -> GenerativeModel = { Generation.getClient() },
         timeoutMillis: Long = 10_000L
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): Boolean = inspect(openModel, timeoutMillis).isAvailable
+
+    suspend fun inspect(
+        openModel: () -> GenerativeModel = { Generation.getClient() },
+        timeoutMillis: Long = 10_000L
+    ): AiCoreReadiness = withContext(Dispatchers.IO) {
         withTimeoutOrNull(timeoutMillis) {
             var model: GenerativeModel? = null
             try {
                 model = openModel()
-                model.checkStatus() == FeatureStatus.AVAILABLE
+                AiCoreReadiness.Status(model.checkStatus())
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                false
+                AiCoreReadiness.Failed
             } finally {
                 model?.let { runCatching { it.close() } }
             }
-        } ?: false
+        } ?: AiCoreReadiness.Failed
     }
 }

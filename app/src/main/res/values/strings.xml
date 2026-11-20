@@ -39,6 +39,7 @@
     <string name="settings_ai_analysis_disable">Disable</string>
     <string name="settings_ai_analysis_checking">Checking AICore availability…</string>
     <string name="settings_ai_analysis_unavailable">AICore is currently unavailable.</string>
+    <string name="settings_ai_analysis_check_failed">Could not check AICore availability.</string>
     <string name="settings_ai_analysis_using_model_title">Using AI Model</string>
     <string name="settings_ai_analysis_aicore_desc">Summarize and categorize bookmarks using on-device Gemini Nano</string>
     <string name="settings_ai_analysis_disable_desc">Save bookmarks directly without AI analysis</string>
@@ -246,6 +247,23 @@
     <!-- Debug Screen -->
     <string name="debug_device_sdk_title">Device &amp; SDK Environment</string>
     <string name="debug_aicore_status_title">Gemini Nano / AICore Status</string>
+    <string name="debug_device_model">Device model</string>
+    <string name="debug_android_os">Android OS</string>
+    <string name="debug_android_os_value">Android %1$s (API %2$d)</string>
+    <string name="debug_app_min_sdk">App minimum SDK</string>
+    <string name="debug_app_target_sdk">App target SDK</string>
+    <string name="debug_app_compile_sdk">App compile SDK</string>
+    <string name="debug_api_level">API %1$d</string>
+    <string name="debug_sdk_unspecified">Not specified</string>
+    <string name="debug_prompt_api_readiness">ML Kit Prompt API availability</string>
+    <string name="debug_prompt_api_ready">Ready for inference</string>
+    <string name="debug_prompt_api_download_required">Model download required</string>
+    <string name="debug_prompt_api_downloading">Model download in progress</string>
+    <string name="debug_prompt_api_unknown_status">Unrecognized model status</string>
+    <string name="debug_prompt_api_status_code">FeatureStatus code</string>
+    <string name="debug_prompt_api_check_status">Check Status</string>
+    <string name="debug_prompt_api_run_test">Run Test</string>
+    <string name="debug_prompt_api_test_hint">Run Test sends a sample prompt to Gemini Nano.</string>
     <string name="debug_mlkit_genai_title">ML Kit GenAI Prompt API Test</string>
     <string name="debug_parser_prompt">Prompt</string>
     <string name="debug_parser_prompt_description">Ad-filtered body • before the 800-character limit</string>

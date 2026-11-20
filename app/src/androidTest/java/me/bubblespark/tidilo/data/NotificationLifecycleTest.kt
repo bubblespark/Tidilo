@@ -11,6 +11,7 @@ import me.bubblespark.tidilo.parser.ArticleHttpFailure
 import me.bubblespark.tidilo.ui.screens.notifications.*
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicInteger
 
 class NotificationLifecycleTest {
     @Test fun transientXmlFailureWithAnOperationCanBeExplicitlyRetried(): Unit = runBlocking {
@@ -37,10 +38,20 @@ class NotificationLifecycleTest {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         val job = SupervisorJob()
         try {
-            var attempts = 0
-            val repository = ImportRepository(taskDao = db.importTaskDao(), bookmarkDao = db.bookmarkDao(),
+            val taskDao = db.importTaskDao()
+            val attempts = AtomicInteger()
+            val retryStarted = CompletableDeferred<Unit>()
+            val releaseRetry = CompletableDeferred<Unit>()
+            val repository = ImportRepository(taskDao = taskDao, bookmarkDao = db.bookmarkDao(),
                 notificationDao = db.importNotificationDao(), database = db,
-                repositoryScope = CoroutineScope(Dispatchers.IO + job), articleAcquirer = { attempts++; throw ArticleHttpFailure(503) },
+                repositoryScope = CoroutineScope(Dispatchers.IO + job),
+                articleAcquirer = {
+                    if (attempts.incrementAndGet() == 2) {
+                        retryStarted.complete(Unit)
+                        releaseRetry.await()
+                    }
+                    throw ArticleHttpFailure(503)
+                },
                 reportImportError = {})
             repository.importUrl("https://failure.invalid/article")
             val task = withTimeout(5000) { repository.errorTasks.first { it.isNotEmpty() }.single() }
@@ -50,14 +61,25 @@ class NotificationLifecycleTest {
             assertEquals(2, buildNotificationList(history, listOf(task), emptyList()).size)
             repository.clearAllNotifications()
             withTimeout(5000) { repository.notifications.first { it.isEmpty() } }
-            assertNotNull(db.importTaskDao().getTaskById(task.id))
+            assertNotNull(taskDao.getTaskById(task.id))
             assertEquals(listOf("task:${task.id}"), buildNotificationList(emptyList(), repository.errorTasks.value, emptyList()).map { it.key })
-            repository.retryErrorTask(task.id).join()
-            withTimeout(5000) { while (attempts < 2 || db.importTaskDao().getTaskById(task.id)?.status != "ERROR") delay(20) }
-            assertEquals("Article HTTP 503", db.importTaskDao().getTaskById(task.id)?.errorMessage)
-            repository.removeErrorTask(task.id)
-            withTimeout(5000) { repository.errorTasks.first { it.isEmpty() } }
-            assertNull(db.importTaskDao().getTaskById(task.id))
+
+            repository.retryErrorTaskAndAwait(task.id)
+            // Keep the retry in progress until Room publishes the task leaving the error list.
+            withTimeout(5000) {
+                retryStarted.await()
+                repository.errorTasks.first { tasks -> tasks.none { it.id == task.id } }
+            }
+            releaseRetry.complete(Unit)
+            val retriedTask = withTimeout(5000) {
+                repository.errorTasks.first { tasks -> tasks.any { it.id == task.id } }
+                    .single { it.id == task.id }
+            }
+            assertEquals("Article HTTP 503", retriedTask.errorMessage)
+
+            repository.deleteErrorTaskAndAwait(task.id)
+            assertNull(taskDao.getTaskById(task.id))
+            withTimeout(5000) { repository.errorTasks.first { tasks -> tasks.none { it.id == task.id } } }
         } finally { job.cancelAndJoin(); db.close() }
     }
 

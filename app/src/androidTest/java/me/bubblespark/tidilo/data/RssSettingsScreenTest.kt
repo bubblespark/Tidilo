@@ -28,6 +28,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.MainActivity
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.data.rss.RssSettings
 import me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent
@@ -40,6 +41,7 @@ class RssSettingsScreenTest {
     @Test fun emptyTriggerSectionIsSeparateAndEditableWhileOff(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val controls = RssTriggerTestControls(HeaderTestHost(), activity)
         val settings = mutableStateOf(RssSettings())
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
@@ -47,25 +49,26 @@ class RssSettingsScreenTest {
                     onBack = {}, onRetry = {}, onSettings = { settings.value = it },
                     onFeed = { _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
             } } }
-            node("Unset trigger card") { it.text?.toString() == "Not set" }
-            node("Empty counter") { it.text?.toString() == "0 / 3" }
-            val heading = node("Trigger heading") { it.text?.toString() == "Trigger time" }
             val dailyBounds = android.graphics.Rect()
             val triggerBounds = android.graphics.Rect()
             node("Daily heading") { it.text?.toString() == "Daily fetch time" }.getBoundsInScreen(dailyBounds)
-            heading.getBoundsInScreen(triggerBounds)
+            controls.reveal("Trigger heading", controls.text("Trigger time"))
+            node("Trigger heading") { it.text?.toString() == "Trigger time" }.getBoundsInScreen(triggerBounds)
             assertTrue(triggerBounds.top > dailyBounds.bottom)
+            node("Empty counter") { it.text?.toString() == "0 / 3" }
+            controls.reveal("Unset trigger card", controls.text("Not set"))
+            node("Unset trigger card") { it.text?.toString() == "Not set" }
             assertNull(find { it.text?.toString() == "Up to 3 times per day" })
-            click(node("Add trigger") { it.contentDescription?.toString() == "Add trigger time" })
-            clickText("Cancel")
+            controls.clickRow("Add trigger", controls.description(R.string.rss_add_trigger_time))
+            controls.clickDialog("Cancel")
             assertTrue(settings.value.triggerTimes.isEmpty())
-            click(node("Add trigger") { it.contentDescription?.toString() == "Add trigger time" })
-            clickText("Add")
+            controls.clickRow("Add trigger", controls.description(R.string.rss_add_trigger_time))
+            controls.clickDialog("Add")
             withTimeout(3000) { while (settings.value.triggerTimes.isEmpty()) delay(20) }
             assertEquals(listOf(java.time.LocalTime.of(8, 0)), settings.value.triggerTimes)
             assertFalse(settings.value.dailyEnabled)
             assertTrue(settings.value.wifiOnly)
-            click(node("Delete trigger") { it.contentDescription?.toString() == "Remove trigger time 08:00" })
+            controls.clickRow("Delete trigger", controls.description(R.string.rss_remove_trigger_time, "08:00"))
             node("Trigger delete confirmation") { it.text?.toString() == "Delete the trigger time 08:00?" }
             assertEquals(listOf(java.time.LocalTime.of(8, 0)), settings.value.triggerTimes)
             instrumentation.waitForIdleSync()
@@ -74,17 +77,18 @@ class RssSettingsScreenTest {
             try { File(context.getExternalFilesDir(null), "issue160-delete-confirmation.png").outputStream().use {
                 confirmation.compress(Bitmap.CompressFormat.PNG, 100, it)
             } } finally { confirmation.recycle() }
-            clickText("Cancel")
+            controls.clickDialog("Cancel")
             assertEquals(listOf(java.time.LocalTime.of(8, 0)), settings.value.triggerTimes)
-            click(node("Delete trigger again") { it.contentDescription?.toString() == "Remove trigger time 08:00" })
-            clickText("Delete")
+            controls.clickRow("Delete trigger again", controls.description(R.string.rss_remove_trigger_time, "08:00"))
+            controls.clickDialog("Delete")
+            controls.reveal("Restored unset", controls.text("Not set"))
             node("Restored unset") { it.text?.toString() == "Not set" }
             assertTrue(settings.value.triggerTimes.isEmpty())
             instrumentation.runOnMainSync { settings.value = settings.value.copy(triggerTimes = listOf(java.time.LocalTime.of(8, 0))) }
-            click(node("Delete disappearing trigger") { it.contentDescription?.toString() == "Remove trigger time 08:00" })
+            controls.clickRow("Delete disappearing trigger", controls.description(R.string.rss_remove_trigger_time, "08:00"))
             node("Pending deletion") { it.text?.toString() == "Delete the trigger time 08:00?" }
             instrumentation.runOnMainSync { settings.value = settings.value.copy(triggerTimes = listOf(java.time.LocalTime.NOON), wifiOnly = false) }
-            withTimeout(3000) { while (find { it.text?.toString() == "Delete the trigger time 08:00?" } != null) delay(30) }
+            withTimeout(3000) { while (controls.dialogHas(controls.text("Delete the trigger time 08:00?"))) delay(30) }
             assertEquals(listOf(java.time.LocalTime.NOON), settings.value.triggerTimes)
             assertFalse(settings.value.wifiOnly)
         } finally { instrumentation.runOnMainSync { activity.finish() } }
@@ -93,6 +97,7 @@ class RssSettingsScreenTest {
     @Test fun duplicateAndLimitDoNotMutateSettings(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val controls = RssTriggerTestControls(HeaderTestHost(), activity)
         val settings = mutableStateOf(RssSettings(listOf(java.time.LocalTime.of(8, 0), java.time.LocalTime.of(18, 30))))
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
@@ -100,24 +105,26 @@ class RssSettingsScreenTest {
                     onBack = {}, onRetry = {}, onSettings = { settings.value = it },
                     onFeed = { _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
             } } }
-            click(node("Add trigger") { it.contentDescription?.toString() == "Add trigger time" })
-            node("Duplicate feedback") { it.text?.toString() == "This time is already set." }
+            controls.clickRow("Add trigger", controls.description(R.string.rss_add_trigger_time))
+            controls.awaitDialog("Duplicate feedback", controls.text("This time is already set."))
             var save: AccessibilityNodeInfo? = node("Duplicate add") { it.text?.toString() == "Add" }
             while (save != null && !save.isClickable) save = save.parent
             assertFalse(requireNotNull(save).isEnabled)
-            clickText("Cancel")
+            controls.clickDialog("Cancel")
             instrumentation.runOnMainSync { settings.value = settings.value.copy(triggerTimes = listOf(
                 java.time.LocalTime.of(8, 0), java.time.LocalTime.NOON, java.time.LocalTime.of(18, 30))) }
+            controls.reveal("Full count", controls.text("3 / 3"))
             node("Full count") { it.text?.toString() == "3 / 3" }
             var add: AccessibilityNodeInfo? = node("Full add") { it.contentDescription?.toString() == "Add trigger time" }
             while (add != null && !add.isClickable) add = add.parent
             assertFalse(requireNotNull(add).isEnabled)
-            click(node("Delete noon") { it.contentDescription?.toString() == "Remove trigger time 12:00" })
-            clickText("Delete")
+            controls.clickRow("Delete noon", controls.description(R.string.rss_remove_trigger_time, "12:00"))
+            controls.clickDialog("Delete")
+            controls.reveal("Reduced count", controls.text("2 / 3"))
             node("Reduced count") { it.text?.toString() == "2 / 3" }
             assertTrue(node("Reenabled add") { it.contentDescription?.toString() == "Add trigger time" }.isEnabled)
-            click(node("Edit time") { it.contentDescription?.toString() == "Edit trigger time 18:30" })
-            clickText("Save")
+            controls.clickRow("Edit time", controls.description(R.string.rss_edit_trigger_time, "18:30"))
+            controls.clickDialog("Save")
             assertEquals(listOf(java.time.LocalTime.of(8, 0), java.time.LocalTime.of(18, 30)), settings.value.triggerTimes)
         } finally { instrumentation.runOnMainSync { activity.finish() } }
     }
@@ -507,6 +514,7 @@ class RssSettingsScreenTest {
     @Test fun scheduleWifiAndDirectFeedEditorExposeIndependentControls(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val controls = RssTriggerTestControls(HeaderTestHost(), activity)
         val settings = mutableStateOf(RssSettings(listOf(java.time.LocalTime.MIDNIGHT), dailyEnabled = true))
         val wifi = mutableStateOf<Boolean?>(null)
         var savedUrl: String? = null
@@ -520,9 +528,11 @@ class RssSettingsScreenTest {
                         onDelete = {}, onFetch = {}, onDismissError = {})
                 } }
             }
+            controls.reveal("Initial midnight", controls.text("00:00"))
             node("Initial midnight") { it.text?.toString() == "00:00" }
             assertNull(find { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." })
             instrumentation.runOnMainSync { wifi.value = false }
+            controls.reveal("Wi-Fi warning", controls.text("Cannot fetch: Wi-Fi is not connected."))
             val blocked = node("Wi-Fi blocked status") { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." }
             val wifiBounds = android.graphics.Rect()
             val blockedBounds = android.graphics.Rect()
@@ -538,8 +548,8 @@ class RssSettingsScreenTest {
             click(wifiLabel)
             withTimeout(3000) { while (settings.value.wifiOnly) delay(20) }
             withTimeout(3000) { while (find { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." } != null) delay(20) }
-            click(node("Time picker") { it.text?.toString() == "00:00" })
-            click(node("Cancel time") { it.text?.toString() == "Cancel" })
+            controls.clickRow("Time picker", controls.description(R.string.rss_edit_trigger_time, "00:00"))
+            controls.clickDialog("Cancel")
             assertEquals(listOf(java.time.LocalTime.MIDNIGHT), settings.value.triggerTimes)
             delay(500)
             val screenshot = instrumentation.uiAutomation.takeScreenshot()

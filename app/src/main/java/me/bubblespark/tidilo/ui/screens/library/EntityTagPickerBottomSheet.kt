@@ -138,7 +138,7 @@ fun EntityTagPickerBottomSheet(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = stringResource(R.string.detail_entity_picker_empty),
+                        text = stringResource(R.string.detail_entity_picker_no_selection),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline,
                         modifier = Modifier.padding(12.dp)

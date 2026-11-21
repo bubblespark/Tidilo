@@ -16,6 +16,7 @@ import kotlinx.coroutines.ensureActive
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -63,7 +64,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -73,28 +73,88 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
+import com.google.mlkit.genai.common.GenAiException.ErrorCode
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.Category
+import me.bubblespark.tidilo.data.AiCoreReadiness
 import me.bubblespark.tidilo.data.Subcategory
+import me.bubblespark.tidilo.service.AiGenerationBlocked
+import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.service.GeminiTaggingService
 import me.bubblespark.tidilo.service.TaggingResult
+import me.bubblespark.tidilo.ui.components.aiCoreStatusText
 
 enum class ProposalSource {
     CURRENT,
     PROPOSAL
 }
 
-sealed interface AiReviewUiState {
+internal sealed interface AiReviewUiState {
     data object Loading : AiReviewUiState
+    data object Interrupted : AiReviewUiState
     data class Success(val proposal: TaggingResult) : AiReviewUiState
-    data class Error(val message: String) : AiReviewUiState
+    data class Error(@StringRes val message: Int) : AiReviewUiState
+    data class Unavailable(val readiness: AiCoreReadiness?) : AiReviewUiState
+}
+
+internal class BookmarkAiReviewViewModel(private val savedState: SavedStateHandle) : ViewModel() {
+    private val _state = MutableStateFlow<AiReviewUiState>(
+        if (savedState.get<Boolean>("attemptStarted") == true) AiReviewUiState.Interrupted else AiReviewUiState.Loading
+    )
+    val state = _state.asStateFlow()
+
+    fun generate(retry: Boolean = false, proposal: suspend () -> Result<TaggingResult>) {
+        if (retry) {
+            if (_state.value !is AiReviewUiState.Error && _state.value != AiReviewUiState.Interrupted) return
+        } else if (savedState.get<Boolean>("attemptStarted") == true) {
+            return
+        }
+        savedState["attemptStarted"] = true
+        _state.value = AiReviewUiState.Loading
+        viewModelScope.launch {
+            val result = try {
+                proposal()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            ensureActive()
+            _state.value = result.fold(
+                onSuccess = { AiReviewUiState.Success(it) },
+                onFailure = { error ->
+                    when (error) {
+                        is AiGenerationBlocked -> AiReviewUiState.Unavailable(error.readiness)
+                        else -> AiReviewUiState.Error(
+                            when ((error as? AiCoreExecutionException)?.errorCode) {
+                                ErrorCode.BUSY -> R.string.ai_review_busy
+                                ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED -> R.string.ai_review_quota
+                                ErrorCode.BACKGROUND_USE_BLOCKED -> R.string.ai_review_background
+                                else -> R.string.ai_review_try_again
+                            }
+                        )
+                    }
+                }
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -132,8 +192,8 @@ fun BookmarkAiReviewScreen(
         return
     }
 
-    var retryCount by remember { mutableIntStateOf(0) }
-    var uiState by remember { mutableStateOf<AiReviewUiState>(AiReviewUiState.Loading) }
+    val reviewModel = composeViewModel<BookmarkAiReviewViewModel>(key = "ai-review-$bookmarkId")
+    val uiState by reviewModel.state.collectAsStateWithLifecycle()
     var selectedSummarySource by rememberSaveable { mutableStateOf(ProposalSource.PROPOSAL) }
     var selectedTagSource by rememberSaveable { mutableStateOf(ProposalSource.PROPOSAL) }
     var showDiscardConfirmDialog by remember { mutableStateOf(false) }
@@ -143,18 +203,8 @@ fun BookmarkAiReviewScreen(
         showDiscardConfirmDialog = true
     }
 
-    // Trigger AI inference on entry or retry
-    LaunchedEffect(bookmarkId, retryCount) {
-        uiState = AiReviewUiState.Loading
-        val result = generateProposal(bookmark.url, currentLanguage, bookmark.title)
-        uiState = result.fold(
-            onSuccess = { proposal ->
-                AiReviewUiState.Success(proposal)
-            },
-            onFailure = { error ->
-                AiReviewUiState.Error(error.message ?: "Failed to generate AI proposal")
-            }
-        )
+    LaunchedEffect(bookmarkId, reviewModel) {
+        reviewModel.generate { generateProposal(bookmark.url, currentLanguage, bookmark.title) }
     }
 
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), 
@@ -275,7 +325,18 @@ fun BookmarkAiReviewScreen(
     ) { contentPadding ->
         // Body according to state
         when (val state = uiState) {
-            is AiReviewUiState.Loading -> {
+            AiReviewUiState.Loading, AiReviewUiState.Interrupted,
+            is AiReviewUiState.Error, is AiReviewUiState.Unavailable -> {
+                val loading = state == AiReviewUiState.Loading
+                val blocked = state is AiReviewUiState.Unavailable
+                val message = when (state) {
+                    AiReviewUiState.Loading -> stringResource(R.string.ai_review_loading_subtitle)
+                    AiReviewUiState.Interrupted -> stringResource(R.string.ai_review_interrupted)
+                    is AiReviewUiState.Error -> stringResource(state.message)
+                    is AiReviewUiState.Unavailable -> stringResource(
+                        state.readiness?.let(::aiCoreStatusText) ?: R.string.ai_analysis_off_message
+                    )
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -283,68 +344,54 @@ fun BookmarkAiReviewScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(48.dp),
-                            strokeWidth = 4.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        if (loading) {
+                            CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 4.dp)
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(48.dp)
+                            )
+                        }
                         Spacer(modifier = Modifier.height(20.dp))
                         Text(
-                            text = stringResource(R.string.ai_review_loading_title),
+                            text = stringResource(
+                                if (loading) R.string.ai_review_loading_title else R.string.ai_review_error_title
+                            ),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = stringResource(R.string.ai_review_loading_subtitle),
+                            text = message,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline
+                            color = if (loading) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
                         )
-                    }
-                }
-            }
-
-            is AiReviewUiState.Error -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(contentPadding).padding(vertical = 24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ErrorOutline,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = stringResource(R.string.ai_review_error_title),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = state.message,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Button(
-                            onClick = { retryCount++ },
-                            shape = themeCorner(ThemeCorner.FIELD)
-                        ) {
-                            Text(stringResource(R.string.common_retry), style = modernRaisedTextStyle(LocalTextStyle.current))
+                        if (!loading) {
+                            if (blocked) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(stringResource(R.string.detail_ai_manual_fallback))
+                            }
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Button(
+                                onClick = {
+                                    if (blocked) onNavigateBack()
+                                    else reviewModel.generate(retry = true) {
+                                        generateProposal(bookmark.url, currentLanguage, bookmark.title)
+                                    }
+                                },
+                                shape = themeCorner(ThemeCorner.FIELD)
+                            ) {
+                                val label = if (blocked) R.string.ai_review_back_to_detail else R.string.common_retry
+                                Text(stringResource(label), style = modernRaisedTextStyle(LocalTextStyle.current))
+                            }
                         }
                     }
                 }

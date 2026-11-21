@@ -2,12 +2,14 @@ package me.bubblespark.tidilo.data
 
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import android.view.KeyEvent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import com.google.mlkit.genai.common.FeatureStatus
+import me.bubblespark.tidilo.R
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -52,7 +54,7 @@ class AiAnalysisScreenTest {
 
     @Test fun modeSwitchHidesOnlyAiSectionsAndPreservesPreferences(): Unit = runBlocking {
         withScreen({ AiCoreReadiness.Status(FeatureStatus.AVAILABLE) }) { activity ->
-            host.await(activity) { host.text(it, "Summarize and categorize bookmarks using on-device Gemini Nano") }
+            host.await(activity) { host.text(it, host.context.getString(R.string.ai_model_ready)) }
 
 
             click(activity, "Disable")
@@ -82,7 +84,7 @@ class AiAnalysisScreenTest {
                 AiAnalysisScreen(onNavigateBack = { backs++ }, onNavigateToGenerateContentRequest = {},
                     checkAiCoreReadiness = { AiCoreReadiness.Status(if (++checks > 1) FeatureStatus.AVAILABLE else FeatureStatus.UNAVAILABLE) })
             } } }
-            host.await(activity) { host.text(it, "Summarize and categorize bookmarks using on-device Gemini Nano") }
+            host.await(activity) { host.text(it, host.context.getString(R.string.ai_model_ready)) }
             assertNull(radio(activity, "AICore").config.getOrNull(SemanticsProperties.Disabled))
             val back = host.await(activity) { host.description(it, host.context.getString(me.bubblespark.tidilo.R.string.common_back)) }
             invokeClick(back)
@@ -113,9 +115,95 @@ class AiAnalysisScreenTest {
             withTimeout(3000) { started.await() }
             click(activity, "Disable")
             awaitMode(AiAnalysisMode.DISABLE)
-            host.main { activity.setContent { MaterialTheme { androidx.compose.material3.Text("Closed") } } }
+            host.main { activity.finish() }
             withTimeout(3000) { cancelled.await() }
             assertEquals(AiAnalysisMode.DISABLE, AppConfig.aiAnalysisMode.value)
+        }
+    }
+
+    @Test fun keyboardSkipsDisabledAicoreAndActivatesEachEnabledRow(): Unit = runBlocking {
+        var ready = false
+        try {
+            withScreen({
+                AiCoreReadiness.Status(if (ready) FeatureStatus.AVAILABLE else FeatureStatus.UNAVAILABLE)
+            }) { activity ->
+                fun text(id: Int) = activity.getString(id)
+                suspend fun focusBack() {
+                    val back = host.await(activity) { host.description(it, text(R.string.common_back)) }
+                    host.main {
+                        val requestFocus = generateSequence(back) { it.parent }
+                            .firstNotNullOf { it.config.getOrNull(SemanticsActions.RequestFocus)?.action }
+                        assertTrue(requestFocus())
+                    }
+                }
+                suspend fun awaitFocus(label: String) {
+                    host.await(activity) { node ->
+                        host.text(node, label) && generateSequence(node) { it.parent }.any {
+                            it.config.getOrNull(SemanticsProperties.Focused) == true
+                        }
+                    }
+                }
+
+                host.await(activity) { host.text(it, text(R.string.settings_ai_analysis_unavailable)) }
+                host.instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_TAB)
+                focusBack()
+                host.instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_TAB)
+                awaitFocus(text(R.string.settings_ai_analysis_disable))
+                host.instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
+                awaitMode(AiAnalysisMode.DISABLE)
+
+                ready = true
+                click(activity, text(R.string.ai_model_check_again))
+                host.await(activity) { host.text(it, text(R.string.ai_model_ready)) }
+                focusBack()
+                host.instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_TAB)
+                awaitFocus(text(R.string.settings_ai_analysis_aicore))
+                host.instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_SPACE)
+                awaitMode(AiAnalysisMode.AICORE)
+            }
+        } finally {
+            host.instrumentation.setInTouchMode(true)
+        }
+    }
+
+    @Test fun downloadFailureCanBeRetriedAndCompletionKeepsAiDisabled(): Unit = runBlocking {
+        var available = false
+        var attempts = 0
+        val finishDownload = CompletableDeferred<Unit>()
+        withScreen(
+            checkReadiness = {
+                AiCoreReadiness.Status(if (available) FeatureStatus.AVAILABLE else FeatureStatus.DOWNLOADABLE)
+            },
+            requestDownload = { reportProgress ->
+                if (++attempts == 1) AiCoreDownloadResult.FAILED
+                else {
+                    reportProgress(0.5f)
+                    finishDownload.await()
+                    available = true
+                    AiCoreDownloadResult.COMPLETED
+                }
+            }
+        ) { activity ->
+            click(activity, host.context.getString(R.string.settings_ai_analysis_disable))
+            awaitMode(AiAnalysisMode.DISABLE)
+            val download = host.context.getString(R.string.ai_model_download)
+            host.await(activity) { host.text(it, download) }
+            assertEquals(0, attempts)
+            click(activity, download)
+            val failed = host.await(activity) {
+                host.text(it, host.context.getString(R.string.ai_model_download_failed))
+            }
+            assertEquals(androidx.compose.ui.semantics.LiveRegionMode.Polite, failed.config[SemanticsProperties.LiveRegion])
+            click(activity, host.context.getString(R.string.common_retry))
+            host.await(activity) { host.text(it, host.context.getString(R.string.ai_model_downloading)) }
+            host.capture("263-settings-downloading")
+            finishDownload.complete(Unit)
+            host.await(activity) { host.text(it, host.context.getString(R.string.ai_model_ready)) }
+            assertEquals(2, attempts)
+            assertEquals(AiAnalysisMode.DISABLE, AppConfig.aiAnalysisMode.value)
+            assertNull(radio(activity, "AICore").config.getOrNull(SemanticsProperties.Disabled))
+            assertTrue(radio(activity, "Disable").config[SemanticsProperties.Selected])
+            host.capture("263-settings-ready")
         }
     }
 
@@ -123,6 +211,9 @@ class AiAnalysisScreenTest {
         checkReadiness: suspend () -> AiCoreReadiness,
         onBack: () -> Unit = {},
         onParameters: () -> Unit = {},
+        requestDownload: suspend ((Float?) -> Unit) -> AiCoreDownloadResult = {
+            throw AssertionError("A status check must not download a model")
+        },
         block: suspend (ComponentActivity) -> Unit
     ) {
         val mode = AppConfig.aiAnalysisMode.value
@@ -137,7 +228,7 @@ class AiAnalysisScreenTest {
             activity = launched
             host.main { launched.setContent { MaterialTheme {
                 AiAnalysisScreen(onNavigateBack = onBack, onNavigateToGenerateContentRequest = onParameters,
-                    checkAiCoreReadiness = checkReadiness)
+                    checkAiCoreReadiness = checkReadiness, requestDownload = requestDownload)
             } } }
             block(launched)
         } finally {

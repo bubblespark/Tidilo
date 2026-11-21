@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.service
 
 import com.google.mlkit.genai.common.GenAiException
+import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.prompt.Generation
 import com.google.mlkit.genai.prompt.GenerativeModel
 import com.google.mlkit.genai.prompt.TextPart
@@ -8,7 +9,11 @@ import com.google.mlkit.genai.prompt.generateContentRequest
 import me.bubblespark.tidilo.data.AiCoreUsageRepository
 import me.bubblespark.tidilo.data.AiUsageSource
 import me.bubblespark.tidilo.TidiloApplication
+import me.bubblespark.tidilo.config.AiAnalysisMode
+import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AppLanguage
+import me.bubblespark.tidilo.data.AiCoreAvailability
+import me.bubblespark.tidilo.data.AiCoreReadiness
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
@@ -19,6 +24,8 @@ import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.ui.screens.library.Tag
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.URI
@@ -28,6 +35,46 @@ open class AiCoreExecutionException(
     message: String,
     cause: Throwable? = null
 ) : Exception(message, cause)
+
+internal class AiGenerationBlocked(val readiness: AiCoreReadiness?, cause: Throwable? = null) :
+    Exception("Manual AI generation is unavailable", cause)
+
+internal suspend fun <T> runWithAvailableAiCore(
+    readMode: () -> AiAnalysisMode,
+    openModel: () -> GenerativeModel,
+    infer: suspend (GenerativeModel) -> T
+): T {
+    if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
+    val model = try {
+        openModel()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        throw AiGenerationBlocked(AiCoreReadiness.Failed, e)
+    }
+    try {
+        val readiness = AiCoreAvailability.inspect(model)
+        if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
+        if (!readiness.isAvailable) throw AiGenerationBlocked(readiness)
+        currentCoroutineContext().ensureActive()
+        return try {
+            infer(model)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val mapped = GeminiTaggingService.mapInferenceException(e)
+            when (mapped.errorCode) {
+                GenAiException.ErrorCode.NOT_AVAILABLE,
+                GenAiException.ErrorCode.NEEDS_SYSTEM_UPDATE,
+                GenAiException.ErrorCode.AICORE_INCOMPATIBLE ->
+                    throw AiGenerationBlocked(AiCoreReadiness.Status(FeatureStatus.UNAVAILABLE), e)
+                else -> throw mapped
+            }
+        }
+    } finally {
+        runCatching { model.close() }
+    }
+}
 
 data class TaggingResult(
     val title: String,
@@ -49,6 +96,8 @@ object GeminiTaggingService {
         preferredTitle: String? = null
     ): Result<TaggingResult> = withContext(Dispatchers.IO) {
         runCatching {
+            val readMode = { AppConfig.aiAnalysisMode.value }
+            if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
             // 1. Parse web page and extract main body content
             val parseResult = WebPageParser.parseUrl(url)
             val parsed = parseResult.getOrElse { e ->
@@ -72,17 +121,8 @@ object GeminiTaggingService {
             val prompt = buildPrompt(url = realUrl, parsed = parsed, language = language)
 
             // 4. Run inference with Gemini Nano
-            val aiOutput = try {
-                val model = Generation.getClient()
-                try {
-                    runNanoInference(model, prompt)
-                } finally {
-                    model.close()
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                throw mapInferenceException(e)
+            val aiOutput = runWithAvailableAiCore(readMode, { Generation.getClient() }) { model ->
+                runNanoInference(model, prompt)
             }
 
             // 5. Parse JSON and normalize results

@@ -6,7 +6,7 @@ This document details optional on-device AI integration (AI Analysis can be disa
 
 ### Manual analysis
 
-Manual URL entry, sharing, and RSS acquisition save directly without blocking on AI ([direct import & metadata preparation](bookmark_classification.md)). From Bookmark Detail, the user can trigger on-demand AI review (`BookmarkAiReviewScreen`) independently from the saved URL; applying a proposal updates the bookmark, while closing review preserves the stored record. Model availability checks do not run inference.
+Manual URL entry, sharing, and RSS acquisition save directly ([direct import & metadata preparation](bookmark_classification.md)). From Bookmark Detail, the user can trigger on-demand AI review (`BookmarkAiReviewScreen`) when AI Analysis is enabled and the model is ready. The generation service checks the saved mode and the same model client again immediately before inference. Applying a proposal updates the bookmark. Closing review preserves the stored record.
 
 ### Key Technical Attributes
 - **Library Coordinate**: `com.google.mlkit:genai-prompt:1.0.0-beta2`
@@ -34,8 +34,9 @@ try {
 }
 ```
 
-### Background Model Download
-Although ML Kit exposes `model.download()` returning `Flow<DownloadStatus>` when `status == FeatureStatus.DOWNLOADABLE`, Tidilo relies on the Android AICore system service for model delivery and guides users to system settings when not ready.
+### Model Setup
+
+AI Analysis settings exposes the Android AICore model status and invokes the existing Prompt API download flow after an explicit user action when the SDK reports `DOWNLOADABLE`. The screen observes progress, checks readiness after completion, and can refresh the current status. Readiness checks and downloads preserve the saved mode. A user can prepare the model while AI Analysis is disabled and enable it once the model is ready.
 
 ## 3. Web Content Preprocessing Pipeline
 
@@ -163,7 +164,7 @@ Manual review displays generation failures in the review UI. Acquisition and per
 
 ## 9. Diagnostic & Test Tooling
 
-- **`AiCoreAvailability.kt`**: Shared passive Prompt API status query for Debug and AI Analysis. Debug displays SDK status details and AI Analysis uses availability to control model selection. Both distinguish a failed check from unavailability.
+- **`AiCoreAvailability.kt`**: Shared passive Prompt API status query for Debug, AI Analysis, Bookmark Detail, and the manual generation service. The same file provides explicit model setup for AI Analysis settings. Readiness checks distinguish a failed check from an unavailable model.
 - **Settings ➔ Debug**: Status inspection checks on entry and supports manual refresh. The ML Kit GenAI Prompt API Test card runs a single explicit prompt through `DebugPromptTester.kt` to inspect latency and output on supported physical devices.
 
 ### Release SDK initialization and shrinking

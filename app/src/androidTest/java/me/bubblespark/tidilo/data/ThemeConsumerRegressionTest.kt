@@ -210,7 +210,7 @@ class ThemeConsumerRegressionTest {
         val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
             SurfaceRole.BOOKMARK_CARD to SurfaceStyleOverride(elevation = 0.dp)))
         scene(preset, width = 200.dp, content = {
-            BookmarkGridCard(bookmark, Modifier.testTag("grid"))
+            BookmarkGridCardFixture(bookmark, Modifier.testTag("grid"))
         }) { host, activity ->
             val bounds = tagged(host, activity, "grid").boundsInWindow
             assertEquals(Color.White.toArgb(), pixel(host, bounds.left + 3f, bounds.top + 3f))
@@ -228,7 +228,7 @@ class ThemeConsumerRegressionTest {
             scene(preset, width = 220.dp, content = {
                 if (deck) CollectionCard(collection, { clicks.incrementAndGet() }, Modifier.testTag("card"),
                     onLongClick = { longs.incrementAndGet() })
-                else BookmarkGridCard(bookmark, Modifier.testTag("card"), onClick = { clicks.incrementAndGet() },
+                else BookmarkGridCardFixture(bookmark, Modifier.testTag("card"), onClick = { clicks.incrementAndGet() },
                     onLongClick = { longs.incrementAndGet() })
             }) { host, activity ->
                 val node = tagged(host, activity, "card")

@@ -36,7 +36,6 @@ import me.bubblespark.tidilo.data.db.RssFeedEntity
 import me.bubblespark.tidilo.data.db.RssFeedGroup
 import me.bubblespark.tidilo.ui.components.CacheVisualSource
 import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
-import me.bubblespark.tidilo.ui.screens.library.BookmarkGridCard
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItemCard
 import me.bubblespark.tidilo.ui.screens.library.DomainCard
@@ -101,7 +100,7 @@ class DomainIconCardTest {
                 releaseOg.await()
                 ogBytes
             },
-            content = { BookmarkGridCard(bookmark) }
+            content = { BookmarkGridCardFixture(bookmark) }
         ) { store ->
             assertEquals(ogUrl, withTimeout(5_000) { ogStarted.await() })
             frames()
@@ -129,7 +128,7 @@ class DomainIconCardTest {
                 releaseOg.await()
                 null
             },
-            content = { BookmarkGridCard(item(image = true)) }
+            content = { BookmarkGridCardFixture(item(image = true)) }
         ) { store ->
             assertEquals(ogUrl, withTimeout(5_000) { ogStarted.await() })
             frames()

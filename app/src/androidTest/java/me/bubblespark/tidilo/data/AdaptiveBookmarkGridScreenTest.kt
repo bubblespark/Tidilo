@@ -61,6 +61,42 @@ class AdaptiveBookmarkGridScreenTest {
         verifyGrids(Configuration.ORIENTATION_PORTRAIT, 1.15f, listOf(Destination.TIMELINE))
     }
 
+    @Test fun searchFontReflowKeepsTheBookmarkWhenTheInputIsOffscreen(): Unit = runBlocking {
+        withFixture { fixture ->
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                requestOrientation(scenario, Configuration.ORIENTATION_PORTRAIT)
+                val activity = awaitActivity(scenario, Configuration.ORIENTATION_PORTRAIT)
+                var scale by mutableStateOf(1.15f)
+                lateinit var model: LibraryViewModel
+                scenario.onActivity {
+                    model = ViewModelProvider(it)[LibraryViewModel::class.java]
+                    model.setViewMode(LibraryViewMode.GRID)
+                    it.setContent {
+                        val density = LocalDensity.current
+                        CompositionLocalProvider(LocalDensity provides Density(density.density, scale)) {
+                            TidiloTheme { SearchScreen(viewModel = model) }
+                        }
+                    }
+                }
+                val header = activity.getString(R.string.search_header_title)
+                fixture.awaitNode(activity) { fixture.host.text(it, header) }
+                fixture.host.main { model.onSearchQueryChanged(fixture.searchToken) }
+                val resultCount = activity.getString(R.string.search_header_subtitle_results, fixture.bookmarkCount)
+                fixture.awaitNode(activity) { fixture.host.text(it, resultCount) }
+                fixture.awaitTitle(activity, 0)
+                val bookmark = 8
+                fixture.scrollToItem(activity, bookmark + 1)
+                fixture.awaitTopRow(scenario, "Search anchor before font reflow") { bookmark in it }
+                fixture.scroll(activity, fixture.cardHeight(activity, bookmark) * 0.7f)
+                delay(500)
+                assertFalse("Search input should be outside the viewport before reflow",
+                    fixture.hasVisibleSearchInput(activity))
+                fixture.host.main { scale = 2f }
+                fixture.awaitTopRow(scenario, "Search anchor after font reflow") { it == listOf(bookmark) }
+            }
+        }
+    }
+
     @Test fun largeTextInLandscapeCanScrollToTheCompleteSearchCard(): Unit = runBlocking {
         verifyGrids(Configuration.ORIENTATION_LANDSCAPE, 2f, listOf(Destination.SEARCH), scrollToFit = true)
     }
@@ -205,14 +241,23 @@ class AdaptiveBookmarkGridScreenTest {
                     } catch (timeout: TimeoutCancellationException) {
                         throw AssertionError("$destination did not show '$header' and its first bookmark", timeout)
                     }
+                    val initialSearchCardSize = if (destination == Destination.SEARCH) {
+                        fixture.cardSize(activity, first)
+                    } else null
                     delay(350)
+                    if (initialSearchCardSize != null) {
+                        val settled = fixture.cardSize(activity, first)
+                        assertTrue("Search card must not reflow: $initialSearchCardSize to $settled",
+                            abs(initialSearchCardSize.width - settled.width) <= 1 &&
+                                abs(initialSearchCardSize.height - settled.height) <= 1)
+                    }
                     if (scrollToFit) {
                         val overflow = fixture.firstCardBottomOverflow(activity, first)
                         if (overflow > 0f) fixture.scroll(activity, overflow + 8 * activity.resources.displayMetrics.density)
                         delay(450)
                     }
                     fixture.assertFirstCardVisible(activity, destination, scrollToFit)
-                    if (capturePrefix != null) {
+                    if (capturePrefix != null || destination == Destination.TIMELINE || destination == Destination.SEARCH) {
                         val schemes = if (destination == Destination.TIMELINE || destination == Destination.SEARCH) {
                             AppTheme.entries.flatMap { appTheme -> listOf(appTheme to false, appTheme to true) }
                         } else {
@@ -220,8 +265,12 @@ class AdaptiveBookmarkGridScreenTest {
                         }
                         for (scheme in schemes) {
                             fixture.host.main { theme = scheme }
+                            fixture.host.instrumentation.waitForIdleSync()
+                            fixture.assertFirstCardVisible(activity, destination, scrollToFit)
                             val appearance = if (scheme.second) "dark" else "light"
-                            fixture.host.capture("$capturePrefix-${destination.name.lowercase()}-${scheme.first.code}-$appearance")
+                            if (capturePrefix != null) {
+                                fixture.host.capture("$capturePrefix-${destination.name.lowercase()}-${scheme.first.code}-$appearance")
+                            }
                         }
                     }
                 }
@@ -292,6 +341,7 @@ class AdaptiveBookmarkGridScreenTest {
                 createdAt = now + 60_000L - index, updatedAt = now
             )
         }
+        val bookmarkCount get() = bookmarks.size
         private val rssBookmark = BookmarkEntity(
             "$searchToken-rss", "Adaptive RSS card", "https://rss-${UUID.randomUUID()}.invalid/article", "Summary",
             createdAt = now + 60_000L, updatedAt = now, rssFeedId = feed.id
@@ -321,7 +371,21 @@ class AdaptiveBookmarkGridScreenTest {
         }
 
         suspend fun awaitTitle(activity: ComponentActivity, index: Int) =
-            awaitNode(activity) { host.text(it, bookmarks[index].title) && it.boundsInWindow.height > 0 }
+            try {
+                awaitNode(activity) { host.text(it, bookmarks[index].title) && it.boundsInWindow.height > 0 }
+            } catch (timeout: TimeoutCancellationException) {
+                throw AssertionError("Bookmark $index did not become visible", timeout)
+            }
+
+        fun hasVisibleSearchInput(activity: ComponentActivity): Boolean {
+            var visible = false
+            host.main {
+                visible = nodes(activity).any {
+                    it.config.getOrNull(SemanticsActions.SetText) != null && it.boundsInWindow.height > 0
+                }
+            }
+            return visible
+        }
 
         suspend fun awaitNode(activity: ComponentActivity, predicate: (SemanticsNode) -> Boolean): SemanticsNode =
             withTimeout(8_000) {
@@ -404,11 +468,13 @@ class AdaptiveBookmarkGridScreenTest {
                     checkNotNull(input)
                     assertTrue("The Search field is visible above the first card",
                         input.boundsInWindow.height > 0 && input.boundsInWindow.bottom <= bounds.top)
-                } else {
-                    val label = activity.getString(R.string.library_shortcuts_open)
-                    nodes.firstOrNull { host.description(it, label) }?.let { trigger ->
-                        assertFalse("First card overlaps the Library shortcut", bounds.overlaps(trigger.boundsInWindow))
+                } else if (destination != Destination.SEARCH) {
+                    val trigger = checkNotNull(nodes.firstOrNull {
+                        it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger"
+                    }) {
+                        "Library shortcut missing for $destination"
                     }
+                    assertFalse("First card overlaps the Library shortcut", bounds.overlaps(trigger.boundsInWindow))
                 }
             }
         }
@@ -417,6 +483,12 @@ class AdaptiveBookmarkGridScreenTest {
             var top = 0f
             host.main { top = cardFor(nodes(activity).first { host.text(it, bookmarks[index].title) }).boundsInWindow.top }
             return top
+        }
+
+        fun cardSize(activity: ComponentActivity, bookmark: BookmarkEntity): androidx.compose.ui.unit.IntSize {
+            var size = androidx.compose.ui.unit.IntSize.Zero
+            host.main { size = cardFor(nodes(activity).first { host.text(it, bookmark.title) }).size }
+            return size
         }
 
         fun cardHeight(activity: ComponentActivity, index: Int): Int {

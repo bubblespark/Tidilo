@@ -22,7 +22,6 @@ import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItemCard
-import me.bubblespark.tidilo.ui.screens.library.BookmarkGridCard
 import me.bubblespark.tidilo.ui.screens.library.Tag
 
 class BookmarkEngagementUiTest {
@@ -39,7 +38,7 @@ class BookmarkEngagementUiTest {
             for (grid in listOf(false, true)) {
                 instrumentation.runOnMainSync {
                     host.setContent { MaterialTheme {
-                        if (grid) BookmarkGridCard(item, onClick = { clicks.incrementAndGet() }, onToggleLike = { likes.incrementAndGet() })
+                        if (grid) BookmarkGridCardFixture(item, onClick = { clicks.incrementAndGet() }, onToggleLike = { likes.incrementAndGet() })
                         else BookmarkItemCard(item, onClick = { clicks.incrementAndGet() }, onToggleLike = { likes.incrementAndGet() })
                     } }
                 }

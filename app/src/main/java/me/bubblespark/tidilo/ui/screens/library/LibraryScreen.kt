@@ -715,14 +715,15 @@ fun LibraryScreen(
                                                     }
                                                 }
                                                 LibraryViewMode.GRID -> {
+                                                    val (gridState, gridAnchor) = when (state) {
+                                                        is LibraryDisplayState.CollectionDrillDown -> collectionDetailGridState to collectionDetailGridAnchor
+                                                        is LibraryDisplayState.RssFeedDrillDown -> rssDetailGridState to rssDetailGridAnchor
+                                                        else -> domainDetailGridState to domainDetailGridAnchor
+                                                    }
                                                     LibraryBookmarkGrid(
                                                         bookmarks = domainBookmarks,
-                                                        state = if (collectionItem != null) collectionDetailGridState else if (feed != null) rssDetailGridState else domainDetailGridState,
-                                                        anchor = when (state) {
-                                                            is LibraryDisplayState.CollectionDrillDown -> collectionDetailGridAnchor
-                                                            is LibraryDisplayState.RssFeedDrillDown -> rssDetailGridAnchor
-                                                            else -> domainDetailGridAnchor
-                                                        },
+                                                        state = gridState,
+                                                        anchor = gridAnchor,
                                                         generation = session?.key.orEmpty(),
                                                         active = state == displayState && viewMode == mode,
                                                         contentPadding = contentPadding,

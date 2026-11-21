@@ -14,7 +14,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -66,11 +65,10 @@ internal fun BookmarkGridCard(
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null,
     onToggleLike: () -> Unit = {},
-    layout: BookmarkGridLayout? = null
+    layout: BookmarkGridLayout
 ) {
-    val textMetrics = layout?.text ?: rememberBookmarkGridTextMetrics()
-    val mediaSize = if (layout == null) Modifier.aspectRatio(16f / 9f) else Modifier.height(layout.mediaHeight)
-    val likeClearance = if (layout != null && layout.mediaHeight < BookmarkGridLikeTarget) {
+    val textMetrics = layout.text
+    val likeClearance = if (layout.mediaHeight < BookmarkGridLikeTarget) {
         BookmarkGridLikeTarget - BookmarkGridInfoSidePadding
     } else 0.dp
     val visualSource = LocalCacheVisualSource.current
@@ -127,7 +125,7 @@ internal fun BookmarkGridCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(mediaSize)
+                    .height(layout.mediaHeight)
                     .clip(topImageShape)
                     .background(
                         brush = Brush.verticalGradient(

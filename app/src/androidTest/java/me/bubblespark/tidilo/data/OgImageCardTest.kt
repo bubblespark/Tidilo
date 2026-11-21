@@ -16,7 +16,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import me.bubblespark.tidilo.MainActivity
-import me.bubblespark.tidilo.ui.screens.library.BookmarkGridCard
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.Tag
 import org.junit.Assert.*
@@ -66,9 +65,9 @@ class OgImageCardTest {
                 activity.setContent {
                     MaterialTheme {
                         Column {
-                            if (fallback.value) BookmarkGridCard(bookmark("link", false)) else {
-                                BookmarkGridCard(a)
-                                BookmarkGridCard(b)
+                            if (fallback.value) BookmarkGridCardFixture(bookmark("link", false)) else {
+                                BookmarkGridCardFixture(a)
+                                BookmarkGridCardFixture(b)
                             }
                         }
                     }

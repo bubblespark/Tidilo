@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import androidx.compose.ui.unit.IntSize
+
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -41,5 +43,17 @@ class BookmarkGridLayoutTest {
         }
 
         assertEquals(BookmarkGridSize(2, 55), layout)
+    }
+    @Test fun zeroWidthAndHeightBelowInfoKeepAScrollableCard() {
+        assertEquals(BookmarkGridSize(1, 24),
+            calculateBookmarkGridLayout(0, 160, 8, 24, 100) { 90 })
+    }
+
+    @Test fun fontReflowRestoresEvenWhenWindowSizeStaysTheSame() {
+        val viewport = IntSize(1080, 2424)
+        val anchor = BookmarkGridAnchor("query", viewport, 2, 124f, "bookmark", "normal")
+        assertEquals(true, shouldRestoreBookmarkGridAnchor(anchor, "query", viewport, "large", 1, 124f))
+        assertEquals(false, shouldRestoreBookmarkGridAnchor(anchor, "query", viewport, "normal", 3, 56f))
+        assertEquals(false, shouldRestoreBookmarkGridAnchor(anchor, "new query", viewport, "large", 1, 124f))
     }
 }

@@ -29,11 +29,8 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.runBlocking
-import me.bubblespark.tidilo.ui.screens.library.BookmarkGridCard
-import me.bubblespark.tidilo.ui.screens.library.BookmarkGridLayout
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.Tag
-import me.bubblespark.tidilo.ui.screens.library.rememberBookmarkGridTextMetrics
 import me.bubblespark.tidilo.ui.theme.Typography
 import me.bubblespark.tidilo.ui.util.TimeFormatter
 import org.junit.Assert.*
@@ -60,6 +57,7 @@ class BookmarkGridGeometryTest {
             title = if (withImage) "読みやすいタイトルと日付が残ることを確認するためのとても長い日本語のブックマークタイトル".repeat(4)
                 else "A long bookmark title needs to show the first three lines at the selected system font size. ".repeat(4),
             url = "https://$domain/b",
+            createdAt = System.currentTimeMillis(),
             ogImageUrl = null
         )
         val scale = mutableStateOf(1f)
@@ -76,21 +74,24 @@ class BookmarkGridGeometryTest {
         DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, true, false) }
         DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), true, false) }
         val activity = host.launch()
-        val density = context.resources.displayMetrics.density
+        // Fit two production-sized cells at 200% even on a phone-width test display.
+        val density = minOf(
+            context.resources.displayMetrics.density,
+            context.resources.displayMetrics.widthPixels / 576f
+        )
         try {
             host.main {
                 activity.setContent {
                     CompositionLocalProvider(LocalContext provides context,
                         LocalDensity provides Density(density, scale.value)) {
                         MaterialTheme(typography = Typography) {
-                            val layout = if (mediaHeight == null) null else
-                                BookmarkGridLayout(2, mediaHeight, rememberBookmarkGridTextMetrics())
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 listOf(short, long).forEachIndexed { index, bookmark ->
-                                    BookmarkGridCard(
+                                    BookmarkGridCardFixture(
                                         bookmark = bookmark,
-                                        modifier = Modifier.width(173.dp).onGloballyPositioned { cards[index] = it.boundsInRoot() },
-                                        layout = layout,
+                                        modifier = Modifier.onGloballyPositioned { cards[index] = it.boundsInRoot() },
+                                        widthModifier = Modifier.width(if (scale.value >= 2f) 280.dp else 173.dp),
+                                        mediaHeight = mediaHeight,
                                         onToggleLike = { likeToggles.incrementAndGet() }
                                     )
                                 }
@@ -100,7 +101,6 @@ class BookmarkGridGeometryTest {
                 }
             }
             if (withImage) host.await(activity) { host.description(it, short.title) }
-            val date = TimeFormatter.formatRelativeTime(createdAt, context)
             for (fontScale in listOf(1f, 1.15f, 2f)) {
                 host.main { scale.value = fontScale }
                 host.await(activity) { node ->
@@ -109,12 +109,16 @@ class BookmarkGridGeometryTest {
                 host.main {
                     val nodes = host.nodes(activity)
                     val domains = nodes.filter { host.text(it, domain) }.sortedBy { it.boundsInRoot.left }
-                    val dates = nodes.filter { host.text(it, date) }.sortedBy { it.boundsInRoot.left }
+                    val dates = listOf(short, long).map { bookmark ->
+                        val date = TimeFormatter.formatRelativeTime(bookmark.createdAt, context)
+                        nodes.single { host.text(it, date) }
+                    }
                     val titles = listOf(short, long).map { bookmark -> nodes.single { host.text(it, bookmark.title) } }
                     assertEquals(2, domains.size)
                     assertEquals(2, dates.size)
-                    assertEquals(cards[0].height, cards[1].height, 1f)
-                    assertEquals(dates[0].boundsInRoot.bottom, dates[1].boundsInRoot.bottom, 1f)
+                    assertEquals("Card height at $fontScale", cards[0].height, cards[1].height, 1f)
+                    assertEquals("Date alignment at $fontScale",
+                        dates[0].boundsInRoot.bottom, dates[1].boundsInRoot.bottom, 1f)
                     for (index in cards.indices) {
                         val domainBounds = domains[index].boundsInRoot
                         val titleBounds = titles[index].boundsInRoot
@@ -127,7 +131,7 @@ class BookmarkGridGeometryTest {
                         assertTrue(titleLayout.getLineBottom(titleLayout.lineCount - 1) <= titleBounds.height + 1f)
                         assertFalse("Relative time must fit vertically at $fontScale", dateLayout.didOverflowHeight)
                         repeat(dateLayout.lineCount) { line ->
-                            assertTrue("Relative time must fit horizontally at $fontScale: $date",
+                            assertTrue("Relative time must fit horizontally at $fontScale",
                                 dateLayout.getLineLeft(line) >= -1f &&
                                     dateLayout.getLineRight(line) <= dateBounds.width + 1f)
                         }

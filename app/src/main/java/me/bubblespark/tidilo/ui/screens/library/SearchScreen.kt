@@ -59,7 +59,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,6 +74,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.intl.LocaleList
@@ -90,6 +90,7 @@ import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 
 private val SearchTrailingPadding = 24.dp
+private val SearchInputVerticalPadding = 16.dp
 private const val SearchInputKey = "search_input"
 
 /**
@@ -119,7 +120,6 @@ fun SearchScreen(
     val resultListState = rememberLazyGridState()
     val resultGridState = rememberLazyGridState()
     val resultGridAnchor = rememberBookmarkGridAnchor()
-    var measuredSearchInput by rememberSaveable { mutableStateOf<Pair<String, Int>?>(null) }
     var lastScrollQuery by rememberSaveable { mutableStateOf(searchQuery) }
     var peekBookmark by remember { mutableStateOf<BookmarkItem?>(null) }
     LaunchedEffect(searchQuery) {
@@ -190,6 +190,20 @@ fun SearchScreen(
     }
     val isQueryChanging = isSearchQueryChanging(searchQuery, activeQueryKey, searchGeneration.key)
 
+    val inputTextStyle = MaterialTheme.typography.bodyLarge
+    val inputPlaceholder = stringResource(R.string.search_placeholder)
+    val inputMeasurer = rememberTextMeasurer()
+    val inputDensity = LocalDensity.current
+    val searchInputHeight = remember(inputMeasurer, inputDensity, inputTextStyle, inputPlaceholder) {
+        val lineHeight = maxOf(
+            inputMeasurer.measure("Agあ", inputTextStyle, maxLines = 1).size.height,
+            inputMeasurer.measure(inputPlaceholder, inputTextStyle, maxLines = 1).size.height
+        )
+        with(inputDensity) {
+            // The unlabeled Material field uses 16 dp above and below its single text line.
+            maxOf(SEARCH_INPUT_HEIGHT, (lineHeight + 2 * SearchInputVerticalPadding.roundToPx()).toDp())
+        }
+    }
     val searchInput: @Composable () -> Unit = {
         val attachment = remember { Any() }
         DisposableEffect(attachment) {
@@ -197,9 +211,11 @@ fun SearchScreen(
         }
         OutlinedTextField(
             value = searchQuery,
+            textStyle = inputTextStyle,
             onValueChange = { viewModel.onSearchQueryChanged(it) },
             modifier = Modifier
                 .fillMaxWidth()
+                .height(searchInputHeight)
                 .onPlaced {
                     inputAttachment = attachment
                 }
@@ -214,7 +230,8 @@ fun SearchScreen(
                 },
             placeholder = {
                 Text(
-                    text = stringResource(R.string.search_placeholder),
+                    text = inputPlaceholder,
+                    style = inputTextStyle,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -333,20 +350,12 @@ fun SearchScreen(
             val itemSpacing = if (showingHistory) 4.dp else if (showingGrid) BookmarkGridVerticalGap else 16.dp
             val gridLayout = if (showingGrid) {
                 val density = LocalDensity.current
-                val minimumInputHeight = with(density) { SEARCH_INPUT_HEIGHT.roundToPx() }
-                val inputLayoutKey = "${constraints.maxWidth}:${density.density}:${density.fontScale}:$currentLanguage"
-                val inputHeight = measuredSearchInput?.takeIf { it.first == inputLayoutKey }?.second ?: minimumInputHeight
-                // The full-span input keeps its width when the bookmark columns change.
-                LaunchedEffect(resultGridState, inputLayoutKey) {
-                    snapshotFlow {
-                        resultGridState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == SearchInputKey }
-                            ?.size?.height
-                    }.filterNotNull().collect { measuredSearchInput = inputLayoutKey to it }
-                }
                 bookmarkGridLayout(
                     contentPadding = contentPadding,
                     trailingPadding = SearchTrailingPadding,
-                    leadingContentHeightPx = inputHeight + with(density) { itemSpacing.roundToPx() }
+                    leadingContentHeightPx = with(density) {
+                        searchInputHeight.roundToPx() + itemSpacing.roundToPx()
+                    }
                 )
             } else null
             if (gridLayout != null && feedback == null) {
@@ -478,7 +487,7 @@ fun SearchScreen(
                 } else if (feedback != null) {
                     item(key = "search_feedback", span = { GridItemSpan(maxLineSpan) }, contentType = "search_feedback") {
                         if (centerFeedback) {
-                            SearchResultFeedback(maxHeight, contentPadding, SEARCH_INPUT_HEIGHT, itemSpacing) { feedback() }
+                            SearchResultFeedback(maxHeight, contentPadding, searchInputHeight, itemSpacing) { feedback() }
                         } else {
                             feedback()
                         }
@@ -490,7 +499,7 @@ fun SearchScreen(
                     ) { index ->
                         val result = filteredBookmarks[index] ?: return@items
                         val item = result.bookmark
-                        if (showingGrid) {
+                        if (gridLayout != null) {
                             BookmarkGridCard(
                                 bookmark = item,
                                 context = context,

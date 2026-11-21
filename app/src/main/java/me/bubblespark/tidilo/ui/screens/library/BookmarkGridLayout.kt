@@ -13,6 +13,7 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.TextStyle
@@ -140,16 +141,18 @@ internal fun calculateBookmarkGridLayout(
 ): BookmarkGridSize {
     val maxColumns = ((contentWidth + horizontalGap) / (minimumCardWidth + horizontalGap))
         .coerceAtLeast(1)
-    for (columns in minOf(2, maxColumns)..maxColumns) {
+    fun candidate(columns: Int): Pair<Int, Int> {
         val rowWidth = contentWidth - (columns - 1) * horizontalGap
         val cellWidth = (rowWidth + columns - 1) / columns
         val mediaHeight = maxOf(minimumMediaHeight, (cellWidth * 9 + 8) / 16)
-        val mediaBudget = availableHeight(cellWidth) - infoHeight
-        if (mediaHeight <= mediaBudget || columns == maxColumns) {
-            return BookmarkGridSize(columns, mediaHeight.coerceAtMost(maxOf(minimumMediaHeight, mediaBudget)))
-        }
+        return mediaHeight to (availableHeight(cellWidth) - infoHeight)
     }
-    error("At least one bookmark column is required")
+    for (columns in minOf(2, maxColumns) until maxColumns) {
+        val (mediaHeight, mediaBudget) = candidate(columns)
+        if (mediaHeight <= mediaBudget) return BookmarkGridSize(columns, mediaHeight)
+    }
+    val (mediaHeight, mediaBudget) = candidate(maxColumns)
+    return BookmarkGridSize(maxColumns, minOf(mediaHeight, maxOf(minimumMediaHeight, mediaBudget)))
 }
 
 internal class BookmarkGridAnchor(
@@ -157,7 +160,8 @@ internal class BookmarkGridAnchor(
     var viewport: IntSize = IntSize.Zero,
     var columns: Int = 0,
     var mediaHeight: Float = 0f,
-    var bookmarkKey: String? = null
+    var bookmarkKey: String? = null,
+    var textConfiguration: String = ""
 ) {
     fun clear() {
         bookmarkKey = null
@@ -166,7 +170,8 @@ internal class BookmarkGridAnchor(
 
 private val BookmarkGridAnchorSaver = listSaver<BookmarkGridAnchor, Any>(
     save = {
-        listOf(it.generation, it.viewport.width, it.viewport.height, it.columns, it.mediaHeight, it.bookmarkKey.orEmpty())
+        listOf(it.generation, it.viewport.width, it.viewport.height, it.columns, it.mediaHeight,
+            it.bookmarkKey.orEmpty(), it.textConfiguration)
     },
     restore = {
         BookmarkGridAnchor(
@@ -174,7 +179,8 @@ private val BookmarkGridAnchorSaver = listSaver<BookmarkGridAnchor, Any>(
             viewport = IntSize(it[1] as Int, it[2] as Int),
             columns = it[3] as Int,
             mediaHeight = it[4] as Float,
-            bookmarkKey = (it[5] as String).ifEmpty { null }
+            bookmarkKey = (it[5] as String).ifEmpty { null },
+            textConfiguration = it.getOrNull(6) as? String ?: ""
         )
     }
 )
@@ -182,6 +188,20 @@ private val BookmarkGridAnchorSaver = listSaver<BookmarkGridAnchor, Any>(
 @Composable
 internal fun rememberBookmarkGridAnchor(): BookmarkGridAnchor =
     rememberSaveable(saver = BookmarkGridAnchorSaver) { BookmarkGridAnchor() }
+
+internal fun shouldRestoreBookmarkGridAnchor(
+    anchor: BookmarkGridAnchor,
+    generation: String,
+    viewport: IntSize,
+    textConfiguration: String,
+    columns: Int,
+    mediaHeight: Float
+): Boolean {
+    val textChanged = anchor.textConfiguration != textConfiguration
+    val environmentChanged = anchor.viewport != viewport || textChanged
+    val rowsChanged = textChanged || anchor.columns != columns || anchor.mediaHeight > mediaHeight
+    return anchor.bookmarkKey != null && anchor.generation == generation && environmentChanged && rowsChanged
+}
 
 @Composable
 internal fun RestoreBookmarkGridAnchor(
@@ -193,18 +213,24 @@ internal fun RestoreBookmarkGridAnchor(
     indexOfBookmark: (String) -> Int
 ) {
     val viewport = LocalWindowInfo.current.containerSize
+    val density = LocalDensity.current
+    val localeTags = LocalConfiguration.current.locales.toLanguageTags()
+    val textConfiguration = "${density.density}:${density.fontScale}:$localeTags"
     val lookupIndex by rememberUpdatedState(indexOfBookmark)
-    LaunchedEffect(state, anchor, generation, viewport, layout.columns, layout.mediaHeight) {
+    LaunchedEffect(state, anchor, generation, viewport, textConfiguration, layout.columns, layout.mediaHeight) {
         val previousKey = anchor.bookmarkKey
-        // A row may become shorter than the saved pixel offset after it is regrouped.
-        val rowsChanged = anchor.columns != layout.columns || anchor.mediaHeight > layout.mediaHeight.value
-        if (previousKey != null && anchor.generation == generation && anchor.viewport != viewport && rowsChanged) {
+        // A keyboard-only media resize keeps the native offset and does not interrupt scrolling.
+        if (previousKey != null && shouldRestoreBookmarkGridAnchor(
+                anchor, generation, viewport, textConfiguration, layout.columns, layout.mediaHeight.value
+            )
+        ) {
             val index = lookupIndex(previousKey)
             if (index >= 0) state.requestScrollToItem(index + leadingItems)
         }
         if (anchor.generation != generation) anchor.clear()
         anchor.generation = generation
         anchor.viewport = viewport
+        anchor.textConfiguration = textConfiguration
         anchor.columns = layout.columns
         anchor.mediaHeight = layout.mediaHeight.value
         snapshotFlow {

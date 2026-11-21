@@ -294,7 +294,8 @@ internal fun DetailCollectionSheetHost(
     if (restoration.activePhase == DetailCollectionSheetPhase.SELECTING ||
         restoration.activePhase == DetailCollectionSheetPhase.OPENING_CREATOR
     ) {
-        key(restoration.activeMembershipSheetInstanceId) {
+        val membershipSheetInstanceId = restoration.activeMembershipSheetInstanceId
+        key(membershipSheetInstanceId) {
             CollectionMembershipBottomSheet(
                 bookmarkId = bookmarkId,
                 onDismiss = {
@@ -320,7 +321,7 @@ internal fun DetailCollectionSheetHost(
                 focusedCollectionId = sheetState.focusedCollectionId,
                 onFocusHandled = { sheetState.focusedCollectionId = null },
                 onCancelTransition = { sheetState.cancelCreatorTransition = true },
-                sheetInstanceId = restoration.activeMembershipSheetInstanceId
+                sheetInstanceId = membershipSheetInstanceId
             )
         }
     }

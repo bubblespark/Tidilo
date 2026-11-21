@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -64,7 +65,7 @@ fun CollectionMembershipBottomSheet(
         onRetry = resolvedModel::retry,
         onDismiss = onDismiss,
         onNewCollection = onNewCollection,
-        modifier = modifier,
+        modifier = modifier.testTag("collection-membership-$sheetInstanceId"),
         scrollState = scrollState,
         focusedCollectionId = focusedCollectionId,
         onFocusHandled = onFocusHandled,

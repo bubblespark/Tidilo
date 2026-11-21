@@ -423,6 +423,33 @@ class CollectionUiTest {
         } finally { host.main { activity.finish() } }
     }
 
+    @Test fun blankCollectionNameErrorIsAPoliteLiveRegion(): Unit = runBlocking {
+        val activity = host.launch()
+        try {
+            host.main {
+                activity.setContent {
+                    MaterialTheme {
+                        CollectionEditorContent(
+                            CollectionEditorState(draft = CollectionDraft("")),
+                            editing = true,
+                            onEdit = {},
+                            onSave = {},
+                            onConfirmDelete = {},
+                            onDelete = {},
+                            onDismiss = {},
+                            autosaveStatus = AutosaveStatus.Invalid
+                        )
+                    }
+                }
+            }
+            val message = activity.getString(me.bubblespark.tidilo.R.string.collection_title_required)
+            val error = await { host.text(it, message) }
+            host.main { assertEquals(LiveRegionMode.Polite, error.config.getOrNull(SemanticsProperties.LiveRegion)) }
+        } finally {
+            host.main { activity.finish() }
+        }
+    }
+
     @Test fun onlyCreateHasHeaderActionAndSheetHeadersStayFixed(): Unit = runBlocking {
         val activity = host.launch()
         val variant = mutableIntStateOf(0)
@@ -1337,6 +1364,7 @@ class CollectionUiTest {
                 lateinit var restoredState: DetailCollectionSheetState
                 var restoredHostComposed = false
                 var settledHostComposed = false
+                var firstRestoredPhase: DetailCollectionSheetPhase? = null
                 val creatorTitle = "New Collection"
                 val selectorTitle = "Choose collections"
 
@@ -1347,6 +1375,12 @@ class CollectionUiTest {
                         else -> null
                     }
                 }
+
+                val expectedSelectorTag = "collection-membership-$expectedInstanceIdAfterSettle"
+
+                fun mountedSelectorTags() = allNodes()
+                    .mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }
+                    .filter { it.startsWith("collection-membership-") }
 
                 host.main {
                     activity.setContent(parent = recomposer) {
@@ -1378,8 +1412,10 @@ class CollectionUiTest {
                                         SideEffect { sourceComposed = true }
                                     } else {
                                         val settled = sheetState.restoredPhaseSettled
+                                        val phase = sheetState.phase
                                         DetailCollectionSheetHost(bookmarkId = bookmarkId, sheetState = sheetState)
                                         SideEffect {
+                                            if (!restoredHostComposed) firstRestoredPhase = phase
                                             restoredState = sheetState
                                             restoredHostComposed = true
                                             settledHostComposed = settled
@@ -1408,11 +1444,19 @@ class CollectionUiTest {
                 await { host.text(it, creatorTitle) || host.text(it, selectorTitle) }
                 host.main {
                     assertFalse("$label: settlement recomposed before the first sheet check", settledHostComposed)
+                    assertEquals("$label: the first composition must restore the saved phase", savedPhase, firstRestoredPhase)
                     assertEquals(
                         "$label: only the target sheet must mount in the first restored composition",
                         listOf(expectedSheetTitle),
                         mountedSheetTitles()
                     )
+                    if (expectedSheetTitle == selectorTitle) {
+                        assertEquals(
+                            "$label: the first selector must use the settled instance key",
+                            listOf(expectedSelectorTag),
+                            mountedSelectorTags()
+                        )
+                    }
                 }
 
                 advanceUntil { settledHostComposed }

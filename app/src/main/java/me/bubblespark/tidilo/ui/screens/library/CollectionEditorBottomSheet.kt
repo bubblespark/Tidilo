@@ -191,7 +191,12 @@ internal fun CollectionEditorContent(
                     label = { Text(stringResource(R.string.collection_name_label)) }, singleLine = true,
                     isError = titleMissing,
                     supportingText = if (titleMissing) {
-                        { Text(stringResource(R.string.collection_title_required)) }
+                        {
+                            Text(
+                                stringResource(R.string.collection_title_required),
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                            )
+                        }
                     } else null,
                     enabled = canEdit, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(draft.description, { onEdit(draft.copy(description = it)) },

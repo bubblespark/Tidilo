@@ -385,6 +385,41 @@ class ManualAiExecutionTest {
         assertTrue(inferenceClosed)
     }
 
+    @Test
+    fun inferenceStatusFailureSkipsGenerationAndClosesInferenceClient() = runBlocking {
+        var inferenceClosed = false
+        val preflight = fakeModel({ FeatureStatus.AVAILABLE }, {})
+        val inference = fakeModel({ error("Status check failed") }, { inferenceClosed = true })
+
+        val error = runCatching {
+            runWithAvailableAiCore({ AiAnalysisMode.AICORE }, listOf(preflight, inference).iterator()::next, {
+                "prompt"
+            }) { _, _ -> throw AssertionError("Inference must not run after a status failure") }
+        }.exceptionOrNull() as AiGenerationBlocked
+
+        assertEquals(AiCoreReadiness.Failed, error.readiness)
+        assertNull(error.cause)
+        assertTrue(inferenceClosed)
+    }
+
+    @Test
+    fun busyInferencePreservesSdkCodeAndClosesInferenceClient() = runBlocking {
+        var inferenceClosed = false
+        val preflight = fakeModel({ FeatureStatus.AVAILABLE }, {})
+        val inference = fakeModel({ FeatureStatus.AVAILABLE }, { inferenceClosed = true })
+        val sdkError = GenAiException("Busy", null, GenAiException.ErrorCode.BUSY)
+
+        val error = runCatching {
+            runWithAvailableAiCore({ AiAnalysisMode.AICORE }, listOf(preflight, inference).iterator()::next, {
+                "prompt"
+            }) { _, _ -> throw sdkError }
+        }.exceptionOrNull() as AiCoreExecutionException
+
+        assertEquals(GenAiException.ErrorCode.BUSY, error.errorCode)
+        assertSame(sdkError, error.cause)
+        assertTrue(inferenceClosed)
+    }
+
     private fun fakeModel(check: () -> Int, close: () -> Unit): GenerativeModel =
         Proxy.newProxyInstance(
             GenerativeModel::class.java.classLoader,

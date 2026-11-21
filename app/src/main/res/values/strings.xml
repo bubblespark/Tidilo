@@ -184,6 +184,7 @@
     <string name="detail_action_delete">Delete</string>
     <string name="detail_action_ai_summary">Summarize with AI</string>
     <string name="detail_ai_manual_fallback">You can still read the saved description or edit tags and notes in bookmark details.</string>
+    <string name="ai_review_unavailable_title">AI proposal unavailable</string>
     <string name="ai_review_disabled_message">AI analysis is off.</string>
     <string name="ai_review_back_to_detail">Back to bookmark details</string>
     <string name="ai_review_restored_title">Previous result unavailable</string>

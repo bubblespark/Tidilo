@@ -355,9 +355,9 @@ fun BookmarkAiReviewScreen(
                             CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 4.dp)
                         } else if (!restored) {
                             Icon(
-                                imageVector = Icons.Default.ErrorOutline,
+                                imageVector = if (blocked) Icons.Outlined.Info else Icons.Default.ErrorOutline,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
+                                tint = if (blocked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(48.dp)
                             )
                         }
@@ -367,6 +367,7 @@ fun BookmarkAiReviewScreen(
                                 when {
                                     loading -> R.string.ai_review_loading_title
                                     restored -> R.string.ai_review_restored_title
+                                    blocked -> R.string.ai_review_unavailable_title
                                     else -> R.string.ai_review_error_title
                                 }
                             ),
@@ -378,8 +379,8 @@ fun BookmarkAiReviewScreen(
                         Text(
                             text = message,
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (loading || restored) MaterialTheme.colorScheme.onSurfaceVariant
-                            else MaterialTheme.colorScheme.error,
+                            color = if (state is AiReviewUiState.Error) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
                         )
                         if (!loading) {

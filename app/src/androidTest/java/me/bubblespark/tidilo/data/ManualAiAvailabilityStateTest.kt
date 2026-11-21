@@ -16,6 +16,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.google.mlkit.genai.common.FeatureStatus
+import com.google.mlkit.genai.common.GenAiException.ErrorCode
 import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
@@ -26,6 +27,7 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
+import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.service.AiGenerationBlocked
 import me.bubblespark.tidilo.service.AiProposalPageException
 import me.bubblespark.tidilo.service.TaggingResult
@@ -162,13 +164,16 @@ class ManualAiAvailabilityStateTest {
                             .firstNotNullOf { it.config.getOrNull(SemanticsActions.OnClick)?.action }.invoke())
                     }
 
+                    awaitText(R.string.ai_review_unavailable_title)
                     awaitText(R.string.ai_review_disabled_message)
                     awaitText(R.string.detail_ai_manual_fallback)
                     val back = awaitText(R.string.ai_review_back_to_detail)
                     host.capture("263-r26-review-disabled-${locale.language}")
                     host.main {
                         assertEquals(1, calls)
-                        val absent = listOf(R.string.ai_analysis_off_message, R.string.ai_analysis_open_settings)
+                        val absent = listOf(
+                            R.string.ai_analysis_off_message, R.string.ai_analysis_open_settings, R.string.ai_review_error_title
+                        )
                         assertTrue(host.nodes(activity).none { node ->
                             absent.any { host.text(node, localized.getString(it)) }
                         })
@@ -229,6 +234,21 @@ class ManualAiAvailabilityStateTest {
             model.generate(retry = true, proposal = generate)
             assertEquals(1, calls)
             assertEquals(AiReviewUiState.Unavailable(readiness), model.state.value)
+        }
+    }
+
+    @Test fun sdkExecutionErrorsSelectTheirReviewMessages(): Unit = runBlocking {
+        withContext(Dispatchers.Main) {
+            val cases = mapOf(
+                ErrorCode.BUSY to R.string.ai_review_busy,
+                ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED to R.string.ai_review_quota,
+                ErrorCode.BACKGROUND_USE_BLOCKED to R.string.ai_review_background
+            )
+            for ((code, message) in cases) {
+                val model = BookmarkAiReviewViewModel(SavedStateHandle())
+                model.generate { Result.failure(AiCoreExecutionException(code, "SDK error")) }
+                assertEquals(AiReviewUiState.Error(message), model.state.value)
+            }
         }
     }
 

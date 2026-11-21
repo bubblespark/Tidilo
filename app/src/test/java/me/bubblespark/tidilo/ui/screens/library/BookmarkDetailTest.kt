@@ -726,6 +726,51 @@ class BookmarkDetailTest {
         assertEquals(1080f, centerScroll80.x, 0.001f)
         assertEquals(-80f, centerScroll80.y, 0.001f)
     }
+
+    @Test
+    fun testDetailCollectionSheetPhaseTransitionsAndRestoration() {
+        // Normal transition from OPENING_CREATOR -> CREATING when membership sheet closes
+        assertEquals(
+            DetailCollectionSheetPhase.CREATING,
+            DetailCollectionSheetPhase.OPENING_CREATOR.onMembershipClosed(cancelCreatorTransition = false)
+        )
+        // Cancelled transition (e.g. Back pressed during OPENING_CREATOR) returns to SELECTING
+        assertEquals(
+            DetailCollectionSheetPhase.SELECTING,
+            DetailCollectionSheetPhase.OPENING_CREATOR.onMembershipClosed(cancelCreatorTransition = true)
+        )
+        // Normal dismissal from SELECTING closes the workflow
+        assertEquals(
+            DetailCollectionSheetPhase.CLOSED,
+            DetailCollectionSheetPhase.SELECTING.onMembershipClosed(cancelCreatorTransition = false)
+        )
+
+        // State restoration settlement for mid-animation phases
+        assertEquals(
+            DetailCollectionSheetPhase.CREATING,
+            DetailCollectionSheetPhase.OPENING_CREATOR.settleRestored(cancelCreatorTransition = false)
+        )
+        assertEquals(
+            DetailCollectionSheetPhase.SELECTING,
+            DetailCollectionSheetPhase.OPENING_CREATOR.settleRestored(cancelCreatorTransition = true)
+        )
+        assertEquals(
+            DetailCollectionSheetPhase.SELECTING,
+            DetailCollectionSheetPhase.RETURNING_TO_SELECTION.settleRestored(cancelCreatorTransition = false)
+        )
+        assertEquals(
+            DetailCollectionSheetPhase.SELECTING,
+            DetailCollectionSheetPhase.SELECTING.settleRestored(cancelCreatorTransition = false)
+        )
+        assertEquals(
+            DetailCollectionSheetPhase.CREATING,
+            DetailCollectionSheetPhase.CREATING.settleRestored(cancelCreatorTransition = false)
+        )
+        assertEquals(
+            DetailCollectionSheetPhase.CLOSED,
+            DetailCollectionSheetPhase.CLOSED.settleRestored(cancelCreatorTransition = false)
+        )
+    }
 }
 
 private class DummyImageBitmap : androidx.compose.ui.graphics.ImageBitmap {

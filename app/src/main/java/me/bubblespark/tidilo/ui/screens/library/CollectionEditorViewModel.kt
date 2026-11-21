@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import me.bubblespark.tidilo.data.CollectionDraft
 import me.bubblespark.tidilo.data.CollectionField
 import me.bubblespark.tidilo.data.changedFields
@@ -40,9 +41,11 @@ class CollectionEditorViewModel(
     private val repository: CollectionRepository,
     private val collectionId: String?,
     // Not cancelled with the ViewModel, so the final flush in onCleared can still start its write.
-    saveScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    saveScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    private val assignToBookmarkId: String? = null
 ) : ViewModel() {
     private val createId = saved.get<String>("createId") ?: UUID.randomUUID().toString().also { saved["createId"] = it }
+    val createdId: String get() = createId
     private fun restored() = CollectionDraft(saved["title"] ?: "", saved["description"] ?: "",
         saved["icon"] ?: "folder", saved["symbol"], saved["color"] ?: 0)
     private val mutable = MutableStateFlow(CollectionEditorState(restored(), loading = collectionId != null,
@@ -104,8 +107,15 @@ class CollectionEditorViewModel(
         loadJob = viewModelScope.launch {
             try {
                 if (collectionId == null) {
-                    if (saved.get<Boolean>("submitting") == true && repository.observeCollection(createId).first() != null) {
-                        mutable.value = mutable.value.copy(done = true)
+                    if (saved.get<Boolean>("submitting") == true) {
+                        val completed = CollectionRepository.editorWriteLock.withLock {
+                            repository.observeCollection(createId).first() != null &&
+                                (assignToBookmarkId == null || createId in repository.observeMembershipIds(assignToBookmarkId).first())
+                        }
+                        saved["submitting"] = false
+                        if (completed) {
+                            mutable.value = mutable.value.copy(done = true)
+                        }
                     }
                     mutable.value = mutable.value.copy(loading = false)
                 } else {
@@ -170,7 +180,18 @@ class CollectionEditorViewModel(
     fun create() {
         if (collectionId != null || state.value.pending || state.value.loading || state.value.done || state.value.draft.title.isBlank()) return
         val draft = state.value.draft
-        write { repository.create(createId, draft, System.currentTimeMillis()); true }
+        val targetBookmarkId = assignToBookmarkId
+        write(missingError = if (targetBookmarkId != null) "missing_bookmark" else null) {
+            CollectionRepository.editorWriteLock.withLock {
+                val now = System.currentTimeMillis()
+                if (targetBookmarkId != null) {
+                    repository.createAndAssign(createId, draft, targetBookmarkId, now)
+                } else {
+                    repository.create(createId, draft, now)
+                    true
+                }
+            }
+        }
     }
 
     fun delete() {
@@ -188,13 +209,18 @@ class CollectionEditorViewModel(
         }
     }
 
-    private fun write(action: suspend () -> Boolean) {
+    private fun write(missingError: String? = null, action: suspend () -> Boolean) {
         saved["submitting"] = true
         mutable.value = state.value.copy(pending = true, error = null)
         viewModelScope.launch {
             try {
                 val success = action()
-                mutable.value = state.value.copy(pending = false, done = success, missing = !success)
+                mutable.value = state.value.copy(
+                    pending = false,
+                    done = success,
+                    missing = !success && missingError == null,
+                    error = if (success) null else missingError
+                )
                 saved["submitting"] = false
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {

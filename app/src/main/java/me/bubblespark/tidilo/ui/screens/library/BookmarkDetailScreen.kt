@@ -142,12 +142,34 @@ import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.Category
+import me.bubblespark.tidilo.data.CollectionRepository
 import me.bubblespark.tidilo.data.Subcategory
+import me.bubblespark.tidilo.data.db.AppDatabase
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 
 private val DETAIL_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
+
+internal enum class DetailCollectionSheetPhase {
+    CLOSED,
+    SELECTING,
+    OPENING_CREATOR,
+    CREATING,
+    RETURNING_TO_SELECTION;
+
+    fun settleRestored(cancelCreatorTransition: Boolean): DetailCollectionSheetPhase = when (this) {
+        OPENING_CREATOR -> if (cancelCreatorTransition) SELECTING else CREATING
+        RETURNING_TO_SELECTION -> SELECTING
+        else -> this
+    }
+
+    fun onMembershipClosed(cancelCreatorTransition: Boolean): DetailCollectionSheetPhase = when (this) {
+        OPENING_CREATOR -> if (cancelCreatorTransition) SELECTING else CREATING
+        else -> CLOSED
+    }
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -156,8 +178,7 @@ fun BookmarkDetailScreen(
     viewModel: LibraryViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToAiReview: (String) -> Unit = {},
-    modifier: Modifier = Modifier,
-    onOpenCollections: () -> Unit = {}
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
@@ -253,16 +274,97 @@ fun BookmarkDetailScreen(
         }
     }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    var showCollectionMembership by rememberSaveable(bookmark.id) { mutableStateOf(false) }
+    var collectionSheetPhase by rememberSaveable(bookmark.id) { mutableStateOf(DetailCollectionSheetPhase.CLOSED) }
+    var membershipSessionId by rememberSaveable(bookmark.id) { mutableStateOf(UUID.randomUUID().toString()) }
+    var membershipSheetInstanceId by rememberSaveable(bookmark.id) { mutableStateOf(0) }
+    var creatorSessionId by rememberSaveable(bookmark.id) { mutableStateOf(UUID.randomUUID().toString()) }
+    var focusedCollectionId by rememberSaveable(bookmark.id) { mutableStateOf<String?>(null) }
+    var cancelCreatorTransition by rememberSaveable(bookmark.id) { mutableStateOf(false) }
+    LaunchedEffect(bookmark.id) {
+        val settled = collectionSheetPhase.settleRestored(cancelCreatorTransition)
+        if (settled != collectionSheetPhase) {
+            if (collectionSheetPhase == DetailCollectionSheetPhase.OPENING_CREATOR && cancelCreatorTransition) {
+                membershipSheetInstanceId++
+            }
+            cancelCreatorTransition = false
+            collectionSheetPhase = settled
+        }
+    }
     var entityLibraryRetry by remember { mutableStateOf(0) }
     val libraryFlow = remember(viewModel, entityLibraryRetry) { viewModel.entityLibrary() }
     val libraryState = rememberEntityLibraryState(showAddEntityDialog || showEntityBottomSheet, libraryFlow)
 
     val isPrivateContentVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
 
-    if (showCollectionMembership) CollectionMembershipBottomSheet(bookmark.id,
-        onDismiss = { showCollectionMembership = false },
-        onOpenCollections = { showCollectionMembership = false; onOpenCollections() })
+    if (collectionSheetPhase != DetailCollectionSheetPhase.CLOSED) {
+        val membershipModel = collectionSheetModel("collection-membership-$membershipSessionId") { _ ->
+            CollectionMembershipViewModel(CollectionRepository(AppDatabase.getInstance(context)).asMembershipStore(), bookmark.id)
+        }
+        val membershipScrollState = rememberScrollState()
+        BackHandler(
+            enabled = collectionSheetPhase == DetailCollectionSheetPhase.OPENING_CREATOR ||
+                collectionSheetPhase == DetailCollectionSheetPhase.RETURNING_TO_SELECTION
+        ) {
+            if (collectionSheetPhase == DetailCollectionSheetPhase.OPENING_CREATOR) {
+                cancelCreatorTransition = true
+            }
+        }
+        if (collectionSheetPhase == DetailCollectionSheetPhase.SELECTING ||
+            collectionSheetPhase == DetailCollectionSheetPhase.OPENING_CREATOR
+        ) {
+            key(membershipSheetInstanceId) {
+                CollectionMembershipBottomSheet(
+                    bookmarkId = bookmark.id,
+                    onDismiss = {
+                        val wasCancelledTransition = collectionSheetPhase == DetailCollectionSheetPhase.OPENING_CREATOR && cancelCreatorTransition
+                        val next = collectionSheetPhase.onMembershipClosed(cancelCreatorTransition)
+                        cancelCreatorTransition = false
+                        if (wasCancelledTransition) {
+                            membershipSheetInstanceId++
+                        }
+                        collectionSheetPhase = next
+                        if (next == DetailCollectionSheetPhase.CLOSED) {
+                            focusedCollectionId = null
+                        }
+                    },
+                    onNewCollection = {
+                        cancelCreatorTransition = false
+                        creatorSessionId = UUID.randomUUID().toString()
+                        collectionSheetPhase = DetailCollectionSheetPhase.OPENING_CREATOR
+                    },
+                    model = membershipModel,
+                    scrollState = membershipScrollState,
+                    focusedCollectionId = focusedCollectionId,
+                    onFocusHandled = { focusedCollectionId = null },
+                    onCancelTransition = { cancelCreatorTransition = true },
+                    sheetInstanceId = membershipSheetInstanceId
+                )
+            }
+        }
+        if (collectionSheetPhase == DetailCollectionSheetPhase.CREATING ||
+            collectionSheetPhase == DetailCollectionSheetPhase.RETURNING_TO_SELECTION
+        ) {
+            CollectionEditorBottomSheet(
+                collectionId = null,
+                assignToBookmarkId = bookmark.id,
+                sessionId = creatorSessionId,
+                onClosing = {
+                    if (collectionSheetPhase == DetailCollectionSheetPhase.CREATING) {
+                        collectionSheetPhase = DetailCollectionSheetPhase.RETURNING_TO_SELECTION
+                    }
+                },
+                onDismiss = {
+                    membershipSheetInstanceId++
+                    collectionSheetPhase = DetailCollectionSheetPhase.SELECTING
+                },
+                onCreated = { createdId ->
+                    focusedCollectionId = createdId
+                    membershipSheetInstanceId++
+                    collectionSheetPhase = DetailCollectionSheetPhase.SELECTING
+                }
+            )
+        }
+    }
 
     val localizedCategory = remember(storedTag.category, context) {
         storedTag.category?.let { Category.toLocalized(it, context) } ?: ""
@@ -403,8 +505,19 @@ fun BookmarkDetailScreen(
                                         contentDescription = stringResource(R.string.detail_action_ai_summary),
                                         modifier = Modifier.size(22.dp))
                                 }
-                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showCollectionMembership = true },
-                                    modifier = Modifier.size(HeaderDefaults.DetailActionSize).semantics { selected = hasCollection }) {
+                                TidiloIconButton(
+                                    role = SurfaceRole.TOOLBAR_ACTION,
+                                    onClick = {
+                                        if (collectionSheetPhase == DetailCollectionSheetPhase.CLOSED) {
+                                            membershipSessionId = UUID.randomUUID().toString()
+                                            membershipSheetInstanceId++
+                                            focusedCollectionId = null
+                                            cancelCreatorTransition = false
+                                            collectionSheetPhase = DetailCollectionSheetPhase.SELECTING
+                                        }
+                                    },
+                                    modifier = Modifier.size(HeaderDefaults.DetailActionSize).semantics { selected = hasCollection }
+                                ) {
                                     Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
                                         contentDescription = stringResource(R.string.bookmark_collection_action),
                                         tint = if (hasCollection) collectionMembershipColor(MaterialTheme.colorScheme.surfaceContainerHighest)

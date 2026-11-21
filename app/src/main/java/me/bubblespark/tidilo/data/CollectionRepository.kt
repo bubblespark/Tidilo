@@ -33,6 +33,23 @@ class CollectionRepository(private val database: AppDatabase) {
         id
     }
 
+    /**
+     * Atomically creates a new collection and assigns it to [bookmarkId] in one database transaction.
+     * Returns false without creating an orphan collection when the target bookmark no longer exists.
+     */
+    suspend fun createAndAssign(id: String, draft: CollectionDraft, bookmarkId: String, now: Long): Boolean =
+        withContext(NonCancellable + Dispatchers.IO) {
+            require(UUID.fromString(id).toString() == id)
+            val value = CollectionPolicy.normalize(draft)
+            database.withTransaction {
+                if (database.bookmarkDao().getBookmarkById(bookmarkId) == null) return@withTransaction false
+                dao.insert(CollectionEntity(id, value.title, value.description, value.presetIconId,
+                    value.customSymbol, value.colorIndex, now, now))
+                dao.insertMembership(BookmarkCollectionCrossRef(bookmarkId, id))
+                true
+            }
+        }
+
     /** Completes even if the editor closes mid-write, so an autosaved draft is never half-applied. */
     suspend fun update(id: String, draft: CollectionDraft, now: Long): Boolean = withContext(NonCancellable + Dispatchers.IO) {
         val value = CollectionPolicy.normalize(draft)

@@ -296,4 +296,60 @@ class CollectionEditorTest {
             assertEquals("The revert is shown", "A", vm.state.value.draft.title)
         } finally { gate.complete(Unit); host.runOnMainSync { store.clear() }; db.close() }
     }
+
+    @Test fun createWithBookmarkAssignmentRollsBackOnFailureRetriesWithoutDuplicatesAndRejectsMissingBookmark() = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
+        val repo = CollectionRepository(db)
+        val store = ViewModelStore()
+        val saved = SavedStateHandle()
+        lateinit var vm: CollectionEditorViewModel
+        try {
+            db.bookmarkDao().insertOrUpdate(me.bubblespark.tidilo.data.db.BookmarkEntity("bm-1", "One", "https://example.com/1", "", createdAt = 1, updatedAt = 1))
+            // Fail on cross-ref insert to verify rollback + retry with the same createId.
+            db.openHelper.writableDatabase.execSQL(
+                "CREATE TRIGGER fail_cross_ref BEFORE INSERT ON bookmark_collection_cross_ref BEGIN SELECT RAISE(ABORT, 'injected'); END"
+            )
+            host.runOnMainSync {
+                vm = ViewModelProvider(store, viewModelFactory {
+                    initializer { CollectionEditorViewModel(saved, repo, null, assignToBookmarkId = "bm-1") }
+                })[CollectionEditorViewModel::class.java]
+                vm.edit(CollectionDraft("Assigned Collection", "From Detail", "star", null, 3))
+                vm.create()
+            }
+            withTimeout(5000) { while (vm.state.value.error == null) delay(20) }
+            assertEquals("save", vm.state.value.error)
+            assertFalse(vm.state.value.done)
+            assertFalse(vm.state.value.missing)
+            assertEquals("Assigned Collection", vm.state.value.draft.title)
+            assertNull("Rollback must leave no orphan collection", db.collectionDao().getById(vm.createdId))
+            assertTrue(db.collectionDao().observeMembershipIds("bm-1").first().isEmpty())
+
+            // Drop trigger and retry create(): must reuse the same createdId and assign atomically.
+            db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_cross_ref")
+            val expectedId = vm.createdId
+            host.runOnMainSync { vm.create(); vm.create() }
+            withTimeout(5000) { while (!vm.state.value.done) delay(20) }
+            assertEquals(expectedId, vm.createdId)
+            assertEquals(1, db.collectionDao().observeCollections(true).first().size)
+            assertEquals("Assigned Collection", db.collectionDao().getById(expectedId)?.title)
+            assertEquals(listOf(expectedId), db.collectionDao().observeMembershipIds("bm-1").first())
+
+            // Missing target bookmark sets error = "missing_bookmark" and creates no orphan collection.
+            host.runOnMainSync { store.clear() }
+            val missingSaved = SavedStateHandle()
+            host.runOnMainSync {
+                vm = ViewModelProvider(store, viewModelFactory {
+                    initializer { CollectionEditorViewModel(missingSaved, repo, null, assignToBookmarkId = "missing-bm") }
+                })[CollectionEditorViewModel::class.java]
+                vm.edit(CollectionDraft("Should Not Exist"))
+                vm.create()
+            }
+            withTimeout(5000) { while (vm.state.value.error == null) delay(20) }
+            assertEquals("missing_bookmark", vm.state.value.error)
+            assertFalse(vm.state.value.done)
+            assertFalse(vm.state.value.missing)
+            assertNull(db.collectionDao().getById(vm.createdId))
+        } finally { host.runOnMainSync { store.clear() }; db.close() }
+    }
 }

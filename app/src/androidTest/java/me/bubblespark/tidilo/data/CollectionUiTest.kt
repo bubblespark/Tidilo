@@ -508,30 +508,157 @@ class CollectionUiTest {
         }
     }
 
-    @Test fun openCollectionsLeavesImmediatelyAndKeepsTypedNote(): Unit = runBlocking {
+    @Test fun createCollectionFromDetailAssignsAndReopensSelectionChecked(): Unit = runBlocking {
         val db = AppDatabase.getInstance(host.context)
-        org.junit.Assume.assumeTrue(db.collectionDao().observeCollections(true).first().isEmpty())
-        val id = UUID.randomUUID().toString()
-        db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Draft navigation", "https://example.com/$id", "", createdAt = 1, updatedAt = 1, note = "Initial note"))
+        val bookmarkId = UUID.randomUUID().toString()
+        val existingAId = UUID.randomUUID().toString()
+        val existingDupId = UUID.randomUUID().toString()
+        val existingATitle = "Existing ${existingAId.take(6)}"
+        val duplicateTitle = "Shared ${existingDupId.take(6)}"
+        val cancelledTitle = "Cancelled ${bookmarkId.take(6)}"
+        val createdCollectionIds = mutableSetOf(existingAId, existingDupId)
+        db.bookmarkDao().insertOrUpdate(
+            BookmarkEntity(bookmarkId, "Detail collection flow", "https://example.com/$bookmarkId", "", createdAt = 1, updatedAt = 1, note = "Initial note")
+        )
+        db.collectionDao().insert(CollectionEntity(existingAId, existingATitle, "", "folder", null, 0, 1, 1))
+        db.collectionDao().insert(CollectionEntity(existingDupId, duplicateTitle, "", "folder", null, 1, 2, 2))
         val activity = host.launch()
-        val collections = java.util.concurrent.atomic.AtomicInteger()
         val backs = java.util.concurrent.atomic.AtomicInteger()
         try {
             host.main {
                 val model = androidx.lifecycle.ViewModelProvider(activity)[LibraryViewModel::class.java]
-                activity.setContent { MaterialTheme { BookmarkDetailScreen(id, model,
-                    onNavigateBack = { backs.incrementAndGet() }, onOpenCollections = { collections.incrementAndGet() }) } }
+                activity.setContent {
+                    MaterialTheme {
+                        BookmarkDetailScreen(
+                            bookmarkId = bookmarkId,
+                            viewModel = model,
+                            onNavigateBack = { backs.incrementAndGet() }
+                        )
+                    }
+                }
             }
+            phase = "edit note before collection sheet"
             val note = await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == "Initial note" }
             host.main { check(note.config[SemanticsActions.SetText].action?.invoke(AnnotatedString("Unsaved note")) == true) }
+
+            phase = "open membership sheet"
             action(await { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Choose collections") == true })
-            action(await { host.text(it, "Open collections") })
-            // No discard prompt: the note is autosaved, so leaving needs no confirmation.
-            withTimeout(5000) { while (collections.get() != 1) delay(20) }
-            host.main { assertTrue(allNodes().none { host.text(it, "Discard changes?") }) }
-            withTimeout(5000) { while (requireNotNull(db.bookmarkDao().getBookmarkById(id)).note != "Unsaved note") delay(20) }
+            await { host.text(it, "Choose collections") }
+            await { host.text(it, "New collection") }
+
+            phase = "check existing collection A"
+            action(await { host.text(it, existingATitle) })
+            withTimeout(5000) { while (db.collectionDao().observeMembershipIds(bookmarkId).first() != listOf(existingAId)) delay(20) }
+
+            phase = "tap New collection to switch sheets sequentially"
+            action(await { host.text(it, "New collection") })
+            await { host.text(it, "New Collection") }
+            host.main {
+                assertTrue("Selection sheet must close before creation sheet is shown", allNodes().none { host.text(it, "Choose collections") })
+            }
+
+            phase = "cancel creation sheet and verify return to selection sheet"
+            val cancelField = await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == "" && it.config.getOrNull(SemanticsActions.SetText) != null }
+            host.main { check(cancelField.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(cancelledTitle)) == true) }
+            dismissSheet()
+            await { host.text(it, "Choose collections") }
+            host.main {
+                assertTrue("Creation sheet must close before selection sheet reopens", allNodes().none { host.text(it, "New Collection") })
+            }
+            assertEquals("Cancelling creation must keep existing memberships intact", listOf(existingAId), db.collectionDao().observeMembershipIds(bookmarkId).first())
+            assertTrue("Cancelled draft must not be created", db.collectionDao().observeCollections(true).first().none { it.collection.title == cancelledTitle })
+
+            phase = "re-open creation sheet and create collection with duplicate title"
+            action(await { host.text(it, "New collection") })
+            await { host.text(it, "New Collection") }
+            val titleField = await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == "" && it.config.getOrNull(SemanticsActions.SetText) != null }
+            host.main { check(titleField.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(duplicateTitle)) == true) }
+            await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == duplicateTitle }
+            action(await { host.text(it, "Create") })
+
+            phase = "verify reopened selection sheet has newly created collection checked and existing duplicate unchecked"
+            await { host.text(it, "Choose collections") }
+            val allMatching = withTimeout(5000) {
+                var list = emptyList<CollectionWithCount>()
+                while (list.size < 2) {
+                    list = db.collectionDao().observeCollections(true).first().filter { it.collection.title == duplicateTitle }
+                    if (list.size < 2) delay(20)
+                }
+                list
+            }
+            val newlyCreatedId = allMatching.map { it.collection.id }.first { it != existingDupId }
+            createdCollectionIds += newlyCreatedId
+            val memberships = db.collectionDao().observeMembershipIds(bookmarkId).first().toSet()
+            assertEquals(setOf(existingAId, newlyCreatedId), memberships)
+            assertFalse("Pre-existing collection with duplicate title must not be checked", existingDupId in memberships)
+
+            withTimeout(5000) {
+                var checkedCount = 0
+                while (checkedCount != 1) {
+                    host.main {
+                        val duplicateRows = allNodes().filter { node ->
+                            node.config.getOrNull(SemanticsProperties.Role) == Role.Checkbox &&
+                                node.children.any { child -> host.text(child, duplicateTitle) }
+                        }
+                        checkedCount = duplicateRows.count { it.config.getOrNull(SemanticsProperties.ToggleableState) == androidx.compose.ui.state.ToggleableState.On }
+                    }
+                    if (checkedCount != 1) delay(20)
+                }
+            }
+            withTimeout(5000) { while (requireNotNull(db.bookmarkDao().getBookmarkById(bookmarkId)).note != "Unsaved note") delay(20) }
             assertEquals(0, backs.get())
-        } finally { host.main { activity.finish() }; db.bookmarkDao().deleteById(id) }
+        } finally {
+            host.main { activity.finish() }
+            createdCollectionIds.forEach { db.collectionDao().delete(it) }
+            db.bookmarkDao().deleteById(bookmarkId)
+        }
+    }
+
+    @Test fun createFailureInEditorShowsInlineRetryAndRecoversWithoutDuplicate(): Unit = runBlocking {
+        val db = AppDatabase.getInstance(host.context)
+        val bookmarkId = UUID.randomUUID().toString()
+        val title = "RetryCreate ${bookmarkId.take(6)}"
+        val trigger = "fail_detail_create_${bookmarkId.replace("-", "")}"
+        db.bookmarkDao().insertOrUpdate(BookmarkEntity(bookmarkId, "Retry create bookmark", "https://example.com/$bookmarkId", "", createdAt = 1, updatedAt = 1))
+        val activity = host.launch()
+        val createdIds = mutableListOf<String>()
+        try {
+            host.main {
+                activity.setContent {
+                    MaterialTheme {
+                        CollectionEditorBottomSheet(
+                            collectionId = null,
+                            assignToBookmarkId = bookmarkId,
+                            onDismiss = {},
+                            onCreated = { createdIds += it }
+                        )
+                    }
+                }
+            }
+            phase = "enter title for failed create"
+            val field = await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == "" && it.config.getOrNull(SemanticsActions.SetText) != null }
+            host.main { check(field.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(title)) == true) }
+            db.openHelper.writableDatabase.execSQL(
+                "CREATE TRIGGER $trigger BEFORE INSERT ON bookmark_collection_cross_ref WHEN NEW.bookmarkId = '$bookmarkId' BEGIN SELECT RAISE(ABORT,'injected create assign failure'); END"
+            )
+            action(await { host.text(it, "Create") })
+            phase = "verify error and inline retry"
+            val scroll = await { it.config.getOrNull(SemanticsActions.ScrollBy) != null }
+            host.main { scroll.config[SemanticsActions.ScrollBy].action?.invoke(0f, 3000f) }
+            await { host.text(it, "Could not save your changes. Please try again.") }
+            assertTrue("Rollback must prevent orphan collection", db.collectionDao().observeCollections(true).first().none { it.collection.title == title })
+            db.openHelper.writableDatabase.execSQL("DROP TRIGGER $trigger")
+            action(await { host.text(it, "Retry") })
+            withTimeout(5000) { while (createdIds.isEmpty()) delay(20) }
+            assertEquals(1, createdIds.size)
+            assertEquals(listOf(createdIds.single()), db.collectionDao().observeMembershipIds(bookmarkId).first())
+        } finally {
+            db.openHelper.writableDatabase.execSQL("DROP TRIGGER IF EXISTS $trigger")
+            host.main { activity.finish() }
+            createdIds.forEach { db.collectionDao().delete(it) }
+            db.collectionDao().observeCollections(true).first().filter { it.collection.title == title }.forEach { db.collectionDao().delete(it.collection.id) }
+            db.bookmarkDao().deleteById(bookmarkId)
+        }
     }
 
     @Test fun pendingEditorCannotBeDismissed(): Unit = runBlocking {

@@ -36,18 +36,92 @@ import me.bubblespark.tidilo.ui.theme.CollectionColorPalette
 import java.util.UUID
 
 @Composable
-fun CollectionEditorBottomSheet(collectionId: String?, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+fun CollectionEditorBottomSheet(
+    collectionId: String?,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    assignToBookmarkId: String? = null,
+    sessionId: String = rememberSaveable(collectionId, assignToBookmarkId) { UUID.randomUUID().toString() },
+    onCreated: (String) -> Unit = { onDismiss() },
+    onClosing: () -> Unit = {}
+) {
     val context = LocalContext.current
-    val session = rememberSaveable(collectionId) { UUID.randomUUID().toString() }
-    val model = collectionSheetModel("collection-editor-$session") { saved ->
-        CollectionEditorViewModel(saved, CollectionRepository(AppDatabase.getInstance(context)), collectionId)
+    val model = collectionSheetModel("collection-editor-$sessionId") { saved ->
+        CollectionEditorViewModel(
+            saved = saved,
+            repository = CollectionRepository(AppDatabase.getInstance(context)),
+            collectionId = collectionId,
+            assignToBookmarkId = assignToBookmarkId
+        )
     }
     val state by model.state.collectAsStateWithLifecycle()
     val autosaveStatus by model.autosaveStatus.collectAsStateWithLifecycle()
-    LaunchedEffect(state.done) { if (state.done) onDismiss() }
-    CollectionEditorContent(state, collectionId != null, model::edit, model::create,
-        model::confirmDelete, model::delete, { if (!state.pending) onDismiss() }, modifier, onRetry = model::retryLoad,
-        autosaveStatus = autosaveStatus, onRetrySave = model::retrySave)
+    CollectionEditorSheet(
+        sessionId = sessionId,
+        editing = collectionId != null,
+        createdId = model.createdId,
+        state = state,
+        autosaveStatus = autosaveStatus,
+        onEdit = model::edit,
+        onSave = model::create,
+        onConfirmDelete = model::confirmDelete,
+        onDelete = model::delete,
+        onRetry = model::retryLoad,
+        onRetrySave = model::retrySave,
+        onDismiss = onDismiss,
+        onCreated = onCreated,
+        onClosing = onClosing,
+        modifier = modifier
+    )
+}
+
+@Composable
+internal fun CollectionEditorSheet(
+    sessionId: String,
+    editing: Boolean,
+    createdId: String,
+    state: CollectionEditorState,
+    autosaveStatus: AutosaveStatus,
+    onEdit: (CollectionDraft) -> Unit,
+    onSave: () -> Unit,
+    onConfirmDelete: (Boolean) -> Unit,
+    onDelete: () -> Unit,
+    onRetry: () -> Unit,
+    onRetrySave: () -> Unit,
+    onDismiss: () -> Unit,
+    onCreated: (String) -> Unit = { onDismiss() },
+    onClosing: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    var closing by rememberSaveable(sessionId) { mutableStateOf(false) }
+    var created by rememberSaveable(sessionId) { mutableStateOf(false) }
+    fun beginClose(wasCreated: Boolean) {
+        if (!closing) {
+            created = wasCreated
+            closing = true
+            onClosing()
+        }
+    }
+    LaunchedEffect(state.done) {
+        if (state.done) {
+            beginClose(wasCreated = !editing)
+        }
+    }
+    CollectionEditorContent(
+        state = state,
+        editing = editing,
+        onEdit = onEdit,
+        onSave = onSave,
+        onConfirmDelete = onConfirmDelete,
+        onDelete = onDelete,
+        onDismiss = { if (!state.pending) beginClose(wasCreated = false) },
+        modifier = modifier,
+        onRetry = onRetry,
+        autosaveStatus = autosaveStatus,
+        onRetrySave = onRetrySave,
+        closing = closing,
+        onClosed = { if (created) onCreated(createdId) else onDismiss() }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -56,19 +130,51 @@ internal fun CollectionEditorContent(
     state: CollectionEditorState, editing: Boolean, onEdit: (CollectionDraft) -> Unit,
     onSave: () -> Unit, onConfirmDelete: (Boolean) -> Unit, onDelete: () -> Unit,
     onDismiss: () -> Unit, modifier: Modifier = Modifier, onRetry: () -> Unit = {},
-    autosaveStatus: AutosaveStatus = AutosaveStatus.Idle, onRetrySave: () -> Unit = {}
+    autosaveStatus: AutosaveStatus = AutosaveStatus.Idle, onRetrySave: () -> Unit = {},
+    closing: Boolean = false, onClosed: (() -> Unit)? = null
 ) {
     val draft = state.draft
     val pending by rememberUpdatedState(state.pending)
-    val canEdit = !state.pending && !state.loading && !state.missing && state.error != "load"
+    val isClosing by rememberUpdatedState(closing)
+    val requestClose by rememberUpdatedState(onDismiss)
+    val currentOnClosed by rememberUpdatedState(onClosed)
+    var closeNotified by remember { mutableStateOf(false) }
+    val canEdit = !state.pending && !state.loading && !state.missing && state.error != "load" && !closing
     val accent = CollectionColorPalette.getOrElse(draft.colorIndex) { CollectionColorPalette.first() }
     val sheetStyle = currentThemeSurfaces().resolve(SurfaceRole.SHEET, SurfaceVariant.EMPHASIZED)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { target ->
+            if (target != SheetValue.Hidden) true
+            else if (pending) false
+            else if (currentOnClosed != null && !isClosing) {
+                requestClose()
+                false
+            } else true
+        }
+    )
+    fun notifyClosed() {
+        val callback = currentOnClosed
+        if (callback != null && !sheetState.isVisible && !closeNotified) {
+            closeNotified = true
+            callback()
+        }
+    }
+    LaunchedEffect(closing, sheetState) {
+        if (closing && currentOnClosed != null) {
+            sheetState.hide()
+            notifyClosed()
+        }
+    }
     TidiloModalBottomSheet(
         shape = sheetStyle.shape,
-        onDismissRequest = { if (!pending) onDismiss() },
+        onDismissRequest = {
+            if (!pending) {
+                if (currentOnClosed != null && closing) notifyClosed() else onDismiss()
+            }
+        },
         modifier = modifier,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
-            confirmValueChange = { it != SheetValue.Hidden || !pending }),
+        sheetState = sheetState,
         containerColor = sheetStyle.containerColor) {
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             CollectionSheetHeader(
@@ -140,10 +246,19 @@ internal fun CollectionEditorContent(
                     }
                 }
                 state.error?.let { error ->
-                    Text(stringResource(if (error == "load") R.string.collection_load_failed else R.string.collection_save_failed),
-                        color = MaterialTheme.colorScheme.error)
-                    if (error == "load") TextButton(onClick = onRetry, enabled = !state.loading && !state.pending) {
-                        Text(stringResource(R.string.common_retry))
+                    val messageRes = when (error) {
+                        "load" -> R.string.collection_load_failed
+                        "missing_bookmark" -> R.string.collection_target_bookmark_missing
+                        else -> R.string.collection_save_failed
+                    }
+                    Text(stringResource(messageRes), color = MaterialTheme.colorScheme.error)
+                    if (error == "load" || (!editing && error == "save")) {
+                        TextButton(
+                            onClick = if (error == "load") onRetry else onSave,
+                            enabled = !state.loading && !state.pending && !closing
+                        ) {
+                            Text(stringResource(R.string.common_retry))
+                        }
                     }
                 }
                 if (editing && !state.missing) TextButton(onClick = { onConfirmDelete(true) }, enabled = canEdit, modifier = Modifier.fillMaxWidth()) {

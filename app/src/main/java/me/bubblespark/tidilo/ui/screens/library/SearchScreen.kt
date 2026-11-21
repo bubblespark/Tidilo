@@ -68,11 +68,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.intl.LocaleList
@@ -86,6 +88,10 @@ import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
+
+private val SearchTrailingPadding = 24.dp
+private val SearchInputVerticalPadding = 16.dp
+private const val SearchInputKey = "search_input"
 
 /**
  * Secondary Search screen
@@ -113,10 +119,12 @@ fun SearchScreen(
     val historyState = rememberLazyGridState()
     val resultListState = rememberLazyGridState()
     val resultGridState = rememberLazyGridState()
+    val resultGridAnchor = rememberBookmarkGridAnchor()
     var lastScrollQuery by rememberSaveable { mutableStateOf(searchQuery) }
     var peekBookmark by remember { mutableStateOf<BookmarkItem?>(null) }
     LaunchedEffect(searchQuery) {
         if (lastScrollQuery != searchQuery) {
+            resultGridAnchor.clear()
             resultListState.requestScrollToItem(0)
             resultGridState.requestScrollToItem(0)
             lastScrollQuery = searchQuery
@@ -182,6 +190,20 @@ fun SearchScreen(
     }
     val isQueryChanging = isSearchQueryChanging(searchQuery, activeQueryKey, searchGeneration.key)
 
+    val inputTextStyle = MaterialTheme.typography.bodyLarge
+    val inputPlaceholder = stringResource(R.string.search_placeholder)
+    val inputMeasurer = rememberTextMeasurer()
+    val inputDensity = LocalDensity.current
+    val searchInputHeight = remember(inputMeasurer, inputDensity, inputTextStyle, inputPlaceholder) {
+        val lineHeight = maxOf(
+            inputMeasurer.measure("Agあ", inputTextStyle, maxLines = 1).size.height,
+            inputMeasurer.measure(inputPlaceholder, inputTextStyle, maxLines = 1).size.height
+        )
+        with(inputDensity) {
+            // The unlabeled Material field uses 16 dp above and below its single text line.
+            maxOf(SEARCH_INPUT_HEIGHT, (lineHeight + 2 * SearchInputVerticalPadding.roundToPx()).toDp())
+        }
+    }
     val searchInput: @Composable () -> Unit = {
         val attachment = remember { Any() }
         DisposableEffect(attachment) {
@@ -189,9 +211,11 @@ fun SearchScreen(
         }
         OutlinedTextField(
             value = searchQuery,
+            textStyle = inputTextStyle,
             onValueChange = { viewModel.onSearchQueryChanged(it) },
             modifier = Modifier
                 .fillMaxWidth()
+                .height(searchInputHeight)
                 .onPlaced {
                     inputAttachment = attachment
                 }
@@ -206,7 +230,8 @@ fun SearchScreen(
                 },
             placeholder = {
                 Text(
-                    text = stringResource(R.string.search_placeholder),
+                    text = inputPlaceholder,
+                    style = inputTextStyle,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -286,7 +311,7 @@ fun SearchScreen(
         bodyModifier = backgroundSemantics,
         hideHeaderOnScroll = true,
         headerVisible = !peekOpen,
-        bottomContentPadding = 24.dp,
+        bottomContentPadding = SearchTrailingPadding,
         header = { TidiloFrostedHeader(modifier = backgroundSemantics, navigationIcon = {
             IconButton(onClick = onNavigateBack, modifier = Modifier.padding(end = 4.dp).size(48.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back),
@@ -322,11 +347,32 @@ fun SearchScreen(
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val showingHistory = searchQuery.isBlank()
             val showingGrid = !showingHistory && viewMode == LibraryViewMode.GRID
-            val itemSpacing = if (showingHistory) 4.dp else if (showingGrid) 10.dp else 16.dp
+            val itemSpacing = if (showingHistory) 4.dp else if (showingGrid) BookmarkGridVerticalGap else 16.dp
+            val gridLayout = if (showingGrid) {
+                val density = LocalDensity.current
+                bookmarkGridLayout(
+                    contentPadding = contentPadding,
+                    trailingPadding = SearchTrailingPadding,
+                    leadingContentHeightPx = with(density) {
+                        searchInputHeight.roundToPx() + itemSpacing.roundToPx()
+                    }
+                )
+            } else null
+            if (gridLayout != null && feedback == null) {
+                RestoreBookmarkGridAnchor(
+                    state = resultGridState,
+                    anchor = resultGridAnchor,
+                    generation = searchGeneration.key,
+                    layout = gridLayout,
+                    leadingItems = 1
+                ) { key ->
+                    filteredBookmarks.itemSnapshotList.items.indexOfFirst { "bookmark:${it.bookmark.id}" == key }
+                }
+            }
             // One lazy parent keeps the input node focused across blank/nonblank queries.
             // Separate states retain history, list, and grid scroll windows independently.
             LazyVerticalGrid(
-                columns = GridCells.Fixed(if (showingGrid) 2 else 1),
+                columns = GridCells.Fixed(gridLayout?.columns ?: 1),
                 state = when {
                     showingHistory -> historyState
                     showingGrid -> resultGridState
@@ -334,10 +380,10 @@ fun SearchScreen(
                 },
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = contentPadding,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(BookmarkGridHorizontalGap),
                 verticalArrangement = Arrangement.spacedBy(itemSpacing)
             ) {
-                item(key = "search_input", span = { GridItemSpan(maxLineSpan) }, contentType = "search_input") { searchInput() }
+                item(key = SearchInputKey, span = { GridItemSpan(maxLineSpan) }, contentType = "search_input") { searchInput() }
                 if (showingHistory) {
                     item(key = "search_history_header", contentType = "history_header") {
                         Row(
@@ -441,7 +487,7 @@ fun SearchScreen(
                 } else if (feedback != null) {
                     item(key = "search_feedback", span = { GridItemSpan(maxLineSpan) }, contentType = "search_feedback") {
                         if (centerFeedback) {
-                            SearchResultFeedback(maxHeight, contentPadding, SEARCH_INPUT_HEIGHT, itemSpacing) { feedback() }
+                            SearchResultFeedback(maxHeight, contentPadding, searchInputHeight, itemSpacing) { feedback() }
                         } else {
                             feedback()
                         }
@@ -453,10 +499,11 @@ fun SearchScreen(
                     ) { index ->
                         val result = filteredBookmarks[index] ?: return@items
                         val item = result.bookmark
-                        if (showingGrid) {
+                        if (gridLayout != null) {
                             BookmarkGridCard(
                                 bookmark = item,
                                 context = context,
+                                layout = gridLayout,
                                 onToggleLike = { viewModel.toggleLike(item.id) },
                                 onLongClick = {
                                     focusManager.clearFocus()

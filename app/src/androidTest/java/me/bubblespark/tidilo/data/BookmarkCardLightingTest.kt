@@ -34,7 +34,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.MainActivity
-import me.bubblespark.tidilo.ui.screens.library.BookmarkGridCard
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItemCard
 import me.bubblespark.tidilo.ui.screens.library.Tag
@@ -166,7 +165,7 @@ class BookmarkCardLightingTest {
                                     bounds.right.roundToInt(), bounds.bottom.roundToInt()))
                             }) {
                                 CompositionLocalProvider(LocalCardAccentColor provides accent.value) {
-                                    if (grid.value) BookmarkGridCard(bookmark) else BookmarkItemCard(bookmark)
+                                    if (grid.value) BookmarkGridCardFixture(bookmark) else BookmarkItemCard(bookmark)
                                 }
                             }
                         }

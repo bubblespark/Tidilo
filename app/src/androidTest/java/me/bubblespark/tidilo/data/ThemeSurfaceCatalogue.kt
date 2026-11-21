@@ -39,7 +39,6 @@ import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.data.db.CollectionEntity
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import me.bubblespark.tidilo.ui.screens.library.CollectionCard
-import me.bubblespark.tidilo.ui.screens.library.BookmarkGridCard
 import me.bubblespark.tidilo.ui.screens.library.BookmarkTagSection
 import me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent
 import me.bubblespark.tidilo.ui.screens.settings.RssRegistrationDialog
@@ -78,7 +77,7 @@ internal fun ThemeSurfaceCatalogue(
                 1 -> {
                     CollectionCard(CollectionWithCount(CollectionEntity("catalogue", "Collection fixture", "Description",
                         "folder", null, 0, 0L, 0L), 3), onClick = {})
-                    BookmarkGridCard(BookmarkItem("grid-fixture", "Grid fixture", "", "Summary", Tag(), createdAt = 0L))
+                    BookmarkGridCardFixture(BookmarkItem("grid-fixture", "Grid fixture", "", "Summary", Tag(), createdAt = 0L))
                 }
                 2 -> {
                     TidiloFrostedHeader(title = { Text("Fixture header") })

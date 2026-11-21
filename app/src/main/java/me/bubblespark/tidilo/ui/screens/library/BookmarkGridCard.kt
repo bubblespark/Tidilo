@@ -14,10 +14,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -43,10 +43,8 @@ import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
@@ -55,20 +53,24 @@ import me.bubblespark.tidilo.ui.components.rememberOgImage
 import me.bubblespark.tidilo.ui.util.TimeFormatter
 
 /**
- * Modern 2-column Grid bookmark card with 16:9 og:image header,
- * fixed height container, muted domain name, 3-line fixed title matching List style (titleSmall SemiBold),
- * relative time, and long-press summary peek.
+ * Grid bookmark card with a shared media frame, a three-line title, relative time,
+ * and long-press summary peek.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun BookmarkGridCard(
+internal fun BookmarkGridCard(
     bookmark: BookmarkItem,
     modifier: Modifier = Modifier,
     context: Context = LocalContext.current,
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null,
-    onToggleLike: () -> Unit = {}
+    onToggleLike: () -> Unit = {},
+    layout: BookmarkGridLayout
 ) {
+    val textMetrics = layout.text
+    val likeClearance = if (layout.mediaHeight < BookmarkGridLikeTarget) {
+        BookmarkGridLikeTarget - BookmarkGridInfoSidePadding
+    } else 0.dp
     val visualSource = LocalCacheVisualSource.current
     val domain = remember(bookmark.domain, bookmark.url, visualSource) {
         bookmark.domain ?: visualSource.extractDomain(bookmark.url)
@@ -119,11 +121,11 @@ fun BookmarkGridCard(
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth()) {
-            // 1. Top Image Area (Aspect Ratio 16:9)
+            // 1. Shared image and fallback frame
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
+                    .height(layout.mediaHeight)
                     .clip(topImageShape)
                     .background(
                         brush = Brush.verticalGradient(
@@ -172,69 +174,67 @@ fun BookmarkGridCard(
                         }
                     }
                 }
-                Box(
-                    modifier = Modifier.align(Alignment.TopEnd).size(48.dp).clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null, role = Role.Button, onClick = onToggleLike
-                    ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier.offset(x = 4.dp, y = (-4).dp).size(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        BookmarkLikeIndicator(bookmark.isLiked)
-                    }
-                }
             }
 
-            // 2. Bottom Information Area (Fixed height with clearance above rounded corners)
+            // 2. Text slots reserve space at the active font scale.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(132.dp)
-                    .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp)
+                    .padding(
+                        start = BookmarkGridInfoSidePadding,
+                        end = BookmarkGridInfoSidePadding,
+                        top = BookmarkGridInfoTopPadding,
+                        bottom = BookmarkGridInfoBottomPadding
+                    )
             ) {
                 // ❶ Domain Name (Softer contrast)
                 Text(
                     text = domainDisplayName.ifBlank { " " },
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp
-                    ),
+                    modifier = Modifier.padding(end = likeClearance).heightIn(min = textMetrics.labelHeight),
+                    style = textMetrics.labelStyle,
                     color = MaterialTheme.colorScheme.outline,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(BookmarkGridInfoGap))
 
                 // ❷ Bookmark Title (titleSmall SemiBold)
                 Text(
                     text = bookmark.title.ifBlank { bookmark.url },
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.SemiBold
-                    ),
+                    modifier = Modifier.heightIn(min = textMetrics.titleHeight),
+                    style = textMetrics.titleStyle,
                     color = MaterialTheme.colorScheme.onSurface,
                     minLines = 3,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.height(BookmarkGridInfoGap))
 
                 // ❸ Created Date (Relative Time, snapped to bottom-left)
                 Text(
                     text = relativeTime,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp
-                    ),
-                    color = MaterialTheme.colorScheme.outline,
-                    maxLines = 1
+                    modifier = Modifier.heightIn(min = textMetrics.labelHeight),
+                    style = textMetrics.labelStyle,
+                    color = MaterialTheme.colorScheme.outline
                 )
             }
-        }
+            }
+            Box(
+                modifier = Modifier.align(Alignment.TopEnd).size(BookmarkGridLikeTarget).clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null, role = Role.Button, onClick = onToggleLike
+                ),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier.offset(x = 4.dp, y = (-4).dp).size(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    BookmarkLikeIndicator(bookmark.isLiked)
+                }
+            }
         }
     }
 }

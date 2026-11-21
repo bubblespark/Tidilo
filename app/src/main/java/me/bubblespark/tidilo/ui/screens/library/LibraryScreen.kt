@@ -4,6 +4,7 @@ import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.itemKey
 import androidx.paging.PagingData
 import androidx.paging.LoadState
@@ -21,6 +22,7 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -172,18 +174,23 @@ fun LibraryScreen(
     val domainGridState = rememberLazyGridState()
     val newestFirstListState = rememberLazyListState()
     val newestFirstGridState = rememberLazyGridState()
+    val newestFirstGridAnchor = rememberBookmarkGridAnchor()
     val domainDetailListState = rememberLazyListState()
     val domainDetailGridState = rememberLazyGridState()
+    val domainDetailGridAnchor = rememberBookmarkGridAnchor()
     val rssFeedGridState = rememberLazyGridState()
     val rssDetailListState = rememberLazyListState()
     val rssDetailGridState = rememberLazyGridState()
+    val rssDetailGridAnchor = rememberBookmarkGridAnchor()
     val collectionListState = rememberLazyListState()
     val collectionDetailListState = rememberLazyListState()
     val collectionDetailGridState = rememberLazyGridState()
+    val collectionDetailGridAnchor = rememberBookmarkGridAnchor()
 
     var lastScrollCollection by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(selectedCollectionId) {
         if (selectedCollectionId != lastScrollCollection) {
+            collectionDetailGridAnchor.clear()
             collectionDetailListState.requestScrollToItem(0)
             collectionDetailGridState.requestScrollToItem(0)
         }
@@ -193,6 +200,7 @@ fun LibraryScreen(
     var lastScrollFilterMode by rememberSaveable { mutableStateOf(filterMode.name) }
     LaunchedEffect(filterMode) {
         if (lastScrollFilterMode != filterMode.name) {
+            newestFirstGridAnchor.clear()
             newestFirstListState.requestScrollToItem(0)
             newestFirstGridState.requestScrollToItem(0)
         }
@@ -204,6 +212,7 @@ fun LibraryScreen(
     var lastScrollFeed by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(selectedFeed?.id) {
         if (selectedFeed != null && selectedFeed.id != lastScrollFeed) {
+            rssDetailGridAnchor.clear()
             rssDetailListState.requestScrollToItem(0)
             rssDetailGridState.requestScrollToItem(0)
         }
@@ -211,6 +220,7 @@ fun LibraryScreen(
     }
     LaunchedEffect(selectedDomainFilter) {
         if (selectedDomainFilter != null && selectedDomainFilter != lastScrollDomain) {
+            domainDetailGridAnchor.clear()
             // The other layout may be detached; request both positions without awaiting layout.
             domainDetailListState.requestScrollToItem(0)
             domainDetailGridState.requestScrollToItem(0)
@@ -705,29 +715,25 @@ fun LibraryScreen(
                                                     }
                                                 }
                                                 LibraryViewMode.GRID -> {
-                                                    LazyVerticalGrid(
-                                                        state = if (collectionItem != null) collectionDetailGridState else if (feed != null) rssDetailGridState else domainDetailGridState,
-                                                        columns = GridCells.Fixed(2),
-                                                        modifier = Modifier.fillMaxSize(),
-                                                        contentPadding = contentPadding,
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                                                    ) {
-                                                        items(
-                                                        count = domainBookmarks.itemCount,
-                                                        key = domainBookmarks.itemKey { it.id },
-                                                        contentType = { "bookmark_grid_card" }
-                                                    ) { index ->
-                                                        val item = domainBookmarks[index] ?: return@items
-                                                            BookmarkGridCard(
-                                                                onToggleLike = { viewModel.toggleLike(item.id) },
-                                                                bookmark = item,
-                                                                context = context,
-                                                                onClick = { onNavigateToDetail(item.id) },
-                                                                onLongClick = { peekBookmark = item; viewModel.recordSummaryPeek(item.id) }
-                                                            )
-                                                        }
+                                                    val (gridState, gridAnchor) = when (state) {
+                                                        is LibraryDisplayState.CollectionDrillDown -> collectionDetailGridState to collectionDetailGridAnchor
+                                                        is LibraryDisplayState.RssFeedDrillDown -> rssDetailGridState to rssDetailGridAnchor
+                                                        else -> domainDetailGridState to domainDetailGridAnchor
                                                     }
+                                                    LibraryBookmarkGrid(
+                                                        bookmarks = domainBookmarks,
+                                                        state = gridState,
+                                                        anchor = gridAnchor,
+                                                        generation = session?.key.orEmpty(),
+                                                        active = state == displayState && viewMode == mode,
+                                                        contentPadding = contentPadding,
+                                                        onOpenBookmark = onNavigateToDetail,
+                                                        onToggleLike = viewModel::toggleLike,
+                                                        onPeekBookmark = { item ->
+                                                            peekBookmark = item
+                                                            viewModel.recordSummaryPeek(item.id)
+                                                        }
+                                                    )
                                                 }
                                             }
                                         }
@@ -777,29 +783,20 @@ fun LibraryScreen(
                                             }
                                         }
                                         LibraryViewMode.GRID -> {
-                                            LazyVerticalGrid(
+                                            LibraryBookmarkGrid(
+                                                bookmarks = bookmarks,
                                                 state = newestFirstGridState,
-                                                columns = GridCells.Fixed(2),
-                                                modifier = Modifier.fillMaxSize(),
+                                                anchor = newestFirstGridAnchor,
+                                                generation = session?.key.orEmpty(),
+                                                active = state == displayState && viewMode == mode,
                                                 contentPadding = contentPadding,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
-                                                items(
-                                                    count = bookmarks.itemCount,
-                                                    key = bookmarks.itemKey { it.id },
-                                                    contentType = { "bookmark_grid_card" }
-                                                ) { index ->
-                                                    val item = bookmarks[index] ?: return@items
-                                                    BookmarkGridCard(
-                                                        onToggleLike = { viewModel.toggleLike(item.id) },
-                                                        bookmark = item,
-                                                        context = context,
-                                                        onClick = { onNavigateToDetail(item.id) },
-                                                        onLongClick = { peekBookmark = item; viewModel.recordSummaryPeek(item.id) }
-                                                    )
+                                                onOpenBookmark = onNavigateToDetail,
+                                                onToggleLike = viewModel::toggleLike,
+                                                onPeekBookmark = { item ->
+                                                    peekBookmark = item
+                                                    viewModel.recordSummaryPeek(item.id)
                                                 }
-                                            }
+                                            )
                                         }
                                     }
                                 }
@@ -818,6 +815,57 @@ fun LibraryScreen(
         }
 
 
+    }
+}
+
+@Composable
+private fun LibraryBookmarkGrid(
+    bookmarks: LazyPagingItems<BookmarkItem>,
+    state: LazyGridState,
+    anchor: BookmarkGridAnchor,
+    generation: String,
+    active: Boolean,
+    contentPadding: PaddingValues,
+    onOpenBookmark: (String) -> Unit,
+    onToggleLike: (String) -> Unit,
+    onPeekBookmark: (BookmarkItem) -> Unit
+) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val context = LocalContext.current
+        val layout = bookmarkGridLayout(
+            contentPadding = contentPadding,
+            trailingPadding = HeaderDefaults.LibraryActionClearance,
+            protectLibraryShortcut = true
+        )
+        if (active) {
+            RestoreBookmarkGridAnchor(state, anchor, generation, layout) { key ->
+                bookmarks.itemSnapshotList.items.indexOfFirst { it.id == key }
+            }
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(layout.columns),
+            state = state,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = contentPadding,
+            horizontalArrangement = Arrangement.spacedBy(BookmarkGridHorizontalGap),
+            verticalArrangement = Arrangement.spacedBy(BookmarkGridVerticalGap)
+        ) {
+            items(
+                count = bookmarks.itemCount,
+                key = bookmarks.itemKey { it.id },
+                contentType = { "bookmark_grid_card" }
+            ) { index ->
+                val bookmark = bookmarks[index] ?: return@items
+                BookmarkGridCard(
+                    bookmark = bookmark,
+                    context = context,
+                    onClick = { onOpenBookmark(bookmark.id) },
+                    onLongClick = { onPeekBookmark(bookmark) },
+                    onToggleLike = { onToggleLike(bookmark.id) },
+                    layout = layout
+                )
+            }
+        }
     }
 }
 

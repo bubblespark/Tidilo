@@ -183,6 +183,7 @@
     <string name="detail_action_delete">削除</string>
     <string name="detail_action_ai_summary">AIで要約</string>
     <string name="detail_ai_manual_fallback">ブックマーク詳細では、保存済みの説明を読んだり、タグやメモを編集したりできます。</string>
+    <string name="ai_review_disabled_message">AI解析は無効です。</string>
     <string name="ai_review_back_to_detail">ブックマーク詳細に戻る</string>
     <string name="ai_review_restored_title">前回の生成結果を表示できません</string>
     <string name="ai_review_restored_message">新しい提案を生成するには「再試行」を押してください。</string>

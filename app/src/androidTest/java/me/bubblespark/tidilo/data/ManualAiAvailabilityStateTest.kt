@@ -107,6 +107,84 @@ class ManualAiAvailabilityStateTest {
         }
     }
 
+    @Test fun disabledRetryShowsLocalizedManualRecovery(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val dao = AppDatabase.getInstance(host.context).bookmarkDao()
+        for ((locale, dark) in listOf(Locale.ENGLISH to false, Locale.JAPANESE to true)) {
+            val id = "disabled-review-${UUID.randomUUID()}"
+            dao.insertOrUpdate(BookmarkEntity(id, "Review fixture", "https://example.invalid/$id", "",
+                createdAt = 1, updatedAt = 1))
+            try {
+                val activity = host.launch()
+                try {
+                    val configuration = Configuration(activity.resources.configuration).apply {
+                        setLocale(locale)
+                        fontScale = if (dark) 2f else 1f
+                    }
+                    val localized = activity.createConfigurationContext(configuration)
+                    var calls = 0
+                    var returnedToDetail = false
+                    host.main {
+                        val factory = viewModelFactory {
+                            initializer { BookmarkAiReviewViewModel(SavedStateHandle(mapOf("attemptStarted" to true))) }
+                        }
+                        ViewModelProvider(activity, factory)["ai-review-$id", BookmarkAiReviewViewModel::class.java]
+                        val library = ViewModelProvider(activity)[LibraryViewModel::class.java]
+                        activity.setContent {
+                            CompositionLocalProvider(
+                                LocalContext provides localized, LocalConfiguration provides configuration,
+                                LocalResources provides localized.resources,
+                                LocalDensity provides Density(LocalDensity.current.density, configuration.fontScale)
+                            ) {
+                                TidiloTheme(darkTheme = dark, dynamicColor = false) {
+                                    Surface {
+                                        BookmarkAiReviewScreen(
+                                            id, library, onNavigateBack = { returnedToDetail = true },
+                                            generateProposal = { _, _, _ ->
+                                                calls++
+                                                Result.failure(AiGenerationBlocked(null))
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    suspend fun awaitText(resource: Int) =
+                        host.await(activity) { host.text(it, localized.getString(resource)) }
+
+                    awaitText(R.string.ai_review_restored_title)
+                    val retry = awaitText(R.string.common_retry)
+                    host.main {
+                        assertEquals(0, calls)
+                        assertTrue(generateSequence(retry) { it.parent }
+                            .firstNotNullOf { it.config.getOrNull(SemanticsActions.OnClick)?.action }.invoke())
+                    }
+
+                    awaitText(R.string.ai_review_disabled_message)
+                    awaitText(R.string.detail_ai_manual_fallback)
+                    val back = awaitText(R.string.ai_review_back_to_detail)
+                    host.capture("263-r26-review-disabled-${locale.language}")
+                    host.main {
+                        assertEquals(1, calls)
+                        val absent = listOf(R.string.ai_analysis_off_message, R.string.ai_analysis_open_settings)
+                        assertTrue(host.nodes(activity).none { node ->
+                            absent.any { host.text(node, localized.getString(it)) }
+                        })
+                        assertTrue(generateSequence(back) { it.parent }
+                            .firstNotNullOf { it.config.getOrNull(SemanticsActions.OnClick)?.action }.invoke())
+                        assertTrue(returnedToDetail)
+                    }
+                } finally {
+                    host.main { activity.finish() }
+                }
+            } finally {
+                dao.deleteById(id)
+            }
+        }
+    }
+
     @Test fun restoredAttemptWaitsForAnExplicitRetry(): Unit = runBlocking {
         withContext(Dispatchers.Main) {
             val model = BookmarkAiReviewViewModel(SavedStateHandle(mapOf("attemptStarted" to true)))

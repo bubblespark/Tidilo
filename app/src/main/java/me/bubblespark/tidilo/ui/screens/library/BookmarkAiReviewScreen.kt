@@ -337,7 +337,7 @@ fun BookmarkAiReviewScreen(
                     AiReviewUiState.RestoredAttempt -> stringResource(R.string.ai_review_restored_message)
                     is AiReviewUiState.Error -> stringResource(state.message)
                     is AiReviewUiState.Unavailable -> stringResource(
-                        state.readiness?.let(::aiCoreStatusText) ?: R.string.ai_analysis_off_message
+                        state.readiness?.let(::aiCoreStatusText) ?: R.string.ai_review_disabled_message
                     )
                 }
                 Box(

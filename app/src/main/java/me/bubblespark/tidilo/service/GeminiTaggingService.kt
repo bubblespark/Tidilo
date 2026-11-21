@@ -47,27 +47,28 @@ internal suspend fun <P, T> runWithAvailableAiCore(
     prepare: suspend () -> P,
     infer: suspend (GenerativeModel, P) -> T
 ): Pair<P, T> {
-    if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
-    val model = try {
-        openModel()
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        throw AiGenerationBlocked(AiCoreReadiness.Failed, e)
+    suspend fun ensureActiveAndEnabled() {
+        currentCoroutineContext().ensureActive()
+        if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
     }
-    try {
-        suspend fun requireAvailable() {
-            if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
-            val readiness = AiCoreAvailability.inspect(model)
-            if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
-            if (!readiness.isAvailable) throw AiGenerationBlocked(readiness)
-            currentCoroutineContext().ensureActive()
-        }
 
-        requireAvailable()
-        val input = prepare()
-        requireAvailable()
-        return try {
+    suspend fun requireAvailable(model: GenerativeModel) {
+        ensureActiveAndEnabled()
+        val readiness = AiCoreAvailability.inspect(model)
+        ensureActiveAndEnabled()
+        if (!readiness.isAvailable) throw AiGenerationBlocked(readiness)
+    }
+
+    ensureActiveAndEnabled()
+    withManualAiCoreClient(openModel) { model -> requireAvailable(model) }
+
+    ensureActiveAndEnabled()
+    val input = prepare()
+    ensureActiveAndEnabled()
+
+    return withManualAiCoreClient(openModel) { model ->
+        requireAvailable(model)
+        try {
             input to infer(model, input)
         } catch (e: CancellationException) {
             throw e
@@ -83,6 +84,22 @@ internal suspend fun <P, T> runWithAvailableAiCore(
                 else -> throw mapped
             }
         }
+    }
+}
+
+private suspend fun <T> withManualAiCoreClient(
+    openModel: () -> GenerativeModel,
+    block: suspend (GenerativeModel) -> T
+): T {
+    val model = try {
+        openModel()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        throw AiGenerationBlocked(AiCoreReadiness.Failed, e)
+    }
+    try {
+        return block(model)
     } finally {
         runCatching { model.close() }
     }

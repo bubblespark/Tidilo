@@ -49,6 +49,7 @@ internal sealed interface DetailAiState {
     data object Disabled : DetailAiState
     data object Checking : DetailAiState
     data object Ready : DetailAiState
+    data object OpeningSettings : DetailAiState
     data class Blocked(val readiness: AiCoreReadiness) : DetailAiState
 }
 
@@ -87,6 +88,16 @@ internal class DetailAiActionViewModel : ViewModel() {
         checkJob?.cancel()
         _state.value = DetailAiState.Idle
     }
+
+    fun requestSettings() {
+        val current = _state.value
+        if (current == DetailAiState.Disabled || current is DetailAiState.Blocked) {
+            _state.value = DetailAiState.OpeningSettings
+        }
+    }
+
+    fun consumeSettingsRequest(): Boolean =
+        _state.compareAndSet(DetailAiState.OpeningSettings, DetailAiState.Idle)
 
     fun consumeReady(mode: AiAnalysisMode): Boolean {
         if (_state.value != DetailAiState.Ready) return false
@@ -139,10 +150,10 @@ internal fun DetailAiStatusDialog(
     onOpenSettings: () -> Unit,
     onRetry: () -> Unit
 ) {
-    if (state == DetailAiState.Idle) return
+    if (state == DetailAiState.Idle || state == DetailAiState.Ready || state == DetailAiState.OpeningSettings) return
     val readiness = (state as? DetailAiState.Blocked)?.readiness
     val modelCode = (readiness as? AiCoreReadiness.Status)?.code
-    val checking = state == DetailAiState.Checking || state == DetailAiState.Ready
+    val checking = state == DetailAiState.Checking
     val canOpenSettings = state == DetailAiState.Disabled ||
         modelCode == FeatureStatus.DOWNLOADABLE || modelCode == FeatureStatus.DOWNLOADING
     val canRetry = readiness == AiCoreReadiness.Failed

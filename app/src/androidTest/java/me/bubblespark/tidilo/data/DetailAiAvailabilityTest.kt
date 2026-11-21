@@ -60,6 +60,7 @@ class DetailAiAvailabilityTest {
     private val host = HeaderTestHost()
     private val dao = AppDatabase.getInstance(host.context).bookmarkDao()
     private val unavailable = AiCoreReadiness.Status(FeatureStatus.UNAVAILABLE)
+    private val dialogVisibleAtNavigation = mutableMapOf<String, Boolean>()
 
     @Test fun disabledActionOpensSettingsAndReturnsToTheSameEditedNote(): Unit = runBlocking {
         withBookmark(AiAnalysisMode.DISABLE) { scenario, id ->
@@ -87,6 +88,8 @@ class DetailAiAvailabilityTest {
             host.capture("263-detail-disabled")
             click(awaitText(activity, R.string.ai_analysis_open_settings))
             awaitText(activity, R.string.ai_model_ready)
+            assertEquals("Settings must open after the AI dialog closes", false, dialogVisibleAtNavigation["settings"])
+            host.capture("263-settings-opened-from-detail")
             assertEquals(AiAnalysisMode.DISABLE, AppConfig.aiAnalysisMode.value)
             waitUntil("Detail toolbar to leave the screen") { !hasDescription(activity, R.string.detail_action_ai_summary) }
             click(await(activity, "AI analysis header Back") {
@@ -144,11 +147,12 @@ class DetailAiAvailabilityTest {
     @Test fun aReadyTapStartsOneReviewAcrossRecreationAndCapabilityLossReturnsToDetail(): Unit = runBlocking {
         val generated = CompletableDeferred<Result<TaggingResult>>()
         val started = CompletableDeferred<Unit>()
+        val readiness = CompletableDeferred<AiCoreReadiness>()
         var checks = 0
         var attempts = 0
         val inspect: suspend () -> AiCoreReadiness = {
             checks++
-            AiCoreReadiness.Status(FeatureStatus.AVAILABLE)
+            readiness.await()
         }
         val generate: suspend () -> Result<TaggingResult> = {
             attempts++
@@ -163,7 +167,10 @@ class DetailAiAvailabilityTest {
                 assertTrue(invoke())
                 assertTrue(invoke())
             }
+            awaitText(before, R.string.settings_ai_analysis_checking)
+            readiness.complete(AiCoreReadiness.Status(FeatureStatus.AVAILABLE))
             awaitText(before, R.string.ai_review_loading_title)
+            assertEquals("Review must open after the AI dialog closes", false, dialogVisibleAtNavigation["review"])
             withTimeout(8000) { started.await() }
             host.main { before.recreate() }
             var replacement: MainActivity? = null
@@ -303,8 +310,14 @@ class DetailAiAvailabilityTest {
                             composable("detail") {
                                 BookmarkDetailScreen(
                                     id, viewModel, {},
-                                    onNavigateToAiReview = { nav.navigate("review") { launchSingleTop = true } },
-                                    onNavigateToAiSettings = { nav.navigate("settings") },
+                                    onNavigateToAiReview = {
+                                        recordDialogVisibility(activity, "review")
+                                        nav.navigate("review") { launchSingleTop = true }
+                                    },
+                                    onNavigateToAiSettings = {
+                                        recordDialogVisibility(activity, "settings")
+                                        nav.navigate("settings")
+                                    },
                                     checkAiCoreReadiness = inspect
                                 )
                             }
@@ -326,6 +339,11 @@ class DetailAiAvailabilityTest {
 
     private suspend fun aiAction(activity: ComponentActivity) =
         await(activity, "AI action") { host.description(it, activity.getString(R.string.detail_action_ai_summary)) }
+
+    private fun recordDialogVisibility(activity: ComponentActivity, destination: String) {
+        val title = activity.getString(R.string.detail_action_ai_summary)
+        dialogVisibleAtNavigation[destination] = host.nodes(activity).any { host.text(it, title) }
+    }
 
     private suspend fun awaitText(activity: ComponentActivity, id: Int) = awaitText(activity, activity.getString(id))
     private suspend fun awaitText(activity: ComponentActivity, text: String) =

@@ -115,8 +115,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.dropUnlessResumed
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.withResumed
 import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -475,19 +474,11 @@ internal fun BookmarkDetailScreen(
         DetailCollectionSheetState()
     }
     val detailAiModel = composeViewModel<DetailAiActionViewModel>(key = "detail-ai-${bookmark.id}")
-    val detailAiState by detailAiModel.state.collectAsStateWithLifecycle()
+    val detailAiState = detailAiModel.state.collectAsStateWithLifecycle().value
     val aiMode by AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val navigateToAiReview by rememberUpdatedState(onNavigateToAiReview)
-    LaunchedEffect(bookmark.id, lifecycle, detailAiModel) {
-        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            detailAiModel.state.collect { state ->
-                if (state == DetailAiState.Ready && detailAiModel.consumeReady(AppConfig.aiAnalysisMode.value)) {
-                    navigateToAiReview(bookmark.id)
-                }
-            }
-        }
-    }
+    val navigateToAiSettings by rememberUpdatedState(onNavigateToAiSettings)
     val checkForAiReview = {
         detailAiModel.check({ AppConfig.aiAnalysisMode.value }, checkAiCoreReadiness)
     }
@@ -696,12 +687,22 @@ internal fun BookmarkDetailScreen(
             DetailAiStatusDialog(
                 state = detailAiState,
                 onDismiss = detailAiModel::dismiss,
-                onOpenSettings = dropUnlessResumed {
-                    detailAiModel.dismiss()
-                    onNavigateToAiSettings()
-                },
+                onOpenSettings = dropUnlessResumed { detailAiModel.requestSettings() },
                 onRetry = checkForAiReview
             )
+
+            // Navigation runs after the dialog is removed from the composition.
+            LaunchedEffect(bookmark.id, lifecycle, detailAiState) {
+                when (detailAiState) {
+                    DetailAiState.OpeningSettings -> lifecycle.withResumed {
+                        if (detailAiModel.consumeSettingsRequest()) navigateToAiSettings()
+                    }
+                    DetailAiState.Ready -> lifecycle.withResumed {
+                        if (detailAiModel.consumeReady(AppConfig.aiAnalysisMode.value)) navigateToAiReview(bookmark.id)
+                    }
+                    else -> Unit
+                }
+            }
 
             // Delete confirmation dialog
             if (showDeleteConfirmDialog) {

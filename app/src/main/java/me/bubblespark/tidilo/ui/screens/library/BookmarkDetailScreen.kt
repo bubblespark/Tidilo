@@ -110,6 +110,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -142,12 +143,215 @@ import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.Category
+import me.bubblespark.tidilo.data.CollectionRepository
 import me.bubblespark.tidilo.data.Subcategory
+import me.bubblespark.tidilo.data.db.AppDatabase
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 
 private val DETAIL_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
+
+internal enum class DetailCollectionSheetPhase {
+    CLOSED,
+    SELECTING,
+    OPENING_CREATOR,
+    CREATING,
+    RETURNING_TO_SELECTION;
+
+    fun settleRestored(cancelCreatorTransition: Boolean): DetailCollectionSheetPhase = when (this) {
+        OPENING_CREATOR -> if (cancelCreatorTransition) SELECTING else CREATING
+        RETURNING_TO_SELECTION -> SELECTING
+        else -> this
+    }
+
+    fun onMembershipClosed(cancelCreatorTransition: Boolean): DetailCollectionSheetPhase = when (this) {
+        OPENING_CREATOR -> if (cancelCreatorTransition) SELECTING else CREATING
+        else -> CLOSED
+    }
+}
+
+@androidx.compose.runtime.Stable
+internal class DetailCollectionSheetState(
+    phase: DetailCollectionSheetPhase = DetailCollectionSheetPhase.CLOSED,
+    membershipSessionId: String = UUID.randomUUID().toString(),
+    membershipSheetInstanceId: Int = 0,
+    creatorSessionId: String = UUID.randomUUID().toString(),
+    focusedCollectionId: String? = null,
+    cancelCreatorTransition: Boolean = false
+) {
+    var phase by mutableStateOf(phase)
+    var membershipSessionId by mutableStateOf(membershipSessionId)
+    var membershipSheetInstanceId by mutableStateOf(membershipSheetInstanceId)
+    var creatorSessionId by mutableStateOf(creatorSessionId)
+    var focusedCollectionId by mutableStateOf(focusedCollectionId)
+    var cancelCreatorTransition by mutableStateOf(cancelCreatorTransition)
+    var restoredPhaseSettled by mutableStateOf(false)
+
+    fun openSelector() {
+        if (phase == DetailCollectionSheetPhase.CLOSED) {
+            membershipSessionId = UUID.randomUUID().toString()
+            membershipSheetInstanceId++
+            focusedCollectionId = null
+            cancelCreatorTransition = false
+            phase = DetailCollectionSheetPhase.SELECTING
+        }
+    }
+
+    companion object {
+        val Saver = androidx.compose.runtime.saveable.listSaver<DetailCollectionSheetState, Any?>(
+            save = {
+                listOf(
+                    it.phase.name,
+                    it.membershipSessionId,
+                    it.membershipSheetInstanceId,
+                    it.creatorSessionId,
+                    it.focusedCollectionId,
+                    it.cancelCreatorTransition
+                )
+            },
+            restore = { saved ->
+                DetailCollectionSheetState(
+                    phase = DetailCollectionSheetPhase.valueOf(saved[0] as String),
+                    membershipSessionId = saved[1] as String,
+                    membershipSheetInstanceId = saved[2] as Int,
+                    creatorSessionId = saved[3] as String,
+                    focusedCollectionId = saved[4] as String?,
+                    cancelCreatorTransition = saved[5] as Boolean
+                )
+            }
+        )
+    }
+}
+
+internal data class DetailCollectionSheetRestoration(
+    val activePhase: DetailCollectionSheetPhase,
+    val activeMembershipSheetInstanceId: Int,
+    val phaseChanged: Boolean
+)
+
+internal fun resolveDetailCollectionSheetRestoration(
+    phase: DetailCollectionSheetPhase,
+    cancelCreatorTransition: Boolean,
+    membershipSheetInstanceId: Int,
+    restoredPhaseSettled: Boolean
+): DetailCollectionSheetRestoration {
+    if (restoredPhaseSettled) {
+        return DetailCollectionSheetRestoration(
+            activePhase = phase,
+            activeMembershipSheetInstanceId = membershipSheetInstanceId,
+            phaseChanged = false
+        )
+    }
+    val settledPhase = phase.settleRestored(cancelCreatorTransition)
+    val nextInstanceId = if (phase == DetailCollectionSheetPhase.OPENING_CREATOR && cancelCreatorTransition) {
+        membershipSheetInstanceId + 1
+    } else {
+        membershipSheetInstanceId
+    }
+    return DetailCollectionSheetRestoration(
+        activePhase = settledPhase,
+        activeMembershipSheetInstanceId = nextInstanceId,
+        phaseChanged = settledPhase != phase
+    )
+}
+
+@Composable
+internal fun DetailCollectionSheetHost(
+    bookmarkId: String,
+    sheetState: DetailCollectionSheetState
+) {
+    val context = LocalContext.current
+    val restoration = resolveDetailCollectionSheetRestoration(
+        phase = sheetState.phase,
+        cancelCreatorTransition = sheetState.cancelCreatorTransition,
+        membershipSheetInstanceId = sheetState.membershipSheetInstanceId,
+        restoredPhaseSettled = sheetState.restoredPhaseSettled
+    )
+    LaunchedEffect(bookmarkId, sheetState) {
+        if (restoration.phaseChanged) {
+            sheetState.membershipSheetInstanceId = restoration.activeMembershipSheetInstanceId
+            sheetState.cancelCreatorTransition = false
+            sheetState.phase = restoration.activePhase
+        }
+        sheetState.restoredPhaseSettled = true
+    }
+    if (restoration.activePhase == DetailCollectionSheetPhase.CLOSED) return
+
+    val membershipModel = collectionSheetModel("collection-membership-${sheetState.membershipSessionId}") { _ ->
+        CollectionMembershipViewModel(CollectionRepository(AppDatabase.getInstance(context)).asMembershipStore(), bookmarkId)
+    }
+    val membershipScrollState = rememberScrollState()
+    BackHandler(
+        enabled = restoration.activePhase == DetailCollectionSheetPhase.OPENING_CREATOR ||
+            restoration.activePhase == DetailCollectionSheetPhase.RETURNING_TO_SELECTION
+    ) {
+        if (restoration.activePhase == DetailCollectionSheetPhase.OPENING_CREATOR) {
+            sheetState.cancelCreatorTransition = true
+        }
+    }
+    if (restoration.activePhase == DetailCollectionSheetPhase.SELECTING ||
+        restoration.activePhase == DetailCollectionSheetPhase.OPENING_CREATOR
+    ) {
+        val membershipSheetInstanceId = restoration.activeMembershipSheetInstanceId
+        key(membershipSheetInstanceId) {
+            CollectionMembershipBottomSheet(
+                bookmarkId = bookmarkId,
+                onDismiss = {
+                    val wasCancelledTransition = sheetState.phase == DetailCollectionSheetPhase.OPENING_CREATOR &&
+                        sheetState.cancelCreatorTransition
+                    val next = sheetState.phase.onMembershipClosed(sheetState.cancelCreatorTransition)
+                    sheetState.cancelCreatorTransition = false
+                    if (wasCancelledTransition) {
+                        sheetState.membershipSheetInstanceId++
+                    }
+                    sheetState.phase = next
+                    if (next == DetailCollectionSheetPhase.CLOSED) {
+                        sheetState.focusedCollectionId = null
+                    }
+                },
+                onNewCollection = {
+                    sheetState.cancelCreatorTransition = false
+                    sheetState.creatorSessionId = UUID.randomUUID().toString()
+                    sheetState.phase = DetailCollectionSheetPhase.OPENING_CREATOR
+                },
+                model = membershipModel,
+                scrollState = membershipScrollState,
+                focusedCollectionId = sheetState.focusedCollectionId,
+                onFocusHandled = { sheetState.focusedCollectionId = null },
+                onCancelTransition = { sheetState.cancelCreatorTransition = true },
+                sheetInstanceId = membershipSheetInstanceId
+            )
+        }
+    }
+    if (restoration.activePhase == DetailCollectionSheetPhase.CREATING ||
+        restoration.activePhase == DetailCollectionSheetPhase.RETURNING_TO_SELECTION
+    ) {
+        CollectionEditorBottomSheet(
+            collectionId = null,
+            assignToBookmarkId = bookmarkId,
+            sessionId = sheetState.creatorSessionId,
+            onClosing = { createdId ->
+                if (createdId != null) {
+                    sheetState.focusedCollectionId = createdId
+                }
+                if (sheetState.phase == DetailCollectionSheetPhase.CREATING) {
+                    sheetState.phase = DetailCollectionSheetPhase.RETURNING_TO_SELECTION
+                }
+            },
+            onDismiss = {
+                sheetState.membershipSheetInstanceId++
+                sheetState.phase = DetailCollectionSheetPhase.SELECTING
+            },
+            onCreated = { createdId ->
+                sheetState.focusedCollectionId = createdId
+                sheetState.membershipSheetInstanceId++
+                sheetState.phase = DetailCollectionSheetPhase.SELECTING
+            }
+        )
+    }
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -156,8 +360,7 @@ fun BookmarkDetailScreen(
     viewModel: LibraryViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToAiReview: (String) -> Unit = {},
-    modifier: Modifier = Modifier,
-    onOpenCollections: () -> Unit = {}
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
@@ -165,8 +368,13 @@ fun BookmarkDetailScreen(
     val haptic = LocalHapticFeedback.current
     var detailRetry by remember(bookmarkId) { mutableStateOf(0) }
     val detailFlow = remember(viewModel, bookmarkId, detailRetry) { viewModel.bookmarkDetails(bookmarkId) }
-    val detailState by detailFlow.collectAsStateWithLifecycle(initialValue = BookmarkDetailState())
-    val bookmark = detailState.bookmark
+    val detailState = detailFlow.collectAsStateWithLifecycle(initialValue = BookmarkDetailState()).value
+    // Retain the last loaded bookmark across transient loading re-emissions on STARTED lifecycle restarts.
+    var retainedBookmark by remember(viewModel, bookmarkId) { mutableStateOf<BookmarkItem?>(null) }
+    if (!detailState.loading) {
+        SideEffect { retainedBookmark = detailState.bookmark }
+    }
+    val bookmark = detailState.bookmark ?: if (detailState.loading) retainedBookmark else null
     var detailRecorded by rememberSaveable(bookmarkId) { mutableStateOf(false) }
     LaunchedEffect(bookmarkId, bookmark?.id) {
         if (bookmark != null && !detailRecorded) {
@@ -174,7 +382,7 @@ fun BookmarkDetailScreen(
             viewModel.recordDetailView(bookmarkId)
         }
     }
-    if (detailState.loading || detailState.error != null || bookmark == null) {
+    if (bookmark == null || detailState.error != null) {
         TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(),
             modifier = modifier,
             header = {
@@ -253,16 +461,19 @@ fun BookmarkDetailScreen(
         }
     }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    var showCollectionMembership by rememberSaveable(bookmark.id) { mutableStateOf(false) }
+    val collectionSheetState = rememberSaveable(bookmark.id, saver = DetailCollectionSheetState.Saver) {
+        DetailCollectionSheetState()
+    }
     var entityLibraryRetry by remember { mutableStateOf(0) }
     val libraryFlow = remember(viewModel, entityLibraryRetry) { viewModel.entityLibrary() }
     val libraryState = rememberEntityLibraryState(showAddEntityDialog || showEntityBottomSheet, libraryFlow)
 
     val isPrivateContentVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
 
-    if (showCollectionMembership) CollectionMembershipBottomSheet(bookmark.id,
-        onDismiss = { showCollectionMembership = false },
-        onOpenCollections = { showCollectionMembership = false; onOpenCollections() })
+    DetailCollectionSheetHost(
+        bookmarkId = bookmark.id,
+        sheetState = collectionSheetState
+    )
 
     val localizedCategory = remember(storedTag.category, context) {
         storedTag.category?.let { Category.toLocalized(it, context) } ?: ""
@@ -403,8 +614,11 @@ fun BookmarkDetailScreen(
                                         contentDescription = stringResource(R.string.detail_action_ai_summary),
                                         modifier = Modifier.size(22.dp))
                                 }
-                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showCollectionMembership = true },
-                                    modifier = Modifier.size(HeaderDefaults.DetailActionSize).semantics { selected = hasCollection }) {
+                                TidiloIconButton(
+                                    role = SurfaceRole.TOOLBAR_ACTION,
+                                    onClick = { collectionSheetState.openSelector() },
+                                    modifier = Modifier.size(HeaderDefaults.DetailActionSize).semantics { selected = hasCollection }
+                                ) {
                                     Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
                                         contentDescription = stringResource(R.string.bookmark_collection_action),
                                         tint = if (hasCollection) collectionMembershipColor(MaterialTheme.colorScheme.surfaceContainerHighest)

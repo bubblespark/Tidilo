@@ -726,6 +726,119 @@ class BookmarkDetailTest {
         assertEquals(1080f, centerScroll80.x, 0.001f)
         assertEquals(-80f, centerScroll80.y, 0.001f)
     }
+
+    @Test
+    fun testDetailCollectionSheetPhaseTransitionsAndRestoration() {
+        // Normal transition from OPENING_CREATOR -> CREATING when membership sheet closes
+        assertEquals(
+            DetailCollectionSheetPhase.CREATING,
+            DetailCollectionSheetPhase.OPENING_CREATOR.onMembershipClosed(cancelCreatorTransition = false)
+        )
+        // Cancelled transition (e.g. Back pressed during OPENING_CREATOR) returns to SELECTING
+        assertEquals(
+            DetailCollectionSheetPhase.SELECTING,
+            DetailCollectionSheetPhase.OPENING_CREATOR.onMembershipClosed(cancelCreatorTransition = true)
+        )
+        // Normal dismissal from SELECTING closes the workflow
+        assertEquals(
+            DetailCollectionSheetPhase.CLOSED,
+            DetailCollectionSheetPhase.SELECTING.onMembershipClosed(cancelCreatorTransition = false)
+        )
+
+        // State restoration settlement for mid-animation phases
+        assertEquals(
+            DetailCollectionSheetPhase.CREATING,
+            DetailCollectionSheetPhase.OPENING_CREATOR.settleRestored(cancelCreatorTransition = false)
+        )
+        assertEquals(
+            DetailCollectionSheetPhase.SELECTING,
+            DetailCollectionSheetPhase.OPENING_CREATOR.settleRestored(cancelCreatorTransition = true)
+        )
+        assertEquals(
+            DetailCollectionSheetPhase.SELECTING,
+            DetailCollectionSheetPhase.RETURNING_TO_SELECTION.settleRestored(cancelCreatorTransition = false)
+        )
+        assertEquals(
+            DetailCollectionSheetPhase.SELECTING,
+            DetailCollectionSheetPhase.SELECTING.settleRestored(cancelCreatorTransition = false)
+        )
+        assertEquals(
+            DetailCollectionSheetPhase.CREATING,
+            DetailCollectionSheetPhase.CREATING.settleRestored(cancelCreatorTransition = false)
+        )
+        assertEquals(
+            DetailCollectionSheetPhase.CLOSED,
+            DetailCollectionSheetPhase.CLOSED.settleRestored(cancelCreatorTransition = false)
+        )
+    }
+
+    @Test
+    fun testResolveDetailCollectionSheetRestorationFirstFrameAndSaver() {
+        // OPENING_CREATOR (cancel = false) must resolve synchronously to CREATING on the first restored frame
+        val creating = resolveDetailCollectionSheetRestoration(
+            phase = DetailCollectionSheetPhase.OPENING_CREATOR,
+            cancelCreatorTransition = false,
+            membershipSheetInstanceId = 2,
+            restoredPhaseSettled = false
+        )
+        assertEquals(DetailCollectionSheetPhase.CREATING, creating.activePhase)
+        assertEquals(2, creating.activeMembershipSheetInstanceId)
+        assertTrue(creating.phaseChanged)
+
+        // OPENING_CREATOR (cancel = true) must resolve synchronously to SELECTING with +1 instance ID on frame 1
+        val cancelledSelecting = resolveDetailCollectionSheetRestoration(
+            phase = DetailCollectionSheetPhase.OPENING_CREATOR,
+            cancelCreatorTransition = true,
+            membershipSheetInstanceId = 2,
+            restoredPhaseSettled = false
+        )
+        assertEquals(DetailCollectionSheetPhase.SELECTING, cancelledSelecting.activePhase)
+        assertEquals(3, cancelledSelecting.activeMembershipSheetInstanceId)
+        assertTrue(cancelledSelecting.phaseChanged)
+
+        // RETURNING_TO_SELECTION must resolve synchronously to SELECTING without bumping instance ID further
+        val returning = resolveDetailCollectionSheetRestoration(
+            phase = DetailCollectionSheetPhase.RETURNING_TO_SELECTION,
+            cancelCreatorTransition = false,
+            membershipSheetInstanceId = 4,
+            restoredPhaseSettled = false
+        )
+        assertEquals(DetailCollectionSheetPhase.SELECTING, returning.activePhase)
+        assertEquals(4, returning.activeMembershipSheetInstanceId)
+        assertTrue(returning.phaseChanged)
+
+        // Once settled, later compositions observe the live state unchanged
+        val postSettle = resolveDetailCollectionSheetRestoration(
+            phase = DetailCollectionSheetPhase.OPENING_CREATOR,
+            cancelCreatorTransition = true,
+            membershipSheetInstanceId = 3,
+            restoredPhaseSettled = true
+        )
+        assertEquals(DetailCollectionSheetPhase.OPENING_CREATOR, postSettle.activePhase)
+        assertEquals(3, postSettle.activeMembershipSheetInstanceId)
+        assertFalse(postSettle.phaseChanged)
+
+        // Saver roundtrip preserves all sequential-sheet fields and resets restoredPhaseSettled to false
+        val original = DetailCollectionSheetState(
+            phase = DetailCollectionSheetPhase.OPENING_CREATOR,
+            membershipSessionId = "mem-1",
+            membershipSheetInstanceId = 5,
+            creatorSessionId = "cre-1",
+            focusedCollectionId = "col-1",
+            cancelCreatorTransition = true
+        ).apply { restoredPhaseSettled = true }
+        val scope = androidx.compose.runtime.saveable.SaverScope { true }
+        val saved = with(DetailCollectionSheetState.Saver) { scope.save(original) }
+        val restored = DetailCollectionSheetState.Saver.restore(requireNotNull(saved))
+        assertNotNull(restored)
+        assertEquals(DetailCollectionSheetPhase.OPENING_CREATOR, restored!!.phase)
+        assertEquals("mem-1", restored.membershipSessionId)
+        assertEquals(5, restored.membershipSheetInstanceId)
+        assertEquals("cre-1", restored.creatorSessionId)
+        assertEquals("col-1", restored.focusedCollectionId)
+        assertTrue(restored.cancelCreatorTransition)
+        assertFalse(restored.restoredPhaseSettled)
+    }
 }
 
 private class DummyImageBitmap : androidx.compose.ui.graphics.ImageBitmap {

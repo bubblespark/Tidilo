@@ -127,4 +127,60 @@ class CollectionAssignmentTest {
             assertNull(vm.state.value.error)
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
+
+    @Test fun createAndAssignIsAtomicBindsByIdAndRollsBackOnFailure() = runBlocking {
+        val host = InstrumentationRegistry.getInstrumentation()
+        val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
+        val repo = CollectionRepository(db)
+        val existingDupId = java.util.UUID.randomUUID().toString()
+        val existingMemberId = java.util.UUID.randomUUID().toString()
+        val createdId = java.util.UUID.randomUUID().toString()
+        val failedCrossRefId = java.util.UUID.randomUUID().toString()
+        val missingBookmarkCollectionId = java.util.UUID.randomUUID().toString()
+        try {
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity("one", "One", "https://example.com/one", "", createdAt = 1, updatedAt = 1))
+            // Duplicate collection title already exists and is not assigned; another collection is already assigned.
+            db.collectionDao().insert(CollectionEntity(existingDupId, "Read Later", "", "folder", null, 0, 1, 1))
+            db.collectionDao().insert(CollectionEntity(existingMemberId, "Pinned", "", "star", null, 1, 2, 2))
+            db.collectionDao().insertMembership(BookmarkCollectionCrossRef("one", existingMemberId))
+
+            // 1. Failure during cross-ref insertion rolls back the collection insert (no orphan collection).
+            db.openHelper.writableDatabase.execSQL(
+                "CREATE TRIGGER fail_assign_cross_ref BEFORE INSERT ON bookmark_collection_cross_ref " +
+                    "WHEN NEW.collectionId = '$failedCrossRefId' BEGIN SELECT RAISE(ABORT,'injected cross-ref failure'); END"
+            )
+            val failedAttempt = runCatching {
+                repo.createAndAssign(failedCrossRefId, CollectionDraft("Orphan candidate"), "one", 10)
+            }
+            assertTrue(failedAttempt.isFailure)
+            assertNull("Failed assignment must roll back collection creation", db.collectionDao().getById(failedCrossRefId))
+            assertEquals(listOf(existingMemberId), db.collectionDao().observeMembershipIds("one").first())
+            db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_assign_cross_ref")
+
+            // 2. Retry with the same ID succeeds without duplicate creation.
+            assertTrue(repo.createAndAssign(failedCrossRefId, CollectionDraft("Orphan candidate"), "one", 11))
+            assertNotNull(db.collectionDao().getById(failedCrossRefId))
+            assertEquals(setOf(existingMemberId, failedCrossRefId), db.collectionDao().observeMembershipIds("one").first().toSet())
+
+            // 3. Duplicate collection title binds strictly by UUID without checking the pre-existing duplicate title.
+            assertTrue(repo.createAndAssign(createdId, CollectionDraft("Read Later"), "one", 12))
+            val memberships = db.collectionDao().observeMembershipIds("one").first().toSet()
+            assertEquals(setOf(existingMemberId, failedCrossRefId, createdId), memberships)
+            assertFalse("Existing collection with identical title must remain unchecked", existingDupId in memberships)
+
+            // 4. Missing target bookmark returns false without creating an orphan collection.
+            assertFalse(repo.createAndAssign(missingBookmarkCollectionId, CollectionDraft("No bookmark"), "deleted-bookmark", 13))
+            assertNull("Missing target bookmark must not create an orphan collection", db.collectionDao().getById(missingBookmarkCollectionId))
+
+            // 5. Re-running createAndAssign with an already committed collection ID whose membership was removed
+            // reconciles the collection row (keeping original createdAt) and restores membership idempotently.
+            db.collectionDao().removeMembership("one", createdId)
+            assertFalse(createdId in db.collectionDao().observeMembershipIds("one").first())
+            assertTrue(repo.createAndAssign(createdId, CollectionDraft("Read Later Updated"), "one", 20))
+            val reconciled = requireNotNull(db.collectionDao().getById(createdId))
+            assertEquals("Read Later Updated", reconciled.title)
+            assertEquals(12L, reconciled.createdAt)
+            assertTrue(createdId in db.collectionDao().observeMembershipIds("one").first())
+        } finally { db.close() }
+    }
 }

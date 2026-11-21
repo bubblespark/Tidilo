@@ -423,7 +423,8 @@
     <string name="collection_icon_favorite">Favorite</string>
     <string name="collection_assign_title">Choose collections</string>
     <string name="collection_assign_empty">Create a collection to organize this bookmark.</string>
-    <string name="collection_open_library">Open collections</string>
+    <string name="collection_new_action">New collection</string>
+    <string name="collection_target_bookmark_missing">This bookmark is no longer available.</string>
     <string name="bookmark_collection_action">Choose collections</string>
 
     <!-- Theme Settings -->

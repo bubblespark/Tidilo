@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import me.bubblespark.tidilo.data.CollectionDraft
 import me.bubblespark.tidilo.data.CollectionField
 import me.bubblespark.tidilo.data.changedFields
@@ -40,9 +41,11 @@ class CollectionEditorViewModel(
     private val repository: CollectionRepository,
     private val collectionId: String?,
     // Not cancelled with the ViewModel, so the final flush in onCleared can still start its write.
-    saveScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    saveScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    private val assignToBookmarkId: String? = null
 ) : ViewModel() {
     private val createId = saved.get<String>("createId") ?: UUID.randomUUID().toString().also { saved["createId"] = it }
+    val createdId: String get() = createId
     private fun restored() = CollectionDraft(saved["title"] ?: "", saved["description"] ?: "",
         saved["icon"] ?: "folder", saved["symbol"], saved["color"] ?: 0)
     private val mutable = MutableStateFlow(CollectionEditorState(restored(), loading = collectionId != null,
@@ -104,8 +107,24 @@ class CollectionEditorViewModel(
         loadJob = viewModelScope.launch {
             try {
                 if (collectionId == null) {
-                    if (saved.get<Boolean>("submitting") == true && repository.observeCollection(createId).first() != null) {
-                        mutable.value = mutable.value.copy(done = true)
+                    if (saved.get<Boolean>("submitting") == true) {
+                        val outcome = CollectionRepository.editorWriteLock.withLock {
+                            val exists = repository.observeCollection(createId).first() != null
+                            if (!exists) {
+                                null
+                            } else if (assignToBookmarkId == null || createId in repository.observeMembershipIds(assignToBookmarkId).first()) {
+                                "done"
+                            } else if (!repository.hasBookmark(assignToBookmarkId)) {
+                                "missing_bookmark"
+                            } else {
+                                null
+                            }
+                        }
+                        saved["submitting"] = false
+                        when (outcome) {
+                            "done" -> mutable.value = mutable.value.copy(done = true)
+                            "missing_bookmark" -> mutable.value = mutable.value.copy(error = "missing_bookmark")
+                        }
                     }
                     mutable.value = mutable.value.copy(loading = false)
                 } else {
@@ -134,8 +153,11 @@ class CollectionEditorViewModel(
         load()
     }
 
+    private fun CollectionEditorState.hasTerminalLoadError(): Boolean =
+        error == "load" || error == "missing_bookmark"
+
     fun edit(draft: CollectionDraft) {
-        if (state.value.pending || state.value.loading || state.value.missing || state.value.error == "load") return
+        if (state.value.pending || state.value.loading || state.value.missing || state.value.hasTerminalLoadError()) return
         val before = state.value.draft
         applyDraft(draft)
         if (collectionId == null) return
@@ -168,14 +190,27 @@ class CollectionEditorViewModel(
 
     /** Explicit Create for a new collection; existing collections autosave instead. */
     fun create() {
-        if (collectionId != null || state.value.pending || state.value.loading || state.value.done || state.value.draft.title.isBlank()) return
+        if (collectionId != null || state.value.pending || state.value.loading || state.value.done ||
+            state.value.hasTerminalLoadError() || state.value.draft.title.isBlank()
+        ) return
         val draft = state.value.draft
-        write { repository.create(createId, draft, System.currentTimeMillis()); true }
+        val targetBookmarkId = assignToBookmarkId
+        write(missingError = if (targetBookmarkId != null) "missing_bookmark" else null) {
+            CollectionRepository.editorWriteLock.withLock {
+                val now = System.currentTimeMillis()
+                if (targetBookmarkId != null) {
+                    repository.createAndAssign(createId, draft, targetBookmarkId, now)
+                } else {
+                    repository.create(createId, draft, now)
+                    true
+                }
+            }
+        }
     }
 
     fun delete() {
         val id = collectionId ?: return
-        if (state.value.pending || state.value.loading || state.value.missing || state.value.error == "load") return
+        if (state.value.pending || state.value.loading || state.value.missing || state.value.hasTerminalLoadError()) return
         autosaver?.cancel()
         write { repository.delete(id) }
     }
@@ -188,13 +223,18 @@ class CollectionEditorViewModel(
         }
     }
 
-    private fun write(action: suspend () -> Boolean) {
+    private fun write(missingError: String? = null, action: suspend () -> Boolean) {
         saved["submitting"] = true
         mutable.value = state.value.copy(pending = true, error = null)
         viewModelScope.launch {
             try {
                 val success = action()
-                mutable.value = state.value.copy(pending = false, done = success, missing = !success)
+                mutable.value = state.value.copy(
+                    pending = false,
+                    done = success,
+                    missing = !success && missingError == null,
+                    error = if (success) null else missingError
+                )
                 saved["submitting"] = false
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {

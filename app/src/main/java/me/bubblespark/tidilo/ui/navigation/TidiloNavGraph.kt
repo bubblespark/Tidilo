@@ -144,14 +144,6 @@ fun TidiloNavGraph(
             BookmarkDetailScreen(
                 bookmarkId = bookmarkId,
                 viewModel = libraryViewModel,
-                onOpenCollections = {
-                    libraryViewModel.setFilterMode(me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.COLLECTION)
-                    libraryViewModel.selectCollectionFilter(null)
-                    navController.navigate(Screen.Library.route) {
-                        popUpTo(Screen.Library.route) { inclusive = false }
-                        launchSingleTop = true
-                    }
-                },
                 onNavigateBack = {
                     navController.popBackStack()
                 },

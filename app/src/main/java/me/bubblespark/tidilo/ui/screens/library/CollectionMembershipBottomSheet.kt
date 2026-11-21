@@ -7,6 +7,7 @@ import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -27,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CancellationException
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.CollectionRepository
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -54,7 +56,7 @@ fun CollectionMembershipBottomSheet(
     }
     val state by resolvedModel.state.collectAsStateWithLifecycle()
     CollectionMembershipSheet(
-        bookmarkId = "$bookmarkId-$sheetInstanceId",
+        saveKey = "$bookmarkId-$sheetInstanceId",
         state = state,
         onToggle = resolvedModel::toggle,
         onRetry = resolvedModel::retry,
@@ -78,7 +80,7 @@ internal fun CollectionRepository.asMembershipStore(): MembershipStore = object 
 /** Checkbox changes persist as they are made, so every close path simply hides the sheet. */
 @Composable
 internal fun CollectionMembershipSheet(
-    bookmarkId: String, state: CollectionMembershipState, onToggle: (String) -> Unit,
+    saveKey: String, state: CollectionMembershipState, onToggle: (String) -> Unit,
     onRetry: () -> Unit, onDismiss: () -> Unit,
     onNewCollection: () -> Unit = {}, modifier: Modifier = Modifier,
     scrollState: ScrollState = rememberScrollState(),
@@ -86,13 +88,19 @@ internal fun CollectionMembershipSheet(
     onFocusHandled: () -> Unit = {},
     onCancelTransition: () -> Unit = {}
 ) {
-    var closing by rememberSaveable(bookmarkId) { mutableStateOf(false) }
-    var openCreatorAfterClose by rememberSaveable(bookmarkId) { mutableStateOf(false) }
+    var closing by rememberSaveable(saveKey) { mutableStateOf(false) }
+    var openCreatorAfterClose by rememberSaveable(saveKey) { mutableStateOf(false) }
     CollectionMembershipContent(
         state = state,
         onToggle = onToggle,
         onRetry = onRetry,
-        onDismiss = { closing = true },
+        onDismiss = {
+            if (openCreatorAfterClose) {
+                openCreatorAfterClose = false
+                onCancelTransition()
+            }
+            closing = true
+        },
         onNewCollection = {
             if (!closing && !state.loading && state.error != "load" && state.pendingIds.isEmpty()) {
                 openCreatorAfterClose = true
@@ -131,38 +139,26 @@ internal fun CollectionMembershipContent(
     onFocusHandled: () -> Unit = {},
     onCancelTransition: () -> Unit = {}
 ) {
-    val isClosing by rememberUpdatedState(closing)
-    val requestClose by rememberUpdatedState(onDismiss)
-    val currentOnClosed by rememberUpdatedState(onClosed)
-    val currentOnCancelTransition by rememberUpdatedState(onCancelTransition)
     val currentOnFocusHandled by rememberUpdatedState(onFocusHandled)
-    var closeNotified by remember { mutableStateOf(false) }
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     val focusRequester = remember { FocusRequester() }
     val hasMatchingRow = focusedCollectionId != null && state.rows.any { it.collection.id == focusedCollectionId }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
-        confirmValueChange = { target ->
-            if (target == SheetValue.Hidden && !isClosing) {
-                requestClose()
-                false
-            } else true
-        })
-    fun notifyClosed() {
-        if (!sheetState.isVisible && !closeNotified) {
-            closeNotified = true
-            currentOnClosed()
-        }
-    }
-    LaunchedEffect(closing, sheetState) {
-        if (closing) {
-            sheetState.hide()
-            notifyClosed()
-        }
-    }
+    val controller = rememberClosingSheetController(
+        closing = closing,
+        blockDismiss = false,
+        onRequestClose = onDismiss,
+        onClosed = onClosed,
+        onCancelWhileClosing = onCancelTransition
+    )
     LaunchedEffect(focusedCollectionId, hasMatchingRow, closing) {
         if (!closing && focusedCollectionId != null && hasMatchingRow) {
             withFrameNanos { }
-            runCatching { bringIntoViewRequester.bringIntoView() }
+            try {
+                bringIntoViewRequester.bringIntoView()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
             runCatching { focusRequester.requestFocus() }
             currentOnFocusHandled()
         }
@@ -170,15 +166,9 @@ internal fun CollectionMembershipContent(
     TidiloModalBottomSheet(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.SHEET).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.SHEET).shape,
-            onDismissRequest = {
-                if (closing) {
-                    currentOnCancelTransition()
-                    notifyClosed()
-                } else {
-                    onDismiss()
-                }
-            },
-        modifier = modifier, sheetState = sheetState) {
+            onDismissRequest = controller.onDismissRequest,
+            sheetGesturesEnabled = !closing,
+        modifier = modifier, sheetState = controller.sheetState) {
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             Text(stringResource(R.string.collection_assign_title),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
@@ -186,40 +176,42 @@ internal fun CollectionMembershipContent(
             Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(scrollState)
                 .padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (state.loading) CircularProgressIndicator()
-                else {
-                    if (state.rows.isEmpty() && state.error == null) {
-                        Text(stringResource(R.string.collection_assign_empty))
-                    }
-                    if (state.error != "load") {
-                        val canCreateCollection = !closing && !state.loading && state.pendingIds.isEmpty()
-                        Button(
-                            onClick = onNewCollection,
-                            enabled = canCreateCollection,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                stringResource(R.string.collection_new_action),
-                                style = modernRaisedTextStyle(LocalTextStyle.current, canCreateCollection)
-                            )
-                        }
-                    }
+                else if (state.rows.isEmpty() && state.error == null) {
+                    Text(stringResource(R.string.collection_assign_empty))
+                }
+                val canCreateCollection = !closing && !state.loading && state.error != "load" && state.pendingIds.isEmpty()
+                Button(
+                    onClick = onNewCollection,
+                    enabled = canCreateCollection,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.collection_new_action),
+                        style = modernRaisedTextStyle(LocalTextStyle.current, canCreateCollection)
+                    )
                 }
                 state.rows.forEach { row ->
                     key(row.collection.id) {
                         val isTarget = row.collection.id == focusedCollectionId
-                        val rowModifier = if (isTarget) {
-                            Modifier.fillMaxWidth().heightIn(min = 56.dp)
-                                .bringIntoViewRequester(bringIntoViewRequester)
-                                .focusRequester(focusRequester)
-                        } else {
-                            Modifier.fillMaxWidth().heightIn(min = 56.dp)
-                        }
+                        val rowModifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 56.dp)
+                            .then(
+                                if (isTarget) {
+                                    Modifier
+                                        .bringIntoViewRequester(bringIntoViewRequester)
+                                        .focusRequester(focusRequester)
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .focusable()
                         Row(
                             rowModifier
                                 .toggleable(

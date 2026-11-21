@@ -171,6 +171,16 @@ class CollectionAssignmentTest {
             // 4. Missing target bookmark returns false without creating an orphan collection.
             assertFalse(repo.createAndAssign(missingBookmarkCollectionId, CollectionDraft("No bookmark"), "deleted-bookmark", 13))
             assertNull("Missing target bookmark must not create an orphan collection", db.collectionDao().getById(missingBookmarkCollectionId))
+
+            // 5. Re-running createAndAssign with an already committed collection ID whose membership was removed
+            // reconciles the collection row (keeping original createdAt) and restores membership idempotently.
+            db.collectionDao().removeMembership("one", createdId)
+            assertFalse(createdId in db.collectionDao().observeMembershipIds("one").first())
+            assertTrue(repo.createAndAssign(createdId, CollectionDraft("Read Later Updated"), "one", 20))
+            val reconciled = requireNotNull(db.collectionDao().getById(createdId))
+            assertEquals("Read Later Updated", reconciled.title)
+            assertEquals(12L, reconciled.createdAt)
+            assertTrue(createdId in db.collectionDao().observeMembershipIds("one").first())
         } finally { db.close() }
     }
 }

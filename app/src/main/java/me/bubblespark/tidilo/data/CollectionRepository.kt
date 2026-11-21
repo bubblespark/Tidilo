@@ -25,26 +25,39 @@ class CollectionRepository(private val database: AppDatabase) {
             maxSize = 150, enablePlaceholders = false)) { dao.bookmarks(collectionId, showPrivate) }
             .flow.map { page -> page.map { it.toBookmarkItem() } }
 
-    suspend fun create(id: String, draft: CollectionDraft, now: Long): String = withContext(Dispatchers.IO) {
+    private fun entityFor(id: String, draft: CollectionDraft, now: Long): CollectionEntity {
         require(UUID.fromString(id).toString() == id)
         val value = CollectionPolicy.normalize(draft)
-        dao.insert(CollectionEntity(id, value.title, value.description, value.presetIconId,
-            value.customSymbol, value.colorIndex, now, now))
+        return CollectionEntity(id, value.title, value.description, value.presetIconId,
+            value.customSymbol, value.colorIndex, now, now)
+    }
+
+    suspend fun hasBookmark(bookmarkId: String): Boolean = withContext(Dispatchers.IO) {
+        database.bookmarkDao().getBookmarkById(bookmarkId) != null
+    }
+
+    suspend fun create(id: String, draft: CollectionDraft, now: Long): String = withContext(Dispatchers.IO) {
+        dao.insert(entityFor(id, draft, now))
         id
     }
 
     /**
      * Atomically creates a new collection and assigns it to [bookmarkId] in one database transaction.
+     * If [id] already exists from a prior committed creation whose membership was subsequently removed,
+     * reconciles the collection row and restores the membership.
      * Returns false without creating an orphan collection when the target bookmark no longer exists.
      */
     suspend fun createAndAssign(id: String, draft: CollectionDraft, bookmarkId: String, now: Long): Boolean =
         withContext(NonCancellable + Dispatchers.IO) {
-            require(UUID.fromString(id).toString() == id)
-            val value = CollectionPolicy.normalize(draft)
+            val entity = entityFor(id, draft, now)
             database.withTransaction {
                 if (database.bookmarkDao().getBookmarkById(bookmarkId) == null) return@withTransaction false
-                dao.insert(CollectionEntity(id, value.title, value.description, value.presetIconId,
-                    value.customSymbol, value.colorIndex, now, now))
+                val existing = dao.getById(id)
+                if (existing == null) {
+                    dao.insert(entity)
+                } else {
+                    dao.update(entity.copy(createdAt = existing.createdAt))
+                }
                 dao.insertMembership(BookmarkCollectionCrossRef(bookmarkId, id))
                 true
             }

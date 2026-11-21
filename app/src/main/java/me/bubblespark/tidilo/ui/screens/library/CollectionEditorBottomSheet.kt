@@ -8,7 +8,10 @@ import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.SurfaceVariant
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -28,6 +31,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CancellationException
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.CollectionDraft
 import me.bubblespark.tidilo.data.CollectionRepository
@@ -43,7 +47,7 @@ fun CollectionEditorBottomSheet(
     assignToBookmarkId: String? = null,
     sessionId: String = rememberSaveable(collectionId, assignToBookmarkId) { UUID.randomUUID().toString() },
     onCreated: (String) -> Unit = { onDismiss() },
-    onClosing: () -> Unit = {}
+    onClosing: (String?) -> Unit = {}
 ) {
     val context = LocalContext.current
     val model = collectionSheetModel("collection-editor-$sessionId") { saved ->
@@ -90,16 +94,22 @@ internal fun CollectionEditorSheet(
     onRetrySave: () -> Unit,
     onDismiss: () -> Unit,
     onCreated: (String) -> Unit = { onDismiss() },
-    onClosing: () -> Unit = {},
+    onClosing: (String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var closing by rememberSaveable(sessionId) { mutableStateOf(false) }
     var created by rememberSaveable(sessionId) { mutableStateOf(false) }
+    val effectiveCreated = created || (!editing && state.done)
     fun beginClose(wasCreated: Boolean) {
+        val nextCreated = created || wasCreated || (!editing && state.done)
+        if (nextCreated && !created) {
+            created = true
+        }
         if (!closing) {
-            created = wasCreated
             closing = true
-            onClosing()
+            onClosing(if (nextCreated) createdId else null)
+        } else if (nextCreated) {
+            onClosing(createdId)
         }
     }
     LaunchedEffect(state.done) {
@@ -120,11 +130,11 @@ internal fun CollectionEditorSheet(
         autosaveStatus = autosaveStatus,
         onRetrySave = onRetrySave,
         closing = closing,
-        onClosed = { if (created) onCreated(createdId) else onDismiss() }
+        onClosed = { if (effectiveCreated) onCreated(createdId) else onDismiss() }
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun CollectionEditorContent(
     state: CollectionEditorState, editing: Boolean, onEdit: (CollectionDraft) -> Unit,
@@ -134,47 +144,33 @@ internal fun CollectionEditorContent(
     closing: Boolean = false, onClosed: (() -> Unit)? = null
 ) {
     val draft = state.draft
-    val pending by rememberUpdatedState(state.pending)
-    val isClosing by rememberUpdatedState(closing)
-    val requestClose by rememberUpdatedState(onDismiss)
-    val currentOnClosed by rememberUpdatedState(onClosed)
-    var closeNotified by remember { mutableStateOf(false) }
     val canEdit = !state.pending && !state.loading && !state.missing && state.error != "load" && !closing
     val accent = CollectionColorPalette.getOrElse(draft.colorIndex) { CollectionColorPalette.first() }
     val sheetStyle = currentThemeSurfaces().resolve(SurfaceRole.SHEET, SurfaceVariant.EMPHASIZED)
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-        confirmValueChange = { target ->
-            if (target != SheetValue.Hidden) true
-            else if (pending) false
-            else if (currentOnClosed != null && !isClosing) {
-                requestClose()
-                false
-            } else true
-        }
+    val errorBringIntoViewRequester = remember { BringIntoViewRequester() }
+    val controller = rememberClosingSheetController(
+        closing = closing,
+        blockDismiss = state.pending,
+        onRequestClose = onDismiss,
+        onClosed = onClosed
     )
-    fun notifyClosed() {
-        val callback = currentOnClosed
-        if (callback != null && !sheetState.isVisible && !closeNotified) {
-            closeNotified = true
-            callback()
-        }
-    }
-    LaunchedEffect(closing, sheetState) {
-        if (closing && currentOnClosed != null) {
-            sheetState.hide()
-            notifyClosed()
+    LaunchedEffect(state.error) {
+        if (state.error != null) {
+            withFrameNanos { }
+            try {
+                errorBringIntoViewRequester.bringIntoView()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
         }
     }
     TidiloModalBottomSheet(
         shape = sheetStyle.shape,
-        onDismissRequest = {
-            if (!pending) {
-                if (currentOnClosed != null && closing) notifyClosed() else onDismiss()
-            }
-        },
+        onDismissRequest = controller.onDismissRequest,
         modifier = modifier,
-        sheetState = sheetState,
+        sheetState = controller.sheetState,
+        sheetGesturesEnabled = !closing,
         containerColor = sheetStyle.containerColor) {
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             CollectionSheetHeader(
@@ -205,6 +201,27 @@ internal fun CollectionEditorContent(
                         onRetry = onRetrySave,
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
+                state.error?.let { error ->
+                    val messageRes = when (error) {
+                        "load" -> R.string.collection_load_failed
+                        "missing_bookmark" -> R.string.collection_target_bookmark_missing
+                        else -> R.string.collection_save_failed
+                    }
+                    Column(
+                        modifier = Modifier.fillMaxWidth().bringIntoViewRequester(errorBringIntoViewRequester),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(stringResource(messageRes), color = MaterialTheme.colorScheme.error)
+                        if (error == "load" || (!editing && error == "save")) {
+                            TextButton(
+                                onClick = if (error == "load") onRetry else onSave,
+                                enabled = !state.loading && !state.pending && !closing
+                            ) {
+                                Text(stringResource(R.string.common_retry))
+                            }
+                        }
+                    }
                 }
                 Text(stringResource(R.string.collection_icon_label), style = MaterialTheme.typography.labelLarge)
                 FlowRow(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -242,22 +259,6 @@ internal fun CollectionEditorContent(
                             Box(contentAlignment = Alignment.Center) {
                                 if (draft.colorIndex == index) Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.scrim)
                             }
-                        }
-                    }
-                }
-                state.error?.let { error ->
-                    val messageRes = when (error) {
-                        "load" -> R.string.collection_load_failed
-                        "missing_bookmark" -> R.string.collection_target_bookmark_missing
-                        else -> R.string.collection_save_failed
-                    }
-                    Text(stringResource(messageRes), color = MaterialTheme.colorScheme.error)
-                    if (error == "load" || (!editing && error == "save")) {
-                        TextButton(
-                            onClick = if (error == "load") onRetry else onSave,
-                            enabled = !state.loading && !state.pending && !closing
-                        ) {
-                            Text(stringResource(R.string.common_retry))
                         }
                     }
                 }

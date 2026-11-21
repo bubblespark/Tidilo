@@ -108,13 +108,22 @@ class CollectionEditorViewModel(
             try {
                 if (collectionId == null) {
                     if (saved.get<Boolean>("submitting") == true) {
-                        val completed = CollectionRepository.editorWriteLock.withLock {
-                            repository.observeCollection(createId).first() != null &&
-                                (assignToBookmarkId == null || createId in repository.observeMembershipIds(assignToBookmarkId).first())
+                        val outcome = CollectionRepository.editorWriteLock.withLock {
+                            val exists = repository.observeCollection(createId).first() != null
+                            if (!exists) {
+                                null
+                            } else if (assignToBookmarkId == null || createId in repository.observeMembershipIds(assignToBookmarkId).first()) {
+                                "done"
+                            } else if (!repository.hasBookmark(assignToBookmarkId)) {
+                                "missing_bookmark"
+                            } else {
+                                null
+                            }
                         }
                         saved["submitting"] = false
-                        if (completed) {
-                            mutable.value = mutable.value.copy(done = true)
+                        when (outcome) {
+                            "done" -> mutable.value = mutable.value.copy(done = true)
+                            "missing_bookmark" -> mutable.value = mutable.value.copy(error = "missing_bookmark")
                         }
                     }
                     mutable.value = mutable.value.copy(loading = false)

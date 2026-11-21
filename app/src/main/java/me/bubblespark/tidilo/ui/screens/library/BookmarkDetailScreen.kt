@@ -280,6 +280,20 @@ fun BookmarkDetailScreen(
     var creatorSessionId by rememberSaveable(bookmark.id) { mutableStateOf(UUID.randomUUID().toString()) }
     var focusedCollectionId by rememberSaveable(bookmark.id) { mutableStateOf<String?>(null) }
     var cancelCreatorTransition by rememberSaveable(bookmark.id) { mutableStateOf(false) }
+    var restoredPhaseSettled by remember(bookmark.id) { mutableStateOf(false) }
+    val activeSheetPhase = if (!restoredPhaseSettled) {
+        collectionSheetPhase.settleRestored(cancelCreatorTransition)
+    } else {
+        collectionSheetPhase
+    }
+    val activeMembershipSheetInstanceId = if (!restoredPhaseSettled &&
+        collectionSheetPhase == DetailCollectionSheetPhase.OPENING_CREATOR &&
+        cancelCreatorTransition
+    ) {
+        membershipSheetInstanceId + 1
+    } else {
+        membershipSheetInstanceId
+    }
     LaunchedEffect(bookmark.id) {
         val settled = collectionSheetPhase.settleRestored(cancelCreatorTransition)
         if (settled != collectionSheetPhase) {
@@ -289,6 +303,7 @@ fun BookmarkDetailScreen(
             cancelCreatorTransition = false
             collectionSheetPhase = settled
         }
+        restoredPhaseSettled = true
     }
     var entityLibraryRetry by remember { mutableStateOf(0) }
     val libraryFlow = remember(viewModel, entityLibraryRetry) { viewModel.entityLibrary() }
@@ -296,23 +311,23 @@ fun BookmarkDetailScreen(
 
     val isPrivateContentVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
 
-    if (collectionSheetPhase != DetailCollectionSheetPhase.CLOSED) {
+    if (activeSheetPhase != DetailCollectionSheetPhase.CLOSED) {
         val membershipModel = collectionSheetModel("collection-membership-$membershipSessionId") { _ ->
             CollectionMembershipViewModel(CollectionRepository(AppDatabase.getInstance(context)).asMembershipStore(), bookmark.id)
         }
         val membershipScrollState = rememberScrollState()
         BackHandler(
-            enabled = collectionSheetPhase == DetailCollectionSheetPhase.OPENING_CREATOR ||
-                collectionSheetPhase == DetailCollectionSheetPhase.RETURNING_TO_SELECTION
+            enabled = activeSheetPhase == DetailCollectionSheetPhase.OPENING_CREATOR ||
+                activeSheetPhase == DetailCollectionSheetPhase.RETURNING_TO_SELECTION
         ) {
-            if (collectionSheetPhase == DetailCollectionSheetPhase.OPENING_CREATOR) {
+            if (activeSheetPhase == DetailCollectionSheetPhase.OPENING_CREATOR) {
                 cancelCreatorTransition = true
             }
         }
-        if (collectionSheetPhase == DetailCollectionSheetPhase.SELECTING ||
-            collectionSheetPhase == DetailCollectionSheetPhase.OPENING_CREATOR
+        if (activeSheetPhase == DetailCollectionSheetPhase.SELECTING ||
+            activeSheetPhase == DetailCollectionSheetPhase.OPENING_CREATOR
         ) {
-            key(membershipSheetInstanceId) {
+            key(activeMembershipSheetInstanceId) {
                 CollectionMembershipBottomSheet(
                     bookmarkId = bookmark.id,
                     onDismiss = {
@@ -337,18 +352,21 @@ fun BookmarkDetailScreen(
                     focusedCollectionId = focusedCollectionId,
                     onFocusHandled = { focusedCollectionId = null },
                     onCancelTransition = { cancelCreatorTransition = true },
-                    sheetInstanceId = membershipSheetInstanceId
+                    sheetInstanceId = activeMembershipSheetInstanceId
                 )
             }
         }
-        if (collectionSheetPhase == DetailCollectionSheetPhase.CREATING ||
-            collectionSheetPhase == DetailCollectionSheetPhase.RETURNING_TO_SELECTION
+        if (activeSheetPhase == DetailCollectionSheetPhase.CREATING ||
+            activeSheetPhase == DetailCollectionSheetPhase.RETURNING_TO_SELECTION
         ) {
             CollectionEditorBottomSheet(
                 collectionId = null,
                 assignToBookmarkId = bookmark.id,
                 sessionId = creatorSessionId,
-                onClosing = {
+                onClosing = { createdId ->
+                    if (createdId != null) {
+                        focusedCollectionId = createdId
+                    }
                     if (collectionSheetPhase == DetailCollectionSheetPhase.CREATING) {
                         collectionSheetPhase = DetailCollectionSheetPhase.RETURNING_TO_SELECTION
                     }

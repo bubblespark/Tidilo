@@ -2,13 +2,19 @@ package me.bubblespark.tidilo.data
 
 import android.content.res.Configuration
 import androidx.activity.compose.setContent
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Density
 import androidx.lifecycle.SavedStateHandle
@@ -109,84 +115,136 @@ class ManualAiAvailabilityStateTest {
         }
     }
 
-    @Test fun disabledRetryShowsLocalizedManualRecovery(): Unit = runBlocking {
+    @Test fun retryShowsDistinctLocalizedUnavailableAndErrorStates(): Unit = runBlocking {
         val host = HeaderTestHost()
-        val dao = AppDatabase.getInstance(host.context).bookmarkDao()
         for ((locale, dark) in listOf(Locale.ENGLISH to false, Locale.JAPANESE to true)) {
-            val id = "disabled-review-${UUID.randomUUID()}"
-            dao.insertOrUpdate(BookmarkEntity(id, "Review fixture", "https://example.invalid/$id", "",
-                createdAt = 1, updatedAt = 1))
+            assertReviewRetryRendering(host, locale, dark, blocked = true)
+            assertReviewRetryRendering(host, locale, dark, blocked = false)
+        }
+    }
+
+    private suspend fun assertReviewRetryRendering(host: HeaderTestHost, locale: Locale, dark: Boolean, blocked: Boolean) {
+        val dao = AppDatabase.getInstance(host.context).bookmarkDao()
+        val id = "disabled-review-${UUID.randomUUID()}"
+        dao.insertOrUpdate(BookmarkEntity(id, "Review fixture", "https://example.invalid/$id", "",
+            createdAt = 1, updatedAt = 1))
+        try {
+            val activity = host.launch()
             try {
-                val activity = host.launch()
-                try {
-                    val configuration = Configuration(activity.resources.configuration).apply {
-                        setLocale(locale)
-                        fontScale = if (dark) 2f else 1f
+                val configuration = Configuration(activity.resources.configuration).apply {
+                    setLocale(locale)
+                    fontScale = if (dark) 2f else 1f
+                }
+                val localized = activity.createConfigurationContext(configuration)
+                var calls = 0
+                var returnedToDetail = false
+                lateinit var colors: ColorScheme
+                host.main {
+                    val factory = viewModelFactory {
+                        initializer { BookmarkAiReviewViewModel(SavedStateHandle(mapOf("attemptStarted" to true))) }
                     }
-                    val localized = activity.createConfigurationContext(configuration)
-                    var calls = 0
-                    var returnedToDetail = false
-                    host.main {
-                        val factory = viewModelFactory {
-                            initializer { BookmarkAiReviewViewModel(SavedStateHandle(mapOf("attemptStarted" to true))) }
-                        }
-                        ViewModelProvider(activity, factory)["ai-review-$id", BookmarkAiReviewViewModel::class.java]
-                        val library = ViewModelProvider(activity)[LibraryViewModel::class.java]
-                        activity.setContent {
-                            CompositionLocalProvider(
-                                LocalContext provides localized, LocalConfiguration provides configuration,
-                                LocalResources provides localized.resources,
-                                LocalDensity provides Density(LocalDensity.current.density, configuration.fontScale)
-                            ) {
-                                TidiloTheme(darkTheme = dark, dynamicColor = false) {
-                                    Surface {
-                                        BookmarkAiReviewScreen(
-                                            id, library, onNavigateBack = { returnedToDetail = true },
-                                            generateProposal = { _, _, _ ->
-                                                calls++
-                                                Result.failure(AiGenerationBlocked(null))
-                                            }
-                                        )
-                                    }
+                    ViewModelProvider(activity, factory)["ai-review-$id", BookmarkAiReviewViewModel::class.java]
+                    val library = ViewModelProvider(activity)[LibraryViewModel::class.java]
+                    activity.setContent {
+                        CompositionLocalProvider(
+                            LocalContext provides localized, LocalConfiguration provides configuration,
+                            LocalResources provides localized.resources,
+                            LocalDensity provides Density(LocalDensity.current.density, configuration.fontScale)
+                        ) {
+                            TidiloTheme(darkTheme = dark, dynamicColor = false) {
+                                val scheme = MaterialTheme.colorScheme
+                                SideEffect { colors = scheme }
+                                Surface {
+                                    BookmarkAiReviewScreen(
+                                        id, library, onNavigateBack = { returnedToDetail = true },
+                                        generateProposal = { _, _, _ ->
+                                            calls++
+                                            val failure = if (blocked) AiGenerationBlocked(null)
+                                            else AiCoreExecutionException(ErrorCode.BUSY, "SDK busy")
+                                            Result.failure(failure)
+                                        }
+                                    )
                                 }
                             }
                         }
                     }
+                }
 
-                    suspend fun awaitText(resource: Int) =
-                        host.await(activity) { host.text(it, localized.getString(resource)) }
+                suspend fun awaitText(resource: Int) =
+                    host.await(activity) { host.text(it, localized.getString(resource)) }
 
-                    awaitText(R.string.ai_review_restored_title)
-                    val retry = awaitText(R.string.common_retry)
-                    host.main {
-                        assertEquals(0, calls)
-                        assertTrue(generateSequence(retry) { it.parent }
-                            .firstNotNullOf { it.config.getOrNull(SemanticsActions.OnClick)?.action }.invoke())
+                awaitText(R.string.ai_review_restored_title)
+                val retry = awaitText(R.string.common_retry)
+                host.main {
+                    assertEquals(0, calls)
+                    assertTrue(generateSequence(retry) { it.parent }
+                        .firstNotNullOf { it.config.getOrNull(SemanticsActions.OnClick)?.action }.invoke())
+                }
+
+                val title = if (blocked) R.string.ai_review_unavailable_title else R.string.ai_review_error_title
+                val reason = if (blocked) R.string.ai_review_disabled_message else R.string.ai_review_busy
+                awaitText(title)
+                val message = awaitText(reason)
+                val icon = host.await(activity) {
+                    it.config.getOrNull(SemanticsProperties.TestTag) == "ai_review_status_icon"
+                }
+                val kind = if (blocked) "unavailable" else "error"
+                host.capture("263-r34-review-$kind-${locale.language}")
+                val tint = (if (blocked) colors.onSurfaceVariant else colors.error).toArgb()
+                assertRenderedStatus(host, icon, message, tint, blocked)
+
+                val action = awaitText(if (blocked) R.string.ai_review_back_to_detail else R.string.common_retry)
+                if (blocked) awaitText(R.string.detail_ai_manual_fallback)
+                host.main {
+                    assertEquals(1, calls)
+                    val absent = if (blocked) {
+                        listOf(R.string.ai_analysis_off_message, R.string.ai_analysis_open_settings, R.string.ai_review_error_title)
+                    } else {
+                        listOf(R.string.ai_review_unavailable_title, R.string.ai_review_back_to_detail)
                     }
-
-                    awaitText(R.string.ai_review_unavailable_title)
-                    awaitText(R.string.ai_review_disabled_message)
-                    awaitText(R.string.detail_ai_manual_fallback)
-                    val back = awaitText(R.string.ai_review_back_to_detail)
-                    host.capture("263-r26-review-disabled-${locale.language}")
-                    host.main {
-                        assertEquals(1, calls)
-                        val absent = listOf(
-                            R.string.ai_analysis_off_message, R.string.ai_analysis_open_settings, R.string.ai_review_error_title
-                        )
-                        assertTrue(host.nodes(activity).none { node ->
-                            absent.any { host.text(node, localized.getString(it)) }
-                        })
-                        assertTrue(generateSequence(back) { it.parent }
+                    assertTrue(host.nodes(activity).none { node ->
+                        absent.any { host.text(node, localized.getString(it)) }
+                    })
+                    if (blocked) {
+                        assertTrue(generateSequence(action) { it.parent }
                             .firstNotNullOf { it.config.getOrNull(SemanticsActions.OnClick)?.action }.invoke())
                         assertTrue(returnedToDetail)
                     }
-                } finally {
-                    host.main { activity.finish() }
                 }
             } finally {
-                dao.deleteById(id)
+                host.main { activity.finish() }
             }
+        } finally {
+            dao.deleteById(id)
+        }
+    }
+
+    private fun assertRenderedStatus(
+        host: HeaderTestHost,
+        icon: SemanticsNode,
+        message: SemanticsNode,
+        tint: Int,
+        blocked: Boolean
+    ) {
+        val screenshot = host.instrumentation.uiAutomation.takeScreenshot()
+        try {
+            fun hasTint(node: SemanticsNode): Boolean {
+                val bounds = node.boundsInWindow
+                val width = bounds.right.toInt() - bounds.left.toInt()
+                val height = bounds.bottom.toInt() - bounds.top.toInt()
+                val pixels = IntArray(width * height)
+                screenshot.getPixels(pixels, 0, width, bounds.left.toInt(), bounds.top.toInt(), width, height)
+                return tint in pixels
+            }
+
+            assertTrue("The rendered status icon must use the expected theme color", hasTint(icon))
+            assertTrue("The rendered reason must use the expected theme color", hasTint(message))
+            val bounds = icon.boundsInWindow
+            // The Info mark has a gap here, while ErrorOutline has a continuous upper stem.
+            val upperMark = screenshot.getPixel(bounds.center.x.toInt(), (bounds.top + bounds.height * 0.42f).toInt())
+            assertEquals("The status icon must match its state", !blocked, upperMark == tint)
+        } finally {
+            screenshot.recycle()
         }
     }
 
@@ -242,7 +300,8 @@ class ManualAiAvailabilityStateTest {
             val cases = mapOf(
                 ErrorCode.BUSY to R.string.ai_review_busy,
                 ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED to R.string.ai_review_quota,
-                ErrorCode.BACKGROUND_USE_BLOCKED to R.string.ai_review_background
+                ErrorCode.BACKGROUND_USE_BLOCKED to R.string.ai_review_background,
+                ErrorCode.UNKNOWN to R.string.ai_review_try_again
             )
             for ((code, message) in cases) {
                 val model = BookmarkAiReviewViewModel(SavedStateHandle())

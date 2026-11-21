@@ -72,6 +72,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -358,7 +359,7 @@ fun BookmarkAiReviewScreen(
                                 imageVector = if (blocked) Icons.Outlined.Info else Icons.Default.ErrorOutline,
                                 contentDescription = null,
                                 tint = if (blocked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(48.dp)
+                                modifier = Modifier.size(48.dp).testTag("ai_review_status_icon")
                             )
                         }
                         Spacer(modifier = Modifier.height(20.dp))

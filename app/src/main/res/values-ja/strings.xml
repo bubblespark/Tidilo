@@ -184,7 +184,8 @@
     <string name="detail_action_ai_summary">AIで要約</string>
     <string name="detail_ai_manual_fallback">ブックマーク詳細では、保存済みの説明を読んだり、タグやメモを編集したりできます。</string>
     <string name="ai_review_back_to_detail">ブックマーク詳細に戻る</string>
-    <string name="ai_review_interrupted">生成が中断されました。新しく生成するには再試行してください。</string>
+    <string name="ai_review_restored_title">前回の生成結果を表示できません</string>
+    <string name="ai_review_restored_message">新しい提案を生成するには「再試行」を押してください。</string>
     <string name="ai_review_try_again">提案の生成をもう一度お試しください。</string>
     <string name="ai_review_page_unavailable">ブラウザでページを開けるか確認してから、もう一度お試しください。</string>
     <string name="ai_review_busy">端末のAIが使用中です。少し待ってからもう一度お試しください。</string>

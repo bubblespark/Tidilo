@@ -28,7 +28,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -255,6 +258,9 @@ private fun AiModelSetup(
 @Composable
 private fun DownloadProgress(progress: StateFlow<Float?>?) {
     val observed = progress?.collectAsStateWithLifecycle()
-    if (observed?.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
-    else LinearProgressIndicator(progress = { observed.value ?: 0f }, modifier = Modifier.fillMaxWidth())
+    val hasProgress by remember(observed) {
+        derivedStateOf(structuralEqualityPolicy()) { observed?.value != null }
+    }
+    if (hasProgress) LinearProgressIndicator(progress = { observed?.value ?: 0f }, modifier = Modifier.fillMaxWidth())
+    else LinearProgressIndicator(Modifier.fillMaxWidth())
 }

@@ -185,7 +185,8 @@
     <string name="detail_action_ai_summary">Summarize with AI</string>
     <string name="detail_ai_manual_fallback">You can still read the saved description or edit tags and notes in bookmark details.</string>
     <string name="ai_review_back_to_detail">Back to bookmark details</string>
-    <string name="ai_review_interrupted">Generation was interrupted. Try again to start a new attempt.</string>
+    <string name="ai_review_restored_title">Previous result unavailable</string>
+    <string name="ai_review_restored_message">Select Retry to generate a new proposal.</string>
     <string name="ai_review_try_again">Try generating a proposal again.</string>
     <string name="ai_review_page_unavailable">Check whether the page opens in your browser, then try again.</string>
     <string name="ai_review_busy">On-device AI is busy. Try again in a moment.</string>

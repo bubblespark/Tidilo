@@ -126,7 +126,6 @@ class DetailAiAvailabilityTest {
 
             click(aiAction(activity))
             awaitText(activity, R.string.settings_ai_analysis_checking)
-            host.capture("263-detail-checking")
             assertTrue(host.instrumentation.uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
             waitUntil("readiness dialog to close") { !hasText(activity, R.string.settings_ai_analysis_checking) }
             lateResult.complete(AiCoreReadiness.Status(FeatureStatus.AVAILABLE))

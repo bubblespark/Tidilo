@@ -8,6 +8,8 @@ import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.data.AiCoreReadiness
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -78,6 +80,21 @@ class ManualAiExecutionTest {
             assertEquals(AiCoreReadiness.Status(FeatureStatus.UNAVAILABLE), blocked.readiness)
             assertTrue(closed)
         }
+    }
+
+    @Test
+    fun disableAtSdkBoundaryReachesReviewAsTheOriginalBlockedError() = runBlocking {
+        var closed = false
+        val model = fakeModel({ FeatureStatus.AVAILABLE }, { closed = true })
+        val blocked = AiGenerationBlocked(null)
+
+        val error = runCatching {
+            runWithAvailableAiCore({ AiAnalysisMode.AICORE }, { model }) { throw blocked }
+        }.exceptionOrNull()
+
+        assertSame(blocked, error)
+        assertNull(blocked.readiness)
+        assertTrue(closed)
     }
 
     private fun fakeModel(check: () -> Int, close: () -> Unit): GenerativeModel =

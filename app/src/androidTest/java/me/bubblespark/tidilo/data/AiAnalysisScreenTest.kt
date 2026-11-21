@@ -174,6 +174,7 @@ class AiAnalysisScreenTest {
         var available = false
         var attempts = 0
         val finishDownload = CompletableDeferred<Unit>()
+        val progressUpdates = CompletableDeferred<(Float?) -> Unit>()
         withScreen(
             checkReadiness = {
                 AiCoreReadiness.Status(if (available) FeatureStatus.AVAILABLE else FeatureStatus.DOWNLOADABLE)
@@ -181,7 +182,7 @@ class AiAnalysisScreenTest {
             requestDownload = { reportProgress ->
                 if (++attempts == 1) AiCoreDownloadResult.FAILED
                 else {
-                    reportProgress(0.5f)
+                    progressUpdates.complete(reportProgress)
                     finishDownload.await()
                     available = true
                     AiCoreDownloadResult.COMPLETED
@@ -200,7 +201,12 @@ class AiAnalysisScreenTest {
             assertEquals(androidx.compose.ui.semantics.LiveRegionMode.Polite, failed.config[SemanticsProperties.LiveRegion])
             click(activity, host.context.getString(R.string.common_retry))
             host.await(activity) { host.text(it, host.context.getString(R.string.ai_model_downloading)) }
+            host.await(activity) { it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo) == ProgressBarRangeInfo.Indeterminate }
+            val report = withTimeout(3000) { progressUpdates.await() }
+            report(0.5f)
             host.await(activity) { it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo)?.current == 0.5f }
+            report(0.75f)
+            host.await(activity) { it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo)?.current == 0.75f }
             host.capture("263-settings-downloading")
             finishDownload.complete(Unit)
             host.await(activity) { host.text(it, host.context.getString(R.string.ai_model_ready)) }

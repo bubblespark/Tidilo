@@ -109,7 +109,7 @@ enum class ProposalSource {
 
 internal sealed interface AiReviewUiState {
     data object Loading : AiReviewUiState
-    data object Interrupted : AiReviewUiState
+    data object RestoredAttempt : AiReviewUiState
     data class Success(val proposal: TaggingResult) : AiReviewUiState
     data class Error(@StringRes val message: Int) : AiReviewUiState
     data class Unavailable(val readiness: AiCoreReadiness?) : AiReviewUiState
@@ -117,13 +117,13 @@ internal sealed interface AiReviewUiState {
 
 internal class BookmarkAiReviewViewModel(private val savedState: SavedStateHandle) : ViewModel() {
     private val _state = MutableStateFlow<AiReviewUiState>(
-        if (savedState.get<Boolean>("attemptStarted") == true) AiReviewUiState.Interrupted else AiReviewUiState.Loading
+        if (savedState.get<Boolean>("attemptStarted") == true) AiReviewUiState.RestoredAttempt else AiReviewUiState.Loading
     )
     val state = _state.asStateFlow()
 
     fun generate(retry: Boolean = false, proposal: suspend () -> Result<TaggingResult>) {
         if (retry) {
-            if (_state.value !is AiReviewUiState.Error && _state.value != AiReviewUiState.Interrupted) return
+            if (_state.value !is AiReviewUiState.Error && _state.value != AiReviewUiState.RestoredAttempt) return
         } else if (savedState.get<Boolean>("attemptStarted") == true) {
             return
         }
@@ -327,13 +327,14 @@ fun BookmarkAiReviewScreen(
     ) { contentPadding ->
         // Body according to state
         when (val state = uiState) {
-            AiReviewUiState.Loading, AiReviewUiState.Interrupted,
+            AiReviewUiState.Loading, AiReviewUiState.RestoredAttempt,
             is AiReviewUiState.Error, is AiReviewUiState.Unavailable -> {
                 val loading = state == AiReviewUiState.Loading
+                val restored = state == AiReviewUiState.RestoredAttempt
                 val blocked = state is AiReviewUiState.Unavailable
                 val message = when (state) {
                     AiReviewUiState.Loading -> stringResource(R.string.ai_review_loading_subtitle)
-                    AiReviewUiState.Interrupted -> stringResource(R.string.ai_review_interrupted)
+                    AiReviewUiState.RestoredAttempt -> stringResource(R.string.ai_review_restored_message)
                     is AiReviewUiState.Error -> stringResource(state.message)
                     is AiReviewUiState.Unavailable -> stringResource(
                         state.readiness?.let(::aiCoreStatusText) ?: R.string.ai_analysis_off_message
@@ -352,7 +353,7 @@ fun BookmarkAiReviewScreen(
                     ) {
                         if (loading) {
                             CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 4.dp)
-                        } else {
+                        } else if (!restored) {
                             Icon(
                                 imageVector = Icons.Default.ErrorOutline,
                                 contentDescription = null,
@@ -363,7 +364,11 @@ fun BookmarkAiReviewScreen(
                         Spacer(modifier = Modifier.height(20.dp))
                         Text(
                             text = stringResource(
-                                if (loading) R.string.ai_review_loading_title else R.string.ai_review_error_title
+                                when {
+                                    loading -> R.string.ai_review_loading_title
+                                    restored -> R.string.ai_review_restored_title
+                                    else -> R.string.ai_review_error_title
+                                }
                             ),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
@@ -373,7 +378,8 @@ fun BookmarkAiReviewScreen(
                         Text(
                             text = message,
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (loading) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.error,
+                            color = if (loading || restored) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.error,
                             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
                         )
                         if (!loading) {

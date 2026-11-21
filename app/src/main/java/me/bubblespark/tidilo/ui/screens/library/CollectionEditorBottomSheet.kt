@@ -28,9 +28,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
@@ -182,28 +186,38 @@ internal fun CollectionEditorContent(
                 actionLabel = if (editing) null else stringResource(R.string.collection_create_action),
                 enabled = draft.title.isNotBlank() && canEdit, onSave = onSave,
                 colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = MaterialTheme.colorScheme.scrim))
+            val fieldSpacing = 16.dp
             Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                .padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(fieldSpacing)) {
                 if (state.loading) CircularProgressIndicator()
                 if (state.missing) Text(stringResource(R.string.collection_missing))
-                val titleMissing = editing && autosaveStatus == AutosaveStatus.Invalid
-                OutlinedTextField(draft.title, { onEdit(draft.copy(title = it)) },
-                    label = { Text(stringResource(R.string.collection_name_label)) }, singleLine = true,
-                    isError = titleMissing,
-                    supportingText = if (editing) {
-                        {
-                            Box(
-                                Modifier.fillMaxWidth().heightIn(min = 1.dp)
-                                    .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
-                            ) {
-                                if (titleMissing) Text(stringResource(R.string.collection_title_required))
-                            }
+                val titleError = if (editing && autosaveStatus == AutosaveStatus.Invalid) {
+                    stringResource(R.string.collection_title_required)
+                } else null
+                Column {
+                    OutlinedTextField(
+                        draft.title, { onEdit(draft.copy(title = it)) },
+                        label = { Text(stringResource(R.string.collection_name_label)) },
+                        singleLine = true,
+                        isError = titleError != null,
+                        supportingText = titleError?.let { message ->
+                            { Text(message, Modifier.semantics { hideFromAccessibility() }) }
+                        },
+                        enabled = canEdit,
+                        modifier = Modifier.fillMaxWidth().semantics {
+                            if (titleError != null) error(titleError)
                         }
-                    } else null,
-                    enabled = canEdit, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(draft.description, { onEdit(draft.copy(description = it)) },
-                    label = { Text(stringResource(R.string.collection_desc_label)) }, minLines = 2, maxLines = 2,
-                    enabled = canEdit, modifier = Modifier.fillMaxWidth())
+                    )
+                    // Use the existing field gap because Material reserves height for an empty supporting slot.
+                    val gap = Modifier.fillMaxWidth().height(fieldSpacing)
+                    Spacer(if (editing) gap.semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        if (titleError != null) text = AnnotatedString(titleError)
+                    } else gap)
+                    OutlinedTextField(draft.description, { onEdit(draft.copy(description = it)) },
+                        label = { Text(stringResource(R.string.collection_desc_label)) }, minLines = 2, maxLines = 2,
+                        enabled = canEdit, modifier = Modifier.fillMaxWidth())
+                }
                 if (editing && !state.missing) {
                     // The blank-title error is shown on the title field itself.
                     AutosaveStatusLine(

@@ -446,14 +446,31 @@ class CollectionUiTest {
     @Test fun blankCollectionNameErrorIsAPoliteLiveRegion(): Unit = runBlocking {
         val activity = host.launch()
         val originalTitle = "Saved title"
-        val draft = mutableStateOf(CollectionDraft(originalTitle))
+        val originalDescription = "Saved description"
+        val draft = mutableStateOf(CollectionDraft(originalTitle, description = originalDescription))
+        val editing = mutableStateOf(false)
+
+        suspend fun titleToDescriptionOffset(headerResource: Int): Float {
+            val header = activity.getString(headerResource)
+            await { host.text(it, header) }
+            val title = await {
+                it.config.getOrNull(SemanticsProperties.EditableText)?.text == originalTitle && it.boundsInWindow.height > 0f
+            }
+            val description = await {
+                it.config.getOrNull(SemanticsProperties.EditableText)?.text == originalDescription && it.boundsInWindow.height > 0f
+            }
+            var offset = 0f
+            host.main { offset = description.boundsInWindow.top - title.boundsInWindow.top }
+            return offset
+        }
+
         try {
             host.main {
                 activity.setContent {
                     MaterialTheme {
                         CollectionEditorContent(
                             CollectionEditorState(draft = draft.value),
-                            editing = true,
+                            editing = editing.value,
                             onEdit = { draft.value = it },
                             onSave = {},
                             onConfirmDelete = {},
@@ -464,20 +481,34 @@ class CollectionUiTest {
                     }
                 }
             }
+            val noSupportingSlotOffset = titleToDescriptionOffset(me.bubblespark.tidilo.R.string.collection_create_title)
+            host.main { editing.value = true }
+            val validTitleOffset = titleToDescriptionOffset(me.bubblespark.tidilo.R.string.collection_edit_title)
+            assertEquals("A valid edit title must keep the no-supporting-text field spacing",
+                noSupportingSlotOffset, validTitleOffset, 1f)
+            capture("collection-valid-title")
             val label = activity.getString(me.bubblespark.tidilo.R.string.collection_name_label)
             val message = activity.getString(me.bubblespark.tidilo.R.string.collection_title_required)
             val field = await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == originalTitle }
             var existingRegions = emptySet<Int>()
             host.main {
-                existingRegions = liveRegionIds()
+                existingRegions = allNodes().filter { node ->
+                    node.boundsInWindow.height > 0f &&
+                        node.config.getOrNull(SemanticsProperties.LiveRegion) == LiveRegionMode.Polite
+                }.mapTo(mutableSetOf()) { it.id }
                 assertTrue(allNodes().none { host.text(it, message) })
                 check(field.config[SemanticsActions.SetText].action?.invoke(AnnotatedString("")) == true)
             }
-            val error = await { host.text(it, message) }
+            val announcement = await {
+                host.text(it, message) && it.config.getOrNull(SemanticsProperties.LiveRegion) == LiveRegionMode.Polite
+            }
+            val supportingText = await {
+                host.text(it, message) && it.config.getOrNull(SemanticsProperties.LiveRegion) == null
+            }
             host.main {
-                assertTrue("The name error must update an existing live region", politeRegionFor(error).id in existingRegions)
-                val fieldWithError = generateSequence(error) { it.parent }.firstOrNull { node ->
-                    containsText(node, label) && node.config.contains(SemanticsProperties.Error)
+                assertTrue("The name error must update an existing live region", announcement.id in existingRegions)
+                val fieldWithError = generateSequence(supportingText) { it.parent }.firstOrNull { node ->
+                    containsText(node, label) && node.config.getOrNull(SemanticsProperties.Error) == message
                 }
                 assertNotNull("The supporting message must belong to the name field in its error state", fieldWithError)
             }

@@ -44,4 +44,4 @@ Deleted collections disappear from the selector; a concurrently missing write ta
 
 Closing after a membership read failure leaves stored memberships untouched and uses the same slide-down animation and completion callback. Retry remains available until closing begins.
 
-The editor and selection sheets expose inline errors through polite accessibility live regions. The title validation and selection error regions stay mounted before their messages appear.
+The editor and selection sheets expose inline errors through polite accessibility live regions. The title validation and selection error regions stay mounted before their messages appear. The title field reserves supporting text space only while its validation error is visible.

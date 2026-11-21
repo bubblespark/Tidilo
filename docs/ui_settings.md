@@ -28,8 +28,9 @@
 
 ## 3. AI Analysis Settings (`SettingsScreen` -> `AI Analysis`)
 
-- **Sections**: `Using AI Model` and conditional `AICore parameters` inside a fixed-header secondary page.
-- **Model Selector**: Inline `AICore` and `Disable` radio rows (`>= 48.dp` high). Fresh installs default to `AICore` only when initial readiness returns `AVAILABLE` (else `Disable`); manual choices persist. Re-entering checks readiness without writing mode, downloading models, generating content, or recording usage; while checking, unavailable, or after a failed check, `AICore` is disabled (`0.38` alpha) with status/error guidance while `Disable` stays enabled.
+- **Sections**: `Using AI Model`, `Gemini Nano model`, and conditional `AICore parameters` inside a fixed-header secondary page. This destination can also be opened from Bookmark Detail.
+- **Model Selector**: Inline `AICore` and `Disable` radio rows (`>= 48.dp` high). Fresh installs default to `AICore` only when initial readiness returns `AVAILABLE` (else `Disable`). Changing mode requires an explicit selection. `AICore` can be selected only when the model is ready. `Disable` stops manual AI generation from Bookmark Detail.
+- **Gemini Nano Model**: Status distinguishes checking, ready, download required, downloading, unavailable, and a failed check. Opening a new Settings entry or choosing **Check again** checks readiness. Activity recreation preserves the current result and any in-flight download. A downloadable model offers an explicit download, including while the saved mode is `Disable`. The page reports progress and rechecks after a download attempt. If AICore reports that downloading continues, the page shows the ongoing download. Setup preserves the selected mode. Returning to Bookmark Detail requires a new generation request.
 - **Conditional Section**: `AICore parameters` appears only when `AICore` is selected. Switching to `Disable` animates it out (sliding upward 1/3 height, fading, shrinking vertically with `NoBouncy` / `MediumLow` springs) while preserving saved preferences; rows expand cleanly on large fonts above navigation clearance.
 
 ---

@@ -2,6 +2,8 @@ package me.bubblespark.tidilo.data
 
 import java.time.*
 import kotlinx.coroutines.*
+import me.bubblespark.tidilo.config.AiAnalysisMode
+import me.bubblespark.tidilo.service.AiGenerationBlocked
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -133,6 +135,30 @@ class AiCoreUsageRepositoryTest {
         assertEquals(0L, day.debug)
         assertEquals(0L, day.pending)
         assertEquals(0L, day.cancelled)
+    }
+
+    @Test fun disableDuringReservationPreventsSdkCallAndRemovesUsage() = runBlocking {
+        val memory = MemoryStorage()
+        var mode = AiAnalysisMode.AICORE
+        val repo = AiCoreUsageRepository(object : AiUsageStorage {
+            override fun read() = memory.read()
+            override fun write(value: String): Boolean {
+                mode = AiAnalysisMode.DISABLE
+                return memory.write(value)
+            }
+        })
+        val result = runCatching {
+            repo.track(AiUsageSource.NORMAL, beforeSdk = {
+                if (mode == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
+            }) {
+                throw AssertionError("SDK must not run")
+            }
+        }
+        assertTrue(result.exceptionOrNull() is AiGenerationBlocked)
+        val day = (repo.state.value as AiUsageState.Ready).snapshot.days.values.single()
+        assertEquals(0L, day.total)
+        assertEquals(0L, day.pending)
+        assertEquals(0L, day.failed)
     }
 
     @Test fun discardedReservationsOnlyAdjustQuotaBenchmarksThatIncludedThem() = runBlocking {

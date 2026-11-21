@@ -118,9 +118,9 @@ internal class AiCoreUsageRepository(
         }
     }
 
-    suspend fun <T> track(source: AiUsageSource, block: suspend () -> T): T =
+    suspend fun <T> track(source: AiUsageSource, beforeSdk: () -> Unit = {}, block: suspend () -> T): T =
         AiUsageTracker(this) { it is GenAiException && it.errorCode == GenAiException.ErrorCode.PER_APP_BATTERY_USE_QUOTA_EXCEEDED }
-            .track(source, block)
+            .track(source, beforeSdk, block)
 
     private fun loadLocked() {
         try {
@@ -195,7 +195,7 @@ internal class AiCoreUsageRepository(
 
 internal class AiUsageTracker(private val recorder: AiCoreUsageRepository, private val isQuota: (Throwable) -> Boolean) {
     /** Bookkeeping failures never replace the SDK result; caller cancellation still propagates. */
-    suspend fun <T> track(source: AiUsageSource, block: suspend () -> T): T {
+    suspend fun <T> track(source: AiUsageSource, beforeSdk: () -> Unit = {}, block: suspend () -> T): T {
         currentCoroutineContext().ensureActive()
         var token: String? = null
         var enteredSdk = false
@@ -204,23 +204,26 @@ internal class AiUsageTracker(private val recorder: AiCoreUsageRepository, priva
                 try { token?.let { recorder.complete(it, outcome, quota) } } catch (_: Exception) { }
             }
         }
+        suspend fun discard() = withContext(NonCancellable + Dispatchers.IO) {
+            try { token?.let { recorder.discardUnstarted(it, source) } } catch (_: Exception) { }
+        }
         try {
             withContext(NonCancellable + Dispatchers.IO) {
                 try { token = recorder.begin(source) } catch (_: Exception) { }
             }
             currentCoroutineContext().ensureActive()
+            beforeSdk()
             enteredSdk = true
             val result = block()
             finish(AiUsageOutcome.SUCCESS)
             return result
         } catch (cancelled: CancellationException) {
             if (enteredSdk) finish(AiUsageOutcome.CANCELLED)
-            else withContext(NonCancellable + Dispatchers.IO) {
-                try { token?.let { recorder.discardUnstarted(it, source) } } catch (_: Exception) { }
-            }
+            else discard()
             throw cancelled
         } catch (error: Exception) {
-            finish(AiUsageOutcome.FAILED, isQuota(error))
+            if (enteredSdk) finish(AiUsageOutcome.FAILED, isQuota(error))
+            else discard()
             throw error
         }
     }

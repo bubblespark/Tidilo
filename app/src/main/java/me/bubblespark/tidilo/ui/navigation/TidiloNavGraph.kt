@@ -148,9 +148,12 @@ fun TidiloNavGraph(
                     navController.popBackStack()
                 },
                 onNavigateToAiReview = { id ->
-                    navController.navigate(Screen.BookmarkAiReview.createRoute(id)) {
-                        launchSingleTop = true
+                    if (navController.currentBackStackEntry == backStackEntry) {
+                        navController.navigate(Screen.BookmarkAiReview.createRoute(id)) { launchSingleTop = true }
                     }
+                },
+                onNavigateToAiSettings = dropUnlessResumed {
+                    navController.navigate(Screen.AiAnalysis.route) { launchSingleTop = true }
                 }
             )
         }

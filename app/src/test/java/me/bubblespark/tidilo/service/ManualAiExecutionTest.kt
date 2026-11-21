@@ -8,6 +8,7 @@ import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.data.AiCoreReadiness
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -15,17 +16,53 @@ import org.junit.Test
 
 class ManualAiExecutionTest {
     @Test
-    fun capabilityLostAfterDetailCheckStopsInferenceAndClosesTheClient() = runBlocking {
+    fun unavailableCapabilityStopsPageFetchAndClosesTheClient() = runBlocking {
+        var fetched = false
         var closed = false
         val model = fakeModel({ FeatureStatus.UNAVAILABLE }, { closed = true })
 
         val error = runCatching {
-            runWithAvailableAiCore({ AiAnalysisMode.AICORE }, { model }) {
+            runWithAvailableAiCore({ AiAnalysisMode.AICORE }, { model }, prepare = {
+                fetched = true
+            }) { _, _ ->
                 throw AssertionError("Inference must not run once the model becomes unavailable")
             }
         }.exceptionOrNull() as AiGenerationBlocked
 
         assertEquals(AiCoreReadiness.Status(FeatureStatus.UNAVAILABLE), error.readiness)
+        assertFalse(fetched)
+        assertTrue(closed)
+    }
+
+    @Test
+    fun capabilityLostDuringPageFetchStopsInferenceAndClosesTheClient() = runBlocking {
+        var status = FeatureStatus.AVAILABLE
+        var closed = false
+        val model = fakeModel({ status }, { closed = true })
+
+        val error = runCatching {
+            runWithAvailableAiCore({ AiAnalysisMode.AICORE }, { model }, prepare = {
+                status = FeatureStatus.UNAVAILABLE
+            }) { _, _ -> throw AssertionError("Inference must not run after capability is lost") }
+        }.exceptionOrNull() as AiGenerationBlocked
+
+        assertEquals(AiCoreReadiness.Status(FeatureStatus.UNAVAILABLE), error.readiness)
+        assertTrue(closed)
+    }
+
+    @Test
+    fun pageFetchFailureIsPreservedAndClosesTheClient() = runBlocking {
+        var closed = false
+        val model = fakeModel({ FeatureStatus.AVAILABLE }, { closed = true })
+        val pageError = AiProposalPageException("HTTP error 403")
+
+        val error = runCatching {
+            runWithAvailableAiCore({ AiAnalysisMode.AICORE }, { model }, prepare = {
+                throw pageError
+            }) { _, _ -> throw AssertionError("Inference must not run after a page failure") }
+        }.exceptionOrNull()
+
+        assertSame(pageError, error)
         assertTrue(closed)
     }
 
@@ -39,7 +76,9 @@ class ManualAiExecutionTest {
         }, close = { closed = true })
 
         val error = runCatching {
-            runWithAvailableAiCore({ mode }, { model }) { throw AssertionError("Manual AI was disabled") }
+            runWithAvailableAiCore({ mode }, { model }, prepare = {
+                throw AssertionError("Page fetch must not run when manual AI is disabled")
+            }) { _, _ -> throw AssertionError("Manual AI was disabled") }
         }.exceptionOrNull() as AiGenerationBlocked
 
         assertEquals(null, error.readiness)
@@ -51,11 +90,13 @@ class ManualAiExecutionTest {
         var closed = false
         val model = fakeModel({ FeatureStatus.AVAILABLE }, { closed = true })
 
-        val result = runWithAvailableAiCore({ AiAnalysisMode.AICORE }, { model }) { client ->
+        val (input, result) = runWithAvailableAiCore({ AiAnalysisMode.AICORE }, { model }, { "prompt" }) { client, prompt ->
             assertTrue(client === model)
+            assertEquals("prompt", prompt)
             "proposal"
         }
 
+        assertEquals("prompt", input)
         assertEquals("proposal", result)
         assertTrue(closed)
     }
@@ -71,7 +112,7 @@ class ManualAiExecutionTest {
             var closed = false
             val model = fakeModel({ FeatureStatus.AVAILABLE }, { closed = true })
             val result = runCatching {
-                runWithAvailableAiCore({ AiAnalysisMode.AICORE }, { model }) {
+                runWithAvailableAiCore({ AiAnalysisMode.AICORE }, { model }, { "prompt" }) { _, _ ->
                     throw GenAiException("Capability changed", null, code)
                 }
             }
@@ -89,7 +130,7 @@ class ManualAiExecutionTest {
         val blocked = AiGenerationBlocked(null)
 
         val error = runCatching {
-            runWithAvailableAiCore({ AiAnalysisMode.AICORE }, { model }) { throw blocked }
+            runWithAvailableAiCore({ AiAnalysisMode.AICORE }, { model }, { "prompt" }) { _, _ -> throw blocked }
         }.exceptionOrNull()
 
         assertSame(blocked, error)

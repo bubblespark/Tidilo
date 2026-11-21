@@ -41,11 +41,12 @@ internal class AiGenerationBlocked(val readiness: AiCoreReadiness?, cause: Throw
 
 internal class AiProposalPageException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
-internal suspend fun <T> runWithAvailableAiCore(
+internal suspend fun <P, T> runWithAvailableAiCore(
     readMode: () -> AiAnalysisMode,
     openModel: () -> GenerativeModel,
-    infer: suspend (GenerativeModel) -> T
-): T {
+    prepare: suspend () -> P,
+    infer: suspend (GenerativeModel, P) -> T
+): Pair<P, T> {
     if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
     val model = try {
         openModel()
@@ -55,12 +56,19 @@ internal suspend fun <T> runWithAvailableAiCore(
         throw AiGenerationBlocked(AiCoreReadiness.Failed, e)
     }
     try {
-        val readiness = AiCoreAvailability.inspect(model)
-        if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
-        if (!readiness.isAvailable) throw AiGenerationBlocked(readiness)
-        currentCoroutineContext().ensureActive()
+        suspend fun requireAvailable() {
+            if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
+            val readiness = AiCoreAvailability.inspect(model)
+            if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
+            if (!readiness.isAvailable) throw AiGenerationBlocked(readiness)
+            currentCoroutineContext().ensureActive()
+        }
+
+        requireAvailable()
+        val input = prepare()
+        requireAvailable()
         return try {
-            infer(model)
+            input to infer(model, input)
         } catch (e: CancellationException) {
             throw e
         } catch (e: AiGenerationBlocked) {
@@ -91,6 +99,8 @@ data class TaggingResult(
 
 object GeminiTaggingService {
 
+    private data class ProposalInput(val page: ParsedWebPage, val url: String, val prompt: String)
+
     /**
      * Parses the URL and generates summary and tag proposal using Gemini Nano without adding to Library.
      */
@@ -101,36 +111,30 @@ object GeminiTaggingService {
     ): Result<TaggingResult> = withContext(Dispatchers.IO) {
         runCatching {
             val readMode = { AppConfig.aiAnalysisMode.value }
-            if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
-            // 1. Parse web page and extract main body content
-            val parseResult = WebPageParser.parseUrl(url)
-            val parsed = parseResult.getOrElse { e ->
-                if (e is CancellationException) throw e
-                throw AiProposalPageException("Could not fetch the bookmark page", e)
+            val (input, aiOutput) = runWithAvailableAiCore(
+                readMode = readMode,
+                openModel = { Generation.getClient() },
+                prepare = {
+                    val parsed = WebPageParser.parseUrl(url).getOrElse { e ->
+                        if (e is CancellationException) throw e
+                        throw AiProposalPageException("Could not fetch the bookmark page", e)
+                    }
+                    if (parsed.statusCode != 200) {
+                        throw AiProposalPageException("HTTP error ${parsed.statusCode}")
+                    }
+                    val realUrl = parsed.resolvedUrl.takeIf { it.isNotBlank() } ?: url
+                    ProposalInput(parsed, realUrl, buildPrompt(url = realUrl, parsed = parsed, language = language))
+                }
+            ) { model, prepared ->
+                runNanoInference(model, prepared.prompt, readMode)
             }
-
-            // Treat non-200 HTTP response codes as failure
-            if (parsed.statusCode != 200) {
-                throw AiProposalPageException("HTTP error ${parsed.statusCode}")
-            }
-
-            // 2. Determine resolved URL and title (prefer og:title then <title>)
-            val realUrl = parsed.resolvedUrl.takeIf { it.isNotBlank() } ?: url
+            val (parsed, realUrl) = input
 
             val finalTitle = parsed.ogpTags["og:title"]?.trim()?.takeIf { it.isNotBlank() }
                 ?: parsed.title?.trim()?.takeIf { it.isNotBlank() }
                 ?: preferredTitle?.trim()?.takeIf { it.isNotBlank() && !isRawUrlOrHost(it, realUrl) }
                 ?: extractHost(realUrl)
 
-            // 3. Build prompt with resolved URL
-            val prompt = buildPrompt(url = realUrl, parsed = parsed, language = language)
-
-            // 4. Run inference with Gemini Nano
-            val aiOutput = runWithAvailableAiCore(readMode, { Generation.getClient() }) { model ->
-                runNanoInference(model, prompt, readMode)
-            }
-
-            // 5. Parse JSON and normalize results
             val result = parseAiResponse(aiOutput, finalTitle, parsed)
 
             // Domain registration and icon check

@@ -40,7 +40,7 @@ import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.*
 import org.junit.Test
 
-class AiReviewStateTest {
+class ManualAiAvailabilityStateTest {
     @Test fun blockedReviewRestoresWithRetryAndManualRecovery(): Unit = runBlocking {
         val host = HeaderTestHost()
         val dao = AppDatabase.getInstance(host.context).bookmarkDao()
@@ -131,6 +131,26 @@ class AiReviewStateTest {
             val restored = BookmarkAiReviewViewModel(savedState)
             restored.generate { throw AssertionError("Restoring a completed review must not generate again") }
             assertEquals(AiReviewUiState.RestoredAttempt, restored.state.value)
+        }
+    }
+
+    @Test fun restoredAttemptShowsUnavailableWhenExplicitRetryIsBlocked(): Unit = runBlocking {
+        withContext(Dispatchers.Main) {
+            val model = BookmarkAiReviewViewModel(SavedStateHandle(mapOf("attemptStarted" to true)))
+            val readiness = AiCoreReadiness.Status(FeatureStatus.DOWNLOADABLE)
+            var calls = 0
+            val generate: suspend () -> Result<TaggingResult> = {
+                calls++
+                Result.failure(AiGenerationBlocked(readiness))
+            }
+
+            model.generate(proposal = generate)
+            assertEquals(0, calls)
+            assertEquals(AiReviewUiState.RestoredAttempt, model.state.value)
+
+            model.generate(retry = true, proposal = generate)
+            assertEquals(1, calls)
+            assertEquals(AiReviewUiState.Unavailable(readiness), model.state.value)
         }
     }
 

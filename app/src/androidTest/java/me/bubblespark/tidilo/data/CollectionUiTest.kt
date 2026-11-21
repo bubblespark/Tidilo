@@ -20,8 +20,13 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.composable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.data.db.*
@@ -389,7 +394,8 @@ class CollectionUiTest {
             action(await { host.text(it, title) })
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER $trigger BEFORE INSERT ON bookmark_collection_cross_ref WHEN NEW.bookmarkId = '$id' BEGIN SELECT RAISE(ABORT,'injected close failure'); END")
             action(await { host.text(it, title) })
-            await { host.text(it, "Could not save your changes. Please try again.") }
+            val error = await { host.text(it, "Could not save your changes. Please try again.") }
+            host.main { assertEquals(LiveRegionMode.Polite, error.config.getOrNull(SemanticsProperties.LiveRegion)) }
             assertTrue("A failed toggle keeps the sheet visible", shown.value)
             assertTrue(db.collectionDao().observeMembershipIds(id).first().isEmpty())
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER $trigger")
@@ -673,7 +679,8 @@ class CollectionUiTest {
             )
             action(await { host.text(it, "Create") })
             phase = "verify error and inline retry visible without manual scroll"
-            await { host.text(it, "Could not save your changes. Please try again.") && it.boundsInWindow.height > 0f }
+            val error = await { host.text(it, "Could not save your changes. Please try again.") && it.boundsInWindow.height > 0f }
+            host.main { assertEquals(LiveRegionMode.Polite, error.config.getOrNull(SemanticsProperties.LiveRegion)) }
             assertTrue("Rollback must prevent orphan collection", db.collectionDao().observeCollections(true).first().none { it.collection.title == title })
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER $trigger")
             action(await { host.text(it, "Retry") && it.boundsInWindow.height > 0f })
@@ -1201,7 +1208,7 @@ class CollectionUiTest {
         }
     }
 
-    @Test fun detailSequentialCreateSurvivesLifecycleRestartToCreatedAndBackToStarted(): Unit = runBlocking {
+    @Test fun detailSequentialCreateSurvivesLifecycleRestartToCreatedAndBackToResumed(): Unit = runBlocking {
         val db = AppDatabase.getInstance(host.context)
         val bookmarkId = UUID.randomUUID().toString()
         val draftTitle = "LifecycleDraft ${bookmarkId.take(6)}"
@@ -1278,7 +1285,7 @@ class CollectionUiTest {
         }
     }
 
-    @Test fun detailSheetTransitionalRestorationsRenderTargetSheetOnFirstFrame(): Unit = runBlocking {
+    @Test fun detailSheetTransitionalRestorationsMountTargetSheetFirst(): Unit = runBlocking {
         val db = AppDatabase.getInstance(host.context)
         val bookmarkId = UUID.randomUUID().toString()
         val existingCollectionId = UUID.randomUUID().toString()
@@ -1295,36 +1302,61 @@ class CollectionUiTest {
             savedCancelTransition: Boolean,
             savedInstanceId: Int,
             savedFocusedId: String?,
-            expectCreatorOnFirstFrame: Boolean,
+            expectedSheetTitle: String,
             expectedInstanceIdAfterSettle: Int
         ) {
             val activity = host.launch()
+            val frameClock = BroadcastFrameClock()
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + frameClock)
+            val recomposer = Recomposer(scope.coroutineContext)
+            scope.launch { recomposer.runRecomposeAndApplyChanges() }
+            var frameTime = 0L
+
+            suspend fun advanceUntil(condition: () -> Boolean) = withTimeout(5000) {
+                var reached = false
+                while (!reached) {
+                    host.main {
+                        reached = condition()
+                        if (!reached && frameClock.hasAwaiters) {
+                            frameTime += 16_000_000
+                            frameClock.sendFrame(frameTime)
+                        }
+                    }
+                    if (!reached) delay(10)
+                }
+            }
+
             try {
                 // Seed and restore through ONE positional rememberSaveable site toggled off/on via showContent
                 // so compositeKeyHash matches identically without custom key overrides.
                 val sourceRegistry = androidx.compose.runtime.saveable.SaveableStateRegistry(null) { true }
                 val restoredRegistryState = mutableStateOf<androidx.compose.runtime.saveable.SaveableStateRegistry?>(null)
                 val showContent = mutableStateOf(true)
-                val contentPresent = java.util.concurrent.atomic.AtomicBoolean(false)
-                val sourceComposed = java.util.concurrent.atomic.AtomicBoolean(false)
+                var contentPresent = false
+                var sourceComposed = false
                 lateinit var restoredState: DetailCollectionSheetState
-                val firstFrameSnapshot = java.util.concurrent.atomic.AtomicBoolean(false)
-                var firstFrameSawCreator = false
-                var firstFrameSawSelector = false
-                var firstFrameSettledFlag = true
-                var firstFrameRestoredPhase: DetailCollectionSheetPhase? = null
-                val observedCreatorAfterRestore = java.util.concurrent.atomic.AtomicBoolean(false)
-                val observedSelectorAfterRestore = java.util.concurrent.atomic.AtomicBoolean(false)
+                var restoredHostComposed = false
+                var settledHostComposed = false
+                val creatorTitle = "New Collection"
+                val selectorTitle = "Choose collections"
+
+                fun mountedSheetTitles() = allNodes().mapNotNull { node ->
+                    when {
+                        host.text(node, creatorTitle) -> creatorTitle
+                        host.text(node, selectorTitle) -> selectorTitle
+                        else -> null
+                    }
+                }
 
                 host.main {
-                    activity.setContent {
+                    activity.setContent(parent = recomposer) {
                         MaterialTheme {
                             if (showContent.value) {
                                 val restored = restoredRegistryState.value
                                 val activeRegistry = restored ?: sourceRegistry
                                 DisposableEffect(Unit) {
-                                    contentPresent.set(true)
-                                    onDispose { contentPresent.set(false) }
+                                    contentPresent = true
+                                    onDispose { contentPresent = false }
                                 }
                                 CompositionLocalProvider(androidx.compose.runtime.saveable.LocalSaveableStateRegistry provides activeRegistry) {
                                     val sheetState = androidx.compose.runtime.saveable.rememberSaveable(
@@ -1343,28 +1375,14 @@ class CollectionUiTest {
                                         }
                                     }
                                     if (restored == null) {
-                                        SideEffect { sourceComposed.set(true) }
+                                        SideEffect { sourceComposed = true }
                                     } else {
-                                        restoredState = sheetState
+                                        val settled = sheetState.restoredPhaseSettled
                                         DetailCollectionSheetHost(bookmarkId = bookmarkId, sheetState = sheetState)
                                         SideEffect {
-                                            // SideEffect runs synchronously at the end of Frame 1 before LaunchedEffect settles.
-                                            if (!firstFrameSnapshot.getAndSet(true)) {
-                                                firstFrameRestoredPhase = sheetState.phase
-                                                firstFrameSettledFlag = sheetState.restoredPhaseSettled
-                                                val r = resolveDetailCollectionSheetRestoration(
-                                                    sheetState.phase,
-                                                    sheetState.cancelCreatorTransition,
-                                                    sheetState.membershipSheetInstanceId,
-                                                    sheetState.restoredPhaseSettled
-                                                )
-                                                firstFrameSawCreator = r.activePhase == DetailCollectionSheetPhase.CREATING ||
-                                                    r.activePhase == DetailCollectionSheetPhase.RETURNING_TO_SELECTION
-                                                firstFrameSawSelector = r.activePhase == DetailCollectionSheetPhase.SELECTING ||
-                                                    r.activePhase == DetailCollectionSheetPhase.OPENING_CREATOR
-                                            }
-                                            if (allNodes().any { host.text(it, "New Collection") }) observedCreatorAfterRestore.set(true)
-                                            if (allNodes().any { host.text(it, "Choose collections") }) observedSelectorAfterRestore.set(true)
+                                            restoredState = sheetState
+                                            restoredHostComposed = true
+                                            settledHostComposed = settled
                                         }
                                     }
                                 }
@@ -1372,41 +1390,42 @@ class CollectionUiTest {
                         }
                     }
                 }
-                withTimeout(5000) { while (!sourceComposed.get()) delay(10) }
+                advanceUntil { sourceComposed }
                 lateinit var savedBundle: Map<String, List<Any?>>
                 host.main {
                     savedBundle = sourceRegistry.performSave()
                     showContent.value = false
                 }
-                withTimeout(5000) { while (contentPresent.get()) delay(10) }
+                advanceUntil { !contentPresent }
 
                 val restoredRegistry = androidx.compose.runtime.saveable.SaveableStateRegistry(savedBundle) { true }
                 host.main {
                     restoredRegistryState.value = restoredRegistry
                     showContent.value = true
                 }
-                withTimeout(5000) { while (!firstFrameSnapshot.get()) delay(10) }
-                assertEquals("$label: state must restore saved phase on Frame 1", savedPhase, firstFrameRestoredPhase)
-                assertFalse("$label: Frame 1 SideEffect must run before settlement", firstFrameSettledFlag)
-                assertEquals("$label: Frame 1 creator composition mismatch", expectCreatorOnFirstFrame, firstFrameSawCreator)
-                assertEquals("$label: Frame 1 selector composition mismatch", !expectCreatorOnFirstFrame, firstFrameSawSelector)
-
-                withTimeout(5000) {
-                    while (!restoredState.restoredPhaseSettled) delay(20)
-                }
-                if (expectCreatorOnFirstFrame) {
-                    await { host.text(it, "New Collection") }
-                    assertFalse("$label: Choose collections must never compose", observedSelectorAfterRestore.get())
-                } else {
-                    await { host.text(it, "Choose collections") }
-                    assertFalse("$label: New Collection must never compose", observedCreatorAfterRestore.get())
-                }
+                advanceUntil { restoredHostComposed }
+                // Let the dialog window attach without advancing the host to its settled composition.
+                await { host.text(it, creatorTitle) || host.text(it, selectorTitle) }
                 host.main {
+                    assertFalse("$label: settlement recomposed before the first sheet check", settledHostComposed)
+                    assertEquals(
+                        "$label: only the target sheet must mount in the first restored composition",
+                        listOf(expectedSheetTitle),
+                        mountedSheetTitles()
+                    )
+                }
+
+                advanceUntil { settledHostComposed }
+                await { host.text(it, expectedSheetTitle) }
+                host.main {
+                    assertEquals("$label: only the target sheet remains after settlement", listOf(expectedSheetTitle), mountedSheetTitles())
                     assertEquals("$label: instanceId must not churn after settle", expectedInstanceIdAfterSettle, restoredState.membershipSheetInstanceId)
                     assertFalse("$label: cancelCreatorTransition must clear after settle", restoredState.cancelCreatorTransition)
                 }
             } finally {
                 host.main { activity.finish() }
+                recomposer.cancel()
+                scope.cancel()
             }
         }
 
@@ -1417,7 +1436,7 @@ class CollectionUiTest {
                 savedCancelTransition = false,
                 savedInstanceId = 2,
                 savedFocusedId = null,
-                expectCreatorOnFirstFrame = true,
+                expectedSheetTitle = "New Collection",
                 expectedInstanceIdAfterSettle = 2
             )
             verifyFirstFrameCase(
@@ -1426,7 +1445,7 @@ class CollectionUiTest {
                 savedCancelTransition = true,
                 savedInstanceId = 3,
                 savedFocusedId = null,
-                expectCreatorOnFirstFrame = false,
+                expectedSheetTitle = "Choose collections",
                 expectedInstanceIdAfterSettle = 4
             )
             verifyFirstFrameCase(
@@ -1435,7 +1454,7 @@ class CollectionUiTest {
                 savedCancelTransition = false,
                 savedInstanceId = 5,
                 savedFocusedId = existingCollectionId,
-                expectCreatorOnFirstFrame = false,
+                expectedSheetTitle = "Choose collections",
                 expectedInstanceIdAfterSettle = 5
             )
         } finally {

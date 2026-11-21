@@ -110,6 +110,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -366,15 +367,13 @@ fun BookmarkDetailScreen(
     val haptic = LocalHapticFeedback.current
     var detailRetry by remember(bookmarkId) { mutableStateOf(0) }
     val detailFlow = remember(viewModel, bookmarkId, detailRetry) { viewModel.bookmarkDetails(bookmarkId) }
-    val detailState by detailFlow.collectAsStateWithLifecycle(initialValue = BookmarkDetailState())
+    val detailState = detailFlow.collectAsStateWithLifecycle(initialValue = BookmarkDetailState()).value
     // Retain the last loaded bookmark across transient loading re-emissions on STARTED lifecycle restarts.
-    val retainedBookmark = remember(bookmarkId) { arrayOfNulls<BookmarkItem>(1) }
-    if (detailState.bookmark != null) {
-        retainedBookmark[0] = detailState.bookmark
-    } else if (!detailState.loading) {
-        retainedBookmark[0] = null
+    var retainedBookmark by remember(viewModel, bookmarkId) { mutableStateOf<BookmarkItem?>(null) }
+    if (!detailState.loading) {
+        SideEffect { retainedBookmark = detailState.bookmark }
     }
-    val bookmark = detailState.bookmark ?: if (detailState.loading) retainedBookmark[0] else null
+    val bookmark = detailState.bookmark ?: if (detailState.loading) retainedBookmark else null
     var detailRecorded by rememberSaveable(bookmarkId) { mutableStateOf(false) }
     LaunchedEffect(bookmarkId, bookmark?.id) {
         if (bookmark != null && !detailRecorded) {

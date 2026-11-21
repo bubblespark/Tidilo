@@ -25,8 +25,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -213,7 +215,11 @@ internal fun CollectionEditorContent(
                         modifier = Modifier.fillMaxWidth().bringIntoViewRequester(errorBringIntoViewRequester),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(stringResource(messageRes), color = MaterialTheme.colorScheme.error)
+                        Text(
+                            stringResource(messageRes),
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                            color = MaterialTheme.colorScheme.error
+                        )
                         if (error == "load" || (!editing && error == "save")) {
                             TextButton(
                                 onClick = if (error == "load") onRetry else onSave,

@@ -7,7 +7,6 @@ import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -25,7 +24,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
@@ -228,7 +230,11 @@ internal fun CollectionMembershipContent(
                     }
                 }
                 if (state.error != null) {
-                    Text(stringResource(if (state.error == "load") R.string.collection_load_failed else R.string.collection_save_failed), color = MaterialTheme.colorScheme.error)
+                    Text(
+                        stringResource(if (state.error == "load") R.string.collection_load_failed else R.string.collection_save_failed),
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                        color = MaterialTheme.colorScheme.error
+                    )
                     TextButton(onClick = onRetry, enabled = state.pendingIds.isEmpty() && !closing) {
                         Text(stringResource(R.string.common_retry))
                     }

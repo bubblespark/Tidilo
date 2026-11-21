@@ -43,3 +43,5 @@ The selection sheet always displays a **New collection** action with a leading `
 Deleted collections disappear from the selector; a concurrently missing write target never produces a partial save. A load error offers retry, and a write error keeps the selector open. No navigation away to the Collection library, additional card action menu, bulk assignment, synchronization, or collection export/import is introduced.
 
 Closing after a membership read failure leaves stored memberships untouched and uses the same slide-down animation and completion callback. Retry remains available until closing begins.
+
+The editor and selection sheets mark inline error messages as polite accessibility live regions.

@@ -23,10 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -36,6 +36,8 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.CollectionRepository
 import me.bubblespark.tidilo.data.db.AppDatabase
 import java.util.UUID
+
+internal val CollectionMembershipSheetInstanceId = SemanticsPropertyKey<Int>("CollectionMembershipSheetInstanceId")
 
 @Composable
 fun CollectionMembershipBottomSheet(
@@ -65,7 +67,7 @@ fun CollectionMembershipBottomSheet(
         onRetry = resolvedModel::retry,
         onDismiss = onDismiss,
         onNewCollection = onNewCollection,
-        modifier = modifier.testTag("collection-membership-$sheetInstanceId"),
+        modifier = modifier.semantics { this[CollectionMembershipSheetInstanceId] = sheetInstanceId },
         scrollState = scrollState,
         focusedCollectionId = focusedCollectionId,
         onFocusHandled = onFocusHandled,
@@ -176,8 +178,12 @@ internal fun CollectionMembershipContent(
             Text(stringResource(R.string.collection_assign_title),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
                 style = modernRaisedTextStyle(MaterialTheme.typography.titleLarge))
+            val error = state.error
+            val rowSpacing = 12.dp
+            val bottomPadding = 24.dp
             Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(scrollState)
-                .padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                .padding(horizontal = 24.dp).padding(bottom = if (error == null) 0.dp else bottomPadding),
+                verticalArrangement = Arrangement.spacedBy(rowSpacing)) {
                 if (state.loading) CircularProgressIndicator()
                 else if (state.rows.isEmpty() && state.error == null) {
                     Text(stringResource(R.string.collection_assign_empty))
@@ -230,12 +236,19 @@ internal fun CollectionMembershipContent(
                         }
                     }
                 }
-                if (state.error != null) {
-                    Text(
-                        stringResource(if (state.error == "load") R.string.collection_load_failed else R.string.collection_save_failed),
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                        color = MaterialTheme.colorScheme.error
-                    )
+                Box(
+                    // The empty region and its preceding gap occupy the existing bottom padding.
+                    Modifier.fillMaxWidth().heightIn(min = if (error == null) bottomPadding - rowSpacing else 0.dp)
+                        .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
+                ) {
+                    if (error != null) {
+                        Text(
+                            stringResource(if (error == "load") R.string.collection_load_failed else R.string.collection_save_failed),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                if (error != null) {
                     TextButton(onClick = onRetry, enabled = state.pendingIds.isEmpty() && !closing) {
                         Text(stringResource(R.string.common_retry))
                     }

@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
@@ -277,6 +278,15 @@ class CollectionUiTest {
     private fun containsText(node: SemanticsNode, value: String): Boolean =
         host.text(node, value) || node.children.any { containsText(it, value) }
 
+    private fun liveRegionIds(): Set<Int> = allNodes()
+        .filter { it.config.getOrNull(SemanticsProperties.LiveRegion) == LiveRegionMode.Polite }
+        .mapTo(mutableSetOf()) { it.id }
+
+    private fun politeRegionFor(node: SemanticsNode): SemanticsNode =
+        generateSequence(node) { it.parent }.first {
+            it.config.getOrNull(SemanticsProperties.LiveRegion) == LiveRegionMode.Polite
+        }
+
     private suspend fun awaitEnabledButton(label: String): SemanticsNode = await { node ->
         node.config.getOrNull(SemanticsProperties.Role) == Role.Button &&
             !node.config.contains(SemanticsProperties.Disabled) &&
@@ -389,13 +399,23 @@ class CollectionUiTest {
             db.collectionDao().insert(CollectionEntity(id, title, "", "folder", null, 0, System.currentTimeMillis(), 1))
             db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Retry assignment", "https://example.com/$id", "", createdAt = 1, updatedAt = 1))
             host.main { activity.setContent { MaterialTheme {
-                if (shown.value) CollectionMembershipBottomSheet(id, { shown.value = false }, {})
+                if (shown.value) CollectionMembershipBottomSheet(
+                    id, { shown.value = false }, {}, modifier = Modifier.testTag("caller-membership-sheet"),
+                    sheetInstanceId = 7
+                )
             } } }
-            action(await { host.text(it, title) })
+            var existingRegions = emptySet<Int>()
+            val sheet = await { it.config.getOrNull(CollectionMembershipSheetInstanceId) == 7 }
+            host.main {
+                assertEquals("caller-membership-sheet", sheet.config.getOrNull(SemanticsProperties.TestTag))
+                existingRegions = liveRegionIds()
+            }
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER $trigger BEFORE INSERT ON bookmark_collection_cross_ref WHEN NEW.bookmarkId = '$id' BEGIN SELECT RAISE(ABORT,'injected close failure'); END")
             action(await { host.text(it, title) })
             val error = await { host.text(it, "Could not save your changes. Please try again.") }
-            host.main { assertEquals(LiveRegionMode.Polite, error.config.getOrNull(SemanticsProperties.LiveRegion)) }
+            host.main {
+                assertTrue("The membership error must update an existing live region", politeRegionFor(error).id in existingRegions)
+            }
             assertTrue("A failed toggle keeps the sheet visible", shown.value)
             assertTrue(db.collectionDao().observeMembershipIds(id).first().isEmpty())
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER $trigger")
@@ -425,26 +445,43 @@ class CollectionUiTest {
 
     @Test fun blankCollectionNameErrorIsAPoliteLiveRegion(): Unit = runBlocking {
         val activity = host.launch()
+        val originalTitle = "Saved title"
+        val draft = mutableStateOf(CollectionDraft(originalTitle))
         try {
             host.main {
                 activity.setContent {
                     MaterialTheme {
                         CollectionEditorContent(
-                            CollectionEditorState(draft = CollectionDraft("")),
+                            CollectionEditorState(draft = draft.value),
                             editing = true,
-                            onEdit = {},
+                            onEdit = { draft.value = it },
                             onSave = {},
                             onConfirmDelete = {},
                             onDelete = {},
                             onDismiss = {},
-                            autosaveStatus = AutosaveStatus.Invalid
+                            autosaveStatus = if (draft.value.title.isBlank()) AutosaveStatus.Invalid else AutosaveStatus.Idle
                         )
                     }
                 }
             }
+            val label = activity.getString(me.bubblespark.tidilo.R.string.collection_name_label)
             val message = activity.getString(me.bubblespark.tidilo.R.string.collection_title_required)
+            val field = await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == originalTitle }
+            var existingRegions = emptySet<Int>()
+            host.main {
+                existingRegions = liveRegionIds()
+                assertTrue(allNodes().none { host.text(it, message) })
+                check(field.config[SemanticsActions.SetText].action?.invoke(AnnotatedString("")) == true)
+            }
             val error = await { host.text(it, message) }
-            host.main { assertEquals(LiveRegionMode.Polite, error.config.getOrNull(SemanticsProperties.LiveRegion)) }
+            host.main {
+                assertTrue("The name error must update an existing live region", politeRegionFor(error).id in existingRegions)
+                val fieldWithError = generateSequence(error) { it.parent }.firstOrNull { node ->
+                    containsText(node, label) && node.config.contains(SemanticsProperties.Error)
+                }
+                assertNotNull("The supporting message must belong to the name field in its error state", fieldWithError)
+            }
+            capture("collection-name-error")
         } finally {
             host.main { activity.finish() }
         }
@@ -1364,7 +1401,7 @@ class CollectionUiTest {
                 lateinit var restoredState: DetailCollectionSheetState
                 var restoredHostComposed = false
                 var settledHostComposed = false
-                var firstRestoredPhase: DetailCollectionSheetPhase? = null
+                var phaseRestoredBySaver: DetailCollectionSheetPhase? = null
                 val creatorTitle = "New Collection"
                 val selectorTitle = "Choose collections"
 
@@ -1376,11 +1413,8 @@ class CollectionUiTest {
                     }
                 }
 
-                val expectedSelectorTag = "collection-membership-$expectedInstanceIdAfterSettle"
-
-                fun mountedSelectorTags() = allNodes()
-                    .mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }
-                    .filter { it.startsWith("collection-membership-") }
+                fun mountedSelectorInstanceIds() = allNodes()
+                    .mapNotNull { it.config.getOrNull(CollectionMembershipSheetInstanceId) }
 
                 host.main {
                     activity.setContent(parent = recomposer) {
@@ -1415,7 +1449,7 @@ class CollectionUiTest {
                                         val phase = sheetState.phase
                                         DetailCollectionSheetHost(bookmarkId = bookmarkId, sheetState = sheetState)
                                         SideEffect {
-                                            if (!restoredHostComposed) firstRestoredPhase = phase
+                                            if (!restoredHostComposed) phaseRestoredBySaver = phase
                                             restoredState = sheetState
                                             restoredHostComposed = true
                                             settledHostComposed = settled
@@ -1444,7 +1478,7 @@ class CollectionUiTest {
                 await { host.text(it, creatorTitle) || host.text(it, selectorTitle) }
                 host.main {
                     assertFalse("$label: settlement recomposed before the first sheet check", settledHostComposed)
-                    assertEquals("$label: the first composition must restore the saved phase", savedPhase, firstRestoredPhase)
+                    assertEquals("$label: the Saver must restore the saved phase", savedPhase, phaseRestoredBySaver)
                     assertEquals(
                         "$label: only the target sheet must mount in the first restored composition",
                         listOf(expectedSheetTitle),
@@ -1453,8 +1487,8 @@ class CollectionUiTest {
                     if (expectedSheetTitle == selectorTitle) {
                         assertEquals(
                             "$label: the first selector must use the settled instance key",
-                            listOf(expectedSelectorTag),
-                            mountedSelectorTags()
+                            listOf(expectedInstanceIdAfterSettle),
+                            mountedSelectorInstanceIds()
                         )
                     }
                 }

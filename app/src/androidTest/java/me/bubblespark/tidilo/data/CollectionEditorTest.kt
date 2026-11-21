@@ -350,6 +350,15 @@ class CollectionEditorTest {
             assertFalse(vm.state.value.done)
             assertFalse(vm.state.value.missing)
             assertNull(db.collectionDao().getById(vm.createdId))
+            host.runOnMainSync {
+                vm.edit(CollectionDraft("Mutated After Missing"))
+                vm.create()
+            }
+            assertEquals("Should Not Exist", vm.state.value.draft.title)
+            assertEquals("missing_bookmark", vm.state.value.error)
+            assertFalse(vm.state.value.pending)
+            assertFalse(vm.state.value.done)
+            assertNull(db.collectionDao().getById(vm.createdId))
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
 
@@ -414,6 +423,14 @@ class CollectionEditorTest {
             open(orphanCreatorHandle, bookmarkId = "bm-rec")
             withTimeout(5000) { while (vm.state.value.loading) delay(20) }
             assertEquals("missing_bookmark", vm.state.value.error)
+            assertFalse(vm.state.value.done)
+            host.runOnMainSync {
+                vm.edit(CollectionDraft("Mutated Orphan"))
+                vm.create()
+            }
+            assertEquals("Detached", vm.state.value.draft.title)
+            assertEquals("missing_bookmark", vm.state.value.error)
+            assertFalse(vm.state.value.pending)
             assertFalse(vm.state.value.done)
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }

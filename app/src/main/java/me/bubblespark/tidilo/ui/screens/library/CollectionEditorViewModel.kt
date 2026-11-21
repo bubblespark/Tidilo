@@ -153,8 +153,11 @@ class CollectionEditorViewModel(
         load()
     }
 
+    private fun CollectionEditorState.hasTerminalLoadError(): Boolean =
+        error == "load" || error == "missing_bookmark"
+
     fun edit(draft: CollectionDraft) {
-        if (state.value.pending || state.value.loading || state.value.missing || state.value.error == "load") return
+        if (state.value.pending || state.value.loading || state.value.missing || state.value.hasTerminalLoadError()) return
         val before = state.value.draft
         applyDraft(draft)
         if (collectionId == null) return
@@ -187,7 +190,9 @@ class CollectionEditorViewModel(
 
     /** Explicit Create for a new collection; existing collections autosave instead. */
     fun create() {
-        if (collectionId != null || state.value.pending || state.value.loading || state.value.done || state.value.draft.title.isBlank()) return
+        if (collectionId != null || state.value.pending || state.value.loading || state.value.done ||
+            state.value.hasTerminalLoadError() || state.value.draft.title.isBlank()
+        ) return
         val draft = state.value.draft
         val targetBookmarkId = assignToBookmarkId
         write(missingError = if (targetBookmarkId != null) "missing_bookmark" else null) {
@@ -205,7 +210,7 @@ class CollectionEditorViewModel(
 
     fun delete() {
         val id = collectionId ?: return
-        if (state.value.pending || state.value.loading || state.value.missing || state.value.error == "load") return
+        if (state.value.pending || state.value.loading || state.value.missing || state.value.hasTerminalLoadError()) return
         autosaver?.cancel()
         write { repository.delete(id) }
     }

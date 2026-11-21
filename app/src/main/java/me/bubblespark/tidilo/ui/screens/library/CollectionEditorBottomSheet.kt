@@ -144,7 +144,8 @@ internal fun CollectionEditorContent(
     closing: Boolean = false, onClosed: (() -> Unit)? = null
 ) {
     val draft = state.draft
-    val canEdit = !state.pending && !state.loading && !state.missing && state.error != "load" && !closing
+    val canEdit = !state.pending && !state.loading && !state.missing &&
+        state.error != "load" && state.error != "missing_bookmark" && !closing
     val accent = CollectionColorPalette.getOrElse(draft.colorIndex) { CollectionColorPalette.first() }
     val sheetStyle = currentThemeSurfaces().resolve(SurfaceRole.SHEET, SurfaceVariant.EMPHASIZED)
     val errorBringIntoViewRequester = remember { BringIntoViewRequester() }

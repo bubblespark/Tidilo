@@ -247,7 +247,10 @@ class CollectionUiTest {
             else -> emptyList()
         }
         fun visit(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::visit)
-        val frontView = WindowInspector.getGlobalWindowViews().lastOrNull { it.isShown } ?: return emptyList()
+        val frontView = WindowInspector.getGlobalWindowViews().lastOrNull { view ->
+            view.isShown && roots(view).flatMap { visit(it.semanticsOwner.unmergedRootSemanticsNode) }
+                .none { it.config.getOrNull(SemanticsProperties.PaneTitle) == "tooltip" }
+        } ?: return emptyList()
         return roots(frontView).flatMap { visit(it.semanticsOwner.unmergedRootSemanticsNode) }
     }
     private suspend fun await(predicate: (SemanticsNode) -> Boolean): SemanticsNode = try { withTimeout(8000) {
@@ -266,6 +269,15 @@ class CollectionUiTest {
         host.main { android.util.Log.e("CollectionUiTest", "Phase $phase (front): " + frontWindowNodes().map { it.config.toString() }.joinToString("\n")) }
         throw AssertionError("No matching front-window node during $phase", e)
     }
+    private fun containsText(node: SemanticsNode, value: String): Boolean =
+        host.text(node, value) || node.children.any { containsText(it, value) }
+
+    private suspend fun awaitEnabledButton(label: String): SemanticsNode = await { node ->
+        node.config.getOrNull(SemanticsProperties.Role) == Role.Button &&
+            !node.config.contains(SemanticsProperties.Disabled) &&
+            containsText(node, label)
+    }
+
     private fun action(node: SemanticsNode, long: Boolean = false) {
         host.main {
             var target = node
@@ -735,6 +747,7 @@ class CollectionUiTest {
         )
         val activity = host.launch()
         try {
+            host.instrumentation.setInTouchMode(true)
             // 1. Empty state + missing-bookmark feedback in UI
             val showMissingEditor = mutableStateOf(false)
             val emptyClicks = java.util.concurrent.atomic.AtomicInteger()
@@ -765,13 +778,30 @@ class CollectionUiTest {
             action(await { host.text(it, "New collection") })
             assertEquals(1, emptyClicks.get())
 
-            phase = "verify missing bookmark feedback without orphan collection"
+            phase = "verify missing bookmark feedback disables fields/create and omits Retry without orphan collection"
             host.main { showMissingEditor.value = true }
             val missingField = await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == "" && it.config.getOrNull(SemanticsActions.SetText) != null }
             val missingTitle = "MissingTarget ${missingTargetBookmarkId.take(6)}"
             host.main { check(missingField.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(missingTitle)) == true) }
             action(await { host.text(it, "Create") })
             await { host.text(it, "This bookmark is no longer available.") }
+            host.main {
+                val createText = allNodes().first { host.text(it, "Create") }
+                var createButton = createText
+                while (createButton.config.getOrNull(SemanticsActions.OnClick) == null) createButton = requireNotNull(createButton.parent)
+                assertTrue("Create must be disabled on missing_bookmark", createButton.config.contains(SemanticsProperties.Disabled))
+                val editableNodes = allNodes().filter { it.config.getOrNull(SemanticsProperties.EditableText) != null }
+                assertTrue(
+                    "All text fields must be disabled on missing_bookmark",
+                    editableNodes.isNotEmpty() && editableNodes.all {
+                        it.config.contains(SemanticsProperties.Disabled) &&
+                            it.config.getOrNull(SemanticsActions.SetText) == null
+                    }
+                )
+                val optionNodes = allNodes().filter { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton }
+                assertTrue("Icon/color choices must be disabled on missing_bookmark", optionNodes.isNotEmpty() && optionNodes.all { it.config.contains(SemanticsProperties.Disabled) })
+                assertTrue("Retry must not appear on missing_bookmark", allNodes().none { host.text(it, "Retry") })
+            }
             assertTrue(db.collectionDao().observeCollections(true).first().none { it.collection.title == missingTitle })
 
             // 2. Multi-item list: scroll preservation on cancel, Back during OPENING_CREATOR, and focus + scroll-into-view on create return
@@ -807,17 +837,52 @@ class CollectionUiTest {
             assertTrue("Selection list should have scrolled down: $scrolledOffset", scrolledOffset > 0f)
 
             phase = "back press during OPENING_CREATOR cancels transition back to visible SELECTING"
-            action(await { host.text(it, "New collection") })
+            suspend fun awaitUiFrame() = kotlinx.coroutines.suspendCancellableCoroutine<Unit> { cont ->
+                host.main {
+                    android.view.Choreographer.getInstance().postFrameCallback {
+                        if (cont.isActive) cont.resumeWith(Result.success(Unit))
+                    }
+                }
+            }
+            action(awaitEnabledButton("New collection"))
+            withTimeout(5000) {
+                while (true) {
+                    var closingStarted = false
+                    host.main {
+                        assertTrue("New Collection must not compose before cancellation", allNodes().none { host.text(it, "New Collection") })
+                        val btnText = allNodes().firstOrNull { host.text(it, "New collection") }
+                        var btn = btnText
+                        while (btn != null && btn.config.getOrNull(SemanticsActions.OnClick) == null) btn = btn.parent
+                        closingStarted = btn?.config?.contains(SemanticsProperties.Disabled) == true
+                    }
+                    if (closingStarted) break
+                    awaitUiFrame()
+                }
+            }
             host.instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
-            delay(600)
-            await { host.text(it, "Choose collections") && it.boundsInWindow.height > 0f }
-            host.main { assertTrue(allNodes().none { host.text(it, "New Collection") }) }
+            withTimeout(5000) {
+                while (true) {
+                    var reopened = false
+                    host.main {
+                        assertTrue("New Collection must never compose when OPENING_CREATOR is cancelled", allNodes().none { host.text(it, "New Collection") })
+                        val headingVisible = allNodes().any { host.text(it, "Choose collections") && it.boundsInWindow.height > 0f }
+                        val btnText = allNodes().firstOrNull { host.text(it, "New collection") }
+                        var btn = btnText
+                        while (btn != null && btn.config.getOrNull(SemanticsActions.OnClick) == null) btn = btn.parent
+                        reopened = headingVisible && btn != null && !btn.config.contains(SemanticsProperties.Disabled)
+                    }
+                    if (reopened) break
+                    awaitUiFrame()
+                }
+            }
 
             phase = "open creator, cancel via dismiss, verify previous scroll offset is preserved"
-            action(await { host.text(it, "New collection") })
+            action(awaitEnabledButton("New collection"))
             await { host.text(it, "New Collection") }
             dismissSheet()
             await { host.text(it, "Choose collections") }
+            await { host.text(it, "ScrollItem 25 ${seededIds.last().take(4)}") }
+            delay(400)
             val restoredOffset = run {
                 var v = 0f
                 host.main {
@@ -833,7 +898,7 @@ class CollectionUiTest {
             assertEquals("Scroll position must be preserved on cancel return", scrolledOffset, restoredOffset, 4f)
 
             phase = "create new collection while scrolled down and verify scroll into view + focus on return"
-            action(await { host.text(it, "New collection") })
+            action(awaitEnabledButton("New collection"))
             await { host.text(it, "New Collection") }
             val newTitle = "TopFocused ${bookmarkId.take(6)}"
             val createField = awaitFront {
@@ -841,6 +906,8 @@ class CollectionUiTest {
                     it.config.getOrNull(SemanticsActions.SetText) != null
             }
             host.main { check(createField.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(newTitle)) == true) }
+            // Enter keyboard input mode before submitting via Semantics OnClick so toggleable FocusTargetNode accepts focusRequester.
+            host.instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_TAB)
             action(await { host.text(it, "Create") })
             await { host.text(it, "Choose collections") }
             val createdRow = await { node ->
@@ -866,8 +933,24 @@ class CollectionUiTest {
                     if (!focused || !visible) delay(20)
                 }
             }
+            // Space activates toggleable directly because focusRequester targets the single toggleable node.
+            host.instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_SPACE)
+            withTimeout(5000) {
+                var toggledOff = false
+                while (!toggledOff) {
+                    host.main {
+                        val row = allNodes().firstOrNull { node ->
+                            node.config.getOrNull(SemanticsProperties.Role) == Role.Checkbox &&
+                                node.children.any { child -> host.text(child, newTitle) }
+                        }
+                        toggledOff = row?.config?.getOrNull(SemanticsProperties.ToggleableState) == androidx.compose.ui.state.ToggleableState.Off
+                    }
+                    if (!toggledOff) delay(20)
+                }
+            }
             assertTrue(createdRow.boundsInWindow.height > 0f)
         } finally {
+            host.instrumentation.setInTouchMode(true)
             host.main { activity.finish() }
             createdIds.forEach { db.collectionDao().delete(it) }
             db.bookmarkDao().deleteById(bookmarkId)
@@ -895,7 +978,7 @@ class CollectionUiTest {
             action(await { host.text(it, bookmarkTitle) })
             action(await { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Choose collections") == true })
             await { host.text(it, "Choose collections") }
-            action(await { host.text(it, "New collection") })
+            action(awaitEnabledButton("New collection"))
             await { host.text(it, "New Collection") }
             val field = awaitFront {
                 it.config.getOrNull(SemanticsProperties.EditableText)?.text == "" &&
@@ -1030,6 +1113,334 @@ class CollectionUiTest {
         } finally {
             host.main { activity.finish() }
             db.collectionDao().observeCollections(true).first().filter { it.collection.id == id || it.collection.title == "Created ${id.take(8)}" }.forEach { db.collectionDao().delete(it.collection.id) }
+        }
+    }
+
+    @Test fun membershipRowSingleFocusStopDisabledSkipsFocusAndSpaceEnterToggles(): Unit = runBlocking {
+        val activity = host.launch()
+        val toggled = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val state = CollectionMembershipState(
+            loading = false,
+            rows = listOf(
+                CollectionWithCount(CollectionEntity("a", "Row Alpha", "", "folder", null, 0, 1, 1), 0),
+                CollectionWithCount(CollectionEntity("b", "Row Beta Disabled", "", "folder", null, 1, 2, 2), 0),
+                CollectionWithCount(CollectionEntity("c", "Row Gamma", "", "folder", null, 2, 3, 3), 0)
+            ),
+            selectedIds = setOf("a"),
+            pendingIds = setOf("b")
+        )
+        try {
+            host.main {
+                activity.setContent {
+                    MaterialTheme {
+                        CollectionMembershipContent(
+                            state = state,
+                            onToggle = { toggled += it },
+                            onRetry = {},
+                            onDismiss = {},
+                            onNewCollection = {},
+                            onClosed = {}
+                        )
+                    }
+                }
+            }
+            await { host.text(it, "Row Gamma") && it.boundsInWindow.height > 0f }
+            // Enter keyboard mode and move initial focus onto Row Alpha's single toggleable FocusTargetNode.
+            host.instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_TAB)
+            host.main {
+                var alphaNode: SemanticsNode? = frontWindowNodes().first { node ->
+                    node.config.getOrNull(SemanticsProperties.Role) == Role.Checkbox &&
+                        containsText(node, "Row Alpha")
+                }
+                while (alphaNode != null && alphaNode.config.getOrNull(SemanticsActions.RequestFocus) == null) {
+                    alphaNode = alphaNode.parent
+                }
+                check(requireNotNull(alphaNode).config[SemanticsActions.RequestFocus].action?.invoke() == true)
+            }
+
+            fun focusedCheckboxTitle(): String? {
+                val node = allNodes().firstOrNull {
+                    it.config.getOrNull(SemanticsProperties.Role) == Role.Checkbox &&
+                        it.config.getOrNull(SemanticsProperties.Focused) == true
+                } ?: return null
+                return listOf("Row Alpha", "Row Beta Disabled", "Row Gamma").firstOrNull { label ->
+                    node.children.any { child -> host.text(child, label) }
+                }
+            }
+
+            withTimeout(5000) {
+                var title: String? = null
+                while (title != "Row Alpha") {
+                    host.main { title = focusedCheckboxTitle() }
+                    if (title != "Row Alpha") delay(20)
+                }
+            }
+            // Space toggles Row Alpha directly (proving focusRequester/Tab landed on .toggleable()).
+            host.instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_SPACE)
+            withTimeout(5000) { while ("a" !in toggled) delay(20) }
+
+            // Next single Tab must skip both any extra focus stop on Row Alpha and disabled Row Beta, landing directly on Row Gamma.
+            host.instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_TAB)
+            withTimeout(5000) {
+                var title: String? = null
+                while (title != "Row Gamma") {
+                    host.main {
+                        title = focusedCheckboxTitle()
+                        assertNotEquals("Disabled row must not receive focus", "Row Beta Disabled", title)
+                    }
+                    if (title != "Row Gamma") delay(20)
+                }
+            }
+            // Enter toggles Row Gamma directly.
+            host.instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_ENTER)
+            withTimeout(5000) { while ("c" !in toggled) delay(20) }
+            assertEquals(listOf("a", "c"), toggled.toList())
+        } finally {
+            host.instrumentation.setInTouchMode(true)
+            host.main { activity.finish() }
+        }
+    }
+
+    @Test fun detailSequentialCreateSurvivesLifecycleRestartToCreatedAndBackToStarted(): Unit = runBlocking {
+        val db = AppDatabase.getInstance(host.context)
+        val bookmarkId = UUID.randomUUID().toString()
+        val draftTitle = "LifecycleDraft ${bookmarkId.take(6)}"
+        val now = System.currentTimeMillis()
+        db.bookmarkDao().insertOrUpdate(
+            BookmarkEntity(bookmarkId, "Lifecycle Bookmark", "https://example.com/$bookmarkId", "", createdAt = now, updatedAt = now)
+        )
+        val activity = host.launch()
+        lateinit var lifecycleOwner: androidx.lifecycle.LifecycleOwner
+        lateinit var registry: androidx.lifecycle.LifecycleRegistry
+        try {
+            host.main {
+                val model = androidx.lifecycle.ViewModelProvider(activity)[LibraryViewModel::class.java]
+                val owner = object : androidx.lifecycle.LifecycleOwner {
+                    val reg = androidx.lifecycle.LifecycleRegistry(this)
+                    override val lifecycle: androidx.lifecycle.Lifecycle get() = reg
+                }
+                lifecycleOwner = owner
+                registry = owner.reg
+                registry.currentState = androidx.lifecycle.Lifecycle.State.RESUMED
+                activity.setContent {
+                    MaterialTheme {
+                        CompositionLocalProvider(androidx.lifecycle.compose.LocalLifecycleOwner provides lifecycleOwner) {
+                            BookmarkDetailScreen(bookmarkId = bookmarkId, viewModel = model, onNavigateBack = {})
+                        }
+                    }
+                }
+            }
+            action(await { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Choose collections") == true })
+            await { host.text(it, "Choose collections") }
+            action(await { host.text(it, "New collection") })
+            await { host.text(it, "New Collection") }
+            val field = awaitFront {
+                it.config.getOrNull(SemanticsProperties.EditableText)?.text == "" &&
+                    it.config.getOrNull(SemanticsActions.SetText) != null
+            }
+            host.main { check(field.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(draftTitle)) == true) }
+            awaitFront { it.config.getOrNull(SemanticsProperties.EditableText)?.text == draftTitle }
+
+            // Drop lifecycle to CREATED (cancels bookmarkDetails Flow), then return to RESUMED
+            // so bookmarkDetails() re-emits BookmarkDetailState(loading = true, bookmark = null) via onStart.
+            host.main { registry.currentState = androidx.lifecycle.Lifecycle.State.CREATED }
+            delay(100)
+            host.main { registry.currentState = androidx.lifecycle.Lifecycle.State.RESUMED }
+            delay(300)
+
+            await { host.text(it, "New Collection") }
+            await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == draftTitle }
+            action(await { host.text(it, "Create") })
+            await { host.text(it, "Choose collections") }
+            withTimeout(5000) {
+                var checked = false
+                while (!checked) {
+                    host.main {
+                        checked = allNodes().any { node ->
+                            node.config.getOrNull(SemanticsProperties.Role) == Role.Checkbox &&
+                                node.config.getOrNull(SemanticsProperties.ToggleableState) == androidx.compose.ui.state.ToggleableState.On &&
+                                node.children.any { child -> host.text(child, draftTitle) }
+                        }
+                    }
+                    if (!checked) delay(20)
+                }
+            }
+
+            // If the bookmark is actually deleted while stopped, resuming still exits cleanly to detail_item_not_found.
+            host.main { registry.currentState = androidx.lifecycle.Lifecycle.State.CREATED }
+            db.bookmarkDao().deleteById(bookmarkId)
+            host.main { registry.currentState = androidx.lifecycle.Lifecycle.State.RESUMED }
+            await { host.text(it, "Item not found") }
+        } finally {
+            host.main { activity.finish() }
+            db.collectionDao().observeCollections(true).first().filter { it.collection.title == draftTitle }.forEach { db.collectionDao().delete(it.collection.id) }
+            db.bookmarkDao().deleteById(bookmarkId)
+        }
+    }
+
+    @Test fun detailSheetTransitionalRestorationsRenderTargetSheetOnFirstFrame(): Unit = runBlocking {
+        val db = AppDatabase.getInstance(host.context)
+        val bookmarkId = UUID.randomUUID().toString()
+        val existingCollectionId = UUID.randomUUID().toString()
+        val existingTitle = "RestoredTarget ${bookmarkId.take(6)}"
+        val now = System.currentTimeMillis()
+        db.bookmarkDao().insertOrUpdate(
+            BookmarkEntity(bookmarkId, "First Frame Bookmark", "https://example.com/$bookmarkId", "", createdAt = now, updatedAt = now)
+        )
+        db.collectionDao().insert(CollectionEntity(existingCollectionId, existingTitle, "", "folder", null, 0, now, now))
+
+        suspend fun verifyFirstFrameCase(
+            label: String,
+            savedPhase: DetailCollectionSheetPhase,
+            savedCancelTransition: Boolean,
+            savedInstanceId: Int,
+            savedFocusedId: String?,
+            expectCreatorOnFirstFrame: Boolean,
+            expectedInstanceIdAfterSettle: Int
+        ) {
+            val activity = host.launch()
+            try {
+                // Seed and restore through ONE positional rememberSaveable site toggled off/on via showContent
+                // so compositeKeyHash matches identically without custom key overrides.
+                val sourceRegistry = androidx.compose.runtime.saveable.SaveableStateRegistry(null) { true }
+                val restoredRegistryState = mutableStateOf<androidx.compose.runtime.saveable.SaveableStateRegistry?>(null)
+                val showContent = mutableStateOf(true)
+                val contentPresent = java.util.concurrent.atomic.AtomicBoolean(false)
+                val sourceComposed = java.util.concurrent.atomic.AtomicBoolean(false)
+                lateinit var restoredState: DetailCollectionSheetState
+                val firstFrameSnapshot = java.util.concurrent.atomic.AtomicBoolean(false)
+                var firstFrameSawCreator = false
+                var firstFrameSawSelector = false
+                var firstFrameSettledFlag = true
+                var firstFrameRestoredPhase: DetailCollectionSheetPhase? = null
+                val observedCreatorAfterRestore = java.util.concurrent.atomic.AtomicBoolean(false)
+                val observedSelectorAfterRestore = java.util.concurrent.atomic.AtomicBoolean(false)
+
+                host.main {
+                    activity.setContent {
+                        MaterialTheme {
+                            if (showContent.value) {
+                                val restored = restoredRegistryState.value
+                                val activeRegistry = restored ?: sourceRegistry
+                                DisposableEffect(Unit) {
+                                    contentPresent.set(true)
+                                    onDispose { contentPresent.set(false) }
+                                }
+                                CompositionLocalProvider(androidx.compose.runtime.saveable.LocalSaveableStateRegistry provides activeRegistry) {
+                                    val sheetState = androidx.compose.runtime.saveable.rememberSaveable(
+                                        bookmarkId,
+                                        saver = DetailCollectionSheetState.Saver
+                                    ) {
+                                        if (restored == null) {
+                                            DetailCollectionSheetState(
+                                                phase = savedPhase,
+                                                membershipSheetInstanceId = savedInstanceId,
+                                                focusedCollectionId = savedFocusedId,
+                                                cancelCreatorTransition = savedCancelTransition
+                                            )
+                                        } else {
+                                            DetailCollectionSheetState()
+                                        }
+                                    }
+                                    if (restored == null) {
+                                        SideEffect { sourceComposed.set(true) }
+                                    } else {
+                                        restoredState = sheetState
+                                        DetailCollectionSheetHost(bookmarkId = bookmarkId, sheetState = sheetState)
+                                        SideEffect {
+                                            // SideEffect runs synchronously at the end of Frame 1 before LaunchedEffect settles.
+                                            if (!firstFrameSnapshot.getAndSet(true)) {
+                                                firstFrameRestoredPhase = sheetState.phase
+                                                firstFrameSettledFlag = sheetState.restoredPhaseSettled
+                                                val r = resolveDetailCollectionSheetRestoration(
+                                                    sheetState.phase,
+                                                    sheetState.cancelCreatorTransition,
+                                                    sheetState.membershipSheetInstanceId,
+                                                    sheetState.restoredPhaseSettled
+                                                )
+                                                firstFrameSawCreator = r.activePhase == DetailCollectionSheetPhase.CREATING ||
+                                                    r.activePhase == DetailCollectionSheetPhase.RETURNING_TO_SELECTION
+                                                firstFrameSawSelector = r.activePhase == DetailCollectionSheetPhase.SELECTING ||
+                                                    r.activePhase == DetailCollectionSheetPhase.OPENING_CREATOR
+                                            }
+                                            if (allNodes().any { host.text(it, "New Collection") }) observedCreatorAfterRestore.set(true)
+                                            if (allNodes().any { host.text(it, "Choose collections") }) observedSelectorAfterRestore.set(true)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                withTimeout(5000) { while (!sourceComposed.get()) delay(10) }
+                lateinit var savedBundle: Map<String, List<Any?>>
+                host.main {
+                    savedBundle = sourceRegistry.performSave()
+                    showContent.value = false
+                }
+                withTimeout(5000) { while (contentPresent.get()) delay(10) }
+
+                val restoredRegistry = androidx.compose.runtime.saveable.SaveableStateRegistry(savedBundle) { true }
+                host.main {
+                    restoredRegistryState.value = restoredRegistry
+                    showContent.value = true
+                }
+                withTimeout(5000) { while (!firstFrameSnapshot.get()) delay(10) }
+                assertEquals("$label: state must restore saved phase on Frame 1", savedPhase, firstFrameRestoredPhase)
+                assertFalse("$label: Frame 1 SideEffect must run before settlement", firstFrameSettledFlag)
+                assertEquals("$label: Frame 1 creator composition mismatch", expectCreatorOnFirstFrame, firstFrameSawCreator)
+                assertEquals("$label: Frame 1 selector composition mismatch", !expectCreatorOnFirstFrame, firstFrameSawSelector)
+
+                withTimeout(5000) {
+                    while (!restoredState.restoredPhaseSettled) delay(20)
+                }
+                if (expectCreatorOnFirstFrame) {
+                    await { host.text(it, "New Collection") }
+                    assertFalse("$label: Choose collections must never compose", observedSelectorAfterRestore.get())
+                } else {
+                    await { host.text(it, "Choose collections") }
+                    assertFalse("$label: New Collection must never compose", observedCreatorAfterRestore.get())
+                }
+                host.main {
+                    assertEquals("$label: instanceId must not churn after settle", expectedInstanceIdAfterSettle, restoredState.membershipSheetInstanceId)
+                    assertFalse("$label: cancelCreatorTransition must clear after settle", restoredState.cancelCreatorTransition)
+                }
+            } finally {
+                host.main { activity.finish() }
+            }
+        }
+
+        try {
+            verifyFirstFrameCase(
+                label = "OPENING_CREATOR(cancel=false)",
+                savedPhase = DetailCollectionSheetPhase.OPENING_CREATOR,
+                savedCancelTransition = false,
+                savedInstanceId = 2,
+                savedFocusedId = null,
+                expectCreatorOnFirstFrame = true,
+                expectedInstanceIdAfterSettle = 2
+            )
+            verifyFirstFrameCase(
+                label = "OPENING_CREATOR(cancel=true)",
+                savedPhase = DetailCollectionSheetPhase.OPENING_CREATOR,
+                savedCancelTransition = true,
+                savedInstanceId = 3,
+                savedFocusedId = null,
+                expectCreatorOnFirstFrame = false,
+                expectedInstanceIdAfterSettle = 4
+            )
+            verifyFirstFrameCase(
+                label = "RETURNING_TO_SELECTION",
+                savedPhase = DetailCollectionSheetPhase.RETURNING_TO_SELECTION,
+                savedCancelTransition = false,
+                savedInstanceId = 5,
+                savedFocusedId = existingCollectionId,
+                expectCreatorOnFirstFrame = false,
+                expectedInstanceIdAfterSettle = 5
+            )
+        } finally {
+            db.collectionDao().delete(existingCollectionId)
+            db.bookmarkDao().deleteById(bookmarkId)
         }
     }
 }

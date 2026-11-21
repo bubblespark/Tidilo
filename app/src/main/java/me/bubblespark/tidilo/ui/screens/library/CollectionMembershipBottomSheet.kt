@@ -211,7 +211,6 @@ internal fun CollectionMembershipContent(
                                     Modifier
                                 }
                             )
-                            .focusable()
                         Row(
                             rowModifier
                                 .toggleable(

@@ -44,8 +44,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiAnalysisMode
@@ -62,14 +62,19 @@ import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 internal data class AiModelSetupState(
     val readiness: AiCoreReadiness? = null,
     val downloading: Boolean = false,
-    val progress: Float? = null,
     val downloadFailed: Boolean = false
 )
 
 internal class AiModelSetupViewModel : ViewModel() {
     private val _state = MutableStateFlow(AiModelSetupState())
     val state = _state.asStateFlow()
+    private val _progress = MutableStateFlow<Float?>(null)
+    val progress = _progress.asStateFlow()
     private var operation: Job? = null
+
+    fun initialize(inspect: suspend () -> AiCoreReadiness) {
+        if (operation == null) refresh(inspect)
+    }
 
     fun refresh(inspect: suspend () -> AiCoreReadiness) {
         if (operation?.isCompleted == false) return
@@ -87,16 +92,20 @@ internal class AiModelSetupViewModel : ViewModel() {
     ) {
         if (operation?.isCompleted == false ||
             _state.value.readiness != AiCoreReadiness.Status(FeatureStatus.DOWNLOADABLE)) return
+        _progress.value = null
         _state.value = AiModelSetupState(downloading = true)
         operation = viewModelScope.launch {
-            val result = requestDownload { fraction -> _state.update { it.copy(progress = fraction) } }
+            val result = requestDownload { fraction -> _progress.value = fraction }
             ensureActive()
             val readiness = inspectSafely(inspect)
             ensureActive()
+            // The latest SDK status takes precedence over a failed local download attempt.
             _state.value = AiModelSetupState(
                 readiness = readiness,
-                downloadFailed = result == AiCoreDownloadResult.FAILED && !readiness.isAvailable
+                downloadFailed = result == AiCoreDownloadResult.FAILED &&
+                    !readiness.isAvailable && readiness != AiCoreReadiness.Status(FeatureStatus.DOWNLOADING)
             )
+            _progress.value = null
         }
     }
 
@@ -121,7 +130,7 @@ internal fun AiAnalysisScreen(
     val mode by AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
     val setupModel = viewModel<AiModelSetupViewModel>()
     val modelState by setupModel.state.collectAsStateWithLifecycle()
-    LaunchedEffect(setupModel) { setupModel.refresh(checkAiCoreReadiness) }
+    LaunchedEffect(setupModel) { setupModel.initialize(checkAiCoreReadiness) }
 
     AiAnalysisContent(
         mode = mode,
@@ -137,7 +146,7 @@ internal fun AiAnalysisScreen(
         onNavigateToParameters = onNavigateToGenerateContentRequest,
         modifier = modifier,
         downloading = modelState.downloading,
-        downloadProgress = modelState.progress,
+        downloadProgress = setupModel.progress,
         downloadFailed = modelState.downloadFailed,
         onRefresh = { setupModel.refresh(checkAiCoreReadiness) },
         onDownload = { setupModel.download(checkAiCoreReadiness, requestDownload) }
@@ -155,7 +164,7 @@ internal fun AiAnalysisContent(
     onNavigateToParameters: () -> Unit,
     modifier: Modifier = Modifier,
     downloading: Boolean = false,
-    downloadProgress: Float? = null,
+    downloadProgress: StateFlow<Float?>? = null,
     downloadFailed: Boolean = false,
     onRefresh: (() -> Unit)? = null,
     onDownload: (() -> Unit)? = null
@@ -205,7 +214,7 @@ private fun AiModelChoices(mode: AiAnalysisMode, readiness: AiCoreReadiness?, on
 private fun AiModelSetup(
     readiness: AiCoreReadiness?,
     downloading: Boolean,
-    progress: Float?,
+    progress: StateFlow<Float?>?,
     downloadFailed: Boolean,
     onRefresh: (() -> Unit)?,
     onDownload: (() -> Unit)?
@@ -226,9 +235,10 @@ private fun AiModelSetup(
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 style = MaterialTheme.typography.bodyMedium
             )
-            if (downloading || readiness == AiCoreReadiness.Status(FeatureStatus.DOWNLOADING)) {
-                if (progress == null) LinearProgressIndicator(Modifier.fillMaxWidth())
-                else LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+            if (downloading) {
+                DownloadProgress(progress)
+            } else if (readiness == AiCoreReadiness.Status(FeatureStatus.DOWNLOADING)) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
             }
             if (!downloading && readiness == AiCoreReadiness.Status(FeatureStatus.DOWNLOADABLE) && onDownload != null) {
                 Button(onClick = onDownload) {
@@ -240,4 +250,11 @@ private fun AiModelSetup(
             }
         }
     }
+}
+
+@Composable
+private fun DownloadProgress(progress: StateFlow<Float?>?) {
+    val observed = progress?.collectAsStateWithLifecycle()
+    if (observed?.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+    else LinearProgressIndicator(progress = { observed.value ?: 0f }, modifier = Modifier.fillMaxWidth())
 }

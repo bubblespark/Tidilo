@@ -6,7 +6,7 @@ This document details optional on-device AI integration (AI Analysis can be disa
 
 ### Manual analysis
 
-Manual URL entry, sharing, and RSS acquisition save directly ([direct import & metadata preparation](bookmark_classification.md)). From Bookmark Detail, the user can trigger on-demand AI review (`BookmarkAiReviewScreen`) when AI Analysis is enabled and the model is ready. The generation service checks the saved mode and the same model client again immediately before inference. Applying a proposal updates the bookmark. Closing review preserves the stored record.
+Manual URL entry, sharing, and RSS acquisition save directly ([direct import & metadata preparation](bookmark_classification.md)). From Bookmark Detail, the user can trigger on-demand AI review (`BookmarkAiReviewScreen`) when AI Analysis is enabled and the model is ready. The generation service checks the saved mode and the same model client before inference. It checks the mode again after reserving usage, at the SDK call boundary. A blocked request releases its unused usage reservation. Applying a proposal updates the bookmark. Closing review preserves the stored record.
 
 ### Key Technical Attributes
 - **Library Coordinate**: `com.google.mlkit:genai-prompt:1.0.0-beta2`

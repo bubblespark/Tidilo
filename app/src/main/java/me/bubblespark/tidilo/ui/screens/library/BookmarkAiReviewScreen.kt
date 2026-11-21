@@ -96,6 +96,7 @@ import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.AiCoreReadiness
 import me.bubblespark.tidilo.data.Subcategory
 import me.bubblespark.tidilo.service.AiGenerationBlocked
+import me.bubblespark.tidilo.service.AiProposalPageException
 import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.service.GeminiTaggingService
 import me.bubblespark.tidilo.service.TaggingResult
@@ -142,6 +143,7 @@ internal class BookmarkAiReviewViewModel(private val savedState: SavedStateHandl
                 onFailure = { error ->
                     when (error) {
                         is AiGenerationBlocked -> AiReviewUiState.Unavailable(error.readiness)
+                        is AiProposalPageException -> AiReviewUiState.Error(R.string.ai_review_page_unavailable)
                         else -> AiReviewUiState.Error(
                             when ((error as? AiCoreExecutionException)?.errorCode) {
                                 ErrorCode.BUSY -> R.string.ai_review_busy
@@ -377,7 +379,11 @@ fun BookmarkAiReviewScreen(
                         if (!loading) {
                             if (blocked) {
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(stringResource(R.string.detail_ai_manual_fallback))
+                                Text(
+                                    text = stringResource(R.string.detail_ai_manual_fallback),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             Spacer(modifier = Modifier.height(24.dp))
                             Button(

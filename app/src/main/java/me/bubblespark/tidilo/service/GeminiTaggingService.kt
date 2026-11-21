@@ -39,6 +39,8 @@ open class AiCoreExecutionException(
 internal class AiGenerationBlocked(val readiness: AiCoreReadiness?, cause: Throwable? = null) :
     Exception("Manual AI generation is unavailable", cause)
 
+internal class AiProposalPageException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
 internal suspend fun <T> runWithAvailableAiCore(
     readMode: () -> AiAnalysisMode,
     openModel: () -> GenerativeModel,
@@ -60,6 +62,8 @@ internal suspend fun <T> runWithAvailableAiCore(
         return try {
             infer(model)
         } catch (e: CancellationException) {
+            throw e
+        } catch (e: AiGenerationBlocked) {
             throw e
         } catch (e: Exception) {
             val mapped = GeminiTaggingService.mapInferenceException(e)
@@ -101,12 +105,13 @@ object GeminiTaggingService {
             // 1. Parse web page and extract main body content
             val parseResult = WebPageParser.parseUrl(url)
             val parsed = parseResult.getOrElse { e ->
-                throw Exception("Network / Fetch Failed: ${e.message ?: "Could not connect to URL"}", e)
+                if (e is CancellationException) throw e
+                throw AiProposalPageException("Could not fetch the bookmark page", e)
             }
 
             // Treat non-200 HTTP response codes as failure
             if (parsed.statusCode != 200) {
-                throw Exception("HTTP Error ${parsed.statusCode}: ${parsed.statusMessage.ifBlank { "Invalid status" }}")
+                throw AiProposalPageException("HTTP error ${parsed.statusCode}")
             }
 
             // 2. Determine resolved URL and title (prefer og:title then <title>)
@@ -122,7 +127,7 @@ object GeminiTaggingService {
 
             // 4. Run inference with Gemini Nano
             val aiOutput = runWithAvailableAiCore(readMode, { Generation.getClient() }) { model ->
-                runNanoInference(model, prompt)
+                runNanoInference(model, prompt, readMode)
             }
 
             // 5. Parse JSON and normalize results
@@ -261,12 +266,19 @@ object GeminiTaggingService {
     /**
      * Executes AICore Gemini Nano inference.
      */
-    private suspend fun runNanoInference(model: GenerativeModel, prompt: String): String {
+    private suspend fun runNanoInference(
+        model: GenerativeModel,
+        prompt: String,
+        readMode: () -> AiAnalysisMode
+    ): String {
         val request = generateContentRequest(TextPart(prompt)) {
             // Set max output tokens to 256, sufficient for concise summary and JSON
             maxOutputTokens = 256
         }
-        val response = AiCoreUsageRepository.getInstance(TidiloApplication.instance).track(AiUsageSource.NORMAL) {
+        val response = AiCoreUsageRepository.getInstance(TidiloApplication.instance).track(
+            AiUsageSource.NORMAL,
+            beforeSdk = { if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null) }
+        ) {
             model.generateContent(request)
         }
         return response.candidates.firstOrNull()?.text?.trim().orEmpty()

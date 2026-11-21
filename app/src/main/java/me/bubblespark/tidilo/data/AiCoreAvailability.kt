@@ -82,8 +82,9 @@ internal object AiCoreAvailability {
         }
     }
 
-    suspend fun inspect(model: GenerativeModel): AiCoreReadiness =
+    suspend fun inspect(model: GenerativeModel): AiCoreReadiness = withContext(Dispatchers.IO) {
         readStatus(10_000L, model::checkStatus)
+    }
 
     private suspend fun readStatus(timeoutMillis: Long, check: suspend () -> Int): AiCoreReadiness =
         withTimeoutOrNull(timeoutMillis) {

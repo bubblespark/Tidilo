@@ -197,8 +197,7 @@ class DetailAiAvailabilityTest {
 
     @Test fun statusAndSetupAreReadableInBothPresetsAndLanguagesAtLargeFont(): Unit = runBlocking {
         withBookmark(AiAnalysisMode.AICORE) { scenario, id ->
-            for (theme in AppTheme.entries) for (dark in listOf(false, true)) {
-                val locale = if (dark) Locale.JAPANESE else Locale.ENGLISH
+            for (theme in AppTheme.entries) for (dark in listOf(false, true)) for (locale in listOf(Locale.ENGLISH, Locale.JAPANESE)) {
                 val variant = "${theme.code}-${locale.language}-${if (dark) "dark" else "light"}"
                 lateinit var activity: MainActivity
                 lateinit var localized: android.content.Context

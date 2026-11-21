@@ -8,6 +8,9 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import com.google.mlkit.genai.common.FeatureStatus
 import me.bubblespark.tidilo.R
 import kotlinx.coroutines.CompletableDeferred
@@ -78,12 +81,13 @@ class AiAnalysisScreenTest {
     @Test fun reopeningRechecksReadinessAndBackDoesNotChangeMode(): Unit = runBlocking {
         var checks = 0
         var backs = 0
-        withScreen({ AiCoreReadiness.Status(if (++checks > 1) FeatureStatus.AVAILABLE else FeatureStatus.UNAVAILABLE) }, onBack = { backs++ }) { activity ->
+        val inspect: suspend () -> AiCoreReadiness = {
+            AiCoreReadiness.Status(if (++checks > 1) FeatureStatus.AVAILABLE else FeatureStatus.UNAVAILABLE)
+        }
+        withScreen(inspect) { activity ->
             host.await(activity) { host.text(it, "AICore is currently unavailable.") }
-            host.main { activity.setContent { MaterialTheme {
-                AiAnalysisScreen(onNavigateBack = { backs++ }, onNavigateToGenerateContentRequest = {},
-                    checkAiCoreReadiness = { AiCoreReadiness.Status(if (++checks > 1) FeatureStatus.AVAILABLE else FeatureStatus.UNAVAILABLE) })
-            } } }
+        }
+        withScreen(inspect, onBack = { backs++ }) { activity ->
             host.await(activity) { host.text(it, host.context.getString(R.string.ai_model_ready)) }
             assertNull(radio(activity, "AICore").config.getOrNull(SemanticsProperties.Disabled))
             val back = host.await(activity) { host.description(it, host.context.getString(me.bubblespark.tidilo.R.string.common_back)) }
@@ -196,6 +200,7 @@ class AiAnalysisScreenTest {
             assertEquals(androidx.compose.ui.semantics.LiveRegionMode.Polite, failed.config[SemanticsProperties.LiveRegion])
             click(activity, host.context.getString(R.string.common_retry))
             host.await(activity) { host.text(it, host.context.getString(R.string.ai_model_downloading)) }
+            host.await(activity) { it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo)?.current == 0.5f }
             host.capture("263-settings-downloading")
             finishDownload.complete(Unit)
             host.await(activity) { host.text(it, host.context.getString(R.string.ai_model_ready)) }
@@ -204,6 +209,66 @@ class AiAnalysisScreenTest {
             assertNull(radio(activity, "AICore").config.getOrNull(SemanticsProperties.Disabled))
             assertTrue(radio(activity, "Disable").config[SemanticsProperties.Selected])
             host.capture("263-settings-ready")
+        }
+    }
+
+    @Test fun recreationRetainsDownloadFailureUntilExplicitRefresh(): Unit = runBlocking {
+        var checks = 0
+        val inspect: suspend () -> AiCoreReadiness = {
+            checks++
+            AiCoreReadiness.Status(FeatureStatus.DOWNLOADABLE)
+        }
+        val download: suspend ((Float?) -> Unit) -> AiCoreDownloadResult = { AiCoreDownloadResult.FAILED }
+        var replacement: ComponentActivity? = null
+        try {
+            withScreen(inspect, requestDownload = download) { activity ->
+                click(activity, host.context.getString(R.string.ai_model_download))
+                val failed = host.context.getString(R.string.ai_model_download_failed)
+                host.await(activity) { host.text(it, failed) }
+                host.main { activity.recreate() }
+                withTimeout(8000) {
+                    while (replacement == null) {
+                        host.main {
+                            replacement = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                                .filterIsInstance<ComponentActivity>().firstOrNull { it !== activity }
+                        }
+                        if (replacement == null) delay(30)
+                    }
+                }
+                val restored = checkNotNull(replacement)
+                host.main { restored.setContent { MaterialTheme {
+                    AiAnalysisScreen({}, {}, checkAiCoreReadiness = inspect, requestDownload = download)
+                } } }
+                host.await(restored) { host.text(it, failed) }
+                assertEquals(2, checks)
+                click(restored, host.context.getString(R.string.ai_model_check_again))
+                host.await(restored) { host.text(it, host.context.getString(R.string.ai_model_download)) }
+                assertEquals(3, checks)
+            }
+        } finally {
+            host.main { replacement?.finish() }
+        }
+    }
+
+    @Test fun sdkDownloadInProgressTakesPrecedenceAfterLocalFailure(): Unit = runBlocking {
+        var checks = 0
+        withScreen(
+            checkReadiness = {
+                AiCoreReadiness.Status(if (++checks == 1) FeatureStatus.DOWNLOADABLE else FeatureStatus.DOWNLOADING)
+            },
+            requestDownload = { AiCoreDownloadResult.FAILED }
+        ) { activity ->
+            click(activity, host.context.getString(R.string.ai_model_download))
+            host.await(activity) { host.text(it, host.context.getString(R.string.ai_model_check_again)) }
+            host.await(activity) { host.text(it, host.context.getString(R.string.ai_model_downloading)) }
+            host.await(activity) {
+                it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo) == ProgressBarRangeInfo.Indeterminate
+            }
+            host.main {
+                assertFalse(host.nodes(activity).any {
+                    host.text(it, host.context.getString(R.string.ai_model_download_failed))
+                })
+            }
         }
     }
 

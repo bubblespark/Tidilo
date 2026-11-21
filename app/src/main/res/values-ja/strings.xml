@@ -47,7 +47,7 @@
     <string name="ai_model_download_failed">Gemini Nanoをダウンロードできませんでした。通信状況と空き容量を確認して、もう一度お試しください。</string>
     <string name="ai_model_check_again">再確認</string>
     <string name="ai_analysis_off_state">AI解析は無効</string>
-    <string name="ai_analysis_off_message">AI解析は無効です。モデルの準備ができたら、AI解析設定で有効にできます。</string>
+    <string name="ai_analysis_off_message">AI解析は無効です。AI解析設定でモデルの状態を確認し、設定を変更できます。</string>
     <string name="ai_analysis_open_settings">AI解析設定を開く</string>
     <string name="settings_section_aicore_parameters">AICore パラメータ</string>
     <!-- App & Navigation -->
@@ -182,10 +182,11 @@
     <string name="detail_updated_at">更新日時: %1$s</string>
     <string name="detail_action_delete">削除</string>
     <string name="detail_action_ai_summary">AIで要約</string>
-    <string name="detail_ai_manual_fallback">ブックマーク詳細では、保存済みの説明を読んだり、タグやノートを編集したりできます。</string>
+    <string name="detail_ai_manual_fallback">ブックマーク詳細では、保存済みの説明を読んだり、タグやメモを編集したりできます。</string>
     <string name="ai_review_back_to_detail">ブックマーク詳細に戻る</string>
     <string name="ai_review_interrupted">生成が中断されました。新しく生成するには再試行してください。</string>
-    <string name="ai_review_try_again">ブラウザでページを開けるか確認してから、もう一度お試しください。</string>
+    <string name="ai_review_try_again">提案の生成をもう一度お試しください。</string>
+    <string name="ai_review_page_unavailable">ブラウザでページを開けるか確認してから、もう一度お試しください。</string>
     <string name="ai_review_busy">端末のAIが使用中です。少し待ってからもう一度お試しください。</string>
     <string name="ai_review_quota">端末のAIが使用上限に達しました。時間をおいてもう一度お試しください。</string>
     <string name="ai_review_background">Tidiloを開いたまま、もう一度お試しください。</string>

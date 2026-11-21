@@ -6,7 +6,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.unit.Density
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
@@ -22,6 +26,7 @@ import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
+import me.bubblespark.tidilo.service.AiGenerationBlocked
 import me.bubblespark.tidilo.service.AiProposalPageException
 import me.bubblespark.tidilo.service.TaggingResult
 import me.bubblespark.tidilo.ui.screens.library.AiReviewUiState
@@ -36,7 +41,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AiReviewStateTest {
-    @Test fun restoredReviewShowsLocalizedRecoveryAndRetry(): Unit = runBlocking {
+    @Test fun blockedReviewRestoresWithRetryAndManualRecovery(): Unit = runBlocking {
         val host = HeaderTestHost()
         val dao = AppDatabase.getInstance(host.context).bookmarkDao()
         val id = "restored-review-${UUID.randomUUID()}"
@@ -44,25 +49,39 @@ class AiReviewStateTest {
             createdAt = 1, updatedAt = 1))
         val activity = host.launch()
         try {
+            host.main {
+                val savedState = SavedStateHandle()
+                val original = BookmarkAiReviewViewModel(savedState)
+                original.generate { Result.failure(AiGenerationBlocked(null)) }
+                assertEquals(AiReviewUiState.Unavailable(null), original.state.value)
+                val factory = viewModelFactory {
+                    initializer { BookmarkAiReviewViewModel(savedState) }
+                }
+                ViewModelProvider(activity, factory)["ai-review-$id", BookmarkAiReviewViewModel::class.java]
+            }
             for ((locale, dark) in listOf(Locale.ENGLISH to false, Locale.JAPANESE to true)) {
-                val configuration = Configuration(activity.resources.configuration).apply { setLocale(locale) }
+                val configuration = Configuration(activity.resources.configuration).apply {
+                    setLocale(locale)
+                    fontScale = if (dark) 2f else 1f
+                }
                 val localized = activity.createConfigurationContext(configuration)
+                var returnedToDetail = false
                 host.main {
-                    val factory = viewModelFactory {
-                        initializer { BookmarkAiReviewViewModel(SavedStateHandle(mapOf("attemptStarted" to true))) }
-                    }
-                    ViewModelProvider(activity, factory)["ai-review-$id", BookmarkAiReviewViewModel::class.java]
                     val library = ViewModelProvider(activity)[LibraryViewModel::class.java]
                     activity.setContent {
                         CompositionLocalProvider(
                             LocalContext provides localized, LocalConfiguration provides configuration,
-                            LocalResources provides localized.resources
+                            LocalResources provides localized.resources,
+                            LocalDensity provides Density(LocalDensity.current.density, configuration.fontScale)
                         ) {
                             TidiloTheme(darkTheme = dark, dynamicColor = false) {
                                 Surface {
-                                    BookmarkAiReviewScreen(id, library, {}, generateProposal = { _, _, _ ->
-                                        throw AssertionError("Restoring the screen must not generate automatically")
-                                    })
+                                    BookmarkAiReviewScreen(
+                                        id, library, onNavigateBack = { returnedToDetail = true },
+                                        generateProposal = { _, _, _ ->
+                                            throw AssertionError("Restoring the screen must not generate automatically")
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -71,7 +90,16 @@ class AiReviewStateTest {
                 for (resource in listOf(R.string.ai_review_restored_title, R.string.ai_review_restored_message, R.string.common_retry)) {
                     host.await(activity) { host.text(it, localized.getString(resource)) }
                 }
+                val backLabel = localized.getString(R.string.ai_review_back_to_detail)
+                val back = host.await(activity) { host.text(it, backLabel) }
+                host.await(activity) { host.text(it, localized.getString(R.string.detail_ai_manual_fallback)) }
                 host.capture("263-review-restored-${locale.language}")
+                host.main {
+                    val click = generateSequence(back) { it.parent }
+                        .firstNotNullOf { it.config.getOrNull(SemanticsActions.OnClick)?.action }
+                    assertTrue(click())
+                    assertTrue(returnedToDetail)
+                }
             }
         } finally {
             host.main { activity.finish() }

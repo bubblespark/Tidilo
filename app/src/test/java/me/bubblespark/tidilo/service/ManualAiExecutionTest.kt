@@ -83,7 +83,7 @@ class ManualAiExecutionTest {
     }
 
     @Test
-    fun disableAtSdkBoundaryReachesReviewAsTheOriginalBlockedError() = runBlocking {
+    fun blockedErrorFromInferenceIsRethrownUnwrapped() = runBlocking {
         var closed = false
         val model = fakeModel({ FeatureStatus.AVAILABLE }, { closed = true })
         val blocked = AiGenerationBlocked(null)

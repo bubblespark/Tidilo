@@ -383,7 +383,7 @@ fun BookmarkAiReviewScreen(
                             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
                         )
                         if (!loading) {
-                            if (blocked) {
+                            if (blocked || restored) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = stringResource(R.string.detail_ai_manual_fallback),
@@ -403,6 +403,11 @@ fun BookmarkAiReviewScreen(
                             ) {
                                 val label = if (blocked) R.string.ai_review_back_to_detail else R.string.common_retry
                                 Text(stringResource(label), style = modernRaisedTextStyle(LocalTextStyle.current))
+                            }
+                            if (restored) {
+                                TextButton(onClick = onNavigateBack) {
+                                    Text(stringResource(R.string.ai_review_back_to_detail))
+                                }
                             }
                         }
                     }

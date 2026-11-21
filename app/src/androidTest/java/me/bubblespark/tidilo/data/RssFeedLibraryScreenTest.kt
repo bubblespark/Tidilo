@@ -1,12 +1,16 @@
 package me.bubblespark.tidilo.data
 
+import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.lifecycle.ViewModelProvider
@@ -14,6 +18,7 @@ import java.util.UUID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import me.bubblespark.tidilo.R
@@ -85,6 +90,19 @@ class RssFeedLibraryScreenTest {
         assertTrue("Could not scroll to feed deck. $detail", scrolled == true)
     }
 
+    private fun visibleDeckForTitle(title: SemanticsNode, feed: RssFeedEntity): SemanticsNode? {
+        if (!host.text(title, feed.title)) return null
+        val ancestors = generateSequence(title) { it.parent }.toList()
+        val gridIndex = ancestors.indexOfFirst {
+            val index = it.config.getOrNull(SemanticsProperties.IndexForKey)?.invoke(feed.id)
+            index != null && index >= 0
+        }
+        if (gridIndex < 0) return null
+        return ancestors.take(gridIndex)
+            .lastOrNull { it.config.getOrNull(SemanticsActions.OnClick) != null }
+            ?.takeIf { it.boundsInRoot.width > 0f && it.boundsInRoot.height > 0f }
+    }
+
     private suspend fun assertDeckOrderAndLayout(
         activity: ComponentActivity,
         vm: LibraryViewModel,
@@ -117,11 +135,7 @@ class RssFeedLibraryScreenTest {
                     }
                     if (!hasCurrentOrder) return@main
                     bounds = feeds.mapNotNull { feed ->
-                        val title = nodes.singleOrNull { host.text(it, feed.title) }
-                        val deck = generateSequence(title) { it.parent }
-                            .filter { it.config.getOrNull(SemanticsActions.OnClick) != null }
-                            .lastOrNull()
-                            ?.takeIf { it.boundsInRoot.width > 0f && it.boundsInRoot.height > 0f }
+                        val deck = nodes.firstNotNullOfOrNull { visibleDeckForTitle(it, feed) }
                             ?: return@mapNotNull null
                         val origin = deck.layoutInfo.coordinates.positionInRoot()
                         feed.title to Rect(origin.x, origin.y, origin.x + deck.size.width, origin.y + deck.size.height)
@@ -154,7 +168,9 @@ class RssFeedLibraryScreenTest {
         val c = feed("Gamma", 1)
         val leading = feed("0 Lead", 0)
         val decks = listOf(a, b, c)
-        val allFeeds = decks + leading
+        // Leave enough rows below Beta for its row to scroll past Alpha.
+        val trailing = List(12) { feed("Tail $it", 10 + it) }
+        val allFeeds = decks + leading + trailing
         val now = System.currentTimeMillis()
         val articles = allFeeds.map { feed ->
             val title = feed.title.substringAfterLast(' ')
@@ -198,9 +214,15 @@ class RssFeedLibraryScreenTest {
             val withoutLeading = assertDeckOrderAndLayout(screen, model, decks, leading, hasLeadingFeed = false)
             assertEquals("Removing the preceding deck must exercise the other starting column",
                 withLeading.first() - 1, withoutLeading.first())
+            val alphaIndex = if (withoutLeading.first() % 2 == 0) {
+                db.bookmarkDao().insertAll(listOf(articles.first { it.rssFeedId == leading.id }))
+                withLeading.first()
+            } else {
+                withoutLeading.first()
+            }
             screenshot("issue311-feed-grid.png")
             assertNull(find { it.text?.toString() == alphaArticle.title })
-            scrollToDeck(screen, a)
+            scrollToDeck(screen, a, expectedIndex = alphaIndex)
             click { it.text?.toString()?.contains(a.title) == true }
             text(alphaArticle.title)
             text(screen.resources.getQuantityString(R.plurals.rss_subtitle_bookmarks, 1, 1))
@@ -213,25 +235,46 @@ class RssFeedLibraryScreenTest {
             instrumentation.runOnMainSync { screen.onBackPressedDispatcher.onBackPressed() }
             text(alphaArticle.title)
             click { it.contentDescription?.toString() == screen.getString(R.string.rss_back_to_feeds) }
-            text(a.title)
-            scrollToDeck(screen, b)
-            click { it.text?.toString()?.contains(b.title) == true }
+            host.await(screen) { model.selectedRssFeedFilter.value == null && visibleDeckForTitle(it, a) != null }
+            scrollToDeck(screen, b, expectedIndex = alphaIndex + 1)
+            host.await(screen) { model.selectedRssFeedFilter.value == null && visibleDeckForTitle(it, b) != null }
+            withContext(AndroidUiDispatcher.Main) {
+                val nodes = host.nodes(screen, includeOtherWindows = false)
+                val alpha = nodes.firstNotNullOfOrNull { visibleDeckForTitle(it, a) }
+                if (alpha != null) {
+                    val overview = nodes.first {
+                        it.config.getOrNull(SemanticsProperties.IndexForKey)?.invoke(b.id) == alphaIndex + 1
+                    }
+                    overview.config[SemanticsActions.ScrollByOffset](Offset(0f, alpha.boundsInRoot.bottom + 1f))
+                }
+                val scrolled = host.nodes(screen, includeOtherWindows = false)
+                assertNull("Alpha should be out of view before opening Beta",
+                    scrolled.firstNotNullOfOrNull { visibleDeckForTitle(it, a) })
+                val beta = requireNotNull(scrolled.firstNotNullOfOrNull { visibleDeckForTitle(it, b) })
+                assertTrue(beta.config[SemanticsActions.OnClick].action?.invoke() == true)
+            }
             text(betaArticle.title)
             assertNull(find { it.text?.toString() == alphaArticle.title })
             instrumentation.runOnMainSync { screen.onBackPressedDispatcher.onBackPressed() }
-            text(a.title)
+            host.await(screen) { model.selectedRssFeedFilter.value == null && visibleDeckForTitle(it, b) != null }
         } finally {
-            instrumentation.runOnMainSync {
-                vm?.setFilterMode(oldFilter)
-                vm?.setViewMode(oldView)
-                activity?.finish()
+            try {
+                host.main {
+                    runCatching { vm?.setFilterMode(oldFilter) }
+                        .onFailure { Log.w("RssFeedLibraryScreenTest", "Could not restore the library filter", it) }
+                    runCatching { vm?.setViewMode(oldView) }
+                        .onFailure { Log.w("RssFeedLibraryScreenTest", "Could not restore the library view mode", it) }
+                    activity?.finish()
+                }
+            } finally {
+                DomainIconManager.htmlDiscoverer = oldDiscoverer
+                DomainIconManager.httpDownloader = oldDownloader
+                for (feed in allFeeds) db.bookmarkDao().deleteById(feed.id)
+                val placeholders = allFeeds.joinToString { "?" }
+                db.openHelper.writableDatabase.execSQL(
+                    "DELETE FROM rss_feeds WHERE id IN ($placeholders)", allFeeds.map { it.id }.toTypedArray()
+                )
             }
-            DomainIconManager.htmlDiscoverer = oldDiscoverer
-            DomainIconManager.httpDownloader = oldDownloader
-            for (feed in allFeeds) db.bookmarkDao().deleteById(feed.id)
-            db.openHelper.writableDatabase.execSQL(
-                "DELETE FROM rss_feeds WHERE id IN (?, ?, ?, ?)", allFeeds.map { it.id }.toTypedArray()
-            )
         }
     }
 }

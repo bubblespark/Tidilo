@@ -10,6 +10,7 @@ navigationCompose = "2.10.2"
 room = "2.8.5"
 ksp = "2.3.12"
 paging = "3.5.3"
+kotlinxCoroutines = "1.9.0"
 
 [libraries]
 haze-blur = { module = "dev.chrisbanes.haze:haze-blur", version.ref = "haze" }
@@ -34,6 +35,7 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 androidx-paging-runtime = { group = "androidx.paging", name = "paging-runtime", version.ref = "paging" }
 androidx-paging-compose = { group = "androidx.paging", name = "paging-compose", version.ref = "paging" }
 androidx-room-paging = { group = "androidx.room", name = "room-paging", version.ref = "room" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

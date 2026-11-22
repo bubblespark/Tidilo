@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.db.TagKind
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -31,19 +32,15 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
-import android.content.Context
-import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.data.BookmarkSource
-import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.BookmarkSearchResult
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.DomainIconManager
-import me.bubblespark.tidilo.data.DomainPolicyStore
 import me.bubblespark.tidilo.data.Subcategory
-import org.json.JSONArray
 import java.text.Collator
 import java.util.Locale
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -90,15 +87,31 @@ internal class SearchFocusRequestTracker {
     }
 }
 
+/** One-shot UI events; [LibraryViewModel.events] has a single collector in `TidiloNavGraph`. */
+internal sealed interface LibraryEvent {
+    data object SaveFailed : LibraryEvent
+}
+
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, FlowPreview::class)
-class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle()) : ViewModel() {
+class LibraryViewModel internal constructor(
+    private val store: LibraryStore,
+    private val savedState: SavedStateHandle,
+    private val privateVisible: StateFlow<Boolean>,
+    coroutineScope: CoroutineScope? = null,
+    private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default
+) : ViewModel() {
 
-    private val prefs by lazy {
-        TidiloApplication.instance.getSharedPreferences("tidilo_library_prefs", Context.MODE_PRIVATE)
-    }
+    /** Reflection-based factories (`viewModel()`, `ViewModelProvider`) use these constructors. */
+    constructor() : this(SavedStateHandle())
+    constructor(savedState: SavedStateHandle) : this(
+        RepositoryLibraryStore.create(), savedState, AppConfig.isPrivateContentVisible
+    )
 
-    private val bookmarkRepository = BookmarkRepository.getInstance()
-    private val domainPolicyStore = DomainPolicyStore.getInstance(TidiloApplication.instance)
+    private val scope = coroutineScope ?: viewModelScope
+
+    private val _events = MutableSharedFlow<LibraryEvent>(extraBufferCapacity = 1)
+    internal val events: SharedFlow<LibraryEvent> = _events.asSharedFlow()
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
@@ -120,65 +133,40 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
     val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
 
-    private fun loadFilterMode(): LibraryFilterMode {
-        val saved = prefs.getString("library_filter_mode", null)
-        return LibraryFilterMode.entries.firstOrNull { it.name == saved } ?: LibraryFilterMode.NEWEST_FIRST
-    }
-
-    private fun saveFilterMode(mode: LibraryFilterMode) {
-        viewModelScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("library_filter_mode", mode.name).apply()
-        }
-    }
-
-    private fun loadViewMode(): LibraryViewMode {
-        val saved = prefs.getString("library_view_mode", null)
-        return if (saved == LibraryViewMode.GRID.name) {
-            LibraryViewMode.GRID
-        } else {
-            LibraryViewMode.LIST
-        }
-    }
-
-    private fun saveViewMode(mode: LibraryViewMode) {
-        prefs.edit().putString("library_view_mode", mode.name).apply()
-    }
-
-    private val _viewMode = MutableStateFlow(loadViewMode())
+    private val _viewMode = MutableStateFlow(store.loadViewMode())
     val viewMode: StateFlow<LibraryViewMode> = _viewMode.asStateFlow()
 
     fun setViewMode(mode: LibraryViewMode) {
         if (_viewMode.value != mode) {
             _viewMode.value = mode
-            saveViewMode(mode)
+            store.saveViewMode(mode)
         }
     }
 
-    private val _includeRssInNewestFirst = MutableStateFlow(prefs.getBoolean(INCLUDE_RSS_KEY, false))
+    private val _includeRssInNewestFirst = MutableStateFlow(store.loadIncludeRssInNewestFirst())
     /** Newest first source scope; shared by List and Grid and kept across filter-mode changes. */
     val includeRssInNewestFirst: StateFlow<Boolean> = _includeRssInNewestFirst.asStateFlow()
 
     fun setIncludeRssInNewestFirst(include: Boolean) {
         if (_includeRssInNewestFirst.value != include) {
             _includeRssInNewestFirst.value = include
-            prefs.edit().putBoolean(INCLUDE_RSS_KEY, include).apply()
+            store.saveIncludeRssInNewestFirst(include)
         }
     }
 
-    private val _filterMode = MutableStateFlow(loadFilterMode())
+    private val _filterMode = MutableStateFlow(store.loadFilterMode())
     val filterMode: StateFlow<LibraryFilterMode> = _filterMode.asStateFlow()
 
-    private val collections = me.bubblespark.tidilo.data.CollectionRepository(me.bubblespark.tidilo.data.db.AppDatabase.getInstance(TidiloApplication.instance))
     val selectedCollectionId = savedState.getStateFlow<String?>("selectedCollectionId", null)
     fun selectCollectionFilter(id: String?) { savedState["selectedCollectionId"] = id }
     private val collectionReload = MutableStateFlow(0)
     fun retryCollections() { collectionReload.value++ }
-    val collectionState = combine(AppConfig.isPrivateContentVisible, collectionReload) { visible, _ -> visible }
-        .flatMapLatest { visible -> collections.observeCollections(visible)
+    val collectionState = combine(privateVisible, collectionReload) { visible, _ -> visible }
+        .flatMapLatest { visible -> store.observeCollections(visible)
             .map { CollectionLibraryState(rows = it, loading = false) }
             .onStart { emit(CollectionLibraryState()) }
             .catch { failure -> emit(CollectionLibraryState(loading = false, error = failure)) }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CollectionLibraryState())
+        }.stateIn(scope, SharingStarted.WhileSubscribed(5000), CollectionLibraryState())
 
     private val _selectedDomainFilter = MutableStateFlow<String?>(null)
     val selectedDomainFilter: StateFlow<String?> = _selectedDomainFilter.asStateFlow()
@@ -193,7 +181,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     fun setFilterMode(mode: LibraryFilterMode) {
         if (_filterMode.value != mode) {
             _filterMode.value = mode
-            saveFilterMode(mode)
+            scope.launch { store.saveFilterMode(mode) }
             _selectedDomainFilter.value = null
             _selectedRssFeedFilter.value = null
             selectCollectionFilter(null)
@@ -217,8 +205,8 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
 
     private val _rssFeedGroupsLoading = MutableStateFlow(true)
     val rssFeedGroupsLoading = _rssFeedGroupsLoading.asStateFlow()
-    val rssFeedGroups = AppConfig.isPrivateContentVisible.flatMapLatest { visible ->
-        bookmarkRepository.observeRssFeedGroups(visible).onStart { _rssFeedGroupsLoading.value = true }
+    val rssFeedGroups = privateVisible.flatMapLatest { visible ->
+        store.observeRssFeedGroups(visible).onStart { _rssFeedGroupsLoading.value = true }
     }.map { groups ->
         val collator = Collator.getInstance(Locale.JAPANESE)
         val sorted = groups.sortedWith { a, b ->
@@ -232,21 +220,15 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         }
         _rssFeedGroupsLoading.value = false
         sorted
-    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(computeDispatcher).stateIn(scope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val domainGroups: StateFlow<List<DomainGroupItem>> =
-        combine(AppConfig.isPrivateContentVisible.flatMapLatest { bookmarkRepository.observeDomainCounts(it, BookmarkSource.MANUAL).onStart { _domainGroupsLoading.value = true } }, domainPolicyStore.policies) { counts, _ ->
+        privateVisible.flatMapLatest { visible ->
+            store.observeDomainGroups(visible).onStart { _domainGroupsLoading.value = true }
+        }.map { groups ->
             _domainGroupsLoading.value = false
-            val countMap = counts.associate { it.domain to it.count }
             val collator = Collator.getInstance(Locale.JAPANESE)
-            countMap.map { (domain, count) ->
-                val displayName = domainPolicyStore.getDisplayName(domain)
-                DomainGroupItem(
-                    domain = domain,
-                    displayName = displayName,
-                    count = count
-                )
-            }.sortedWith { a, b ->
+            groups.sortedWith { a, b ->
                 val isAsciiA = a.displayName.isNotEmpty() && a.displayName[0].code < 128
                 val isAsciiB = b.displayName.isNotEmpty() && b.displayName[0].code < 128
                 if (isAsciiA && !isAsciiB) {
@@ -258,19 +240,22 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
                 }
             }
         }
-        .flowOn(Dispatchers.Default)
+        .flowOn(computeDispatcher)
         .stateIn(
-            scope = viewModelScope,
+            scope = scope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
 
+    /** A cancellable child of [scope] for one Pager cache. */
+    private fun childScope() = CoroutineScope(scope.coroutineContext + Job(scope.coroutineContext[Job]))
+
     private var currentSearchScope: CoroutineScope? = null
     private fun newSearchGenerationScope(): CoroutineScope {
         currentSearchScope?.cancel()
-        val scope = CoroutineScope(viewModelScope.coroutineContext + Job(viewModelScope.coroutineContext[Job]))
-        currentSearchScope = scope
-        return scope
+        val generationScope = childScope()
+        currentSearchScope = generationScope
+        return generationScope
     }
 
     private var currentLibrarySession: LibraryPagingSession? = null
@@ -287,16 +272,16 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         val key = buildLibraryFilterKey(mode, domain, feedId, visible, collectionId, includeRss)
         currentLibrarySession?.takeIf { it.key == key }?.let { return it }
         currentLibrarySession?.takeIf { it.users == 0 }?.cacheScope?.cancel()
-        val scope = CoroutineScope(viewModelScope.coroutineContext + Job(viewModelScope.coroutineContext[Job]))
-        val pages = bookmarkRepository.isInitialized.flatMapLatest { ready ->
-            if (ready && mode == LibraryFilterMode.COLLECTION && collectionId != null) collections.pagedBookmarks(collectionId, visible)
-            else if (ready) bookmarkRepository.pagedBookmarks(
-                "", domain, visible,
+        val cacheScope = childScope()
+        val pages = store.isInitialized.flatMapLatest { ready ->
+            if (ready && mode == LibraryFilterMode.COLLECTION && collectionId != null) store.pagedCollectionBookmarks(collectionId, visible)
+            else if (ready) store.pagedBookmarks(
+                domain, visible,
                 libraryBookmarkSource(mode, includeRss),
                 rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS }
             ) else flowOf(loadingPage())
-        }.cachedIn(scope)
-        return LibraryPagingSession(key, pages, scope).also { currentLibrarySession = it }
+        }.cachedIn(cacheScope)
+        return LibraryPagingSession(key, pages, cacheScope).also { currentLibrarySession = it }
     }
 
     internal fun releaseLibraryPages(session: LibraryPagingSession) {
@@ -305,7 +290,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         val selectedKey = buildLibraryFilterKey(mode,
             _selectedDomainFilter.value.takeIf { mode == LibraryFilterMode.DOMAIN },
             _selectedRssFeedFilter.value?.id.takeIf { mode == LibraryFilterMode.RSS },
-            AppConfig.isPrivateContentVisible.value,
+            privateVisible.value,
             selectedCollectionId.value.takeIf { mode == LibraryFilterMode.COLLECTION },
             mode == LibraryFilterMode.NEWEST_FIRST && _includeRssInNewestFirst.value)
         if (session.users == 0 && session.key != selectedKey) {
@@ -328,12 +313,11 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     ): PagingGeneration<BookmarkSearchResult> {
         val key = buildSearchQueryKey(query, visible)
         val flow = if (ready) {
-            bookmarkRepository.pagedSearchResults(query, visible)
+            store.pagedSearchResults(query, visible)
         } else {
             flowOf(loadingPage())
         }
-        val scope = newSearchGenerationScope()
-        return PagingGeneration(key, flow.cachedIn(scope))
+        return PagingGeneration(key, flow.cachedIn(newSearchGenerationScope()))
     }
 
     private var activeSearchGeneration: PagingGeneration<BookmarkSearchResult>? = null
@@ -344,8 +328,8 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
      */
     internal val searchGeneration: StateFlow<PagingGeneration<BookmarkSearchResult>> = combine(
         debouncedSearchQuery,
-        AppConfig.isPrivateContentVisible,
-        bookmarkRepository.isInitialized
+        privateVisible,
+        store.isInitialized
     ) { query, visible, ready ->
         Triple(query, visible, ready)
     }.map { (query, visible, ready) ->
@@ -360,12 +344,12 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
             }
         }
     }.stateIn(
-        scope = viewModelScope,
+        scope = scope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = run {
             val query = _searchQuery.value
-            val visible = AppConfig.isPrivateContentVisible.value
-            val ready = bookmarkRepository.isInitialized.value
+            val visible = privateVisible.value
+            val ready = store.isInitialized.value
             activeSearchReady = ready
             buildSearchGeneration(query, visible, ready).also {
                 activeSearchGeneration = it
@@ -374,50 +358,48 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     )
 
     internal fun libraryCount(mode: LibraryFilterMode, domain: String?, feedId: String?, visible: Boolean, collectionId: String? = null, includeRss: Boolean = false): Flow<Int?> =
-        if (mode == LibraryFilterMode.COLLECTION && collectionId != null) collections.observeCount(collectionId, visible)
-        else bookmarkRepository.observeCount("", domain, visible,
+        if (mode == LibraryFilterMode.COLLECTION && collectionId != null) store.observeCollectionCount(collectionId, visible)
+        else store.observeCount("", domain, visible,
             libraryBookmarkSource(mode, includeRss),
             rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS })
 
-    val searchCount = combine(debouncedSearchQuery, AppConfig.isPrivateContentVisible) { query, visible -> query to visible }
-        .flatMapLatest { (query, visible) -> bookmarkRepository.observeCount(query, null, visible) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val searchCount = combine(debouncedSearchQuery, privateVisible) { query, visible -> query to visible }
+        .flatMapLatest { (query, visible) -> store.observeCount(query, null, visible) }
+        .stateIn(scope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val isInitialized = bookmarkRepository.isInitialized
-    val initializationFailure = bookmarkRepository.initializationFailure
-    fun retryInitialization() = bookmarkRepository.retryInitialization()
+    val isInitialized = store.isInitialized
+    val initializationFailure = store.initializationFailure
+    fun retryInitialization() = store.retryInitialization()
 
     private fun recordEngagement(showFailure: Boolean = false, action: suspend () -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
+        scope.launch {
             try {
                 action()
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (error: Exception) {
-                android.util.Log.e("LibraryViewModel", "Failed to record bookmark interaction", error)
-                if (showFailure) kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(TidiloApplication.instance, me.bubblespark.tidilo.R.string.common_save_failed, android.widget.Toast.LENGTH_SHORT).show()
-                }
+            } catch (_: Exception) {
+                // The store logs the failure; only a like toggle tells the user.
+                if (showFailure) _events.tryEmit(LibraryEvent.SaveFailed)
             }
         }
     }
 
-    fun toggleLike(id: String) = recordEngagement(showFailure = true) { bookmarkRepository.toggleLike(id, System.currentTimeMillis()) }
-    fun recordBrowserOpen(id: String) = recordEngagement { bookmarkRepository.recordBrowserOpen(id, System.currentTimeMillis()) }
-    fun recordDetailView(id: String) = recordEngagement { bookmarkRepository.recordDetailView(id, System.currentTimeMillis()) }
-    fun recordSummaryPeek(id: String) = recordEngagement { bookmarkRepository.recordSummaryPeek(id, System.currentTimeMillis()) }
+    fun toggleLike(id: String) = recordEngagement(showFailure = true) { store.toggleLike(id) }
+    fun recordBrowserOpen(id: String) = recordEngagement { store.recordBrowserOpen(id) }
+    fun recordDetailView(id: String) = recordEngagement { store.recordDetailView(id) }
+    fun recordSummaryPeek(id: String) = recordEngagement { store.recordSummaryPeek(id) }
 
-    fun bookmarkDetails(id: String): Flow<BookmarkDetailState> = bookmarkRepository.observeBookmark(id)
+    fun bookmarkDetails(id: String): Flow<BookmarkDetailState> = store.observeBookmark(id)
         .map { BookmarkDetailState(it, false) }
         .catch { emit(BookmarkDetailState(loading = false, error = it)) }
         .onStart { emit(BookmarkDetailState()) }
 
     internal fun tagCounts(selected: Set<String>, kind: TagKind): Flow<Map<String, Int>> =
-        AppConfig.isPrivateContentVisible.flatMapLatest { visible ->
-            bookmarkRepository.observeTagCounts(selected, visible, kind)
+        privateVisible.flatMapLatest { visible ->
+            store.observeTagCounts(selected, visible, kind)
         }.map { rows -> rows.associate { it.value to it.count } }
 
-    fun entityLibrary(): Flow<EntityLibraryState> = bookmarkRepository.observeEntityLibrary()
+    fun entityLibrary(): Flow<EntityLibraryState> = store.observeEntityLibrary()
         .map { EntityLibraryState(it, loading = false) }
         .catch { emit(EntityLibraryState(loading = false, error = it)) }
         .onStart { emit(EntityLibraryState()) }
@@ -428,7 +410,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
      */
     internal val noteWriteLock = Mutex()
 
-    suspend fun saveNote(id: String, note: String) = bookmarkRepository.saveNote(id, note)
+    suspend fun saveNote(id: String, note: String) = store.saveNote(id, note)
 
     private val mutableTagSaves = MutableStateFlow<Map<String, TagSaveStatus>>(emptyMap())
 
@@ -439,9 +421,9 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     fun commitBookmarkTags(id: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String>) {
         if (mutableTagSaves.value[id] == TagSaveStatus.Saving) return
         mutableTagSaves.update { it + (id to TagSaveStatus.Saving) }
-        viewModelScope.launch {
+        scope.launch {
             val result = try {
-                bookmarkRepository.updateBookmarkTags(id, tag, isPrivate, replacements)
+                store.updateBookmarkTags(id, tag, isPrivate, replacements)
                 TagSaveStatus.Saved
             } catch (e: CancellationException) {
                 throw e
@@ -457,40 +439,20 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     }
 
     suspend fun applyAiProposal(id: String, description: String? = null, tag: Tag? = null) =
-        bookmarkRepository.applyAiProposal(id, description, tag)
+        store.applyAiProposal(id, description, tag)
 
 
-    suspend fun deleteBookmark(id: String): Boolean = bookmarkRepository.moveToTrash(id)
+    suspend fun deleteBookmark(id: String): Boolean = store.moveToTrash(id)
 
-    fun bookmarkHasCollections(id: String): Flow<Boolean> = collections.observeMembershipIds(id)
+    fun bookmarkHasCollections(id: String): Flow<Boolean> = store.observeMembershipIds(id)
         .map { it.isNotEmpty() }.catch { emit(false) }
 
     init {
-        // Load search history on background IO
-        viewModelScope.launch(Dispatchers.IO) {
-            val history = loadSearchHistory()
-            _searchHistory.value = history
-        }
-    }
-
-    private fun loadSearchHistory(): List<String> {
-        val json = prefs.getString("search_history", null) ?: return emptyList()
-        return runCatching {
-            val array = JSONArray(json)
-            val list = mutableListOf<String>()
-            for (i in 0 until array.length()) {
-                list.add(array.getString(i))
-            }
-            list.take(10)
-        }.getOrDefault(emptyList())
+        scope.launch { _searchHistory.value = store.loadSearchHistory() }
     }
 
     private fun saveSearchHistory(history: List<String>) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val array = JSONArray()
-            history.take(10).forEach { array.put(it) }
-            prefs.edit().putString("search_history", array.toString()).apply()
-        }
+        scope.launch { store.saveSearchHistory(history) }
     }
 
     /**
@@ -512,9 +474,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
 
     fun clearSearchHistory() {
         _searchHistory.value = emptyList()
-        viewModelScope.launch(Dispatchers.IO) {
-            prefs.edit().remove("search_history").apply()
-        }
+        scope.launch { store.clearSearchHistory() }
     }
 
 
@@ -574,7 +534,6 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     }
 
     companion object {
-        private const val INCLUDE_RSS_KEY = "library_newest_include_rss"
 
         fun filterBookmarks(items: List<BookmarkItem>, rawQuery: String): List<BookmarkItem> {
             if (rawQuery.isBlank()) return items

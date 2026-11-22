@@ -153,7 +153,7 @@ class BookmarkDetailEditStateTest {
     }
 
     @Test
-    fun prepareTagCommit_clearsFailureAndBuildsImmutableTag() {
+    fun beginTagCommit_clearsFailureAndBuildsImmutableTag() {
         val bookmark = createBookmark()
         val edit = BookmarkDetailEditState(bookmark.note)
         edit.openTagEditor(bookmark.tag, bookmark.isPrivate)
@@ -165,7 +165,7 @@ class BookmarkDetailEditStateTest {
         edit.onTagSaveFailed()
         assertTrue(edit.tagSaveFailed)
 
-        val commit = edit.prepareTagCommit()
+        val commit = edit.beginTagCommit()
 
         assertFalse(edit.tagSaveFailed)
         assertEquals(Tag("Tool", "Business", listOf("A.I.")), commit.tag)
@@ -394,6 +394,13 @@ class BookmarkDetailEditStateTest {
         // Remove by skeleton key removes matching entity
         edit.removePickerEntity("open_ai")
         assertEquals(listOf("#C"), edit.draftEntities)
+
+        // Fill up to EntityTagPolicy.MAX_ENTITIES (10) and verify toggling an 11th distinct entity is ignored
+        (2..10).forEach { edit.togglePickerEntity("Entity$it") }
+        val fullTen = listOf("#C") + (2..10).map { "Entity$it" }
+        assertEquals(fullTen, edit.draftEntities)
+        edit.togglePickerEntity("Eleventh")
+        assertEquals(fullTen, edit.draftEntities)
 
         edit.dismissEntityPicker()
         assertFalse(edit.showEntityBottomSheet)

@@ -13,11 +13,11 @@ import me.bubblespark.tidilo.data.entitySkeletonKey
 internal data class NoteWrite(val text: String, val edits: Map<Unit, Long>)
 
 /** Entities and replacements contain display spelling, never raw input. */
-internal data class EntityTagDraft(val entities: List<String>, val replacements: Map<String, String> = emptyMap())
+private data class EntityTagDraft(val entities: List<String>, val replacements: Map<String, String> = emptyMap())
 internal data class EntityTagConflict(val entered: String, val existing: String, val skeletonKey: String)
 internal data class TagCommit(val tag: Tag, val isPrivate: Boolean, val replacements: Map<String, String>)
 
-internal fun entityTagConflict(input: String, draft: EntityTagDraft, library: Map<String, String>): EntityTagConflict? {
+private fun entityTagConflict(input: String, draft: EntityTagDraft, library: Map<String, String>): EntityTagConflict? {
     val entered = EntityTagPolicy.clean(input) ?: return null
     val key = entitySkeletonKey(entered)
     val existing = draft.replacements[key] ?: library[key]
@@ -25,7 +25,7 @@ internal fun entityTagConflict(input: String, draft: EntityTagDraft, library: Ma
     return if (entered == existing) null else EntityTagConflict(entered, existing, key)
 }
 
-internal fun applyEntityTagChoice(
+private fun applyEntityTagChoice(
     draft: EntityTagDraft,
     input: String,
     existing: String?,
@@ -48,7 +48,7 @@ private fun Char.isAsciiAlphanumeric(): Boolean = code < 128 && isLetterOrDigit(
  * Inserts a single half-width space only when both the last character of [currentInput]
  * and the first character of [token] are ASCII alphanumeric characters.
  */
-internal fun appendEntitySuggestion(currentInput: String, token: String): String {
+private fun appendEntitySuggestion(currentInput: String, token: String): String {
     val cleanToken = token.trim()
     if (cleanToken.isEmpty()) return currentInput
     if (currentInput.isBlank()) return cleanToken
@@ -161,7 +161,7 @@ internal class BookmarkDetailEditState(initialNote: String, noteEdited: Boolean 
     }
 
     /** Clears any prior save error and snapshots the immutable [TagCommit] to persist. */
-    fun prepareTagCommit(): TagCommit {
+    fun beginTagCommit(): TagCommit {
         tagSaveFailed = false
         return TagCommit(
             tag = Tag.fromDisplayValues(draftCategory, draftSubcategory, draftEntities),
@@ -175,7 +175,7 @@ internal class BookmarkDetailEditState(initialNote: String, noteEdited: Boolean 
     }
 
     /** Cancels the tag-dialog draft unless a commit is currently in flight. */
-    fun dismissTagEditor(isSaving: Boolean = false) {
+    fun dismissTagEditor(isSaving: Boolean) {
         if (!isSaving) closeTagEditor()
     }
 

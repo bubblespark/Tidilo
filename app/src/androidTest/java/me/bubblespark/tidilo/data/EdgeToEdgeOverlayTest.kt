@@ -30,7 +30,7 @@ class EdgeToEdgeOverlayTest {
     }
     @Test fun importDialogInputAndActionsStayAboveIme() = verifyInput(R.string.import_dialog_confirm) { ImportUrlDialog({}, {}) }
     @Test fun entityDialogInputAndActionsStayAboveIme() = verifyInput(R.string.common_ok) {
-        AddEntityDialog({}, {}, "Inset fixture", {}, EntityLibraryState(loading = false), {})
+        AddEntityDialog({}, {}, "Inset fixture", {}, EntityLibraryState(loading = false), {}, onSuggestionClick = {})
     }
     @Test fun membershipAndPickerKeepNativeNavigationClearance(): Unit = runBlocking {
         val host = HeaderTestHost()

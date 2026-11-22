@@ -560,7 +560,7 @@ internal fun BookmarkDetailScreen(
 
     fun confirmTagEditor() {
         if (isTagSaving) return
-        val commit = edit.prepareTagCommit()
+        val commit = edit.beginTagCommit()
         viewModel.commitBookmarkTags(bookmark.id, commit.tag, commit.isPrivate, commit.replacements)
     }
 

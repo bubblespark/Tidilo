@@ -537,9 +537,7 @@ fun AddEntityDialog(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     candidates: List<String> = emptyList(),
-    onSuggestionClick: (String) -> Unit = { candidate ->
-        onTextChange(appendEntitySuggestion(text, candidate))
-    }
+    onSuggestionClick: (String) -> Unit
 ) {
     TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,

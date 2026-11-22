@@ -16,8 +16,11 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.ui.screens.library.AddEntityDialog
+import me.bubblespark.tidilo.ui.screens.library.BookmarkDetailEditState
 import me.bubblespark.tidilo.ui.screens.library.EntityLibraryState
+import me.bubblespark.tidilo.ui.screens.library.EntityTagConflict
 import me.bubblespark.tidilo.ui.screens.library.EntityTagConflictDialog
+import me.bubblespark.tidilo.ui.screens.library.Tag
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.*
 import org.junit.Test
@@ -65,7 +68,7 @@ class EntityTagConflictLayoutTest {
             host.main { activity.setContent { TidiloTheme(dynamicColor = false) {
                 AddEntityDialog({}, { confirmed = it }, "##C", {}, state.value, {
                     retries++; state.value = EntityLibraryState()
-                })
+                }, onSuggestionClick = {})
             } } }
             assertFalse(button("OK").isEnabled)
             host.main { state.value = EntityLibraryState(loading = false, error = IllegalStateException("Fixture")) }
@@ -132,18 +135,19 @@ class EntityTagConflictLayoutTest {
     @Test fun suggestionChipsAppendToInputAndClearResetsInput(): Unit = runBlocking {
         val activity = host.launch()
         val dialog = AddEntityDialogTestControls(host)
-        val textState = mutableStateOf("")
+        val edit = BookmarkDetailEditState("Note").apply { openAddEntityDialog() }
         var confirmed: String? = null
         try {
             host.main { activity.setContent { TidiloTheme(dynamicColor = false) {
                 AddEntityDialog(
-                    onDismiss = {},
+                    onDismiss = edit::dismissAddEntityDialog,
                     onConfirm = { confirmed = it },
-                    text = textState.value,
-                    onTextChange = { textState.value = it },
+                    text = edit.entityInput,
+                    onTextChange = edit::updateEntityInput,
                     libraryState = EntityLibraryState(loading = false),
                     onRetry = {},
-                    candidates = listOf("iPhone", "16", "発売")
+                    candidates = listOf("iPhone", "16", "発売"),
+                    onSuggestionClick = edit::appendEntitySuggestionToInput
                 )
             } } }
             dialog.clickLabel("iPhone")
@@ -157,5 +161,40 @@ class EntityTagConflictLayoutTest {
             dialog.confirm()
             host.main { assertEquals("iPhone 16", confirmed) }
         } finally { host.main { activity.finish() } }
+    }
+
+    @Test fun saver_roundTripsAllDraftConflictAndNoteStatesThroughBundle() {
+        val edit = BookmarkDetailEditState("Initial")
+        edit.onNoteTyped("Edited note")
+        edit.openTagEditor(Tag("Article", "Tech", listOf("AI", "OpenAI")), isPrivate = true)
+        edit.submitEntityInput(mapOf("ai" to "AI"), "A.I.")
+        edit.resolveEntityConflict(replaceAcrossLibrary = true)
+        edit.openAddEntityDialog()
+        edit.updateEntityInput("open-ai")
+        edit.submitEntityInput(mapOf("openai" to "OpenAI"))
+        edit.openEntityPicker()
+        edit.onTagSaveFailed()
+
+        val scope = androidx.compose.runtime.saveable.SaverScope { true }
+        val savedBundle = with(BookmarkDetailEditState.Saver) { scope.save(edit) }
+        assertNotNull(savedBundle)
+        val restored = BookmarkDetailEditState.Saver.restore(requireNotNull(savedBundle))
+        assertNotNull(restored)
+        restored!!
+
+        assertEquals("Edited note", restored.noteText)
+        assertTrue(restored.isNoteEdited)
+        assertEquals("Edited note", restored.pendingNoteWrite()?.text)
+        assertTrue(restored.showTagEditDialog)
+        assertFalse(restored.showAddEntityDialog)
+        assertTrue(restored.showEntityBottomSheet)
+        assertEquals("Article", restored.draftCategory)
+        assertEquals("Tech", restored.draftSubcategory)
+        assertEquals(listOf("A.I.", "OpenAI"), restored.draftEntities)
+        assertTrue(restored.draftIsPrivate)
+        assertEquals(mapOf("ai" to "A.I."), restored.draftReplacements)
+        assertTrue(restored.tagSaveFailed)
+        assertEquals("open-ai", restored.entityInput)
+        assertEquals(EntityTagConflict("open-ai", "OpenAI", "openai"), restored.pendingConflict)
     }
 }

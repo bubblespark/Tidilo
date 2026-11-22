@@ -41,12 +41,15 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiAnalysisMode
+import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.service.AiCoreExecutionException
 import me.bubblespark.tidilo.service.AiGenerationBlocked
 import me.bubblespark.tidilo.service.AiProposalPageException
 import me.bubblespark.tidilo.service.TaggingResult
+import me.bubblespark.tidilo.ui.screens.library.AI_REVIEW_STATUS_ERROR_TAG
+import me.bubblespark.tidilo.ui.screens.library.AI_REVIEW_STATUS_INFO_TAG
 import me.bubblespark.tidilo.ui.screens.library.AiReviewUiState
 import me.bubblespark.tidilo.ui.screens.library.BookmarkAiReviewScreen
 import me.bubblespark.tidilo.ui.screens.library.BookmarkAiReviewViewModel
@@ -134,12 +137,20 @@ class ManualAiAvailabilityStateTest {
 
     private fun assertLocalizedReviewRetryRendering(blocked: Boolean): Unit = runBlocking {
         val host = HeaderTestHost()
-        for ((locale, dark) in listOf(Locale.ENGLISH to false, Locale.JAPANESE to true)) {
-            assertReviewRetryRendering(host, locale, dark, blocked)
+        for (theme in AppTheme.entries) {
+            for ((locale, dark) in listOf(Locale.ENGLISH to false, Locale.JAPANESE to true)) {
+                assertReviewRetryRendering(host, theme, locale, dark, blocked)
+            }
         }
     }
 
-    private suspend fun assertReviewRetryRendering(host: HeaderTestHost, locale: Locale, dark: Boolean, blocked: Boolean) {
+    private suspend fun assertReviewRetryRendering(
+        host: HeaderTestHost,
+        theme: AppTheme,
+        locale: Locale,
+        dark: Boolean,
+        blocked: Boolean
+    ) {
         val dao = AppDatabase.getInstance(host.context).bookmarkDao()
         val id = "disabled-review-${UUID.randomUUID()}"
         dao.insertOrUpdate(BookmarkEntity(id, "Review fixture", "https://example.invalid/$id", "",
@@ -167,7 +178,7 @@ class ManualAiAvailabilityStateTest {
                             LocalResources provides localized.resources,
                             LocalDensity provides Density(LocalDensity.current.density, configuration.fontScale)
                         ) {
-                            TidiloTheme(darkTheme = dark, dynamicColor = false) {
+                            TidiloTheme(darkTheme = dark, dynamicColor = false, theme = theme) {
                                 val scheme = MaterialTheme.colorScheme
                                 SideEffect { colors = scheme }
                                 Surface {
@@ -201,13 +212,13 @@ class ManualAiAvailabilityStateTest {
                 val reason = if (blocked) R.string.ai_review_disabled_message else R.string.ai_review_busy
                 awaitText(title)
                 val message = awaitText(reason)
-                val iconTag = if (blocked) "ai_review_status_info" else "ai_review_status_error"
+                val iconTag = if (blocked) AI_REVIEW_STATUS_INFO_TAG else AI_REVIEW_STATUS_ERROR_TAG
                 val icon = host.await(activity, includeOtherWindows = false) {
                     it.config.getOrNull(SemanticsProperties.TestTag) == iconTag
                 }
                 val kind = if (blocked) "unavailable" else "error"
                 val tint = (if (blocked) colors.onSurfaceVariant else colors.error).toArgb()
-                assertRenderedStatus(host, activity, icon, message, tint, colors.surface.toArgb(), "263-review-status-$kind-${locale.language}")
+                assertRenderedStatus(host, activity, icon, message, tint, colors.surface.toArgb(), "263-review-status-${theme.code}-$kind-${locale.language}")
 
                 val action = awaitText(if (blocked) R.string.ai_review_back_to_detail else R.string.common_retry)
                 if (blocked) awaitText(R.string.detail_ai_manual_fallback)
@@ -225,10 +236,13 @@ class ManualAiAvailabilityStateTest {
                     assertTrue(host.nodes(activity).none { node ->
                         absent.any { host.text(node, localized.getString(it)) }
                     })
+                    assertTrue(generateSequence(action) { it.parent }
+                        .firstNotNullOf { it.config.getOrNull(SemanticsActions.OnClick)?.action }.invoke())
                     if (blocked) {
-                        assertTrue(generateSequence(action) { it.parent }
-                            .firstNotNullOf { it.config.getOrNull(SemanticsActions.OnClick)?.action }.invoke())
                         assertTrue(returnedToDetail)
+                    } else {
+                        assertFalse(returnedToDetail)
+                        assertEquals(2, calls)
                     }
                 }
             } finally {
@@ -283,6 +297,8 @@ class ManualAiAvailabilityStateTest {
                     }
                 }
             }
+            // This fixture paints a flat Surface. Production TidiloBackground may draw gradients
+            // behind the review, where a single background color would misclassify pixels.
             fun tintCoverage(bounds: Rect): Pair<Int, Int> {
                 val width = bounds.right.toInt() - bounds.left.toInt()
                 val height = bounds.bottom.toInt() - bounds.top.toInt()
@@ -436,16 +452,5 @@ class ManualAiAvailabilityStateTest {
             assertTrue(model.state.value.downloadFailed)
             assertNull(model.progress.value)
         }
-    }
-}
-
-internal fun HeaderTestHost.assertNoAiReviewStatusIcon(activity: ComponentActivity, expectedTitle: String) {
-    main {
-        val tags = setOf("ai_review_status_info", "ai_review_status_error")
-        val reviewNodes = nodes(activity, includeOtherWindows = false)
-        assertTrue("Review window must show $expectedTitle", reviewNodes.any { text(it, expectedTitle) })
-        assertTrue("Review status icon should be absent", reviewNodes.none {
-            it.config.getOrNull(SemanticsProperties.TestTag) in tags
-        })
     }
 }

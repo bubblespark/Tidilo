@@ -13,6 +13,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.MainActivity
+import me.bubblespark.tidilo.ui.screens.library.AI_REVIEW_STATUS_ERROR_TAG
+import me.bubblespark.tidilo.ui.screens.library.AI_REVIEW_STATUS_INFO_TAG
+import org.junit.Assert.assertTrue
 
 internal class HeaderTestHost {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -85,5 +88,16 @@ internal class HeaderTestHost {
                 bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
             }
         } finally { bitmap.recycle() }
+    }
+}
+
+internal fun HeaderTestHost.assertNoAiReviewStatusIcon(activity: ComponentActivity, expectedTitle: String) {
+    main {
+        val tags = setOf(AI_REVIEW_STATUS_INFO_TAG, AI_REVIEW_STATUS_ERROR_TAG)
+        val reviewNodes = nodes(activity, includeOtherWindows = false)
+        assertTrue("Review window must show $expectedTitle", reviewNodes.any { text(it, expectedTitle) })
+        assertTrue("Review status icon should be absent", reviewNodes.none {
+            it.config.getOrNull(SemanticsProperties.TestTag) in tags
+        })
     }
 }

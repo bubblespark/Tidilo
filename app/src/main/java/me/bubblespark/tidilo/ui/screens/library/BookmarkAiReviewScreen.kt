@@ -103,6 +103,9 @@ import me.bubblespark.tidilo.service.GeminiTaggingService
 import me.bubblespark.tidilo.service.TaggingResult
 import me.bubblespark.tidilo.ui.components.aiCoreStatusText
 
+internal const val AI_REVIEW_STATUS_INFO_TAG = "ai_review_status_info"
+internal const val AI_REVIEW_STATUS_ERROR_TAG = "ai_review_status_error"
+
 enum class ProposalSource {
     CURRENT,
     PROPOSAL
@@ -355,8 +358,8 @@ fun BookmarkAiReviewScreen(
                         if (loading) {
                             CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 4.dp)
                         } else if (!restored) {
-                            val (image, tag) = if (blocked) Icons.Outlined.Info to "ai_review_status_info"
-                            else Icons.Default.ErrorOutline to "ai_review_status_error"
+                            val (image, tag) = if (blocked) Icons.Outlined.Info to AI_REVIEW_STATUS_INFO_TAG
+                            else Icons.Default.ErrorOutline to AI_REVIEW_STATUS_ERROR_TAG
                             Icon(
                                 imageVector = image,
                                 contentDescription = null,

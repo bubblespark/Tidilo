@@ -1,19 +1,25 @@
 package me.bubblespark.tidilo.data
 
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.screenCanvasSource
@@ -29,11 +35,17 @@ import me.bubblespark.tidilo.ui.theme.resolveOverlayBlur
 import org.junit.Assert.*
 import org.junit.Test
 
+/**
+ * Every pixel sample waits for a settled frame instead of a fixed delay: a frame-sync marker drawn above the screen
+ * proves the screenshot shows the latest state, and the sampled pixels must repeat across consecutive screenshots
+ * so theme switches, blur changes, and menu animations have finished. Each step changes the body color so the
+ * marker always distinguishes the new frame from the previous one.
+ */
 class ChromeBlurControlsTest {
     @Test fun realDetailToolbarAndBrowserActionSampleCanvas() = runBlocking {
         val host = HeaderTestHost()
         val fixture = ChromePerformanceFixture(host)
-        var activity: androidx.activity.ComponentActivity? = null
+        var activity: ComponentActivity? = null
         var enabled by mutableStateOf(false)
         var theme by mutableStateOf(AppTheme.DEFAULT)
         var dark by mutableStateOf(false)
@@ -46,34 +58,26 @@ class ChromeBlurControlsTest {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().screenCanvasSource().background(body))
                     BookmarkDetailScreen(fixture.detailId, fixture.vm, {})
+                    FrameSyncMarker({ body })
                 }
             } } }
-            suspend fun pixels(): List<Int> {
-                val nodes = listOf(me.bubblespark.tidilo.R.string.detail_action_ai_summary, me.bubblespark.tidilo.R.string.bookmark_open_in_browser).map { resource ->
-                    host.await(screen) { host.description(it, host.context.getString(resource)) }
-                }
-                val points = nodes.map { node ->
-                    var click = node
-                    while (click.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick) == null && click.parent != null) click = requireNotNull(click.parent)
-                    click.boundsInWindow
-                }
-                val image = host.instrumentation.uiAutomation.takeScreenshot()
-                return try { points.map { image.getPixel(it.center.x.toInt(), (it.top + it.height * .14f).toInt()) } }
-                finally { image.recycle() }
+            val marker = host.markerCenter(screen)
+            // Detail loads asynchronously; the first marker change must come after the toolbar is composed.
+            host.await(screen) { host.description(it, host.context.getString(R.string.bookmark_open_in_browser)) }
+            val actions = listOf(R.string.detail_action_ai_summary, R.string.bookmark_open_in_browser)
+            suspend fun points(): List<Offset> = actions.map { resource ->
+                val bounds = clickOwner(host.await(screen) { host.description(it, host.context.getString(resource)) }).boundsInWindow
+                Offset(bounds.center.x, bounds.top + bounds.height * .14f)
+            }
+            suspend fun step(color: Color, change: () -> Unit): List<Int> {
+                host.main { change(); body = color }
+                return host.settledPixels(marker, color) { points() }
             }
             for (preset in AppTheme.entries) for (night in listOf(false, true)) {
-                host.main { theme = preset; dark = night; enabled = false; body = Color.Red }
-                delay(500)
-                val off = pixels()
-                host.main { body = Color.Blue }
-                delay(300)
-                assertEquals("OFF surfaces retain opaque theme drawing for $preset/$night", off, pixels())
-                host.main { enabled = true }
-                delay(500)
-                val on = pixels()
-                host.main { body = Color.Red }
-                delay(300)
-                val changed = pixels()
+                val off = step(Color.Green) { theme = preset; dark = night; enabled = false }
+                assertEquals("OFF surfaces retain opaque theme drawing for $preset/$night", off, step(Color.Red) {})
+                val on = step(Color.Blue) { enabled = true }
+                val changed = step(Color.Red) {}
                 on.indices.forEach { assertNotEquals("Real Detail consumer $it must sample its canvas for $preset/$night", on[it], changed[it]) }
             }
         } finally {
@@ -89,54 +93,95 @@ class ChromeBlurControlsTest {
         var theme by mutableStateOf(AppTheme.DEFAULT)
         var dark by mutableStateOf(false)
         var body by mutableStateOf(Color.Red)
-        var bounds = Rect.Zero
         var clicks = 0
         var policy by mutableStateOf(OverlayBlurPolicy.USER_CHOICE)
         try {
             host.main { activity.setContent { TidiloTheme(darkTheme = dark, dynamicColor = false, theme = theme, blurEnabled = enabled) {
-                CompositionLocalProvider(LocalOverlayBlurSetting provides resolveOverlayBlur(policy, enabled)) {
-                TidiloScreenScaffold(header = {}, overlay = {
-                    LibraryRadialMenu(rememberLibraryRadialMenuState(), LibraryFilterMode.NEWEST_FIRST, {}, { clicks++ })
-                }) { Box(Modifier.fillMaxSize().drawBehind { drawRect(body) }) }
+                Box(Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalOverlayBlurSetting provides resolveOverlayBlur(policy, enabled)) {
+                    TidiloScreenScaffold(header = {}, overlay = {
+                        LibraryRadialMenu(rememberLibraryRadialMenuState(), LibraryFilterMode.NEWEST_FIRST, {}, { clicks++ })
+                    }) { Box(Modifier.fillMaxSize().drawBehind { drawRect(body) }) }
+                    }
+                    FrameSyncMarker({ body })
                 }
             } } }
-            bounds = host.await(activity) { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag) == "library_radial_trigger" }.boundsInWindow
-            fun pixel(): Int {
-                val frame = host.instrumentation.uiAutomation.takeScreenshot()
-                return try { frame.getPixel((bounds.left + bounds.width * .25f).toInt(), (bounds.top + bounds.height * .4f).toInt()) }
-                finally { frame.recycle() }
+            val marker = host.markerCenter(activity)
+            val bounds = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" }.boundsInWindow
+            val point = listOf(Offset(bounds.left + bounds.width * .25f, bounds.top + bounds.height * .4f))
+            suspend fun step(color: Color, change: () -> Unit): Int {
+                host.main { change(); body = color }
+                return host.settledPixels(marker, color) { point }.single()
             }
             for (preset in AppTheme.entries) for (night in listOf(false, true)) {
-                host.main { theme = preset; dark = night; enabled = false; body = Color.Red }
-                delay(350)
-                val plain = pixel()
-                host.main { body = Color.Blue }
-                delay(150)
-                assertEquals("OFF retains the themed opaque surface", plain, pixel())
-                host.main { enabled = true }
-                delay(350)
-                val blue = pixel()
-                host.main { body = Color.Red }
-                delay(250)
-                assertNotEquals("Search must sample its body for $preset/$night", blue, pixel())
-                val trigger = host.await(activity) { host.description(it, host.context.getString(me.bubblespark.tidilo.R.string.library_shortcuts_open)) }
-                host.main { trigger.config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action!!.invoke() }
-                val node = host.await(activity) { host.description(it, host.context.getString(me.bubblespark.tidilo.R.string.nav_search)) }
-                host.main {
-                    var clickable = node
-                    while (clickable.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick) == null && clickable.parent != null) clickable = requireNotNull(clickable.parent)
-                    check(clickable.config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action?.invoke() == true)
-                }
+                val plain = step(Color.Green) { theme = preset; dark = night; enabled = false }
+                assertEquals("OFF retains the themed opaque surface for $preset/$night", plain, step(Color.Red) {})
+                val blurred = step(Color.Blue) { enabled = true }
+                assertNotEquals("Search must sample its body for $preset/$night", blurred, step(Color.Red) {})
+            }
+            // Menu interactions run apart from pixel sampling so their animations never overlap a sample.
+            for (preset in AppTheme.entries) for (night in listOf(false, true)) {
+                host.main { theme = preset; dark = night; enabled = true }
+                val trigger = host.await(activity) { host.description(it, host.context.getString(R.string.library_shortcuts_open)) }
+                host.main { trigger.config[SemanticsActions.OnClick].action!!.invoke() }
+                val node = host.await(activity) { host.description(it, host.context.getString(R.string.nav_search)) }
+                host.main { check(clickOwner(node).config[SemanticsActions.OnClick].action?.invoke() == true) }
             }
             assertEquals(AppTheme.entries.size * 2, clicks)
             for (fixed in listOf(OverlayBlurPolicy.FORCE_ON, OverlayBlurPolicy.FORCE_OFF)) for (saved in listOf(false, true)) {
-                host.main { policy = fixed; enabled = saved; body = Color.Blue }
-                delay(300)
-                val first = pixel()
-                host.main { body = Color.Red }
-                delay(250)
-                if (fixed == OverlayBlurPolicy.FORCE_ON) assertNotEquals(first, pixel()) else assertEquals(first, pixel())
+                val first = step(Color.Green) { policy = fixed; enabled = saved }
+                val second = step(Color.Red) {}
+                if (fixed == OverlayBlurPolicy.FORCE_ON) assertNotEquals("$fixed/$saved must sample its body", first, second)
+                else assertEquals("$fixed/$saved retains the themed opaque surface", first, second)
             }
         } finally { host.main { activity.finish() } }
     }
 }
+
+private const val FRAME_SYNC_MARKER_TAG = "chrome_blur_frame_sync_marker"
+
+/** Mirrors the latest body color above the screen content; screenshots showing it include the latest state. */
+@Composable
+private fun BoxScope.FrameSyncMarker(color: () -> Color) {
+    Box(Modifier.align(Alignment.CenterStart).size(24.dp).testTag(FRAME_SYNC_MARKER_TAG).drawBehind { drawRect(color()) })
+}
+
+private suspend fun HeaderTestHost.markerCenter(activity: ComponentActivity): Offset =
+    await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == FRAME_SYNC_MARKER_TAG }.boundsInWindow.center
+
+private fun clickOwner(node: SemanticsNode): SemanticsNode {
+    var click = node
+    while (click.config.getOrNull(SemanticsActions.OnClick) == null && click.parent != null) click = requireNotNull(click.parent)
+    return click
+}
+
+/**
+ * Returns the pixels at [points] from the first screenshot that shows [marker] at [markerPoint] and repeats the
+ * previous [STABLE_REPEATS] screenshots' samples, failing with the last observation when no settled frame appears.
+ */
+private suspend fun HeaderTestHost.settledPixels(markerPoint: Offset, marker: Color, points: suspend () -> List<Offset>): List<Int> {
+    val expected = marker.toArgb()
+    var last: Pair<Int, List<Int>>? = null
+    var previous: List<Int>? = null
+    var repeats = 0
+    val settled = withTimeoutOrNull(SETTLE_TIMEOUT_MS) {
+        while (repeats < STABLE_REPEATS) {
+            delay(SAMPLE_INTERVAL_MS)
+            val targets = points()
+            val image = instrumentation.uiAutomation.takeScreenshot()
+            val sample = try {
+                image.getPixel(markerPoint.x.toInt(), markerPoint.y.toInt()) to targets.map { image.getPixel(it.x.toInt(), it.y.toInt()) }
+            } finally { image.recycle() }
+            last = sample
+            val current = sample.second.takeIf { sample.first == expected }
+            repeats = if (current != null && current == previous) repeats + 1 else 0
+            previous = current
+        }
+        requireNotNull(previous)
+    }
+    return settled ?: throw AssertionError("No settled frame for marker ${Integer.toHexString(expected)}; last (marker, pixels) = $last")
+}
+
+private const val STABLE_REPEATS = 2
+private const val SAMPLE_INTERVAL_MS = 40L
+private const val SETTLE_TIMEOUT_MS = 5_000L

@@ -57,7 +57,7 @@ internal interface LibraryStore {
     suspend fun recordSummaryPeek(id: String)
     suspend fun saveNote(id: String, note: String)
     suspend fun updateBookmarkTags(id: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String>)
-    /** Returns whether the bookmark row was updated. */
+    /** Returns `false` only when no bookmark has [id]; `true` otherwise, including the no-op when both values are null. */
     suspend fun applyAiProposal(id: String, description: String?, tag: Tag?): Boolean
     suspend fun moveToTrash(id: String): Boolean
 

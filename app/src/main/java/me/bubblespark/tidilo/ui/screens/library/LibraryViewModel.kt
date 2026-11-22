@@ -34,9 +34,6 @@ import kotlinx.coroutines.flow.stateIn
 
 import me.bubblespark.tidilo.data.BookmarkSource
 import me.bubblespark.tidilo.data.BookmarkSearchResult
-import me.bubblespark.tidilo.data.Category
-import me.bubblespark.tidilo.data.DomainIconManager
-import me.bubblespark.tidilo.data.Subcategory
 import java.text.Collator
 import java.util.Locale
 
@@ -557,58 +554,6 @@ class LibraryViewModel internal constructor(
     }
 
     companion object {
-
-        fun filterBookmarks(items: List<BookmarkItem>, rawQuery: String): List<BookmarkItem> {
-            if (rawQuery.isBlank()) return items
-
-            // Delimit by half-width space (normalizing full-width spaces)
-            val tokens = rawQuery.trim()
-                .replace("　", " ")
-                .split(" ")
-                .filter { it.isNotBlank() }
-
-            if (tokens.isEmpty()) return items
-
-            return items.filter { item ->
-                // Match all tokens (AND search)
-                tokens.all { token ->
-                    if (token.startsWith("#")) {
-                        // Tag search: strip '#' and search category, subcategory, or entity
-                        val tagQuery = token.removePrefix("#").trim()
-                        if (tagQuery.isEmpty()) {
-                            true // Allow all tags if solitary '#' is entered
-                        } else {
-                            // Category (English ID or Japanese label)
-                            val catMatch = item.tag.category?.contains(tagQuery, ignoreCase = true) == true ||
-                                    (item.tag.category?.let { Category.fromId(it) }?.let {
-                                         it.jaLabel.contains(tagQuery, ignoreCase = true) ||
-                                                 it.enLabel.contains(tagQuery, ignoreCase = true)
-                                     } ?: false)
-
-                            // Subcategory (English ID or Japanese label)
-                            val subMatch = item.tag.subcategory?.contains(tagQuery, ignoreCase = true) == true ||
-                                    (item.tag.subcategory?.let { Subcategory.fromId(it) }?.let {
-                                         it.jaLabel.contains(tagQuery, ignoreCase = true) ||
-                                                 it.enLabel.contains(tagQuery, ignoreCase = true)
-                                     } ?: false)
-
-                            // Entity category (specific keyword list)
-                            val entityMatch = item.tag.entities.any { entity ->
-                                entity.contains(tagQuery, ignoreCase = true)
-                            }
-
-                            catMatch || subMatch || entityMatch
-                        }
-                    } else {
-                        // Word search: Title, Description, URL
-                        item.title.contains(token, ignoreCase = true) ||
-                                item.description.contains(token, ignoreCase = true) ||
-                                item.url.contains(token, ignoreCase = true)
-                    }
-                }
-            }
-        }
-
         /**
          * Pure function to update search history list (bounds count, prepends newest, deduplicates exact matches).
          */
@@ -618,17 +563,6 @@ class LibraryViewModel internal constructor(
             return (listOf(trimmed) + current.filter { it != trimmed }).take(limit)
         }
 
-        /**
-         * Filter bookmarks by domain (case-insensitive normalized).
-         * Returns empty list if domain is null or blank.
-         */
-        fun filterBookmarksByDomain(items: List<BookmarkItem>, domain: String?): List<BookmarkItem> {
-            if (domain.isNullOrBlank()) return emptyList()
-            val normalized = domain.trim().lowercase()
-            return items.filter {
-                DomainIconManager.extractDomain(it.url)?.lowercase() == normalized
-            }
-        }
     }
 }
 

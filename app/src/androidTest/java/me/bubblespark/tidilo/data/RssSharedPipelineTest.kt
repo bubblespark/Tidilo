@@ -408,7 +408,9 @@ class RssSharedPipelineTest {
         val original = preferences.state.value
         val fixtureDomain = "manual-${java.util.UUID.randomUUID()}.example"
         val fixturePath = "https://$fixtureDomain/post"
-        val images = (1..2).associateWith { "$fixturePath/cover-$it.png" }
+        val completedArticle = "$fixturePath/1"
+        val retriedArticle = "$fixturePath/2"
+        val cover = "$fixturePath/cover.png"
         val image = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888).let { bitmap ->
             try {
                 java.io.ByteArrayOutputStream().use { output ->
@@ -422,42 +424,54 @@ class RssSharedPipelineTest {
             db.rssDao().putFeed(RssFeedEntity("manual", "https://fixture-feed.example/feed", "Feed"))
             val feedPolicies = mutableListOf<Boolean>()
             val requests = java.util.concurrent.CopyOnWriteArrayList<Pair<String, Boolean>>()
+            var failFirstAttempt = true
             val repo = RssRepository(
                 context, db, domainPolicyStore = DomainPolicyStore(db),
                 requestOverride = { requested, _, wifiOnly ->
                     feedPolicies.add(wifiOnly)
-                    RssHttpPage(200, requested, xml(feedPolicies.size).replace(url, fixturePath))
+                    RssHttpPage(200, requested, xml(2).replace(url, fixturePath))
                 },
                 articleRequestOverride = { requested, wifiOnly ->
                     requests.add(requested to wifiOnly)
-                    val articleId = requested.takeIf { it.startsWith("$fixturePath/") }
-                        ?.substringAfterLast('/')?.toIntOrNull()
                     when {
-                        articleId != null -> {
-                            val metadata = "<meta property=\"og:image\" content=\"${images.getValue(articleId)}\">"
+                        requested == retriedArticle && failFirstAttempt -> throw IOException("Fixture article timeout")
+                        requested == completedArticle || requested == retriedArticle -> {
+                            val metadata = "<meta property=\"og:image\" content=\"$cover\">"
                             ArticleResponse(requested, 200, html.replace("</head>", "$metadata</head>").toByteArray(), "text/html")
                         }
-                        requested in images.values -> ArticleResponse(requested, 200, image, "image/png")
+                        requested == cover && failFirstAttempt -> ArticleResponse(requested, 503, byteArrayOf(), null)
+                        requested == cover -> ArticleResponse(requested, 200, image, "image/png")
                         else -> ArticleResponse(requested, 404, byteArrayOf(), null)
                     }
                 }
             )
-            assertTrue(repo.fetchAll(1, manualMobileRunId = "consented"))
+            fun policiesFor(address: String) = requests.filter { it.first == address }.map { it.second }.toSet()
+
+            assertFalse(repo.fetchAll(1, manualMobileRunId = "consented"))
+            for (address in listOf(completedArticle, retriedArticle, cover)) {
+                assertEquals(address, setOf(false), policiesFor(address))
+            }
+            val pending = db.importTaskDao().getAllTasks().single()
+            assertEquals(retriedArticle, pending.url)
+            assertEquals("ERROR", pending.status)
+            db.importTaskDao().insertOrUpdate(pending.copy(acquisitionRetryAt = 0))
+            failFirstAttempt = false
+            requests.clear()
+
+            assertTrue(repo.fetchAll(2))
+            for (address in listOf(retriedArticle, cover)) {
+                assertEquals(address, setOf(true), policiesFor(address))
+            }
+            assertTrue(policiesFor(completedArticle).isEmpty())
+            assertEquals(0, db.importTaskDao().getCount())
+
             assertTrue(repo.fetchAll(Long.MAX_VALUE))
             assertEquals(listOf(false, true), feedPolicies)
-            for ((id, cover) in images) {
-                val expectedPolicy = setOf(id == 2)
-                for (address in listOf("$fixturePath/$id", cover)) {
-                    assertEquals(address, expectedPolicy, requests.filter { it.first == address }.map { it.second }.toSet())
-                }
-            }
             assertTrue(preferences.state.value.wifiOnly)
         } finally {
-            for (imageUrl in images.values) {
-                OgImageManager.deleteUnreferencedImage(
-                    context, fixtureDomain, OgImageManager.computeImageKey(imageUrl), removeLatest = true
-                )
-            }
+            OgImageManager.deleteUnreferencedImage(
+                context, fixtureDomain, OgImageManager.computeImageKey(cover), removeLatest = true
+            )
             preferences.save(original)
             db.close()
         }

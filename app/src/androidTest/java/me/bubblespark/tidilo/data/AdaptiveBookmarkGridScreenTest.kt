@@ -137,7 +137,8 @@ class AdaptiveBookmarkGridScreenTest {
                 fixture.awaitTitle(activity, 0)
                 val startRow = fixture.awaitTopRow(scenario, "initial portrait row") { 0 in it }
                 val bookmark = 8
-                fixture.scrollToItem(activity, bookmark)
+                // Newest first leads with its full-span scope row, so bookmark N is lazy item N + 1.
+                fixture.scrollToItem(activity, bookmark + 1)
                 fixture.awaitTitle(activity, bookmark)
                 // Move close to the bottom of the taller portrait row before rotating.
                 fixture.scroll(activity, fixture.cardHeight(activity, bookmark) * 0.9f)

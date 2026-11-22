@@ -146,7 +146,11 @@
     <!-- Library Screen -->
     <string name="library_header_title">Library</string>
     <string name="library_subtitle_loading">読み込み中…</string>
-    <string name="library_subtitle_tagged_bookmarks">ブックマーク (%1$d)</string>
+    <string name="library_subtitle_bookmarks">ブックマーク (%1$d)</string>
+    <string name="library_subtitle_bookmarks_with_rss">ブックマークとRSS (%1$d)</string>
+    <string name="library_include_rss_chip">RSSを含む</string>
+    <string name="library_rss_source_label">RSS</string>
+    <string name="library_rss_source_description">RSS記事</string>
     <string name="library_subtitle_domains">ドメイン (%1$d)</string>
     <string name="library_subtitle_domain_bookmarks">ドメイン内のブックマーク (%1$d)</string>
     <string name="library_empty_title">ブックマークがありません</string>

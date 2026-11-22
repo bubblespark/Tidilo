@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -97,6 +98,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import me.bubblespark.tidilo.R
@@ -168,6 +172,7 @@ fun LibraryScreen(
         (filterMode == LibraryFilterMode.COLLECTION && collectionLoading)
     val localConfig = LocalConfiguration.current
     val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
+    val includeRss by viewModel.includeRssInNewestFirst.collectAsStateWithLifecycle()
     var isViewModeMenuExpanded by remember { mutableStateOf(false) }
     val selectedDomainColor = rememberDomainAccentColor(selectedDomainFilter)
 
@@ -205,6 +210,17 @@ fun LibraryScreen(
             newestFirstGridState.requestScrollToItem(0)
         }
         lastScrollFilterMode = filterMode.name
+    }
+
+    // A scope change starts the new result at the top; Detail return keeps the saved scope and position.
+    var lastScrollIncludeRss by rememberSaveable { mutableStateOf(includeRss) }
+    LaunchedEffect(includeRss) {
+        if (lastScrollIncludeRss != includeRss) {
+            newestFirstGridAnchor.clear()
+            newestFirstListState.requestScrollToItem(0)
+            newestFirstGridState.requestScrollToItem(0)
+        }
+        lastScrollIncludeRss = includeRss
     }
 
     // Detail return restores the same domain; only an actual filter change resets its position.
@@ -257,7 +273,7 @@ fun LibraryScreen(
     }
     val headerScope = key(activeScrollState) { rememberCoroutineScope() }
 
-    val observedCount = key(displayState, isPrivateVisible) {
+    val observedCount = key(displayState, isPrivateVisible, includeRss) {
         val initialCount = when (displayState) {
             LibraryDisplayState.DomainGrid, LibraryDisplayState.RssFeedGrid, LibraryDisplayState.CollectionList -> 0
             is LibraryDisplayState.CollectionDrillDown -> selectedCollection?.count ?: 0
@@ -265,12 +281,13 @@ fun LibraryScreen(
             is LibraryDisplayState.RssFeedDrillDown -> rssFeedGroups.firstOrNull { it.feed.id == selectedFeed?.id }?.count
             LibraryDisplayState.NewestFirst -> null
         }
-        val count by remember(displayState) {
+        val count by remember(displayState, includeRss) {
             if (displayState == LibraryDisplayState.DomainGrid || displayState == LibraryDisplayState.RssFeedGrid || displayState == LibraryDisplayState.CollectionList) flowOf(0)
             else if (displayState is LibraryDisplayState.CollectionDrillDown) viewModel.libraryCount(LibraryFilterMode.COLLECTION, null, null, isPrivateVisible, displayState.collectionId)
             else viewModel.libraryCount(
                 filterMode, selectedDomainFilter.takeIf { filterMode == LibraryFilterMode.DOMAIN },
-                selectedFeed?.id, isPrivateVisible
+                selectedFeed?.id, isPrivateVisible,
+                includeRss = displayState == LibraryDisplayState.NewestFirst && includeRss
             )
         }.collectAsStateWithLifecycle(initialValue = initialCount)
         count
@@ -386,8 +403,10 @@ fun LibraryScreen(
                             stringResource(R.string.library_subtitle_domain_bookmarks, libraryCount)
                         filterMode == LibraryFilterMode.DOMAIN ->
                             stringResource(R.string.library_subtitle_domains, domainGroups.size)
+                        includeRss ->
+                            stringResource(R.string.library_subtitle_bookmarks_with_rss, libraryCount)
                         else ->
-                            stringResource(R.string.library_subtitle_tagged_bookmarks, libraryCount)
+                            stringResource(R.string.library_subtitle_bookmarks, libraryCount)
                     }
 
                     AnimatedContent(
@@ -548,7 +567,9 @@ fun LibraryScreen(
                 ) { state ->
                     // Keep the selected window across details and release outgoing windows after exit.
                     val collectionGrid = state == LibraryDisplayState.DomainGrid || state == LibraryDisplayState.RssFeedGrid || state == LibraryDisplayState.CollectionList
-                    val session = remember(state) {
+                    val isNewestFirst = state == LibraryDisplayState.NewestFirst
+                    val sessionIncludesRss = isNewestFirst && includeRss
+                    val session = remember(state, sessionIncludesRss) {
                         if (collectionGrid) null
                         else viewModel.libraryPages(
                             when (state) {
@@ -560,8 +581,12 @@ fun LibraryScreen(
                             (state as? LibraryDisplayState.DomainDrillDown)?.domain,
                             (state as? LibraryDisplayState.RssFeedDrillDown)?.feed?.id,
                             isPrivateVisible,
-                            (state as? LibraryDisplayState.CollectionDrillDown)?.collectionId
+                            (state as? LibraryDisplayState.CollectionDrillDown)?.collectionId,
+                            sessionIncludesRss
                         )
+                    }
+                    val scopeRow: @Composable () -> Unit = {
+                        NewestFirstScopeRow(includeRss, viewModel::setIncludeRssInNewestFirst)
                     }
                     DisposableEffect(session) {
                         session?.let { it.users++ }
@@ -577,11 +602,25 @@ fun LibraryScreen(
                         (state == LibraryDisplayState.DomainGrid && domainGroupsLoading) ||
                         (state == LibraryDisplayState.RssFeedGrid && rssFeedGroupsLoading) ||
                         (state == LibraryDisplayState.CollectionList && collectionLoading)
-                    if (loading) {
+                    val scopeStatePadding = newestFirstStatePadding(contentPadding, LocalLayoutDirection.current)
+                    if (loading && isNewestFirst) {
+                        // The scope stays adjustable while a new scope loads.
+                        Column(Modifier.fillMaxSize().padding(scopeStatePadding)) {
+                            scopeRow()
+                            SkeletonBookmarkList(Modifier.fillMaxSize())
+                        }
+                    } else if (loading) {
                         SkeletonBookmarkList(Modifier.fillMaxSize().padding(top = headerHeight, start = 20.dp, end = 20.dp))
                     } else if (state == LibraryDisplayState.CollectionList && collectionError != null) {
                         Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
                             PagingFeedback(LoadState.Error(requireNotNull(collectionError)), viewModel::retryCollections)
+                        }
+                    } else if (refreshState is LoadState.Error && isNewestFirst) {
+                        Column(Modifier.fillMaxSize().padding(scopeStatePadding)) {
+                            scopeRow()
+                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                                PagingFeedback(refreshState, bookmarks::retry)
+                            }
                         }
                     } else if (refreshState is LoadState.Error) {
                         Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
@@ -745,7 +784,8 @@ fun LibraryScreen(
                             if (bookmarks.itemCount == 0) {
                                 EmptyLibraryMessage(
                                     onSaveUrl = onOpenManualImport,
-                                    contentPadding = contentPadding
+                                    contentPadding = contentPadding,
+                                    leadingContent = scopeRow
                                 )
                             } else {
                                 AnimatedContent(
@@ -764,6 +804,7 @@ fun LibraryScreen(
                                                 contentPadding = contentPadding,
                                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                                             ) {
+                                                item(key = NewestFirstScopeKey, contentType = NewestFirstScopeKey) { scopeRow() }
                                                 items(
                                                     count = bookmarks.itemCount,
                                                     key = bookmarks.itemKey { it.id },
@@ -777,7 +818,8 @@ fun LibraryScreen(
                                                         tagKeywords = emptyList(),
                                                         currentLanguage = currentLanguage,
                                                         context = context,
-                                                        onClick = { onNavigateToDetail(item.id) }
+                                                        onClick = { onNavigateToDetail(item.id) },
+                                                        showRssSource = includeRss && item.rssFeedId != null
                                                     )
                                                 }
                                             }
@@ -790,6 +832,9 @@ fun LibraryScreen(
                                                 generation = session?.key.orEmpty(),
                                                 active = state == displayState && viewMode == mode,
                                                 contentPadding = contentPadding,
+                                                leadingContent = scopeRow,
+                                                leadingContentHeight = rememberNewestFirstScopeRowHeight(),
+                                                showRssSource = includeRss,
                                                 onOpenBookmark = onNavigateToDetail,
                                                 onToggleLike = viewModel::toggleLike,
                                                 onPeekBookmark = { item ->
@@ -828,17 +873,25 @@ private fun LibraryBookmarkGrid(
     contentPadding: PaddingValues,
     onOpenBookmark: (String) -> Unit,
     onToggleLike: (String) -> Unit,
-    onPeekBookmark: (BookmarkItem) -> Unit
+    onPeekBookmark: (BookmarkItem) -> Unit,
+    leadingContent: (@Composable () -> Unit)? = null,
+    leadingContentHeight: Dp = 0.dp,
+    showRssSource: Boolean = false
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val context = LocalContext.current
+        val density = LocalDensity.current
+        val leadingItems = if (leadingContent != null) 1 else 0
         val layout = bookmarkGridLayout(
             contentPadding = contentPadding,
             trailingPadding = HeaderDefaults.LibraryActionClearance,
+            leadingContentHeightPx = if (leadingContent != null) {
+                with(density) { (leadingContentHeight + BookmarkGridVerticalGap).roundToPx() }
+            } else 0,
             protectLibraryShortcut = true
         )
         if (active) {
-            RestoreBookmarkGridAnchor(state, anchor, generation, layout) { key ->
+            RestoreBookmarkGridAnchor(state, anchor, generation, layout, leadingItems) { key ->
                 bookmarks.itemSnapshotList.items.indexOfFirst { it.id == key }
             }
         }
@@ -850,6 +903,11 @@ private fun LibraryBookmarkGrid(
             horizontalArrangement = Arrangement.spacedBy(BookmarkGridHorizontalGap),
             verticalArrangement = Arrangement.spacedBy(BookmarkGridVerticalGap)
         ) {
+            if (leadingContent != null) {
+                item(key = NewestFirstScopeKey, span = { GridItemSpan(maxLineSpan) }, contentType = NewestFirstScopeKey) {
+                    leadingContent()
+                }
+            }
             items(
                 count = bookmarks.itemCount,
                 key = bookmarks.itemKey { it.id },
@@ -862,7 +920,8 @@ private fun LibraryBookmarkGrid(
                     onClick = { onOpenBookmark(bookmark.id) },
                     onLongClick = { onPeekBookmark(bookmark) },
                     onToggleLike = { onToggleLike(bookmark.id) },
-                    layout = layout
+                    layout = layout,
+                    showRssSource = showRssSource && bookmark.rssFeedId != null
                 )
             }
         }
@@ -872,7 +931,8 @@ private fun LibraryBookmarkGrid(
 @Composable
 private fun EmptyLibraryMessage(
     onSaveUrl: () -> Unit,
-    contentPadding: PaddingValues = PaddingValues(0.dp)
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    leadingContent: @Composable () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -880,6 +940,7 @@ private fun EmptyLibraryMessage(
             .verticalScroll(rememberScrollState())
             .padding(contentPadding)
     ) {
+        leadingContent()
         Card(
             modifier = Modifier
                 .fillMaxWidth()

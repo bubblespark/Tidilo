@@ -13,6 +13,12 @@ class PagingFeedbackTest {
         assertTrue(a != buildLibraryFilterKey(LibraryFilterMode.COLLECTION, null, null, true, "a"))
         assertTrue(a != buildLibraryFilterKey(LibraryFilterMode.NEWEST_FIRST, null, null, false))
     }
+
+    @Test fun includeRssSeparatesNewestFirstSessions() {
+        val manualOnly = buildLibraryFilterKey(LibraryFilterMode.NEWEST_FIRST, null, null, true)
+        assertNotEquals(manualOnly, buildLibraryFilterKey(LibraryFilterMode.NEWEST_FIRST, null, null, true, includeRss = true))
+        assertEquals(manualOnly, buildLibraryFilterKey(LibraryFilterMode.NEWEST_FIRST, null, null, true, includeRss = false))
+    }
     @Test
     fun domainGridIgnoresEveryBookmarkPagingDirection() {
         for (state in listOf(LoadState.Loading, LoadState.Error(IllegalStateException("Timeline failed")))) {

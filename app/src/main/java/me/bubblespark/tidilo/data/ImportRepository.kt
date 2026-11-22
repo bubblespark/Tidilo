@@ -981,7 +981,7 @@ class ImportRepository internal constructor(
 
     private suspend fun retainDirectSaveError(target: ImportTask, error: Throwable) {
         taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(target.copy(status = TaskStatus.ERROR,
-            statusText = "Save failed", errorMessage = "Bookmark persistence failed: ${error.message.orEmpty()}")))
+            statusText = "Save failed", errorMessage = "${ImportTaskErrorMessages.SAVE_FAILURE_PREFIX}: ${error.message.orEmpty()}")))
     }
 
     private suspend fun processDirectTask(taskId: String): ImportOutcome? {

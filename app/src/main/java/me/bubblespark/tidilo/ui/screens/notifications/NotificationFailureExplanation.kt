@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.ui.screens.notifications
 
 import androidx.annotation.StringRes
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.data.ImportTaskErrorMessages
 import me.bubblespark.tidilo.parser.ArticleContentUnavailable
 
 /** User-facing cause of an unresolved import or feed failure, derived from its stored diagnostic text. */
@@ -18,8 +19,7 @@ enum class FailureReason(@StringRes val explanationRes: Int) {
     UNKNOWN(R.string.notification_failure_unknown)
 }
 
-private const val SAVE_FAILURE_PREFIX = "Bookmark persistence failed"
-private val HTTP_STATUS =Regex("""\bHTTP(?: error)? (\d{3})\b""", RegexOption.IGNORE_CASE)
+private val HTTP_STATUS = Regex("""\bHTTP(?: error)? (\d{3})\b""", RegexOption.IGNORE_CASE)
 
 /**
  * Classifies the raw diagnostic stored with a failure. Rules are ordered: host-bearing network messages are
@@ -29,7 +29,7 @@ fun classifyFailure(raw: String?): FailureReason {
     val text = raw?.trim().orEmpty()
     if (text.isEmpty()) return FailureReason.UNKNOWN
     // The repository prefixes local save failures; the wrapped message must not change the explanation.
-    if (text.startsWith(SAVE_FAILURE_PREFIX)) return FailureReason.SAVE_FAILED
+    if (text.startsWith(ImportTaskErrorMessages.SAVE_FAILURE_PREFIX)) return FailureReason.SAVE_FAILED
     HTTP_STATUS.find(text)?.let { match ->
         return when (match.groupValues[1].toInt()) {
             500, 502, 503, 504 -> FailureReason.SERVER_UNAVAILABLE

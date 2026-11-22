@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.notifications
 
+import me.bubblespark.tidilo.data.ImportTaskErrorMessages
 import me.bubblespark.tidilo.parser.ArticleContentUnavailable
 import me.bubblespark.tidilo.ui.screens.notifications.FailureReason.*
 import org.junit.Assert.assertEquals
@@ -44,9 +45,11 @@ class NotificationFailureExplanationTest {
 
     @Test fun saveFailurePrefixWinsOverUnderlyingMessage() {
         listOf("connection pool has been closed", "timeout waiting for lock", "SSL error", "HTTP 503")
-            .map { "Bookmark persistence failed: $it" }
+            .map { "${ImportTaskErrorMessages.SAVE_FAILURE_PREFIX}: $it" }
             .forEach { assertEquals(it, SAVE_FAILED, classifyFailure(it)) }
         assertEquals(NETWORK, classifyFailure("connection pool has been closed"))
+        // Stored rows already carry this exact prefix.
+        assertEquals("Bookmark persistence failed", ImportTaskErrorMessages.SAVE_FAILURE_PREFIX)
     }
 
     @Test fun blankAndNullAreUnknown() {

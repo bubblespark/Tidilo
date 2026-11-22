@@ -196,5 +196,18 @@ class EntityTagConflictLayoutTest {
         assertTrue(restored.tagSaveFailed)
         assertEquals("open-ai", restored.entityInput)
         assertEquals(EntityTagConflict("open-ai", "OpenAI", "openai"), restored.pendingConflict)
+
+        // Separate Saver round trip with Add Entity dialog open and in-progress input
+        val addOpenEdit = BookmarkDetailEditState("Note").apply {
+            openTagEditor(Tag("Tool", "Business", listOf("Kotlin")), isPrivate = false)
+            openAddEntityDialog()
+            updateEntityInput("Compose")
+        }
+        val addOpenBundle = with(BookmarkDetailEditState.Saver) { scope.save(addOpenEdit) }
+        val restoredAddOpen = requireNotNull(BookmarkDetailEditState.Saver.restore(requireNotNull(addOpenBundle)))
+        assertTrue(restoredAddOpen.showTagEditDialog)
+        assertTrue(restoredAddOpen.showAddEntityDialog)
+        assertFalse(restoredAddOpen.showEntityBottomSheet)
+        assertEquals("Compose", restoredAddOpen.entityInput)
     }
 }

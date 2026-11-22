@@ -432,5 +432,16 @@ class BookmarkDetailEditStateTest {
         assertTrue(restored.tagSaveFailed)
         assertEquals("open-ai", restored.entityInput)
         assertEquals(EntityTagConflict("open-ai", "OpenAI", "openai"), restored.pendingConflict)
+
+        val addOpenEdit = BookmarkDetailEditState("Note").apply {
+            openTagEditor(Tag("Tool", "Business", listOf("Kotlin")), isPrivate = false)
+            openAddEntityDialog()
+            updateEntityInput("Compose")
+        }
+        val restoredAddOpen = BookmarkDetailEditState.fromSavedSnapshot(addOpenEdit.toSavedSnapshot())
+        assertTrue(restoredAddOpen.showTagEditDialog)
+        assertTrue(restoredAddOpen.showAddEntityDialog)
+        assertFalse(restoredAddOpen.showEntityBottomSheet)
+        assertEquals("Compose", restoredAddOpen.entityInput)
     }
 }

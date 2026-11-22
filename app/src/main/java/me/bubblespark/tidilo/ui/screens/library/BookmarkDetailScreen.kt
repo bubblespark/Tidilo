@@ -416,7 +416,7 @@ internal fun BookmarkDetailScreen(
     }
     val hasCollection by remember(viewModel, bookmark.id) { viewModel.bookmarkHasCollections(bookmark.id) }
         .collectAsStateWithLifecycle(initialValue = false)
-    val noteText by edit.noteText
+    val noteText = edit.noteText
     val storedTag = bookmark.tag
     val storedIsPrivate = bookmark.isPrivate
     // The note autosaves on the shared ViewModel scope so a pending write outlives this screen.
@@ -445,27 +445,15 @@ internal fun BookmarkDetailScreen(
             }
         }
     }
-    var showTagEditDialog by edit.showTagEditDialog
-    var showAddEntityDialog by edit.showAddEntityDialog
-    var showEntityBottomSheet by edit.showEntityBottomSheet
-    var draftCategory by edit.draftCategory
-    var draftSubcategory by edit.draftSubcategory
-    var draftEntities by edit.draftEntities
-    var draftIsPrivate by edit.draftIsPrivate
-    var draftReplacements by edit.draftReplacements
-    var entityInput by edit.entityInput
-    var conflictInput by edit.conflictInput
-    var conflictExisting by edit.conflictExisting
-    var tagSaveFailed by edit.tagSaveFailed
     // The commit runs on the shared ViewModel, so its saving state and result survive rotation.
     val tagSaves by viewModel.tagSaves.collectAsStateWithLifecycle()
     val tagSave = tagSaves[bookmark.id]
     // Saved still blocks the dialog until the effect below closes it, so no frame re-enables OK/Cancel.
-    val isTagSaving = tagSave == TagSaveStatus.Saving || (showTagEditDialog && tagSave == TagSaveStatus.Saved)
+    val isTagSaving = tagSave == TagSaveStatus.Saving || (edit.showTagEditDialog && tagSave == TagSaveStatus.Saved)
     LaunchedEffect(bookmark.id, tagSave) {
         when (tagSave) {
             TagSaveStatus.Saved -> { edit.closeTagEditor(); viewModel.consumeTagSave(bookmark.id) }
-            TagSaveStatus.Failed -> { tagSaveFailed = true; viewModel.consumeTagSave(bookmark.id) }
+            TagSaveStatus.Failed -> { edit.onTagSaveFailed(); viewModel.consumeTagSave(bookmark.id) }
             TagSaveStatus.Saving, null -> Unit
         }
     }
@@ -484,7 +472,7 @@ internal fun BookmarkDetailScreen(
     }
     var entityLibraryRetry by remember { mutableStateOf(0) }
     val libraryFlow = remember(viewModel, entityLibraryRetry) { viewModel.entityLibrary() }
-    val libraryState = rememberEntityLibraryState(showAddEntityDialog || showEntityBottomSheet, libraryFlow)
+    val libraryState = rememberEntityLibraryState(edit.showAddEntityDialog || edit.showEntityBottomSheet, libraryFlow)
 
     val isPrivateContentVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
 
@@ -568,15 +556,12 @@ internal fun BookmarkDetailScreen(
 
     fun openTagEditorDialog() = edit.openTagEditor(storedTag, storedIsPrivate)
 
-    fun cancelTagEditor() {
-        if (!isTagSaving) edit.closeTagEditor()
-    }
+    fun cancelTagEditor() = edit.dismissTagEditor(isTagSaving)
 
     fun confirmTagEditor() {
         if (isTagSaving) return
-        tagSaveFailed = false
-        viewModel.commitBookmarkTags(bookmark.id, Tag.fromDisplayValues(draftCategory, draftSubcategory, draftEntities),
-            draftIsPrivate, draftReplacements)
+        val commit = edit.beginTagCommit()
+        viewModel.commitBookmarkTags(bookmark.id, commit.tag, commit.isPrivate, commit.replacements)
     }
 
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(),
@@ -751,81 +736,60 @@ internal fun BookmarkDetailScreen(
             }
 
             // Tag edit dialogs & bottom sheet
-            if (showTagEditDialog) {
+            if (edit.showTagEditDialog) {
                 BookmarkTagEditDialog(
-                    blurBackground = !showEntityBottomSheet,
-                    selectedCategory = draftCategory,
-                    selectedSubcategory = draftSubcategory,
-                    selectedEntities = draftEntities,
-                    isPrivate = draftIsPrivate,
+                    blurBackground = !edit.showEntityBottomSheet,
+                    selectedCategory = edit.draftCategory,
+                    selectedSubcategory = edit.draftSubcategory,
+                    selectedEntities = edit.draftEntities,
+                    isPrivate = edit.draftIsPrivate,
                     isPrivateContentVisible = isPrivateContentVisible,
-                    onCategoryChanged = { draftCategory = it },
-                    onSubcategoryChanged = { draftSubcategory = it },
-                    onPrivateChanged = { draftIsPrivate = it },
-                    onAddEntityClick = { entityInput = ""; showAddEntityDialog = true },
-                    onOpenEntityPickerClick = { showEntityBottomSheet = true },
+                    onCategoryChanged = edit::updateDraftCategory,
+                    onSubcategoryChanged = edit::updateDraftSubcategory,
+                    onPrivateChanged = edit::updateDraftPrivate,
+                    onAddEntityClick = edit::openAddEntityDialog,
+                    onOpenEntityPickerClick = edit::openEntityPicker,
                     onConfirm = { confirmTagEditor() },
                     onDismiss = { cancelTagEditor() },
                     saving = isTagSaving,
-                    saveFailed = tagSaveFailed
+                    saveFailed = edit.tagSaveFailed
                 )
             }
 
-            if (showAddEntityDialog) {
+            if (edit.showAddEntityDialog) {
                 val suggestionCandidates = remember(bookmark.title, bookmark.description) {
                     EntityCandidateExtractor.default()
                         .extractSuggestionTokens(bookmark.title, bookmark.description)
                 }
                 AddEntityDialog(
-                    onDismiss = { showAddEntityDialog = false },
-                    text = entityInput,
-                    onTextChange = { entityInput = it },
+                    onDismiss = edit::dismissAddEntityDialog,
+                    text = edit.entityInput,
+                    onTextChange = edit::updateEntityInput,
+                    onSuggestionClick = edit::appendEntitySuggestionToInput,
                     libraryState = libraryState,
                     onRetry = { entityLibraryRetry++ },
                     candidates = suggestionCandidates,
                     onConfirm = { rawInput ->
-                        val draft = EntityTagDraft(draftEntities, draftReplacements)
-                        val conflict = entityTagConflict(rawInput, draft, libraryState.spellings)
-                        if (conflict != null) {
-                            conflictInput = rawInput
-                            conflictExisting = conflict.existing
-                        } else {
-                            val next = applyEntityTagChoice(draft, rawInput, null, false)
-                            draftEntities = next.entities
-                        }
+                        edit.submitEntityInput(libraryState.spellings, rawInput)
                     }
                 )
             }
-            val rawConflictInput = conflictInput
-            val existingConflict = conflictExisting
-            if (rawConflictInput != null && existingConflict != null) {
+            edit.pendingConflict?.let { conflict ->
                 EntityTagConflictDialog(
-                    entered = me.bubblespark.tidilo.data.EntityTagPolicy.clean(rawConflictInput).orEmpty(),
-                    existing = existingConflict,
-                    onDismiss = { conflictInput = null; conflictExisting = null },
-                    onChoice = { replace ->
-                        val next = applyEntityTagChoice(EntityTagDraft(draftEntities, draftReplacements), rawConflictInput, existingConflict, replace)
-                        draftEntities = next.entities
-                        draftReplacements = next.replacements
-                        conflictInput = null
-                        conflictExisting = null
-                    }
+                    entered = conflict.entered,
+                    existing = conflict.existing,
+                    onDismiss = edit::dismissEntityConflict,
+                    onChoice = edit::resolveEntityConflict
                 )
             }
 
-            if (showEntityBottomSheet) {
-                val allLibraryEntities = libraryState.spellings.map { (key, value) -> draftReplacements[key] ?: value }
+            if (edit.showEntityBottomSheet) {
                 EntityTagPickerBottomSheet(
-                    selectedEntities = draftEntities,
-                    allEntities = (draftEntities + allLibraryEntities).distinctBy { me.bubblespark.tidilo.data.entitySkeletonKey(it) },
-                    onToggleEntity = { entity ->
-                        draftEntities = me.bubblespark.tidilo.data.EntityTagPolicy.toggleDisplayEntity(draftEntities, entity)
-                    },
-                    onRemoveEntity = { entity ->
-                        val targetKey = me.bubblespark.tidilo.data.entitySkeletonKey(entity)
-                        draftEntities = draftEntities.filterNot { me.bubblespark.tidilo.data.entitySkeletonKey(it) == targetKey }
-                    },
-                    onDismiss = { showEntityBottomSheet = false }
+                    selectedEntities = edit.draftEntities,
+                    allEntities = edit.pickerEntities(libraryState.spellings),
+                    onToggleEntity = edit::togglePickerEntity,
+                    onRemoveEntity = edit::removePickerEntity,
+                    onDismiss = edit::dismissEntityPicker
                 )
             }
         }

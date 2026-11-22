@@ -536,7 +536,10 @@ fun AddEntityDialog(
     libraryState: EntityLibraryState,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
-    candidates: List<String> = emptyList()
+    candidates: List<String> = emptyList(),
+    onSuggestionClick: (String) -> Unit = { candidate ->
+        onTextChange(appendEntitySuggestion(text, candidate))
+    }
 ) {
     TidiloAlertDialog(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
@@ -613,7 +616,7 @@ fun AddEntityDialog(
                                             .minimumInteractiveComponentSize()
                                             .clip(chipShape)
                                             .clickable(role = androidx.compose.ui.semantics.Role.Button) {
-                                                onTextChange(appendEntitySuggestion(text, candidate))
+                                                onSuggestionClick(candidate)
                                             }
                                     ) {
                                         Row(

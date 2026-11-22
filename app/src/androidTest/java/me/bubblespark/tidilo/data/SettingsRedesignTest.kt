@@ -179,14 +179,20 @@ class SettingsRedesignTest {
                     val hostBounds = host.nodes(activity).first { it.id == hostNode.id }.boundsInRoot
                     val rowBounds = clickable(row).boundsInRoot
                     val px = density()
+                    // The scaffold adds horizontal system bar and cutout insets to the 20 dp margins.
+                    val safe = activity.window.decorView.rootWindowInsets.getInsets(
+                        android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+                    val margin = HeaderDefaults.HorizontalPadding.value * px
+                    val start = margin + safe.left
+                    val end = margin + safe.right
                     if (hostWidth > SettingsContentMaxWidth) {
                         assertTrue("Groups stay within the 840 dp cap: ${rowBounds.width / px} dp",
                             rowBounds.width <= SettingsContentMaxWidth.value * px + 1f)
                     } else {
-                        val margins = 2 * HeaderDefaults.HorizontalPadding.value * px
-                        assertEquals("Compact margins are unchanged", hostBounds.width - margins, rowBounds.width, 2f)
+                        assertEquals("Compact margins are unchanged", hostBounds.width - start - end, rowBounds.width, 2f)
                     }
-                    assertEquals("Groups are centered in the window", hostBounds.center.x, rowBounds.center.x, 1f)
+                    assertEquals("Groups are centered in the padded area",
+                        hostBounds.left + start + (hostBounds.width - start - end) / 2f, rowBounds.center.x, 1f)
                 }
             }
         } finally { host.main { activity.finish() } }

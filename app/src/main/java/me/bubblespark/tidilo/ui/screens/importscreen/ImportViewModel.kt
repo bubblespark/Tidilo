@@ -154,7 +154,7 @@ class ImportViewModel(
                 null
             }
             if (id != null) onResult(id)
-            else if (bookmarkId != null) _notificationActionError.value = unavailableMessage
+            else _notificationActionError.value = unavailableMessage
         }
     }
 

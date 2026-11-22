@@ -343,7 +343,7 @@ class ImportRepository internal constructor(
                         type = NotificationType.INFO.name,
                         domain = domain,
                         url = url,
-                        message = "Promoted from RSS to Library",
+                        message = ImportNotificationMessages.PROMOTED_TO_LIBRARY,
                         existingBookmarkId = result.bookmark.id
                     )
                 )
@@ -360,7 +360,7 @@ class ImportRepository internal constructor(
                 val saved = persistDirectBookmarkInTransaction(bookmark)
                 taskDao.deleteById(target.id)
                 notificationDao?.insert(ImportNotificationEntity(type = NotificationType.INFO.name, domain = domain,
-                    url = url, message = "Promoted from RSS to Library", existingBookmarkId = saved.id))
+                    url = url, message = ImportNotificationMessages.PROMOTED_TO_LIBRARY, existingBookmarkId = saved.id))
                 importingId?.let { id -> _importingTasks.update { list -> list.filter { it.id != id } } }
                 onImported?.invoke(Result.success(ImportOutcome.BookmarkSaved(saved.id, saved.url)))
                 return DuplicateResolution.Handled(postCommitTask = target.copy(id = saved.id, url = saved.url))
@@ -375,12 +375,12 @@ class ImportRepository internal constructor(
                         type = NotificationType.WARNING.name,
                         domain = domain,
                         url = url,
-                        message = "Duplicate URL (Already in Library)",
+                        message = ImportNotificationMessages.DUPLICATE_IN_LIBRARY,
                         existingBookmarkId = result.bookmark.id
                     )
                 )
                 onImported?.invoke(Result.failure(DuplicateUrlException(
-                    "Duplicate URL (Already in Library)", ImportOutcome.SavedDuplicate(result.bookmark.id, url)
+                    ImportNotificationMessages.DUPLICATE_IN_LIBRARY, ImportOutcome.SavedDuplicate(result.bookmark.id, url)
                 )))
                 return DuplicateResolution.Handled()
             }
@@ -394,13 +394,13 @@ class ImportRepository internal constructor(
                         type = NotificationType.WARNING.name,
                         domain = domain,
                         url = url,
-                        message = "Duplicate URL (Already in Queue)",
+                        message = ImportNotificationMessages.DUPLICATE_IN_QUEUE,
                         existingBookmarkId = null
                     )
                 )
                 val outcome = if (result.task.status == "ERROR") ImportOutcome.Failed(url, result.task.id)
                     else ImportOutcome.AlreadySaving(url)
-                onImported?.invoke(Result.failure(DuplicateUrlException("Duplicate URL (Already in Queue)", outcome)))
+                onImported?.invoke(Result.failure(DuplicateUrlException(ImportNotificationMessages.DUPLICATE_IN_QUEUE, outcome)))
                 return DuplicateResolution.Handled()
             }
         }
@@ -475,7 +475,7 @@ class ImportRepository internal constructor(
         }
 
         if (!canProceed) {
-            val ex = DuplicateUrlException("Duplicate URL (Already in Queue)", ImportOutcome.AlreadySaving(normalized))
+            val ex = DuplicateUrlException(ImportNotificationMessages.DUPLICATE_IN_QUEUE, ImportOutcome.AlreadySaving(normalized))
             if (foreground != null) {
                 foreground.complete(checkNotNull(ex.outcome))
                 return Result.failure(ex)
@@ -492,7 +492,7 @@ class ImportRepository internal constructor(
                                 type = NotificationType.WARNING.name,
                                 domain = targetDomain,
                                 url = targetUrl,
-                                message = "Duplicate URL (Already in Queue)",
+                                message = ImportNotificationMessages.DUPLICATE_IN_QUEUE,
                                 existingBookmarkId = null
                             )
                         )
@@ -981,7 +981,7 @@ class ImportRepository internal constructor(
 
     private suspend fun retainDirectSaveError(target: ImportTask, error: Throwable) {
         taskDao.insertOrUpdate(ImportTaskEntity.fromImportTask(target.copy(status = TaskStatus.ERROR,
-            statusText = "Save failed", errorMessage = "Bookmark persistence failed: ${error.message.orEmpty()}")))
+            statusText = "Save failed", errorMessage = "${ImportTaskErrorMessages.SAVE_FAILURE_PREFIX}: ${error.message.orEmpty()}")))
     }
 
     private suspend fun processDirectTask(taskId: String): ImportOutcome? {

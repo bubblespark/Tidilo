@@ -117,7 +117,7 @@ Drill-downs publish active colors (`ownerId = "library_drilldown"`) via `Remembe
 | Navigation, toolbar & actions | `FLOATING_BAR`, `TOOLBAR`, `PRIMARY_ACTION`, `FILTER_ACTION`, `NAVIGATION_INDICATOR` | Visibility animations, ripple, input semantics |
 | Like & toolbar icon plates | `LIKE_ACTION` / `TOOLBAR_ACTION` wrappers | Semantic foreground tints, native icon/toggle interaction |
 | Grouped settings/RSS/params | `SETTINGS_GROUP` and variants | Flat Modern appearance, padding, disabled parameter styling |
-| Notification history & errors | Material typography, dividers, error tone | Timestamps, history navigation, Retry/Delete menus |
+| Notification history & errors | Material typography, `primary` section headings, dividers, error tone, tonal Retry | Needs attention/History sections, timestamps, inline Retry, overflow Delete, details toggle, Open saved page |
 | Header & AI bubble | Resolved header/bubble attributes | Header fade & drag forwarding; bubble rainbow border & tail |
 | Dialogs & bottom sheets | Resolved native container/default shape | Material focus, keyboard, scrim, dismissal |
 | Sort menu, inputs, status, plates | `MENU`, `INPUT`, `STATUS_BADGE`, `ICON_PLATE` | Native behavior and semantic content |

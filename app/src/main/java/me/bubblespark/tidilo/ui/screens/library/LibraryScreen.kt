@@ -99,6 +99,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -601,9 +602,10 @@ fun LibraryScreen(
                         (state == LibraryDisplayState.DomainGrid && domainGroupsLoading) ||
                         (state == LibraryDisplayState.RssFeedGrid && rssFeedGroupsLoading) ||
                         (state == LibraryDisplayState.CollectionList && collectionLoading)
+                    val scopeStatePadding = newestFirstStatePadding(contentPadding, LocalLayoutDirection.current)
                     if (loading && isNewestFirst) {
                         // The scope stays adjustable while a new scope loads.
-                        Column(Modifier.fillMaxSize().padding(top = headerHeight, start = 20.dp, end = 20.dp)) {
+                        Column(Modifier.fillMaxSize().padding(scopeStatePadding)) {
                             scopeRow()
                             SkeletonBookmarkList(Modifier.fillMaxSize())
                         }
@@ -614,7 +616,7 @@ fun LibraryScreen(
                             PagingFeedback(LoadState.Error(requireNotNull(collectionError)), viewModel::retryCollections)
                         }
                     } else if (refreshState is LoadState.Error && isNewestFirst) {
-                        Column(Modifier.fillMaxSize().padding(top = headerHeight, start = 20.dp, end = 20.dp)) {
+                        Column(Modifier.fillMaxSize().padding(scopeStatePadding)) {
                             scopeRow()
                             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                                 PagingFeedback(refreshState, bookmarks::retry)

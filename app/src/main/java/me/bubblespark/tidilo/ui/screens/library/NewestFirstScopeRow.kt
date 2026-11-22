@@ -1,6 +1,9 @@
 package me.bubblespark.tidilo.ui.screens.library
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -19,6 +22,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import me.bubblespark.tidilo.R
@@ -31,6 +35,17 @@ import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 internal const val NewestFirstScopeKey = "newest_first_scope"
 
 private val NewestFirstScopeMinTouchTarget = 48.dp
+
+/**
+ * Padding for the non-lazy Newest first states (initial loading, refresh error) so the scope row
+ * keeps the scaffold's header clearance and horizontal safe insets, matching the list, grid, and empty states.
+ */
+internal fun newestFirstStatePadding(contentPadding: PaddingValues, layoutDirection: LayoutDirection): PaddingValues =
+    PaddingValues(
+        start = contentPadding.calculateStartPadding(layoutDirection),
+        top = contentPadding.calculateTopPadding(),
+        end = contentPadding.calculateEndPadding(layoutDirection)
+    )
 
 /**
  * Height of the Newest first scope row: the chip touch target, or its single-line label when larger.

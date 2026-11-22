@@ -44,6 +44,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -62,12 +63,17 @@ internal fun libraryBookmarkSource(mode: LibraryFilterMode, includeRss: Boolean)
     else -> BookmarkSource.MANUAL
 }
 
-internal class LibraryPagingSession(
-    val key: String,
-    val flow: Flow<PagingData<BookmarkItem>>,
-    val cacheScope: CoroutineScope
-) {
-    var users: Int = 0
+/**
+ * An opaque Library paging window. Screens retain it while composed and release it on disposal;
+ * [LibraryViewModel] alone decides when its cache is kept or cancelled.
+ */
+internal interface LibraryPages {
+    /** Filter key of this window; grids use it as their scroll-anchor generation. */
+    val key: String
+    val flow: Flow<PagingData<BookmarkItem>>
+
+    /** Whether the window's Pager cache is still alive. */
+    val isActive: Boolean
 }
 
 internal class SearchFocusRequestTracker {
@@ -258,6 +264,15 @@ class LibraryViewModel internal constructor(
         return generationScope
     }
 
+    private class LibraryPagingSession(
+        override val key: String,
+        override val flow: Flow<PagingData<BookmarkItem>>,
+        val cacheScope: CoroutineScope
+    ) : LibraryPages {
+        var users: Int = 0
+        override val isActive: Boolean get() = cacheScope.isActive
+    }
+
     private var currentLibrarySession: LibraryPagingSession? = null
 
     /** Retain the selected window across detail navigation; outgoing destinations release on exit. */
@@ -268,7 +283,7 @@ class LibraryViewModel internal constructor(
         visible: Boolean,
         collectionId: String? = null,
         includeRss: Boolean = false
-    ): LibraryPagingSession {
+    ): LibraryPages {
         val key = buildLibraryFilterKey(mode, domain, feedId, visible, collectionId, includeRss)
         currentLibrarySession?.takeIf { it.key == key }?.let { return it }
         currentLibrarySession?.takeIf { it.users == 0 }?.cacheScope?.cancel()
@@ -284,7 +299,14 @@ class LibraryViewModel internal constructor(
         return LibraryPagingSession(key, pages, cacheScope).also { currentLibrarySession = it }
     }
 
-    internal fun releaseLibraryPages(session: LibraryPagingSession) {
+    /** Called when a composition starts showing [pages]. */
+    internal fun retainLibraryPages(pages: LibraryPages) {
+        (pages as LibraryPagingSession).users++
+    }
+
+    /** Called when a composition showing [pages] is disposed. */
+    internal fun releaseLibraryPages(pages: LibraryPages) {
+        val session = pages as LibraryPagingSession
         session.users--
         val mode = _filterMode.value
         val selectedKey = buildLibraryFilterKey(mode,
@@ -300,7 +322,8 @@ class LibraryViewModel internal constructor(
     }
 
     /** A rapid A-to-B-to-A transition may reuse A's existing animated composition. */
-    internal fun activateLibraryPages(session: LibraryPagingSession) {
+    internal fun activateLibraryPages(pages: LibraryPages) {
+        val session = pages as LibraryPagingSession
         if (currentLibrarySession === session) return
         currentLibrarySession?.takeIf { it.users == 0 }?.cacheScope?.cancel()
         currentLibrarySession = session

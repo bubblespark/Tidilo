@@ -25,7 +25,9 @@ import me.bubblespark.tidilo.data.db.TagCount
 import me.bubblespark.tidilo.data.db.TagKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
@@ -298,6 +300,83 @@ class LibraryViewModelTest {
             assertEquals(0, f.store.viewModeWrites)
             f.model.setViewMode(LibraryViewMode.GRID)
             assertEquals(1, f.store.viewModeWrites)
+        }
+    }
+
+    @Test fun detailReturnReusesSelectedWindow() = runTest {
+        fixture { f ->
+            val first = f.model.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, true)
+            f.model.retainLibraryPages(first)
+            f.model.releaseLibraryPages(first)
+            val returned = f.model.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, true)
+            assertSame("Detail return must reuse the loaded Pager window", first, returned)
+            assertTrue(first.isActive)
+        }
+    }
+
+    @Test fun outgoingWindowLivesUntilExitDisposal() = runTest {
+        fixture { f ->
+            val first = f.model.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, true)
+            f.model.retainLibraryPages(first)
+            f.model.setFilterMode(LibraryFilterMode.RSS)
+            assertTrue("Outgoing session must remain alive until exit disposal", first.isActive)
+            f.model.releaseLibraryPages(first)
+            assertFalse("Retired windows must release their cache", first.isActive)
+            f.model.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
+            assertNotSame("Retired windows cannot be reused", first,
+                f.model.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, true))
+        }
+    }
+
+    @Test fun rapidReturnRetainsReusedWindow() = runTest {
+        fixture { f ->
+            val restored = f.model.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, true)
+            f.model.retainLibraryPages(restored)
+            f.model.setFilterMode(LibraryFilterMode.DOMAIN)
+            f.model.selectDomainFilter("transition120.example")
+            val intermediate = f.model.libraryPages(LibraryFilterMode.DOMAIN, "transition120.example", null, true)
+            f.model.retainLibraryPages(intermediate)
+            f.model.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
+            f.model.activateLibraryPages(restored)
+            f.model.releaseLibraryPages(intermediate)
+            assertFalse(intermediate.isActive)
+            f.model.releaseLibraryPages(restored)
+            assertSame("A-to-B-to-A must retain A across later detail navigation", restored,
+                f.model.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, true))
+        }
+    }
+
+    @Test fun replacementWhileAbsentCancelsRetainedWindow() = runTest {
+        fixture { f ->
+            val retained = f.model.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, true)
+            f.model.retainLibraryPages(retained)
+            f.model.releaseLibraryPages(retained)
+            assertTrue(retained.isActive)
+            f.model.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, false)
+            assertFalse("Replacement while the screen is absent must not leak the retained cache", retained.isActive)
+        }
+    }
+
+    @Test fun pagesWaitForInitialization() = runTest {
+        val store = FakeLibraryStore().apply { isInitialized.value = false }
+        fixture(store) { f ->
+            val pages = f.model.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, true)
+            backgroundScope.launch { pages.flow.collect {} }
+            runCurrent()
+            assertEquals(0, store.pagedBookmarkCalls)
+            store.isInitialized.value = true
+            runCurrent()
+            assertEquals(1, store.pagedBookmarkCalls)
+        }
+    }
+
+    @Test fun collectionModeUsesCollectionPaging() = runTest {
+        fixture { f ->
+            val pages = f.model.libraryPages(LibraryFilterMode.COLLECTION, null, null, true, collectionId = "c1")
+            backgroundScope.launch { pages.flow.collect {} }
+            runCurrent()
+            assertEquals(1, f.store.pagedCollectionCalls)
+            assertEquals(0, f.store.pagedBookmarkCalls)
         }
     }
 }

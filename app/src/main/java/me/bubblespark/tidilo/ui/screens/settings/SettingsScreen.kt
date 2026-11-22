@@ -87,50 +87,50 @@ fun SettingsScreen(
     }) { contentPadding ->
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding)
             .padding(bottom = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-          Column(Modifier.widthIn(max = SettingsContentMaxWidth).fillMaxWidth()) {
-            SettingsSectionTitle(stringResource(R.string.settings_section_general))
-            SettingsGroup {
-                SettingsNavigationRow(stringResource(R.string.settings_language_title), currentLanguage.displayName,
-                    Icons.Default.Language, onClick = { showLanguageDialog = true })
-                SettingsDivider()
-                SettingsNavigationRow(
-                    title = stringResource(R.string.settings_theme_title),
-                    subtitle = stringResource(currentTheme.labelRes),
-                    icon = Icons.Default.Palette,
-                    onClick = { showThemeDialog = true }
-                )
-                SettingsDivider()
-                SettingsNavigationRow(stringResource(R.string.settings_notification_title),
-                    stringResource(R.string.settings_notification_description), ImageVector.vectorResource(R.drawable.ic_notifications),
-                    onClick = {
-                        val intent = NotificationCoordinator.getInstance(context).settingsIntent()
-                        if (launchContext !is android.app.Activity) intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        launchContext.startActivity(intent)
-                    })
-                SettingsDivider()
-                SettingsNavigationRow(stringResource(R.string.settings_ai_analysis_title),
-                    stringResource(if (aiAnalysisMode == AiAnalysisMode.AICORE) R.string.settings_ai_analysis_aicore
-                        else R.string.settings_ai_analysis_disable), Icons.Default.AutoAwesome, onNavigateToAiAnalysis)
-                SettingsDivider()
-                SettingsNavigationRow(stringResource(R.string.settings_private_title),
-                    stringResource(R.string.settings_private_subtitle), Icons.Default.Lock, onNavigateToPrivateContent)
+            Column(Modifier.widthIn(max = SettingsContentMaxWidth).fillMaxWidth()) {
+                SettingsSectionTitle(stringResource(R.string.settings_section_general))
+                SettingsGroup {
+                    SettingsNavigationRow(stringResource(R.string.settings_language_title), currentLanguage.displayName,
+                        Icons.Default.Language, onClick = { showLanguageDialog = true })
+                    SettingsDivider()
+                    SettingsNavigationRow(
+                        title = stringResource(R.string.settings_theme_title),
+                        subtitle = stringResource(currentTheme.labelRes),
+                        icon = Icons.Default.Palette,
+                        onClick = { showThemeDialog = true }
+                    )
+                    SettingsDivider()
+                    SettingsNavigationRow(stringResource(R.string.settings_notification_title),
+                        stringResource(R.string.settings_notification_description), ImageVector.vectorResource(R.drawable.ic_notifications),
+                        onClick = {
+                            val intent = NotificationCoordinator.getInstance(context).settingsIntent()
+                            if (launchContext !is android.app.Activity) intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            launchContext.startActivity(intent)
+                        })
+                    SettingsDivider()
+                    SettingsNavigationRow(stringResource(R.string.settings_ai_analysis_title),
+                        stringResource(if (aiAnalysisMode == AiAnalysisMode.AICORE) R.string.settings_ai_analysis_aicore
+                            else R.string.settings_ai_analysis_disable), Icons.Default.AutoAwesome, onNavigateToAiAnalysis)
+                    SettingsDivider()
+                    SettingsNavigationRow(stringResource(R.string.settings_private_title),
+                        stringResource(R.string.settings_private_subtitle), Icons.Default.Lock, onNavigateToPrivateContent)
+                }
+                Spacer(Modifier.height(24.dp))
+                SettingsSectionTitle(stringResource(R.string.settings_section_data))
+                SettingsGroup {
+                    SettingsNavigationRow(stringResource(R.string.summary_title), stringResource(R.string.summary_subtitle),
+                        ImageVector.vectorResource(R.drawable.ic_summarize), onNavigateToStorage)
+                    SettingsDivider()
+                    SettingsNavigationRow(stringResource(R.string.rss_title), stringResource(R.string.rss_subtitle),
+                        Icons.Default.RssFeed, onNavigateToRss)
+                }
+                Spacer(Modifier.height(24.dp))
+                SettingsSectionTitle(stringResource(R.string.settings_section_debug))
+                SettingsGroup {
+                    SettingsNavigationRow(stringResource(R.string.settings_debug_title), stringResource(R.string.settings_debug_subtitle),
+                        Icons.Default.BugReport, onNavigateToDebug)
+                }
             }
-            Spacer(Modifier.height(24.dp))
-            SettingsSectionTitle(stringResource(R.string.settings_section_data))
-            SettingsGroup {
-                SettingsNavigationRow(stringResource(R.string.summary_title), stringResource(R.string.summary_subtitle),
-                    ImageVector.vectorResource(R.drawable.ic_summarize), onNavigateToStorage)
-                SettingsDivider()
-                SettingsNavigationRow(stringResource(R.string.rss_title), stringResource(R.string.rss_subtitle),
-                    Icons.Default.RssFeed, onNavigateToRss)
-            }
-            Spacer(Modifier.height(24.dp))
-            SettingsSectionTitle(stringResource(R.string.settings_section_debug))
-            SettingsGroup {
-                SettingsNavigationRow(stringResource(R.string.settings_debug_title), stringResource(R.string.settings_debug_subtitle),
-                    Icons.Default.BugReport, onNavigateToDebug)
-            }
-          }
         }
     }
 
@@ -215,37 +215,37 @@ fun SettingsScreen(
                 text = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
                         Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-                          Column(modifier = Modifier.selectableGroup()) {
-                            AppTheme.entries.forEach { theme ->
-                                val isSelected = theme == currentTheme
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .selectable(
+                            Column(modifier = Modifier.selectableGroup()) {
+                                AppTheme.entries.forEach { theme ->
+                                    val isSelected = theme == currentTheme
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .selectable(
+                                                selected = isSelected,
+                                                role = Role.RadioButton,
+                                                onClick = {
+                                                    AppConfig.setTheme(theme)
+                                                    showThemeDialog = false
+                                                }
+                                            )
+                                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(
                                             selected = isSelected,
-                                            role = Role.RadioButton,
-                                            onClick = {
-                                                AppConfig.setTheme(theme)
-                                                showThemeDialog = false
-                                            }
+                                            onClick = null
                                         )
-                                        .padding(vertical = 12.dp, horizontal = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(
-                                        selected = isSelected,
-                                        onClick = null
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(
-                                        text = stringResource(theme.labelRes),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            text = stringResource(theme.labelRes),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
                                 }
                             }
-                          }
-                          ThemeBlurSetting(blurSetting, AppConfig::setOverlayBlurEnabled)
+                            ThemeBlurSetting(blurSetting, AppConfig::setOverlayBlurEnabled)
                         }
                     }
                 },

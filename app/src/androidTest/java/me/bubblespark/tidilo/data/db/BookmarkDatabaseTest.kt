@@ -22,7 +22,9 @@ import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.removeStandardClassificationColumns
 import me.bubblespark.tidilo.data.rewindPrivateColumnsToLegacyNsfw
-import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
+import me.bubblespark.tidilo.data.Category
+import me.bubblespark.tidilo.data.Subcategory
+import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.UUID
@@ -505,7 +507,7 @@ class BookmarkDatabaseTest {
             )
             db.bookmarkDao().insertAll(rows)
             for (query in listOf("#None", "#Kotlin", "#Article", "#Tech", "#記事", "#技術", "#Kotlin #Tech")) {
-                assertEquals(query, LibraryViewModel.filterBookmarks(rows.map { it.toBookmarkItem() }, query).map { it.id }.toSet(),
+                assertEquals(query, expectedSearchIds(rows.map { it.toBookmarkItem() }, query),
                     results(db, query).map { it.id }.toSet())
             }
             val counts = db.bookmarkDao().tagCounts(BookmarkQueries.tags(setOf("Tech"), true, TagKind.ENTITY)).first()
@@ -589,7 +591,7 @@ class BookmarkDatabaseTest {
             for (showPrivate in listOf(false, true)) {
                 for (query in queries) {
                     val visible = rows.filter { showPrivate || !it.isPrivate }.map { it.toBookmarkItem() }
-                    val expected = LibraryViewModel.filterBookmarks(visible, query).map { it.id }.toSet()
+                    val expected = expectedSearchIds(visible, query)
                     assertEquals("query=$query visible=$showPrivate", expected, results(db, query, showPrivate).map { it.id }.toSet())
                     assertEquals("Count must include off-page and domainless results", expected.size,
                         db.bookmarkDao().observeCount(BookmarkQueries.count(query, showPrivate)).first())
@@ -916,6 +918,60 @@ class BookmarkDatabaseTest {
                 }
                 assertEquals(count, db.bookmarkDao().tagCounts(BookmarkQueries.tags(emptySet(), true, TagKind.CATEGORY)).first().sumOf { it.count })
             } finally { db.close(); context.deleteDatabase(name) }
+        }
+    }
+
+    /** In-memory reference for the SQL search semantics: AND of words and `#` tags, bilingual taxonomy labels. */
+    private fun expectedSearchIds(items: List<BookmarkItem>, rawQuery: String): Set<String> = matchingItems(items, rawQuery).map { it.id }.toSet()
+
+    private fun matchingItems(items: List<BookmarkItem>, rawQuery: String): List<BookmarkItem> {
+        if (rawQuery.isBlank()) return items
+
+        // Delimit by half-width space (normalizing full-width spaces)
+        val tokens = rawQuery.trim()
+            .replace("　", " ")
+            .split(" ")
+            .filter { it.isNotBlank() }
+
+        if (tokens.isEmpty()) return items
+
+        return items.filter { item ->
+            // Match all tokens (AND search)
+            tokens.all { token ->
+                if (token.startsWith("#")) {
+                    // Tag search: strip '#' and search category, subcategory, or entity
+                    val tagQuery = token.removePrefix("#").trim()
+                    if (tagQuery.isEmpty()) {
+                        true // Allow all tags if solitary '#' is entered
+                    } else {
+                        // Category (English ID or Japanese label)
+                        val catMatch = item.tag.category?.contains(tagQuery, ignoreCase = true) == true ||
+                                (item.tag.category?.let { Category.fromId(it) }?.let {
+                                     it.jaLabel.contains(tagQuery, ignoreCase = true) ||
+                                             it.enLabel.contains(tagQuery, ignoreCase = true)
+                                 } ?: false)
+
+                        // Subcategory (English ID or Japanese label)
+                        val subMatch = item.tag.subcategory?.contains(tagQuery, ignoreCase = true) == true ||
+                                (item.tag.subcategory?.let { Subcategory.fromId(it) }?.let {
+                                     it.jaLabel.contains(tagQuery, ignoreCase = true) ||
+                                             it.enLabel.contains(tagQuery, ignoreCase = true)
+                                 } ?: false)
+
+                        // Entity category (specific keyword list)
+                        val entityMatch = item.tag.entities.any { entity ->
+                            entity.contains(tagQuery, ignoreCase = true)
+                        }
+
+                        catMatch || subMatch || entityMatch
+                    }
+                } else {
+                    // Word search: Title, Description, URL
+                    item.title.contains(token, ignoreCase = true) ||
+                            item.description.contains(token, ignoreCase = true) ||
+                            item.url.contains(token, ignoreCase = true)
+                }
+            }
         }
     }
 }

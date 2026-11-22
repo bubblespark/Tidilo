@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -79,6 +80,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
@@ -584,4 +586,46 @@ private fun SearchMatchCaption(
         style = style,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+}
+
+/**
+ * Canonical height for the single-line search input field in [SearchScreen], matching
+ * the Material 3 [androidx.compose.material3.OutlinedTextField] standard minimum height (56.dp).
+ * Using this constant avoids layout measurement phase-backwards writes into composition.
+ */
+internal val SEARCH_INPUT_HEIGHT: Dp = 56.dp
+
+/**
+ * Calculates the remaining viewport height available for centering feedback content
+ * below the search input field.
+ */
+internal fun calculateRemainingFeedbackHeight(
+    viewportHeight: Dp,
+    contentPadding: PaddingValues,
+    searchInputHeight: Dp = SEARCH_INPUT_HEIGHT,
+    itemSpacing: Dp
+): Dp {
+    return (viewportHeight - contentPadding.calculateTopPadding() -
+        contentPadding.calculateBottomPadding() - searchInputHeight - itemSpacing).coerceAtLeast(0.dp)
+}
+
+/** Search loading/retry feedback occupies the remaining body viewport. */
+@Composable
+internal fun SearchResultFeedback(
+    viewportHeight: Dp,
+    contentPadding: PaddingValues,
+    searchInputHeight: Dp = SEARCH_INPUT_HEIGHT,
+    itemSpacing: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val remainingHeight = calculateRemainingFeedbackHeight(
+        viewportHeight = viewportHeight,
+        contentPadding = contentPadding,
+        searchInputHeight = searchInputHeight,
+        itemSpacing = itemSpacing
+    )
+    Box(modifier.fillMaxWidth().heightIn(min = remainingHeight), contentAlignment = Alignment.Center) {
+        content()
+    }
 }

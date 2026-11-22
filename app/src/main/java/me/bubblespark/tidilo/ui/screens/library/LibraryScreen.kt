@@ -589,7 +589,7 @@ fun LibraryScreen(
                         NewestFirstScopeRow(includeRss, viewModel::setIncludeRssInNewestFirst)
                     }
                     DisposableEffect(session) {
-                        session?.let { it.users++ }
+                        session?.let(viewModel::retainLibraryPages)
                         onDispose { session?.let(viewModel::releaseLibraryPages) }
                     }
                     SideEffect {

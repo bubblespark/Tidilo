@@ -3,8 +3,12 @@ package me.bubblespark.tidilo.ui.navigation
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import me.bubblespark.tidilo.R
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -35,6 +39,13 @@ fun TidiloNavGraph(
     onOpenNavigation: () -> Unit = {},
     onOpenManualImport: () -> Unit = {}
 ) {
+    val context = LocalContext.current
+    // The only collector, so a failure shows one Toast even while two screens share a transition.
+    LaunchedEffect(libraryViewModel) {
+        libraryViewModel.events.collect {
+            Toast.makeText(context, R.string.common_save_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
     NavHost(
         navController = navController,
         startDestination = Screen.Library.route,

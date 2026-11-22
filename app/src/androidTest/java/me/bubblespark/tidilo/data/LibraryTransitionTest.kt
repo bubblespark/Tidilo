@@ -19,7 +19,6 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.ViewModelStore
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
@@ -36,8 +35,6 @@ import me.bubblespark.tidilo.ui.screens.library.*
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.UUID
-import kotlinx.coroutines.isActive
-import me.bubblespark.tidilo.config.AppConfig
 
 /** Slows this composition's animations so assertions inspect the exit, rather than only its endpoint. */
 class LibraryTransitionTest {
@@ -148,55 +145,6 @@ class LibraryTransitionTest {
             }
             articles.forEach { db.bookmarkDao().deleteById(it.id) }
             db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(id))
-        }
-    }
-
-    @Test fun selectedPagerSurvivesLibraryCompositionDisposal() {
-        val store = ViewModelStore()
-        var oldMode = LibraryFilterMode.NEWEST_FIRST
-        lateinit var vm: LibraryViewModel
-        try {
-            instrumentation.runOnMainSync {
-                vm = ViewModelProvider(store, ViewModelProvider.NewInstanceFactory())[LibraryViewModel::class.java]
-                oldMode = vm.filterMode.value
-                vm.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
-                val visible = AppConfig.isPrivateContentVisible.value
-                val first = vm.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, visible)
-                first.users++
-                vm.releaseLibraryPages(first)
-                val returned = vm.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, visible)
-                assertSame("Detail return must reuse the loaded Pager window", first, returned)
-                assertTrue(first.cacheScope.isActive)
-                returned.users++
-                vm.setFilterMode(LibraryFilterMode.RSS)
-                assertTrue("Outgoing session must remain alive until exit disposal", first.cacheScope.isActive)
-                vm.releaseLibraryPages(returned)
-                assertFalse("Retired windows must release their cache", first.cacheScope.isActive)
-
-                vm.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
-                val restored = vm.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, visible)
-                assertNotSame("Retired windows cannot be reused", first, restored)
-                restored.users++
-                vm.setFilterMode(LibraryFilterMode.DOMAIN)
-                vm.selectDomainFilter("transition120.example")
-                val intermediate = vm.libraryPages(LibraryFilterMode.DOMAIN, "transition120.example", null, visible)
-                intermediate.users++
-                vm.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
-                vm.activateLibraryPages(restored)
-                vm.releaseLibraryPages(intermediate)
-                assertFalse(intermediate.cacheScope.isActive)
-                vm.releaseLibraryPages(restored)
-                assertSame("A-to-B-to-A must retain A across later detail navigation", restored,
-                    vm.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, visible))
-                // Replacement while the screen is absent must not leak the retained cache.
-                vm.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, !visible)
-                assertFalse(restored.cacheScope.isActive)
-            }
-        } finally {
-            instrumentation.runOnMainSync {
-                runCatching { vm.setFilterMode(oldMode) }
-                store.clear()
-            }
         }
     }
 

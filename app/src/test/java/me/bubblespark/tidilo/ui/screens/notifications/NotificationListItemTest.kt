@@ -10,27 +10,42 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NotificationListItemTest {
-    @Test fun mergesPersistedSourcesNewestFirstWithoutCollapsingSameUrl() {
-        val history = ImportNotificationEntity(7, "WARNING", "example.com", "https://example.com", "Duplicate", createdAt = 100)
+    @Test fun splitsUnresolvedFailuresFromHistoryNewestFirstWithoutCollapsingSameUrl() {
+        val history = ImportNotificationEntity(7, "WARNING", "example.com", "https://example.com", "Duplicate", createdAt = 400)
         val task = ImportTask("task", "https://example.com", "Page", TaskStatus.ERROR, "Failed", createdAt = 200)
         val feed = RssFeedEntity("feed", "https://example.com", "Feed", error = "HTTP 503", lastAttemptAt = 300)
-        val rows = buildNotificationList(listOf(history), listOf(task), listOf(feed))
-        assertEquals(listOf("feed:feed", "task:task", "history:7"), rows.map { it.key })
-        assertEquals(listOf(300L, 200L, 100L), rows.map { it.createdAt })
+        val sections = buildNotificationSections(listOf(history), listOf(task), listOf(feed))
+        assertEquals(listOf("feed:feed", "task:task"), sections.needsAttention.map { it.key })
+        assertEquals(listOf(300L, 200L), sections.needsAttention.map { it.createdAt })
+        assertEquals(listOf("history:7"), sections.history.map { it.key })
+        assertFalse(sections.isEmpty)
     }
 
     @Test fun ignoresDeletedFeedsMissingErrorDatesAndNonErrorTasks() {
         val feed = RssFeedEntity("feed", "https://example.com/feed", "Feed", error = "HTTP 404", lastAttemptAt = 5)
         val task = ImportTask("queued", "https://example.com", "Page", TaskStatus.QUEUED, "Queued")
-        assertTrue(buildNotificationList(emptyList(), listOf(task), listOf(
+        assertTrue(buildNotificationSections(emptyList(), listOf(task), listOf(
             feed.copy(deleted = true), feed.copy(id = "no-date", lastAttemptAt = null), feed.copy(id = "ok", error = null)
-        )).isEmpty())
+        )).isEmpty)
     }
 
     @Test fun equalDatesHaveDeterministicKeysAndEmptyInputIsEmpty() {
-        assertTrue(buildNotificationList(emptyList(), emptyList(), emptyList()).isEmpty())
+        assertTrue(buildNotificationSections(emptyList(), emptyList(), emptyList()).isEmpty)
         val a = ImportTask("a", "https://example.com", "A", TaskStatus.ERROR, "Failed", createdAt = 1)
-        assertEquals(listOf("task:a", "task:b"), buildNotificationList(emptyList(), listOf(a.copy(id = "b"), a), emptyList()).map { it.key })
+        assertEquals(listOf("task:a", "task:b"),
+            buildNotificationSections(emptyList(), listOf(a.copy(id = "b"), a), emptyList()).needsAttention.map { it.key })
+        val h = ImportNotificationEntity(2, "INFO", "example.com", "https://example.com", "Saved", createdAt = 1)
+        assertEquals(listOf("history:1", "history:2"),
+            buildNotificationSections(listOf(h, h.copy(id = 1)), emptyList(), emptyList()).history.map { it.key })
+    }
+
+    @Test fun diagnosticFallsBackToStatusTextAndEmptyFeedError() {
+        val task = ImportTask("task", "https://example.com", "Page", TaskStatus.ERROR, "Save failed")
+        assertEquals("Save failed", NotificationListItem.Failure(task).diagnostic)
+        assertEquals("Article HTTP 503", NotificationListItem.Failure(task.copy(errorMessage = "Article HTTP 503")).diagnostic)
+        val feed = RssFeedEntity("feed", "https://example.com/feed", "Feed", error = "HTTP 503", lastAttemptAt = 5)
+        assertEquals("HTTP 503", NotificationListItem.RssXmlFailure(feed).diagnostic)
+        assertEquals("", NotificationListItem.RssXmlFailure(feed.copy(error = null)).diagnostic)
     }
 
     @Test fun datesUsePersistedSecondsAndRequestedZoneAcrossYearBoundary() {

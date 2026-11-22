@@ -204,6 +204,7 @@ class NotificationContrastTest {
         }
         val appearance = "$theme ${if (dark) "dark" else "light"}"
         val iconDescription = host.context.getString(R.string.notification_more_actions)
+        val retryLabel = host.context.getString(R.string.common_retry)
         val rows = awaitStableFrame(host, scenario, "$appearance notification rows") { activity, nodes ->
             val rtl = activity.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
             val titleSamples = titles.map { title ->
@@ -221,7 +222,16 @@ class NotificationContrastTest {
                 val bounds = button.screenBounds()
                 Sample(icon.screenBounds(), Offset(bounds.left + bounds.width * 0.1f, bounds.center.y))
             }
-            FrameSamples(titleSamples + iconSamples, expectedCanvas)
+            // Each unresolved row exposes Retry as a visible tonal button beside its overflow menu.
+            val retryLabels = nodes.filter { host.text(it, retryLabel) }
+            if (retryLabels.size != actions.size) return@awaitStableFrame null
+            val retrySamples = retryLabels.map { label ->
+                val button = label.clickOwner()
+                assertNull(button.config.getOrNull(SemanticsProperties.Disabled))
+                val bounds = button.screenBounds()
+                Sample(label.screenBounds(), Offset(bounds.left + bounds.width * 0.06f, bounds.center.y))
+            }
+            FrameSamples(titleSamples + iconSamples + retrySamples, expectedCanvas)
         }
         titles.zip(rows.take(titles.size)).forEach { (title, ratio) ->
             assertContrast("$appearance $title", ratio, NORMAL_TEXT_CONTRAST)
@@ -229,8 +239,11 @@ class NotificationContrastTest {
         actions.zip(rows.drop(titles.size)).forEach { (tag, ratio) ->
             assertContrast("$appearance $tag", ratio, ICON_CONTRAST)
         }
+        rows.drop(titles.size + actions.size).forEachIndexed { index, ratio ->
+            assertContrast("$appearance Retry $index", ratio, NORMAL_TEXT_CONTRAST)
+        }
 
-        val menuLabels = listOf(R.string.common_retry, R.string.common_delete).map(host.context::getString)
+        val menuLabels = listOf(R.string.common_delete).map(host.context::getString)
         actions.forEach { tag ->
             click(host, awaitNode(host, scenario) { it.tag() == tag })
             val menu = awaitStableFrame(host, scenario, "$appearance $tag menu") { _, nodes ->

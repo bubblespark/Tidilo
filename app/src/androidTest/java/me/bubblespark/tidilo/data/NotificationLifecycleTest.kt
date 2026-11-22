@@ -58,11 +58,14 @@ class NotificationLifecycleTest {
             assertEquals("Article HTTP 503", task.errorMessage)
             repository.importUrl(task.url)
             val history = withTimeout(5000) { repository.notifications.first { it.isNotEmpty() } }
-            assertEquals(2, buildNotificationList(history, listOf(task), emptyList()).size)
+            buildNotificationSections(history, listOf(task), emptyList()).let {
+                assertEquals(listOf("task:${task.id}"), it.needsAttention.map { row -> row.key })
+                assertEquals(1, it.history.size)
+            }
             repository.clearAllNotifications()
             withTimeout(5000) { repository.notifications.first { it.isEmpty() } }
             assertNotNull(taskDao.getTaskById(task.id))
-            assertEquals(listOf("task:${task.id}"), buildNotificationList(emptyList(), repository.errorTasks.value, emptyList()).map { it.key })
+            assertEquals(listOf("task:${task.id}"), buildNotificationSections(emptyList(), repository.errorTasks.value, emptyList()).needsAttention.map { it.key })
 
             repository.retryErrorTaskAndAwait(task.id)
             // Keep the retry in progress until Room publishes the task leaving the error list.
@@ -97,7 +100,7 @@ class NotificationLifecycleTest {
             val failed = requireNotNull(db.rssDao().feed(feed.id))
             assertFalse(failed.enabled)
             assertTrue(failed.error.orEmpty().contains("404"))
-            val row = buildNotificationList(emptyList(), emptyList(), listOf(failed)).single()
+            val row = buildNotificationSections(emptyList(), emptyList(), listOf(failed)).needsAttention.single()
             assertEquals(failed.lastAttemptAt, row.createdAt)
             status = 200
             repository.retryXmlError(feed.id)
@@ -106,7 +109,7 @@ class NotificationLifecycleTest {
             val recovered = requireNotNull(db.rssDao().feed(feed.id))
             assertTrue(recovered.enabled)
             assertNull(recovered.error)
-            assertTrue(buildNotificationList(emptyList(), emptyList(), listOf(recovered)).isEmpty())
+            assertTrue(buildNotificationSections(emptyList(), emptyList(), listOf(recovered)).isEmpty)
         } finally { db.close() }
     }
 }

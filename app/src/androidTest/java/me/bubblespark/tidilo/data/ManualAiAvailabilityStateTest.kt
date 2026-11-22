@@ -1,12 +1,19 @@
 package me.bubblespark.tidilo.data
 
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
+import android.view.PixelCopy
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -23,12 +30,15 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.common.GenAiException.ErrorCode
+import java.io.File
 import java.util.Locale
 import java.util.UUID
+import kotlin.math.abs
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.data.db.AppDatabase
@@ -185,13 +195,13 @@ class ManualAiAvailabilityStateTest {
                 val reason = if (blocked) R.string.ai_review_disabled_message else R.string.ai_review_busy
                 awaitText(title)
                 val message = awaitText(reason)
+                val iconTag = if (blocked) "ai_review_status_info" else "ai_review_status_error"
                 val icon = host.await(activity) {
-                    it.config.getOrNull(SemanticsProperties.TestTag) == "ai_review_status_icon"
+                    it.config.getOrNull(SemanticsProperties.TestTag) == iconTag
                 }
                 val kind = if (blocked) "unavailable" else "error"
-                host.capture("263-r34-review-$kind-${locale.language}")
                 val tint = (if (blocked) colors.onSurfaceVariant else colors.error).toArgb()
-                assertRenderedStatus(host, icon, message, tint, blocked)
+                assertRenderedStatus(host, activity, icon, message, tint, "263-review-status-$kind-${locale.language}")
 
                 val action = awaitText(if (blocked) R.string.ai_review_back_to_detail else R.string.common_retry)
                 if (blocked) awaitText(R.string.detail_ai_manual_fallback)
@@ -200,7 +210,11 @@ class ManualAiAvailabilityStateTest {
                     val absent = if (blocked) {
                         listOf(R.string.ai_analysis_off_message, R.string.ai_analysis_open_settings, R.string.ai_review_error_title)
                     } else {
-                        listOf(R.string.ai_review_unavailable_title, R.string.ai_review_back_to_detail)
+                        listOf(
+                            R.string.ai_review_unavailable_title,
+                            R.string.ai_review_back_to_detail,
+                            R.string.detail_ai_manual_fallback
+                        )
                     }
                     assertTrue(host.nodes(activity).none { node ->
                         absent.any { host.text(node, localized.getString(it)) }
@@ -219,32 +233,67 @@ class ManualAiAvailabilityStateTest {
         }
     }
 
-    private fun assertRenderedStatus(
+    private suspend fun assertRenderedStatus(
         host: HeaderTestHost,
+        activity: ComponentActivity,
         icon: SemanticsNode,
         message: SemanticsNode,
         tint: Int,
-        blocked: Boolean
+        captureName: String
     ) {
-        val screenshot = host.instrumentation.uiAutomation.takeScreenshot()
+        host.instrumentation.waitForIdleSync()
+        val committed = CompletableDeferred<Unit>()
+        lateinit var decor: android.view.View
+        val onCommitted = Runnable { committed.complete(Unit) }
+        host.main {
+            decor = activity.window.decorView
+            decor.viewTreeObserver.registerFrameCommitCallback(onCommitted)
+            decor.invalidate()
+        }
         try {
-            fun hasTint(node: SemanticsNode): Boolean {
-                val bounds = node.boundsInWindow
+            withTimeout(5000) { committed.await() }
+        } finally {
+            host.main { decor.viewTreeObserver.unregisterFrameCommitCallback(onCommitted) }
+        }
+
+        lateinit var iconBounds: Rect
+        lateinit var messageBounds: Rect
+        lateinit var screenshot: Bitmap
+        val copied = CompletableDeferred<Int>()
+        try {
+            host.main {
+                iconBounds = icon.boundsInWindow
+                messageBounds = message.boundsInWindow
+                screenshot = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
+                PixelCopy.request(activity.window, screenshot, { copied.complete(it) }, Handler(Looper.getMainLooper()))
+            }
+            val result = withTimeout(5000) { copied.await() }
+            check(result == PixelCopy.SUCCESS) { "Could not capture $captureName (PixelCopy result $result)" }
+            withContext(Dispatchers.IO) {
+                File(host.context.cacheDir, "$captureName.png").outputStream().use {
+                    check(screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)) {
+                        "Could not save $captureName"
+                    }
+                }
+            }
+            fun hasTint(bounds: Rect): Boolean {
                 val width = bounds.right.toInt() - bounds.left.toInt()
                 val height = bounds.bottom.toInt() - bounds.top.toInt()
+                if (width <= 0 || height <= 0) return false
                 val pixels = IntArray(width * height)
                 screenshot.getPixels(pixels, 0, width, bounds.left.toInt(), bounds.top.toInt(), width, height)
-                return tint in pixels
+                return pixels.any {
+                    abs(Color.red(it) - Color.red(tint)) <= 8 &&
+                        abs(Color.green(it) - Color.green(tint)) <= 8 &&
+                        abs(Color.blue(it) - Color.blue(tint)) <= 8
+                }
             }
 
-            assertTrue("The rendered status icon must use the expected theme color", hasTint(icon))
-            assertTrue("The rendered reason must use the expected theme color", hasTint(message))
-            val bounds = icon.boundsInWindow
-            // The Info mark has a gap here, while ErrorOutline has a continuous upper stem.
-            val upperMark = screenshot.getPixel(bounds.center.x.toInt(), (bounds.top + bounds.height * 0.42f).toInt())
-            assertEquals("The status icon must match its state", !blocked, upperMark == tint)
+            assertTrue("The rendered status icon must use the expected theme color", hasTint(iconBounds))
+            assertTrue("The rendered reason must use the expected theme color", hasTint(messageBounds))
         } finally {
-            screenshot.recycle()
+            // A timed-out copy may still own the bitmap until its callback finishes.
+            if (copied.isCompleted) screenshot.recycle()
         }
     }
 

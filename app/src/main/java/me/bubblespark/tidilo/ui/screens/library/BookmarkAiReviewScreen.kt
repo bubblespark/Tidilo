@@ -355,11 +355,13 @@ fun BookmarkAiReviewScreen(
                         if (loading) {
                             CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 4.dp)
                         } else if (!restored) {
+                            val (image, tag) = if (blocked) Icons.Outlined.Info to "ai_review_status_info"
+                            else Icons.Default.ErrorOutline to "ai_review_status_error"
                             Icon(
-                                imageVector = if (blocked) Icons.Outlined.Info else Icons.Default.ErrorOutline,
+                                imageVector = image,
                                 contentDescription = null,
                                 tint = if (blocked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(48.dp).testTag("ai_review_status_icon")
+                                modifier = Modifier.size(48.dp).testTag(tag)
                             )
                         }
                         Spacer(modifier = Modifier.height(20.dp))

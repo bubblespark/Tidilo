@@ -48,6 +48,9 @@ class ChromeBlurControlsTest {
                     BookmarkDetailScreen(fixture.detailId, fixture.vm, {})
                 }
             } } }
+            // Detail loads its bookmark asynchronously; semantics update before the frame reaches the screenshot,
+            // so wait for the loaded toolbar before the fixed frame delays below.
+            host.await(screen) { host.description(it, host.context.getString(me.bubblespark.tidilo.R.string.bookmark_open_in_browser)) }
             suspend fun pixels(): List<Int> {
                 val nodes = listOf(me.bubblespark.tidilo.R.string.detail_action_ai_summary, me.bubblespark.tidilo.R.string.bookmark_open_in_browser).map { resource ->
                     host.await(screen) { host.description(it, host.context.getString(resource)) }

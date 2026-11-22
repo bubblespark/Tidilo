@@ -106,11 +106,12 @@ class ManualAiAvailabilityStateTest {
                     }
                 }
                 for (resource in listOf(R.string.ai_review_restored_title, R.string.ai_review_restored_message, R.string.common_retry)) {
-                    host.await(activity) { host.text(it, localized.getString(resource)) }
+                    host.await(activity, includeOtherWindows = false) { host.text(it, localized.getString(resource)) }
                 }
                 val backLabel = localized.getString(R.string.ai_review_back_to_detail)
                 val back = host.await(activity) { host.text(it, backLabel) }
                 host.await(activity) { host.text(it, localized.getString(R.string.detail_ai_manual_fallback)) }
+                host.assertNoAiReviewStatusIcon(activity, localized.getString(R.string.ai_review_restored_title))
                 host.capture("263-review-restored-${locale.language}")
                 host.main {
                     val click = generateSequence(back) { it.parent }
@@ -125,11 +126,16 @@ class ManualAiAvailabilityStateTest {
         }
     }
 
-    @Test fun retryShowsDistinctLocalizedUnavailableAndErrorStates(): Unit = runBlocking {
+    @Test fun unavailableRetryShowsLocalizedManualRecoveryWithInfoTint(): Unit =
+        assertLocalizedReviewRetryRendering(blocked = true)
+
+    @Test fun errorRetryShowsLocalizedRetryWithErrorTint(): Unit =
+        assertLocalizedReviewRetryRendering(blocked = false)
+
+    private fun assertLocalizedReviewRetryRendering(blocked: Boolean): Unit = runBlocking {
         val host = HeaderTestHost()
         for ((locale, dark) in listOf(Locale.ENGLISH to false, Locale.JAPANESE to true)) {
-            assertReviewRetryRendering(host, locale, dark, blocked = true)
-            assertReviewRetryRendering(host, locale, dark, blocked = false)
+            assertReviewRetryRendering(host, locale, dark, blocked)
         }
     }
 
@@ -181,7 +187,7 @@ class ManualAiAvailabilityStateTest {
                 }
 
                 suspend fun awaitText(resource: Int) =
-                    host.await(activity) { host.text(it, localized.getString(resource)) }
+                    host.await(activity, includeOtherWindows = false) { host.text(it, localized.getString(resource)) }
 
                 awaitText(R.string.ai_review_restored_title)
                 val retry = awaitText(R.string.common_retry)
@@ -196,12 +202,12 @@ class ManualAiAvailabilityStateTest {
                 awaitText(title)
                 val message = awaitText(reason)
                 val iconTag = if (blocked) "ai_review_status_info" else "ai_review_status_error"
-                val icon = host.await(activity) {
+                val icon = host.await(activity, includeOtherWindows = false) {
                     it.config.getOrNull(SemanticsProperties.TestTag) == iconTag
                 }
                 val kind = if (blocked) "unavailable" else "error"
                 val tint = (if (blocked) colors.onSurfaceVariant else colors.error).toArgb()
-                assertRenderedStatus(host, activity, icon, message, tint, "263-review-status-$kind-${locale.language}")
+                assertRenderedStatus(host, activity, icon, message, tint, colors.surface.toArgb(), "263-review-status-$kind-${locale.language}")
 
                 val action = awaitText(if (blocked) R.string.ai_review_back_to_detail else R.string.common_retry)
                 if (blocked) awaitText(R.string.detail_ai_manual_fallback)
@@ -239,6 +245,7 @@ class ManualAiAvailabilityStateTest {
         icon: SemanticsNode,
         message: SemanticsNode,
         tint: Int,
+        background: Int,
         captureName: String
     ) {
         host.instrumentation.waitForIdleSync()
@@ -276,21 +283,37 @@ class ManualAiAvailabilityStateTest {
                     }
                 }
             }
-            fun hasTint(bounds: Rect): Boolean {
+            fun tintCoverage(bounds: Rect): Pair<Int, Int> {
                 val width = bounds.right.toInt() - bounds.left.toInt()
                 val height = bounds.bottom.toInt() - bounds.top.toInt()
-                if (width <= 0 || height <= 0) return false
+                if (width <= 0 || height <= 0) return 0 to 0
                 val pixels = IntArray(width * height)
                 screenshot.getPixels(pixels, 0, width, bounds.left.toInt(), bounds.top.toInt(), width, height)
-                return pixels.any {
-                    abs(Color.red(it) - Color.red(tint)) <= 8 &&
-                        abs(Color.green(it) - Color.green(tint)) <= 8 &&
-                        abs(Color.blue(it) - Color.blue(tint)) <= 8
+
+                fun matches(pixel: Int, expected: Int): Boolean =
+                    abs(Color.red(pixel) - Color.red(expected)) <= 8 &&
+                        abs(Color.green(pixel) - Color.green(expected)) <= 8 &&
+                        abs(Color.blue(pixel) - Color.blue(expected)) <= 8
+
+                var foreground = 0
+                var matching = 0
+                for (pixel in pixels) {
+                    if (Color.alpha(pixel) != 255 || matches(pixel, background)) continue
+                    foreground++
+                    if (matches(pixel, tint)) matching++
                 }
+                return matching to foreground
             }
 
-            assertTrue("The rendered status icon must use the expected theme color", hasTint(iconBounds))
-            assertTrue("The rendered reason must use the expected theme color", hasTint(messageBounds))
+            val (iconMatches, iconForeground) = tintCoverage(iconBounds)
+            val (textMatches, textForeground) = tintCoverage(messageBounds)
+            // Allow antialiased edges while rejecting a few incidental matching pixels.
+            assertTrue(
+                "$captureName tint coverage: icon $iconMatches/$iconForeground, reason $textMatches/$textForeground",
+                iconMatches >= 16 && iconMatches * 4 >= iconForeground &&
+                    textMatches >= 16 && textMatches * 4 >= textForeground
+            )
+
         } finally {
             // A timed-out copy may still own the bitmap until its callback finishes.
             if (copied.isCompleted) screenshot.recycle()
@@ -413,5 +436,16 @@ class ManualAiAvailabilityStateTest {
             assertTrue(model.state.value.downloadFailed)
             assertNull(model.progress.value)
         }
+    }
+}
+
+internal fun HeaderTestHost.assertNoAiReviewStatusIcon(activity: ComponentActivity, expectedTitle: String) {
+    main {
+        val tags = setOf("ai_review_status_info", "ai_review_status_error")
+        val reviewNodes = nodes(activity, includeOtherWindows = false)
+        assertTrue("Review window must show $expectedTitle", reviewNodes.any { text(it, expectedTitle) })
+        assertTrue("Review status icon should be absent", reviewNodes.none {
+            it.config.getOrNull(SemanticsProperties.TestTag) in tags
+        })
     }
 }

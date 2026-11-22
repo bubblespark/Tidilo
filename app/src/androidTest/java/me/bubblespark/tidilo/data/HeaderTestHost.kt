@@ -53,10 +53,17 @@ internal class HeaderTestHost {
                 .getOrDefault(emptyList())
         }
     }
-    suspend fun await(activity: ComponentActivity, predicate: (SemanticsNode) -> Boolean): SemanticsNode = withTimeout(8000) {
+    suspend fun await(activity: ComponentActivity, predicate: (SemanticsNode) -> Boolean): SemanticsNode =
+        await(activity, includeOtherWindows = true, predicate)
+
+    suspend fun await(
+        activity: ComponentActivity,
+        includeOtherWindows: Boolean,
+        predicate: (SemanticsNode) -> Boolean
+    ): SemanticsNode = withTimeout(8000) {
         var found: SemanticsNode? = null
         while (found == null) {
-            main { found = nodes(activity).firstOrNull(predicate) }
+            main { found = nodes(activity, includeOtherWindows = includeOtherWindows).firstOrNull(predicate) }
             if (found == null) delay(30)
         }
         requireNotNull(found)

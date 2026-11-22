@@ -238,9 +238,11 @@ class SettingsRedesignTest {
         var scroll: (suspend (androidx.compose.ui.geometry.Offset) -> androidx.compose.ui.geometry.Offset)? = null
         var distance = 0f
         host.main {
-            val range = body.config[SemanticsProperties.VerticalScrollAxisRange]
+            // Re-read the settled node; the awaited snapshot can predate the final layout.
+            val settled = host.nodes(activity).first { it.id == body.id }
+            val range = settled.config[SemanticsProperties.VerticalScrollAxisRange]
             distance = range.maxValue() - range.value()
-            scroll = body.config.getOrNull(SemanticsActions.ScrollByOffset)
+            scroll = settled.config.getOrNull(SemanticsActions.ScrollByOffset)
             android.util.Log.i("SettingsRedesignTest", "$rowLabel dialog overflow=${range.maxValue()}")
             if (dialog == R.string.settings_theme_title) {
                 assertTrue("$rowLabel overflows, so this case exercises scrolling", range.maxValue() > 0f)
@@ -250,6 +252,19 @@ class SettingsRedesignTest {
             kotlinx.coroutines.withContext(androidx.compose.ui.platform.AndroidUiDispatcher.Main) {
                 requireNotNull(scroll) { "$rowLabel overflows but exposes no scroll action" }
                     .invoke(androidx.compose.ui.geometry.Offset(0f, distance))
+            }
+            withTimeout(5000) {
+                var settledSamples = 0
+                while (settledSamples < 4) {
+                    var atEnd = false
+                    host.main {
+                        val range = host.nodes(activity).first { it.id == body.id }
+                            .config[SemanticsProperties.VerticalScrollAxisRange]
+                        atEnd = kotlin.math.abs(range.maxValue() - range.value()) < 1f
+                    }
+                    settledSamples = if (atEnd) settledSamples + 1 else 0
+                    delay(50)
+                }
             }
             host.instrumentation.waitForIdleSync()
         }
@@ -261,9 +276,19 @@ class SettingsRedesignTest {
                 host.nodes(activity).last { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton }
             }
             val bounds = last.boundsInWindow
-            assertTrue("$rowLabel last control is shown after scrolling: $bounds in $viewport",
-                bounds.height > 0f && bounds.top >= viewport.top - 1f && bounds.bottom <= viewport.bottom + 1f)
-            assertEquals("$rowLabel last control is fully visible", last.size.height.toFloat(), bounds.height, 1f)
+            // A large-font row can be taller than a cutout-constrained viewport, so require the
+            // row to be scrolled into view with its label unclipped and a usable visible target.
+            assertTrue("$rowLabel last control is scrolled into view: $bounds in $viewport",
+                bounds.height > 0f && bounds.bottom <= viewport.bottom + 1f)
+            val minVisible = minOf(48f * density(), viewport.height) - 1f
+            assertTrue("$rowLabel last control keeps a usable visible target: ${bounds.height} px",
+                bounds.height >= minVisible)
+            val label = descendants(last).first { it.config.getOrNull(SemanticsProperties.Text) != null }
+            val labelBounds = label.boundsInWindow
+            assertTrue("$rowLabel last control label is unclipped: $labelBounds in $viewport",
+                labelBounds.top >= viewport.top - 1f && labelBounds.bottom <= viewport.bottom + 1f)
+            assertEquals("$rowLabel last control label is fully visible",
+                label.size.height.toFloat(), labelBounds.height, 1f)
         }
         assertCloseVisible(activity, close)
         clickDialogText(R.string.common_close)

@@ -1,9 +1,11 @@
 package me.bubblespark.tidilo.data
 
 import com.google.mlkit.genai.common.FeatureStatus
+import com.google.mlkit.genai.common.DownloadStatus
 import com.google.mlkit.genai.prompt.GenerativeModel
 import java.lang.reflect.Proxy
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -12,6 +14,30 @@ import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.startCoroutine
 
 class AiCoreAvailabilityTest {
+    @Test fun modelDownloadReportsProgressAndClosesTheClient() = runBlocking {
+        var closed = false
+        val progress = mutableListOf<Float?>()
+        val model = Proxy.newProxyInstance(
+            GenerativeModel::class.java.classLoader,
+            arrayOf(GenerativeModel::class.java)
+        ) { _, method, _ ->
+            when (method.name) {
+                "checkStatus" -> FeatureStatus.DOWNLOADABLE
+                "download" -> flowOf(
+                    DownloadStatus.DownloadStarted(100L),
+                    DownloadStatus.DownloadProgress(50L),
+                    DownloadStatus.DownloadCompleted
+                )
+                "close" -> { closed = true; null }
+                else -> throw AssertionError("Unexpected model call: ${method.name}")
+            }
+        } as GenerativeModel
+
+        assertEquals(AiCoreDownloadResult.COMPLETED, downloadAiCoreModel({ progress.add(it) }, { model }))
+        assertEquals(listOf(0f, 0.5f), progress)
+        assertTrue(closed)
+    }
+
     @Test fun onlyAvailableIsUsableAndClientsAlwaysClose() = runBlocking {
         for (status in listOf(FeatureStatus.AVAILABLE, FeatureStatus.DOWNLOADABLE, FeatureStatus.DOWNLOADING,
             FeatureStatus.UNAVAILABLE, -1)) {

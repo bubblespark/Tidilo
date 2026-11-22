@@ -62,7 +62,6 @@ import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Tag
@@ -114,10 +113,15 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.dropUnlessResumed
+import androidx.lifecycle.withResumed
+import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.runtime.setValue
@@ -141,7 +145,10 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.config.AiAnalysisMode
 import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.data.AiCoreAvailability
+import me.bubblespark.tidilo.data.AiCoreReadiness
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.CollectionRepository
 import me.bubblespark.tidilo.data.Subcategory
@@ -355,12 +362,14 @@ internal fun DetailCollectionSheetHost(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun BookmarkDetailScreen(
+internal fun BookmarkDetailScreen(
     bookmarkId: String,
     viewModel: LibraryViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToAiReview: (String) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateToAiSettings: () -> Unit = {},
+    checkAiCoreReadiness: suspend () -> AiCoreReadiness = { AiCoreAvailability.inspect() }
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
@@ -463,6 +472,15 @@ fun BookmarkDetailScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     val collectionSheetState = rememberSaveable(bookmark.id, saver = DetailCollectionSheetState.Saver) {
         DetailCollectionSheetState()
+    }
+    val detailAiModel = composeViewModel<DetailAiActionViewModel>(key = "detail-ai-${bookmark.id}")
+    val detailAiState = detailAiModel.state.collectAsStateWithLifecycle().value
+    val aiMode by AppConfig.aiAnalysisMode.collectAsStateWithLifecycle()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val navigateToAiReview by rememberUpdatedState(onNavigateToAiReview)
+    val navigateToAiSettings by rememberUpdatedState(onNavigateToAiSettings)
+    val checkForAiReview = {
+        detailAiModel.check({ AppConfig.aiAnalysisMode.value }, checkAiCoreReadiness)
     }
     var entityLibraryRetry by remember { mutableStateOf(0) }
     val libraryFlow = remember(viewModel, entityLibraryRetry) { viewModel.entityLibrary() }
@@ -604,19 +622,27 @@ fun BookmarkDetailScreen(
                     TidiloSurface(role = SurfaceRole.TOOLBAR, blurBackground = true) {
                         Box {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { showDeleteConfirmDialog = true }, modifier = Modifier.size(HeaderDefaults.DetailActionSize)) {
+                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = {
+                                    if (detailAiModel.state.value == DetailAiState.Idle) showDeleteConfirmDialog = true
+                                }, modifier = Modifier.size(HeaderDefaults.DetailActionSize)) {
                                     Icon(ImageVector.vectorResource(R.drawable.ic_delete),
                                         contentDescription = stringResource(R.string.detail_action_delete),
                                         tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
                                 }
-                                TidiloIconButton(role = SurfaceRole.TOOLBAR_ACTION, onClick = { onNavigateToAiReview(bookmark.id) }, modifier = Modifier.size(HeaderDefaults.DetailActionSize)) {
-                                    Icon(Icons.Default.AutoAwesome,
-                                        contentDescription = stringResource(R.string.detail_action_ai_summary),
-                                        modifier = Modifier.size(22.dp))
-                                }
+                                DetailAiActionButton(
+                                    disabledInSettings = aiMode == AiAnalysisMode.DISABLE,
+                                    onClick = dropUnlessResumed {
+                                        if (collectionSheetState.phase == DetailCollectionSheetPhase.CLOSED &&
+                                            !showDeleteConfirmDialog) {
+                                            checkForAiReview()
+                                        }
+                                    }
+                                )
                                 TidiloIconButton(
                                     role = SurfaceRole.TOOLBAR_ACTION,
-                                    onClick = { collectionSheetState.openSelector() },
+                                    onClick = {
+                                        if (detailAiModel.state.value == DetailAiState.Idle) collectionSheetState.openSelector()
+                                    },
                                     modifier = Modifier.size(HeaderDefaults.DetailActionSize).semantics { selected = hasCollection }
                                 ) {
                                     Icon(if (hasCollection) Icons.Filled.Star else ImageVector.vectorResource(R.drawable.ic_star),
@@ -656,6 +682,26 @@ fun BookmarkDetailScreen(
                 }
             }
 
+            }
+
+            DetailAiStatusDialog(
+                state = detailAiState,
+                onDismiss = detailAiModel::dismiss,
+                onOpenSettings = dropUnlessResumed { detailAiModel.requestSettings() },
+                onRetry = checkForAiReview
+            )
+
+            // Navigation runs after the dialog is removed from the composition.
+            LaunchedEffect(bookmark.id, lifecycle, detailAiState) {
+                when (detailAiState) {
+                    DetailAiState.OpeningSettings -> lifecycle.withResumed {
+                        if (detailAiModel.consumeSettingsRequest()) navigateToAiSettings()
+                    }
+                    DetailAiState.Ready -> lifecycle.withResumed {
+                        if (detailAiModel.consumeReady(AppConfig.aiAnalysisMode.value)) navigateToAiReview(bookmark.id)
+                    }
+                    else -> Unit
+                }
             }
 
             // Delete confirmation dialog

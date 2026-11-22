@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.service
 
 import com.google.mlkit.genai.common.GenAiException
+import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.prompt.Generation
 import com.google.mlkit.genai.prompt.GenerativeModel
 import com.google.mlkit.genai.prompt.TextPart
@@ -8,7 +9,11 @@ import com.google.mlkit.genai.prompt.generateContentRequest
 import me.bubblespark.tidilo.data.AiCoreUsageRepository
 import me.bubblespark.tidilo.data.AiUsageSource
 import me.bubblespark.tidilo.TidiloApplication
+import me.bubblespark.tidilo.config.AiAnalysisMode
+import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.config.AppLanguage
+import me.bubblespark.tidilo.data.AiCoreAvailability
+import me.bubblespark.tidilo.data.AiCoreReadiness
 import me.bubblespark.tidilo.data.Category
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.DomainPolicyManager
@@ -19,6 +24,8 @@ import me.bubblespark.tidilo.parser.WebPageParser
 import me.bubblespark.tidilo.ui.screens.library.Tag
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.URI
@@ -28,6 +35,75 @@ open class AiCoreExecutionException(
     message: String,
     cause: Throwable? = null
 ) : Exception(message, cause)
+
+internal class AiGenerationBlocked(val readiness: AiCoreReadiness?, cause: Throwable? = null) :
+    Exception("Manual AI generation is unavailable", cause)
+
+internal class AiProposalPageException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+internal suspend fun <P, T> runWithAvailableAiCore(
+    readMode: () -> AiAnalysisMode,
+    openModel: () -> GenerativeModel,
+    prepare: suspend () -> P,
+    infer: suspend (GenerativeModel, P) -> T
+): Pair<P, T> {
+    suspend fun ensureActiveAndEnabled() {
+        currentCoroutineContext().ensureActive()
+        if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null)
+    }
+
+    suspend fun requireAvailable(model: GenerativeModel) {
+        ensureActiveAndEnabled()
+        val readiness = AiCoreAvailability.inspect(model)
+        ensureActiveAndEnabled()
+        if (!readiness.isAvailable) throw AiGenerationBlocked(readiness)
+    }
+
+    ensureActiveAndEnabled()
+    withManualAiCoreClient(openModel) { model -> requireAvailable(model) }
+
+    ensureActiveAndEnabled()
+    val input = prepare()
+    ensureActiveAndEnabled()
+
+    return withManualAiCoreClient(openModel) { model ->
+        requireAvailable(model)
+        try {
+            input to infer(model, input)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: AiGenerationBlocked) {
+            throw e
+        } catch (e: Exception) {
+            val mapped = GeminiTaggingService.mapInferenceException(e)
+            when (mapped.errorCode) {
+                GenAiException.ErrorCode.NOT_AVAILABLE,
+                GenAiException.ErrorCode.NEEDS_SYSTEM_UPDATE,
+                GenAiException.ErrorCode.AICORE_INCOMPATIBLE ->
+                    throw AiGenerationBlocked(AiCoreReadiness.Status(FeatureStatus.UNAVAILABLE), e)
+                else -> throw mapped
+            }
+        }
+    }
+}
+
+private suspend fun <T> withManualAiCoreClient(
+    openModel: () -> GenerativeModel,
+    block: suspend (GenerativeModel) -> T
+): T {
+    val model = try {
+        openModel()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        throw AiGenerationBlocked(AiCoreReadiness.Failed, e)
+    }
+    try {
+        return block(model)
+    } finally {
+        runCatching { model.close() }
+    }
+}
 
 data class TaggingResult(
     val title: String,
@@ -40,6 +116,8 @@ data class TaggingResult(
 
 object GeminiTaggingService {
 
+    private data class ProposalInput(val page: ParsedWebPage, val url: String, val prompt: String)
+
     /**
      * Parses the URL and generates summary and tag proposal using Gemini Nano without adding to Library.
      */
@@ -49,43 +127,31 @@ object GeminiTaggingService {
         preferredTitle: String? = null
     ): Result<TaggingResult> = withContext(Dispatchers.IO) {
         runCatching {
-            // 1. Parse web page and extract main body content
-            val parseResult = WebPageParser.parseUrl(url)
-            val parsed = parseResult.getOrElse { e ->
-                throw Exception("Network / Fetch Failed: ${e.message ?: "Could not connect to URL"}", e)
+            val readMode = { AppConfig.aiAnalysisMode.value }
+            val (input, aiOutput) = runWithAvailableAiCore(
+                readMode = readMode,
+                openModel = { Generation.getClient() },
+                prepare = {
+                    val parsed = WebPageParser.parseUrl(url).getOrElse { e ->
+                        if (e is CancellationException) throw e
+                        throw AiProposalPageException("Could not fetch the bookmark page", e)
+                    }
+                    if (parsed.statusCode != 200) {
+                        throw AiProposalPageException("HTTP error ${parsed.statusCode}")
+                    }
+                    val realUrl = parsed.resolvedUrl.takeIf { it.isNotBlank() } ?: url
+                    ProposalInput(parsed, realUrl, buildPrompt(url = realUrl, parsed = parsed, language = language))
+                }
+            ) { model, prepared ->
+                runNanoInference(model, prepared.prompt, readMode)
             }
-
-            // Treat non-200 HTTP response codes as failure
-            if (parsed.statusCode != 200) {
-                throw Exception("HTTP Error ${parsed.statusCode}: ${parsed.statusMessage.ifBlank { "Invalid status" }}")
-            }
-
-            // 2. Determine resolved URL and title (prefer og:title then <title>)
-            val realUrl = parsed.resolvedUrl.takeIf { it.isNotBlank() } ?: url
+            val (parsed, realUrl) = input
 
             val finalTitle = parsed.ogpTags["og:title"]?.trim()?.takeIf { it.isNotBlank() }
                 ?: parsed.title?.trim()?.takeIf { it.isNotBlank() }
                 ?: preferredTitle?.trim()?.takeIf { it.isNotBlank() && !isRawUrlOrHost(it, realUrl) }
                 ?: extractHost(realUrl)
 
-            // 3. Build prompt with resolved URL
-            val prompt = buildPrompt(url = realUrl, parsed = parsed, language = language)
-
-            // 4. Run inference with Gemini Nano
-            val aiOutput = try {
-                val model = Generation.getClient()
-                try {
-                    runNanoInference(model, prompt)
-                } finally {
-                    model.close()
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                throw mapInferenceException(e)
-            }
-
-            // 5. Parse JSON and normalize results
             val result = parseAiResponse(aiOutput, finalTitle, parsed)
 
             // Domain registration and icon check
@@ -221,12 +287,19 @@ object GeminiTaggingService {
     /**
      * Executes AICore Gemini Nano inference.
      */
-    private suspend fun runNanoInference(model: GenerativeModel, prompt: String): String {
+    private suspend fun runNanoInference(
+        model: GenerativeModel,
+        prompt: String,
+        readMode: () -> AiAnalysisMode
+    ): String {
         val request = generateContentRequest(TextPart(prompt)) {
             // Set max output tokens to 256, sufficient for concise summary and JSON
             maxOutputTokens = 256
         }
-        val response = AiCoreUsageRepository.getInstance(TidiloApplication.instance).track(AiUsageSource.NORMAL) {
+        val response = AiCoreUsageRepository.getInstance(TidiloApplication.instance).track(
+            AiUsageSource.NORMAL,
+            beforeSdk = { if (readMode() == AiAnalysisMode.DISABLE) throw AiGenerationBlocked(null) }
+        ) {
             model.generateContent(request)
         }
         return response.candidates.firstOrNull()?.text?.trim().orEmpty()

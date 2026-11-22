@@ -65,7 +65,9 @@ class SecondaryHeaderNavigationTest {
                     BookmarkAiReviewScreen(id, vm, { returned = true }, generateProposal = { _, _, _ -> calls++; generated.await() })
                 } } }
             }
-            host.await(activity) { host.text(it, host.context.getString(R.string.ai_review_loading_title)) }
+            val loadingTitle = host.context.getString(R.string.ai_review_loading_title)
+            host.await(activity, includeOtherWindows = false) { host.text(it, loadingTitle) }
+            host.assertNoAiReviewStatusIcon(activity, loadingTitle)
             val label = host.context.getString(R.string.common_back)
             val before = host.await(activity) { host.description(it, label) }.boundsInRoot
             generated.complete(Result.success(TaggingResult("Proposal", "Proposal summary ".repeat(60), "Article", "Tech", listOf("Android"))))

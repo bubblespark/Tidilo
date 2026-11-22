@@ -320,6 +320,31 @@ class NotificationScreenTest {
         } finally { host.main { activity.finish() } }
     }
 
+    @Test fun rowActionsNameTheirItem(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val long = "Unexpected parser failure: " + "segment ".repeat(80)
+        val first = NotificationListItem.Failure(ImportTask("first", "https://first.invalid", "First fixture",
+            TaskStatus.ERROR, "Failed", errorMessage = long, createdAt = 2))
+        val second = NotificationListItem.RssXmlFailure(RssFeedEntity("second", "https://second.invalid/rss",
+            "Second fixture", error = long, lastAttemptAt = 1))
+        try {
+            host.main { activity.setContent { MaterialTheme {
+                NotificationContent(NotificationSections(listOf(first, second), emptyList()), emptySet(), {}, {}, {}, {}, {})
+            } } }
+            host.await(activity) { host.text(it, "Second fixture") }
+            host.main {
+                val nodes = host.nodes(activity)
+                fun described(value: String) = nodes.count { host.description(it, value) }
+                listOf("First fixture", "Second fixture").forEach { title ->
+                    assertEquals(1, described(activity.getString(R.string.notification_retry_item, title)))
+                    assertEquals(1, described(activity.getString(R.string.notification_details_show_item, title)))
+                    assertEquals(1, described(activity.getString(R.string.notification_more_actions_item, title)))
+                }
+            }
+        } finally { host.main { activity.finish() } }
+    }
+
     @Test fun newerFailureClosesAnAlreadyOpenActionMenu(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()

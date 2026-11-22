@@ -42,6 +42,13 @@ class NotificationFailureExplanationTest {
         assertEquals(SAVE_FAILED, classifyFailure("Bookmark persistence failed: disk I/O error"))
     }
 
+    @Test fun saveFailurePrefixWinsOverUnderlyingMessage() {
+        listOf("connection pool has been closed", "timeout waiting for lock", "SSL error", "HTTP 503")
+            .map { "Bookmark persistence failed: $it" }
+            .forEach { assertEquals(it, SAVE_FAILED, classifyFailure(it)) }
+        assertEquals(NETWORK, classifyFailure("connection pool has been closed"))
+    }
+
     @Test fun blankAndNullAreUnknown() {
         listOf(null, "", "   ", "RSS feed is unavailable", "Could not fetch article").forEach {
             assertEquals(it.toString(), UNKNOWN, classifyFailure(it))

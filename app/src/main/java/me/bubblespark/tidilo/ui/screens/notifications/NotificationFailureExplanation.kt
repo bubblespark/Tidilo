@@ -18,7 +18,8 @@ enum class FailureReason(@StringRes val explanationRes: Int) {
     UNKNOWN(R.string.notification_failure_unknown)
 }
 
-private val HTTP_STATUS = Regex("""\bHTTP(?: error)? (\d{3})\b""", RegexOption.IGNORE_CASE)
+private const val SAVE_FAILURE_PREFIX = "Bookmark persistence failed"
+private val HTTP_STATUS =Regex("""\bHTTP(?: error)? (\d{3})\b""", RegexOption.IGNORE_CASE)
 
 /**
  * Classifies the raw diagnostic stored with a failure. Rules are ordered: host-bearing network messages are
@@ -27,6 +28,8 @@ private val HTTP_STATUS = Regex("""\bHTTP(?: error)? (\d{3})\b""", RegexOption.I
 fun classifyFailure(raw: String?): FailureReason {
     val text = raw?.trim().orEmpty()
     if (text.isEmpty()) return FailureReason.UNKNOWN
+    // The repository prefixes local save failures; the wrapped message must not change the explanation.
+    if (text.startsWith(SAVE_FAILURE_PREFIX)) return FailureReason.SAVE_FAILED
     HTTP_STATUS.find(text)?.let { match ->
         return when (match.groupValues[1].toInt()) {
             500, 502, 503, 504 -> FailureReason.SERVER_UNAVAILABLE
@@ -42,7 +45,6 @@ fun classifyFailure(raw: String?): FailureReason {
         listOf("ssl", "certificat", "handshake", "trust anchor").any { it in lower } -> FailureReason.SECURE_CONNECTION
         listOf("timed out", "timeout", "exceeded 30 seconds", "connection").any { it in lower } -> FailureReason.NETWORK
         text == ArticleContentUnavailable.MESSAGE -> FailureReason.NO_CONTENT
-        text.startsWith("Bookmark persistence failed") -> FailureReason.SAVE_FAILED
         else -> FailureReason.UNKNOWN
     }
 }

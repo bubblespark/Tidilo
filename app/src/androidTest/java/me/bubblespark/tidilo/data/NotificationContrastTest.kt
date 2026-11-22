@@ -203,7 +203,9 @@ class NotificationContrastTest {
             AppTheme.MODERN -> if (dark) ModernDarkColorScheme.background else ModernLightColorScheme.background
         }
         val appearance = "$theme ${if (dark) "dark" else "light"}"
-        val iconDescription = host.context.getString(R.string.notification_more_actions)
+        // `titles` is history, import, RSS; `actions` belong to the import and RSS rows in that order.
+        val iconDescriptions = titles.takeLast(actions.size)
+            .map { host.context.getString(R.string.notification_more_actions_item, it) }
         val retryLabel = host.context.getString(R.string.common_retry)
         val rows = awaitStableFrame(host, scenario, "$appearance notification rows") { activity, nodes ->
             val rtl = activity.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
@@ -214,7 +216,7 @@ class NotificationContrastTest {
                 val margin = if (rtl) bounds.right + 8f else bounds.left - 8f
                 Sample(bounds, Offset(margin, bounds.center.y), color)
             }
-            val iconSamples = actions.map { tag ->
+            val iconSamples = actions.zip(iconDescriptions) { tag, iconDescription ->
                 val button = nodes.firstOrNull { it.tag() == tag } ?: return@awaitStableFrame null
                 val icon = button.children.firstOrNull { host.description(it, iconDescription) }
                     ?: return@awaitStableFrame null

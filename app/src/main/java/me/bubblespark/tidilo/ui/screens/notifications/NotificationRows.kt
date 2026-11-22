@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -85,14 +86,14 @@ internal fun NeedsAttentionRow(row: NotificationListItem.NeedsAttention, busy: B
             Text(stringResource(R.string.notification_feed_retry_hint), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface)
         }
-        if (diagnostic.isNotBlank()) FailureDiagnostic(row.key, diagnostic)
+        if (diagnostic.isNotBlank()) FailureDiagnostic(row.key, title, diagnostic)
         NotificationMetadata(url, row.createdAt, zone)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RetryButton(busy) { onRetry(row) }
+            RetryButton(title, busy) { onRetry(row) }
             Box {
                 IconButton(onClick = { menuOpen = true }, enabled = !busy,
                     modifier = Modifier.testTag("notification_actions:${row.key}")) {
-                    Icon(Icons.Default.MoreVert, stringResource(R.string.notification_more_actions))
+                    Icon(Icons.Default.MoreVert, stringResource(R.string.notification_more_actions_item, title))
                 }
                 TidiloDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(text = { Text(stringResource(R.string.common_delete)) },
@@ -104,10 +105,14 @@ internal fun NeedsAttentionRow(row: NotificationListItem.NeedsAttention, busy: B
 }
 
 @Composable
-private fun RetryButton(busy: Boolean, onClick: () -> Unit) {
+private fun RetryButton(itemTitle: String, busy: Boolean, onClick: () -> Unit) {
     val retrying = stringResource(R.string.notification_retrying)
+    val label = stringResource(R.string.notification_retry_item, itemTitle)
     FilledTonalButton(onClick = onClick, enabled = !busy,
-        modifier = Modifier.semantics { if (busy) stateDescription = retrying }) {
+        modifier = Modifier.semantics {
+            contentDescription = label
+            if (busy) stateDescription = retrying
+        }) {
         if (busy) {
             CircularProgressIndicator(Modifier.size(18.dp).clearAndSetSemantics {}, color = LocalContentColor.current,
                 strokeWidth = 2.dp)
@@ -119,7 +124,7 @@ private fun RetryButton(busy: Boolean, onClick: () -> Unit) {
 
 /** Bounded preview of the original diagnostic; the full text stays available through the details toggle. */
 @Composable
-private fun FailureDiagnostic(key: String, text: String) {
+private fun FailureDiagnostic(key: String, itemTitle: String, text: String) {
     var expanded by rememberSaveable(key) { mutableStateOf(false) }
     var overflows by remember(text) { mutableStateOf(false) }
     val style = MaterialTheme.typography.bodySmall
@@ -134,7 +139,12 @@ private fun FailureDiagnostic(key: String, text: String) {
     if (expanded || overflows) {
         val state = stringResource(
             if (expanded) R.string.notification_details_expanded else R.string.notification_details_collapsed)
-        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.semantics { stateDescription = state }) {
+        val label = stringResource(
+            if (expanded) R.string.notification_details_hide_item else R.string.notification_details_show_item, itemTitle)
+        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.semantics {
+            contentDescription = label
+            stateDescription = state
+        }) {
             Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null,
                 modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(4.dp))

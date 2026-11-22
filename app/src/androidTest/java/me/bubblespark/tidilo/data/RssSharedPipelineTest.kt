@@ -401,6 +401,29 @@ class RssSharedPipelineTest {
         } finally { db.close() }
     }
 
+    @Test fun mobileConsentAppliesToOneManualFetch() = runBlocking {
+        val db = database()
+        val preferences = me.bubblespark.tidilo.data.rss.RssPreferences.getInstance(context)
+        preferences.initialize()
+        val original = preferences.state.value
+        try {
+            preferences.save(original.copy(wifiOnly = true))
+            db.rssDao().putFeed(RssFeedEntity("manual", "https://fixture-feed.example/feed", "Feed"))
+            val wifiPolicies = mutableListOf<Boolean>()
+            val repo = repository(db, { url, _, wifiOnly ->
+                wifiPolicies.add(wifiOnly)
+                RssHttpPage(304, url, "")
+            })
+            assertTrue(repo.fetchAll(1, manualMobileRunId = "consented"))
+            assertTrue(repo.fetchAll(Long.MAX_VALUE))
+            assertEquals(listOf(false, true), wifiPolicies)
+            assertTrue(preferences.state.value.wifiOnly)
+        } finally {
+            preferences.save(original)
+            db.close()
+        }
+    }
+
     @Test fun initialPermissionPersistsOnlyOnItsOperationAndReenableClearsIt() = runBlocking {
         val db = database()
         try {

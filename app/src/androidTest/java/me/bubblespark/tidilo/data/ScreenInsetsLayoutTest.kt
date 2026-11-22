@@ -147,7 +147,9 @@ class ScreenInsetsLayoutTest {
         try {
             host.main { activity.setContent { MaterialTheme {
                 me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent(
-                    me.bubblespark.tidilo.ui.screens.settings.StorageLoad.Ready(emptyList()),
+                    me.bubblespark.tidilo.ui.screens.settings.StorageLoad.Ready(listOf(
+                        me.bubblespark.tidilo.data.db.RssFeedEntity("insets", "https://example.invalid/feed", "Example")
+                    )),
                     me.bubblespark.tidilo.data.rss.RssSettings(), false, null, true,
                     {}, {}, {}, { _, _ -> }, {}, {}, {})
             } } }

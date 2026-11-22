@@ -32,9 +32,12 @@ class RssFetchWorker(context: Context, parameters: WorkerParameters) : Coroutine
             RssScheduler.reschedule(applicationContext, finishingWorkId = id)
             return Result.success()
         }
+        val manualMobileRunId = run.id.takeIf {
+            RssScheduler.MANUAL in tags && RssScheduler.MANUAL_MOBILE in tags
+        }
         return runRssFetchAttempt(runAttemptCount, fetch = {
             run.completed || RssRepository.getInstance(applicationContext).fetchAll(run.requestedAt, inputData.getString("feedId"),
-                inputData.getString("operationId"), run.id)
+                inputData.getString("operationId"), run.id, manualMobileRunId)
         }, realign = {
             notifications.finish(run.id)
             NotificationCoordinator.getInstance(applicationContext).publishCompletedRssRuns()

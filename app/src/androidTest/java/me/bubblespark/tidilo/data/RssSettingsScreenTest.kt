@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
@@ -34,14 +35,201 @@ import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.MainActivity
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppTheme
+import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.rss.RssSettings
 import me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent
+import me.bubblespark.tidilo.ui.screens.settings.RssManualFetchDialog
 import me.bubblespark.tidilo.ui.screens.settings.StorageLoad
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.*
 import org.junit.Test
 
 class RssSettingsScreenTest {
+    @Test fun fetchNowQueuesOnlyTheExplicitManualChoice(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val controls = RssTriggerTestControls(host, activity)
+        val db = androidx.room.Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val preferences = me.bubblespark.tidilo.data.rss.RssPreferences.getInstance(context)
+        preferences.initialize()
+        val original = preferences.state.value
+        val requests = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+        var connection = true to false
+        val state = androidx.lifecycle.SavedStateHandle()
+        val repo = me.bubblespark.tidilo.data.rss.RssRepository(context, db)
+        fun model() = me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel(
+            activity.application, state, repo,
+            networkStateOverride = { connection },
+            enqueueManualFetch = { requests.add(it) }
+        )
+        val current = mutableStateOf<me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel?>(null)
+        try {
+            preferences.save(original.copy(wifiOnly = true, dailyEnabled = false))
+            db.rssDao().putFeed(me.bubblespark.tidilo.data.db.RssFeedEntity(
+                "manual-choice", "https://example.invalid/feed", "Example Feed"
+            ))
+            host.main {
+                current.value = model()
+                activity.setContent {
+                    MaterialTheme {
+                        current.value?.let {
+                            me.bubblespark.tidilo.ui.screens.settings.RssSettingsScreen({}, it)
+                        }
+                    }
+                }
+            }
+            val fetch = activity.getString(R.string.rss_fetch_now)
+            val wait = activity.getString(R.string.rss_manual_wait_wifi)
+            val mobile = activity.getString(R.string.rss_manual_use_mobile)
+            controls.clickRow(fetch, controls.text(fetch))
+            controls.awaitDialog(mobile, controls.text(mobile))
+            assertTrue(requests.isEmpty())
+            host.main { current.value = model() }
+            controls.awaitDialog(wait, controls.text(wait))
+            assertTrue(requests.isEmpty())
+            instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            withTimeout(3000) { while (controls.dialogHas(controls.text(wait))) delay(20) }
+            assertTrue(requests.isEmpty())
+
+            controls.clickRow(fetch, controls.text(fetch))
+            controls.clickDialog(wait)
+            withTimeout(3000) { while (requests.size < 1 || current.value?.busy?.value == true) delay(20) }
+            controls.clickRow(fetch, controls.text(fetch))
+            controls.clickDialog(mobile)
+            withTimeout(3000) { while (requests.size < 2 || current.value?.busy?.value == true) delay(20) }
+            assertEquals(listOf(false, true), requests.toList())
+            assertTrue(preferences.state.value.wifiOnly)
+            assertFalse(preferences.state.value.dailyEnabled)
+
+            host.main { connection = true to true }
+            controls.clickRow(fetch, controls.text(fetch))
+            withTimeout(3000) { while (requests.size < 3) delay(20) }
+            assertEquals(listOf(false, true, false), requests.toList())
+            assertFalse(controls.dialogHas(controls.text(mobile)))
+        } finally {
+            host.main { activity.finish() }
+            preferences.save(original)
+            db.close()
+        }
+    }
+
+    @Test fun rssSettingsAndConsentRemainReadableAcrossLocalesAndThemes(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val stage = mutableStateOf(0)
+        val requestedScale = InstrumentationRegistry.getArguments().getString("rssFontScale")?.toFloat()
+        var choice: Boolean? = null
+        var dismissed = false
+        suspend fun capture(name: String) {
+            instrumentation.waitForIdleSync()
+            delay(300)
+            val bitmap = instrumentation.uiAutomation.takeScreenshot()
+            try {
+                File(context.cacheDir, "rss269-$name.png").outputStream().use {
+                    assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+                }
+            } finally { bitmap.recycle() }
+        }
+        try {
+            for (locale in listOf(Locale.ENGLISH, Locale.JAPANESE)) {
+                val variants = listOf(false to 1f, false to 2f, true to 1f, true to 2f)
+                for ((dark, scale) in variants.filter { requestedScale == null || it.second == requestedScale }) {
+                    val config = Configuration(activity.resources.configuration).apply {
+                        setLocale(locale)
+                        fontScale = scale
+                    }
+                    val localized = activity.createConfigurationContext(config)
+                    val suffix = "${locale.language}-${if (dark) "dark" else "light"}-${scale.toInt()}x"
+                    host.main {
+                        stage.value = 0
+                        dismissed = false
+                        choice = null
+                        activity.setContent {
+                            CompositionLocalProvider(
+                                LocalContext provides localized,
+                                LocalConfiguration provides config,
+                                LocalResources provides localized.resources,
+                                LocalDensity provides Density(activity.resources.displayMetrics.density, scale)
+                            ) {
+                                TidiloTheme(darkTheme = dark, dynamicColor = false) {
+                                    val feeds = if (stage.value == 0) emptyList() else listOf(
+                                        me.bubblespark.tidilo.data.db.RssFeedEntity(
+                                            "visual", "https://example.invalid/feed", "Example Feed",
+                                            error = "XML_FETCH_FAILED"
+                                        )
+                                    )
+                                    RssSettingsContent(
+                                        StorageLoad.Ready(feeds), RssSettings(), false, null, false,
+                                        onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
+                                        onDelete = {}, onFetch = {}, onDismissError = {}
+                                    )
+                                    if (stage.value == 2) {
+                                        RssManualFetchDialog(
+                                            busy = false,
+                                            onChoice = { choice = it; stage.value = 1 },
+                                            onDismiss = { dismissed = true; stage.value = 1 }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    val add = localized.getString(R.string.rss_add_feed)
+                    node("Localized first-feed title") { it.text?.toString() == localized.getString(R.string.rss_first_feed_title) }
+                    node("Localized Add action") { it.text?.toString() == add && it.isVisibleToUser }
+                    capture("empty-$suffix")
+                    clickText(add)
+                    node("Visible permanent deletion warning") {
+                        it.text?.toString() == localized.getString(R.string.rss_retention_permanent) && it.isVisibleToUser
+                    }
+                    capture("editor-$suffix")
+                    clickText(localized.getString(R.string.rss_retention_details))
+                    node("Expanded retention details") {
+                        it.text?.toString() == localized.getString(R.string.rss_retention_interactions)
+                    }
+                    capture("editor-details-$suffix")
+                    val save = localized.getString(R.string.rss_save)
+                    withTimeout(3000) {
+                        while (find { it.text?.toString() == save && it.isVisibleToUser } == null) {
+                            find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                            delay(100)
+                        }
+                    }
+                    instrumentation.uiAutomation.performGlobalAction(
+                        android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
+                    )
+                    withTimeout(3000) {
+                        while (find { it.text?.toString() == save } != null) delay(30)
+                    }
+                    host.main { stage.value = 1 }
+                    node("Visible feed error") {
+                        it.text?.toString() == localized.getString(R.string.rss_xml_fetch_failed) && it.isVisibleToUser
+                    }
+                    node("Visible feed switch") {
+                        it.contentDescription?.toString() == localized.getString(R.string.rss_enabled) && it.isVisibleToUser
+                    }
+                    capture("feeds-$suffix")
+                    host.main { stage.value = 2 }
+                    val mobile = localized.getString(R.string.rss_manual_use_mobile)
+                    val wait = localized.getString(R.string.rss_manual_wait_wifi)
+                    node("Visible mobile choice") { it.text?.toString() == mobile && it.isVisibleToUser }
+                    node("Visible Wi-Fi choice") { it.text?.toString() == wait && it.isVisibleToUser }
+                    capture("consent-$suffix")
+                    clickText(wait)
+                    assertEquals(false, choice)
+                    host.main { stage.value = 2 }
+                    clickText(mobile)
+                    assertEquals(true, choice)
+                    host.main { stage.value = 2; choice = null }
+                    node("Reopened consent") { it.text?.toString() == wait }
+                    instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                    withTimeout(3000) { while (!dismissed) delay(20) }
+                    assertNull(choice)
+                }
+            }
+        } finally { host.main { activity.finish() } }
+    }
+
     @Test fun emptyTriggerSectionIsSeparateAndEditableWhileOff(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
@@ -53,11 +241,17 @@ class RssSettingsScreenTest {
                     onBack = {}, onRetry = {}, onSettings = { settings.value = it },
                     onFeed = { _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
             } } }
+            val first = node("First feed guidance") { it.text?.toString() == "Add your first feed" }
+            val firstBounds = android.graphics.Rect().also(first::getBoundsInScreen)
+            node("First feed example") { it.text?.toString()?.contains("https://example.com/feed.xml") == true }
+            node("First feed action") { it.text?.toString() == "Add feed" }
             val dailyBounds = android.graphics.Rect()
             val triggerBounds = android.graphics.Rect()
+            controls.reveal("Daily heading", controls.text("Daily fetch time"))
             node("Daily heading") { it.text?.toString() == "Daily fetch time" }.getBoundsInScreen(dailyBounds)
             controls.reveal("Trigger heading", controls.text("Trigger time"))
             node("Trigger heading") { it.text?.toString() == "Trigger time" }.getBoundsInScreen(triggerBounds)
+            assertTrue(firstBounds.top < dailyBounds.top)
             assertTrue(triggerBounds.top > dailyBounds.bottom)
             node("Empty counter") { it.text?.toString() == "0 / 3" }
             controls.reveal("Unset trigger card", controls.text("Not set"))
@@ -136,6 +330,7 @@ class RssSettingsScreenTest {
     @Test fun manualFetchWaitsWithoutProgressAndReenablesAfterCompletion(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val controls = RssTriggerTestControls(HeaderTestHost(), activity)
         val status = mutableStateOf(me.bubblespark.tidilo.ui.screens.settings.ManualFetchStatus.Waiting)
         var fetches = 0
         try {
@@ -145,6 +340,7 @@ class RssSettingsScreenTest {
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
                     onDelete = {}, onFetch = { fetches++ }, onDismissError = {}, manualFetch = status.value)
             } } }
+            controls.reveal("Waiting status", controls.text("Waiting to fetch"))
             val waiting = node("Waiting status") { it.text?.toString() == "Waiting to fetch" }
             var button: AccessibilityNodeInfo? = waiting
             while (button != null && !button.isClickable) button = button.parent
@@ -170,7 +366,7 @@ class RssSettingsScreenTest {
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
                     onDelete = {}, onFetch = {}, onDismissError = {})
             } } }
-            host.await(activity) { host.text(it, "Daily fetch") && it.boundsInRoot.height > 0f }
+            host.await(activity) { host.text(it, "Feed 1") && it.boundsInRoot.height > 0f }
             val list = host.await(activity) {
                 it.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) != null &&
                     it.config.getOrNull(SemanticsProperties.CollectionInfo) != null
@@ -238,6 +434,7 @@ class RssSettingsScreenTest {
     @Test fun manualFetchShowsProgressAndPreventsDuplicateRequests(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val controls = RssTriggerTestControls(HeaderTestHost(), activity)
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
                 RssSettingsContent(StorageLoad.Ready(listOf(me.bubblespark.tidilo.data.db.RssFeedEntity(
@@ -245,6 +442,7 @@ class RssSettingsScreenTest {
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
                     onDelete = {}, onFetch = {}, onDismissError = {}, manualFetch = me.bubblespark.tidilo.ui.screens.settings.ManualFetchStatus.Running)
             } } }
+            controls.reveal("Fetch now", controls.text("Fetch now"))
             val label = node("Fetch now") { it.text?.toString() == "Fetch now" }
             var button: AccessibilityNodeInfo? = label
             while (button != null && !button.isClickable) button = button.parent
@@ -256,6 +454,7 @@ class RssSettingsScreenTest {
     @Test fun dailyToggleUpdatesSettingWithoutDisablingManualFetch(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val controls = RssTriggerTestControls(HeaderTestHost(), activity)
         val settings = mutableStateOf(RssSettings(dailyEnabled = true))
         var fetched = false
         try {
@@ -265,8 +464,10 @@ class RssSettingsScreenTest {
                     onBack = {}, onRetry = {}, onSettings = { settings.value = it },
                     onFeed = { _, _ -> }, onDelete = {}, onFetch = { fetched = true }, onDismissError = {})
             } } }
+            controls.reveal("Daily fetch", controls.text("Daily fetch"))
             clickText("Daily fetch")
             withTimeout(3000) { while (settings.value.dailyEnabled) delay(20) }
+            controls.reveal("Fetch now", controls.text("Fetch now"))
             clickText("Fetch now")
             withTimeout(3000) { while (!fetched) delay(20) }
         } finally { instrumentation.runOnMainSync { activity.finish() } }
@@ -325,6 +526,7 @@ class RssSettingsScreenTest {
     @Test fun automaticallyDisabledFeedCardExplainsXmlFailure(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val controls = RssTriggerTestControls(HeaderTestHost(), activity)
         val feed = me.bubblespark.tidilo.data.db.RssFeedEntity("failed", "https://fixture.example/feed", "Failed feed",
             enabled = false, error = "XML_FETCH_FAILED")
         try {
@@ -333,13 +535,9 @@ class RssSettingsScreenTest {
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> }, onDelete = {},
                     onFetch = {}, onDismissError = {})
             } } }
-            repeat(8) {
-                if (find { it.text?.toString()?.contains("Could not fetch feed XML") == true } == null) {
-                    find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-                    delay(100)
-                }
-            }
-            node("Persistent XML failure") { it.text?.toString()?.contains("Could not fetch feed XML. This feed was automatically disabled.") == true }
+            val failure = activity.getString(R.string.rss_xml_fetch_failed)
+            controls.reveal("Persistent XML failure", controls.text(failure))
+            node("Persistent XML failure") { it.text?.toString() == failure }
             assertNull(find { it.text?.toString()?.contains("Enable this feed to try again") == true })
             var enabled: AccessibilityNodeInfo? = node("Enabled switch") { it.contentDescription?.toString() == "Enabled" }
             while (enabled != null && !enabled.isCheckable) enabled = enabled.parent
@@ -377,6 +575,13 @@ class RssSettingsScreenTest {
                 me.bubblespark.tidilo.ui.screens.settings.RssFeedEditor(null, onDismiss = {}) { _ -> }
             } } }
             node("Fixed age policy") { it.text?.toString()?.contains("10 days") == true }
+            val warning = activity.getString(R.string.rss_retention_permanent)
+            val details = activity.getString(R.string.rss_retention_interactions)
+            node("Permanent deletion warning") { it.text?.toString() == warning }
+            assertNull(find { it.text?.toString() == details })
+            clickText(activity.getString(R.string.rss_retention_details))
+            node("Qualifying interactions") { it.text?.toString() == details }
+            node("Permanent deletion warning with details open") { it.text?.toString() == warning }
             assertNull(find { it.text?.toString() == "Unlimited" })
             assertNull(find { it.text?.toString()?.contains("10–500") == true })
             assertNull(find { it.isEditable && it.text?.toString() == "30" })
@@ -439,7 +644,7 @@ class RssSettingsScreenTest {
         }
     }
 
-    @Test fun feedCardShowsCompactMetadataAndBottomRightSwitch(): Unit = runBlocking {
+    @Test fun feedCardShowsCompactMetadataAndTopRightSwitch(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()
         val controls = RssTriggerTestControls(host, activity)
@@ -450,8 +655,6 @@ class RssSettingsScreenTest {
         fun isFeedCard(candidate: SemanticsNode): Boolean =
             SemanticsActions.OnLongClick in candidate.config &&
                 descendants(candidate).any { host.text(it, "Example") }
-        val modeLabel = activity.getString(R.string.rss_direct_mode)
-        val retentionLabel = activity.getString(R.string.rss_retention_compact)
         val enabled = controls.description(R.string.rss_enabled)
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
@@ -470,27 +673,16 @@ class RssSettingsScreenTest {
                 val nodes = host.nodes(activity, includeOtherWindows = false)
                 val card = nodes.single(::isFeedCard)
                 val content = descendants(card)
-                val mode = content.single { host.text(it, modeLabel) }
-                val retention = content.single { host.text(it, retentionLabel) }
+                val title = content.single { host.text(it, "Example") }
                 val error = content.single { host.text(it, "HTTP 500") }
                 val toggle = content.single(enabled)
-                val cardBounds = card.boundsInRoot
-                val modeBounds = mode.boundsInRoot
-                val retentionBounds = retention.boundsInRoot
-                val toggleBounds = toggle.boundsInRoot
-                val geometry = "card=$cardBounds, mode=$modeBounds, retention=$retentionBounds, switch=$toggleBounds"
-                for (node in listOf(card, mode, retention, error, toggle)) {
-                    val bounds = node.boundsInRoot
-                    assertTrue("Expected full bounds for ${node.config}: $bounds, size=${node.size}. $geometry",
-                        node.layoutInfo.isPlaced && bounds.height > 0f && bounds.width > 0f &&
-                            bounds.height >= node.size.height - 1 && bounds.width >= node.size.width - 1)
-                }
-                assertEquals(geometry, modeBounds.center.y, retentionBounds.center.y, 1f)
-                assertTrue(geometry, retentionBounds.left > modeBounds.right)
-                assertTrue(geometry, toggleBounds.left > retentionBounds.right &&
-                    toggleBounds.center.y > cardBounds.center.y && toggleBounds.top >= error.boundsInRoot.bottom)
+                assertTrue(toggle.boundsInRoot.left >= title.boundsInRoot.right)
+                assertTrue(toggle.boundsInRoot.bottom <= error.boundsInRoot.top)
                 val texts = content.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }
-                assertFalse(texts.any { it.text.startsWith("Last attempt:") || it.text.startsWith("Last success:") })
+                assertFalse(texts.any {
+                    it.text == "Direct" || it.text.startsWith("Unread 10d") ||
+                        it.text.startsWith("Last attempt:") || it.text.startsWith("Last success:")
+                })
                 assertEquals(Role.Switch, toggle.config[SemanticsProperties.Role])
                 assertEquals(ToggleableState.On, toggle.config[SemanticsProperties.ToggleableState])
                 assertTrue(toggle.config[SemanticsActions.OnClick].action?.invoke() == true)
@@ -499,7 +691,7 @@ class RssSettingsScreenTest {
             instrumentation.runOnMainSync { feed.value = feed.value.copy(error = null, retentionLimit = 30) }
             controls.clickRow("Updated Example feed card") { candidate ->
                 isFeedCard(candidate) && descendants(candidate).let { content ->
-                    content.any { host.text(it, retentionLabel) } && content.none { host.text(it, "HTTP 500") }
+                    content.none { host.text(it, "HTTP 500") }
                 }
             }
             node("Delete in editor") { it.text?.toString() == activity.getString(R.string.rss_delete) }
@@ -525,7 +717,10 @@ class RssSettingsScreenTest {
                 }
             }
             click(node("RSS settings entry") { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_subtitle) })
+            val controls = RssTriggerTestControls(HeaderTestHost(), activity)
+            controls.reveal("RSS daily time heading", controls.text("Daily fetch time"))
             node("RSS daily time heading") { it.text?.toString() == "Daily fetch time" }
+            controls.reveal("Wi-Fi policy", controls.text("Fetch only over Wi-Fi"))
             node("Wi-Fi policy") { it.text?.toString() == "Fetch only over Wi-Fi" }
             delay(500)
             val screenshot = instrumentation.uiAutomation.takeScreenshot()
@@ -541,7 +736,7 @@ class RssSettingsScreenTest {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
         val controls = RssTriggerTestControls(HeaderTestHost(), activity)
-        val settings = mutableStateOf(RssSettings(listOf(java.time.LocalTime.MIDNIGHT), dailyEnabled = true))
+        val settings = mutableStateOf(RssSettings(listOf(java.time.LocalTime.MIDNIGHT)))
         val wifi = mutableStateOf<Boolean?>(null)
         var savedUrl: String? = null
         var backed = false
@@ -556,10 +751,10 @@ class RssSettingsScreenTest {
             }
             controls.reveal("Initial midnight", controls.text("00:00"))
             node("Initial midnight") { it.text?.toString() == "00:00" }
-            assertNull(find { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." })
+            assertNull(find { it.text?.toString() == "Fetches that require Wi-Fi wait for a Wi-Fi connection." })
             instrumentation.runOnMainSync { wifi.value = false }
-            controls.reveal("Wi-Fi warning", controls.text("Cannot fetch: Wi-Fi is not connected."))
-            val blocked = node("Wi-Fi blocked status") { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." }
+            controls.reveal("Wi-Fi warning", controls.text("Fetches that require Wi-Fi wait for a Wi-Fi connection."))
+            val blocked = node("Wi-Fi blocked status") { it.text?.toString() == "Fetches that require Wi-Fi wait for a Wi-Fi connection." }
             val wifiBounds = android.graphics.Rect()
             val blockedBounds = android.graphics.Rect()
             node("Wi-Fi control") { it.text?.toString() == "Fetch only over Wi-Fi" }.getBoundsInScreen(wifiBounds)
@@ -573,7 +768,8 @@ class RssSettingsScreenTest {
             assertTrue(wifiLabel.parent.isCheckable)
             click(wifiLabel)
             withTimeout(3000) { while (settings.value.wifiOnly) delay(20) }
-            withTimeout(3000) { while (find { it.text?.toString() == "Cannot fetch: Wi-Fi is not connected." } != null) delay(20) }
+            assertFalse(settings.value.dailyEnabled)
+            withTimeout(3000) { while (find { it.text?.toString() == "Fetches that require Wi-Fi wait for a Wi-Fi connection." } != null) delay(20) }
             controls.clickRow("Time picker", controls.description(R.string.rss_edit_trigger_time, "00:00"))
             controls.clickDialog("Cancel")
             assertEquals(listOf(java.time.LocalTime.MIDNIGHT), settings.value.triggerTimes)
@@ -582,7 +778,7 @@ class RssSettingsScreenTest {
             try { File(context.getExternalFilesDir(null), "issue91-rss-settings.png").outputStream().use {
                 screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
             } } finally { screenshot.recycle() }
-            click(node("Add feed") { it.contentDescription?.toString() == "Add feed" })
+            controls.clickRow("Add feed", controls.text("Add feed"))
             node("Fixed retention explanation") { it.text?.toString()?.contains("10 days") == true }
             assertNull(find { it.text?.toString() == "Import Mode" })
             val input = node("Feed URL input") { it.isEditable && it.text?.toString() != "30" }
@@ -658,6 +854,13 @@ class RssSettingsScreenTest {
             click(node("RSS settings entry") {
                 it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_subtitle)
             })
+            val navigationControls = RssTriggerTestControls(HeaderTestHost(), activity)
+            suspend fun toggleDailyFetch() {
+                val label = activity.getString(R.string.rss_daily_fetch)
+                navigationControls.reveal(label, navigationControls.text(label))
+                clickText(label)
+            }
+            navigationControls.reveal("RSS daily time heading", navigationControls.text(activity.getString(R.string.rss_schedule)))
             node("RSS daily time heading") {
                 it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_schedule)
             }
@@ -682,8 +885,7 @@ class RssSettingsScreenTest {
                     }
                 }
             }
-            node("Daily fetch switch") { it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch) }
-            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch))
+            toggleDailyFetch()
             withTimeout(3000) { while (!dailyModel.settings.value.dailyEnabled) delay(20) }
             node("Notification rationale title") {
                 it.text?.toString() == activity.getString(me.bubblespark.tidilo.R.string.rss_notification_permission_title)
@@ -702,9 +904,9 @@ class RssSettingsScreenTest {
             assertEquals(0, permissionLaunches)
             assertTrue("Dismissing notification rationale must not block Daily fetch", dailyModel.settings.value.dailyEnabled)
 
-            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch))
+            toggleDailyFetch()
             withTimeout(3000) { while (dailyModel.settings.value.dailyEnabled) delay(20) }
-            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch))
+            toggleDailyFetch()
             withTimeout(3000) { while (!dailyModel.settings.value.dailyEnabled) delay(20) }
             delay(300)
             assertNull(
@@ -856,9 +1058,9 @@ class RssSettingsScreenTest {
                 testDb.rssDao().feed(fetchNowFeed.id)?.acquisitionId
             )
 
-            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch))
+            toggleDailyFetch()
             withTimeout(3000) { while (fetchNowModel.settings.value.dailyEnabled || fetchNowModel.busy.value) delay(20) }
-            clickText(activity.getString(me.bubblespark.tidilo.R.string.rss_daily_fetch))
+            toggleDailyFetch()
             withTimeout(3000) { while (!fetchNowModel.settings.value.dailyEnabled || fetchNowModel.busy.value) delay(20) }
             delay(300)
             assertFalse(fetchNowModel.notificationRationale.value)

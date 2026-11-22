@@ -30,14 +30,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun SettingsSectionTitle(title: String, modifier: Modifier = Modifier, description: String? = null) {
     Column(modifier.padding(start = 4.dp, bottom = 12.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary)
+        Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
         if (description != null) {
             Spacer(Modifier.height(4.dp))
             Text(description, style = MaterialTheme.typography.bodySmall,

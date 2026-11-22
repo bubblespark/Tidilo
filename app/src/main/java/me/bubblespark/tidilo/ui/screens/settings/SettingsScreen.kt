@@ -2,8 +2,6 @@ package me.bubblespark.tidilo.ui.screens.settings
 
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
-import me.bubblespark.tidilo.ui.theme.ThemeCorner
-import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.theme.LocalOverlayBlurSetting
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -14,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -46,6 +45,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
@@ -57,6 +57,9 @@ import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
+
+/** Readable maximum width for the Settings list on expanded windows. */
+internal val SettingsContentMaxWidth: Dp = 840.dp
 
 @Composable
 fun SettingsScreen(
@@ -77,53 +80,56 @@ fun SettingsScreen(
     val localConfig = LocalConfiguration.current
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
+    val dialogSurface = currentThemeSurfaces().resolve(SurfaceRole.DIALOG)
 
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), modifier = modifier, header = {
         TidiloPageHeader(title = stringResource(R.string.settings_title), onNavigateBack = onNavigateBack)
     }) { contentPadding ->
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding)
-            .padding(bottom = 32.dp)) {
-            SettingsSectionTitle(stringResource(R.string.settings_section_general))
-            SettingsGroup {
-                SettingsNavigationRow(stringResource(R.string.settings_language_title), currentLanguage.displayName,
-                    Icons.Default.Language, onClick = { showLanguageDialog = true })
-                SettingsDivider()
-                SettingsNavigationRow(
-                    title = stringResource(R.string.settings_theme_title),
-                    subtitle = stringResource(currentTheme.labelRes),
-                    icon = Icons.Default.Palette,
-                    onClick = { showThemeDialog = true }
-                )
-                SettingsDivider()
-                SettingsNavigationRow(stringResource(R.string.settings_notification_title),
-                    stringResource(R.string.settings_notification_description), ImageVector.vectorResource(R.drawable.ic_notifications),
-                    onClick = {
-                        val intent = NotificationCoordinator.getInstance(context).settingsIntent()
-                        if (launchContext !is android.app.Activity) intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        launchContext.startActivity(intent)
-                    })
-                SettingsDivider()
-                SettingsNavigationRow(stringResource(R.string.settings_ai_analysis_title),
-                    stringResource(if (aiAnalysisMode == AiAnalysisMode.AICORE) R.string.settings_ai_analysis_aicore
-                        else R.string.settings_ai_analysis_disable), Icons.Default.AutoAwesome, onNavigateToAiAnalysis)
-                SettingsDivider()
-                SettingsNavigationRow(stringResource(R.string.settings_private_title),
-                    stringResource(R.string.settings_private_subtitle), Icons.Default.Lock, onNavigateToPrivateContent)
-            }
-            Spacer(Modifier.height(24.dp))
-            SettingsSectionTitle(stringResource(R.string.settings_section_data))
-            SettingsGroup {
-                SettingsNavigationRow(stringResource(R.string.summary_title), stringResource(R.string.summary_subtitle),
-                    ImageVector.vectorResource(R.drawable.ic_summarize), onNavigateToStorage)
-                SettingsDivider()
-                SettingsNavigationRow(stringResource(R.string.rss_title), stringResource(R.string.rss_subtitle),
-                    Icons.Default.RssFeed, onNavigateToRss)
-            }
-            Spacer(Modifier.height(24.dp))
-            SettingsSectionTitle(stringResource(R.string.settings_section_debug))
-            SettingsGroup {
-                SettingsNavigationRow(stringResource(R.string.settings_debug_title), stringResource(R.string.settings_debug_subtitle),
-                    Icons.Default.BugReport, onNavigateToDebug)
+            .padding(bottom = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.widthIn(max = SettingsContentMaxWidth).fillMaxWidth()) {
+                SettingsSectionTitle(stringResource(R.string.settings_section_general))
+                SettingsGroup {
+                    SettingsNavigationRow(stringResource(R.string.settings_language_title), currentLanguage.displayName,
+                        Icons.Default.Language, onClick = { showLanguageDialog = true })
+                    SettingsDivider()
+                    SettingsNavigationRow(
+                        title = stringResource(R.string.settings_theme_title),
+                        subtitle = stringResource(currentTheme.labelRes),
+                        icon = Icons.Default.Palette,
+                        onClick = { showThemeDialog = true }
+                    )
+                    SettingsDivider()
+                    SettingsNavigationRow(stringResource(R.string.settings_notification_title),
+                        stringResource(R.string.settings_notification_description), ImageVector.vectorResource(R.drawable.ic_notifications),
+                        onClick = {
+                            val intent = NotificationCoordinator.getInstance(context).settingsIntent()
+                            if (launchContext !is android.app.Activity) intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            launchContext.startActivity(intent)
+                        })
+                    SettingsDivider()
+                    SettingsNavigationRow(stringResource(R.string.settings_ai_analysis_title),
+                        stringResource(if (aiAnalysisMode == AiAnalysisMode.AICORE) R.string.settings_ai_analysis_aicore
+                            else R.string.settings_ai_analysis_disable), Icons.Default.AutoAwesome, onNavigateToAiAnalysis)
+                    SettingsDivider()
+                    SettingsNavigationRow(stringResource(R.string.settings_private_title),
+                        stringResource(R.string.settings_private_subtitle), Icons.Default.Lock, onNavigateToPrivateContent)
+                }
+                Spacer(Modifier.height(24.dp))
+                SettingsSectionTitle(stringResource(R.string.settings_section_data))
+                SettingsGroup {
+                    SettingsNavigationRow(stringResource(R.string.summary_title), stringResource(R.string.summary_subtitle),
+                        ImageVector.vectorResource(R.drawable.ic_summarize), onNavigateToStorage)
+                    SettingsDivider()
+                    SettingsNavigationRow(stringResource(R.string.rss_title), stringResource(R.string.rss_subtitle),
+                        Icons.Default.RssFeed, onNavigateToRss)
+                }
+                Spacer(Modifier.height(24.dp))
+                SettingsSectionTitle(stringResource(R.string.settings_section_debug))
+                SettingsGroup {
+                    SettingsNavigationRow(stringResource(R.string.settings_debug_title), stringResource(R.string.settings_debug_subtitle),
+                        Icons.Default.BugReport, onNavigateToDebug)
+                }
             }
         }
     }
@@ -134,7 +140,7 @@ fun SettingsScreen(
             LocalConfiguration provides localConfig
         ) {
             TidiloAlertDialog(
-            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+                containerColor = dialogSurface.containerColor,
                 onDismissRequest = { showLanguageDialog = false },
                 title = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
@@ -146,7 +152,7 @@ fun SettingsScreen(
                 },
                 text = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
-                        Column(modifier = Modifier.selectableGroup()) {
+                        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).selectableGroup()) {
                             AppLanguage.entries.forEach { lang ->
                                 val isSelected = lang == currentLanguage
                                 Row(
@@ -185,7 +191,7 @@ fun SettingsScreen(
                         }
                     }
                 },
-                shape = themeCorner(ThemeCorner.PROMINENT_CARD)
+                shape = dialogSurface.shape
             )
         }
     }
@@ -196,7 +202,7 @@ fun SettingsScreen(
             LocalConfiguration provides localConfig
         ) {
             TidiloAlertDialog(
-            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+                containerColor = dialogSurface.containerColor,
                 onDismissRequest = { showThemeDialog = false },
                 title = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
@@ -208,38 +214,38 @@ fun SettingsScreen(
                 },
                 text = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
-                        Column {
-                          Column(modifier = Modifier.selectableGroup()) {
-                            AppTheme.entries.forEach { theme ->
-                                val isSelected = theme == currentTheme
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .selectable(
+                        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                            Column(modifier = Modifier.selectableGroup()) {
+                                AppTheme.entries.forEach { theme ->
+                                    val isSelected = theme == currentTheme
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .selectable(
+                                                selected = isSelected,
+                                                role = Role.RadioButton,
+                                                onClick = {
+                                                    AppConfig.setTheme(theme)
+                                                    showThemeDialog = false
+                                                }
+                                            )
+                                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        RadioButton(
                                             selected = isSelected,
-                                            role = Role.RadioButton,
-                                            onClick = {
-                                                AppConfig.setTheme(theme)
-                                                showThemeDialog = false
-                                            }
+                                            onClick = null
                                         )
-                                        .padding(vertical = 12.dp, horizontal = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(
-                                        selected = isSelected,
-                                        onClick = null
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(
-                                        text = stringResource(theme.labelRes),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            text = stringResource(theme.labelRes),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
                                 }
                             }
-                          }
-                          ThemeBlurSetting(blurSetting, AppConfig::setOverlayBlurEnabled)
+                            ThemeBlurSetting(blurSetting, AppConfig::setOverlayBlurEnabled)
                         }
                     }
                 },
@@ -250,7 +256,7 @@ fun SettingsScreen(
                         }
                     }
                 },
-                shape = themeCorner(ThemeCorner.PROMINENT_CARD)
+                shape = dialogSurface.shape
             )
         }
     }

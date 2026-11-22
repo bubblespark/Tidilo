@@ -10,6 +10,9 @@
   - **General**: Language, Theme, Notification (opens OS system notification settings directly), AI Analysis, Private Content.
   - **Data Management**: Storage, RSS.
   - **Debug**: Web Parser, Prompt Test, etc.
+- **Layout**: The scrolling list stays full window inside the scaffold's system/cutout padding; its groups are capped at `840.dp` and centered on wider windows, keeping compact margins unchanged. Foldable hinge avoidance is not applied yet.
+- **Section Titles**: `SettingsSectionTitle` renders an emphasized `labelLarge` `primary` label exposed as a heading (`semantics { heading() }`); row titles keep `titleMedium`. AI Analysis shares the same section title.
+- **Language & Theme Dialogs**: Both call sites pass the `SurfaceRole.DIALOG` shape and container color to `TidiloAlertDialog`, whose own `shape` default stays `AlertDialogDefaults.shape`. Each body scrolls vertically between the title and the fixed Close action, so every option and the Theme dialog's Blur effects switch stay reachable at large font scales and in short windows. Selecting a language or theme applies it and dismisses the dialog; Blur effects persists and keeps Theme open.
 - **Card & Row Styling**: `20.dp` rounded `surfaceContainerHigh` cards, `20.dp` row padding, `40.dp` circular `primaryContainer` / `onPrimaryContainer` icons, and inset `outlineVariant` dividers (`0.25` alpha). Navigation rows expose a single `Button` target with text wrapping inside a weighted column. Manual domain icon re-fetch is omitted; Cache clearing on Storage handles automatic recovery.
 
 ---

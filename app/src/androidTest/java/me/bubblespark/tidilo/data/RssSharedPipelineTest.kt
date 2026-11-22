@@ -406,19 +406,58 @@ class RssSharedPipelineTest {
         val preferences = me.bubblespark.tidilo.data.rss.RssPreferences.getInstance(context)
         preferences.initialize()
         val original = preferences.state.value
+        val fixtureDomain = "manual-${java.util.UUID.randomUUID()}.example"
+        val fixturePath = "https://$fixtureDomain/post"
+        val images = (1..2).associateWith { "$fixturePath/cover-$it.png" }
+        val image = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888).let { bitmap ->
+            try {
+                java.io.ByteArrayOutputStream().use { output ->
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
+                    output.toByteArray()
+                }
+            } finally { bitmap.recycle() }
+        }
         try {
             preferences.save(original.copy(wifiOnly = true))
             db.rssDao().putFeed(RssFeedEntity("manual", "https://fixture-feed.example/feed", "Feed"))
-            val wifiPolicies = mutableListOf<Boolean>()
-            val repo = repository(db, { url, _, wifiOnly ->
-                wifiPolicies.add(wifiOnly)
-                RssHttpPage(304, url, "")
-            })
+            val feedPolicies = mutableListOf<Boolean>()
+            val requests = java.util.concurrent.CopyOnWriteArrayList<Pair<String, Boolean>>()
+            val repo = RssRepository(
+                context, db, domainPolicyStore = DomainPolicyStore(db),
+                requestOverride = { requested, _, wifiOnly ->
+                    feedPolicies.add(wifiOnly)
+                    RssHttpPage(200, requested, xml(feedPolicies.size).replace(url, fixturePath))
+                },
+                articleRequestOverride = { requested, wifiOnly ->
+                    requests.add(requested to wifiOnly)
+                    val articleId = requested.takeIf { it.startsWith("$fixturePath/") }
+                        ?.substringAfterLast('/')?.toIntOrNull()
+                    when {
+                        articleId != null -> {
+                            val metadata = "<meta property=\"og:image\" content=\"${images.getValue(articleId)}\">"
+                            ArticleResponse(requested, 200, html.replace("</head>", "$metadata</head>").toByteArray(), "text/html")
+                        }
+                        requested in images.values -> ArticleResponse(requested, 200, image, "image/png")
+                        else -> ArticleResponse(requested, 404, byteArrayOf(), null)
+                    }
+                }
+            )
             assertTrue(repo.fetchAll(1, manualMobileRunId = "consented"))
             assertTrue(repo.fetchAll(Long.MAX_VALUE))
-            assertEquals(listOf(false, true), wifiPolicies)
+            assertEquals(listOf(false, true), feedPolicies)
+            for ((id, cover) in images) {
+                val expectedPolicy = setOf(id == 2)
+                for (address in listOf("$fixturePath/$id", cover)) {
+                    assertEquals(address, expectedPolicy, requests.filter { it.first == address }.map { it.second }.toSet())
+                }
+            }
             assertTrue(preferences.state.value.wifiOnly)
         } finally {
+            for (imageUrl in images.values) {
+                OgImageManager.deleteUnreferencedImage(
+                    context, fixtureDomain, OgImageManager.computeImageKey(imageUrl), removeLatest = true
+                )
+            }
             preferences.save(original)
             db.close()
         }

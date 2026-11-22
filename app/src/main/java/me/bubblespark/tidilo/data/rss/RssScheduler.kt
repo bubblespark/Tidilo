@@ -59,11 +59,11 @@ internal object RssScheduler {
                 return@withLock
             }
             val manual = manager.getWorkInfosForUniqueWork(MANUAL).get().firstOrNull { !it.state.isFinished }
-            if (manual != null) {
+            if (manual != null && manual.id != finishingWorkId) {
                 val requestedAt = manual.tags.firstNotNullOfOrNull { tag ->
                     tag.takeIf { it.startsWith(MANUAL_REQUESTED_AT) }
                         ?.removePrefix(MANUAL_REQUESTED_AT)?.toLongOrNull()
-                } ?: preferences.manualRequestedAt()
+                } ?: preferences.legacyManualRequestedAt()
                 manager.updateWork(manualRequest(requestedAt, settings.wifiOnly,
                     MANUAL_MOBILE in manual.tags, manual.id)).get()
             }

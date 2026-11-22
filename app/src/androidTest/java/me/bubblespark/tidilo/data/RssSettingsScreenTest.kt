@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
@@ -45,6 +46,128 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssSettingsScreenTest {
+    @Test fun settingsInitializationFailureBlocksWritesAndCanRetry(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val activity = host.launch()
+        val controls = RssTriggerTestControls(host, activity)
+        val options = InstrumentationRegistry.getArguments()
+        val locale = Locale.forLanguageTag(options.getString("rssSettingsLocale") ?: "en")
+        val dark = options.getString("rssSettingsDark") == "true"
+        val config = Configuration(activity.resources.configuration).apply { setLocale(locale) }
+        val localized = activity.createConfigurationContext(config)
+        val db = androidx.room.Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val preferences = me.bubblespark.tidilo.data.rss.RssPreferences.getInstance(context)
+        preferences.initialize()
+        val original = preferences.state.value
+        val saved = RssSettings(listOf(java.time.LocalTime.of(12, 34)), wifiOnly = false, dailyEnabled = false)
+        val attempts = java.util.concurrent.atomic.AtomicInteger()
+        suspend fun capture(state: String) {
+            instrumentation.waitForIdleSync()
+            delay(300)
+            val bitmap = instrumentation.uiAutomation.takeScreenshot()
+            try {
+                val theme = if (dark) "dark" else "light"
+                val scale = config.fontScale
+                File(context.cacheDir, "rss320-$state-${locale.language}-$theme-$scale.png").outputStream().use {
+                    assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+                }
+            } finally { bitmap.recycle() }
+        }
+        try {
+            preferences.save(saved)
+            db.rssDao().putFeed(me.bubblespark.tidilo.data.db.RssFeedEntity(
+                "settings-load", "https://example.invalid/feed", "Example Feed"
+            ))
+            lateinit var model: me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel
+            host.main {
+                model = me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel(
+                    activity.application,
+                    androidx.lifecycle.SavedStateHandle(),
+                    me.bubblespark.tidilo.data.rss.RssRepository(context, db),
+                    networkStateOverride = { true to true },
+                    initializeSettings = {
+                        if (attempts.incrementAndGet() == 1) throw java.io.IOException("Fixture settings failure")
+                        preferences.initialize()
+                    }
+                )
+                activity.setContent {
+                    CompositionLocalProvider(
+                        LocalContext provides localized,
+                        LocalConfiguration provides config,
+                        LocalResources provides localized.resources,
+                        LocalActivityResultRegistryOwner provides activity
+                    ) {
+                        TidiloTheme(darkTheme = dark, dynamicColor = false) {
+                            me.bubblespark.tidilo.ui.screens.settings.RssSettingsScreen({}, model)
+                        }
+                    }
+                }
+            }
+            val failure = localized.getString(R.string.rss_settings_load_failed)
+            val retry = localized.getString(R.string.summary_retry)
+            val daily = localized.getString(R.string.rss_daily_fetch)
+            val wifi = localized.getString(R.string.rss_wifi_only)
+            val fetch = localized.getString(R.string.rss_fetch_now)
+            node("Settings load failure") { it.text?.toString() == failure }
+            capture("settings-error")
+            host.main { model.saveSettings(RssSettings(dailyEnabled = true), permissionGranted = true) }
+            withTimeout(3000) { while (model.busy.value) delay(20) }
+            assertEquals(saved, me.bubblespark.tidilo.data.rss.RssPreferences(context).let {
+                it.initialize()
+                it.state.value
+            })
+            suspend fun assertEnabled(label: String, expected: Boolean) {
+                val target = controls.reveal(label, controls.text(label))
+                host.main {
+                    val action = generateSequence(target) { it.parent }
+                        .first { SemanticsActions.OnClick in it.config }
+                    assertEquals(label, expected, SemanticsProperties.Disabled !in action.config)
+                }
+            }
+            for (label in listOf(daily, wifi, fetch)) assertEnabled(label, false)
+            val triggerLabels = listOf(
+                localized.getString(R.string.rss_add_trigger_time),
+                localized.getString(R.string.rss_edit_trigger_time, "12:34"),
+                localized.getString(R.string.rss_remove_trigger_time, "12:34")
+            )
+            for (label in triggerLabels) {
+                val target = controls.reveal(label) { host.description(it, label) }
+                host.main {
+                    assertTrue(SemanticsProperties.Disabled in controls.action(target).config)
+                }
+            }
+            controls.clickRow(retry, controls.text(retry))
+            withTimeout(3000) { while (attempts.get() < 2 || model.busy.value) delay(20) }
+            assertNull(find { it.text?.toString() == failure })
+            assertEnabled(daily, true)
+            capture("settings-ready")
+            for (label in listOf(wifi, fetch)) assertEnabled(label, true)
+            assertEquals(saved, preferences.state.value)
+        } finally {
+            host.main { activity.finish() }
+            preferences.save(original)
+            db.close()
+        }
+    }
+
+    @Test fun cancelledSettingsInitializationIsNotReportedAsLoadFailure(): Unit = runBlocking {
+        val db = androidx.room.Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            lateinit var model: me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel
+            instrumentation.runOnMainSync {
+                model = me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel(
+                    context.applicationContext as android.app.Application,
+                    androidx.lifecycle.SavedStateHandle(),
+                    me.bubblespark.tidilo.data.rss.RssRepository(context, db),
+                    initializeSettings = { throw kotlinx.coroutines.CancellationException("Fixture cancellation") }
+                )
+            }
+            withTimeout(3000) { while (model.busy.value) delay(20) }
+            assertEquals(StorageLoad.Loading, model.settingsLoad.value)
+            assertNull(model.error.value)
+        } finally { db.close() }
+    }
+
     @Test fun fetchNowQueuesOnlyTheExplicitManualChoice(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()
@@ -184,17 +307,22 @@ class RssSettingsScreenTest {
                     }
                     capture("editor-$suffix")
                     clickText(localized.getString(R.string.rss_retention_details))
-                    node("Expanded retention details") {
-                        it.text?.toString() == localized.getString(R.string.rss_retention_interactions)
+                    host.await(activity) {
+                        host.text(it, localized.getString(R.string.rss_retention_interactions))
                     }
                     capture("editor-details-$suffix")
                     val save = localized.getString(R.string.rss_save)
-                    withTimeout(3000) {
-                        while (find { it.text?.toString() == save && it.isVisibleToUser } == null) {
-                            find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-                            delay(100)
+                    val saveLabel = host.await(activity) { host.text(it, save) }
+                    fun fullyVisible(node: SemanticsNode): Boolean =
+                        node.boundsInRoot.height >= node.size.height - 1 && node.boundsInRoot.height > 0
+                    host.main {
+                        if (!fullyVisible(saveLabel)) {
+                            val sheet = generateSequence(saveLabel) { it.parent }
+                                .first { SemanticsActions.ScrollBy in it.config }
+                            assertTrue(sheet.config[SemanticsActions.ScrollBy].action?.invoke(0f, 4000f) == true)
                         }
                     }
+                    host.await(activity) { host.text(it, save) && fullyVisible(it) }
                     instrumentation.uiAutomation.performGlobalAction(
                         android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
                     )
@@ -407,6 +535,7 @@ class RssSettingsScreenTest {
     @Test fun longPressRequestsConfirmationBeforeDeletingFeed(): Unit = runBlocking {
         val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
+        val controls = RssTriggerTestControls(HeaderTestHost(), activity)
         var deleted: String? = null
         try {
             instrumentation.runOnMainSync { activity.setContent { MaterialTheme {
@@ -415,12 +544,7 @@ class RssSettingsScreenTest {
                     onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
                     onDelete = { deleted = it }, onFetch = {}, onDismissError = {})
             } } }
-            repeat(8) {
-                if (find { it.text?.toString() == "Example" } == null) {
-                    find { it.isScrollable }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-                    delay(100)
-                }
-            }
+            controls.reveal("Feed title", controls.text("Example"))
             var card: AccessibilityNodeInfo? = node("Feed title") { it.text?.toString() == "Example" }
             while (card != null && !card.isLongClickable) card = card.parent
             assertTrue(requireNotNull(card).performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK))
@@ -676,6 +800,9 @@ class RssSettingsScreenTest {
                 val title = content.single { host.text(it, "Example") }
                 val error = content.single { host.text(it, "HTTP 500") }
                 val toggle = content.single(enabled)
+                val minTouchSize = 48 * activity.resources.displayMetrics.density
+                assertTrue(toggle.boundsInRoot.width >= minTouchSize - 1)
+                assertTrue(toggle.boundsInRoot.height >= minTouchSize - 1)
                 assertTrue(toggle.boundsInRoot.left >= title.boundsInRoot.right)
                 assertTrue(toggle.boundsInRoot.bottom <= error.boundsInRoot.top)
                 val texts = content.flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }
@@ -688,6 +815,7 @@ class RssSettingsScreenTest {
                 assertTrue(toggle.config[SemanticsActions.OnClick].action?.invoke() == true)
             }
             withTimeout(3000) { while (feed.value.enabled) delay(20) }
+            assertNull(find { it.text?.toString() == activity.getString(R.string.rss_edit) })
             instrumentation.runOnMainSync { feed.value = feed.value.copy(error = null, retentionLimit = 30) }
             controls.clickRow("Updated Example feed card") { candidate ->
                 isFeedCard(candidate) && descendants(candidate).let { content ->

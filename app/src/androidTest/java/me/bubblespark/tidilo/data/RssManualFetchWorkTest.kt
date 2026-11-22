@@ -1,10 +1,12 @@
 package me.bubblespark.tidilo.data
 
-import android.net.ConnectivityManager
+import android.annotation.SuppressLint
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.impl.WorkManagerImpl
+import androidx.work.testing.WorkManagerTestInitHelper
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.async
@@ -22,39 +24,46 @@ import me.bubblespark.tidilo.ui.screens.settings.manualFetchStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class RssManualFetchWorkTest {
+    @SuppressLint("RestrictedApi")
     @Test fun pendingWorkPreservesItsChoiceAcrossSchedulerReconciliation() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val connectivity = context.getSystemService(ConnectivityManager::class.java)
-        // Run this case on an offline test device so WorkManager cannot claim the pending requests.
-        assumeTrue(connectivity.activeNetwork == null)
-        val manager = WorkManager.getInstance(context)
-        val name = RssScheduler.MANUAL
-        fun pending() = manager.getWorkInfosForUniqueWork(name).get().filter { !it.state.isFinished }
-        assumeTrue(pending().isEmpty())
         val db = AppDatabase.getInstance(context)
         val preferences = RssPreferences.getInstance(context)
         preferences.initialize()
         val original = preferences.state.value
         val feedId = "manual-test-${UUID.randomUUID()}"
-        val ownedWork = mutableListOf<UUID>()
+        val defaultManager = WorkManager.getInstance(context)
+        WorkManagerTestInitHelper.initializeTestWorkManager(context)
+        val manager = WorkManager.getInstance(context)
+        fun pending() = manager.getWorkInfosForUniqueWork(RssScheduler.MANUAL).get().filter { !it.state.isFinished }
         try {
+            assertNotNull(WorkManagerTestInitHelper.getTestDriver(context))
             db.rssDao().putFeed(RssFeedEntity(feedId, "https://$feedId.invalid/feed", "Manual test"))
             preferences.save(original.copy(wifiOnly = true))
             RssScheduler.fetchNow(context)
-            val wait = pending().single().also { ownedWork.add(it.id) }
+            val wait = pending().single()
             assertNotNull(wait.constraints.requiredNetworkRequest)
+            RssScheduler.reschedule(context, finishingWorkId = wait.id)
+            assertEquals(wait.generation, pending().single().generation)
             RssScheduler.fetchNow(context, mobileAllowed = true)
             assertEquals(wait.id, pending().single().id)
             assertTrue(RssScheduler.MANUAL_MOBILE !in pending().single().tags)
+            preferences.save(original.copy(wifiOnly = false))
+            RssScheduler.reschedule(context)
+            val ordinaryUpdate = pending().single()
+            assertEquals(wait.id, ordinaryUpdate.id)
+            assertNull(ordinaryUpdate.constraints.requiredNetworkRequest)
             manager.cancelWorkById(wait.id).result.get()
+            preferences.save(original.copy(wifiOnly = true))
 
             RssScheduler.fetchNow(context, mobileAllowed = true)
-            val consented = pending().single().also { ownedWork.add(it.id) }
+            val consented = pending().single()
             assertNull(consented.constraints.requiredNetworkRequest)
             assertTrue(RssScheduler.MANUAL_MOBILE in consented.tags)
             RssScheduler.reschedule(context)
@@ -66,14 +75,19 @@ class RssManualFetchWorkTest {
             manager.cancelWorkById(consented.id).result.get()
 
             RssScheduler.fetchNow(context)
-            val later = pending().single().also { ownedWork.add(it.id) }
+            val later = pending().single()
             assertNotNull(later.constraints.requiredNetworkRequest)
             assertTrue(RssScheduler.MANUAL_MOBILE !in later.tags)
         } finally {
-            ownedWork.forEach { manager.cancelWorkById(it).result.get() }
-            db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(feedId))
-            preferences.save(original)
-            RssScheduler.reschedule(context)
+            try {
+                manager.cancelAllWork().result.get()
+                WorkManagerTestInitHelper.closeWorkDatabase()
+            } finally {
+                WorkManagerImpl.setDelegate(null)
+                db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(feedId))
+                preferences.save(original)
+                assertSame(defaultManager, WorkManager.getInstance(context))
+            }
         }
     }
 

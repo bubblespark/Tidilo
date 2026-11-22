@@ -358,6 +358,7 @@
     <string name="rss_dismiss">Dismiss</string>
     <string name="rss_wifi_only_description">Applies to scheduled fetches and Fetch now.</string>
     <string name="rss_first_feed_title">Add your first feed</string>
+    <string name="rss_settings_load_failed">Could not load RSS fetch settings.</string>
     <string name="rss_first_feed_description">Enter an RSS or Atom feed URL to subscribe.</string>
     <string name="rss_first_feed_example">Example: https://example.com/feed.xml</string>
     <string name="rss_manual_mobile_title">Use mobile data for this fetch?</string>

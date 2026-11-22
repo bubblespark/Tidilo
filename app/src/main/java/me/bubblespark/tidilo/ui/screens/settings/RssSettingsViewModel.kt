@@ -66,6 +66,9 @@ class RssSettingsViewModel internal constructor(
     },
     private val enqueueManualFetch: suspend (Boolean) -> Unit = { mobileAllowed ->
         RssScheduler.fetchNow(application, mobileAllowed)
+    },
+    private val initializeSettings: suspend () -> Unit = {
+        RssPreferences.getInstance(application).initialize()
     }
 ) : AndroidViewModel(application) {
     constructor(
@@ -75,8 +78,9 @@ class RssSettingsViewModel internal constructor(
 
     private val preferences = RssPreferences.getInstance(application)
     val settings = preferences.state
-    private val _settingsReady = MutableStateFlow(false)
-    internal val settingsReady = _settingsReady.asStateFlow()
+    private val _settingsLoad = MutableStateFlow<StorageLoad<Unit>>(StorageLoad.Loading)
+    internal val settingsLoad = _settingsLoad.asStateFlow()
+    private val settingsReady get() = _settingsLoad.value is StorageLoad.Ready
     internal val manualMobilePrompt = savedState.getStateFlow("manualMobilePrompt", false)
     internal val manualFetch = WorkManager.getInstance(application).getWorkInfosForUniqueWorkFlow(RssScheduler.MANUAL)
         .map { infos -> manualFetchStatus(infos.map { it.state }) }
@@ -111,15 +115,24 @@ class RssSettingsViewModel internal constructor(
     }
 
     init {
+        retrySettings()
         retry()
         restoreNotificationRationaleIfEligible()
     }
 
-    fun retry() {
-        action {
-            preferences.initialize()
-            _settingsReady.value = true
+    internal fun retrySettings() = action {
+        _settingsLoad.value = StorageLoad.Loading
+        try {
+            initializeSettings()
+            _settingsLoad.value = StorageLoad.Ready(Unit)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            _settingsLoad.value = StorageLoad.Error
         }
+    }
+
+    fun retry() {
         feedsJob?.cancel()
         feedsJob = viewModelScope.launch {
             _feeds.value = StorageLoad.Loading
@@ -168,6 +181,7 @@ class RssSettingsViewModel internal constructor(
         value: RssSettings,
         permissionGranted: Boolean = hasPostNotificationsPermission(getApplication())
     ) = action {
+        if (!settingsReady) return@action
         val previousDaily = settings.value.dailyEnabled
         preferences.save(value)
         RssScheduler.reschedule(getApplication())
@@ -342,7 +356,7 @@ class RssSettingsViewModel internal constructor(
     fun deleteFeed(id: String) = action { repository.delete(id) }
     fun setEnabled(id: String, enabled: Boolean) = action { repository.setEnabled(id, enabled) }
     fun fetchNow() {
-        if (manualMobilePrompt.value || !_settingsReady.value || _busy.value ||
+        if (manualMobilePrompt.value || !settingsReady || _busy.value ||
             manualFetch.value != ManualFetchStatus.Idle) return
         action {
             val prompt = withContext(Dispatchers.Main.immediate) {
@@ -356,7 +370,7 @@ class RssSettingsViewModel internal constructor(
     }
 
     internal fun confirmManualFetch(mobileAllowed: Boolean) {
-        if (!manualMobilePrompt.value) return
+        if (!manualMobilePrompt.value || !settingsReady) return
         action {
             enqueueManualFetch(mobileAllowed)
             withContext(Dispatchers.Main.immediate) { dismissManualFetchPrompt() }

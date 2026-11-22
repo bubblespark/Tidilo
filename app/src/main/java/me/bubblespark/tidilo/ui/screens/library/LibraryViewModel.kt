@@ -312,7 +312,8 @@ class LibraryViewModel internal constructor(
             privateVisible.value,
             selectedCollectionId.value.takeIf { mode == LibraryFilterMode.COLLECTION },
             mode == LibraryFilterMode.NEWEST_FIRST && _includeRssInNewestFirst.value)
-        if (session.users == 0 && session.key != selectedKey) {
+        // A superseded window (replaced while still composed) is never reused, even if its key is selected again.
+        if (session.users == 0 && (session.key != selectedKey || currentLibrarySession !== session)) {
             session.cacheScope.cancel()
             if (currentLibrarySession === session) currentLibrarySession = null
         }
@@ -399,7 +400,7 @@ class LibraryViewModel internal constructor(
                 throw cancelled
             } catch (_: Exception) {
                 // The store logs the failure; only a like toggle tells the user.
-                if (showFailure) _events.tryEmit(LibraryEvent.SaveFailed)
+                if (showFailure) _events.emit(LibraryEvent.SaveFailed) // suspends on a full buffer instead of dropping
             }
         }
     }

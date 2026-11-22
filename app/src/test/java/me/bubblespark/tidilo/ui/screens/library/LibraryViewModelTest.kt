@@ -379,4 +379,32 @@ class LibraryViewModelTest {
             assertEquals(0, f.store.pagedBookmarkCalls)
         }
     }
+
+    @Test fun consecutiveLikeFailuresEachEmitAnEvent() = runTest {
+        fixture { f ->
+            f.store.likeFailure = IOException("write")
+            f.model.toggleLike("a")
+            f.model.toggleLike("b")
+            runCurrent()
+            assertEquals(listOf<LibraryEvent>(LibraryEvent.SaveFailed, LibraryEvent.SaveFailed), f.events)
+        }
+    }
+
+    @Test fun releasedSupersededWindowIsCancelledEvenWhenItsKeyIsSelected() = runTest {
+        fixture { f ->
+            val stale = f.model.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, true)
+            f.model.retainLibraryPages(stale)
+            f.model.setFilterMode(LibraryFilterMode.DOMAIN)
+            f.model.selectDomainFilter("other.example")
+            val other = f.model.libraryPages(LibraryFilterMode.DOMAIN, "other.example", null, true)
+            f.model.retainLibraryPages(other)
+            f.model.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
+            val fresh = f.model.libraryPages(LibraryFilterMode.NEWEST_FIRST, null, null, true)
+            assertNotSame(stale, fresh)
+            f.model.retainLibraryPages(fresh)
+            f.model.releaseLibraryPages(stale)
+            assertFalse("A superseded window must not keep its cache after its last release", stale.isActive)
+            assertTrue(fresh.isActive)
+        }
+    }
 }

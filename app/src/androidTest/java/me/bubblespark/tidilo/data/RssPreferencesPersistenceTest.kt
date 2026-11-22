@@ -40,7 +40,7 @@ class RssPreferencesPersistenceTest {
         assertFalse(initial.state.value.dailyEnabled)
         assertTrue(initial.state.value.triggerTimes.isEmpty())
         assertFalse(initial.state.value.wifiOnly)
-        assertEquals(123L, initial.manualRequestedAt())
+        assertEquals(123L, initial.legacyManualRequestedAt())
         assertFalse(prefs.contains("hour"))
         assertFalse(prefs.contains("minute"))
         assertEquals(1, prefs.getInt("scheduleVersion", 0))

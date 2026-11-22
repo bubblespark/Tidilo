@@ -46,7 +46,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -93,6 +92,8 @@ fun RssSettingsScreen(
     val notificationRationale by model.notificationRationale.collectAsStateWithLifecycle()
     val permissionLaunchPending by model.permissionLaunchPending.collectAsStateWithLifecycle()
     val online by model.online.collectAsStateWithLifecycle()
+    val settingsLoad by model.settingsLoad.collectAsStateWithLifecycle()
+    val manualMobilePrompt by model.manualMobilePrompt.collectAsStateWithLifecycle()
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
         model::onNotificationPermissionResult
@@ -131,8 +132,18 @@ fun RssSettingsScreen(
         onFetch = model::fetchNow,
         onDismissError = model::clearError,
         onEnabled = model::setEnabled,
-        manualFetch = manualFetch
+        manualFetch = manualFetch,
+        settingsLoad = settingsLoad,
+        onRetrySettings = model::retrySettings
     )
+    if (manualMobilePrompt && settingsLoad is StorageLoad.Ready) {
+        RssManualFetchDialog(
+            busy = busy,
+            onChoice = model::confirmManualFetch,
+            onDismiss = model::dismissManualFetchPrompt,
+            error = error
+        )
+    }
     if (initialFetch != null) {
         val mobileNotice = settings.wifiOnly && wifi == false
         RssInitialFetchDialog(
@@ -192,6 +203,38 @@ internal fun RssNotificationPermissionDialog(
 }
 
 @Composable
+internal fun RssManualFetchDialog(
+    busy: Boolean,
+    onChoice: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+    error: String? = null
+) {
+    val surface = currentThemeSurfaces().resolve(SurfaceRole.DIALOG)
+    TidiloAlertDialog(
+        containerColor = surface.containerColor,
+        shape = surface.shape,
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(R.string.rss_manual_mobile_title)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.rss_manual_mobile_message))
+                if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onChoice(true) }, enabled = !busy, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.rss_manual_use_mobile))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onChoice(false) }, enabled = !busy, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.rss_manual_wait_wifi))
+            }
+        }
+    )
+}
+
+@Composable
 internal fun RssInitialFetchDialog(mobileNotice: Boolean, connected: Boolean, busy: Boolean,
     onFetch: () -> Unit, onLater: () -> Unit) {
     TidiloAlertDialog(
@@ -226,13 +269,16 @@ internal fun RssSettingsContent(
     onBack: () -> Unit, onRetry: () -> Unit, onSettings: (RssSettings) -> Unit,
     onFeed: (RssFeedEntity?, String) -> Unit, onDelete: (String) -> Unit,
     onFetch: () -> Unit, onDismissError: () -> Unit, onEnabled: (String, Boolean) -> Unit = { _, _ -> },
-    manualFetch: ManualFetchStatus = ManualFetchStatus.Idle
+    manualFetch: ManualFetchStatus = ManualFetchStatus.Idle,
+    settingsLoad: StorageLoad<Unit> = StorageLoad.Ready(Unit),
+    onRetrySettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var showTime by rememberSaveable { mutableStateOf(false) }
     var timeToEdit by rememberSaveable { mutableStateOf<Int?>(null) }
     var deletingTriggerMinute by rememberSaveable { mutableStateOf<Int?>(null) }
     val currentSettings by rememberUpdatedState(settings)
+    val settingsEditable = !busy && settingsLoad is StorageLoad.Ready
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var showEditor by rememberSaveable { mutableStateOf(false) }
     var deletingId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -240,7 +286,11 @@ internal fun RssSettingsContent(
     val editing = readyFeeds.firstOrNull { it.id == editingId }
     val deleting = readyFeeds.firstOrNull { it.id == deletingId }
     val listState = rememberLazyListState()
-    TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), bottomContentPadding = HeaderDefaults.RssActionClearance, 
+    val showAddFab = readyFeeds.isNotEmpty()
+    val openNewFeed = { editingId = null; showEditor = true }
+    TidiloScreenScaffold(
+        contentWindowInsets = screenSystemInsets(),
+        bottomContentPadding = if (showAddFab) HeaderDefaults.RssActionClearance else 0.dp,
         hideHeaderOnScroll = false,
         header = {
             TidiloPageHeader(
@@ -250,7 +300,7 @@ internal fun RssSettingsContent(
             )
         },
         overlay = {
-        FloatingActionButton(onClick = { if (!busy) { editingId = null; showEditor = true } },
+        if (showAddFab) FloatingActionButton(onClick = { if (!busy) openNewFeed() },
             modifier = Modifier.align(Alignment.BottomEnd).screenActionInsets()
                 .padding(end = HeaderDefaults.HorizontalPadding + 16.dp, bottom = 16.dp).size(HeaderDefaults.RssActionSize)
                 .semantics { if (busy) disabled() },
@@ -265,13 +315,60 @@ internal fun RssSettingsContent(
         Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), state = listState,
             contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (settingsLoad == StorageLoad.Error) item(key = "settings-error", contentType = "settings-error") {
+                RssCard {
+                    Text(stringResource(R.string.rss_settings_load_failed), color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = onRetrySettings, enabled = !busy) {
+                        Text(stringResource(R.string.summary_retry))
+                    }
+                }
+            }
+            if (error != null) item(key = "error") { RssCard {
+                Text(error, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onDismissError) { Text(stringResource(R.string.rss_dismiss)) }
+            } }
+            if (readyFeeds.isNotEmpty()) {
+                item(key = "feed-heading") { Text(stringResource(R.string.rss_feed_count, readyFeeds.size),
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) }
+            }
+            when (feeds) {
+                StorageLoad.Loading -> item(key = "loading") { Text(stringResource(R.string.summary_loading)) }
+                StorageLoad.Error -> item(key = "load-error") {
+                    Column {
+                    Text(stringResource(R.string.summary_error))
+                    TextButton(onClick = onRetry) { Text(stringResource(R.string.summary_retry)) }
+                    }
+                }
+                is StorageLoad.Ready -> {
+                    if (readyFeeds.isEmpty()) item(key = "empty", contentType = "first-feed") {
+                        RssCard {
+                            Text(stringResource(R.string.rss_first_feed_title), style = MaterialTheme.typography.titleLarge)
+                            Text(stringResource(R.string.rss_first_feed_description), style = MaterialTheme.typography.bodyMedium)
+                            Text(stringResource(R.string.rss_first_feed_example), style = MaterialTheme.typography.bodySmall)
+                            Button(onClick = openNewFeed, enabled = !busy) {
+                                Text(stringResource(R.string.rss_add_feed))
+                            }
+                        }
+                    }
+                    items(readyFeeds, key = { "feed:${it.id}" }, contentType = { "feed" }) { feed ->
+                            RssFeedCard(
+                                feed = feed,
+                                busy = busy,
+                                onEdit = { editingId = feed.id; showEditor = true },
+                                onDelete = { deletingId = feed.id },
+                                onEnabled = { onEnabled(feed.id, it) },
+                                context = context
+                            )
+                    }
+                }
+            }
             item(key = "schedule-heading") {
             Text(stringResource(R.string.rss_schedule), style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
             item(key = "schedule") {
             RssCard {
-                Row(Modifier.fillMaxWidth().toggleable(settings.dailyEnabled, enabled = !busy, role = Role.Switch,
+                Row(Modifier.fillMaxWidth().toggleable(settings.dailyEnabled, enabled = settingsEditable, role = Role.Switch,
                     onValueChange = { onSettings(settings.copy(dailyEnabled = it)) }).heightIn(min = 48.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     RssPreferenceIcon(Icons.Default.Sync)
@@ -280,20 +377,23 @@ internal fun RssSettingsContent(
                         Text(stringResource(R.string.rss_daily_fetch), style = MaterialTheme.typography.titleMedium)
                         Text(stringResource(R.string.rss_daily_fetch_desc), style = MaterialTheme.typography.bodySmall)
                     }
-                    Switch(checked = settings.dailyEnabled, onCheckedChange = null, enabled = !busy)
+                    Switch(checked = settings.dailyEnabled, onCheckedChange = null, enabled = settingsEditable)
                 }
                 HorizontalDivider()
                 if (settings.wifiOnly && wifi == false) Text(stringResource(R.string.rss_wifi_blocked),
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                Row(Modifier.fillMaxWidth().alpha(if (settings.dailyEnabled) 1f else 0.45f).toggleable(settings.wifiOnly, enabled = !busy && settings.dailyEnabled, role = Role.Switch,
+                Row(Modifier.fillMaxWidth().toggleable(settings.wifiOnly, enabled = settingsEditable, role = Role.Switch,
                     onValueChange = { onSettings(settings.copy(wifiOnly = it)) }).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                     RssPreferenceIcon(Icons.Default.Wifi)
                     Spacer(Modifier.width(16.dp))
-                    Text(stringResource(R.string.rss_wifi_only), Modifier.weight(1f))
-                    Switch(checked = settings.wifiOnly, onCheckedChange = null, enabled = !busy && settings.dailyEnabled)
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.rss_wifi_only))
+                        Text(stringResource(R.string.rss_wifi_only_description), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = settings.wifiOnly, onCheckedChange = null, enabled = settingsEditable)
                 }
                 Text(stringResource(R.string.rss_schedule_note), style = MaterialTheme.typography.bodySmall)
-                FilledTonalButton(onClick = onFetch, modifier = Modifier.fillMaxWidth(), enabled = !busy && manualFetch == ManualFetchStatus.Idle && (feeds as? StorageLoad.Ready)?.value?.any { it.enabled } == true) {
+                FilledTonalButton(onClick = onFetch, modifier = Modifier.fillMaxWidth(), enabled = settingsEditable && manualFetch == ManualFetchStatus.Idle && readyFeeds.any { it.enabled }) {
                     Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
                         if (manualFetch == ManualFetchStatus.Running) CircularProgressIndicator(Modifier.fillMaxSize(), strokeWidth = 2.dp)
                         else Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.fillMaxSize())
@@ -314,7 +414,7 @@ internal fun RssSettingsContent(
                         color = MaterialTheme.colorScheme.primary)
                     Text(stringResource(R.string.rss_trigger_count, settings.triggerTimes.size),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    IconButton(onClick = { timeToEdit = null; showTime = true }, enabled = !busy && settings.triggerTimes.size < 3,
+                    IconButton(onClick = { timeToEdit = null; showTime = true }, enabled = settingsEditable && settings.triggerTimes.size < 3,
                         colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary)) {
                         Icon(Icons.Default.Add, stringResource(R.string.rss_add_trigger_time))
                     }
@@ -329,41 +429,11 @@ internal fun RssSettingsContent(
                 }
             }
             items(settings.triggerTimes.sorted(), key = { "trigger:${it.hour * 60 + it.minute}" }, contentType = { "trigger" }) { trigger ->
-                RssTriggerTimeCard(trigger, busy,
+                RssTriggerTimeCard(trigger, settingsEditable,
                     onRemove = { deletingTriggerMinute = trigger.hour * 60 + trigger.minute },
                     onEdit = { timeToEdit = trigger.hour * 60 + trigger.minute; showTime = true })
             }
-            val ready = readyFeeds
-            if (error != null) item(key = "error") { RssCard {
-                Text(error, color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = onDismissError) { Text(stringResource(R.string.rss_dismiss)) }
-            } }
-            if (feeds is StorageLoad.Ready) {
-                item(key = "feed-heading") { Text(stringResource(R.string.rss_feed_count, ready.size),
-                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) }
-            }
-            when (feeds) {
-                StorageLoad.Loading -> item(key = "loading") { Text(stringResource(R.string.summary_loading)) }
-                StorageLoad.Error -> item(key = "load-error") {
-                    Column {
-                    Text(stringResource(R.string.summary_error))
-                    TextButton(onClick = onRetry) { Text(stringResource(R.string.summary_retry)) }
-                    }
-                }
-                is StorageLoad.Ready -> {
-                    if (ready.isEmpty()) item(key = "empty") { RssCard { Text(stringResource(R.string.rss_no_feeds)) } }
-                    items(ready, key = { "feed:${it.id}" }, contentType = { "feed" }) { feed ->
-                            RssFeedCard(
-                                feed = feed,
-                                busy = busy,
-                                onEdit = { editingId = feed.id; showEditor = true },
-                                onDelete = { deletingId = feed.id },
-                                onEnabled = { onEnabled(feed.id, it) },
-                                context = context
-                            )
-                    }
-                }
-            }
+
         }
 
         }
@@ -380,8 +450,8 @@ internal fun RssSettingsContent(
             title = { Text(stringResource(R.string.rss_delete_trigger_title)) },
             text = { Text(stringResource(R.string.rss_delete_trigger_message,
                 trigger.format(TRIGGER_TIME_FORMATTER))) },
-            confirmButton = { TextButton(enabled = !busy, onClick = {
-                if (deletingTriggerMinute != null && !busy) {
+            confirmButton = { TextButton(enabled = settingsEditable, onClick = {
+                if (deletingTriggerMinute != null && settingsEditable) {
                     deletingTriggerMinute = null
                     if (trigger in currentSettings.triggerTimes) onSettings(currentSettings.copy(triggerTimes = currentSettings.triggerTimes - trigger))
                 }
@@ -405,8 +475,8 @@ internal fun RssSettingsContent(
                 if (duplicate) Text(stringResource(R.string.rss_trigger_duplicate), color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall)
             } }, confirmButton = {
-                TextButton(enabled = !busy && !duplicate, onClick = {
-                    if (showTime && !busy) {
+                TextButton(enabled = settingsEditable && !duplicate, onClick = {
+                    if (showTime && settingsEditable) {
                         val updated = replaceRssTriggerTime(currentSettings.triggerTimes, original, replacement)
                         showTime = false
                         if (updated != null) onSettings(currentSettings.copy(triggerTimes = updated))
@@ -431,12 +501,12 @@ internal fun RssSettingsContent(
 }
 
 @Composable
-private fun RssTriggerTimeCard(time: LocalTime, busy: Boolean, onRemove: () -> Unit, onEdit: () -> Unit) {
+private fun RssTriggerTimeCard(time: LocalTime, enabled: Boolean, onRemove: () -> Unit, onEdit: () -> Unit) {
     val label = time.format(TRIGGER_TIME_FORMATTER)
     val editLabel = stringResource(R.string.rss_edit_trigger_time, label)
     RssCard(compact = true) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onRemove, enabled = !busy, modifier = Modifier.size(48.dp)) {
+            IconButton(onClick = onRemove, enabled = enabled, modifier = Modifier.size(48.dp)) {
                 TidiloSurface(role = SurfaceRole.DESTRUCTIVE_ACTION, modifier = Modifier.size(20.dp)) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Remove, stringResource(R.string.rss_remove_trigger_time, label),
@@ -445,7 +515,7 @@ private fun RssTriggerTimeCard(time: LocalTime, busy: Boolean, onRemove: () -> U
                 }
             }
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = onEdit, enabled = !busy, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = editLabel }) {
+            TextButton(onClick = onEdit, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = editLabel }) {
                 Text(label, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
             }
         }
@@ -491,29 +561,19 @@ private fun RssFeedCard(
                     Text(feed.title, modifier = Modifier.fillMaxWidth().basicMarquee(initialDelayMillis = 2000, repeatDelayMillis = 2000),
                         maxLines = 1, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(visualSource.feedPublisherDomain(feed) ?: feed.url, style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Row(Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .toggleable(feed.enabled, enabled = !busy, role = Role.Switch, onValueChange = onEnabled)
+                    .semantics { contentDescription = enabledLabel }, verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = feed.enabled, onCheckedChange = null, enabled = !busy)
                 }
             }
             feed.error?.let {
                 Text(if (it == "XML_FETCH_FAILED") stringResource(R.string.rss_xml_fetch_failed) else it,
                     color = MaterialTheme.colorScheme.error)
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (label in listOf(stringResource(R.string.rss_direct_mode),
-                    stringResource(R.string.rss_retention_compact))) {
-                    me.bubblespark.tidilo.ui.components.TidiloDisplayChip(role = SurfaceRole.STATUS_BADGE) {
-                        Text(label, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-                }
-                Row(Modifier.toggleable(feed.enabled, enabled = !busy, role = Role.Switch, onValueChange = onEnabled)
-                    .semantics { contentDescription = enabledLabel }, verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = feed.enabled, onCheckedChange = null, enabled = !busy)
-                }
-            }
+
         }
     }
 }
@@ -522,6 +582,7 @@ private fun RssFeedCard(
 @Composable
 internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDelete: (() -> Unit)? = null, onSave: (String) -> Unit) {
     var url by rememberSaveable(original?.id) { mutableStateOf(original?.url.orEmpty()) }
+    var showRetentionDetails by rememberSaveable(original?.id) { mutableStateOf(false) }
     TidiloModalBottomSheet(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.SHEET).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.SHEET).shape,onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -533,7 +594,22 @@ internal fun RssFeedEditor(original: RssFeedEntity?, onDismiss: () -> Unit, onDe
                 OutlinedTextField(url, { url = it }, label = { Text(stringResource(R.string.rss_feed_url)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
                 HorizontalDivider()
-                Text(stringResource(R.string.rss_retention_note), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.rss_retention_unread), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.rss_retention_interacted), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.rss_retention_protected), style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    stringResource(R.string.rss_retention_permanent),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+                TextButton(onClick = { showRetentionDetails = !showRetentionDetails }) {
+                    Text(stringResource(
+                        if (showRetentionDetails) R.string.rss_retention_hide_details else R.string.rss_retention_details
+                    ))
+                }
+                if (showRetentionDetails) {
+                    Text(stringResource(R.string.rss_retention_interactions), style = MaterialTheme.typography.bodySmall)
+                }
                 if (original != null && url.trim() != original.url) Text(stringResource(R.string.rss_url_change_note),
                     style = MaterialTheme.typography.bodySmall)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

@@ -401,6 +401,82 @@ class RssSharedPipelineTest {
         } finally { db.close() }
     }
 
+    @Test fun mobileConsentAppliesToOneManualFetch() = runBlocking {
+        val db = database()
+        val preferences = me.bubblespark.tidilo.data.rss.RssPreferences.getInstance(context)
+        preferences.initialize()
+        val original = preferences.state.value
+        val fixtureDomain = "manual-${java.util.UUID.randomUUID()}.example"
+        val fixturePath = "https://$fixtureDomain/post"
+        val completedArticle = "$fixturePath/1"
+        val retriedArticle = "$fixturePath/2"
+        val cover = "$fixturePath/cover.png"
+        val image = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888).let { bitmap ->
+            try {
+                java.io.ByteArrayOutputStream().use { output ->
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
+                    output.toByteArray()
+                }
+            } finally { bitmap.recycle() }
+        }
+        try {
+            preferences.save(original.copy(wifiOnly = true))
+            db.rssDao().putFeed(RssFeedEntity("manual", "https://fixture-feed.example/feed", "Feed"))
+            val feedPolicies = mutableListOf<Boolean>()
+            val requests = java.util.concurrent.CopyOnWriteArrayList<Pair<String, Boolean>>()
+            var failFirstAttempt = true
+            val repo = RssRepository(
+                context, db, domainPolicyStore = DomainPolicyStore(db),
+                requestOverride = { requested, _, wifiOnly ->
+                    feedPolicies.add(wifiOnly)
+                    RssHttpPage(200, requested, xml(2).replace(url, fixturePath))
+                },
+                articleRequestOverride = { requested, wifiOnly ->
+                    requests.add(requested to wifiOnly)
+                    when {
+                        requested == retriedArticle && failFirstAttempt -> throw IOException("Fixture article timeout")
+                        requested == completedArticle || requested == retriedArticle -> {
+                            val metadata = "<meta property=\"og:image\" content=\"$cover\">"
+                            ArticleResponse(requested, 200, html.replace("</head>", "$metadata</head>").toByteArray(), "text/html")
+                        }
+                        requested == cover && failFirstAttempt -> ArticleResponse(requested, 503, byteArrayOf(), null)
+                        requested == cover -> ArticleResponse(requested, 200, image, "image/png")
+                        else -> ArticleResponse(requested, 404, byteArrayOf(), null)
+                    }
+                }
+            )
+            fun policiesFor(address: String) = requests.filter { it.first == address }.map { it.second }.toSet()
+
+            assertFalse(repo.fetchAll(1, manualMobileRunId = "consented"))
+            for (address in listOf(completedArticle, retriedArticle, cover)) {
+                assertEquals(address, setOf(false), policiesFor(address))
+            }
+            val pending = db.importTaskDao().getAllTasks().single()
+            assertEquals(retriedArticle, pending.url)
+            assertEquals("ERROR", pending.status)
+            db.importTaskDao().insertOrUpdate(pending.copy(acquisitionRetryAt = 0))
+            failFirstAttempt = false
+            requests.clear()
+
+            assertTrue(repo.fetchAll(2))
+            for (address in listOf(retriedArticle, cover)) {
+                assertEquals(address, setOf(true), policiesFor(address))
+            }
+            assertTrue(policiesFor(completedArticle).isEmpty())
+            assertEquals(0, db.importTaskDao().getCount())
+
+            assertTrue(repo.fetchAll(Long.MAX_VALUE))
+            assertEquals(listOf(false, true), feedPolicies)
+            assertTrue(preferences.state.value.wifiOnly)
+        } finally {
+            OgImageManager.deleteUnreferencedImage(
+                context, fixtureDomain, OgImageManager.computeImageKey(cover), removeLatest = true
+            )
+            preferences.save(original)
+            db.close()
+        }
+    }
+
     @Test fun initialPermissionPersistsOnlyOnItsOperationAndReenableClearsIt() = runBlocking {
         val db = database()
         try {

@@ -31,7 +31,8 @@ internal class RssRepository internal constructor(private val context: Context,
         RssScheduler.fetchInitial(context, feedId, operationId, mobile)
     },
     private val elapsedMillis: () -> Long = { android.os.SystemClock.elapsedRealtime() },
-    private val domainPolicyStore: DomainPolicyStore = DomainPolicyStore.getInstance(context.applicationContext)
+    private val domainPolicyStore: DomainPolicyStore = DomainPolicyStore.getInstance(context.applicationContext),
+    private val articleRequestOverride: (suspend (String, Boolean) -> me.bubblespark.tidilo.parser.ArticleResponse)? = null
 ) {
     private val dao = db.rssDao()
     private val preferences = RssPreferences.getInstance(context)
@@ -42,12 +43,16 @@ internal class RssRepository internal constructor(private val context: Context,
     }
 
     fun articleNetwork(overrideOperation: String? = null, deadline: Long = Long.MAX_VALUE,
-        feed: RssFeedEntity? = null): me.bubblespark.tidilo.parser.ArticleNetwork {
+        feed: RssFeedEntity? = null, manualMobileRunId: String? = null): me.bubblespark.tidilo.parser.ArticleNetwork {
         val delegate = networkOverride ?: object : me.bubblespark.tidilo.parser.ArticleNetwork {
-            override val scopeKey = overrideOperation?.let { "rss:initial:$it" } ?: "rss:wifi:${preferences.state.value.wifiOnly}"
+            override val scopeKey = manualMobileRunId?.let { "rss:manual:$it" }
+                ?: overrideOperation?.let { "rss:initial:$it" } ?: "rss:wifi:${preferences.state.value.wifiOnly}"
             override suspend fun fetch(url: String): me.bubblespark.tidilo.parser.ArticleResponse {
-                val response = RssHttpClient(context) { overrideOperation == null && preferences.state.value.wifiOnly }
-                    .request(url, emptyMap(), 10 * 1024 * 1024)
+                val wifiOnly = {
+                    manualMobileRunId == null && overrideOperation == null && preferences.state.value.wifiOnly
+                }
+                articleRequestOverride?.let { return it(url, wifiOnly()) }
+                val response = RssHttpClient(context, wifiOnly).request(url, emptyMap(), 10 * 1024 * 1024)
                 return me.bubblespark.tidilo.parser.ArticleResponse(response.url, response.status, response.bytes, response.contentType)
             }
         }
@@ -168,7 +173,7 @@ internal class RssRepository internal constructor(private val context: Context,
 
     /** XML success and article completion are separate durable checkpoints. */
     suspend fun fetchAll(since: Long, onlyFeedId: String? = null, authorizedOperation: String? = null,
-        notificationRunId: String? = null): Boolean = withContext(Dispatchers.IO) {
+        notificationRunId: String? = null, manualMobileRunId: String? = null): Boolean = withContext(Dispatchers.IO) {
         preferences.initialize()
         operation.withLock {
             val deadline = elapsedMillis() + 6 * 60_000L
@@ -187,10 +192,13 @@ internal class RssRepository internal constructor(private val context: Context,
                         acquisitionRequestedAt = since, acquisitionXmlDone = false).also { dao.putFeed(it) }
                 } ?: continue
                 val mobileOperation = feed.acquisitionId?.takeIf { it == authorizedOperation && feed.acquisitionMobileOverride }
-                val network = articleNetwork(mobileOperation, deadline, feed)
+                val network = articleNetwork(mobileOperation, deadline, feed, manualMobileRunId)
                 if (!feed.acquisitionXmlDone) {
                     if (elapsedMillis() + 35_000L >= deadline) throw RssAcquisitionYield()
-                    val fetched = try { fetcher(override = mobileOperation != null).fetch(feed.url, feed.etag, feed.lastModified) }
+                    val fetched = try {
+                        fetcher(override = mobileOperation != null || manualMobileRunId != null)
+                            .fetch(feed.url, feed.etag, feed.lastModified)
+                    }
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (waiting: RssWifiUnavailable) { throw waiting }
                     catch (e: Exception) {

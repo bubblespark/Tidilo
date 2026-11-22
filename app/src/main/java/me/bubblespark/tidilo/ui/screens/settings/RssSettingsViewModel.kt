@@ -44,6 +44,8 @@ internal data class RssRegistrationRequest(
 
 internal enum class ManualFetchStatus { Checking, Idle, Waiting, Running }
 
+private data class RssConnectivity(val online: Boolean, val wifi: Boolean, val mobile: Boolean)
+
 internal fun manualFetchStatus(states: List<WorkInfo.State>): ManualFetchStatus = when {
     states.any { it == WorkInfo.State.RUNNING } -> ManualFetchStatus.Running
     states.any { !it.isFinished } -> ManualFetchStatus.Waiting
@@ -61,6 +63,12 @@ class RssSettingsViewModel internal constructor(
             .edit()
             .putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, true)
             .commit()
+    },
+    private val enqueueManualFetch: suspend (Boolean) -> Unit = { mobileAllowed ->
+        RssScheduler.fetchNow(application, mobileAllowed)
+    },
+    private val initializeSettings: suspend () -> Unit = {
+        RssPreferences.getInstance(application).initialize()
     }
 ) : AndroidViewModel(application) {
     constructor(
@@ -70,6 +78,10 @@ class RssSettingsViewModel internal constructor(
 
     private val preferences = RssPreferences.getInstance(application)
     val settings = preferences.state
+    private val _settingsLoad = MutableStateFlow<StorageLoad<Unit>>(StorageLoad.Loading)
+    internal val settingsLoad = _settingsLoad.asStateFlow()
+    private val settingsReady get() = _settingsLoad.value is StorageLoad.Ready
+    internal val manualMobilePrompt = savedState.getStateFlow("manualMobilePrompt", false)
     internal val manualFetch = WorkManager.getInstance(application).getWorkInfosForUniqueWorkFlow(RssScheduler.MANUAL)
         .map { infos -> manualFetchStatus(infos.map { it.state }) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), ManualFetchStatus.Checking)
@@ -97,18 +109,30 @@ class RssSettingsViewModel internal constructor(
     private var listening = false
     private var feedsJob: Job? = null
     private val callback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) = updateNetwork()
-        override fun onLost(network: Network) = updateNetwork()
-        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = updateNetwork()
+        override fun onAvailable(network: Network) { updateNetwork() }
+        override fun onLost(network: Network) { updateNetwork() }
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) { updateNetwork() }
     }
 
     init {
+        retrySettings()
         retry()
         restoreNotificationRationaleIfEligible()
     }
 
+    internal fun retrySettings() = action {
+        _settingsLoad.value = StorageLoad.Loading
+        try {
+            initializeSettings()
+            _settingsLoad.value = StorageLoad.Ready(Unit)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            _settingsLoad.value = StorageLoad.Error
+        }
+    }
+
     fun retry() {
-        action { preferences.initialize() }
         feedsJob?.cancel()
         feedsJob = viewModelScope.launch {
             _feeds.value = StorageLoad.Loading
@@ -134,29 +158,30 @@ class RssSettingsViewModel internal constructor(
     }
 
     @Suppress("DEPRECATION")
-    private fun updateNetwork() {
-        networkStateOverride?.invoke()?.let { (isOnline, isWifi) ->
-            _online.value = isOnline
-            _wifi.value = isWifi
-            return
-        }
-        _online.value = connectivity.allNetworks.any { network ->
-            connectivity.getNetworkCapabilities(network)?.let {
-                it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-            } == true
-        }
-        _wifi.value = connectivity.allNetworks.any { network ->
-            connectivity.getNetworkCapabilities(network)?.let {
-                it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+    private fun updateNetwork(): RssConnectivity {
+        val connection = networkStateOverride?.invoke()?.let { (online, wifi) ->
+            RssConnectivity(online, wifi, mobile = online && !wifi)
+        } ?: run {
+            val validated = connectivity.allNetworks.mapNotNull(connectivity::getNetworkCapabilities).filter {
+                it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
                     it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-            } == true
+            }
+            RssConnectivity(
+                online = validated.isNotEmpty(),
+                wifi = validated.any { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) },
+                mobile = validated.any { it.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) }
+            )
         }
+        _online.value = connection.online
+        _wifi.value = connection.wifi
+        return connection
     }
 
     fun saveSettings(
         value: RssSettings,
         permissionGranted: Boolean = hasPostNotificationsPermission(getApplication())
     ) = action {
+        if (!settingsReady) return@action
         val previousDaily = settings.value.dailyEnabled
         preferences.save(value)
         RssScheduler.reschedule(getApplication())
@@ -222,9 +247,9 @@ class RssSettingsViewModel internal constructor(
         permissionGranted: Boolean = hasPostNotificationsPermission(getApplication())
     ) = action {
         val id = _initialFetch.value ?: return@action
-        updateNetwork()
-        check(_online.value == true) { "No validated Internet connection is available" }
-        val requiresOverride = settings.value.wifiOnly && _wifi.value != true
+        val connection = updateNetwork()
+        check(connection.online) { "No validated Internet connection is available" }
+        val requiresOverride = settings.value.wifiOnly && !connection.wifi
         // A connection change must first make the warning visible before cellular is authorized.
         if (requiresOverride && !mobileConsent) return@action
         repository.requestInitialFetch(id, requiresOverride && mobileConsent)
@@ -330,7 +355,31 @@ class RssSettingsViewModel internal constructor(
 
     fun deleteFeed(id: String) = action { repository.delete(id) }
     fun setEnabled(id: String, enabled: Boolean) = action { repository.setEnabled(id, enabled) }
-    fun fetchNow() = action { RssScheduler.fetchNow(getApplication()) }
+    fun fetchNow() {
+        if (manualMobilePrompt.value || !settingsReady || _busy.value ||
+            manualFetch.value != ManualFetchStatus.Idle) return
+        action {
+            val prompt = withContext(Dispatchers.Main.immediate) {
+                val connection = updateNetwork()
+                val needsConsent = settings.value.wifiOnly && !connection.wifi && connection.mobile
+                if (needsConsent) savedState["manualMobilePrompt"] = true
+                needsConsent
+            }
+            if (!prompt) enqueueManualFetch(false)
+        }
+    }
+
+    internal fun confirmManualFetch(mobileAllowed: Boolean) {
+        if (!manualMobilePrompt.value || !settingsReady) return
+        action {
+            enqueueManualFetch(mobileAllowed)
+            withContext(Dispatchers.Main.immediate) { dismissManualFetchPrompt() }
+        }
+    }
+
+    internal fun dismissManualFetchPrompt() {
+        savedState["manualMobilePrompt"] = false
+    }
     fun clearError() { _error.value = null }
 
     private fun action(block: suspend () -> Unit) {

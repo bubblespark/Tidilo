@@ -52,10 +52,7 @@ internal class RssPreferences internal constructor(context: Context) {
         }
     }
 
-    suspend fun manualRequestedAt(): Long = withContext(Dispatchers.IO) { preferences.getLong("manualAt", 0) }
-    suspend fun recordManualRequest(at: Long) = withContext(Dispatchers.IO) {
-        if (!preferences.edit().putLong("manualAt", at).commit()) throw java.io.IOException("Could not schedule RSS fetch")
-    }
+    suspend fun legacyManualRequestedAt(): Long = withContext(Dispatchers.IO) { preferences.getLong("manualAt", 0) }
 
     companion object {
         @Volatile private var instance: RssPreferences? = null

@@ -34,6 +34,8 @@ import me.bubblespark.tidilo.data.db.RssNotificationDao
 internal object RssScheduler {
     const val DAILY = "rss-daily-fetch"
     const val MANUAL = "rss-manual-fetch"
+    const val MANUAL_MOBILE = "$MANUAL:mobile"
+    private const val MANUAL_REQUESTED_AT = "$MANUAL:requested-at:"
     private val lock = Mutex()
 
     fun constraints(wifiOnly: Boolean): Constraints = Constraints.Builder().apply {
@@ -57,9 +59,14 @@ internal object RssScheduler {
                 return@withLock
             }
             val manual = manager.getWorkInfosForUniqueWork(MANUAL).get().firstOrNull { !it.state.isFinished }
-            if (manual != null) manager.updateWork(OneTimeWorkRequestBuilder<RssFetchWorker>()
-                .setId(manual.id).setInputData(workDataOf("requestedAt" to preferences.manualRequestedAt()))
-                .setConstraints(constraints(settings.wifiOnly)).build()).get()
+            if (manual != null && manual.id != finishingWorkId) {
+                val requestedAt = manual.tags.firstNotNullOfOrNull { tag ->
+                    tag.takeIf { it.startsWith(MANUAL_REQUESTED_AT) }
+                        ?.removePrefix(MANUAL_REQUESTED_AT)?.toLongOrNull()
+                } ?: preferences.legacyManualRequestedAt()
+                manager.updateWork(manualRequest(requestedAt, settings.wifiOnly,
+                    MANUAL_MOBILE in manual.tags, manual.id)).get()
+            }
             scheduleDaily(manager, settings, realignClock, DAILY, db.rssNotificationDao(), finishingWorkId)
         }
     }
@@ -128,20 +135,27 @@ internal object RssScheduler {
                 .setConstraints(constraints(!mobileAllowed && preferences.state.value.wifiOnly)).build()).result.get()
     }
 
-    suspend fun fetchNow(context: Context) = withContext(Dispatchers.IO) {
+    suspend fun fetchNow(context: Context, mobileAllowed: Boolean = false) = withContext(Dispatchers.IO) {
         val preferences = RssPreferences.getInstance(context)
         preferences.initialize()
         lock.withLock {
             val manager = WorkManager.getInstance(context)
             if (manager.getWorkInfosForUniqueWork(MANUAL).get().any { !it.state.isFinished }) return@withLock
             val requestedAt = System.currentTimeMillis()
-            preferences.recordManualRequest(requestedAt)
             manager.enqueueUniqueWork(MANUAL, ExistingWorkPolicy.KEEP,
-                OneTimeWorkRequestBuilder<RssFetchWorker>()
-                    .setInputData(workDataOf("requestedAt" to requestedAt))
-                    .setConstraints(constraints(preferences.state.value.wifiOnly)).build()).result.get()
+                manualRequest(requestedAt, preferences.state.value.wifiOnly, mobileAllowed)).result.get()
         }
     }
+
+    private fun manualRequest(requestedAt: Long, wifiOnly: Boolean, mobileAllowed: Boolean, id: UUID? = null) =
+        OneTimeWorkRequestBuilder<RssFetchWorker>().apply {
+            id?.let { setId(it) }
+            addTag(MANUAL)
+            addTag("$MANUAL_REQUESTED_AT$requestedAt")
+            if (mobileAllowed) addTag(MANUAL_MOBILE)
+            setInputData(workDataOf("requestedAt" to requestedAt))
+            setConstraints(constraints(wifiOnly && !mobileAllowed))
+        }.build()
 }
 
 /** Manifest receiver corrects wall-clock schedules; it does not fetch or perform inference. */

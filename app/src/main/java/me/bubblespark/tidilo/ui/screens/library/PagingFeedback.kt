@@ -63,15 +63,16 @@ internal fun isSearchQueryChanging(rawQuery: String, activeKey: String, loadedKe
 
 /**
  * Builds the unique tracking key for a library filter generation, incorporating filter mode,
- * specific domain or RSS feed filter, and Private content visibility.
+ * specific domain or RSS feed filter, Private content visibility, and the Newest first RSS scope.
  */
 internal fun buildLibraryFilterKey(
     filterMode: LibraryFilterMode,
     selectedDomainFilter: String?,
     selectedFeedId: String?,
     isPrivateVisible: Boolean,
-    collectionId: String? = null
-): String = "$filterMode/${selectedDomainFilter.orEmpty()}/${selectedFeedId.orEmpty()}/$isPrivateVisible/${collectionId.orEmpty()}"
+    collectionId: String? = null,
+    includeRss: Boolean = false
+): String = "$filterMode/${selectedDomainFilter.orEmpty()}/${selectedFeedId.orEmpty()}/$isPrivateVisible/${collectionId.orEmpty()}/$includeRss"
 
 /**
  * Builds the unique tracking key for a search query generation, incorporating normalized query

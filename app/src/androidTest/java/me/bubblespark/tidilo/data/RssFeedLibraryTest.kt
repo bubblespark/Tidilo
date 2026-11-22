@@ -10,6 +10,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RssFeedLibraryTest {
+    @Test fun newestFirstScopesUseSavedTimeWithStableTies() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            db.rssDao().putFeed(RssFeedEntity("feed", "https://feed.example/rss", "Feed"))
+            fun row(id: String, createdAt: Long, feed: String?, isPrivate: Boolean = false) = BookmarkEntity(id, id,
+                "https://article.example/$id", "", createdAt = createdAt, updatedAt = createdAt,
+                rssFeedId = feed, rssPublishedAt = feed?.let { 1L }, isPrivate = isPrivate)
+            db.bookmarkDao().insertAll(listOf(
+                row("m1", 10, null), row("r2", 10, "feed"), row("r1", 20, "feed"), row("p", 30, "feed", isPrivate = true)
+            ))
+            suspend fun ids(source: PagingSource<Int, BookmarkEntity>) =
+                (source.load(PagingSource.LoadParams.Refresh(null, 30, false)) as PagingSource.LoadResult.Page).data.map { it.id }
+            // Combined scope orders by saved time, never publication time, with the id tie-break.
+            assertEquals(listOf("r1", "r2", "m1"), ids(db.bookmarkDao().timeline(false)))
+            assertEquals(listOf("p", "r1", "r2", "m1"), ids(db.bookmarkDao().timeline(true)))
+            assertEquals(listOf("m1"), ids(db.bookmarkDao().search(BookmarkQueries.results("", false, source = BookmarkSource.MANUAL))))
+            assertEquals(3, db.bookmarkDao().observeCount(BookmarkQueries.count("", false, source = BookmarkSource.ALL)).first())
+            assertEquals(1, db.bookmarkDao().observeCount(BookmarkQueries.count("", false, source = BookmarkSource.MANUAL)).first())
+            assertEquals(4, db.bookmarkDao().observeCount(BookmarkQueries.count("", true, source = BookmarkSource.ALL)).first())
+        } finally { db.close() }
+    }
+
     @Test fun groupsAndPagesUseFeedIdentityVisibleCountsAndRetainDeletedSubscriptions() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()

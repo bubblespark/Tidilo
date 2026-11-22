@@ -58,6 +58,13 @@ enum class LibraryFilterMode {
     RSS
 }
 
+/** Newest first is manual-only unless the user includes RSS; other destinations keep their fixed source. */
+internal fun libraryBookmarkSource(mode: LibraryFilterMode, includeRss: Boolean): BookmarkSource = when {
+    mode == LibraryFilterMode.RSS -> BookmarkSource.RSS
+    mode == LibraryFilterMode.NEWEST_FIRST && includeRss -> BookmarkSource.ALL
+    else -> BookmarkSource.MANUAL
+}
+
 internal class LibraryPagingSession(
     val key: String,
     val flow: Flow<PagingData<BookmarkItem>>,
@@ -144,6 +151,17 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         if (_viewMode.value != mode) {
             _viewMode.value = mode
             saveViewMode(mode)
+        }
+    }
+
+    private val _includeRssInNewestFirst = MutableStateFlow(prefs.getBoolean(INCLUDE_RSS_KEY, false))
+    /** Newest first source scope; shared by List and Grid and kept across filter-mode changes. */
+    val includeRssInNewestFirst: StateFlow<Boolean> = _includeRssInNewestFirst.asStateFlow()
+
+    fun setIncludeRssInNewestFirst(include: Boolean) {
+        if (_includeRssInNewestFirst.value != include) {
+            _includeRssInNewestFirst.value = include
+            prefs.edit().putBoolean(INCLUDE_RSS_KEY, include).apply()
         }
     }
 
@@ -263,9 +281,10 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         domain: String?,
         feedId: String?,
         visible: Boolean,
-        collectionId: String? = null
+        collectionId: String? = null,
+        includeRss: Boolean = false
     ): LibraryPagingSession {
-        val key = buildLibraryFilterKey(mode, domain, feedId, visible, collectionId)
+        val key = buildLibraryFilterKey(mode, domain, feedId, visible, collectionId, includeRss)
         currentLibrarySession?.takeIf { it.key == key }?.let { return it }
         currentLibrarySession?.takeIf { it.users == 0 }?.cacheScope?.cancel()
         val scope = CoroutineScope(viewModelScope.coroutineContext + Job(viewModelScope.coroutineContext[Job]))
@@ -273,7 +292,7 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
             if (ready && mode == LibraryFilterMode.COLLECTION && collectionId != null) collections.pagedBookmarks(collectionId, visible)
             else if (ready) bookmarkRepository.pagedBookmarks(
                 "", domain, visible,
-                if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL,
+                libraryBookmarkSource(mode, includeRss),
                 rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS }
             ) else flowOf(loadingPage())
         }.cachedIn(scope)
@@ -287,7 +306,8 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
             _selectedDomainFilter.value.takeIf { mode == LibraryFilterMode.DOMAIN },
             _selectedRssFeedFilter.value?.id.takeIf { mode == LibraryFilterMode.RSS },
             AppConfig.isPrivateContentVisible.value,
-            selectedCollectionId.value.takeIf { mode == LibraryFilterMode.COLLECTION })
+            selectedCollectionId.value.takeIf { mode == LibraryFilterMode.COLLECTION },
+            mode == LibraryFilterMode.NEWEST_FIRST && _includeRssInNewestFirst.value)
         if (session.users == 0 && session.key != selectedKey) {
             session.cacheScope.cancel()
             if (currentLibrarySession === session) currentLibrarySession = null
@@ -353,10 +373,10 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
         }
     )
 
-    internal fun libraryCount(mode: LibraryFilterMode, domain: String?, feedId: String?, visible: Boolean, collectionId: String? = null): Flow<Int?> =
+    internal fun libraryCount(mode: LibraryFilterMode, domain: String?, feedId: String?, visible: Boolean, collectionId: String? = null, includeRss: Boolean = false): Flow<Int?> =
         if (mode == LibraryFilterMode.COLLECTION && collectionId != null) collections.observeCount(collectionId, visible)
         else bookmarkRepository.observeCount("", domain, visible,
-            if (mode == LibraryFilterMode.RSS) BookmarkSource.RSS else BookmarkSource.MANUAL,
+            libraryBookmarkSource(mode, includeRss),
             rssFeedId = feedId.takeIf { mode == LibraryFilterMode.RSS })
 
     val searchCount = combine(debouncedSearchQuery, AppConfig.isPrivateContentVisible) { query, visible -> query to visible }
@@ -554,6 +574,8 @@ class LibraryViewModel(private val savedState: androidx.lifecycle.SavedStateHand
     }
 
     companion object {
+        private const val INCLUDE_RSS_KEY = "library_newest_include_rss"
+
         fun filterBookmarks(items: List<BookmarkItem>, rawQuery: String): List<BookmarkItem> {
             if (rawQuery.isBlank()) return items
 

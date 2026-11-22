@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,11 +22,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -65,7 +68,8 @@ internal fun BookmarkGridCard(
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null,
     onToggleLike: () -> Unit = {},
-    layout: BookmarkGridLayout
+    layout: BookmarkGridLayout,
+    showRssSource: Boolean = false
 ) {
     val textMetrics = layout.text
     val likeClearance = if (layout.mediaHeight < BookmarkGridLikeTarget) {
@@ -187,15 +191,29 @@ internal fun BookmarkGridCard(
                         bottom = BookmarkGridInfoBottomPadding
                     )
             ) {
-                // ❶ Domain Name (Softer contrast)
-                Text(
-                    text = domainDisplayName.ifBlank { " " },
+                // ❶ Domain Name (Softer contrast); the RSS cue keeps its width and the domain ellipsizes.
+                Row(
                     modifier = Modifier.padding(end = likeClearance).heightIn(min = textMetrics.labelHeight),
-                    style = textMetrics.labelStyle,
-                    color = MaterialTheme.colorScheme.outline,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = domainDisplayName.ifBlank { " " },
+                        modifier = Modifier.weight(1f),
+                        style = textMetrics.labelStyle,
+                        color = MaterialTheme.colorScheme.outline,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (showRssSource) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.RssFeed,
+                            contentDescription = stringResource(R.string.library_rss_source_description),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(textMetrics.labelHeight)
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(BookmarkGridInfoGap))
 

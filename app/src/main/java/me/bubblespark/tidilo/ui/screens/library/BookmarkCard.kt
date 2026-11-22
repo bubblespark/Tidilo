@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.Card
@@ -76,7 +77,8 @@ fun BookmarkItemCard(
     currentLanguage: AppLanguage = AppLanguage.ENGLISH,
     context: Context = LocalContext.current,
     onClick: () -> Unit = {},
-    onToggleLike: () -> Unit = {}
+    onToggleLike: () -> Unit = {},
+    showRssSource: Boolean = false
 ) {
     // Localized category and subcategory labels
     val localizedCategory = remember(bookmark.tag.category, context) {
@@ -218,7 +220,7 @@ fun BookmarkItemCard(
             }
 
             if (localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() ||
-                bookmark.isPrivate || bookmark.tag.entities.isNotEmpty()
+                bookmark.isPrivate || showRssSource || bookmark.tag.entities.isNotEmpty()
             ) {
                 Spacer(modifier = Modifier.height(14.dp))
                 BookmarkTagSection(
@@ -226,6 +228,7 @@ fun BookmarkItemCard(
                     localizedCategory = localizedCategory,
                     localizedSubcategory = localizedSubcategory,
                     isPrivate = bookmark.isPrivate,
+                    isRssSource = showRssSource,
                     isCategoryMatched = isCategoryMatched,
                     isSubcategoryMatched = isSubcategoryMatched,
                     tagKeywords = tagKeywords
@@ -246,6 +249,7 @@ fun BookmarkTagSection(
     localizedCategory: String,
     localizedSubcategory: String,
     isPrivate: Boolean = false,
+    isRssSource: Boolean = false,
     isCategoryMatched: Boolean = false,
     isSubcategoryMatched: Boolean = false,
     tagKeywords: List<String> = emptyList(),
@@ -264,7 +268,7 @@ fun BookmarkTagSection(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        val hasCategoryLine = localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() || isPrivate
+        val hasCategoryLine = localizedCategory.isNotBlank() || localizedSubcategory.isNotBlank() || isPrivate || isRssSource
         if (hasCategoryLine) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -353,23 +357,36 @@ fun BookmarkTagSection(
                     )
                 }
 
-                if (isPrivate) {
-                    val privateColors = resolveChipColors(
-                        style = themeStyle.chipStyle,
-                        categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        fallbackContainerColor = chipNeutralContainer,
-                        fallbackContentColor = chipCategoryContent
+                val sourceColors = resolveChipColors(
+                    style = themeStyle.chipStyle,
+                    categoryContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    categoryContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    fallbackContainerColor = chipNeutralContainer,
+                    fallbackContentColor = chipCategoryContent
+                )
+                if (isRssSource) {
+                    CompactTagBadge(
+                        icon = Icons.Default.RssFeed,
+                        text = stringResource(R.string.library_rss_source_label),
+                        tone = SurfaceTone.NORMAL,
+                        isMatched = false,
+                        containerColor = sourceColors.containerColor,
+                        contentColor = sourceColors.contentColor,
+                        matchedContainerColor = sourceColors.containerColor,
+                        matchedContentColor = sourceColors.contentColor
                     )
+                }
+
+                if (isPrivate) {
                     CompactTagBadge(
                         icon = Icons.Default.Lock,
                         text = stringResource(R.string.detail_tag_private_label),
                         tone = SurfaceTone.NORMAL,
                         isMatched = false,
-                        containerColor = privateColors.containerColor,
-                        contentColor = privateColors.contentColor,
-                        matchedContainerColor = privateColors.containerColor,
-                        matchedContentColor = privateColors.contentColor
+                        containerColor = sourceColors.containerColor,
+                        contentColor = sourceColors.contentColor,
+                        matchedContainerColor = sourceColors.containerColor,
+                        matchedContentColor = sourceColors.contentColor
                     )
                 }
             }

@@ -2,8 +2,6 @@ package me.bubblespark.tidilo.ui.screens.settings
 
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
-import me.bubblespark.tidilo.ui.theme.ThemeCorner
-import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.theme.LocalOverlayBlurSetting
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -14,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -46,6 +45,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
@@ -57,6 +57,9 @@ import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
 import me.bubblespark.tidilo.ui.components.TidiloPageHeader
 import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
+
+/** Readable maximum width for the Settings list on expanded windows. */
+internal val SettingsContentMaxWidth: Dp = 840.dp
 
 @Composable
 fun SettingsScreen(
@@ -77,12 +80,14 @@ fun SettingsScreen(
     val localConfig = LocalConfiguration.current
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
+    val dialogSurface = currentThemeSurfaces().resolve(SurfaceRole.DIALOG)
 
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), modifier = modifier, header = {
         TidiloPageHeader(title = stringResource(R.string.settings_title), onNavigateBack = onNavigateBack)
     }) { contentPadding ->
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding)
-            .padding(bottom = 32.dp)) {
+            .padding(bottom = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+          Column(Modifier.widthIn(max = SettingsContentMaxWidth).fillMaxWidth()) {
             SettingsSectionTitle(stringResource(R.string.settings_section_general))
             SettingsGroup {
                 SettingsNavigationRow(stringResource(R.string.settings_language_title), currentLanguage.displayName,
@@ -125,6 +130,7 @@ fun SettingsScreen(
                 SettingsNavigationRow(stringResource(R.string.settings_debug_title), stringResource(R.string.settings_debug_subtitle),
                     Icons.Default.BugReport, onNavigateToDebug)
             }
+          }
         }
     }
 
@@ -134,7 +140,7 @@ fun SettingsScreen(
             LocalConfiguration provides localConfig
         ) {
             TidiloAlertDialog(
-            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+                containerColor = dialogSurface.containerColor,
                 onDismissRequest = { showLanguageDialog = false },
                 title = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
@@ -146,7 +152,7 @@ fun SettingsScreen(
                 },
                 text = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
-                        Column(modifier = Modifier.selectableGroup()) {
+                        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).selectableGroup()) {
                             AppLanguage.entries.forEach { lang ->
                                 val isSelected = lang == currentLanguage
                                 Row(
@@ -185,7 +191,7 @@ fun SettingsScreen(
                         }
                     }
                 },
-                shape = themeCorner(ThemeCorner.PROMINENT_CARD)
+                shape = dialogSurface.shape
             )
         }
     }
@@ -196,7 +202,7 @@ fun SettingsScreen(
             LocalConfiguration provides localConfig
         ) {
             TidiloAlertDialog(
-            containerColor = currentThemeSurfaces().resolve(SurfaceRole.DIALOG).containerColor,
+                containerColor = dialogSurface.containerColor,
                 onDismissRequest = { showThemeDialog = false },
                 title = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
@@ -208,7 +214,7 @@ fun SettingsScreen(
                 },
                 text = {
                     CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides localConfig) {
-                        Column {
+                        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                           Column(modifier = Modifier.selectableGroup()) {
                             AppTheme.entries.forEach { theme ->
                                 val isSelected = theme == currentTheme
@@ -250,7 +256,7 @@ fun SettingsScreen(
                         }
                     }
                 },
-                shape = themeCorner(ThemeCorner.PROMINENT_CARD)
+                shape = dialogSurface.shape
             )
         }
     }

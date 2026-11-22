@@ -82,7 +82,7 @@ class LibraryViewModelTest {
         override suspend fun recordSummaryPeek(id: String) { engagementFailure?.let { throw it } }
         override suspend fun saveNote(id: String, note: String) = Unit
         override suspend fun updateBookmarkTags(id: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String>) = Unit
-        override suspend fun applyAiProposal(id: String, description: String?, tag: Tag?) = Unit
+        override suspend fun applyAiProposal(id: String, description: String?, tag: Tag?) = true
         override suspend fun moveToTrash(id: String) = true
         override fun loadFilterMode() = LibraryFilterMode.NEWEST_FIRST
         override suspend fun saveFilterMode(mode: LibraryFilterMode) {

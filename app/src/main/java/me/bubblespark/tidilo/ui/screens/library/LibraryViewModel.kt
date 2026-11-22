@@ -500,11 +500,8 @@ class LibraryViewModel internal constructor(
 
 
     /**
-     * AND search logic supporting both free-text word search and tag search.
-     * - Delimiter: half-width space (full-width spaces normalized to half-width)
-     * - Word search (without '#' prefix): searches Title, Description, and URL
-     * - Tag search (with '#' prefix): searches Category, Subcategory, or Entities
-     * - Bilingual support (case-insensitive)
+     * Updates the raw query. Matching (AND of words and `#` tags, bilingual taxonomy labels) runs in SQL
+     * through [LibraryStore.pagedSearchResults] once the query is debounced.
      */
     fun onSearchQueryChanged(query: String) {
         _searchQuery.value = query

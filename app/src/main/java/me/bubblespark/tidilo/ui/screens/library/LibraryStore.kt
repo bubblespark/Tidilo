@@ -57,7 +57,8 @@ internal interface LibraryStore {
     suspend fun recordSummaryPeek(id: String)
     suspend fun saveNote(id: String, note: String)
     suspend fun updateBookmarkTags(id: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String>)
-    suspend fun applyAiProposal(id: String, description: String?, tag: Tag?)
+    /** Returns whether the bookmark row was updated. */
+    suspend fun applyAiProposal(id: String, description: String?, tag: Tag?): Boolean
     suspend fun moveToTrash(id: String): Boolean
 
     fun loadFilterMode(): LibraryFilterMode
@@ -124,9 +125,8 @@ internal class RepositoryLibraryStore(
         bookmarks.updateBookmarkTags(id, tag, isPrivate, replacements)
     }
 
-    override suspend fun applyAiProposal(id: String, description: String?, tag: Tag?) {
+    override suspend fun applyAiProposal(id: String, description: String?, tag: Tag?): Boolean =
         bookmarks.applyAiProposal(id, description, tag)
-    }
 
     override suspend fun moveToTrash(id: String): Boolean = bookmarks.moveToTrash(id)
 

@@ -769,6 +769,8 @@ fun LibraryScreen(
                                                         generation = session?.key.orEmpty(),
                                                         active = state == displayState && viewMode == mode,
                                                         contentPadding = contentPadding,
+                                                        bottomClearance = bottomClearance,
+                                                        showRadialMenu = showRadialMenu,
                                                         onOpenBookmark = onNavigateToDetail,
                                                         onToggleLike = { viewModel.toggleLike(it, EngagementSurface.LIBRARY) },
                                                         onPeekBookmark = { item ->
@@ -835,6 +837,8 @@ fun LibraryScreen(
                                                 generation = session?.key.orEmpty(),
                                                 active = state == displayState && viewMode == mode,
                                                 contentPadding = contentPadding,
+                                                bottomClearance = bottomClearance,
+                                                showRadialMenu = showRadialMenu,
                                                 leadingContent = scopeRow,
                                                 leadingContentHeight = rememberNewestFirstScopeRowHeight(),
                                                 showRssSource = includeRss,
@@ -879,7 +883,9 @@ private fun LibraryBookmarkGrid(
     onPeekBookmark: (BookmarkItem) -> Unit,
     leadingContent: (@Composable () -> Unit)? = null,
     leadingContentHeight: Dp = 0.dp,
-    showRssSource: Boolean = false
+    showRssSource: Boolean = false,
+    bottomClearance: Dp = HeaderDefaults.LibraryActionClearance,
+    showRadialMenu: Boolean = true
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val context = LocalContext.current
@@ -887,11 +893,11 @@ private fun LibraryBookmarkGrid(
         val leadingItems = if (leadingContent != null) 1 else 0
         val layout = bookmarkGridLayout(
             contentPadding = contentPadding,
-            trailingPadding = HeaderDefaults.LibraryActionClearance,
+            trailingPadding = bottomClearance,
             leadingContentHeightPx = if (leadingContent != null) {
                 with(density) { (leadingContentHeight + BookmarkGridVerticalGap).roundToPx() }
             } else 0,
-            protectLibraryShortcut = true
+            protectLibraryShortcut = showRadialMenu
         )
         if (active) {
             RestoreBookmarkGridAnchor(state, anchor, generation, layout, leadingItems) { key ->

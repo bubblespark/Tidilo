@@ -33,7 +33,7 @@ Preserve the current theme foundation, including the fixed Modern palettes and r
 
 ## Secondary destinations
 
-- Search, Trash, Notification, Manual Import, and Settings are children of Library. They have Back navigation and do not expose the rail or floating shortcut trigger. Existing deeper Settings pages remain nested under Settings.
+- When the Discover preview flag is off (default), Search, Trash, Notification, Manual Import, and Settings are children of Library; they have Back navigation and do not expose the rail or floating shortcut trigger. With the preview flag on, Search is a top-level layer hosting the floating toolbar when the IME is hidden (see [Discover preview](#discover-preview-debug-flag)). Existing deeper Settings pages remain nested under Settings.
 - Trash is immediately below Search in the rail. Its text-only rows have no tap action; trailing Restore/Delete actions require confirmation, and active URL duplicates disable Restore. See [Trash](trash.md).
 - Search retains its input, history, tag selection, results, and detail navigation. Opening Search from the inner Library Search shortcut or Navigation Rail, or returning to Search from Tag Selection, automatically focuses the search input and requests the software keyboard (IME). Opening Bookmark Detail explicitly clears Search focus and hides IME. Returning to Search preserves its scroll position without auto-focusing. Returning to Library restores its filter and scroll position.
 - Manual Import opens a dialog over Library. A valid bare domain previews its resolved HTTPS address. Paste fills the URL field, and the URL keyboard's Go action uses the same validation and submission guard as Import.
@@ -51,9 +51,9 @@ Preserve the current theme foundation, including the fixed Modern palettes and r
 
 ## External entry points and constraints
 
-- Normal launch starts at Library. The optional `TidiloApp(sharedUrl)` path imports once and returns to Library. `ShareReceiverActivity` keeps its current background-ingestion-and-finish behavior.
+- Normal launch starts at Library when `AppConfig.discoverPreviewEnabled` is off (default), or at Discover when the debug flag is on. The optional `TidiloApp(sharedUrl)` path imports once and returns to Library. `ShareReceiverActivity` keeps its current background-ingestion-and-finish behavior.
 - Route old `import` notification intents to Notification on cold and warm start. New import error notices target Notification; manual AI review retains its existing in-screen feedback. Existing RSS completion and RSS settings destinations retain their behavior. OS channels remain separate from the in-app history.
-- Use existing Compose Material 3, Navigation Compose, Room, Coroutines/Flow, and shared theme surfaces. No dependency, version, or application Gradle configuration changes. All content remains local; use English default resources and Japanese translations.
+- Use existing Compose Material 3, Navigation Compose, Room, Coroutines/Flow, and shared theme surfaces. `material3` is pinned to `1.5.0` independently of the Compose BOM in `gradle/libs.versions.toml` for the Discover preview, with no changes to `app/build.gradle.kts` or Compose core versions. All content remains local; use English default resources and Japanese translations.
 - The implementation uses focused navigation and notification components. Automated coverage includes route compatibility, error generations, storage completion/failure, draft restoration, fixed shortcut-trigger geometry, Library position restoration, and compact/large-font rail access.
 
 ## Discover preview (debug flag)

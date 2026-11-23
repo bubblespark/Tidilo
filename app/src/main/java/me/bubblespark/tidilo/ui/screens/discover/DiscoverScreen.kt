@@ -26,9 +26,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,15 +45,29 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import java.text.SimpleDateFormat
-import java.util.Date
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import java.time.Duration
+import java.time.LocalDate
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.delay
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.ScreenBackdropScope
 import me.bubblespark.tidilo.ui.components.StatusBarScrim
 import me.bubblespark.tidilo.ui.components.screenBackdropSource
 import me.bubblespark.tidilo.ui.components.screenSystemInsets
+
+internal fun millisUntilNextLocalDay(now: ZonedDateTime): Long {
+    val nextDayStart = now.toLocalDate().plusDays(1).atStartOfDay(now.zone)
+    return Duration.between(now, nextDayStart).toMillis().coerceAtLeast(1_000L)
+}
+
+internal fun createDiscoverDateFormatter(pattern: String, locale: Locale): DateTimeFormatter =
+    DateTimeFormatter.ofPattern(pattern, locale)
 
 private const val PLATE_ASPECT_RATIO = 1.91f
 private val SkeletonRowPlateWidth = 280.dp
@@ -78,10 +96,29 @@ fun DiscoverScreen(
     val locale = remember(configuration) {
         configuration.locales.takeIf { !it.isEmpty }?.get(0) ?: Locale.getDefault()
     }
-    val dateText = remember(locale) {
+    val dateFormatter = remember(locale) {
         val pattern = DateFormat.getBestDateTimePattern(locale, "EEEEMMMMd")
-        SimpleDateFormat(pattern, locale).format(Date())
+        createDiscoverDateFormatter(pattern, locale)
     }
+    var currentDate by remember { mutableStateOf(LocalDate.now()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                currentDate = LocalDate.now()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = ZonedDateTime.now()
+            currentDate = now.toLocalDate()
+            delay(millisUntilNextLocalDay(now))
+        }
+    }
+    val dateText = currentDate.format(dateFormatter)
     val greeting = stringResource(R.string.discover_greeting_growing)
 
     ScreenBackdropScope { backdrop ->

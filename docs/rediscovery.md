@@ -48,7 +48,7 @@ Live and weekly shelves:
 | Shelf | Rule |
 | :--- | :--- |
 | Just saved | Manual saves from the last 48 hours, newest first, ≤12 |
-| Fresh from RSS | RSS articles with no recorded interest (`lastInteractedAt` is null), newest first, ≤10. `RSS_EXPIRING(days)` when ≤3 days remain under the 10-day unread rule and the article is not liked or collected |
+| Fresh from RSS | RSS articles with no recorded interest (`lastInteractedAt` is null), newest first, ≤10. Unprotected articles at or past the 10-day unread deadline are left out even before maintenance deletes them. `RSS_EXPIRING(days)` when ≤3 days remain under the 10-day unread rule and the article is not liked or collected |
 | Shuffle deck | 30 cards per draw: 24 uniform random + 6 weighted by item affinity, excluding cards flicked in the last 7 days. A new draw on every call |
 | Your map | Library has ≥30 visible items. Top 20 unmuted entities by affinity, computed once per week |
 

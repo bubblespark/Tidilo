@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -241,7 +240,9 @@ class DiscoverRepository internal constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     fun observeFreshRss(): Flow<List<DiscoverPick>> =
         combine(privateVisible, clockTicks) { visible, _ -> visible }.flatMapLatest { visible ->
-            dao.observeFreshRss(nowMillis(), visible, FRESH_RSS_LIMIT).map { rows ->
+            // Unprotected articles at or past the unread deadline are excluded; maintenance deletes them.
+            val now = nowMillis()
+            dao.observeFreshRss(now, now - RSS_UNREAD_DAYS * RETENTION_DAY_MS, visible, FRESH_RSS_LIMIT).map { rows ->
                 val now = nowMillis()
                 rows.map { freshRssPick(it, now) }
             }
@@ -249,8 +250,9 @@ class DiscoverRepository internal constructor(
 
     private fun freshRssPick(row: FreshRssRow, now: Long): DiscoverPick {
         val remainingMs = row.bookmark.createdAt + RSS_UNREAD_DAYS * RETENTION_DAY_MS - now
-        val days = if (remainingMs <= 0) 1 else ((remainingMs + RETENTION_DAY_MS - 1) / RETENTION_DAY_MS).toInt()
-        val reason = if (!row.isProtected && days <= RSS_EXPIRY_LABEL_DAYS) DiscoverReason.RssExpiring(days) else null
+        val days = ((remainingMs + RETENTION_DAY_MS - 1) / RETENTION_DAY_MS).toInt()
+        // Overdue rows never get a countdown (only protected ones reach here, and they do not expire).
+        val reason = if (!row.isProtected && remainingMs > 0 && days <= RSS_EXPIRY_LABEL_DAYS) DiscoverReason.RssExpiring(days) else null
         return DiscoverPick(row.bookmark.toBookmarkItem(), reason)
     }
 

@@ -149,12 +149,17 @@ class DiscoverRepositoryTest {
             bookmark("expiring", createdAt = clock - 7 * day, rssFeedId = "feed"),
             bookmark("fresh", createdAt = clock - 1 * day, rssFeedId = "feed"),
             bookmark("liked", createdAt = clock - 7 * day - 3_600_000, rssFeedId = "feed", isLiked = true),
-            bookmark("collected", createdAt = clock - 8 * day, rssFeedId = "feed")
+            bookmark("collected", createdAt = clock - 8 * day, rssFeedId = "feed"),
+            bookmark("overdue", createdAt = clock - 10 * day, rssFeedId = "feed"),
+            bookmark("collectedOld", createdAt = clock - 12 * day, rssFeedId = "feed")
         ))
         db.collectionDao().insert(CollectionEntity("c", "C", "", "folder", null, 0, clock, clock))
         db.collectionDao().insertMembership(BookmarkCollectionCrossRef("collected", "c"))
+        db.collectionDao().insertMembership(BookmarkCollectionCrossRef("collectedOld", "c"))
         val picks = repo.observeFreshRss().first().associate { it.item.id to it.reason }
-        assertEquals(listOf("fresh", "expiring", "liked", "collected"), repo.observeFreshRss().first().map { it.item.id })
+        // "overdue" is exactly at the 10-day cutoff and unprotected; "collectedOld" never expires.
+        assertEquals(listOf("fresh", "expiring", "liked", "collected", "collectedOld"), repo.observeFreshRss().first().map { it.item.id })
+        assertNull(picks["collectedOld"])
         assertEquals(DiscoverReason.RssExpiring(3), picks["expiring"])
         assertNull(picks["fresh"])
         assertNull(picks["liked"])

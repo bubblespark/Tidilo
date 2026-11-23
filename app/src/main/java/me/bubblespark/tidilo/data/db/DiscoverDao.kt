@@ -106,9 +106,10 @@ interface DiscoverDao {
 
     @Query("""SELECT b.*, (b.isLiked OR EXISTS (SELECT 1 FROM bookmark_collection_cross_ref r WHERE r.bookmarkId = b.id)) AS isProtected
         FROM bookmarks b WHERE b.rssFeedId IS NOT NULL AND b.lastInteractedAt IS NULL AND (:showPrivate OR NOT b.isPrivate)
+        AND (b.createdAt > :unreadCutoff OR b.isLiked OR EXISTS (SELECT 1 FROM bookmark_collection_cross_ref r WHERE r.bookmarkId = b.id))
         AND b.id NOT IN (SELECT bookmarkId FROM rediscovery_suppressions WHERE permanent OR until > :now)
         ORDER BY b.createdAt DESC, b.id DESC LIMIT :limit""")
-    fun observeFreshRss(now: Long, showPrivate: Boolean, limit: Int): Flow<List<FreshRssRow>>
+    fun observeFreshRss(now: Long, unreadCutoff: Long, showPrivate: Boolean, limit: Int): Flow<List<FreshRssRow>>
 
     @Query("SELECT * FROM bookmarks WHERE id IN (:ids)")
     suspend fun bookmarksByIds(ids: List<String>): List<BookmarkEntity>

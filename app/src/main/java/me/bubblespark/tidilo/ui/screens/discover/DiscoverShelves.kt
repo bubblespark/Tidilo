@@ -259,11 +259,12 @@ internal fun SleepingGemsShelf(picks: List<DiscoverPick>, actions: DiscoverActio
     val feature = picks.firstOrNull() ?: return
     Column(Modifier.padding(horizontal = ShelfMargin), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val reason = reasonText(feature.reason)
-        Column(Modifier.fillMaxWidth().clip(FeatureShape).discoverCard(feature.item, DiscoverShelf.SLEEPING_GEMS, reason, actions),
+        Column(Modifier.fillMaxWidth().discoverCard(feature.item, DiscoverShelf.SLEEPING_GEMS, reason, actions),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             reason?.let { ReasonOverline(it) }
             DiscoverPlate(feature.item, FeatureShape, Modifier.fillMaxWidth())
-            Text(feature.item.title, style = MaterialTheme.typography.titleLarge, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(feature.item.title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 3, overflow = TextOverflow.Ellipsis)
             if (feature.item.description.isNotBlank()) {
                 Text(feature.item.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -374,6 +375,7 @@ internal fun HowToSaveCard(actions: DiscoverActions) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Filled.Lightbulb, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text(stringResource(R.string.discover_how_to_save_title), style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.semantics { heading() })
             }
             Text(stringResource(R.string.discover_how_to_save_body), style = MaterialTheme.typography.bodyMedium,
@@ -388,10 +390,15 @@ internal fun HowToSaveCard(actions: DiscoverActions) {
 internal fun EmptyWall(actions: DiscoverActions, modifier: Modifier = Modifier) {
     val spot = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
     Box(modifier.fillMaxWidth().heightIn(min = 420.dp).testTag("discover_empty")
-        .background(Brush.radialGradient(listOf(spot, Color.Transparent), radius = 900f)), contentAlignment = Alignment.Center) {
+        .drawBehind {
+            // A soft spotlight that fades out well inside the wall, so no edge shows.
+            drawCircle(Brush.radialGradient(listOf(spot, Color.Transparent), center = center, radius = size.minDimension * 0.48f),
+                radius = size.minDimension * 0.48f, center = center)
+        }, contentAlignment = Alignment.Center) {
         Column(Modifier.padding(32.dp).width(320.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.discover_empty_title), style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center, modifier = Modifier.semantics { heading() })
             Text(stringResource(R.string.discover_empty_body), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)

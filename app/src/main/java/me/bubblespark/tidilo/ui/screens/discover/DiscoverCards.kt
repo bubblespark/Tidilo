@@ -129,7 +129,7 @@ internal fun PlateCard(
 ) {
     val reasonLabel = reasonText(reason)
     Column(
-        modifier.width(width).clip(MaterialTheme.shapes.large).discoverCard(item, shelf, reasonLabel, actions),
+        modifier.width(width).discoverCard(item, shelf, reasonLabel, actions),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         overline?.let {
@@ -165,7 +165,8 @@ internal fun PlateRow(
     ) {
         DiscoverPlate(item, MaterialTheme.shapes.medium, Modifier.width(PlateSize.XS.width))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(item.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (reasonLabel != null && reasonAsChip) ReasonChip(reasonLabel)
             else if (reasonLabel != null) Text(reasonLabel, style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -186,7 +187,8 @@ internal fun SavingCard(task: ImportTask, width: Dp, modifier: Modifier = Modifi
             .background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
             ContainedLoadingIndicator(Modifier.size(48.dp))
         }
-        Text(taskLabel(task), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(taskLabel(task), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(saving, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -199,13 +201,12 @@ internal fun FailedSaveCard(task: ImportTask, width: Dp, actions: DiscoverAction
             .background(MaterialTheme.colorScheme.errorContainer), contentAlignment = Alignment.Center) {
             Icon(Icons.Filled.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
         }
-        Text(taskLabel(task), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.discover_save_failed), style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
-            TextButton(onClick = { actions.onRetryImport(task.id) }, modifier = Modifier.widthIn(min = 48.dp)) {
-                Text(stringResource(R.string.discover_retry))
-            }
+        Text(taskLabel(task), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(stringResource(R.string.discover_save_failed), style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.error)
+        TextButton(onClick = { actions.onRetryImport(task.id) }, modifier = Modifier.widthIn(min = 48.dp)) {
+            Text(stringResource(R.string.discover_retry))
         }
     }
 }

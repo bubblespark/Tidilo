@@ -272,6 +272,8 @@ class DiscoverNavigationShellTest {
         try {
             val libraryTab = host.await(activity) { tag(it, "floating_nav_library") }
             host.main { click(libraryTab) }
+            // Discover's "Just saved" also lists the fixtures, so wait until Discover has left first.
+            awaitAbsent(host, activity) { tag(it, "discover_list") }
             host.await(activity) {
                 it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text.startsWith("Scroll Fixture") } == true
             }

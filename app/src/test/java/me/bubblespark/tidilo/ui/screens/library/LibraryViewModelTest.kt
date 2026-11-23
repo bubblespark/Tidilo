@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import me.bubblespark.tidilo.data.BookmarkSearchResult
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import me.bubblespark.tidilo.data.BookmarkSource
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import me.bubblespark.tidilo.data.db.RssFeedEntity
@@ -76,10 +77,10 @@ class LibraryViewModelTest {
         override fun observeBookmark(id: String) = flowOf<BookmarkItem?>(null)
         override fun observeTagCounts(selected: Set<String>, showPrivate: Boolean, kind: TagKind) = flowOf(emptyList<TagCount>())
         override fun observeEntityLibrary() = flowOf(emptyMap<String, String>())
-        override suspend fun toggleLike(id: String) { likeFailure?.let { throw it } }
-        override suspend fun recordBrowserOpen(id: String) { engagementFailure?.let { throw it } }
-        override suspend fun recordDetailView(id: String) { engagementFailure?.let { throw it } }
-        override suspend fun recordSummaryPeek(id: String) { engagementFailure?.let { throw it } }
+        override suspend fun toggleLike(id: String, surface: EngagementSurface) { likeFailure?.let { throw it } }
+        override suspend fun recordBrowserOpen(id: String, surface: EngagementSurface) { engagementFailure?.let { throw it } }
+        override suspend fun recordDetailView(id: String, surface: EngagementSurface) { engagementFailure?.let { throw it } }
+        override suspend fun recordSummaryPeek(id: String, surface: EngagementSurface) { engagementFailure?.let { throw it } }
         override suspend fun saveNote(id: String, note: String) = Unit
         override suspend fun updateBookmarkTags(id: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String>) = Unit
         override suspend fun applyAiProposal(id: String, description: String?, tag: Tag?) = true
@@ -245,7 +246,7 @@ class LibraryViewModelTest {
     @Test fun toggleLikeFailureEmitsOneEvent() = runTest {
         fixture { f ->
             f.store.likeFailure = IOException("write")
-            f.model.toggleLike("a")
+            f.model.toggleLike("a", EngagementSurface.LIBRARY)
             runCurrent()
             assertEquals(listOf<LibraryEvent>(LibraryEvent.SaveFailed), f.events)
         }
@@ -254,7 +255,7 @@ class LibraryViewModelTest {
     @Test fun toggleLikeCancellationEmitsNothing() = runTest {
         fixture { f ->
             f.store.likeFailure = CancellationException("cancelled")
-            f.model.toggleLike("a")
+            f.model.toggleLike("a", EngagementSurface.LIBRARY)
             runCurrent()
             assertTrue(f.events.isEmpty())
         }
@@ -263,7 +264,7 @@ class LibraryViewModelTest {
     @Test fun recordBrowserOpenFailureEmitsNothing() = runTest {
         fixture { f ->
             f.store.engagementFailure = IOException("write")
-            f.model.recordBrowserOpen("a")
+            f.model.recordBrowserOpen("a", EngagementSurface.LIBRARY)
             runCurrent()
             assertTrue(f.events.isEmpty())
         }
@@ -383,8 +384,8 @@ class LibraryViewModelTest {
     @Test fun consecutiveLikeFailuresEachEmitAnEvent() = runTest {
         fixture { f ->
             f.store.likeFailure = IOException("write")
-            f.model.toggleLike("a")
-            f.model.toggleLike("b")
+            f.model.toggleLike("a", EngagementSurface.LIBRARY)
+            f.model.toggleLike("b", EngagementSurface.LIBRARY)
             runCurrent()
             assertEquals(listOf<LibraryEvent>(LibraryEvent.SaveFailed, LibraryEvent.SaveFailed), f.events)
         }

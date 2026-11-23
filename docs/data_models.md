@@ -1,6 +1,6 @@
 # Data Models, State Flows, & Persistence Interfaces
 
-This document specifies Tidilo's core domain models, entity-tag normalization, import state machine, taxonomy, domain policies, reactive streams, and Room (`AppDatabase` v22) persistence contracts.
+This document specifies Tidilo's core domain models, entity-tag normalization, import state machine, taxonomy, domain policies, reactive streams, and Room (`AppDatabase` v23) persistence contracts.
 
 ## Related Specifications
 | Domain / Feature | Specification |
@@ -31,9 +31,6 @@ data class BookmarkItem(
     val note: String = "",
     val isPrivate: Boolean = false,
     val isLiked: Boolean = false,
-    val browserOpenCount: Int = 0,
-    val detailViewCount: Int = 0,
-    val summaryPeekCount: Int = 0,
     val lastInteractedAt: Long? = null,
     val ogImageUrl: String? = null,
     val rssFeedId: String? = null,
@@ -62,7 +59,12 @@ data class Tag(
     }
 }
 ```
-- **Engagement Contract**: Atomic updates increment `browserOpenCount`, `detailViewCount`, and `summaryPeekCount` and refresh `lastInteractedAt`; liking updates `lastInteractedAt`, while unliking preserves it. Edits, URL replacement, and RSS promotion preserve engagement fields; moving to/restoring from Trash sets `isLiked = false` while keeping counters and `lastInteractedAt`.
+- **Engagement Contract**: Interest is stored as append-only rows in `engagement_events` (`bookmarkId, type, surface, at`), written in the same transaction as the bookmark update. `type` and `surface` hold the persisted, append-only codes of `EngagementType` and `EngagementSurface` (`data/engagement/EngagementCodes.kt`).
+  - Detail view, browser open, and Summary Peek record `DETAIL`, `BROWSER_OPEN`, and `PEEK` and refresh `lastInteractedAt`.
+  - Liking records `LIKE` and refreshes `lastInteractedAt`; unliking records `UNLIKE` and preserves it.
+  - The first non-blank note records `NOTE_WRITTEN`; adding a bookmark to a collection it was not in records `COLLECTION_ADD`. Neither changes `lastInteractedAt`.
+  - Each caller passes the surface it runs on (`LIBRARY`, `SEARCH`, `DETAIL`). An id with no active bookmark records nothing.
+  - Edits, URL replacement, and RSS promotion keep `isLiked`, `lastInteractedAt`, and the bookmark's events. Moving to or restoring from Trash sets `isLiked = false` and keeps `lastInteractedAt` and events. Events have no foreign key; maintenance prunes them (see [library_maintenance.md](library_maintenance.md)).
 
 ### 1.2 `EntityTagPolicy`, Canonical Identity & Suggestions (`data/EntityTagPolicy.kt`)
 - **Cleaning & Skeleton Key**: `clean` trims whitespace and removes a single leading `#` (so raw `##C` becomes display `#C`, distinct from `C`, without double-stripping via `Tag.fromDisplayValues` or `toggleDisplayEntity`); blanks are dropped. `entitySkeletonKey` applies NFKC normalization and Unicode case folding, then removes whitespace, `.`, `_`, and `-` while keeping meaningful symbols (`+`, `#`). Caps at `MAX_ENTITIES = 10`.
@@ -130,11 +132,12 @@ sequenceDiagram
 
 ---
 
-## 6. Persistence & Room Schema (`AppDatabase` v22)
+## 6. Persistence & Room Schema (`AppDatabase` v23)
 
-- **Room Tables (13 entities in `AppDatabase` v22)**:
+- **Room Tables (14 entities in `AppDatabase` v23)**:
   - Core & derived: `bookmarks`, `bookmark_entities` (`bookmarkId, position, value, searchValue, skeletonKey`), `trashed_bookmarks`, `domain_policies` (`domain, isPrivate, displayName`), `import_tasks`.
   - Collections & RSS: `collections`, `bookmark_collection_cross_ref`, `rss_feeds` (including `iconUrl`, `siteUrl`), `rss_seen_items`, `rss_image_cleanup`.
+  - Engagement: `engagement_events` (autoincrement `id`, `bookmarkId`, `type`, `surface`, `at`; indexed by `bookmarkId` and `at`).
   - Notifications: `import_notifications` (`50`-row history limit, indexed `createdAt DESC`), `rss_notification_runs`, `rss_notification_items`. The Notification screen projects `import_notifications` + `ERROR` `import_tasks` + errored `rss_feeds` with prefixed stable UI keys (`createdAt` / `lastAttemptAt`).
 - **Transaction & Query Scope**: `ImportRepository` commits direct saves (bookmark, entity occurrences, RSS receipts/notifications, task deletion) in one flat `TransactionRunner` transaction without nested transactions. `BookmarkEntity` (`bookmarks`) persists derived `domain` and `BookmarkSearchKey` columns (`searchTitle`, `searchDescription`, `searchUrl`, `searchCategory`, `searchSubcategory`), while `BookmarkEntityOccurrence` (`bookmark_entities`) stores `searchValue` and `skeletonKey`, all maintained by DAO transactions. Library source filters use `BookmarkSource` (`MANUAL` / `RSS`); Newest first uses `MANUAL`, or `ALL` when Include RSS is selected. Search, tag selection, and storage counts use `ALL`.
 - **SharedPreferences**: `tidilo_library_prefs` (`search_history` up to 10 queries, `library_filter_mode`, `library_newest_include_rss`), `tidilo_app_config_prefs` (language, Private flags with one-way legacy key fallback, theme, AI config), `tidilo_ai_usage` (see [application_summary.md](application_summary.md)), `tidilo_rss` (see [rss.md](rss.md)).
@@ -143,4 +146,5 @@ sequenceDiagram
   - `MIGRATION_9_10`: Leaves legacy RSS XML snippets as `articlePrepared = 0` and routes RSS `ERROR` rows to `acquisitionRetryAt = Long.MAX_VALUE`.
   - `MIGRATION_11_12`: Invokes `MIGRATION_10_11` and checks `PRAGMA table_info(rss_feeds)` defensively to upgrade prerelease RSS-only v11 builds without losing existing columns.
   - `MIGRATION_13_14` & `MIGRATION_14_15`: `13→14` elects one canonical display spelling per `skeletonKey` once (distinct bookmark frequency → earliest `createdAt` → SQLite binary order, aggregated in bounded batches via temp SQLite vote table; never re-elected on open). `14→15` backfills `13→14` if `skeletonKey` is absent before adding engagement defaults (`0` / `null`).
+  - `MIGRATION_22_23`: Converts the former `summaryPeekCount`, `detailViewCount`, and `browserOpenCount` of active and trashed rows into at most 5 `PEEK` / `DETAIL` / `BROWSER_OPEN` events each, plus one `LIKE` per liked row, all with `surface = MIGRATED` and `at = COALESCE(lastInteractedAt, createdAt)`, then drops the three counter columns (SQLite `DROP COLUMN`, available from minSdk 34).
   - `MIGRATION_17_18`: Maps legacy `READY`, `WAITING_AI`, `PROCESSING_AI`, and awaiting-acquisition `ERROR` tasks to `QUEUED` and resets modes to `DIRECT`.

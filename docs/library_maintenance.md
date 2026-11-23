@@ -15,6 +15,10 @@ Expired articles are permanently deleted without entering Trash, including artic
 
 The former per-feed count/unlimited setting is no longer available. Its persisted legacy column remains unused for Room schema compatibility and is never interpreted as a day count.
 
+## Engagement history retention
+
+Each run deletes `engagement_events` rows older than **90 days** (`ENGAGEMENT_RETENTION_MS`) and rows whose bookmark is neither active nor in Trash, such as purged, permanently deleted, or expired RSS articles. Events of trashed bookmarks are kept so restoring a bookmark keeps its history. Pruning runs after RSS expiration in one transaction and does not change `lastInteractedAt`.
+
 ## OG image cache retention
 
 Images are disposable cache for both manual and RSS bookmarks. The worker deletes a cached image only when **both** conditions hold:

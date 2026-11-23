@@ -3,6 +3,9 @@ package me.bubblespark.tidilo.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.room.withTransaction
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
+import me.bubblespark.tidilo.data.engagement.EngagementType
+import me.bubblespark.tidilo.data.db.EngagementEventEntity
 import me.bubblespark.tidilo.data.db.logicalBookmarkTag
 import me.bubblespark.tidilo.data.db.TrashBookmarkRow
 import androidx.paging.Pager
@@ -74,6 +77,7 @@ class BookmarkRepository internal constructor(
 
     private val bookmarkDao = database.bookmarkDao()
     private val trashDao = database.trashDao()
+    private val engagementDao = database.engagementDao()
 
     private val _isInitialized = MutableStateFlow(false)
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
@@ -181,25 +185,47 @@ class BookmarkRepository internal constructor(
      * Autosaves only the note column by ID; no loaded page is required.
      * The write completes even if the caller leaves the screen mid-save.
      */
-    suspend fun saveNote(id: String, note: String) = withContext(NonCancellable + Dispatchers.IO) {
-        bookmarkDao.updateNote(id, note, clock())
+    suspend fun saveNote(id: String, note: String): Unit = withContext(NonCancellable + Dispatchers.IO) {
+        val now = clock()
+        transactionRunner.run {
+            val previous = bookmarkDao.getBookmarkById(id)?.note
+            bookmarkDao.updateNote(id, note, now)
+            // Only the first non-blank note is a signal of interest; later edits of the same note are not.
+            if (previous != null && previous.isBlank() && note.isNotBlank()) {
+                recordEvent(id, EngagementType.NOTE_WRITTEN, EngagementSurface.DETAIL, now)
+            }
+        }
     }
 
-    suspend fun toggleLike(id: String, now: Long) = withContext(Dispatchers.IO) {
-        bookmarkDao.toggleLike(id, now)
-    }
+    /** Toggles Like and records LIKE or UNLIKE; a missing bookmark records nothing. */
+    suspend fun toggleLike(id: String, now: Long, surface: EngagementSurface = EngagementSurface.UNKNOWN): Unit =
+        withContext(Dispatchers.IO) {
+            transactionRunner.run {
+                val wasLiked = bookmarkDao.isLiked(id) ?: return@run
+                bookmarkDao.toggleLike(id, now)
+                recordEvent(id, if (wasLiked) EngagementType.UNLIKE else EngagementType.LIKE, surface, now)
+            }
+        }
 
-    suspend fun recordBrowserOpen(id: String, now: Long) = withContext(Dispatchers.IO) {
-        bookmarkDao.recordBrowserOpen(id, now)
-    }
+    suspend fun recordBrowserOpen(id: String, now: Long, surface: EngagementSurface = EngagementSurface.UNKNOWN) =
+        recordInterest(id, EngagementType.BROWSER_OPEN, surface, now)
 
-    suspend fun recordDetailView(id: String, now: Long) = withContext(Dispatchers.IO) {
-        bookmarkDao.recordDetailView(id, now)
-    }
+    suspend fun recordDetailView(id: String, now: Long, surface: EngagementSurface = EngagementSurface.UNKNOWN) =
+        recordInterest(id, EngagementType.DETAIL, surface, now)
 
-    suspend fun recordSummaryPeek(id: String, now: Long) = withContext(Dispatchers.IO) {
-        bookmarkDao.recordSummaryPeek(id, now)
-    }
+    suspend fun recordSummaryPeek(id: String, now: Long, surface: EngagementSurface = EngagementSurface.UNKNOWN) =
+        recordInterest(id, EngagementType.PEEK, surface, now)
+
+    /** Renews `lastInteractedAt` and records [type] in one transaction; a missing bookmark records nothing. */
+    private suspend fun recordInterest(id: String, type: EngagementType, surface: EngagementSurface, now: Long): Unit =
+        withContext(Dispatchers.IO) {
+            transactionRunner.run {
+                if (bookmarkDao.touch(id, now) > 0) recordEvent(id, type, surface, now)
+            }
+        }
+
+    private suspend fun recordEvent(id: String, type: EngagementType, surface: EngagementSurface, at: Long) =
+        engagementDao.insert(EngagementEventEntity(bookmarkId = id, type = type.code, surface = surface.code, at = at))
 
     /**
      * Applies a chosen AI proposal atomically. A null [description] or [tag] keeps the stored value,
@@ -627,9 +653,6 @@ internal fun mergeWithExistingBookmark(
         note = if (incoming.note.isNotBlank()) incoming.note else existing.note,
         createdAt = existing.createdAt,
         isLiked = existing.isLiked,
-        browserOpenCount = existing.browserOpenCount,
-        detailViewCount = existing.detailViewCount,
-        summaryPeekCount = existing.summaryPeekCount,
         lastInteractedAt = existing.lastInteractedAt
     )
 }

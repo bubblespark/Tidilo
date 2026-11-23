@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -506,12 +507,12 @@ fun SearchScreen(
                                 bookmark = item,
                                 context = context,
                                 layout = gridLayout,
-                                onToggleLike = { viewModel.toggleLike(item.id) },
+                                onToggleLike = { viewModel.toggleLike(item.id, EngagementSurface.SEARCH) },
                                 onLongClick = {
                                     focusManager.clearFocus()
                                     keyboardController?.hide()
                                     peekBookmark = item
-                                    viewModel.recordSummaryPeek(item.id)
+                                    viewModel.recordSummaryPeek(item.id, EngagementSurface.SEARCH)
                                 },
                                 onClick = {
                                     viewModel.addSearchHistory(searchQuery)
@@ -529,7 +530,7 @@ fun SearchScreen(
                                     tagKeywords = tagKeywords,
                                     currentLanguage = currentLanguage,
                                     context = context,
-                                    onToggleLike = { viewModel.toggleLike(item.id) },
+                                    onToggleLike = { viewModel.toggleLike(item.id, EngagementSurface.SEARCH) },
                                     onClick = {
                                         viewModel.addSearchHistory(searchQuery)
                                         focusManager.clearFocus()

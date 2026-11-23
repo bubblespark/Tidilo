@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -742,7 +743,7 @@ fun LibraryScreen(
                                                     ) { index ->
                                                         val item = domainBookmarks[index] ?: return@items
                                                             BookmarkItemCard(
-                                                                onToggleLike = { viewModel.toggleLike(item.id) },
+                                                                onToggleLike = { viewModel.toggleLike(item.id, EngagementSurface.LIBRARY) },
                                                                 bookmark = item,
                                                                 wordKeywords = emptyList(),
                                                                 tagKeywords = emptyList(),
@@ -767,10 +768,10 @@ fun LibraryScreen(
                                                         active = state == displayState && viewMode == mode,
                                                         contentPadding = contentPadding,
                                                         onOpenBookmark = onNavigateToDetail,
-                                                        onToggleLike = viewModel::toggleLike,
+                                                        onToggleLike = { viewModel.toggleLike(it, EngagementSurface.LIBRARY) },
                                                         onPeekBookmark = { item ->
                                                             peekBookmark = item
-                                                            viewModel.recordSummaryPeek(item.id)
+                                                            viewModel.recordSummaryPeek(item.id, EngagementSurface.LIBRARY)
                                                         }
                                                     )
                                                 }
@@ -812,7 +813,7 @@ fun LibraryScreen(
                                                 ) { index ->
                                                     val item = bookmarks[index] ?: return@items
                                                     BookmarkItemCard(
-                                                        onToggleLike = { viewModel.toggleLike(item.id) },
+                                                        onToggleLike = { viewModel.toggleLike(item.id, EngagementSurface.LIBRARY) },
                                                         bookmark = item,
                                                         wordKeywords = emptyList(),
                                                         tagKeywords = emptyList(),
@@ -836,10 +837,10 @@ fun LibraryScreen(
                                                 leadingContentHeight = rememberNewestFirstScopeRowHeight(),
                                                 showRssSource = includeRss,
                                                 onOpenBookmark = onNavigateToDetail,
-                                                onToggleLike = viewModel::toggleLike,
+                                                onToggleLike = { viewModel.toggleLike(it, EngagementSurface.LIBRARY) },
                                                 onPeekBookmark = { item ->
                                                     peekBookmark = item
-                                                    viewModel.recordSummaryPeek(item.id)
+                                                    viewModel.recordSummaryPeek(item.id, EngagementSurface.LIBRARY)
                                                 }
                                             )
                                         }

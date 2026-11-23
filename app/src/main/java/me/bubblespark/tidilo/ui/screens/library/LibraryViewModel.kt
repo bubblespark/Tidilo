@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.db.TagKind
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -405,10 +406,10 @@ class LibraryViewModel internal constructor(
         }
     }
 
-    fun toggleLike(id: String) = recordEngagement(showFailure = true) { store.toggleLike(id) }
-    fun recordBrowserOpen(id: String) = recordEngagement { store.recordBrowserOpen(id) }
-    fun recordDetailView(id: String) = recordEngagement { store.recordDetailView(id) }
-    fun recordSummaryPeek(id: String) = recordEngagement { store.recordSummaryPeek(id) }
+    fun toggleLike(id: String, surface: EngagementSurface) = recordEngagement(showFailure = true) { store.toggleLike(id, surface) }
+    fun recordBrowserOpen(id: String, surface: EngagementSurface) = recordEngagement { store.recordBrowserOpen(id, surface) }
+    fun recordDetailView(id: String, surface: EngagementSurface) = recordEngagement { store.recordDetailView(id, surface) }
+    fun recordSummaryPeek(id: String, surface: EngagementSurface) = recordEngagement { store.recordSummaryPeek(id, surface) }
 
     fun bookmarkDetails(id: String): Flow<BookmarkDetailState> = store.observeBookmark(id)
         .map { BookmarkDetailState(it, false) }

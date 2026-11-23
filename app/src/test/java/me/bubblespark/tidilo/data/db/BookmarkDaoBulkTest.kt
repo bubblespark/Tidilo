@@ -17,9 +17,8 @@ class BookmarkDaoBulkTest {
         override suspend fun insertCollectionMembership(row: BookmarkCollectionCrossRef) = Unit
         val existingSpellings = mutableMapOf<String, String>()
         override suspend fun toggleLike(id: String, now: Long) = Unit
-        override suspend fun recordBrowserOpen(id: String, now: Long) = Unit
-        override suspend fun recordDetailView(id: String, now: Long) = Unit
-        override suspend fun recordSummaryPeek(id: String, now: Long) = Unit
+        override suspend fun touch(id: String, now: Long) = 0
+        override suspend fun isLiked(id: String): Boolean? = null
         val insertedRowsCalls = mutableListOf<List<BookmarkEntity>>()
         val deletedOccurrencesCalls = mutableListOf<List<String>>()
         val insertedOccurrencesCalls = mutableListOf<List<BookmarkEntityOccurrence>>()

@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.data.BookmarkRepository
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
+import me.bubblespark.tidilo.data.engagement.EngagementType
 import me.bubblespark.tidilo.data.TrashMutationResult
 import org.junit.Assert.*
 import org.junit.Test
@@ -24,7 +26,7 @@ class TrashPersistenceTest {
     private fun bookmark(id: String = "old", url: String = "https://example.com/page") = BookmarkEntity(
         id, "Saved title", url, "Saved summary", category = "Article", subcategory = "Tech",
         entities = listOf("Kotlin"), createdAt = 11, updatedAt = 22, note = "saved memo", isLiked = true,
-        browserOpenCount = 3, detailViewCount = 4, summaryPeekCount = 5, lastInteractedAt = 18,
+        lastInteractedAt = 18,
         ogImageUrl = "https://example.com/image.png", rssFeedId = "removed-feed", rssPublishedAt = 7
     )
 
@@ -32,6 +34,19 @@ class TrashPersistenceTest {
         db.bookmarkDao().insertOrUpdate(row)
         assertTrue(repo(db).moveToTrash(row.id, at, 100))
     }
+
+    @Test fun engagementEventsSurviveTrashAndRestore() = runBlocking { fixture { db ->
+        db.bookmarkDao().insertOrUpdate(bookmark())
+        repo(db).recordDetailView("old", 19, EngagementSurface.DETAIL)
+        assertTrue(repo(db).moveToTrash("old", 30, 100))
+        db.engagementDao().deleteOrphans()
+        assertEquals(1, db.engagementDao().eventsFor("old").size)
+        assertEquals(TrashMutationResult.Restored, repo(db).restoreFromTrash("old"))
+        db.engagementDao().deleteOrphans()
+        assertEquals(listOf(EngagementType.DETAIL.code), db.engagementDao().eventsFor("old").map { it.type })
+        db.bookmarkDao().deleteById("old")
+        assertEquals("Purged bookmarks lose their events", 1, db.engagementDao().deleteOrphans())
+    } }
 
     @Test fun restorePreservesSnapshotAndSearchIndex() = runBlocking { fixture { db ->
         db.collectionDao().insert(CollectionEntity("collection", "Saved", "", "folder", null, 0, 1, 1))

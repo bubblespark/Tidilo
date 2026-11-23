@@ -19,6 +19,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.BookmarkRepository
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
+import me.bubblespark.tidilo.data.engagement.EngagementType
+import me.bubblespark.tidilo.data.restoreEngagementCounters
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.removeStandardClassificationColumns
 import me.bubblespark.tidilo.data.rewindPrivateColumnsToLegacyNsfw
@@ -61,7 +64,7 @@ class BookmarkDatabaseTest {
         val after = database(name)
         try {
             val readable = after.openHelper.readableDatabase
-            assertEquals(22, readable.version)
+            assertEquals(23, readable.version)
             for (table in listOf("bookmarks", "trashed_bookmarks", "import_tasks", "domain_policies")) {
                 val cols = columns(readable, table)
                 assertTrue("Expected isPrivate column on $table, got $cols", "isPrivate" in cols)
@@ -93,7 +96,7 @@ class BookmarkDatabaseTest {
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(22, after.openHelper.readableDatabase.version)
+            assertEquals(23, after.openHelper.readableDatabase.version)
             val kept = after.bookmarkDao().getBookmarkById("kept")
             assertNotNull(kept)
             assertTrue(kept!!.isPrivate)
@@ -121,7 +124,7 @@ class BookmarkDatabaseTest {
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(22, after.openHelper.readableDatabase.version)
+            assertEquals(23, after.openHelper.readableDatabase.version)
             assertNotNull(after.bookmarkDao().getBookmarkById("kept"))
             assertEquals(1, after.rssDao().cleanupItems().size)
             after.rssDao().enqueueCleanup(RssImageCleanupEntity("https://images.invalid/shared.webp", "https://second.invalid/article"))
@@ -146,7 +149,7 @@ class BookmarkDatabaseTest {
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(22, after.openHelper.readableDatabase.version)
+            assertEquals(23, after.openHelper.readableDatabase.version)
             assertEquals(queued.copy(status = "QUEUED", statusText = ""), after.importTaskDao().getTaskById(queued.id))
         } finally { after.close(); context.deleteDatabase(name) }
     }
@@ -168,10 +171,11 @@ class BookmarkDatabaseTest {
         try {
             val item = db.bookmarkDao().getBookmarkById("kept")!!
             assertTrue(item.isLiked)
-            assertEquals(2, item.browserOpenCount)
-            assertEquals(3, item.detailViewCount)
-            assertEquals(4, item.summaryPeekCount)
             assertEquals(1234L, item.lastInteractedAt)
+            val events = db.engagementDao().eventsFor("kept")
+            assertEquals(mapOf(EngagementType.BROWSER_OPEN.code to 2, EngagementType.DETAIL.code to 3,
+                EngagementType.PEEK.code to 4, EngagementType.LIKE.code to 1), events.groupingBy { it.type }.eachCount())
+            assertTrue(events.all { it.at == 1234L && it.surface == EngagementSurface.MIGRATED.code })
             assertTrue(columns(db.openHelper.readableDatabase, "bookmark_entities").contains("skeletonKey"))
             assertEquals(listOf("Tag"), item.entities)
         } finally { db.close(); context.deleteDatabase(name) }
@@ -182,23 +186,23 @@ class BookmarkDatabaseTest {
         try {
             val dao = db.bookmarkDao()
             dao.insertOrUpdate(BookmarkEntity("liked", "Saved", "https://example.com", "", createdAt = 1, updatedAt = 1))
+            val repository = BookmarkRepository(db, autoInitialize = false)
             coroutineScope {
-                repeat(40) { launch(Dispatchers.IO) { dao.recordBrowserOpen("liked", 10) } }
-                repeat(30) { launch(Dispatchers.IO) { dao.recordDetailView("liked", 20) } }
-                repeat(20) { launch(Dispatchers.IO) { dao.recordSummaryPeek("liked", 30) } }
+                repeat(40) { launch(Dispatchers.IO) { repository.recordBrowserOpen("liked", 10) } }
+                repeat(30) { launch(Dispatchers.IO) { repository.recordDetailView("liked", 20) } }
+                repeat(20) { launch(Dispatchers.IO) { repository.recordSummaryPeek("liked", 30) } }
             }
-            val counts = dao.getBookmarkById("liked")!!
-            assertEquals(40, counts.browserOpenCount)
-            assertEquals(30, counts.detailViewCount)
-            assertEquals(20, counts.summaryPeekCount)
+            assertEquals(mapOf(EngagementType.BROWSER_OPEN.code to 40, EngagementType.DETAIL.code to 30, EngagementType.PEEK.code to 20),
+                db.engagementDao().eventsFor("liked").groupingBy { it.type }.eachCount())
             dao.toggleLike("liked", 1234)
             assertTrue(dao.observeById("liked").first()!!.isLiked)
             dao.toggleLike("liked", 2345)
             val unliked = dao.getBookmarkById("liked")!!
             assertFalse(unliked.isLiked)
             assertEquals(1234L, unliked.lastInteractedAt)
-            dao.recordBrowserOpen("missing", 1)
-            dao.toggleLike("missing", 1)
+            repository.recordBrowserOpen("missing", 1)
+            repository.toggleLike("missing", 1)
+            assertTrue(db.engagementDao().eventsFor("missing").isEmpty())
         } finally { db.close(); context.deleteDatabase(name) }
     }
     @Test fun legacyVersionsPreserveRowsAndDefaultEngagement() = runBlocking {
@@ -213,16 +217,50 @@ class BookmarkDatabaseTest {
         val db = database(name)
         try {
             for (table in listOf("bookmarks", "trashed_bookmarks")) {
-                db.openHelper.readableDatabase.query("SELECT isLiked,browserOpenCount,detailViewCount,summaryPeekCount,lastInteractedAt,note FROM $table").use {
+                db.openHelper.readableDatabase.query("SELECT isLiked,lastInteractedAt,note FROM $table").use {
                     assertTrue(it.moveToFirst())
-                    for (column in 0..3) assertEquals(0, it.getInt(column))
-                    assertTrue(it.isNull(4))
-                    assertEquals(if (table == "bookmarks") "Note" else "Trash note", it.getString(5))
+                    assertEquals(0, it.getInt(0))
+                    assertTrue(it.isNull(1))
+                    assertEquals(if (table == "bookmarks") "Note" else "Trash note", it.getString(2))
                 }
             }
             assertEquals("Feed", db.rssDao().feed("feed")!!.title)
+            assertTrue("Default engagement seeds no events", db.engagementDao().eventsFor("active").isEmpty())
         } finally { db.close(); context.deleteDatabase(name) }
       }
+    }
+
+    @Test fun migration22To23SeedsEventsAndDropsCounters() = runBlocking {
+        val name = "engagement-v23-${UUID.randomUUID()}.db"
+        val before = database(name)
+        try {
+            before.bookmarkDao().insertAll(listOf(
+                BookmarkEntity("a", "A", "https://example.com/a", "", createdAt = 50, updatedAt = 50, isLiked = true, lastInteractedAt = 500),
+                BookmarkEntity("b", "B", "https://example.com/b", "", createdAt = 100, updatedAt = 100)))
+            before.trashDao().insert(TrashedBookmarkEntity("t", "T", "https://example.com/t", "", createdAt = 1, updatedAt = 1,
+                note = "", isPrivate = false, lastInteractedAt = 900, trashedAt = 950))
+        } finally { before.close() }
+        android.database.sqlite.SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, 0).use { sql ->
+            restoreEngagementCounters(sql::execSQL)
+            sql.execSQL("UPDATE bookmarks SET summaryPeekCount = 2, detailViewCount = 7 WHERE id = 'a'")
+            sql.execSQL("UPDATE bookmarks SET detailViewCount = 1 WHERE id = 'b'")
+            sql.execSQL("UPDATE trashed_bookmarks SET browserOpenCount = 3 WHERE id = 't'")
+            sql.version = 22
+        }
+        val after = database(name)
+        try {
+            val events = after.engagementDao()
+            assertEquals(mapOf(EngagementType.PEEK.code to 2, EngagementType.DETAIL.code to 5, EngagementType.LIKE.code to 1),
+                events.eventsFor("a").groupingBy { it.type }.eachCount())
+            assertTrue(events.eventsFor("a").all { it.at == 500L && it.surface == EngagementSurface.MIGRATED.code })
+            assertEquals(listOf(EngagementType.DETAIL.code to 100L), events.eventsFor("b").map { it.type to it.at })
+            assertEquals(List(3) { EngagementType.BROWSER_OPEN.code to 900L }, events.eventsFor("t").map { it.type to it.at })
+            val sql = after.openHelper.readableDatabase
+            for (table in listOf("bookmarks", "trashed_bookmarks")) {
+                assertTrue(columns(sql, table).none { it in setOf("browserOpenCount", "detailViewCount", "summaryPeekCount") })
+            }
+            assertTrue(after.bookmarkDao().getBookmarkById("a")!!.isLiked)
+        } finally { after.close(); context.deleteDatabase(name) }
     }
     @Test fun legacyEntitySpellingsUpgradeOnceWithIndexedOccurrenceParity() = runBlocking {
         for (version in listOf(6, 13)) {
@@ -256,7 +294,7 @@ class BookmarkDatabaseTest {
             var db = database(name)
             try {
                 val sql = db.openHelper.writableDatabase
-                assertEquals(22, sql.version)
+                assertEquals(23, sql.version)
                 assertTrue(columns(sql, "bookmark_entities").contains("skeletonKey"))
                 sql.query("PRAGMA index_list(bookmark_entities)").use { cursor ->
                     val names = buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
@@ -324,7 +362,7 @@ class BookmarkDatabaseTest {
             helper.close()
             val db = database(name)
             try {
-                assertEquals(22, db.openHelper.readableDatabase.version)
+                assertEquals(23, db.openHelper.readableDatabase.version)
                 val feed = db.rssDao().feed("feed")!!
                 assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
                 assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)
@@ -414,7 +452,7 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22, AppDatabase.MIGRATION_22_23)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showPrivate: Boolean = true): List<BookmarkEntity> {

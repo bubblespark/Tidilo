@@ -19,6 +19,8 @@ import me.bubblespark.tidilo.data.db.BookmarkEntityTags
 import me.bubblespark.tidilo.data.db.CollectionDao
 import me.bubblespark.tidilo.data.db.DomainCount
 import me.bubblespark.tidilo.data.db.DomainPolicyDao
+import me.bubblespark.tidilo.data.db.EngagementDao
+import me.bubblespark.tidilo.data.db.EngagementEventEntity
 import me.bubblespark.tidilo.data.db.DomainPolicyEntity
 import me.bubblespark.tidilo.data.db.ImportNotificationDao
 import me.bubblespark.tidilo.data.db.ImportTaskDao
@@ -34,9 +36,8 @@ internal open class StubBookmarkDao(
     private val onGetCount: suspend () -> Int = { 1 }
 ) : BookmarkDao() {
     override suspend fun toggleLike(id: String, now: Long) = Unit
-    override suspend fun recordBrowserOpen(id: String, now: Long) = Unit
-    override suspend fun recordDetailView(id: String, now: Long) = Unit
-    override suspend fun recordSummaryPeek(id: String, now: Long) = Unit
+    override suspend fun touch(id: String, now: Long) = 0
+    override suspend fun isLiked(id: String): Boolean? = null
     override fun observeCollectionCounts(): Flow<CollectionCounts> = emptyFlow()
     override fun observeCount(query: SupportSQLiteQuery): Flow<Int> = emptyFlow()
     override suspend fun getBookmarkById(id: String): BookmarkEntity? = null
@@ -137,8 +138,10 @@ internal inline fun <reified T> unusedDaoProxy(): T = Proxy.newProxyInstance(
 internal fun fakeAppDatabase(
     bookmarkDao: BookmarkDao = StubBookmarkDao(),
     trashDao: TrashDao = StubTrashDao(),
-    domainPolicyDao: DomainPolicyDao = StubDomainPolicyDao()
+    domainPolicyDao: DomainPolicyDao = StubDomainPolicyDao(),
+    engagementDao: EngagementDao = InMemoryEngagementDao()
 ): AppDatabase = object : AppDatabase() {
+    override fun engagementDao(): EngagementDao = engagementDao
     override fun collectionDao(): CollectionDao = unusedDaoProxy()
     override fun rssDao(): RssDao = unusedDaoProxy()
     override fun bookmarkDao(): BookmarkDao = bookmarkDao
@@ -153,6 +156,19 @@ internal fun fakeAppDatabase(
     override fun createOpenHelper(config: DatabaseConfiguration): SupportSQLiteOpenHelper = error("unused")
     @Deprecated("Deprecated in Java")
     override fun clearAllTables() = Unit
+}
+
+/** In-memory [EngagementDao]; orphan pruning needs real tables and is covered by instrumentation tests. */
+internal class InMemoryEngagementDao : EngagementDao {
+    val events = mutableListOf<EngagementEventEntity>()
+    override suspend fun insert(event: EngagementEventEntity) {
+        events += event.copy(id = events.size + 1L)
+    }
+    override suspend fun eventsFor(bookmarkId: String): List<EngagementEventEntity> =
+        events.filter { it.bookmarkId == bookmarkId }.sortedWith(compareBy({ it.at }, { it.id }))
+    override suspend fun deleteOlderThan(cutoff: Long): Int =
+        events.count { it.at < cutoff }.also { events.removeAll { e -> e.at < cutoff } }
+    override suspend fun deleteOrphans(): Int = error("Covered by instrumentation tests")
 }
 
 internal fun directTransactionRunner(): TransactionRunner = object : TransactionRunner {

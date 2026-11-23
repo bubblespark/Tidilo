@@ -558,4 +558,20 @@
         <item quantity="one">%d save in 14 days</item>
         <item quantity="other">%d saves in 14 days</item>
     </plurals>
+    <string name="discover_open">Open</string>
+    <string name="discover_peek">Peek</string>
+    <string name="discover_peek_snooze">Not now</string>
+    <string name="discover_peek_never">Don’t show again</string>
+    <string name="discover_peek_add_to_collection">Add to collection</string>
+    <string name="discover_notice_snoozed">Hidden from Discover for 30 days</string>
+    <string name="discover_notice_hidden">You won’t see this in Discover again</string>
+    <string name="discover_notice_muted">Muted %1$s in Discover</string>
+    <string name="discover_undo">Undo</string>
+    <string name="discover_mute_topic">Mute topic</string>
+    <string name="settings_discover_reset_title">Reset rediscovery history</string>
+    <string name="settings_discover_reset_subtitle">Clears what Discover learned from your activity. Your bookmarks stay.</string>
+    <string name="settings_discover_reset_dialog_title">Reset rediscovery history?</string>
+    <string name="settings_discover_reset_dialog_body">Discover forgets your views, likes, hidden cards, and muted topics, and deals today’s shelves again. Bookmarks, notes, and collections are not changed.</string>
+    <string name="settings_discover_reset_confirm">Reset</string>
+    <string name="settings_discover_reset_done">Rediscovery history reset</string>
 </resources>

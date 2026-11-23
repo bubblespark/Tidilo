@@ -303,7 +303,8 @@ fun TidiloApp(
         me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.DOMAIN -> selectedDomainFilter != null
         me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.NEWEST_FIRST -> false
     }
-    val isAmbientRoute = currentRoute == Screen.Library.route && isLibraryDrillDown
+    // Discover (preview flag only) lights the background from the shelf in view.
+    val isAmbientRoute = (currentRoute == Screen.Library.route && isLibraryDrillDown) || currentRoute == Screen.Discover.route
     SideEffect {
         ambientLightingState.isDestinationAllowed = isAmbientRoute
     }

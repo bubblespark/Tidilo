@@ -8,7 +8,7 @@
 
 - **Groups**:
   - **General**: Language, Theme, Notification (opens OS system notification settings directly), AI Analysis, Private Content.
-  - **Data Management**: Storage, RSS.
+  - **Data Management**: Storage, RSS, and **Reset rediscovery history** (only while the Discover preview flag is on). Reset asks for confirmation (Cancel / Reset in the error color), then clears engagement events, hidden cards, muted topics, and Discover snapshots (`DiscoverRepository.resetHistory`) and recomputes today's shelves. Bookmarks, notes, and collections are unchanged. A toast confirms success. The clears run in one transaction, so a failure there leaves the history unchanged; if recomputing today's shelves fails after the clears committed, the history stays cleared and Discover recomputes on its next open. Either failure shows no toast.
   - **Debug**: Web Parser, Prompt Test, etc.
 - **Layout**: The scrolling list stays full window inside the scaffold's system/cutout padding; its groups are capped at `840.dp` and centered on wider windows, keeping compact margins unchanged. Foldable hinge avoidance is not applied yet.
 - **Section Titles**: `SettingsSectionTitle` renders an emphasized `labelLarge` `primary` label exposed as a heading (`semantics { heading() }`); row titles keep `titleMedium`. AI Analysis shares the same section title.

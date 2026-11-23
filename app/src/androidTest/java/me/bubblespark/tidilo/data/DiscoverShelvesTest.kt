@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -106,6 +107,27 @@ class DiscoverShelvesTest {
         }
         override fun seenShelves(): Set<DiscoverShelf>? = DiscoverShelf.entries.toSet()
         override fun saveSeenShelves(shelves: Set<DiscoverShelf>) = Unit
+        // Like the repository: suppressed cards and muted entities leave the snapshot until undone.
+        private val original = snapshot
+        private val hidden = java.util.Collections.synchronizedSet(HashSet<String>())
+        private val muted = java.util.Collections.synchronizedSet(HashSet<String>())
+        val calls = java.util.concurrent.CopyOnWriteArrayList<String>()
+        private fun refilter() {
+            snapshot.value = original.copy(
+                hero = original.hero?.takeIf { it.item.id !in hidden },
+                sleepingGems = original.sleepingGems.filter { it.item.id !in hidden },
+                map = original.map.filter { it.skeletonKey !in muted }
+            )
+        }
+        override suspend fun peek(bookmarkId: String) { calls += "peek:$bookmarkId" }
+        override suspend fun snooze(bookmarkId: String) { calls += "snooze:$bookmarkId"; hidden += bookmarkId; refilter() }
+        override suspend fun neverAgain(bookmarkId: String) { calls += "never:$bookmarkId"; hidden += bookmarkId; refilter() }
+        override suspend fun unsuppress(bookmarkId: String) { calls += "unsuppress:$bookmarkId"; hidden -= bookmarkId; refilter() }
+        override suspend fun muteTopic(skeletonKey: String) { calls += "mute:$skeletonKey"; muted += skeletonKey; refilter() }
+        override suspend fun unmuteTopic(skeletonKey: String) { calls += "unmute:$skeletonKey"; muted -= skeletonKey; refilter() }
+        override suspend fun reDeal() { calls += "reDeal"; delay(300) }
+        override fun entranceDay(): Long? = 1L // the fixture day: no entrance unless a test asks for it
+        override fun saveEntranceDay(day: Long) = Unit
     }
 
     private class Calls {
@@ -299,6 +321,134 @@ class DiscoverShelvesTest {
             host.await(activity) { tag(it, "discover_card_hero") }
             withTimeoutOrFail { source.impressions.any { it == "hero" to EngagementSurface.DISCOVER_HERO } }
         } finally { activity.finish() }
+    }
+
+    @Test fun deckFlicksAndOffersAccessibilityActions(): Unit = runBlocking {
+        val source = FakeSource(fullSnapshot().copy(hero = null, onThisDay = emptyList()))
+        source.deck = listOf(item("d0"), item("d1"), item("d2"))
+        val activity = show(source)
+        try {
+            val card = find(activity) { tag(it, "discover_card_d0") }
+            host.main {
+                val labels = card.config[SemanticsActions.CustomActions].map { it.label }
+                assertEquals(listOf("Next card", "Like"), labels)
+                assertEquals("Peek", card.config[SemanticsActions.OnLongClick].label)
+                assertEquals("Card 1 of 3", card.config.getOrNull(SemanticsProperties.StateDescription))
+            }
+            host.main { card.config[SemanticsActions.CustomActions][1].action() }
+            withTimeoutOrFail { source.likes.toList() == listOf("d0" to EngagementSurface.DISCOVER_DECK) }
+            host.main { card.config[SemanticsActions.CustomActions][0].action() }
+            val second = host.await(activity) { tag(it, "discover_card_d1") }
+            host.capture("discover-deck-before-drag")
+            // A fast fling shorter than 40% of the card's width flicks it (velocity alone).
+            val bounds = second.boundsInWindow
+            drag(Offset(bounds.left + 40f, bounds.center.y), Offset(bounds.left + 40f + bounds.width * 0.3f, bounds.center.y))
+            host.await(activity) { tag(it, "discover_card_d2") }
+            withTimeoutOrFail { source.flicks.toList() == listOf("d0", "d1") }
+            // A short drag springs back.
+            val third = host.await(activity) { tag(it, "discover_card_d2") }.boundsInWindow
+            drag(Offset(third.left + 40f, third.center.y), Offset(third.left + 80f, third.center.y), steps = 20, stepMs = 30)
+            delay(500)
+            assertEquals(listOf("d0", "d1"), source.flicks.toList())
+        } finally { activity.finish() }
+    }
+
+    @Test fun peekSheetRecordsSnoozesAndUndoes(): Unit = runBlocking {
+        val source = FakeSource(fullSnapshot())
+        val activity = show(source)
+        try {
+            val gem = find(activity) { tag(it, "discover_card_gem0") }
+            host.main { gem.config[SemanticsActions.OnLongClick].action?.invoke() }
+            host.await(activity) { tag(it, "discover_peek_sheet") }
+            host.capture("discover-peek-sheet")
+            withTimeoutOrFail { "peek:gem0" in source.calls }
+            click(button(activity, "Not now"))
+            host.awaitAbsent(activity) { tag(it, "discover_card_gem0") }
+            click(button(activity, "Undo"))
+            find(activity) { tag(it, "discover_card_gem0") }
+            assertEquals(listOf("peek:gem0", "snooze:gem0", "unsuppress:gem0"), source.calls.toList())
+
+            val again = find(activity) { tag(it, "discover_card_gem0") }
+            host.main { again.config[SemanticsActions.OnLongClick].action?.invoke() }
+            click(button(activity, "Don’t show again"))
+            host.awaitAbsent(activity) { tag(it, "discover_card_gem0") }
+            assertTrue("never:gem0" in source.calls)
+        } finally { activity.finish() }
+    }
+
+    @Test fun peekLikesAddsToCollectionAndReturnsFocus(): Unit = runBlocking {
+        val source = FakeSource(fullSnapshot())
+        // Cards take input focus only outside touch mode (keyboard, D-pad), as in any Android app.
+        host.instrumentation.setInTouchMode(false)
+        val activity = show(source)
+        try {
+            val hero = host.await(activity) { tag(it, "discover_card_hero") }
+            host.main { hero.config[SemanticsActions.OnLongClick].action?.invoke() }
+            click(host.await(activity) { tag(it, "discover_peek_like") })
+            withTimeoutOrFail { source.likes.toList() == listOf("hero" to EngagementSurface.DISCOVER_PEEK) }
+            click(button(activity, "Add to collection"))
+            host.await(activity) { host.text(it, "Choose collections") }
+            host.awaitAbsent(activity) { tag(it, "discover_peek_sheet") }
+            // BACK during the sheet's entrance can be swallowed; let it settle first.
+            host.capture("discover-peek-collection")
+            host.instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            host.awaitAbsent(activity) { host.text(it, "Choose collections") }
+            host.await(activity) { tag(it, "discover_card_hero") && it.config.getOrNull(SemanticsProperties.Focused) == true }
+        } finally {
+            activity.finish()
+            host.instrumentation.setInTouchMode(true)
+        }
+    }
+
+    @Test fun mapMuteHidesTheBubbleUntilUndo(): Unit = runBlocking {
+        val source = FakeSource(fullSnapshot())
+        val activity = show(source)
+        try {
+            val bubble = find(activity) { tag(it, "discover_map_kotlin") }
+            host.main {
+                assertEquals("Mute topic", bubble.config[SemanticsActions.OnLongClick].label)
+                bubble.config[SemanticsActions.OnLongClick].action?.invoke()
+            }
+            host.awaitAbsent(activity) { tag(it, "discover_map_kotlin") }
+            host.capture("discover-map-muted")
+            click(button(activity, "Undo"))
+            host.await(activity) { tag(it, "discover_map_kotlin") }
+            assertEquals(listOf("mute:kotlin", "unmute:kotlin"), source.calls.toList())
+        } finally { activity.finish() }
+    }
+
+    @Test fun pullingDownReDealsOnceAndFlipsTheSnapshotShelves(): Unit = runBlocking {
+        val source = FakeSource(fullSnapshot())
+        source.justSaved.value = listOf(item("new"))
+        val activity = show(source)
+        try {
+            val list = host.await(activity) { tag(it, "discover_card_hero") }.boundsInWindow
+            drag(Offset(list.center.x, list.top + 40f), Offset(list.center.x, list.top + 900f), steps = 16, stepMs = 20)
+            delay(120)
+            host.capture("discover-redeal-mid-flip")
+            withTimeoutOrFail { source.calls.toList() == listOf("reDeal") }
+            delay(800)
+            find(activity) { tag(it, "discover_card_new") }
+            assertEquals(listOf("reDeal"), source.calls.toList())
+        } finally { activity.finish() }
+    }
+
+    /**
+     * Injects a drag in window coordinates (the test activity is full screen). Event times advance by
+     * exactly [stepMs] per step, so the measured velocity does not depend on how long injection takes.
+     */
+    private suspend fun drag(start: Offset, end: Offset, steps: Int = 6, stepMs: Long = 12) {
+        val downTime = android.os.SystemClock.uptimeMillis()
+        fun send(action: Int, position: Offset, step: Int) {
+            val event = android.view.MotionEvent.obtain(downTime, downTime + step * stepMs, action, position.x, position.y, 0)
+            try { host.instrumentation.sendPointerSync(event) } finally { event.recycle() }
+        }
+        send(android.view.MotionEvent.ACTION_DOWN, start, 0)
+        for (step in 1..steps) {
+            delay(stepMs)
+            send(android.view.MotionEvent.ACTION_MOVE, start + (end - start) * (step / steps.toFloat()), step)
+        }
+        send(android.view.MotionEvent.ACTION_UP, end, steps)
     }
 
     private fun shell(command: String): String =

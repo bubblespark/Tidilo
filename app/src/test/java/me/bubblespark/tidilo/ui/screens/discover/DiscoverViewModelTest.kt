@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.discover
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,6 +16,7 @@ import me.bubblespark.tidilo.data.discover.DiscoverPick
 import me.bubblespark.tidilo.data.discover.DiscoverReason
 import me.bubblespark.tidilo.data.discover.DiscoverShelf
 import me.bubblespark.tidilo.data.discover.DiscoverSnapshot
+import me.bubblespark.tidilo.data.discover.MapBubble
 import me.bubblespark.tidilo.data.discover.OnThisDayPeriod
 import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
@@ -65,6 +68,19 @@ class DiscoverViewModelTest {
         }
         override fun seenShelves() = seen
         override fun saveSeenShelves(shelves: Set<DiscoverShelf>) { seen = shelves }
+        val calls = mutableListOf<String>()
+        var hideWrite: suspend () -> Unit = {}
+        var reDealGate: CompletableDeferred<Unit>? = null
+        var entrance: Long? = null
+        override suspend fun peek(bookmarkId: String) { calls += "peek:$bookmarkId" }
+        override suspend fun snooze(bookmarkId: String) { hideWrite(); calls += "snooze:$bookmarkId" }
+        override suspend fun neverAgain(bookmarkId: String) { hideWrite(); calls += "never:$bookmarkId" }
+        override suspend fun unsuppress(bookmarkId: String) { calls += "unsuppress:$bookmarkId" }
+        override suspend fun muteTopic(skeletonKey: String) { calls += "mute:$skeletonKey" }
+        override suspend fun unmuteTopic(skeletonKey: String) { calls += "unmute:$skeletonKey" }
+        override suspend fun reDeal() { calls += "reDeal"; reDealGate?.await() }
+        override fun entranceDay() = entrance
+        override fun saveEntranceDay(day: Long) { entrance = day }
     }
 
     private fun TestScope.viewModel(source: FakeSource): StateFlow<DiscoverUiState> {
@@ -135,11 +151,12 @@ class DiscoverViewModelTest {
         val state = viewModel(source)
         assertEquals(1, source.deals)
         assertEquals("a", state.value.deck.current?.id)
-        lastVm!!.nextCard()
-        lastVm!!.nextCard()
+        lastVm!!.nextCard("a")
+        lastVm!!.nextCard("a") // a second tap for the same card (during the throw) is ignored
+        lastVm!!.nextCard("b")
         assertTrue(state.value.deck.exhausted)
         assertEquals(listOf("a" to EngagementSurface.DISCOVER_DECK, "b" to EngagementSurface.DISCOVER_DECK), source.flicks)
-        lastVm!!.nextCard()
+        lastVm!!.nextCard("b")
         assertEquals(2, source.flicks.size)
         lastVm!!.dealAnother()
         assertEquals(2, source.deals)
@@ -171,8 +188,8 @@ class DiscoverViewModelTest {
         source.snapshot.value = snapshot(10)
         source.deck = listOf(item("a"), item("secret").copy(isPrivate = true), item("b"), item("hidden").copy(isPrivate = true))
         val state = viewModel(source)
-        lastVm!!.nextCard()
-        lastVm!!.nextCard() // top card is now "b"
+        lastVm!!.nextCard("a")
+        lastVm!!.nextCard("secret") // top card is now "b"
         source.privateVisible.value = false
         assertEquals(listOf("a", "b"), state.value.deck.cards.map { it.id })
         assertEquals("b", state.value.deck.current?.id)
@@ -206,5 +223,162 @@ class DiscoverViewModelTest {
         viewModel(source)
         lastVm!!.onImpression("x", DiscoverShelf.SLEEPING_GEMS)
         assertEquals(listOf("x" to EngagementSurface.DISCOVER_SLEEPING_GEMS), source.impressions)
+    }
+
+    @Test fun deckRemoveAndRestoreKeepTheTopCard() {
+        val deck = DeckState(listOf(item("a"), item("b"), item("c"), item("d")), index = 2) // top = c
+        assertEquals("c", deck.remove("a").current?.id)
+        assertEquals("d", deck.remove("c").current?.id)
+        assertEquals("c", deck.remove("d").current?.id)
+        assertEquals(deck, deck.remove("missing"))
+        assertEquals(deck, deck.remove("a").restore(item("a"), 0))
+        assertEquals(deck, deck.remove("c").restore(item("c"), 2))
+        assertEquals(deck, deck.restore(item("c"), 0))
+        assertTrue(DeckState(listOf(item("a"))).next().exhausted)
+        assertTrue(DeckState(listOf(item("a")), index = 1).next().exhausted)
+    }
+
+    @Test fun snoozeHidesTheDeckCardAndUndoPutsItBack() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        source.snapshot.value = snapshot(10)
+        source.deck = listOf(item("a"), item("b"))
+        val state = viewModel(source)
+        lastVm!!.snooze(item("a"))
+        assertEquals("b", state.value.deck.current?.id)
+        val notice = state.value.notice!!
+        assertEquals(DiscoverNotice(DiscoverNotice.Kind.SNOOZED, "a", "a"), notice)
+        lastVm!!.noticeShown()
+        assertNull(state.value.notice)
+        lastVm!!.undo(notice)
+        assertEquals("a", state.value.deck.current?.id)
+        lastVm!!.neverAgain(item("gem")) // not in the deck
+        assertEquals(DiscoverNotice.Kind.HIDDEN, state.value.notice?.kind)
+        assertEquals(listOf("snooze:a", "unsuppress:a", "never:gem"), source.calls)
+    }
+
+    @Test fun failedHideRestoresTheCardButCancellationDoesNot() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        source.snapshot.value = snapshot(10)
+        source.deck = listOf(item("a"), item("b"))
+        val state = viewModel(source)
+        source.hideWrite = { error("write failed") }
+        lastVm!!.snooze(item("a"))
+        assertEquals("a", state.value.deck.current?.id)
+        assertNull(state.value.notice)
+        source.hideWrite = { throw CancellationException("left Discover") }
+        lastVm!!.snooze(item("a"))
+        assertEquals("b", state.value.deck.current?.id)
+    }
+
+    @Test fun peekRecordsAndLikesWithThePeekSurface() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        source.snapshot.value = snapshot(10)
+        val state = viewModel(source)
+        lastVm!!.onPeek("x")
+        lastVm!!.togglePeekLike(item("x"))
+        assertEquals(listOf("peek:x"), source.calls)
+        assertEquals(listOf("x" to EngagementSurface.DISCOVER_PEEK), source.likes)
+        assertTrue(state.value.deck.isLiked(item("x")))
+    }
+
+    @Test fun muteShowsANoticeAndUndoUnmutes() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        val state = viewModel(source)
+        lastVm!!.muteTopic(MapBubble("Kotlin", "kotlin", 1f))
+        val notice = state.value.notice!!
+        assertEquals(DiscoverNotice(DiscoverNotice.Kind.MUTED, "kotlin", "Kotlin"), notice)
+        lastVm!!.undo(notice)
+        assertEquals(listOf("mute:kotlin", "unmute:kotlin"), source.calls)
+    }
+
+    @Test fun reDealRunsOnceWhilePending() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        val gate = CompletableDeferred<Unit>()
+        source.reDealGate = gate
+        val state = viewModel(source)
+        lastVm!!.reDeal()
+        lastVm!!.reDeal()
+        assertTrue(state.value.reDealing)
+        gate.complete(Unit)
+        assertFalse(state.value.reDealing)
+        assertEquals(listOf("reDeal"), source.calls)
+    }
+
+    @Test fun entrancePlaysOnTheFirstOpenOfTheDayOnly() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        source.snapshot.value = snapshot(10)
+        val state = viewModel(source)
+        assertTrue(state.value.playEntrance)
+        lastVm!!.entranceShown()
+        assertFalse(state.value.playEntrance)
+        assertFalse(viewModel(source).value.playEntrance) // same day, new visit
+        // A new day: only the first Discover that sees it plays the entrance.
+        source.snapshot.value = snapshot(10).copy(day = 2)
+        assertTrue(state.value.playEntrance)
+        assertFalse(viewModel(source).value.playEntrance)
+    }
+
+    @Test fun undoAfterHidingPrivateContentKeepsThePrivateCardOut() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        source.snapshot.value = snapshot(10)
+        source.deck = listOf(item("secret").copy(isPrivate = true), item("b"))
+        val state = viewModel(source)
+        lastVm!!.snooze(state.value.deck.current!!)
+        val notice = state.value.notice!!
+        source.privateVisible.value = false
+        lastVm!!.undo(notice)
+        assertEquals(listOf("b"), state.value.deck.cards.map { it.id })
+        // A failed write rolls back the same way.
+        source.privateVisible.value = true
+        source.deck = listOf(item("hidden").copy(isPrivate = true), item("c"))
+        lastVm!!.dealAnother()
+        source.hideWrite = { source.privateVisible.value = false; error("write failed") }
+        lastVm!!.snooze(state.value.deck.current!!)
+        assertEquals(listOf("c"), state.value.deck.cards.map { it.id })
+    }
+
+    @Test fun undoAfterANewDealPutsTheCardInTheCurrentDeck() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        source.snapshot.value = snapshot(10)
+        source.deck = listOf(item("a"), item("b"))
+        val state = viewModel(source)
+        lastVm!!.snooze(item("a"))
+        val notice = state.value.notice!!
+        source.deck = listOf(item("x"), item("y"))
+        lastVm!!.dealAnother()
+        lastVm!!.undo(notice)
+        lastVm!!.undo(notice)
+        assertEquals(listOf("a", "x", "y"), state.value.deck.cards.map { it.id })
+    }
+
+    @Test fun storedLikeStateShowsThroughOnceTheShelvesCatchUp() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        source.snapshot.value = snapshot(10, hero = true)
+        val state = viewModel(source)
+        val hero = state.value.hero!!.item
+        lastVm!!.togglePeekLike(hero)
+        assertTrue(state.value.deck.isLiked(state.value.findItem("hero")!!))
+        // The shelves now store the like; then Detail unlikes it.
+        source.snapshot.value = snapshot(10).copy(hero = DiscoverPick(hero.copy(isLiked = true), null))
+        source.snapshot.value = snapshot(10).copy(hero = DiscoverPick(hero.copy(isLiked = false), null))
+        assertFalse(state.value.deck.isLiked(state.value.findItem("hero")!!))
+    }
+
+    @Test fun deckLikeUpdatesTheDealtCopy() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        source.snapshot.value = snapshot(10)
+        source.deck = listOf(item("a"))
+        val state = viewModel(source)
+        lastVm!!.toggleDeckLike(state.value.deck.current!!)
+        assertTrue(state.value.deck.current!!.isLiked)
+    }
+
+    @Test fun anotherDiscoverDayWhileOpenPlaysTheEntranceAgain() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        source.snapshot.value = snapshot(10)
+        val state = viewModel(source)
+        lastVm!!.entranceShown()
+        source.snapshot.value = snapshot(10).copy(day = 2)
+        assertTrue(state.value.playEntrance)
     }
 }

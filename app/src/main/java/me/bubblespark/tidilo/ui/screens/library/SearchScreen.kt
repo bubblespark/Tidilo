@@ -108,7 +108,8 @@ fun SearchScreen(
     onNavigateToTagSelection: () -> Unit = {},
     onNavigateToDetail: (String) -> Unit = {},
     modifier: Modifier = Modifier,
-    onNavigateBack: () -> Unit = {}
+    onNavigateBack: () -> Unit = {},
+    bottomContentPadding: Dp = SearchTrailingPadding
 ) {
     val context = LocalContext.current
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
@@ -314,7 +315,7 @@ fun SearchScreen(
         bodyModifier = backgroundSemantics,
         hideHeaderOnScroll = true,
         headerVisible = !peekOpen,
-        bottomContentPadding = SearchTrailingPadding,
+        bottomContentPadding = bottomContentPadding,
         header = { TidiloFrostedHeader(modifier = backgroundSemantics, navigationIcon = {
             IconButton(onClick = onNavigateBack, modifier = Modifier.padding(end = 4.dp).size(48.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back),
@@ -355,7 +356,7 @@ fun SearchScreen(
                 val density = LocalDensity.current
                 bookmarkGridLayout(
                     contentPadding = contentPadding,
-                    trailingPadding = SearchTrailingPadding,
+                    trailingPadding = bottomContentPadding,
                     leadingContentHeightPx = with(density) {
                         searchInputHeight.roundToPx() + itemSpacing.roundToPx()
                     }

@@ -3,15 +3,23 @@ package me.bubblespark.tidilo.ui.navigation
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import me.bubblespark.tidilo.ui.components.HeaderDefaults
+import me.bubblespark.tidilo.ui.screens.discover.DiscoverScreen
 import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
 import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
 
@@ -30,16 +38,32 @@ import androidx.lifecycle.compose.dropUnlessResumed
 import me.bubblespark.tidilo.ui.screens.settings.SettingsDebugScreen
 import me.bubblespark.tidilo.ui.screens.settings.GenerateContentRequestScreen
 
+internal fun NavHostController.navigateTopLevel(destination: TopLevelDestination) =
+    navigate(destination.route) {
+        popUpTo(Screen.Discover.route) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+
 @Composable
 fun TidiloNavGraph(
     navController: NavHostController,
     importViewModel: ImportViewModel,
     libraryViewModel: LibraryViewModel = viewModel(),
     modifier: Modifier = Modifier,
+    discoverPreviewEnabled: Boolean = false,
     onOpenNavigation: () -> Unit = {},
     onOpenManualImport: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val topLevelSlideOffsetPx = with(density) { 14.dp.roundToPx() }
+    val topLevelEnterSpec = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = 0.8f, stiffness = 380f)
+    fun AnimatedContentTransitionScope<androidx.navigation.NavBackStackEntry>.isTopLevelSwitch(): Boolean =
+        discoverPreviewEnabled &&
+            topLevelDestinationOf(initialState.destination.route) != null &&
+            topLevelDestinationOf(targetState.destination.route) != null
+
     // The only collector, so a failure shows one Toast even while two screens share a transition.
     LaunchedEffect(libraryViewModel) {
         libraryViewModel.events.collect {
@@ -48,73 +72,100 @@ fun TidiloNavGraph(
     }
     NavHost(
         navController = navController,
-        startDestination = Screen.Library.route,
+        startDestination = if (discoverPreviewEnabled) Screen.Discover.route else Screen.Library.route,
         modifier = modifier,
         enterTransition = {
-            val direction = if (targetState.id == navController.previousBackStackEntry?.id) {
-                AnimatedContentTransitionScope.SlideDirection.End
+            if (isTopLevelSwitch()) {
+                fadeIn(animationSpec = tween(220)) + slideInVertically(animationSpec = topLevelEnterSpec) { topLevelSlideOffsetPx }
             } else {
-                AnimatedContentTransitionScope.SlideDirection.Start
-            }
-            slideIntoContainer(
-                towards = direction,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
+                val direction = if (targetState.id == navController.previousBackStackEntry?.id) {
+                    AnimatedContentTransitionScope.SlideDirection.End
+                } else {
+                    AnimatedContentTransitionScope.SlideDirection.Start
+                }
+                slideIntoContainer(
+                    towards = direction,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
                 )
-            )
+            }
         },
         exitTransition = {
-            val direction = if (targetState.id == navController.previousBackStackEntry?.id) {
-                AnimatedContentTransitionScope.SlideDirection.End
+            if (isTopLevelSwitch()) {
+                fadeOut(animationSpec = tween(220))
             } else {
-                AnimatedContentTransitionScope.SlideDirection.Start
-            }
-            slideOutOfContainer(
-                towards = direction,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
+                val direction = if (targetState.id == navController.previousBackStackEntry?.id) {
+                    AnimatedContentTransitionScope.SlideDirection.End
+                } else {
+                    AnimatedContentTransitionScope.SlideDirection.Start
+                }
+                slideOutOfContainer(
+                    towards = direction,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
                 )
-            )
+            }
         },
         popEnterTransition = {
-            slideIntoContainer(
-                towards = AnimatedContentTransitionScope.SlideDirection.End,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
+            if (isTopLevelSwitch()) {
+                fadeIn(animationSpec = tween(220)) + slideInVertically(animationSpec = topLevelEnterSpec) { topLevelSlideOffsetPx }
+            } else {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.End,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
                 )
-            )
+            }
         },
         popExitTransition = {
-            slideOutOfContainer(
-                towards = AnimatedContentTransitionScope.SlideDirection.End,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
+            if (isTopLevelSwitch()) {
+                fadeOut(animationSpec = tween(220))
+            } else {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.End,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
                 )
-            )
+            }
         },
         predictivePopEnterTransition = { _ ->
-            slideIntoContainer(
-                towards = AnimatedContentTransitionScope.SlideDirection.End,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
+            if (isTopLevelSwitch()) {
+                fadeIn(animationSpec = tween(220)) + slideInVertically(animationSpec = topLevelEnterSpec) { topLevelSlideOffsetPx }
+            } else {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.End,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
                 )
-            )
+            }
         },
         predictivePopExitTransition = { _ ->
-            slideOutOfContainer(
-                towards = AnimatedContentTransitionScope.SlideDirection.End,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
+            if (isTopLevelSwitch()) {
+                fadeOut(animationSpec = tween(220))
+            } else {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.End,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
                 )
-            )
+            }
         }
     ) {
+        composable(Screen.Discover.route) {
+            DiscoverScreen(onOpenNavigation = onOpenNavigation)
+        }
         composable(Screen.Library.route) {
             LibraryScreen(
                 viewModel = libraryViewModel,
@@ -128,22 +179,39 @@ fun TidiloNavGraph(
                     navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
                         launchSingleTop = true
                     }
-                }
+                },
+                showRadialMenu = !discoverPreviewEnabled
             )
         }
         composable(Screen.Search.route) {
-            SearchScreen(
-                viewModel = libraryViewModel,
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToTagSelection = {
-                    navController.navigate(Screen.TagSelection.route)
-                },
-                onNavigateToDetail = { bookmarkId ->
-                    navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
-                        launchSingleTop = true
+            if (discoverPreviewEnabled) {
+                SearchScreen(
+                    viewModel = libraryViewModel,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToTagSelection = {
+                        navController.navigate(Screen.TagSelection.route)
+                    },
+                    onNavigateToDetail = { bookmarkId ->
+                        navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
+                            launchSingleTop = true
+                        }
+                    },
+                    bottomContentPadding = HeaderDefaults.FloatingNavigationClearance
+                )
+            } else {
+                SearchScreen(
+                    viewModel = libraryViewModel,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToTagSelection = {
+                        navController.navigate(Screen.TagSelection.route)
+                    },
+                    onNavigateToDetail = { bookmarkId ->
+                        navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
+                            launchSingleTop = true
+                        }
                     }
-                }
-            )
+                )
+            }
         }
         composable(
             route = Screen.BookmarkDetail.route,

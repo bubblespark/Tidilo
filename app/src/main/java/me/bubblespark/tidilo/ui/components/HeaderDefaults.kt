@@ -17,6 +17,9 @@ object HeaderDefaults {
     val HorizontalPadding = 20.dp
     val LibraryActionSize = 56.dp
     val LibraryActionClearance = LibraryActionSize + 24.dp + 24.dp
+    val FloatingNavigationHeight = 64.dp
+    val FloatingNavigationOffset = 16.dp
+    val FloatingNavigationClearance = FloatingNavigationHeight + FloatingNavigationOffset + 16.dp
     val AiReviewActionSize = 86.dp
     val AiReviewActionClearance = AiReviewActionSize + 16.dp + 16.dp
     val DetailActionSize = 54.dp

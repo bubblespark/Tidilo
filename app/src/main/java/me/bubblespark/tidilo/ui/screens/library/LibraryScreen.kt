@@ -138,7 +138,8 @@ fun LibraryScreen(
     onOpenManualImport: () -> Unit = {},
     onNavigateToSearch: () -> Unit = {},
     onNavigateToDetail: (String) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showRadialMenu: Boolean = true
 ) {
     val context = LocalContext.current
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
@@ -340,15 +341,16 @@ fun LibraryScreen(
         }
     }
 
+    val bottomClearance = if (showRadialMenu) HeaderDefaults.LibraryActionClearance else HeaderDefaults.FloatingNavigationClearance
     val backgroundSemantics = if (radialMenuOpen || peekBookmark != null) Modifier.clearAndSetSemantics {} else Modifier
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(),
         modifier = modifier,
         bodyModifier = backgroundSemantics,
         hideHeaderOnScroll = true,
-        bottomContentPadding = HeaderDefaults.LibraryActionClearance,
+        bottomContentPadding = bottomClearance,
         headerVisible = peekBookmark == null,
         overlay = {
-            if (peekBookmark == null && !showCollectionEditorSheet) {
+            if (showRadialMenu && peekBookmark == null && !showCollectionEditorSheet) {
                 me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu(radialMenuState, filterMode,
                     viewModel::setFilterMode, onNavigateToSearch)
             }

@@ -508,4 +508,10 @@
         <item quantity="one">+%1$d tag</item>
         <item quantity="other">+%1$d tags</item>
     </plurals>
+
+    <!-- Discover preview navigation shell -->
+    <string name="nav_discover">Discover</string>
+    <string name="discover_greeting_growing">Your shelves fill in as you save</string>
+    <string name="debug_discover_preview_title">Discover preview</string>
+    <string name="debug_discover_preview_desc">Try the new Discover home and floating toolbar. The app restarts.</string>
 </resources>

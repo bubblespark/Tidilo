@@ -30,7 +30,8 @@ private val navigationFilters = listOf(
 @Composable
 fun LibraryNavigationRail(state: WideNavigationRailState, selectedFilter: LibraryFilterMode,
     onSelectFilter: (LibraryFilterMode) -> Unit, onSearch: () -> Unit, onNotifications: () -> Unit,
-    onManualImport: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier, onTrash: () -> Unit = {}) {
+    onManualImport: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier, onTrash: () -> Unit = {},
+    trimmed: Boolean = false) {
     var contentPresent by remember { mutableStateOf(false) }
     val layer = rememberOverlayBlurLayer(state.targetValue == WideNavigationRailValue.Expanded || contentPresent)
     val shape = WideNavigationRailDefaults.modalExpandedShape
@@ -56,8 +57,10 @@ fun LibraryNavigationRail(state: WideNavigationRailState, selectedFilter: Librar
             HorizontalDivider()
             BoxWithConstraints(Modifier.weight(1f)) {
                 Column(Modifier.fillMaxWidth().heightIn(min = maxHeight).verticalScroll(rememberScrollState()).padding(12.dp)) {
-                    NavigationDrawerItem(label = { Text(stringResource(R.string.nav_search)) }, selected = false,
-                        onClick = onSearch, icon = { Icon(Icons.Default.Search, null) })
+                    if (!trimmed) {
+                        NavigationDrawerItem(label = { Text(stringResource(R.string.nav_search)) }, selected = false,
+                            onClick = onSearch, icon = { Icon(Icons.Default.Search, null) })
+                    }
                     NavigationDrawerItem(label = { Text(stringResource(R.string.trash_title)) }, selected = false,
                         onClick = onTrash, icon = { Icon(Icons.Default.Delete, null) })
                     Text(stringResource(R.string.navigation_filters), Modifier.padding(start = 16.dp, top = 24.dp, bottom = 12.dp),
@@ -69,8 +72,10 @@ fun LibraryNavigationRail(state: WideNavigationRailState, selectedFilter: Librar
                     Spacer(Modifier.weight(1f))
                     Spacer(Modifier.height(32.dp))
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
-                    NavigationDrawerItem(label = { Text(stringResource(R.string.navigation_manual_import)) }, selected = false,
-                        onClick = onManualImport, icon = { Icon(Icons.Default.AddLink, null) })
+                    if (!trimmed) {
+                        NavigationDrawerItem(label = { Text(stringResource(R.string.navigation_manual_import)) }, selected = false,
+                            onClick = onManualImport, icon = { Icon(Icons.Default.AddLink, null) })
+                    }
                     NavigationDrawerItem(label = { Text(stringResource(R.string.title_settings)) }, selected = false,
                         onClick = onSettings, icon = { Icon(Icons.Default.Settings, null) })
                 }

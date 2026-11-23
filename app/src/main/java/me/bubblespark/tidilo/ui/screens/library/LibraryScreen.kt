@@ -138,7 +138,8 @@ fun LibraryScreen(
     onOpenManualImport: () -> Unit = {},
     onNavigateToSearch: () -> Unit = {},
     onNavigateToDetail: (String) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showRadialMenu: Boolean = true
 ) {
     val context = LocalContext.current
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
@@ -340,15 +341,16 @@ fun LibraryScreen(
         }
     }
 
+    val bottomClearance = if (showRadialMenu) HeaderDefaults.LibraryActionClearance else HeaderDefaults.FloatingNavigationClearance
     val backgroundSemantics = if (radialMenuOpen || peekBookmark != null) Modifier.clearAndSetSemantics {} else Modifier
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(),
         modifier = modifier,
         bodyModifier = backgroundSemantics,
         hideHeaderOnScroll = true,
-        bottomContentPadding = HeaderDefaults.LibraryActionClearance,
+        bottomContentPadding = bottomClearance,
         headerVisible = peekBookmark == null,
         overlay = {
-            if (peekBookmark == null && !showCollectionEditorSheet) {
+            if (showRadialMenu && peekBookmark == null && !showCollectionEditorSheet) {
                 me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu(radialMenuState, filterMode,
                     viewModel::setFilterMode, onNavigateToSearch)
             }
@@ -767,6 +769,8 @@ fun LibraryScreen(
                                                         generation = session?.key.orEmpty(),
                                                         active = state == displayState && viewMode == mode,
                                                         contentPadding = contentPadding,
+                                                        bottomClearance = bottomClearance,
+                                                        showRadialMenu = showRadialMenu,
                                                         onOpenBookmark = onNavigateToDetail,
                                                         onToggleLike = { viewModel.toggleLike(it, EngagementSurface.LIBRARY) },
                                                         onPeekBookmark = { item ->
@@ -833,6 +837,8 @@ fun LibraryScreen(
                                                 generation = session?.key.orEmpty(),
                                                 active = state == displayState && viewMode == mode,
                                                 contentPadding = contentPadding,
+                                                bottomClearance = bottomClearance,
+                                                showRadialMenu = showRadialMenu,
                                                 leadingContent = scopeRow,
                                                 leadingContentHeight = rememberNewestFirstScopeRowHeight(),
                                                 showRssSource = includeRss,
@@ -877,7 +883,9 @@ private fun LibraryBookmarkGrid(
     onPeekBookmark: (BookmarkItem) -> Unit,
     leadingContent: (@Composable () -> Unit)? = null,
     leadingContentHeight: Dp = 0.dp,
-    showRssSource: Boolean = false
+    showRssSource: Boolean = false,
+    bottomClearance: Dp = HeaderDefaults.LibraryActionClearance,
+    showRadialMenu: Boolean = true
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val context = LocalContext.current
@@ -885,11 +893,11 @@ private fun LibraryBookmarkGrid(
         val leadingItems = if (leadingContent != null) 1 else 0
         val layout = bookmarkGridLayout(
             contentPadding = contentPadding,
-            trailingPadding = HeaderDefaults.LibraryActionClearance,
+            trailingPadding = bottomClearance,
             leadingContentHeightPx = if (leadingContent != null) {
                 with(density) { (leadingContentHeight + BookmarkGridVerticalGap).roundToPx() }
             } else 0,
-            protectLibraryShortcut = true
+            protectLibraryShortcut = showRadialMenu
         )
         if (active) {
             RestoreBookmarkGridAnchor(state, anchor, generation, layout, leadingItems) { key ->

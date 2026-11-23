@@ -497,4 +497,10 @@
     <plurals name="bookmark_remaining_entity_tags">
         <item quantity="other">+%1$d 件の固有タグ</item>
     </plurals>
+
+    <!-- Discover preview navigation shell -->
+    <string name="nav_discover">発見</string>
+    <string name="discover_greeting_growing">集めたものが、少しずつ棚になります</string>
+    <string name="debug_discover_preview_title">発見プレビュー</string>
+    <string name="debug_discover_preview_desc">新しい「発見」ホームとフローティングツールバーを試します。アプリが再起動します。</string>
 </resources>

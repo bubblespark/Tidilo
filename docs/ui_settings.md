@@ -40,6 +40,7 @@
 
 ## 4. Debug Diagnostics
 
+- **Discover preview (`BuildConfig.DEBUG` only)**: A full-row toggleable `Switch` card at the top of `SettingsDebugScreen` controls `AppConfig.discoverPreviewEnabled` (persisted under `discover_preview_enabled`, default `false`). Toggling it saves the flag and relaunches `MainActivity` with `FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_CLEAR_TASK` so the new navigation graph starts cleanly.
 - **Device & SDK**: Device model and Android runtime SDK come from the device. The app minimum, target, and compile SDK come from installed application metadata. Compile SDK is marked unspecified when the package provides no value. Diagnostic labels sit above full-width, wrapping values.
 - **Prompt API status**: Debug checks model readiness on entry with the same passive query used by AI Analysis. Check Status refreshes the displayed result. Debug includes the returned SDK status code and distinguishes a required download from one in progress. Run Test explicitly sends a sample prompt. Opening the screen or refreshing status does not start inference or a download.
 

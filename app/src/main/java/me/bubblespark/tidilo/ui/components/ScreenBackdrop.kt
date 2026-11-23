@@ -15,10 +15,12 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import me.bubblespark.tidilo.ui.theme.LocalOverlayBlurSetting
 
+private class ScreenBodySourceKey
+
 /** A screen's body is the only input; its foreground chrome is never captured here. */
 @Stable
 internal class ScreenBackdropState(val haze: HazeState) {
-    val sourceKey = Any()
+    val sourceKey: Any = ScreenBodySourceKey()
 }
 
 internal val LocalScreenBackdropState = staticCompositionLocalOf<ScreenBackdropState?> { null }
@@ -59,5 +61,23 @@ internal fun rememberScreenBackdropInput(visible: Boolean = true): HazeInput.Sou
         else HazeInput.Sources(state.haze,
             selection = HazeSourceSelection.All.where { it.key === state.sourceKey || it.key === ScreenCanvasSourceKey },
             retention = HazeSourceRetention.ClearWhenUnavailable)
+    }
+}
+
+/** App-level chrome samples every active screen body plus the stationary canvas. */
+@Composable
+internal fun rememberAppChromeBackdropInput(visible: Boolean = true): HazeInput.Sources? {
+    val haze = LocalScreenBackdropHaze.current
+    val enabled = visible && haze != null && LocalOverlayBlurController.current != null &&
+        LocalOverlayBlurSetting.current.enabled && LocalView.current.isHardwareAccelerated
+    return remember(haze, enabled) {
+        if (!enabled) null
+        else HazeInput.Sources(
+            haze,
+            selection = HazeSourceSelection.All.where {
+                it.key is ScreenBodySourceKey || it.key === ScreenCanvasSourceKey
+            },
+            retention = HazeSourceRetention.ClearWhenUnavailable
+        )
     }
 }

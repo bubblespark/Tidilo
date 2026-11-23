@@ -37,6 +37,7 @@ object AppConfig {
     private const val KEY_PRIVATE_CONTENT_BOOKMARKABLE = "private_content_bookmarkable"
     private const val KEY_LEGACY_NSFW_CONTENT_BOOKMARKABLE = "nsfw_content_bookmarkable"
     private const val KEY_AI_ANALYSIS_MODE = "ai_analysis_mode"
+    private const val KEY_DISCOVER_PREVIEW_ENABLED = "discover_preview_enabled"
 
     private val prefs by lazy {
         TidiloApplication.instance.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -158,5 +159,15 @@ object AppConfig {
 
     internal suspend fun initializeAiAnalysisMode(isFreshInstallation: Boolean) {
         aiAnalysisPreference.initialize(isFreshInstallation) { me.bubblespark.tidilo.data.AiCoreAvailability.check() }
+    }
+
+    private val _discoverPreviewEnabled = MutableStateFlow(
+        runCatching { prefs.getBoolean(KEY_DISCOVER_PREVIEW_ENABLED, false) }.getOrDefault(false)
+    )
+    val discoverPreviewEnabled: StateFlow<Boolean> = _discoverPreviewEnabled.asStateFlow()
+
+    fun setDiscoverPreviewEnabled(enabled: Boolean) {
+        _discoverPreviewEnabled.value = enabled
+        runCatching { prefs.edit().putBoolean(KEY_DISCOVER_PREVIEW_ENABLED, enabled).apply() }
     }
 }

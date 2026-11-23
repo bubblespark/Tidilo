@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.hazeBlur
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
@@ -28,9 +29,9 @@ internal fun ChromeBlurBackground(
     modifier: Modifier = Modifier,
     mask: Brush? = null,
     outline: Boolean = true,
-    unavailableColor: Color = Color.Unspecified
+    unavailableColor: Color = Color.Unspecified,
+    input: HazeInput.Sources? = rememberScreenBackdropInput()
 ) {
-    val input = rememberScreenBackdropInput()
     if (input == null) {
         if (unavailableColor != Color.Unspecified) Box(modifier.background(unavailableColor, shape))
         return

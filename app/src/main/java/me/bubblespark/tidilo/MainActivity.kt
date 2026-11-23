@@ -12,14 +12,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -48,13 +45,19 @@ import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.ImportOutcome
 import me.bubblespark.tidilo.ui.components.AmbientLightingState
 import me.bubblespark.tidilo.ui.components.LocalAmbientLighting
+import me.bubblespark.tidilo.ui.components.StatusBarScrim
 import me.bubblespark.tidilo.ui.components.TidiloBackground
 import me.bubblespark.tidilo.ui.navigation.LocalBarsVisible
 import me.bubblespark.tidilo.ui.navigation.Screen
 import me.bubblespark.tidilo.ui.navigation.LibraryNavigationRail
+import me.bubblespark.tidilo.ui.navigation.TidiloFloatingNavigation
+import me.bubblespark.tidilo.ui.navigation.TopLevelDestination
+import me.bubblespark.tidilo.ui.navigation.navigateTopLevel
 import me.bubblespark.tidilo.ui.navigation.normalizeNotificationDestination
+import me.bubblespark.tidilo.ui.navigation.topLevelDestinationOf
 import me.bubblespark.tidilo.ui.screens.importscreen.ImportUrlDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.WideNavigationRailValue
 import androidx.compose.material3.rememberWideNavigationRailState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -153,7 +156,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TidiloApp(
     sharedUrl: String? = null,
@@ -161,7 +164,8 @@ fun TidiloApp(
     importViewModel: ImportViewModel = viewModel(),
     libraryViewModel: LibraryViewModel = viewModel(),
     notificationRoute: String? = null,
-    onNotificationConsumed: () -> Unit = {}
+    onNotificationConsumed: () -> Unit = {},
+    discoverPreviewEnabled: Boolean = remember { AppConfig.discoverPreviewEnabled.value }
 ) {
     val navController = rememberNavController()
     val railState = rememberWideNavigationRailState()
@@ -173,7 +177,13 @@ fun TidiloApp(
     fun openDestination(route: String) {
         navigationScope.launch {
             railState.collapse()
-            if (navController.currentDestination?.route == Screen.Library.route) {
+            val current = navController.currentDestination?.route
+            val canNavigate = if (discoverPreviewEnabled) {
+                topLevelDestinationOf(current) != null
+            } else {
+                current == Screen.Library.route
+            }
+            if (canNavigate) {
                 navController.navigate(route) { launchSingleTop = true }
             }
         }
@@ -182,6 +192,14 @@ fun TidiloApp(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val isLibraryRoute = currentRoute == Screen.Library.route
+    val topLevel = topLevelDestinationOf(currentRoute)
+    val isTopLevelChromeRoute = if (discoverPreviewEnabled) topLevel != null else isLibraryRoute
+    val isRailRoute = if (discoverPreviewEnabled) {
+        currentRoute == null || topLevel == TopLevelDestination.DISCOVER || topLevel == TopLevelDestination.LIBRARY
+    } else {
+        currentRoute == null || isLibraryRoute
+    }
+    val imeVisible = WindowInsets.isImeVisible
 
     LaunchedEffect(notificationRoute, manualImportState, notificationDeferred, currentRoute) {
         if (notificationRoute != null) {
@@ -189,7 +207,13 @@ fun TidiloApp(
                 notificationDeferred = true
                 return@LaunchedEffect
             }
-            if (notificationDeferred && navController.currentDestination?.route != Screen.Library.route) {
+            val current = navController.currentDestination?.route
+            val readyForNotification = if (discoverPreviewEnabled) {
+                topLevelDestinationOf(current) != null
+            } else {
+                current == Screen.Library.route
+            }
+            if (notificationDeferred && !readyForNotification) {
                 return@LaunchedEffect
             }
             showManualImport = false
@@ -207,9 +231,13 @@ fun TidiloApp(
         if (manualImportState == null && !sharedUrl.isNullOrBlank() && sharedUrl != consumedSharedUrl) {
             consumedSharedUrl = sharedUrl
             importViewModel.importUrl(sharedUrl)
-            navController.navigate(Screen.Library.route) {
-                popUpTo(Screen.Library.route) { inclusive = false }
-                launchSingleTop = true
+            if (discoverPreviewEnabled) {
+                navController.navigateTopLevel(TopLevelDestination.LIBRARY)
+            } else {
+                navController.navigate(Screen.Library.route) {
+                    popUpTo(Screen.Library.route) { inclusive = false }
+                    launchSingleTop = true
+                }
             }
         }
     }
@@ -219,16 +247,16 @@ fun TidiloApp(
     val selectedRssFeedFilter by libraryViewModel.selectedRssFeedFilter.collectAsStateWithLifecycle()
     val selectedCollectionId by libraryViewModel.selectedCollectionId.collectAsStateWithLifecycle()
 
-    // Scroll visibility belongs to the Library header; the shortcut trigger stays fixed.
+    // Scroll visibility belongs to the Library header (and floating toolbar in preview mode); the radial trigger stays fixed.
     var isBarsVisible by remember { mutableStateOf(true) }
-    // Restore the header on navigation and filter changes.
+    // Restore chrome on navigation and filter changes.
     LaunchedEffect(currentRoute, filterMode, selectedDomainFilter, selectedRssFeedFilter?.id) {
         isBarsVisible = true
-        if (currentRoute != null && !isLibraryRoute) railState.collapse()
+        if (currentRoute != null && !isRailRoute) railState.collapse()
     }
 
     // Scroll linking: Trigger only when content is actually scrolled (prevents false triggers on short screens)
-    val nestedScrollConnection = remember(isLibraryRoute, currentRoute, filterMode, selectedDomainFilter, selectedRssFeedFilter?.id) {
+    val nestedScrollConnection = remember(isTopLevelChromeRoute, currentRoute, filterMode, selectedDomainFilter, selectedRssFeedFilter?.id) {
         object : NestedScrollConnection {
             private var accumulatedScroll = 0f
             private val hideThreshold = 30f // Threshold for downward scroll to hide
@@ -239,7 +267,7 @@ fun TidiloApp(
                 available: Offset,
                 source: NestedScrollSource
             ): Offset {
-                if (!isLibraryRoute) return Offset.Zero
+                if (!isTopLevelChromeRoute) return Offset.Zero
 
                 val delta = consumed.y
                 if (delta < 0f) {
@@ -307,6 +335,7 @@ fun TidiloApp(
                     importViewModel = importViewModel,
                     libraryViewModel = libraryViewModel,
                     modifier = Modifier.fillMaxSize(),
+                    discoverPreviewEnabled = discoverPreviewEnabled,
                     onOpenNavigation = { navigationScope.launch {
                         androidx.compose.runtime.withFrameNanos { }
                         railState.expand()
@@ -315,35 +344,36 @@ fun TidiloApp(
                 )
 
                 // Status bar protection gradient scrim when header is hidden
-                AnimatedVisibility(
+                StatusBarScrim(
                     visible = isLibraryRoute && !isBarsVisible,
-                    enter = fadeIn(animationSpec = tween(200)),
-                    exit = fadeOut(animationSpec = tween(150)),
                     modifier = Modifier.align(Alignment.TopCenter)
-                ) {
-                    val scrimBg = MaterialTheme.colorScheme.background
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 28.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        scrimBg.copy(alpha = 0.85f),
-                                        scrimBg.copy(alpha = 0.50f),
-                                        scrimBg.copy(alpha = 0.15f),
-                                        Color.Transparent
-                                    )
-                                )
-                            )
+                )
+
+                if (discoverPreviewEnabled && topLevel != null) {
+                    TidiloFloatingNavigation(
+                        selected = topLevel,
+                        visible = isBarsVisible && !imeVisible && railState.targetValue != WideNavigationRailValue.Expanded,
+                        onSelect = { destination ->
+                            if (destination == TopLevelDestination.SEARCH) {
+                                libraryViewModel.triggerSearchFocus()
+                            }
+                            navController.navigateTopLevel(destination)
+                        },
+                        onSave = { showManualImport = true },
+                        modifier = Modifier.align(Alignment.BottomCenter)
                     )
                 }
 
-                if (currentRoute == null || currentRoute == Screen.Library.route) {
+                if (isRailRoute) {
                     LibraryNavigationRail(railState, filterMode,
                         onSelectFilter = { mode ->
                             libraryViewModel.setFilterMode(mode)
-                            navigationScope.launch { railState.collapse() }
+                            navigationScope.launch {
+                                railState.collapse()
+                                if (discoverPreviewEnabled && currentRoute == Screen.Discover.route) {
+                                    navController.navigateTopLevel(TopLevelDestination.LIBRARY)
+                                }
+                            }
                         },
                         onSearch = {
                             libraryViewModel.triggerSearchFocus()
@@ -352,13 +382,14 @@ fun TidiloApp(
                         onNotifications = { openDestination(Screen.Notifications.route) },
                         onManualImport = { navigationScope.launch { railState.collapse(); showManualImport = true } },
                         onSettings = { openDestination(Screen.Settings.route) },
-                        onTrash = { openDestination(Screen.Trash.route) })
+                        onTrash = { openDestination(Screen.Trash.route) },
+                        trimmed = discoverPreviewEnabled)
                 }
 
             }
         }
 
-        if (isLibraryRoute && (showManualImport || manualImportState != null)) ImportUrlDialog(
+        if (isTopLevelChromeRoute && (showManualImport || manualImportState != null)) ImportUrlDialog(
             state = manualImportState,
             onDismiss = { if (importViewModel.dismissManualImport()) showManualImport = false },
             onConfirm = importViewModel::submitManualImport,

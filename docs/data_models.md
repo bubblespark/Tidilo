@@ -1,6 +1,6 @@
 # Data Models, State Flows, & Persistence Interfaces
 
-This document specifies Tidilo's core domain models, entity-tag normalization, import state machine, taxonomy, domain policies, reactive streams, and Room (`AppDatabase` v23) persistence contracts.
+This document specifies Tidilo's core domain models, entity-tag normalization, import state machine, taxonomy, domain policies, reactive streams, and Room (`AppDatabase` v24) persistence contracts.
 
 ## Related Specifications
 | Domain / Feature | Specification |
@@ -64,6 +64,7 @@ data class Tag(
   - Liking records `LIKE` and refreshes `lastInteractedAt`; unliking records `UNLIKE` and preserves it.
   - Each transition of the stored note from blank to non-blank records `NOTE_WRITTEN` (clearing a note and writing again records it again; editing a non-blank note does not); adding a bookmark to a collection it was not in records `COLLECTION_ADD`. Neither changes `lastInteractedAt`.
   - Each caller passes the surface it runs on (`LIBRARY`, `SEARCH`, `DETAIL`). An id with no active bookmark records nothing.
+  - Discover signals (`IMPRESSION`, `DECK_FLICK`, `SNOOZE`, `NEVER_AGAIN`) are written by `DiscoverRepository` and never change `lastInteractedAt`, so they do not extend RSS retention (see [rediscovery.md](rediscovery.md)).
   - Edits, URL replacement, and RSS promotion keep `isLiked`, `lastInteractedAt`, and the bookmark's events. Moving to or restoring from Trash sets `isLiked = false` and keeps `lastInteractedAt` and events. Events have no foreign key; maintenance prunes them (see [library_maintenance.md](library_maintenance.md)).
 
 ### 1.2 `EntityTagPolicy`, Canonical Identity & Suggestions (`data/EntityTagPolicy.kt`)
@@ -132,12 +133,13 @@ sequenceDiagram
 
 ---
 
-## 6. Persistence & Room Schema (`AppDatabase` v23)
+## 6. Persistence & Room Schema (`AppDatabase` v24)
 
-- **Room Tables (14 entities in `AppDatabase` v23)**:
+- **Room Tables (19 entities in `AppDatabase` v24)**:
   - Core & derived: `bookmarks`, `bookmark_entities` (`bookmarkId, position, value, searchValue, skeletonKey`), `trashed_bookmarks`, `domain_policies` (`domain, isPrivate, displayName`), `import_tasks`.
   - Collections & RSS: `collections`, `bookmark_collection_cross_ref`, `rss_feeds` (including `iconUrl`, `siteUrl`), `rss_seen_items`, `rss_image_cleanup`.
   - Engagement: `engagement_events` (autoincrement `id`, `bookmarkId`, `type`, `surface`, `at`; indexed by `bookmarkId` and `at`).
+  - Discover: `discover_snapshot` (`day, shelf, position` key; `bookmarkId`, `reasonCode`, `reasonArg`, `topicKey`), `discover_map` (`week, position` key; `skeletonKey`, `value`, `weight`), `discover_snapshot_meta` (`scope, day` key; `dealCount`, `privateVisible`, `computedAt`), `rediscovery_suppressions` (`bookmarkId` key; `until`, `permanent`), `rediscovery_topic_mutes` (`axis, key`). None has a foreign key; see [rediscovery.md](rediscovery.md).
   - Notifications: `import_notifications` (`50`-row history limit, indexed `createdAt DESC`), `rss_notification_runs`, `rss_notification_items`. The Notification screen projects `import_notifications` + `ERROR` `import_tasks` + errored `rss_feeds` with prefixed stable UI keys (`createdAt` / `lastAttemptAt`).
 - **Transaction & Query Scope**: `ImportRepository` commits direct saves (bookmark, entity occurrences, RSS receipts/notifications, task deletion) in one flat `TransactionRunner` transaction without nested transactions. `BookmarkEntity` (`bookmarks`) persists derived `domain` and `BookmarkSearchKey` columns (`searchTitle`, `searchDescription`, `searchUrl`, `searchCategory`, `searchSubcategory`), while `BookmarkEntityOccurrence` (`bookmark_entities`) stores `searchValue` and `skeletonKey`, all maintained by DAO transactions. Library source filters use `BookmarkSource` (`MANUAL` / `RSS`); Newest first uses `MANUAL`, or `ALL` when Include RSS is selected. Search, tag selection, and storage counts use `ALL`.
 - **SharedPreferences**: `tidilo_library_prefs` (`search_history` up to 10 queries, `library_filter_mode`, `library_newest_include_rss`), `tidilo_app_config_prefs` (language, Private flags with one-way legacy key fallback, theme, AI config), `tidilo_ai_usage` (see [application_summary.md](application_summary.md)), `tidilo_rss` (see [rss.md](rss.md)).
@@ -147,4 +149,5 @@ sequenceDiagram
   - `MIGRATION_11_12`: Invokes `MIGRATION_10_11` and checks `PRAGMA table_info(rss_feeds)` defensively to upgrade prerelease RSS-only v11 builds without losing existing columns.
   - `MIGRATION_13_14` & `MIGRATION_14_15`: `13→14` elects one canonical display spelling per `skeletonKey` once (distinct bookmark frequency → earliest `createdAt` → SQLite binary order, aggregated in bounded batches via temp SQLite vote table; never re-elected on open). `14→15` backfills `13→14` if `skeletonKey` is absent before adding engagement defaults (`0` / `null`).
   - `MIGRATION_22_23`: Converts the former `summaryPeekCount`, `detailViewCount`, and `browserOpenCount` of active and trashed rows into at most 5 `PEEK` / `DETAIL` / `BROWSER_OPEN` events each, plus one `LIKE` per liked row, all with `surface = MIGRATED` and `at = COALESCE(lastInteractedAt, createdAt)`, then drops the three counter columns (SQLite `DROP COLUMN`, available from minSdk 34).
+  - `MIGRATION_23_24`: Creates the five empty Discover tables. It reads and changes no existing row.
   - `MIGRATION_17_18`: Maps legacy `READY`, `WAITING_AI`, `PROCESSING_AI`, and awaiting-acquisition `ERROR` tasks to `QUEUED` and resets modes to `DIRECT`.

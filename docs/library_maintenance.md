@@ -17,7 +17,11 @@ The former per-feed count/unlimited setting is no longer available. Its persiste
 
 ## Engagement history retention
 
-Each run deletes `engagement_events` rows older than **90 days** (`ENGAGEMENT_RETENTION_MS`) and rows whose bookmark is neither active nor in Trash, such as purged, permanently deleted, or expired RSS articles. Events of trashed bookmarks are kept so restoring a bookmark keeps its history. Pruning runs after RSS expiration in one transaction and does not change `lastInteractedAt`.
+Each run deletes `engagement_events` rows older than **90 days** (`ENGAGEMENT_RETENTION_MS`), except each bookmark's latest `DETAIL` or `BROWSER_OPEN` event, which is kept at any age so Discover can tell "never opened" apart from "opened long ago". It also deletes rows whose bookmark is neither active nor in Trash, such as purged, permanently deleted, or expired RSS articles. Events of trashed bookmarks are kept so restoring a bookmark keeps its history. Pruning runs after RSS expiration in one transaction and does not change `lastInteractedAt`.
+
+## Discover history retention
+
+Each run then deletes Discover snapshots older than **30 Discover days** (the history the "not a recent hero" and "pair not shown recently" rules read), "Your map" weeks before the previous week, their meta rows, expired snoozes, and suppressions whose bookmark is neither active nor in Trash. Permanent suppressions of trashed bookmarks are kept so a restored bookmark stays hidden from rediscovery. See [rediscovery.md](rediscovery.md).
 
 ## OG image cache retention
 

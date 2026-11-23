@@ -95,4 +95,25 @@ class LibraryMaintenanceTest {
             assertEquals(2, db.rssDao().cleanupItems().size)
         } finally { db.close() }
     }
+
+    @Test fun pruneDiscoverKeepsThirtyDaysOfHistory() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            val zone = java.time.ZoneId.of("UTC")
+            val now = 20_000 * day + 12 * 3_600_000L
+            val today = me.bubblespark.tidilo.data.discover.discoverDay(now, zone)
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity("a", "A", "https://fixture.invalid/a", "", createdAt = day, updatedAt = day))
+            db.trashDao().insert(TrashedBookmarkEntity("t", "T", "https://fixture.invalid/t", "", createdAt = day, updatedAt = day,
+                note = "", isPrivate = false, trashedAt = day))
+            val dao = db.discoverDao()
+            dao.insertSnapshot(listOf(today - 40, today - 10).map { DiscoverSnapshotEntity(it, 1, 0, "a", null, null, null) })
+            dao.upsertSuppression(RediscoverySuppressionEntity("a", until = now - 1, permanent = false))
+            dao.upsertSuppression(RediscoverySuppressionEntity("gone", until = null, permanent = true))
+            dao.upsertSuppression(RediscoverySuppressionEntity("t", until = null, permanent = true))
+            LibraryMaintenanceRepository(context, db, nowMillis = { now }, zone = { zone }).pruneDiscover(now)
+            assertTrue(dao.heroIds(today - 40, today - 39).isEmpty())
+            assertEquals(listOf("a"), dao.heroIds(today - 10, today - 9))
+            assertEquals(listOf("t"), dao.activeSuppressedIds(now).sorted())
+        } finally { db.close() }
+    }
 }

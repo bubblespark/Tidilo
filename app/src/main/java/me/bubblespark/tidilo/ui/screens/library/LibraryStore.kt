@@ -46,6 +46,7 @@ internal interface LibraryStore {
     /** Manual-source domains with display names; unsorted; re-emits when domain policies change. */
     fun observeDomainGroups(showPrivate: Boolean): Flow<List<DomainGroupItem>>
     fun observeRssFeedGroups(showPrivate: Boolean): Flow<List<RssFeedGroup>>
+    fun observeRssFeedCount(): Flow<Int>
     fun observeCollections(showPrivate: Boolean): Flow<List<CollectionWithCount>>
     fun observeMembershipIds(bookmarkId: String): Flow<List<String>>
     fun observeBookmark(id: String): Flow<BookmarkItem?>
@@ -106,6 +107,7 @@ internal class RepositoryLibraryStore(
         }
 
     override fun observeRssFeedGroups(showPrivate: Boolean) = bookmarks.observeRssFeedGroups(showPrivate)
+    override fun observeRssFeedCount() = bookmarks.observeRssFeedCount()
     override fun observeCollections(showPrivate: Boolean) = collections.observeCollections(showPrivate)
     override fun observeMembershipIds(bookmarkId: String) = collections.observeMembershipIds(bookmarkId)
     override fun observeBookmark(id: String) = bookmarks.observeBookmark(id)

@@ -72,6 +72,8 @@ class LibraryViewModelTest {
         override fun observeCollectionCount(collectionId: String, showPrivate: Boolean) = flowOf(0)
         override fun observeDomainGroups(showPrivate: Boolean) = domainGroups
         override fun observeRssFeedGroups(showPrivate: Boolean) = rssGroups
+        val feedCount = MutableStateFlow(0)
+        override fun observeRssFeedCount() = feedCount
         override fun observeCollections(showPrivate: Boolean) = collectionRows
         override fun observeMembershipIds(bookmarkId: String) = flowOf(emptyList<String>())
         override fun observeBookmark(id: String) = flowOf<BookmarkItem?>(null)
@@ -128,6 +130,17 @@ class LibraryViewModelTest {
     }
 
     private fun feed(id: String, title: String) = RssFeedGroup(RssFeedEntity(id = id, url = "https://$id.example/feed", title = title), 1)
+
+    @Test fun rssSubscriptionCountFollowsStore() = runTest {
+        fixture { f ->
+            val seen = mutableListOf<Int?>()
+            backgroundScope.launch(StandardTestDispatcher(testScheduler)) { f.model.rssSubscriptionCount.collect { seen += it } }
+            runCurrent()
+            f.store.feedCount.value = 2
+            runCurrent()
+            assertEquals(listOf(null, 0, 2), seen)
+        }
+    }
 
     @Test fun debouncedQuerySwitchesGenerationAfter250ms() = runTest {
         fixture { f ->

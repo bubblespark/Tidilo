@@ -268,6 +268,10 @@ class DiscoverNavigationShellTest {
                     "Trimmed rail must omit Manual Import",
                     railNodes.any { host.text(it, host.context.getString(R.string.navigation_manual_import)) }
                 )
+                assertFalse(
+                    "Trimmed rail must omit Filters (the Library button group replaces them)",
+                    railNodes.any { host.text(it, host.context.getString(R.string.navigation_filters)) }
+                )
             }
         } finally {
             host.main { activity.finish() }

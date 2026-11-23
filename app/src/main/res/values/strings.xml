@@ -172,7 +172,10 @@
     <string name="time_hours_ago">%1$d hours ago</string>
     <string name="time_day_ago">1 day ago</string>
     <string name="time_days_ago">%1$d days ago</string>
-    <string name="domain_card_item_count">%1$d items</string>
+    <plurals name="domain_card_item_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
     <string name="bookmark_open_in_browser">Open in browser</string>
     <string name="bookmark_could_not_open_browser">Could not open browser</string>
 
@@ -574,4 +577,19 @@
     <string name="settings_discover_reset_dialog_body">Discover forgets your views, likes, hidden cards, and muted topics, and deals today’s shelves again. Bookmarks, notes, and collections are not changed.</string>
     <string name="settings_discover_reset_confirm">Reset</string>
     <string name="settings_discover_reset_done">Rediscovery history reset</string>
+    <!-- Library layer (Discover preview) -->
+    <string name="library_tabs_label">Library views</string>
+    <string name="library_tab_newest">Newest</string>
+    <string name="library_tab_domain">Domain</string>
+    <string name="library_show_as_list">Show as list</string>
+    <string name="library_show_as_grid">Show as grid</string>
+    <string name="library_empty_domain_title">No sites yet</string>
+    <string name="library_empty_domain_body">Pages you save are grouped here by site.</string>
+    <string name="library_empty_rss_title">Get updates from sites you read</string>
+    <string name="library_empty_rss_body">Add a site\'s feed and new articles arrive here and on Discover.</string>
+    <string name="library_empty_rss_idle_title">No articles to show right now</string>
+    <string name="library_empty_rss_idle_body">New articles arrive once a day. Private articles stay hidden while Private is off, and unread articles leave after 10 days.</string>
+    <string name="library_open_rss_settings">RSS settings</string>
+    <string name="library_empty_collection_title">Group bookmarks by theme</string>
+    <string name="library_empty_collection_body">Gather trip ideas or study notes into collections. You can also add to one from a bookmark\'s detail.</string>
 </resources>

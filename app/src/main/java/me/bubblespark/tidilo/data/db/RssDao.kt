@@ -22,6 +22,9 @@ interface RssDao {
     @Query("SELECT * FROM rss_feeds ORDER BY title COLLATE NOCASE, id")
     fun observeFeeds(): Flow<List<RssFeedEntity>>
 
+    @Query("SELECT COUNT(*) FROM rss_feeds WHERE deleted = 0")
+    fun observeActiveFeedCount(): Flow<Int>
+
     @Query("SELECT * FROM rss_feeds WHERE deleted = 0 ORDER BY id")
     suspend fun activeFeeds(): List<RssFeedEntity>
 

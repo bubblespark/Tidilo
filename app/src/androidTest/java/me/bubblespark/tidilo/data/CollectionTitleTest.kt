@@ -120,7 +120,7 @@ class CollectionTitleTest {
             instrumentation.runOnMainSync { title.value = example; fontScale.value = 1.3f }
             assertFalse("Issue example must fit with enlarged text", layout(activity, example).hasVisualOverflow)
             val domain = titleBounds(activity, "example.com")
-            val count = titleBounds(activity, context.getString(me.bubblespark.tidilo.R.string.domain_card_item_count, 3))
+            val count = titleBounds(activity, context.resources.getQuantityString(me.bubblespark.tidilo.R.plurals.domain_card_item_count, 3, 3))
             assertTrue("Enlarged title must leave room for the count badge", domain.bottom <= count.top)
         } finally {
             instrumentation.runOnMainSync { activity.finish() }

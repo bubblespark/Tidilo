@@ -88,6 +88,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -139,7 +140,9 @@ fun LibraryScreen(
     onNavigateToSearch: () -> Unit = {},
     onNavigateToDetail: (String) -> Unit = {},
     modifier: Modifier = Modifier,
-    showRadialMenu: Boolean = true
+    showRadialMenu: Boolean = true,
+    discoverPreview: Boolean = false,
+    onOpenRssSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
@@ -161,6 +164,7 @@ fun LibraryScreen(
     val visualSource = LocalCacheVisualSource.current
     val rssFeedGroups by viewModel.rssFeedGroups.collectAsStateWithLifecycle()
     val rssFeedGroupsLoading by viewModel.rssFeedGroupsLoading.collectAsStateWithLifecycle()
+    val rssSubscriptionCount by viewModel.rssSubscriptionCount.collectAsStateWithLifecycle()
     val selectedFeed = rssFeedGroups.firstOrNull { it.feed.id == selectedRssFeedFilter?.id }?.feed ?: selectedRssFeedFilter
     val selectedFeedIcon = if (selectedFeed != null) rememberFeedVisual(selectedFeed, context = context, source = visualSource).value else null
     val domainGroups by viewModel.domainGroups.collectAsStateWithLifecycle()
@@ -296,9 +300,13 @@ fun LibraryScreen(
     }
     val libraryCount = observedCount ?: 0
 
-    val headerHeight = HeaderDefaults.bodyTopPadding()
-
     var peekBookmark by remember { mutableStateOf<BookmarkItem?>(null) }
+    val libraryPeek = rememberLibraryPeekState()
+    // The Library layer opens the Peek sheet (P5-Q1); the shipped Library keeps Summary Peek.
+    fun openPeek(item: BookmarkItem) {
+        if (discoverPreview) libraryPeek.peekId = item.id else peekBookmark = item
+        viewModel.recordSummaryPeek(item.id, EngagementSurface.LIBRARY)
+    }
     val radialMenuState = me.bubblespark.tidilo.ui.navigation.rememberLibraryRadialMenuState()
     val radialMenuOpen = radialMenuState.isOpen
     LaunchedEffect(peekBookmark != null, showCollectionEditorSheet) {
@@ -328,6 +336,9 @@ fun LibraryScreen(
         else -> null
     }
     RememberAmbientLighting(activeDrillDownColor, ownerId = "library_drilldown")
+    val showTabs = discoverPreview && !isDrillDown
+    val headerExtraHeight = if (showTabs) LibraryTabsHeight else 0.dp
+    val headerHeight = HeaderDefaults.bodyTopPadding() + headerExtraHeight
     fun clearCollectionFilter() {
         when (filterMode) {
             LibraryFilterMode.RSS -> viewModel.selectRssFeedFilter(null)
@@ -349,12 +360,14 @@ fun LibraryScreen(
         hideHeaderOnScroll = true,
         bottomContentPadding = bottomClearance,
         headerVisible = peekBookmark == null,
+        headerExtraHeight = headerExtraHeight,
         overlay = {
             if (showRadialMenu && peekBookmark == null && !showCollectionEditorSheet) {
                 me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu(radialMenuState, filterMode,
                     viewModel::setFilterMode, onNavigateToSearch)
             }
-            BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null }
+            if (discoverPreview) LibraryPeekSheets(libraryPeek, viewModel)
+            else BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null }
             if (showCollectionEditorSheet) {
                 CollectionEditorBottomSheet(
                     collectionId = editingCollectionId,
@@ -385,6 +398,7 @@ fun LibraryScreen(
                 title = {
                     val defaultTitle = stringResource(R.string.library_header_title)
                     val headerTitle = when {
+                        showTabs -> defaultTitle
                         filterMode == LibraryFilterMode.COLLECTION -> selectedCollection?.title ?: stringResource(R.string.collection_title)
                         filterMode == LibraryFilterMode.RSS -> selectedFeed?.title ?: stringResource(R.string.rss_title)
                         filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null ->
@@ -474,9 +488,26 @@ fun LibraryScreen(
                         onNavigateUp = { clearCollectionFilter() }
                     )
                 },
+                bottomContent = if (showTabs) {
+                    { LibraryTabs(filterMode, viewModel::setFilterMode) }
+                } else null,
                 actions = {
-                    // View mode toggle menu button
-                    Box {
+                    if (discoverPreview) {
+                        // §9: one Grid/List toggle where bookmarks are listed; deck tabs have none.
+                        if (displayState == LibraryDisplayState.NewestFirst || isDrillDown) {
+                            val toList = viewMode == LibraryViewMode.GRID
+                            IconButton(
+                                onClick = { viewModel.setViewMode(if (toList) LibraryViewMode.LIST else LibraryViewMode.GRID) },
+                                modifier = Modifier.size(48.dp).testTag("library_view_toggle")
+                            ) {
+                                Icon(
+                                    imageVector = (if (toList) LibraryViewMode.LIST else LibraryViewMode.GRID).icon,
+                                    contentDescription = stringResource(if (toList) R.string.library_show_as_list else R.string.library_show_as_grid),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    } else Box {
                         IconButton(
                             onClick = { if (peekBookmark == null) isViewModeMenuExpanded = true else peekBookmark = null },
                             modifier = Modifier.size(48.dp)
@@ -630,7 +661,12 @@ fun LibraryScreen(
                             PagingFeedback(refreshState, bookmarks::retry)
                         }
                     } else when (state) {
-                        is LibraryDisplayState.CollectionList -> {
+                        is LibraryDisplayState.CollectionList -> if (discoverPreview && collectionGroups.isEmpty()) {
+                            LibraryEmptyState(LibraryEmpty.COLLECTION, contentPadding = contentPadding, onAction = {
+                                editingCollectionId = null
+                                showCollectionEditorSheet = true
+                            })
+                        } else {
                             LazyColumn(
                                 state = collectionListState,
                                 modifier = Modifier.fillMaxSize(),
@@ -648,7 +684,8 @@ fun LibraryScreen(
                                         onLongClick = {
                                             editingCollectionId = group.id
                                             showCollectionEditorSheet = true
-                                        }
+                                        },
+                                        gallery = discoverPreview
                                     )
                                 }
                                 item(key = "add_collection_dummy_card", contentType = "add_collection_dummy") {
@@ -663,7 +700,13 @@ fun LibraryScreen(
                         }
                         is LibraryDisplayState.DomainGrid, is LibraryDisplayState.RssFeedGrid -> {
                             val rss = state is LibraryDisplayState.RssFeedGrid
-                            if (if (rss) rssFeedGroups.isEmpty() else domainGroups.isEmpty()) {
+                            if (discoverPreview && (if (rss) rssFeedGroups.isEmpty() else domainGroups.isEmpty())) {
+                                LibraryEmptyState(
+                                    if (rss) rssEmpty(rssSubscriptionCount) else LibraryEmpty.DOMAIN,
+                                    contentPadding = contentPadding,
+                                    onAction = if (rss) onOpenRssSettings else onOpenManualImport
+                                )
+                            } else if (if (rss) rssFeedGroups.isEmpty() else domainGroups.isEmpty()) {
                                 EmptyLibraryMessage(
                                     onSaveUrl = onOpenManualImport,
                                     contentPadding = contentPadding
@@ -679,7 +722,7 @@ fun LibraryScreen(
                                 ) {
                                     if (rss) {
                                         items(items = rssFeedGroups, key = { it.feed.id }, contentType = { "rss_feed_card" }) { group ->
-                                            RssFeedCard(group, onClick = { viewModel.selectRssFeedFilter(group.feed) }, context = context)
+                                            RssFeedCard(group, onClick = { viewModel.selectRssFeedFilter(group.feed) }, context = context, gallery = discoverPreview)
                                         }
                                     } else items(
                                         items = domainGroups,
@@ -691,7 +734,8 @@ fun LibraryScreen(
                                             onClick = {
                                                 viewModel.selectDomainFilter(group.domain)
                                             },
-                                            context = context
+                                            context = context,
+                                            gallery = discoverPreview
                                         )
                                     }
                                 }
@@ -716,11 +760,22 @@ fun LibraryScreen(
                                 Box(
                                     modifier = Modifier.fillMaxSize()
                                 ) {
-                                    if (domainBookmarks.itemCount == 0) {
+                                    if (domainBookmarks.itemCount == 0 && discoverPreview) {
+                                        LibraryEmptyState(LibraryEmpty.NEWEST, onAction = onOpenManualImport, contentPadding = contentPadding)
+                                    } else if (domainBookmarks.itemCount == 0) {
                                         EmptyLibraryMessage(
                                             onSaveUrl = onOpenManualImport,
                                             contentPadding = contentPadding
                                         )
+                                    } else if (discoverPreview) {
+                                        val listState = if (collectionItem != null) collectionDetailListState else if (feed != null) rssDetailListState else domainDetailListState
+                                        val gridState = when (state) {
+                                            is LibraryDisplayState.CollectionDrillDown -> collectionDetailGridState
+                                            is LibraryDisplayState.RssFeedDrillDown -> rssDetailGridState
+                                            else -> domainDetailGridState
+                                        }
+                                        LibraryPlates(viewMode, domainBookmarks, listState, gridState, contentPadding,
+                                            includeRss = feed != null, onOpen = onNavigateToDetail, onPeek = ::openPeek)
                                     } else {
                                         AnimatedContent(
                                             targetState = viewMode,
@@ -773,10 +828,7 @@ fun LibraryScreen(
                                                         showRadialMenu = showRadialMenu,
                                                         onOpenBookmark = onNavigateToDetail,
                                                         onToggleLike = { viewModel.toggleLike(it, EngagementSurface.LIBRARY) },
-                                                        onPeekBookmark = { item ->
-                                                            peekBookmark = item
-                                                            viewModel.recordSummaryPeek(item.id, EngagementSurface.LIBRARY)
-                                                        }
+                                                        onPeekBookmark = ::openPeek
                                                     )
                                                 }
                                             }
@@ -786,12 +838,18 @@ fun LibraryScreen(
                             }
                         }
                         is LibraryDisplayState.NewestFirst -> {
-                            if (bookmarks.itemCount == 0) {
+                            if (bookmarks.itemCount == 0 && discoverPreview) {
+                                LibraryEmptyState(LibraryEmpty.NEWEST, onAction = onOpenManualImport,
+                                    contentPadding = contentPadding, leadingContent = scopeRow)
+                            } else if (bookmarks.itemCount == 0) {
                                 EmptyLibraryMessage(
                                     onSaveUrl = onOpenManualImport,
                                     contentPadding = contentPadding,
                                     leadingContent = scopeRow
                                 )
+                            } else if (discoverPreview) {
+                                LibraryPlates(viewMode, bookmarks, newestFirstListState, newestFirstGridState, contentPadding,
+                                    includeRss = includeRss, onOpen = onNavigateToDetail, onPeek = ::openPeek, leadingContent = scopeRow)
                             } else {
                                 AnimatedContent(
                                     targetState = viewMode,
@@ -844,10 +902,7 @@ fun LibraryScreen(
                                                 showRssSource = includeRss,
                                                 onOpenBookmark = onNavigateToDetail,
                                                 onToggleLike = { viewModel.toggleLike(it, EngagementSurface.LIBRARY) },
-                                                onPeekBookmark = { item ->
-                                                    peekBookmark = item
-                                                    viewModel.recordSummaryPeek(item.id, EngagementSurface.LIBRARY)
-                                                }
+                                                onPeekBookmark = ::openPeek
                                             )
                                         }
                                     }
@@ -867,6 +922,68 @@ fun LibraryScreen(
         }
 
 
+    }
+}
+
+/**
+ * Library-layer bookmarks (§9): S plates in an adaptive grid or XS plate rows. The scroll position lives in
+ * the saveable list/grid states; the radial-menu anchor logic of [LibraryBookmarkGrid] is not needed here.
+ */
+@Composable
+private fun LibraryPlates(
+    viewMode: LibraryViewMode,
+    bookmarks: LazyPagingItems<BookmarkItem>,
+    listState: LazyListState,
+    gridState: LazyGridState,
+    contentPadding: PaddingValues,
+    includeRss: Boolean,
+    onOpen: (String) -> Unit,
+    onPeek: (BookmarkItem) -> Unit,
+    leadingContent: (@Composable () -> Unit)? = null
+) {
+    AnimatedContent(
+        targetState = viewMode,
+        transitionSpec = {
+            fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
+                fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
+        },
+        label = "library_plates_view_mode"
+    ) { mode ->
+        if (mode == LibraryViewMode.GRID) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(LibraryPlateMinCellWidth),
+                state = gridState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = contentPadding,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                if (leadingContent != null) {
+                    item(key = NewestFirstScopeKey, span = { GridItemSpan(maxLineSpan) }, contentType = NewestFirstScopeKey) {
+                        leadingContent()
+                    }
+                }
+                items(count = bookmarks.itemCount, key = bookmarks.itemKey { it.id }, contentType = { "library_plate_card" }) { index ->
+                    val item = bookmarks[index] ?: return@items
+                    LibraryPlateCard(item, includeRss && item.rssFeedId != null, onOpen, onPeek)
+                }
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = contentPadding,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (leadingContent != null) {
+                    item(key = NewestFirstScopeKey, contentType = NewestFirstScopeKey) { leadingContent() }
+                }
+                items(count = bookmarks.itemCount, key = bookmarks.itemKey { it.id }, contentType = { "library_plate_row" }) { index ->
+                    val item = bookmarks[index] ?: return@items
+                    LibraryPlateRow(item, includeRss && item.rssFeedId != null, onOpen, onPeek)
+                }
+            }
+        }
     }
 }
 

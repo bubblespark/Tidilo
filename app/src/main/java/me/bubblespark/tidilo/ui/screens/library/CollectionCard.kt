@@ -118,7 +118,8 @@ private fun CollectionCardVisual(
     item: CollectionGroupItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onLongClick: (() -> Unit)? = null
+    onLongClick: (() -> Unit)? = null,
+    gallery: Boolean = false
 ) {
     val haptic = LocalHapticFeedback.current
     val themeStyle = currentThemeSurfaces().preset
@@ -141,7 +142,9 @@ private fun CollectionCardVisual(
             .height(cardHeight + 12.dp)
     ) {
         // Deepest background stacked card (Layer 2, top-right peek)
-        TidiloSurface(
+        CollectionLayer(
+            gallery = gallery,
+            depth = 2,
             role = SurfaceRole.DECK_BACK,
             variant = SurfaceVariant.SUBTLE,
             accent = dominantColor,
@@ -159,7 +162,9 @@ private fun CollectionCardVisual(
         }
 
         // Intermediate background stacked card (Layer 1, middle peek)
-        TidiloSurface(
+        CollectionLayer(
+            gallery = gallery,
+            depth = 1,
             role = SurfaceRole.DECK_BACK,
             variant = SurfaceVariant.STANDARD,
             accent = dominantColor,
@@ -178,7 +183,9 @@ private fun CollectionCardVisual(
         }
 
         // Front interactive main horizontal card
-        TidiloSurface(
+        CollectionLayer(
+            gallery = gallery,
+            depth = 0,
             onClick = onClick,
             onLongClick = onLongClick?.let { callback ->
                 { haptic.performHapticFeedback(HapticFeedbackType.LongPress); callback() }
@@ -199,7 +206,7 @@ private fun CollectionCardVisual(
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .themeSurfaceBlur(themeStyle.cardBlurRadius, effectiveShape)
+                        .then(if (gallery) Modifier else Modifier.themeSurfaceBlur(themeStyle.cardBlurRadius, effectiveShape))
                         .background(gradient)
                 )
                 // Large background watermark in top-right shoulder
@@ -359,6 +366,54 @@ internal fun CollectionWithCount.cardItem() = CollectionGroupItem(collection.id,
     collection.description, collection.presetIconId, collection.customSymbol, collection.colorIndex, count)
 
 @Composable
-fun CollectionCard(item: CollectionWithCount, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
-    CollectionCardVisual(item.cardItem(), onClick, modifier, onLongClick)
+fun CollectionCard(
+    item: CollectionWithCount,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    gallery: Boolean = false
+) {
+    CollectionCardVisual(item.cardItem(), onClick, modifier, onLongClick, gallery)
+}
+
+/**
+ * One layer of the collection deck. Flag-off keeps the theme's [TidiloSurface]; the Library layer
+ * ([gallery], P5-Q4) uses tonal containers (`surfaceContainerLow` → `High` by [depth]) with an accent hairline.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CollectionLayer(
+    gallery: Boolean,
+    depth: Int,
+    role: SurfaceRole,
+    variant: SurfaceVariant,
+    accent: Color,
+    modifier: Modifier,
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
+    if (!gallery) {
+        if (onClick != null) {
+            TidiloSurface(onClick = onClick, onLongClick = onLongClick, role = role, variant = variant, accent = accent,
+                modifier = modifier, content = content)
+        } else {
+            TidiloSurface(role = role, variant = variant, accent = accent, modifier = modifier, content = content)
+        }
+        return
+    }
+    val shape = MaterialTheme.shapes.largeIncreased
+    val colors = MaterialTheme.colorScheme
+    val container = when (depth) {
+        2 -> colors.surfaceContainerLow
+        1 -> colors.surfaceContainer
+        else -> colors.surfaceContainerHigh
+    }
+    Box(
+        modifier
+            .clip(shape)
+            .background(container)
+            .border(1.dp, accent.copy(alpha = if (depth == 0) 0.5f else 0.32f), shape)
+            .then(if (onClick != null) Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick) else Modifier)
+    ) { content() }
 }

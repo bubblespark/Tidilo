@@ -194,7 +194,10 @@ fun TidiloNavGraph(
                         launchSingleTop = true
                     }
                 },
-                showRadialMenu = !discoverPreviewEnabled
+                showRadialMenu = !discoverPreviewEnabled,
+                discoverPreview = discoverPreviewEnabled,
+                // Straight to RSS Settings; Back returns to Library (docs/library_navigation.md).
+                onOpenRssSettings = { navController.navigate(Screen.RssSettings.route) { launchSingleTop = true } }
             )
         }
         composable(Screen.Search.route) {

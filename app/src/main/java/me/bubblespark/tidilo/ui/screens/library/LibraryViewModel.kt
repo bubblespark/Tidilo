@@ -226,6 +226,10 @@ class LibraryViewModel internal constructor(
         sorted
     }.flowOn(computeDispatcher).stateIn(scope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /** Subscribed feeds, `null` until known; tells the two RSS empty states apart (P5-Q2). */
+    val rssSubscriptionCount: StateFlow<Int?> = store.observeRssFeedCount()
+        .stateIn(scope, SharingStarted.WhileSubscribed(5000), null)
+
     val domainGroups: StateFlow<List<DomainGroupItem>> =
         privateVisible.flatMapLatest { visible ->
             store.observeDomainGroups(visible).onStart { _domainGroupsLoading.value = true }

@@ -63,11 +63,14 @@ fun LibraryNavigationRail(state: WideNavigationRailState, selectedFilter: Librar
                     }
                     NavigationDrawerItem(label = { Text(stringResource(R.string.trash_title)) }, selected = false,
                         onClick = onTrash, icon = { Icon(Icons.Default.Delete, null) })
-                    Text(stringResource(R.string.navigation_filters), Modifier.padding(start = 16.dp, top = 24.dp, bottom = 12.dp),
-                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    navigationFilters.forEach { (mode, label, icon) ->
-                        NavigationDrawerItem(label = { Text(stringResource(label)) }, selected = selectedFilter == mode,
-                            onClick = { onSelectFilter(mode) }, icon = { Icon(icon, null) })
+                    // The Library layer's button group replaces Filters while the Discover preview is on.
+                    if (!trimmed) {
+                        Text(stringResource(R.string.navigation_filters), Modifier.padding(start = 16.dp, top = 24.dp, bottom = 12.dp),
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        navigationFilters.forEach { (mode, label, icon) ->
+                            NavigationDrawerItem(label = { Text(stringResource(label)) }, selected = selectedFilter == mode,
+                                onClick = { onSelectFilter(mode) }, icon = { Icon(icon, null) })
+                        }
                     }
                     Spacer(Modifier.weight(1f))
                     Spacer(Modifier.height(32.dp))

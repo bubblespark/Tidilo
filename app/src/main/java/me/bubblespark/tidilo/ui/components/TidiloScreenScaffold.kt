@@ -43,6 +43,7 @@ fun TidiloScreenScaffold(
     overlay: (@Composable BoxScope.() -> Unit)? = null,
     contentWindowInsets: WindowInsets = screenSystemInsets(),
     avoidIme: Boolean = false,
+    headerExtraHeight: Dp = 0.dp,
     content: @Composable BoxScope.(PaddingValues) -> Unit
 ) {
     var consumedInsets by remember { mutableStateOf<WindowInsets>(WindowInsets(0, 0, 0, 0)) }
@@ -50,7 +51,7 @@ fun TidiloScreenScaffold(
     val bodyInsets = if (avoidIme) remaining.exclude(WindowInsets.ime) else remaining
     val safePadding = bodyInsets.asPaddingValues()
     val headerInsets = remaining.asPaddingValues()
-    val headerClearance = HeaderDefaults.rowHeight() + HeaderDefaults.FadeHeight + HeaderDefaults.ClearanceGap
+    val headerClearance = HeaderDefaults.rowHeight() + HeaderDefaults.FadeHeight + HeaderDefaults.ClearanceGap + headerExtraHeight
     // Keep inset reads in layout, and never consume app-specific header or action spacing.
     val padding = remember(safePadding, headerInsets, headerClearance, bottomContentPadding) { object : PaddingValues {
         override fun calculateLeftPadding(layoutDirection: LayoutDirection) =

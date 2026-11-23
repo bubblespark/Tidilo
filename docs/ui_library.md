@@ -76,7 +76,7 @@ Search List places one localized caption above the card inside the same keyed pa
   - Layer 1 (mid): `surfaceContainer`, `padding(start = 7.dp, end = 7.dp)`, `7.dp` top offset, `1.dp` shadow, border `0.28f`.
   - Layer 0 (front): `surfaceContainerHigh`, `padding(end = 14.dp)`, `offset(y = 14.dp)`, `2.dp` shadow, `RoundedCornerShape(20.dp)`, border `0.42f`, plus top-right `Brush.linearGradient(0.32f -> Transparent)` and `96.dp` `DomainWatermark` (`0.20f` alpha, `offset(16.dp, -6.dp)`).
 - **Dark-Mode Calibration (`DomainIconManager.ensureDarkThemeLegibility`)**: Boosts blue/violet hues (`190°–275°`) to min value `0.92f` / saturation `0.58f`, and enforces min value `0.72f` across all hues for legible borders/glows on dark cards.
-- **Deck Title & Count Badge**: Bold, max 3 lines with ellipsis, scaled by Unicode code-point count (`<= 10`: `titleMedium` 16/24sp; `11–18`: `titleSmall` 14.5/19sp; `>= 19`: `bodyMedium` 13.5/17sp), domain/publisher subtitle (`bodySmall`, `onSurfaceVariant`), and count pill (`dominantColor.copy(0.20f)`, `Icons.Default.Bookmark`, `"%d items"`).
+- **Deck Title & Count Badge**: Bold, max 3 lines with ellipsis, scaled by Unicode code-point count (`<= 10`: `titleMedium` 16/24sp; `11–18`: `titleSmall` 14.5/19sp; `>= 19`: `bodyMedium` 13.5/17sp), domain/publisher subtitle (`bodySmall`, `onSurfaceVariant`; hidden with its spacer when blank or equal to the title ignoring case and surrounding space, `deckSubtitle`), and count pill (`dominantColor.copy(0.20f)`, `Icons.Default.Bookmark`, `<plurals>` `domain_card_item_count`).
 - **Drill-Down Ambient Background & Header**:
   - Publishes `selectedDomainColor` to `LocalAmbientLighting` (`RememberAmbientLighting`, `ownerId = "library_drilldown"`) driving a 6-stop radiant diagonal beam (`0.32f -> 0.22f -> 0.13f -> 0.05f -> 0.015f -> Transparent`) and top-right radial bloom (`size.height * 0.72f`: `0.22f -> 0.13f -> 0.05f -> 0.012f -> Transparent`).
   - Drill-down single-line titles scale by code points (`<= 6`: `headlineMedium`; `7–9`: `headlineSmall` 23/28sp; `10–13`: `titleLarge` 20/25sp; `>= 14`: `titleMedium` 17/22sp) with `basicMarquee(initialDelayMillis = 2000)` on overflow. Subtitle count uses immutable destination presentation and seeds from known collection counts without an intermediate `Loading` label.
@@ -99,3 +99,29 @@ Search List places one localized caption above the card inside the same keyed pa
   - Library collects destination-owned domain/feed/mode Pagers; outgoing flows stay leased until exit transitions dispose, `SideEffect` reactivates returning A→B→A transitions, and Private Content visibility changes discard visible destinations immediately. List and grid remember separate scroll states; domain positions reset only when the selected filter changes.
   - Search retains its ViewModel-owned `PagingGeneration` flow, shares the Summary Peek overlay (dismissed on tap, back, or query change), and resets both list/grid positions non-suspendingly on query changes while preserving them when returning from Detail.
 - **Detail & Tag Aggregates**: Detail and AI Review observe a single ID per ID/retry and navigate only after DB writes commit (preserving screen + retry on failure). Tag selection counts and Settings domain lists query all matching SQL rows independently of loaded pages.
+
+---
+
+## 9. Library Layer (Discover preview)
+
+Shown only while `AppConfig.discoverPreviewEnabled` is on (`LibraryScreen(discoverPreview = true)`); flag off keeps §1–§8 unchanged. Design spec §9.
+
+- **Header**: title **Library** on the four tab roots, the per-tab count subtitle (§1), and the rail trigger. Under the title row, `LibraryTabs` (`LibraryTabs.kt`): a connected button group of four `ToggleButton`s (Newest / Domain / RSS / Collection; **新着 / ドメイン / RSS / コレクション**) with `ButtonGroupDefaults.connected*ButtonShapes()` (the checked segment becomes a full pill), `surfaceContainerHigh` / `secondaryContainer` colors, `48.dp` height, `selectableGroup`, tags `library_tabs` and `library_tab_<MODE>`. The group lives inside the frosted header, so it hides and returns with it on scroll; `TidiloScreenScaffold(headerExtraHeight = LibraryTabsHeight)` adds its height to the content's top clearance. Drill-downs hide the group and keep the Up glyph and the item's title.
+- **View toggle**: one `48.dp` icon button (`library_view_toggle`, **Show as list** / **Show as grid**) replaces the display-mode dropdown on Newest and drill-downs; deck tabs have none. The choice is the same persisted `LibraryViewMode`.
+- **Grid** (`LibraryPlateCard`, `LibraryPlateCards.kt`): `LazyVerticalGrid(GridCells.Adaptive(160.dp))`, `16.dp` × `20.dp` gaps, content type `library_plate_card`. Each card is a 1.91:1 plate (`DiscoverPlate`, `shapes.medium`; a poster without og:image) with the domain (`labelMedium`), the title (`titleSmall`, 3 lines), and the relative time below it, never on the art. With Include RSS on, RSS articles add an `RssFeed` glyph before the time and "RSS" to the description. Scroll position comes from the saveable grid state (no radial-menu anchor).
+- **List** (`LibraryPlateRow`): XS plate (`112.dp`, initial-only poster), title (2 lines), and "domain · time"; content type `library_plate_row`.
+- **Cards**: tap opens Detail; long-press opens the Peek sheet (`onLongClickLabel` **Peek**). Each card merges one description (title, domain, time, RSS). Tags `library_card_<id>` / `library_row_<id>`. Drill-downs use the same cards. Cards have no heart button; Like is in the Peek sheet and Detail.
+- **Peek sheet** (`LibraryPeek.kt`): the Discover Peek sheet with **Like** and **Add to collection** only (no Not now / Don't show again). The bookmark is observed from Room, so Like shows the stored state and a deleted bookmark closes the sheet. Opening records `PEEK` with `EngagementSurface.LIBRARY`. The peeked id and its collection sheets survive rotation (`rememberSaveable`). Summary Peek is not shown.
+- **Decks** (`LibraryDeckCard(gallery = true)`): three tonal layers (`surfaceContainerLow` / `surfaceContainer` / `surfaceContainerHigh`), `1.dp` accent hairlines (α 0.32 back, 0.5 front), an accent wash on the front, `shapes.largeIncreased`, the favicon watermark, a 2-line title, the subtitle rule of §6, and the plural count pill. Collection keeps its 1-column card with the same tonal layers and hairlines (`CollectionCard(gallery = true)`).
+- **Empty states** (`LibraryEmptyState`, tag `library_empty_<MODE>`, button `library_empty_action`): icon, `titleLarge` heading, body, and a filled button.
+
+| Tab | Title | Action |
+| :--- | :--- | :--- |
+| Newest | **No bookmarks yet** (below the Include RSS chip) | **Save URL** → Manual Import |
+| Domain | **No sites yet** (Domain lists manual saves only) | **Save URL** |
+| RSS, no subscriptions | **Get updates from sites you read** | **Add feed** → RSS Settings |
+| RSS, subscribed but nothing visible (not fetched yet, all Private while hidden, or expired) | **No articles to show right now** | **RSS settings** → RSS Settings |
+| Collection, none | **Group bookmarks by theme** | **New collection** → editor sheet; the dashed add card appears only once a collection exists |
+
+The RSS branch reads `LibraryViewModel.rssSubscriptionCount` (non-deleted rows of `rss_feeds`). An empty drill-down uses the Newest state.
+

@@ -514,4 +514,48 @@
     <string name="discover_greeting_growing">Your shelves fill in as you save</string>
     <string name="debug_discover_preview_title">Discover preview</string>
     <string name="debug_discover_preview_desc">Try the new Discover home and floating toolbar. The app restarts.</string>
+    <string name="discover_shelf_hero">Today’s pick</string>
+    <string name="discover_shelf_on_this_day">On this day</string>
+    <string name="discover_shelf_just_saved">Just saved</string>
+    <string name="discover_shelf_deck">Shuffle deck</string>
+    <string name="discover_shelf_sleeping_gems">Sleeping gems</string>
+    <string name="discover_shelf_rising">Rising</string>
+    <string name="discover_shelf_fresh_rss">Fresh from RSS</string>
+    <string name="discover_shelf_connections">Connections</string>
+    <string name="discover_shelf_map">Your map</string>
+    <string name="discover_greeting_pick">Start with this one</string>
+    <string name="discover_how_to_save_title">How to save</string>
+    <string name="discover_how_to_save_body">Share a page to Tidilo from any app, or tap Save below.</string>
+    <string name="discover_new_shelf">New shelf: %1$s</string>
+    <string name="discover_saving">Saving…</string>
+    <string name="discover_save_failed">Couldn’t save</string>
+    <string name="discover_retry">Retry</string>
+    <string name="discover_empty_title">Your gallery is empty</string>
+    <string name="discover_empty_body">Save a page and it will hang here.</string>
+    <string name="discover_save_url">Save URL</string>
+    <string name="discover_deal_another">Deal another</string>
+    <string name="discover_deck_next">Next card</string>
+    <string name="discover_deck_like">Like</string>
+    <string name="discover_deck_unlike">Remove like</string>
+    <string name="discover_deck_position">Card %1$d of %2$d</string>
+    <string name="discover_period_year">A year ago</string>
+    <string name="discover_period_six_months">6 months ago</string>
+    <string name="discover_period_month">A month ago</string>
+    <string name="discover_reason_affinity">You’ve been opening a lot of %1$s lately</string>
+    <string name="discover_reason_on_this_day_year">Saved a year ago today</string>
+    <string name="discover_reason_on_this_day_six_months">Saved 6 months ago today</string>
+    <string name="discover_reason_on_this_day_month">Saved a month ago today</string>
+    <string name="discover_reason_connection">Both mention %1$s</string>
+    <plurals name="discover_reason_dormant">
+        <item quantity="one">Saved %d day ago · never opened</item>
+        <item quantity="other">Saved %d days ago · never opened</item>
+    </plurals>
+    <plurals name="discover_reason_rss_expiring">
+        <item quantity="one">Disappears in %d day</item>
+        <item quantity="other">Disappears in %d days</item>
+    </plurals>
+    <plurals name="discover_reason_rising">
+        <item quantity="one">%d save in 14 days</item>
+        <item quantity="other">%d saves in 14 days</item>
+    </plurals>
 </resources>

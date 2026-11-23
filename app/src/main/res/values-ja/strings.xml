@@ -503,4 +503,45 @@
     <string name="discover_greeting_growing">集めたものが、少しずつ棚になります</string>
     <string name="debug_discover_preview_title">発見プレビュー</string>
     <string name="debug_discover_preview_desc">新しい「発見」ホームとフローティングツールバーを試します。アプリが再起動します。</string>
+    <string name="discover_shelf_hero">今日の一枚</string>
+    <string name="discover_shelf_on_this_day">あの日の今日</string>
+    <string name="discover_shelf_just_saved">保存したばかり</string>
+    <string name="discover_shelf_deck">シャッフル</string>
+    <string name="discover_shelf_sleeping_gems">眠っていた宝物</string>
+    <string name="discover_shelf_rising">急上昇</string>
+    <string name="discover_shelf_fresh_rss">RSSの新着</string>
+    <string name="discover_shelf_connections">つながり</string>
+    <string name="discover_shelf_map">あなたの地図</string>
+    <string name="discover_greeting_pick">まずはこの一枚から</string>
+    <string name="discover_how_to_save_title">保存のしかた</string>
+    <string name="discover_how_to_save_body">どのアプリからでも共有メニューで Tidilo を選ぶか、下の「保存」をタップします。</string>
+    <string name="discover_new_shelf">新しい棚：%1$s</string>
+    <string name="discover_saving">保存中…</string>
+    <string name="discover_save_failed">保存できませんでした</string>
+    <string name="discover_retry">再試行</string>
+    <string name="discover_empty_title">ギャラリーはまだ空です</string>
+    <string name="discover_empty_body">ページを保存すると、ここに飾られます。</string>
+    <string name="discover_save_url">URLを保存</string>
+    <string name="discover_deal_another">もう一度配る</string>
+    <string name="discover_deck_next">次のカード</string>
+    <string name="discover_deck_like">いいね</string>
+    <string name="discover_deck_unlike">いいねを外す</string>
+    <string name="discover_deck_position">%2$d枚中%1$d枚目</string>
+    <string name="discover_period_year">1年前</string>
+    <string name="discover_period_six_months">半年前</string>
+    <string name="discover_period_month">1か月前</string>
+    <string name="discover_reason_affinity">最近 %1$s をよく開いているので</string>
+    <string name="discover_reason_on_this_day_year">1年前の今日に保存</string>
+    <string name="discover_reason_on_this_day_six_months">半年前の今日に保存</string>
+    <string name="discover_reason_on_this_day_month">1か月前の今日に保存</string>
+    <string name="discover_reason_connection">どちらも %1$s の話</string>
+    <plurals name="discover_reason_dormant">
+        <item quantity="other">保存から%d日・まだ開いていません</item>
+    </plurals>
+    <plurals name="discover_reason_rss_expiring">
+        <item quantity="other">あと%d日で消えます</item>
+    </plurals>
+    <plurals name="discover_reason_rising">
+        <item quantity="other">14日で%d件</item>
+    </plurals>
 </resources>

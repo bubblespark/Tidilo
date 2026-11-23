@@ -1,13 +1,11 @@
 package me.bubblespark.tidilo.ui.screens.discover
 
 import android.text.format.DateFormat
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
@@ -15,9 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
@@ -35,13 +31,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -54,7 +48,10 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.delay
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.data.discover.DiscoverShelf
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.ScreenBackdropScope
 import me.bubblespark.tidilo.ui.components.StatusBarScrim
@@ -69,16 +66,33 @@ internal fun millisUntilNextLocalDay(now: ZonedDateTime): Long {
 internal fun createDiscoverDateFormatter(pattern: String, locale: Locale): DateTimeFormatter =
     DateTimeFormatter.ofPattern(pattern, locale)
 
-private const val PLATE_ASPECT_RATIO = 1.91f
-private val SkeletonRowPlateWidth = 280.dp
-private const val SkeletonCarouselRowCount = 4
-private const val SkeletonPlatesPerRow = 4
-
+/**
+ * Discover home (§4): the matted Today's pick, then the shelves in fixed order. Empty shelves take no
+ * space. Card taps, entity taps, saves, and likes go through the callbacks so the nav graph owns navigation.
+ */
 @Composable
 fun DiscoverScreen(
     onOpenNavigation: () -> Unit,
-    modifier: Modifier = Modifier
+    onOpenBookmark: (id: String, shelf: DiscoverShelf) -> Unit,
+    onOpenEntity: (value: String) -> Unit,
+    onSaveUrl: () -> Unit,
+    onRetryImport: (taskId: String) -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: DiscoverViewModel = viewModel()
 ) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val actions = remember(viewModel, onOpenBookmark, onOpenEntity, onSaveUrl, onRetryImport) {
+        DiscoverActions(
+            onOpen = onOpenBookmark,
+            onImpression = viewModel::onImpression,
+            onEntity = onOpenEntity,
+            onSaveUrl = onSaveUrl,
+            onRetryImport = onRetryImport,
+            onToggleDeckLike = viewModel::toggleDeckLike,
+            onNextCard = viewModel::nextCard,
+            onDealAnother = viewModel::dealAnother
+        )
+    }
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
@@ -91,7 +105,110 @@ fun DiscoverScreen(
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > scrimThresholdPx
         }
     }
+    val dateText = rememberDiscoverDateText()
+    val greeting = when (state.greeting) {
+        Greeting.PICK -> stringResource(R.string.discover_greeting_pick)
+        Greeting.GROWING -> stringResource(R.string.discover_greeting_growing)
+        Greeting.NONE -> ""
+    }
+    val hero = state.hero
+    val header: @Composable (Modifier) -> Unit = { headerModifier ->
+        DiscoverHeader(
+            dateText = dateText,
+            greeting = greeting,
+            onOpenNavigation = onOpenNavigation,
+            modifier = headerModifier.padding(start = startInset + 8.dp, end = endInset + 16.dp)
+        )
+    }
 
+    ScreenBackdropScope { backdrop ->
+        Box(modifier = modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .screenBackdropSource(backdrop)
+                    .testTag("discover_list"),
+                contentPadding = PaddingValues(
+                    top = if (hero != null) 0.dp else systemPadding.calculateTopPadding() + 8.dp,
+                    bottom = HeaderDefaults.FloatingNavigationClearance + systemPadding.calculateBottomPadding() + 16.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(ShelfSpacing)
+            ) {
+                if (hero != null) {
+                    item(key = "discover_hero", contentType = "hero") {
+                        HeroShelf(
+                            hero, actions,
+                            masthead = {
+                                header(Modifier.padding(top = systemPadding.calculateTopPadding() + 8.dp, bottom = 12.dp))
+                            },
+                            showNewCaption = state.newShelfCaption == DiscoverShelf.HERO,
+                            startInset = startInset,
+                            endInset = endInset
+                        )
+                    }
+                } else {
+                    item(key = "discover_header", contentType = "header") { header(Modifier) }
+                }
+                if (!state.loading && state.libraryCount == 0 && state.justSaved.isEmpty()) {
+                    item(key = "discover_empty", contentType = "empty") {
+                        EmptyWall(actions, Modifier.padding(start = startInset, end = endInset))
+                    }
+                }
+                for (shelf in state.presentShelves) {
+                    if (shelf == DiscoverShelf.HERO) continue
+                    item(key = "discover_shelf_${shelf.name}", contentType = shelf.name) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(start = startInset, end = endInset)
+                                .testTag("discover_shelf_${shelf.name}")
+                        ) {
+                            ShelfHeader(shelf, showNewCaption = state.newShelfCaption == shelf)
+                            ShelfContent(shelf, state, actions)
+                        }
+                    }
+                    if (shelf == DiscoverShelf.DECK && state.showHowToSave) {
+                        item(key = "discover_how_to_save", contentType = "how_to_save") {
+                            HowToSaveCard(actions, Modifier.padding(start = startInset, end = endInset))
+                        }
+                    }
+                }
+                if (state.showHowToSave && DiscoverShelf.DECK !in state.presentShelves) {
+                    item(key = "discover_how_to_save", contentType = "how_to_save") {
+                            HowToSaveCard(actions, Modifier.padding(start = startInset, end = endInset))
+                        }
+                }
+            }
+
+            StatusBarScrim(
+                visible = scrolled || hero == null,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+        }
+    }
+}
+
+private val ShelfSpacing = 40.dp
+
+@Composable
+private fun ShelfContent(shelf: DiscoverShelf, state: DiscoverUiState, actions: DiscoverActions) {
+    when (shelf) {
+        DiscoverShelf.HERO -> Unit
+        DiscoverShelf.ON_THIS_DAY -> OnThisDayShelf(state.onThisDay, actions)
+        DiscoverShelf.JUST_SAVED -> JustSavedShelf(state.justSaved, actions)
+        DiscoverShelf.DECK -> DeckShelf(state.deck, actions)
+        DiscoverShelf.SLEEPING_GEMS -> SleepingGemsShelf(state.sleepingGems, actions)
+        DiscoverShelf.RISING -> RisingShelf(state.rising, actions)
+        DiscoverShelf.FRESH_RSS -> FreshRssShelf(state.freshRss, actions)
+        DiscoverShelf.CONNECTIONS -> state.connection?.let { ConnectionsShelf(it, actions) }
+        DiscoverShelf.MAP -> MapShelf(state.map, actions)
+    }
+}
+
+/** "Sunday, November 23" in the user's locale; refreshed at local midnight and on resume. */
+@Composable
+private fun rememberDiscoverDateText(): String {
     val configuration = LocalConfiguration.current
     val locale = remember(configuration) {
         configuration.locales.takeIf { !it.isEmpty }?.get(0) ?: Locale.getDefault()
@@ -118,78 +235,7 @@ fun DiscoverScreen(
             delay(millisUntilNextLocalDay(now))
         }
     }
-    val dateText = currentDate.format(dateFormatter)
-    val greeting = stringResource(R.string.discover_greeting_growing)
-
-    ScreenBackdropScope { backdrop ->
-        Box(modifier = modifier.fillMaxSize()) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .screenBackdropSource(backdrop),
-                contentPadding = PaddingValues(
-                    top = systemPadding.calculateTopPadding() + 8.dp,
-                    bottom = HeaderDefaults.FloatingNavigationClearance + systemPadding.calculateBottomPadding()
-                ),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
-            ) {
-                item(key = "discover_header", contentType = "header") {
-                    DiscoverHeader(
-                        dateText = dateText,
-                        greeting = greeting,
-                        onOpenNavigation = onOpenNavigation,
-                        modifier = Modifier.padding(start = startInset + 8.dp, end = endInset + 16.dp)
-                    )
-                }
-                item(key = "discover_skeleton_hero", contentType = "skeleton_hero") {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = startInset + 16.dp, end = endInset + 16.dp)
-                            .aspectRatio(PLATE_ASPECT_RATIO)
-                            .clip(MaterialTheme.shapes.large)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .clearAndSetSemantics {}
-                    )
-                }
-                items(
-                    count = SkeletonCarouselRowCount,
-                    key = { row -> "discover_skeleton_row_$row" },
-                    contentType = { "skeleton_row" }
-                ) { row ->
-                    LazyRow(
-                        contentPadding = PaddingValues(
-                            start = startInset + 16.dp,
-                            end = endInset + 16.dp
-                        ),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clearAndSetSemantics {}
-                    ) {
-                        items(
-                            count = SkeletonPlatesPerRow,
-                            key = { index -> "discover_skeleton_${row}_$index" }
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(SkeletonRowPlateWidth)
-                                    .aspectRatio(PLATE_ASPECT_RATIO)
-                                    .clip(MaterialTheme.shapes.large)
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            )
-                        }
-                    }
-                }
-            }
-
-            StatusBarScrim(
-                visible = scrolled,
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
-        }
-    }
+    return currentDate.format(dateFormatter)
 }
 
 @Composable
@@ -228,11 +274,13 @@ fun DiscoverHeader(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text(
-                text = greeting,
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            if (greeting.isNotEmpty()) {
+                Text(
+                    text = greeting,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
     }
 }

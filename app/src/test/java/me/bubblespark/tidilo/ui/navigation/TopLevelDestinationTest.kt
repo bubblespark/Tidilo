@@ -27,4 +27,10 @@ class TopLevelDestinationTest {
         assertEquals(Screen.Library.route, TopLevelDestination.LIBRARY.route)
         assertEquals(Screen.Search.route, TopLevelDestination.SEARCH.route)
     }
+
+    @Test fun detailRouteCarriesTheOpeningSurface() {
+        org.junit.Assert.assertEquals("bookmark_detail/a", Screen.BookmarkDetail.createRoute("a"))
+        org.junit.Assert.assertEquals("bookmark_detail/a?surface=5",
+            Screen.BookmarkDetail.createRoute("a", me.bubblespark.tidilo.data.engagement.EngagementSurface.DISCOVER_HERO))
+    }
 }

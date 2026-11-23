@@ -23,7 +23,7 @@ class TidiloNavGraphTest {
 
         assertEquals("bookmark_detail/item-1", route1)
         assertEquals("bookmark_detail/item-2", route2)
-        assertEquals("bookmark_detail/{bookmarkId}", Screen.BookmarkDetail.route)
+        assertEquals("bookmark_detail/{bookmarkId}?surface={surface}", Screen.BookmarkDetail.route)
 
         // Both routes map to the same base route prefix for single-top destination matching
         val baseTemplate = Screen.BookmarkDetail.route.substringBefore("/{")

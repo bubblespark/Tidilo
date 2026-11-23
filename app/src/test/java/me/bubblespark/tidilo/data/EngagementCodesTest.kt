@@ -12,7 +12,7 @@ class EngagementCodesTest {
 
     @Test fun codesAreUniqueAndStable() {
         assertEquals((1..11).toList(), EngagementType.entries.map { it.code })
-        assertEquals((0..4).toList(), EngagementSurface.entries.map { it.code })
+        assertEquals((0..13).toList(), EngagementSurface.entries.map { it.code })
     }
 
     @Test fun fromCodeRoundTripsAndRejectsUnknown() {

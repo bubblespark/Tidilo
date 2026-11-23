@@ -199,6 +199,19 @@ data class DiscoverUiState(
             if (connection != null) add(DiscoverShelf.CONNECTIONS)
             if (map.isNotEmpty()) add(DiscoverShelf.MAP)
         }
+
+    /** A bookmark on a shelf backed by stored data (every shelf except the locally dealt deck). */
+    fun storedItem(id: String): BookmarkItem? =
+        hero?.item?.takeIf { it.id == id }
+            ?: onThisDay.firstOrNull { it.item.id == id }?.item
+            ?: justSaved.firstNotNullOfOrNull { (it as? JustSavedEntry.Saved)?.item?.takeIf { item -> item.id == id } }
+            ?: sleepingGems.firstOrNull { it.item.id == id }?.item
+            ?: rising.firstNotNullOfOrNull { group -> group.picks.firstOrNull { it.item.id == id }?.item }
+            ?: freshRss.firstOrNull { it.item.id == id }?.item
+            ?: connection?.let { listOf(it.first, it.second).firstOrNull { pick -> pick.item.id == id }?.item }
+
+    /** The freshest copy of a bookmark on Discover: stored shelves first, then the deck. */
+    fun findItem(id: String): BookmarkItem? = storedItem(id) ?: deck.cards.firstOrNull { it.id == id }
 }
 
 internal const val HOW_TO_SAVE_MAX_LIBRARY = 49
@@ -219,8 +232,8 @@ class DiscoverViewModel internal constructor(
     private val caption = MutableStateFlow<DiscoverShelf?>(null)
     private var lastLibraryCount: Int? = null
     private val extras = MutableStateFlow(Extras())
-    private var entranceChecked = false
-    /** Deck cards hidden from the Peek sheet, with their position, so Undo can put them back. */
+    private var entranceCheckedDay: Long? = null
+    /** Deck cards hidden from the Peek sheet, with their position, so Undo can put them back (even into a later deal). */
     private val removed = HashMap<String, Pair<BookmarkItem, Int>>()
 
     private data class Extras(val reDealing: Boolean = false, val notice: DiscoverNotice? = null, val playEntrance: Boolean = false)
@@ -265,6 +278,7 @@ class DiscoverViewModel internal constructor(
             )
         }
         noteShelves(state.presentShelves.toSet())
+        settleLikes(state)
         val latest = extras.value
         state.copy(newShelfCaption = caption.value ?: captionShelf, reDealing = extra.reDealing, notice = extra.notice,
             playEntrance = latest.playEntrance)
@@ -300,10 +314,10 @@ class DiscoverViewModel internal constructor(
         source.saveSeenShelves(known + first)
     }
 
-    /** Plays the entrance on the first Discover open of [day] only. */
+    /** Plays the entrance on the first Discover open of [day] only, including a day that starts while open (04:00). */
     private fun noteEntrance(day: Long) {
-        if (entranceChecked) return
-        entranceChecked = true
+        if (entranceCheckedDay == day) return
+        entranceCheckedDay = day
         if (source.entranceDay() == day) return
         source.saveEntranceDay(day)
         extras.update { it.copy(playEntrance = true) }
@@ -315,13 +329,15 @@ class DiscoverViewModel internal constructor(
     /** Draws a fresh deck (on open and on "Deal another"). */
     fun dealAnother() = launchLogged("deal the deck") {
         val cards = source.dealDeck()
-        removed.clear()
         deck.value = DeckState(cards)
     }
 
-    /** "Next card" or a flick: records a flick for the top card and advances. */
-    fun nextCard() {
-        val top = deck.value.current ?: return
+    /**
+     * "Next card" or a flick on the card [id]: records a flick and advances. A second call for the same
+     * card (a tap during the throw animation) does nothing, so a card advances at most once.
+     */
+    fun nextCard(id: String) {
+        val top = deck.value.current?.takeIf { it.id == id } ?: return
         deck.update { it.next() }
         launchLogged("record a deck flick") { source.recordDeckFlick(top.id, EngagementSurface.DISCOVER_DECK) }
     }
@@ -374,7 +390,21 @@ class DiscoverViewModel internal constructor(
     fun noticeShown() = extras.update { it.copy(notice = null) }
 
     private fun restoreDeckCard(id: String) {
-        removed.remove(id)?.let { (card, at) -> deck.update { it.restore(card, at) } }
+        val (card, at) = removed.remove(id) ?: return
+        // Private content may have been hidden since the card left the deck.
+        if (card.isPrivate && !source.privateVisible.value) return
+        deck.update { it.restore(card, at) }
+    }
+
+    /**
+     * Drops Like overrides that the stored shelves already show, so a later change elsewhere (Detail)
+     * shows through. Deck cards are local copies, so their copy is updated when the write completes.
+     */
+    private fun settleLikes(state: DiscoverUiState) {
+        val likes = deck.value.likes
+        if (likes.isEmpty()) return
+        val settled = likes.filter { (id, liked) -> state.storedItem(id)?.isLiked == liked }.keys
+        if (settled.isNotEmpty()) deck.update { it.copy(likes = it.likes - settled) }
     }
 
     /** Pull to re-deal (§4.4). A pull while a re-deal runs is ignored. */
@@ -408,7 +438,10 @@ class DiscoverViewModel internal constructor(
         scope.launch {
             try {
                 val stored = source.toggleLike(item.id, surface)
-                if (stored == null) restore() else deck.update { it.copy(likes = it.likes + (item.id to stored)) }
+                if (stored == null) restore() else deck.update { state ->
+                    state.copy(cards = state.cards.map { if (it.id == item.id) it.copy(isLiked = stored) else it },
+                        likes = state.likes + (item.id to stored))
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

@@ -19,7 +19,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -52,8 +56,14 @@ internal fun DiscoverPeekSheet(
     val item = target.item
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
+    var closing by remember { mutableStateOf(false) }
+    // One action per sheet: a second tap while hiding does nothing, and a hide cancelled by leaving
+    // the screen runs no action.
     fun closeThen(action: () -> Unit) {
-        scope.launch { sheetState.hide() }.invokeOnCompletion {
+        if (closing) return
+        closing = true
+        scope.launch { sheetState.hide() }.invokeOnCompletion { cause ->
+            if (cause != null) return@invokeOnCompletion
             action()
             onDismiss()
         }

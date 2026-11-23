@@ -12,6 +12,8 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
@@ -104,10 +106,12 @@ fun DiscoverScreen(
     viewModel: DiscoverViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var peek by remember { mutableStateOf<PeekTarget?>(null) }
-    var focusId by remember { mutableStateOf<String?>(null) }
-    var collectionFor by remember { mutableStateOf<String?>(null) }
-    var creatorFor by remember { mutableStateOf<String?>(null) }
+    // Sheets survive rotation and process recreation; the peeked item is resolved from current state.
+    var peekId by rememberSaveable { mutableStateOf<String?>(null) }
+    var peekReason by rememberSaveable { mutableStateOf<String?>(null) }
+    var focusId by rememberSaveable { mutableStateOf<String?>(null) }
+    var collectionFor by rememberSaveable { mutableStateOf<String?>(null) }
+    var creatorFor by rememberSaveable { mutableStateOf<String?>(null) }
     val actions = remember(viewModel, onOpenBookmark, onOpenEntity, onSaveUrl, onRetryImport) {
         DiscoverActions(
             onOpen = onOpenBookmark,
@@ -119,7 +123,8 @@ fun DiscoverScreen(
             onNextCard = viewModel::nextCard,
             onDealAnother = viewModel::dealAnother,
             onPeek = { item, reason ->
-                peek = PeekTarget(item, reason)
+                peekId = item.id
+                peekReason = reason
                 focusId = item.id
                 viewModel.onPeek(item.id)
             },
@@ -158,12 +163,13 @@ fun DiscoverScreen(
     // Ambient bleed (§7.1): the shelf nearest the viewport center lights the background. The background
     // layer crossfades and reads the color in its draw phase; reduced motion turns the bleed off.
     val ambient = remember { DiscoverAmbient() }
+    val leadIds = rememberUpdatedState(remember(state) { state.leadIds() })
     val ambientColor = remember(listState, ambient) {
         derivedStateOf {
             val info = listState.layoutInfo
             val key = centerItemKey(info.viewportStartOffset, info.viewportEndOffset,
                 info.visibleItemsInfo.map { VisibleItem(it.key, it.offset, it.size) })
-            key?.let { ambient.colors[it] } ?: Color.Transparent
+            key?.let { leadIds.value[it] }?.let { ambient.colors[it] } ?: Color.Transparent
         }
     }
     if (!reducedMotion) AmbientLightingEffect(ambientColor, ownerId = "discover")
@@ -210,9 +216,12 @@ fun DiscoverScreen(
     // Focus goes back to the peeked card once every sheet it opened has closed (§10).
     val peekRequester = remember { FocusRequester() }
     val peekFocus = remember(focusId) { focusId?.let { PeekFocus(it, peekRequester) } }
-    val sheetOpen = peek != null || collectionFor != null || creatorFor != null
+    val sheetOpen = peekId != null || collectionFor != null || creatorFor != null
     LaunchedEffect(sheetOpen) {
-        if (!sheetOpen && focusId != null) runCatching { peekRequester.requestFocus() }
+        if (!sheetOpen && focusId != null) {
+            runCatching { peekRequester.requestFocus() }
+            focusId = null
+        }
     }
 
     val haptic = LocalHapticFeedback.current
@@ -224,7 +233,7 @@ fun DiscoverScreen(
     }
     val bottomClearance = HeaderDefaults.FloatingNavigationClearance + systemPadding.calculateBottomPadding()
 
-    CompositionLocalProvider(LocalPeekFocus provides peekFocus) {
+    CompositionLocalProvider(LocalPeekFocus provides peekFocus, LocalDiscoverAmbient provides ambient) {
     ScreenBackdropScope { backdrop ->
         Box(modifier = modifier.fillMaxSize()) {
             PullToRefreshBox(
@@ -254,7 +263,7 @@ fun DiscoverScreen(
             ) {
                 if (hero != null) {
                     item(key = HERO_KEY, contentType = "hero") {
-                        ShelfMotion(ambient, HERO_KEY, if (reducedMotion) null else dealFlip, 0) {
+                        ShelfMotion(if (reducedMotion) null else dealFlip, 0) {
                             HeroShelf(
                                 hero, actions,
                                 masthead = {
@@ -280,7 +289,7 @@ fun DiscoverScreen(
                     if (shelf == DiscoverShelf.HERO) continue
                     val key = "discover_shelf_${shelf.name}"
                     item(key = key, contentType = shelf.name) {
-                        ShelfMotion(ambient, key, dealFlip.takeIf { !reducedMotion && shelf in FLIPPING_SHELVES }, order) {
+                        ShelfMotion(dealFlip.takeIf { !reducedMotion && shelf in FLIPPING_SHELVES }, order) {
                             Column(
                                 Modifier
                                     .fillMaxWidth()
@@ -319,7 +328,9 @@ fun DiscoverScreen(
     }
     }
 
-    peek?.let { target ->
+    val peekItem = peekId?.let(state::findItem)
+    if (peekItem != null) {
+        val target = PeekTarget(peekItem, peekReason)
         DiscoverPeekSheet(
             target = target,
             liked = state.deck.isLiked(target.item),
@@ -327,7 +338,10 @@ fun DiscoverScreen(
             onSnooze = { viewModel.snooze(target.item) },
             onNeverAgain = { viewModel.neverAgain(target.item) },
             onAddToCollection = { collectionFor = target.item.id },
-            onDismiss = { peek = null }
+            onDismiss = {
+                peekId = null
+                peekReason = null
+            }
         )
     }
     collectionFor?.let { id ->
@@ -346,19 +360,31 @@ fun DiscoverScreen(
 }
 
 private val ShelfSpacing = 40.dp
-private const val HERO_KEY = "discover_hero"
+internal const val HERO_KEY = "discover_hero"
 
 /** Shelves whose picks come from the daily snapshot, so a re-deal flips them (§7.3). */
 private val FLIPPING_SHELVES = setOf(
     DiscoverShelf.HERO, DiscoverShelf.ON_THIS_DAY, DiscoverShelf.SLEEPING_GEMS, DiscoverShelf.RISING, DiscoverShelf.CONNECTIONS
 )
 
-/** Gives a shelf's cards its ambient slot and, on snapshot shelves, the re-deal flip. */
+/** Gives a snapshot shelf's cards the re-deal flip. */
 @Composable
-private fun ShelfMotion(ambient: DiscoverAmbient, key: Any, flip: DealFlipState?, order: Int, content: @Composable () -> Unit) {
-    val shelfAmbient = remember(ambient, key) { ShelfAmbient(ambient, key) }
+private fun ShelfMotion(flip: DealFlipState?, order: Int, content: @Composable () -> Unit) {
     val dealFlip = remember(flip, order) { flip?.let { DealFlip(it, order) } }
-    CompositionLocalProvider(LocalShelfAmbient provides shelfAmbient, LocalDealFlip provides dealFlip, content = content)
+    CompositionLocalProvider(LocalDealFlip provides dealFlip, content = content)
+}
+
+/** The first card of each shelf, keyed like the list items; its plate's color lights the shelf (§7.1). */
+internal fun DiscoverUiState.leadIds(): Map<Any, String> = buildMap {
+    hero?.let { put(HERO_KEY, it.item.id) }
+    fun lead(shelf: DiscoverShelf, id: String?) { if (id != null) put("discover_shelf_${shelf.name}", id) }
+    lead(DiscoverShelf.ON_THIS_DAY, onThisDay.firstOrNull()?.item?.id)
+    lead(DiscoverShelf.JUST_SAVED, justSaved.firstNotNullOfOrNull { (it as? JustSavedEntry.Saved)?.item?.id })
+    lead(DiscoverShelf.DECK, deck.current?.id)
+    lead(DiscoverShelf.SLEEPING_GEMS, sleepingGems.firstOrNull()?.item?.id)
+    lead(DiscoverShelf.RISING, rising.firstOrNull()?.picks?.firstOrNull()?.item?.id)
+    lead(DiscoverShelf.FRESH_RSS, freshRss.firstOrNull()?.item?.id)
+    lead(DiscoverShelf.CONNECTIONS, connection?.first?.item?.id)
 }
 
 @Composable

@@ -66,7 +66,7 @@ class DiscoverActions(
     val onSaveUrl: () -> Unit,
     val onRetryImport: (taskId: String) -> Unit,
     val onToggleDeckLike: (item: BookmarkItem) -> Unit,
-    val onNextCard: () -> Unit,
+    val onNextCard: (id: String) -> Unit,
     val onDealAnother: () -> Unit,
     val onPeek: (item: BookmarkItem, reason: String?) -> Unit,
     val onMute: (bubble: MapBubble) -> Unit
@@ -100,14 +100,18 @@ internal fun Modifier.discoverCard(
     val haptic = LocalHapticFeedback.current
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val lift by animateFloatAsState(if (pressed) 1.03f else 1f, MaterialTheme.motionScheme.fastSpatialSpec(), label = "cardLift")
+    val lift = animateFloatAsState(if (pressed) 1.03f else 1f, MaterialTheme.motionScheme.fastSpatialSpec(), label = "cardLift")
     val peekFocus = LocalPeekFocus.current
     return this
         .testTag("discover_card_${item.id}")
         .then(if (peekFocus?.id == item.id) Modifier.focusRequester(peekFocus.requester) else Modifier)
         .discoverImpression(item.id, shelf, actions)
         .dealFlip()
-        .graphicsLayer { scaleX = lift; scaleY = lift }
+        .graphicsLayer {
+            // Read in the draw phase so a press does not recompose the card every frame.
+            scaleX = lift.value
+            scaleY = lift.value
+        }
         .combinedClickable(
             interactionSource = interaction,
             indication = LocalIndication.current,

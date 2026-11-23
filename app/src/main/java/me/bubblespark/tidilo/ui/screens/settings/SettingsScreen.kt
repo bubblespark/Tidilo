@@ -161,7 +161,7 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     showResetDialog = false
                     resetScope.launch {
-                        // A failed reset rolls back in its transaction; it must not crash Settings.
+                        // Clears roll back on failure; a later recompute failure leaves them applied. Neither may crash Settings.
                         val reset = try {
                             onResetDiscoverHistory?.invoke() ?: DiscoverRepository.getInstance(context).resetHistory()
                             true

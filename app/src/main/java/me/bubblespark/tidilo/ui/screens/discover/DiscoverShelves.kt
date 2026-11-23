@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -239,6 +240,8 @@ internal fun DeckShelf(deck: DeckState, actions: DiscoverActions, reducedMotion:
         val drag = remember(current.id) { Animatable(0f) }
         val burst = remember(current.id) { Animatable(0f) }
         val flickVelocity = with(LocalDensity.current) { FlickVelocity.toPx() }
+        val currentReducedMotion by rememberUpdatedState(reducedMotion)
+        val cardId = current.id
         fun like() {
             if (!liked && !reducedMotion) scope.launch { burst.snapTo(1f); burst.animateTo(0f, tween(500)) }
             actions.onToggleDeckLike(current)
@@ -246,12 +249,10 @@ internal fun DeckShelf(deck: DeckState, actions: DiscoverActions, reducedMotion:
         Box(Modifier.widthIn(max = PostcardWidth).fillMaxWidth(), contentAlignment = Alignment.Center) {
             if (deck.index + 2 < deck.cards.size) PostcardBack(Modifier.matchParentSize().rotate(3f))
             if (deck.index + 1 < deck.cards.size) PostcardBack(Modifier.matchParentSize().rotate(-3f))
+            // Pointer input sits before the layer so positions stay in the unmoved parent space;
+            // otherwise the card follows the finger and the tracker measures no velocity.
             Postcard(current, actions, onDoubleClick = ::like, modifier = Modifier
-                .graphicsLayer {
-                    translationX = drag.value
-                    rotationZ = drag.value * DragRotationPerPx
-                }
-                .pointerInput(current.id) {
+                .pointerInput(cardId) {
                     val tracker = VelocityTracker()
                     fun release() {
                         val velocity = tracker.calculateVelocity().x
@@ -264,8 +265,8 @@ internal fun DeckShelf(deck: DeckState, actions: DiscoverActions, reducedMotion:
                             haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
                             val direction = if (kotlin.math.abs(velocity) > flickVelocity) kotlin.math.sign(velocity) else kotlin.math.sign(drag.value)
                             // Reduced motion: the flick still works, without inertia.
-                            if (!reducedMotion) drag.animateTo(direction * size.width * 1.4f, tween(160))
-                            actions.onNextCard()
+                            if (!currentReducedMotion) drag.animateTo(direction * size.width * 1.4f, tween(160))
+                            actions.onNextCard(cardId)
                         }
                     }
                     detectHorizontalDragGestures(
@@ -279,10 +280,14 @@ internal fun DeckShelf(deck: DeckState, actions: DiscoverActions, reducedMotion:
                         }
                     )
                 }
+                .graphicsLayer {
+                    translationX = drag.value
+                    rotationZ = drag.value * DragRotationPerPx
+                }
                 .semantics {
                     stateDescription = position
                     customActions = listOf(
-                        CustomAccessibilityAction(nextLabel) { actions.onNextCard(); true },
+                        CustomAccessibilityAction(nextLabel) { actions.onNextCard(cardId); true },
                         CustomAccessibilityAction(likeLabel) { actions.onToggleDeckLike(current); true }
                     )
                 })
@@ -295,7 +300,7 @@ internal fun DeckShelf(deck: DeckState, actions: DiscoverActions, reducedMotion:
                 })
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            FilledTonalButton(onClick = actions.onNextCard, modifier = Modifier.testTag("discover_deck_next")) {
+            FilledTonalButton(onClick = { actions.onNextCard(cardId) }, modifier = Modifier.testTag("discover_deck_next")) {
                 Text(nextLabel)
             }
             IconToggleButton(

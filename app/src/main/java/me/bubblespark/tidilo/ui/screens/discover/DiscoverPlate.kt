@@ -94,7 +94,7 @@ internal fun DiscoverPlateContent(
 ) {
     val placeholder = MaterialTheme.colorScheme.surfaceContainerHigh
     val bitmap = ogState.bitmap
-    ReportAmbientColor(domainVisual.accentColor)
+    ReportAmbientColor(item.id, domainVisual.accentColor)
     Box(
         modifier = modifier
             .aspectRatio(PLATE_RATIO)

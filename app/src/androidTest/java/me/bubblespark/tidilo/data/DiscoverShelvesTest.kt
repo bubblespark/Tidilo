@@ -340,9 +340,9 @@ class DiscoverShelvesTest {
             host.main { card.config[SemanticsActions.CustomActions][0].action() }
             val second = host.await(activity) { tag(it, "discover_card_d1") }
             host.capture("discover-deck-before-drag")
-            // A quick drag past 40% of the card's width flicks it.
+            // A fast fling shorter than 40% of the card's width flicks it (velocity alone).
             val bounds = second.boundsInWindow
-            drag(Offset(bounds.left + 40f, bounds.center.y), Offset(bounds.left + 40f + bounds.width * 0.6f, bounds.center.y))
+            drag(Offset(bounds.left + 40f, bounds.center.y), Offset(bounds.left + 40f + bounds.width * 0.3f, bounds.center.y))
             host.await(activity) { tag(it, "discover_card_d2") }
             withTimeoutOrFail { source.flicks.toList() == listOf("d0", "d1") }
             // A short drag springs back.
@@ -433,19 +433,22 @@ class DiscoverShelvesTest {
         } finally { activity.finish() }
     }
 
-    /** Injects a drag in window coordinates (the test activity is full screen). */
+    /**
+     * Injects a drag in window coordinates (the test activity is full screen). Event times advance by
+     * exactly [stepMs] per step, so the measured velocity does not depend on how long injection takes.
+     */
     private suspend fun drag(start: Offset, end: Offset, steps: Int = 6, stepMs: Long = 12) {
         val downTime = android.os.SystemClock.uptimeMillis()
-        fun send(action: Int, position: Offset) {
-            val event = android.view.MotionEvent.obtain(downTime, android.os.SystemClock.uptimeMillis(), action, position.x, position.y, 0)
+        fun send(action: Int, position: Offset, step: Int) {
+            val event = android.view.MotionEvent.obtain(downTime, downTime + step * stepMs, action, position.x, position.y, 0)
             try { host.instrumentation.sendPointerSync(event) } finally { event.recycle() }
         }
-        send(android.view.MotionEvent.ACTION_DOWN, start)
+        send(android.view.MotionEvent.ACTION_DOWN, start, 0)
         for (step in 1..steps) {
             delay(stepMs)
-            send(android.view.MotionEvent.ACTION_MOVE, start + (end - start) * (step / steps.toFloat()))
+            send(android.view.MotionEvent.ACTION_MOVE, start + (end - start) * (step / steps.toFloat()), step)
         }
-        send(android.view.MotionEvent.ACTION_UP, end)
+        send(android.view.MotionEvent.ACTION_UP, end, steps)
     }
 
     private fun shell(command: String): String =

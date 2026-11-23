@@ -23,15 +23,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 
 /**
- * Reduced motion (§7): the system animator scale is 0, which "Remove animations" also sets. Read on
- * entering Discover; the user changes it in system settings, outside the app.
+ * Reduced motion (§7): the system animator scale is 0, which "Remove animations" also sets. The user
+ * changes it in system settings, outside the app, so it is read again on every resume.
  */
 @Composable
-internal fun rememberReducedMotion(): Boolean = remember { !ValueAnimator.areAnimatorsEnabled() }
+internal fun rememberReducedMotion(): Boolean {
+    var reduced by remember { mutableStateOf(!ValueAnimator.areAnimatorsEnabled()) }
+    LifecycleResumeEffect(Unit) {
+        reduced = !ValueAnimator.areAnimatorsEnabled()
+        onPauseOrDispose {}
+    }
+    return reduced
+}
 
 /** One visible list item for [centerItemKey]: its key and its main-axis offset and size in px. */
 internal data class VisibleItem(val key: Any, val offset: Int, val size: Int)
@@ -42,23 +50,24 @@ internal fun centerItemKey(viewportStart: Int, viewportEnd: Int, items: List<Vis
     return items.minByOrNull { kotlin.math.abs(it.offset + it.size / 2 - center) }?.key
 }
 
-/** Ambient colors reported by the plates of each shelf (§7.1), keyed by the shelf's list key. */
+/**
+ * Ambient colors reported by Discover plates (§7.1), keyed by bookmark id. The screen lights the
+ * background with the color of the centered shelf's current first card, so a re-deal, a flick, or a
+ * hidden card changes the color as soon as the new first plate reports its own.
+ */
 @Stable
 internal class DiscoverAmbient {
-    val colors = mutableStateMapOf<Any, Color>()
+    val colors = mutableStateMapOf<String, Color>()
 }
 
-/** The ambient registry and the list key of the shelf being composed. Null outside Discover. */
-internal class ShelfAmbient(val registry: DiscoverAmbient, val key: Any)
+/** Null outside Discover, so plates elsewhere report nothing. */
+internal val LocalDiscoverAmbient = staticCompositionLocalOf<DiscoverAmbient?> { null }
 
-internal val LocalShelfAmbient = staticCompositionLocalOf<ShelfAmbient?> { null }
-
-/** The first plate of a shelf with a known color sets the shelf's ambient color. */
 @Composable
-internal fun ReportAmbientColor(color: Color) {
-    val shelf = LocalShelfAmbient.current ?: return
+internal fun ReportAmbientColor(bookmarkId: String, color: Color) {
+    val registry = LocalDiscoverAmbient.current ?: return
     if (color == Color.Unspecified || color == Color.Transparent) return
-    SideEffect { if (shelf.key !in shelf.registry.colors) shelf.registry.colors[shelf.key] = color }
+    SideEffect { if (registry.colors[bookmarkId] != color) registry.colors[bookmarkId] = color }
 }
 
 /** Re-deal flip state shared by the snapshot shelves (§7.3). Read in effects only, never in composition. */

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -42,7 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -74,13 +75,12 @@ import me.bubblespark.tidilo.data.discover.DiscoverShelf
 import me.bubblespark.tidilo.data.discover.MapBubble
 import me.bubblespark.tidilo.data.discover.RisingGroup
 import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
-import me.bubblespark.tidilo.ui.components.rememberDomainVisual
-import me.bubblespark.tidilo.ui.components.rememberOgImage
 import me.bubblespark.tidilo.ui.screens.library.rememberDetailHeroPalette
 
 internal val ShelfMargin = 16.dp
 private val HeroBottomShape = RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp)
 private val FeatureShape = RoundedCornerShape(20.dp)
+private const val PLATE_CARD = "plate_card"
 
 /** Shelf title (`titleLarge`, accessibility heading) with the optional first-appearance caption (§4.6). */
 @Composable
@@ -101,13 +101,22 @@ internal fun ShelfHeader(shelf: DiscoverShelf, showNewCaption: Boolean, modifier
  * mats made from its own edge colors, then the caption on the bottom mat. Nothing is written on the art.
  */
 @Composable
-internal fun HeroShelf(pick: DiscoverPick, actions: DiscoverActions, masthead: @Composable () -> Unit, modifier: Modifier = Modifier) {
+internal fun HeroShelf(
+    pick: DiscoverPick,
+    actions: DiscoverActions,
+    masthead: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    showNewCaption: Boolean = false,
+    startInset: Dp = 0.dp,
+    endInset: Dp = 0.dp
+) {
     val item = pick.item
     val source = LocalCacheVisualSource.current
     val domain = remember(item.domain, item.url, source) { item.domain ?: source.extractDomain(item.url) }
-    val ogState by rememberOgImage(item.url, domain, item.ogImageUrl, item.ogImageFilename, source = source)
-    val domainVisual by rememberDomainVisual(domain, item.url, ogState.shouldShowFallback, source = source)
-    val palette by rememberDetailHeroPalette(item.id, domain, item.ogImageFilename, ogState.bitmap, ogState.shouldShowFallback, domainVisual)
+    // One observer pair feeds both the mats' palette and the plate.
+    val visuals = rememberPlateVisuals(item)
+    val ogState = visuals.og
+    val palette by rememberDetailHeroPalette(item.id, domain, item.ogImageFilename, ogState.bitmap, ogState.shouldShowFallback, visuals.domain)
     val fallback = MaterialTheme.colorScheme.surfaceContainer
     val topMat = palette.topEdgeColor.takeUnless { it == Color.Transparent } ?: fallback
     val bottomMat = palette.bottomEdgeColor.takeUnless { it == Color.Transparent } ?: fallback
@@ -116,14 +125,19 @@ internal fun HeroShelf(pick: DiscoverPick, actions: DiscoverActions, masthead: @
         Box(Modifier.fillMaxWidth().background(topMat)) { masthead() }
         Column(Modifier.fillMaxWidth().clip(HeroBottomShape).background(bottomMat).discoverCard(item, DiscoverShelf.HERO, reasonLabel, actions)) {
             Box(Modifier.fillMaxWidth()) {
-                DiscoverPlate(item, RectangleShape, Modifier.fillMaxWidth(), matColor = topMat)
+                DiscoverPlateContent(item, ogState, visuals.domain, RectangleShape, Modifier.fillMaxWidth(), matColor = topMat)
                 // The plate's edges dissolve into the mats (13% top, 6% bottom).
                 Box(Modifier.fillMaxWidth().height(PlateSize.XL.height * 0.13f).align(Alignment.TopCenter)
                     .background(Brush.verticalGradient(listOf(topMat, Color.Transparent))))
                 Box(Modifier.fillMaxWidth().height(PlateSize.XL.height * 0.06f).align(Alignment.BottomCenter)
                     .background(Brush.verticalGradient(listOf(Color.Transparent, bottomMat))))
             }
-            Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.padding(start = 20.dp + startInset, end = 20.dp + endInset, top = 16.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (showNewCaption) {
+                    Text(stringResource(R.string.discover_new_shelf, stringResource(R.string.discover_shelf_hero)),
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+                }
                 reasonLabel?.let { ReasonChip(it) }
                 Byline(item)
                 Text(item.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold,
@@ -140,7 +154,12 @@ internal fun HeroShelf(pick: DiscoverPick, actions: DiscoverActions, masthead: @
 /** Uncontained, fixed-width carousel that never masks the 1.91:1 plates (§4.2a). */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun <T> PlateCarousel(items: List<T>, key: (T) -> String, content: @Composable (T) -> Unit) {
+internal fun <T> PlateCarousel(
+    items: List<T>,
+    key: (T) -> String,
+    contentType: (T) -> Any? = { PLATE_CARD },
+    content: @Composable (T) -> Unit
+) {
     val state = rememberLazyListState()
     LazyRow(
         state = state,
@@ -149,7 +168,7 @@ internal fun <T> PlateCarousel(items: List<T>, key: (T) -> String, content: @Com
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        items(items, key = key) { content(it) }
+        items(items, key = key, contentType = contentType) { content(it) }
     }
 }
 
@@ -164,7 +183,7 @@ internal fun OnThisDayShelf(picks: List<DiscoverPick>, actions: DiscoverActions)
 
 @Composable
 internal fun JustSavedShelf(entries: List<JustSavedEntry>, actions: DiscoverActions) {
-    PlateCarousel(entries, key = { it.key }) { entry ->
+    PlateCarousel(entries, key = { it.key }, contentType = { it::class }) { entry ->
         when (entry) {
             is JustSavedEntry.InProgress -> SavingCard(entry.task, PlateSize.S.width)
             is JustSavedEntry.Failed -> FailedSaveCard(entry.task, PlateSize.S.width, actions)
@@ -191,9 +210,9 @@ internal fun DeckShelf(deck: DeckState, actions: DiscoverActions) {
             return@Column
         }
         val position = stringResource(R.string.discover_deck_position, deck.index + 1, deck.cards.size)
-        Box(Modifier.width(PostcardWidth), contentAlignment = Alignment.Center) {
-            if (deck.index + 2 < deck.cards.size) PostcardBack(Modifier.rotate(3f))
-            if (deck.index + 1 < deck.cards.size) PostcardBack(Modifier.rotate(-3f))
+        Box(Modifier.widthIn(max = PostcardWidth).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            if (deck.index + 2 < deck.cards.size) PostcardBack(Modifier.matchParentSize().rotate(3f))
+            if (deck.index + 1 < deck.cards.size) PostcardBack(Modifier.matchParentSize().rotate(-3f))
             Postcard(current, actions, Modifier.semantics { stateDescription = position })
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -203,7 +222,7 @@ internal fun DeckShelf(deck: DeckState, actions: DiscoverActions) {
             val liked = deck.isLiked(current)
             IconToggleButton(
                 checked = liked,
-                onCheckedChange = { actions.onToggleLike(current.id, DiscoverShelf.DECK) },
+                onCheckedChange = { actions.onToggleDeckLike(current) },
                 modifier = Modifier.size(48.dp).testTag("discover_deck_like")
             ) {
                 Icon(if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
@@ -227,7 +246,7 @@ private fun Color.luminanceIsLight() = (0.2126f * red + 0.7152f * green + 0.0722
 @Composable
 private fun PostcardBack(modifier: Modifier) {
     Surface(color = postcardColor(), shape = MaterialTheme.shapes.large, shadowElevation = 2.dp,
-        modifier = modifier.width(PostcardWidth).height(PostcardWidth / PLATE_RATIO + 72.dp).clearAndSetSemantics {}) {}
+        modifier = modifier.clearAndSetSemantics {}) {}
 }
 
 @Composable
@@ -236,19 +255,19 @@ private fun Postcard(item: me.bubblespark.tidilo.ui.screens.library.BookmarkItem
         Instant.ofEpochMilli(item.createdAt).atZone(ZoneId.systemDefault()).format(postmarkFormat)
     }
     Surface(color = postcardColor(), shape = MaterialTheme.shapes.large, shadowElevation = 3.dp,
-        modifier = modifier.width(PostcardWidth).discoverCard(item, DiscoverShelf.DECK, null, actions)) {
+        modifier = modifier.fillMaxWidth().discoverCard(item, DiscoverShelf.DECK, null, actions)) {
         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box {
-                DiscoverPlate(item, MaterialTheme.shapes.medium, Modifier.width(PlateSize.L_POSTCARD.width.coerceAtMost(PostcardWidth - 16.dp)))
+            DiscoverPlate(item, MaterialTheme.shapes.medium, Modifier.fillMaxWidth())
+            Text(item.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 4.dp))
+            // The postmark sits on the paper, beside the byline, never on the art.
+            Row(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Byline(item, Modifier.weight(1f))
                 Text(postmark, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
-                        .background(postcardColor().copy(alpha = 0.92f), CircleShape)
+                    modifier = Modifier
                         .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), CircleShape)
                         .padding(horizontal = 8.dp, vertical = 4.dp))
             }
-            Text(item.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 4.dp))
-            Byline(item, Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
         }
     }
 }
@@ -323,13 +342,15 @@ internal fun ConnectionsShelf(pair: ConnectionPair, actions: DiscoverActions) {
                 Text(pair.entity, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onTertiaryContainer,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp))
             }
-            Spacer(Modifier.fillMaxWidth().height(28.dp).drawBehind {
+            Spacer(Modifier.fillMaxWidth().height(28.dp).drawWithCache {
                 val dash = PathEffect.dashPathEffect(floatArrayOf(8f, 8f))
                 val start = Offset(size.width / 2, 0f)
-                val left = (cardWidth.toPx() / 2)
-                val right = size.width - cardWidth.toPx() / 2
-                drawLine(connector, start, Offset(left, size.height), strokeWidth = 2f, pathEffect = dash)
-                drawLine(connector, start, Offset(right, size.height), strokeWidth = 2f, pathEffect = dash)
+                val left = Offset(cardWidth.toPx() / 2, size.height)
+                val right = Offset(size.width - cardWidth.toPx() / 2, size.height)
+                onDrawBehind {
+                    drawLine(connector, start, left, strokeWidth = 2f, pathEffect = dash)
+                    drawLine(connector, start, right, strokeWidth = 2f, pathEffect = dash)
+                }
             })
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 PlateCard(pair.first.item, pair.first.reason, DiscoverShelf.CONNECTIONS, cardWidth, actions)
@@ -352,11 +373,11 @@ internal fun MapShelf(bubbles: List<MapBubble>, actions: DiscoverActions) {
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f + 0.55f * weight),
                 shape = CircleShape,
-                modifier = Modifier.heightIn(min = 48.dp).clip(CircleShape)
+                modifier = Modifier.heightIn(min = 48.dp).widthIn(min = 48.dp).clip(CircleShape)
                     .clickable(role = Role.Button) { actions.onEntity(bubble.entity) }
                     .testTag("discover_map_${bubble.skeletonKey}")
             ) {
-                Box(Modifier.heightIn(min = 48.dp).padding(horizontal = (12 + 8 * weight).dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.heightIn(min = 48.dp).widthIn(min = 48.dp).padding(horizontal = (12 + 8 * weight).dp), contentAlignment = Alignment.Center) {
                     Text(bubble.entity, color = MaterialTheme.colorScheme.onSecondaryContainer,
                         fontSize = (13 + 7 * weight).sp, fontWeight = if (weight > 0.6f) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -368,9 +389,9 @@ internal fun MapShelf(bubbles: List<MapBubble>, actions: DiscoverActions) {
 
 /** Cold-start helper (§4.6, 1–49 items). */
 @Composable
-internal fun HowToSaveCard(actions: DiscoverActions) {
+internal fun HowToSaveCard(actions: DiscoverActions, modifier: Modifier = Modifier) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.extraLarge,
-        modifier = Modifier.padding(horizontal = ShelfMargin).fillMaxWidth().testTag("discover_how_to_save")) {
+        modifier = modifier.padding(horizontal = ShelfMargin).fillMaxWidth().testTag("discover_how_to_save")) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Filled.Lightbulb, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -390,10 +411,12 @@ internal fun HowToSaveCard(actions: DiscoverActions) {
 internal fun EmptyWall(actions: DiscoverActions, modifier: Modifier = Modifier) {
     val spot = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
     Box(modifier.fillMaxWidth().heightIn(min = 420.dp).testTag("discover_empty")
-        .drawBehind {
+        .drawWithCache {
             // A soft spotlight that fades out well inside the wall, so no edge shows.
-            drawCircle(Brush.radialGradient(listOf(spot, Color.Transparent), center = center, radius = size.minDimension * 0.48f),
-                radius = size.minDimension * 0.48f, center = center)
+            val radius = size.minDimension * 0.48f
+            val middle = Offset(size.width / 2, size.height / 2)
+            val brush = Brush.radialGradient(listOf(spot, Color.Transparent), center = middle, radius = radius)
+            onDrawBehind { drawCircle(brush, radius = radius, center = middle) }
         }, contentAlignment = Alignment.Center) {
         Column(Modifier.padding(32.dp).width(320.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)) {

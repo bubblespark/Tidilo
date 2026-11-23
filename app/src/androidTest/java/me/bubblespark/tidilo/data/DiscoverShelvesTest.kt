@@ -91,6 +91,7 @@ class DiscoverShelvesTest {
         var deck: List<BookmarkItem> = emptyList()
         val impressions = java.util.concurrent.CopyOnWriteArrayList<Pair<String, EngagementSurface>>()
         val flicks = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val likes = java.util.concurrent.CopyOnWriteArrayList<Pair<String, EngagementSurface>>()
         override fun snapshot() = snapshot
         override fun justSaved() = justSaved
         override fun freshRss() = freshRss
@@ -99,6 +100,10 @@ class DiscoverShelvesTest {
         override suspend fun dealDeck() = deck
         override suspend fun recordImpression(bookmarkId: String, surface: EngagementSurface) { impressions += bookmarkId to surface }
         override suspend fun recordDeckFlick(bookmarkId: String, surface: EngagementSurface) { flicks += bookmarkId }
+        override suspend fun toggleLike(bookmarkId: String, surface: EngagementSurface): Boolean? {
+            likes += bookmarkId to surface
+            return true
+        }
         override fun seenShelves(): Set<DiscoverShelf>? = DiscoverShelf.entries.toSet()
         override fun saveSeenShelves(shelves: Set<DiscoverShelf>) = Unit
     }
@@ -108,7 +113,6 @@ class DiscoverShelvesTest {
         val entities = java.util.concurrent.CopyOnWriteArrayList<String>()
         val retries = java.util.concurrent.CopyOnWriteArrayList<String>()
         val saves = java.util.concurrent.atomic.AtomicInteger()
-        val likes = java.util.concurrent.CopyOnWriteArrayList<Pair<String, DiscoverShelf>>()
     }
 
     private fun show(source: FakeSource, calls: Calls = Calls(), japaneseLightLargeFont: Boolean = false): ComponentActivity {
@@ -138,7 +142,6 @@ class DiscoverShelvesTest {
                         onOpenEntity = { calls.entities += it },
                         onSaveUrl = { calls.saves.incrementAndGet() },
                         onRetryImport = { calls.retries += it },
-                        onToggleLike = { id, shelf -> calls.likes += id to shelf },
                         viewModel = DiscoverViewModel(source)
                     )
                 }
@@ -280,7 +283,7 @@ class DiscoverShelvesTest {
         val activity = show(source, calls)
         try {
             click(find(activity) { tag(it, "discover_deck_like") })
-            assertEquals(listOf("d0" to DiscoverShelf.DECK), calls.likes.toList())
+            assertEquals(listOf("d0" to EngagementSurface.DISCOVER_DECK), source.likes.toList())
             click(host.await(activity) { tag(it, "discover_deck_next") })
             host.await(activity) { tag(it, "discover_card_d1") }
             click(host.await(activity) { tag(it, "discover_deck_next") })

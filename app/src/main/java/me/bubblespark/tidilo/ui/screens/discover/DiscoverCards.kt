@@ -52,7 +52,7 @@ class DiscoverActions(
     val onEntity: (value: String) -> Unit,
     val onSaveUrl: () -> Unit,
     val onRetryImport: (taskId: String) -> Unit,
-    val onToggleLike: (id: String, shelf: DiscoverShelf) -> Unit,
+    val onToggleDeckLike: (item: BookmarkItem) -> Unit,
     val onNextCard: () -> Unit,
     val onDealAnother: () -> Unit
 )
@@ -163,7 +163,7 @@ internal fun PlateRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        DiscoverPlate(item, MaterialTheme.shapes.medium, Modifier.width(PlateSize.XS.width))
+        DiscoverPlate(item, MaterialTheme.shapes.medium, Modifier.width(PlateSize.XS.width), compact = true)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(item.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)

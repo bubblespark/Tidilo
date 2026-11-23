@@ -48,6 +48,8 @@ class DiscoverViewModelTest {
         var deals = 0
         val flicks = mutableListOf<Pair<String, EngagementSurface>>()
         val impressions = mutableListOf<Pair<String, EngagementSurface>>()
+        var likeResult: () -> Boolean? = { true }
+        val likes = mutableListOf<Pair<String, EngagementSurface>>()
         var seen: Set<DiscoverShelf>? = null
         override fun snapshot() = snapshot
         override fun justSaved() = justSaved
@@ -57,6 +59,10 @@ class DiscoverViewModelTest {
         override suspend fun dealDeck(): List<BookmarkItem> { deals++; return deck }
         override suspend fun recordImpression(bookmarkId: String, surface: EngagementSurface) { impressions += bookmarkId to surface }
         override suspend fun recordDeckFlick(bookmarkId: String, surface: EngagementSurface) { flicks += bookmarkId to surface }
+        override suspend fun toggleLike(bookmarkId: String, surface: EngagementSurface): Boolean? {
+            likes += bookmarkId to surface
+            return likeResult()
+        }
         override fun seenShelves() = seen
         override fun saveSeenShelves(shelves: Set<DiscoverShelf>) { seen = shelves }
     }
@@ -138,8 +144,61 @@ class DiscoverViewModelTest {
         lastVm!!.dealAnother()
         assertEquals(2, source.deals)
         assertEquals(0, state.value.deck.index)
-        lastVm!!.onDeckLikeToggled("a")
+        lastVm!!.toggleDeckLike(state.value.deck.current!!)
         assertTrue(state.value.deck.isLiked(state.value.deck.current!!))
+        assertEquals(listOf("a" to EngagementSurface.DISCOVER_DECK), source.likes)
+    }
+
+    @Test fun deckLikeFollowsTheStoredStateAndRollsBack() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        source.snapshot.value = snapshot(10)
+        source.deck = listOf(item("a"))
+        val state = viewModel(source)
+        val card = state.value.deck.current!!
+        source.likeResult = { null } // the bookmark was deleted meanwhile
+        lastVm!!.toggleDeckLike(card)
+        assertFalse(state.value.deck.isLiked(card))
+        source.likeResult = { error("write failed") }
+        lastVm!!.toggleDeckLike(card)
+        assertFalse(state.value.deck.isLiked(card))
+        source.likeResult = { false } // stored state wins over the optimistic flip
+        lastVm!!.toggleDeckLike(card)
+        assertFalse(state.value.deck.isLiked(card))
+    }
+
+    @Test fun hidingPrivateContentRemovesDealtPrivateCards() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        source.snapshot.value = snapshot(10)
+        source.deck = listOf(item("a"), item("secret").copy(isPrivate = true), item("b"), item("hidden").copy(isPrivate = true))
+        val state = viewModel(source)
+        lastVm!!.nextCard()
+        lastVm!!.nextCard() // top card is now "b"
+        source.privateVisible.value = false
+        assertEquals(listOf("a", "b"), state.value.deck.cards.map { it.id })
+        assertEquals("b", state.value.deck.current?.id)
+    }
+
+    @Test fun firstSaveIntoAnEmptyLibraryDealsTheDeck() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        val state = viewModel(source)
+        assertTrue(state.value.deck.cards.isEmpty())
+        source.deck = listOf(item("first"))
+        source.snapshot.value = snapshot(1)
+        assertEquals(2, source.deals)
+        assertEquals("first", state.value.deck.current?.id)
+        assertTrue(DiscoverShelf.DECK in state.value.presentShelves)
+    }
+
+    @Test fun onlyTheCaptionedShelfIsMarkedSeen() = runTest(UnconfinedTestDispatcher()) {
+        val source = FakeSource()
+        source.snapshot.value = snapshot(10)
+        val state = viewModel(source)
+        source.snapshot.value = snapshot(60, hero = true, onThisDay = true)
+        assertEquals(DiscoverShelf.HERO, state.value.newShelfCaption)
+        assertEquals(setOf(DiscoverShelf.HERO), source.seen)
+        val next = viewModel(source)
+        assertEquals(DiscoverShelf.ON_THIS_DAY, next.value.newShelfCaption)
+        assertEquals(setOf(DiscoverShelf.HERO, DiscoverShelf.ON_THIS_DAY), source.seen)
     }
 
     @Test fun impressionsCarryTheShelfSurface() = runTest(UnconfinedTestDispatcher()) {

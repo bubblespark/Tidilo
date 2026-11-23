@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.bubblespark.tidilo.TidiloApplication
 import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.data.BookmarkRepository
 import me.bubblespark.tidilo.data.ImportRepository
 import me.bubblespark.tidilo.data.ImportTask
 import me.bubblespark.tidilo.data.TaskStatus
@@ -40,6 +42,8 @@ internal interface DiscoverSource {
     suspend fun dealDeck(): List<BookmarkItem>
     suspend fun recordImpression(bookmarkId: String, surface: EngagementSurface)
     suspend fun recordDeckFlick(bookmarkId: String, surface: EngagementSurface)
+    /** Toggles Like; returns the stored state afterwards, or null when the bookmark no longer exists. */
+    suspend fun toggleLike(bookmarkId: String, surface: EngagementSurface): Boolean?
     /** Shelves already shown, or null before Discover recorded its first baseline. */
     fun seenShelves(): Set<DiscoverShelf>?
     fun saveSeenShelves(shelves: Set<DiscoverShelf>)
@@ -49,6 +53,7 @@ internal interface DiscoverSource {
 internal class RepositoryDiscoverSource(
     private val discover: DiscoverRepository,
     private val imports: ImportRepository,
+    private val bookmarks: BookmarkRepository,
     private val prefs: SharedPreferences,
     override val privateVisible: StateFlow<Boolean> = AppConfig.isPrivateContentVisible
 ) : DiscoverSource {
@@ -60,6 +65,8 @@ internal class RepositoryDiscoverSource(
     override suspend fun dealDeck() = discover.dealDeck()
     override suspend fun recordImpression(bookmarkId: String, surface: EngagementSurface) = discover.recordImpression(bookmarkId, surface)
     override suspend fun recordDeckFlick(bookmarkId: String, surface: EngagementSurface) = discover.recordDeckFlick(bookmarkId, surface)
+    override suspend fun toggleLike(bookmarkId: String, surface: EngagementSurface) =
+        bookmarks.toggleLike(bookmarkId, System.currentTimeMillis(), surface)
     override fun seenShelves(): Set<DiscoverShelf>? =
         runCatching { prefs.getStringSet(SEEN_SHELVES_KEY, null) }.getOrNull()
             ?.mapNotNull { name -> DiscoverShelf.entries.firstOrNull { it.name == name } }?.toSet()
@@ -74,6 +81,7 @@ internal class RepositoryDiscoverSource(
         fun create(context: Context = TidiloApplication.instance) = RepositoryDiscoverSource(
             DiscoverRepository.getInstance(context),
             ImportRepository.getInstance(context),
+            BookmarkRepository.getInstance(context),
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         )
     }
@@ -90,12 +98,19 @@ sealed interface JustSavedEntry {
 
 enum class Greeting { PICK, GROWING, NONE }
 
-/** The shuffle deck: [cards] in order, [index] of the top card, and likes toggled while it was open. */
+/** The shuffle deck: [cards] in order, [index] of the top card, and like states changed while it was open. */
 @Immutable
-data class DeckState(val cards: List<BookmarkItem> = emptyList(), val index: Int = 0, val toggledLikes: Set<String> = emptySet()) {
+data class DeckState(val cards: List<BookmarkItem> = emptyList(), val index: Int = 0, val likes: Map<String, Boolean> = emptyMap()) {
     val current: BookmarkItem? get() = cards.getOrNull(index)
     val exhausted: Boolean get() = cards.isNotEmpty() && index >= cards.size
-    fun isLiked(item: BookmarkItem): Boolean = item.isLiked != (item.id in toggledLikes)
+    fun isLiked(item: BookmarkItem): Boolean = likes[item.id] ?: item.isLiked
+
+    /** Drops Private cards, keeping the top card (or the next visible one) on top. */
+    fun withoutPrivate(): DeckState {
+        if (cards.none { it.isPrivate }) return this
+        val kept = cards.filterNot { it.isPrivate }
+        return copy(cards = kept, index = cards.take(index).count { !it.isPrivate })
+    }
 }
 
 @Immutable
@@ -149,6 +164,7 @@ class DiscoverViewModel internal constructor(
     private val deck = MutableStateFlow(DeckState())
     private var seen: Set<DiscoverShelf>? = null
     private val caption = MutableStateFlow<DiscoverShelf?>(null)
+    private var lastLibraryCount: Int? = null
 
     private val tasks = combine(source.processingTasks(), source.errorTasks(), source.privateVisible) { running, failed, visible ->
         fun ImportTask.shown() = rssFeedId == null && (visible || !isPrivate)
@@ -165,6 +181,9 @@ class DiscoverViewModel internal constructor(
         combine(deck, caption) { d, c -> d to c }
     ) { snapshot, justSaved, freshRss, taskEntries, (deckState, captionShelf) ->
         val count = snapshot.libraryCount
+        // The first save into an empty library deals the deck that the empty open could not.
+        if (lastLibraryCount == 0 && count > 0 && deckState.cards.isEmpty()) dealAnother()
+        lastLibraryCount = count
         val connection = snapshot.connection?.let { (a, b) -> ConnectionPair(snapshot.connectionEntity.orEmpty(), a, b) }
         val state = if (count == 0) {
             DiscoverUiState(loading = false, libraryCount = 0, justSaved = taskEntries)
@@ -191,12 +210,17 @@ class DiscoverViewModel internal constructor(
 
     init {
         dealAnother()
+        // Hiding Private content removes Private cards already dealt; later draws exclude them at the source.
+        scope.launch {
+            source.privateVisible.collect { visible -> if (!visible) deck.update { it.withoutPrivate() } }
+        }
     }
 
     /**
      * Shows a one-time caption for a shelf that appears for the first time after Discover was first seen
      * (§4.6). The first state ever only records the baseline, so an existing library shows no captions.
-     * "Just saved" and the deck are part of every cold start and never get a caption.
+     * "Just saved" and the deck are part of every cold start and never get a caption. One caption shows per
+     * visit; other new shelves stay unseen so they get their caption on a later visit.
      */
     private fun noteShelves(present: Set<DiscoverShelf>) {
         val shown = present - UNCAPTIONED_SHELVES
@@ -207,36 +231,69 @@ class DiscoverViewModel internal constructor(
             return
         }
         seen = known
-        val fresh = shown - known
-        if (fresh.isEmpty()) return
-        if (caption.value == null) caption.value = DiscoverShelf.entries.first { it in fresh }
-        seen = known + fresh
-        source.saveSeenShelves(known + fresh)
+        if (caption.value != null) return
+        val first = DiscoverShelf.entries.firstOrNull { it in shown && it !in known } ?: return
+        caption.value = first
+        seen = known + first
+        source.saveSeenShelves(known + first)
     }
 
     /** Draws a fresh deck (on open and on "Deal another"). */
-    fun dealAnother() {
-        scope.launch {
-            runCatching { source.dealDeck() }
-                .onSuccess { cards -> deck.value = DeckState(cards) }
-                .onFailure { Log.e(TAG, "Failed to deal the deck", it) }
-        }
+    fun dealAnother() = launchLogged("deal the deck") {
+        val cards = source.dealDeck()
+        deck.value = DeckState(cards)
     }
 
     /** "Next card": records a flick for the top card and advances. */
     fun nextCard() {
         val top = deck.value.current ?: return
         deck.update { it.copy(index = it.index + 1) }
-        scope.launch { runCatching { source.recordDeckFlick(top.id, EngagementSurface.DISCOVER_DECK) } }
+        launchLogged("record a deck flick") { source.recordDeckFlick(top.id, EngagementSurface.DISCOVER_DECK) }
     }
 
-    /** Mirrors a like toggled on a deck card (the write goes through `LibraryViewModel.toggleLike`). */
-    fun onDeckLikeToggled(id: String) {
-        deck.update { state -> state.copy(toggledLikes = if (id in state.toggledLikes) state.toggledLikes - id else state.toggledLikes + id) }
+    /**
+     * Likes or unlikes a deck card. The heart flips at once; the stored result then replaces it, and a
+     * failure or a bookmark that no longer exists restores the previous state.
+     */
+    fun toggleDeckLike(item: BookmarkItem) {
+        val before = deck.value.likes[item.id]
+        val optimistic = !deck.value.isLiked(item)
+        deck.update { it.copy(likes = it.likes + (item.id to optimistic)) }
+        fun restore() = deck.update { state ->
+            state.copy(likes = if (before == null) state.likes - item.id else state.likes + (item.id to before))
+        }
+        scope.launch {
+            try {
+                val stored = source.toggleLike(item.id, EngagementSurface.DISCOVER_DECK)
+                if (stored == null) restore() else deck.update { it.copy(likes = it.likes + (item.id to stored)) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                restore()
+                logError("toggle a deck like", error)
+            }
+        }
     }
 
-    fun onImpression(id: String, shelf: DiscoverShelf) {
-        scope.launch { runCatching { source.recordImpression(id, surfaceOf(shelf)) } }
+    fun onImpression(id: String, shelf: DiscoverShelf) =
+        launchLogged("record an impression") { source.recordImpression(id, surfaceOf(shelf)) }
+
+    /** Runs [block], logging failures but never swallowing cancellation. */
+    private fun launchLogged(action: String, block: suspend () -> Unit) {
+        scope.launch {
+            try {
+                block()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                logError(action, error)
+            }
+        }
+    }
+
+    // android.util.Log is a stub on the JVM; a logging failure must never change the outcome.
+    private fun logError(action: String, error: Exception) {
+        runCatching { Log.e(TAG, "Failed to $action", error) }
     }
 
     private companion object {

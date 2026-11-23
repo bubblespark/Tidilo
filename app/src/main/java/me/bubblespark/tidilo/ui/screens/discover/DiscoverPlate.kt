@@ -1,10 +1,11 @@
 package me.bubblespark.tidilo.ui.screens.discover
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,11 +32,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import me.bubblespark.tidilo.data.DomainPolicyManager
+import me.bubblespark.tidilo.ui.components.DomainIconVisual
 import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
+import me.bubblespark.tidilo.ui.components.OgImageState
 import me.bubblespark.tidilo.ui.components.rememberDomainVisual
 import me.bubblespark.tidilo.ui.components.rememberOgImage
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
@@ -60,12 +62,36 @@ internal fun DiscoverPlate(
     item: BookmarkItem,
     shape: Shape,
     modifier: Modifier = Modifier,
-    matColor: Color = Color.Unspecified
+    matColor: Color = Color.Unspecified,
+    compact: Boolean = false
 ) {
+    val visuals = rememberPlateVisuals(item)
+    DiscoverPlateContent(item, visuals.og, visuals.domain, shape, modifier, matColor, compact)
+}
+
+/** The og:image and domain visuals of a bookmark, observed once and shared by a plate and its mats. */
+internal class PlateVisuals(val og: OgImageState, val domain: DomainIconVisual)
+
+@Composable
+internal fun rememberPlateVisuals(item: BookmarkItem): PlateVisuals {
     val source = LocalCacheVisualSource.current
     val domain = remember(item.domain, item.url, source) { item.domain ?: source.extractDomain(item.url) }
     val ogState by rememberOgImage(item.url, domain, item.ogImageUrl, item.ogImageFilename, source = source)
     val domainVisual by rememberDomainVisual(domain, item.url, ogState.shouldShowFallback, source = source)
+    return PlateVisuals(ogState, domainVisual)
+}
+
+/** Stateless plate body for callers that already observe the bookmark's visuals. [compact] posters show only the initial. */
+@Composable
+internal fun DiscoverPlateContent(
+    item: BookmarkItem,
+    ogState: OgImageState,
+    domainVisual: DomainIconVisual,
+    shape: Shape,
+    modifier: Modifier = Modifier,
+    matColor: Color = Color.Unspecified,
+    compact: Boolean = false
+) {
     val placeholder = MaterialTheme.colorScheme.surfaceContainerHigh
     val bitmap = ogState.bitmap
     Box(
@@ -86,7 +112,7 @@ internal fun DiscoverPlate(
                     Image(bitmap, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                 }
             }
-            ogState.shouldShowFallback -> DiscoverPoster(item, domainVisual.accentColor, Modifier.fillMaxSize())
+            ogState.shouldShowFallback -> DiscoverPoster(item, domainVisual.accentColor, compact, Modifier.fillMaxSize())
         }
     }
 }
@@ -98,32 +124,38 @@ private fun domainTone(accent: Color, base: Color): Color =
 
 /**
  * Typographic poster for a bookmark without og:image (§8.2): the domain color as a gradient, white or ink
- * text at ≥4.5:1, and one of three layouts chosen by id. Under 150dp only the domain initial is shown.
+ * text at ≥4.5:1 against every gradient stop, and one of three layouts chosen by id. [compact] posters
+ * (plates under 150dp) show only the domain initial.
  */
 @Composable
-internal fun DiscoverPoster(item: BookmarkItem, accent: Color, modifier: Modifier = Modifier) {
+internal fun DiscoverPoster(item: BookmarkItem, accent: Color, compact: Boolean, modifier: Modifier = Modifier) {
     val base = if (accent == Color.Unspecified) MaterialTheme.colorScheme.primary else accent
     val deep = Color.Black.copy(alpha = 0.35f).compositeOver(base)
-    val ink = remember(base) { posterInk(deep) }
+    val ink = remember(base) { posterInk(listOf(base, deep)) }
     val label = rememberDomainLabel(item)
     val initial = label.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "•"
-    BoxWithConstraints(modifier.background(Brush.linearGradient(listOf(base, deep)))) {
-        val textRegion = Modifier.background(Color.Black.copy(alpha = ink.textRegionDarkening))
-        if (maxWidth < PosterInitialOnlyWidth) {
+    val textRegion = Modifier.background(Color.Black.copy(alpha = ink.textRegionDarkening))
+    Box(modifier.background(Brush.linearGradient(listOf(base, deep)))) {
+        if (compact) {
+            // The whole small poster is the text region, so darken it evenly.
+            Box(Modifier.fillMaxSize().then(textRegion))
             Text(initial, color = ink.text, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Center))
-            return@BoxWithConstraints
+            return@Box
         }
-        val spineWidth = maxWidth * 0.18f
-        val initialSize = (maxHeight.value * 0.9f).sp
         when (posterVariant(item.id)) {
             0 -> {
-                Text(initial, color = ink.text.copy(alpha = 0.16f), fontSize = initialSize,
-                    fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp))
+                // The watermark fits its box, so it never grows with the font scale.
+                BasicText(
+                    initial,
+                    style = MaterialTheme.typography.displayLarge.copy(color = ink.text.copy(alpha = 0.16f), fontWeight = FontWeight.Black),
+                    autoSize = TextAutoSize.StepBased(),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp).fillMaxHeight(0.9f).aspectRatio(1f)
+                )
                 PosterTitle(item.title, ink.text, Modifier.align(Alignment.TopStart).then(textRegion).padding(14.dp))
             }
             1 -> Row(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxHeight().width(spineWidth).background(Color.Black.copy(alpha = 0.25f)),
+                Box(Modifier.fillMaxHeight().fillMaxWidth(0.18f).background(Color.Black.copy(alpha = 0.25f)),
                     contentAlignment = Alignment.Center) {
                     Text(initial, color = ink.text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 }
@@ -144,10 +176,4 @@ internal fun DiscoverPoster(item: BookmarkItem, accent: Color, modifier: Modifie
 private fun PosterTitle(title: String, color: Color, modifier: Modifier) {
     Text(title, color = color, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
         maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = modifier)
-}
-
-/** Fixed-width plate for carousels and rows. */
-@Composable
-internal fun SizedPlate(item: BookmarkItem, width: Dp, shape: Shape, modifier: Modifier = Modifier, matColor: Color = Color.Unspecified) {
-    DiscoverPlate(item, shape, modifier.width(width), matColor)
 }

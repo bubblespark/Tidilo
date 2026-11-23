@@ -21,6 +21,7 @@ import androidx.navigation.compose.composable
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.screens.discover.DiscoverScreen
 import me.bubblespark.tidilo.ui.screens.discover.surfaceOf
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
 import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
 
@@ -168,16 +169,15 @@ fun TidiloNavGraph(
             DiscoverScreen(
                 onOpenNavigation = onOpenNavigation,
                 onOpenBookmark = { bookmarkId, shelf ->
-                    libraryViewModel.recordDetailView(bookmarkId, surfaceOf(shelf))
-                    navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) { launchSingleTop = true }
+                    // Detail records the single DETAIL event with this surface.
+                    navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId, surfaceOf(shelf))) { launchSingleTop = true }
                 },
                 onOpenEntity = { value ->
-                    libraryViewModel.updateQueryWithSelectedTags(setOf(value))
+                    libraryViewModel.searchEntity(value)
                     navController.navigateTopLevel(TopLevelDestination.SEARCH)
                 },
                 onSaveUrl = onOpenManualImport,
-                onRetryImport = importViewModel::retryError,
-                onToggleLike = { bookmarkId, shelf -> libraryViewModel.toggleLike(bookmarkId, surfaceOf(shelf)) }
+                onRetryImport = importViewModel::retryError
             )
         }
         composable(Screen.Library.route) {
@@ -230,12 +230,16 @@ fun TidiloNavGraph(
         composable(
             route = Screen.BookmarkDetail.route,
             arguments = listOf(
-                navArgument("bookmarkId") { type = NavType.StringType }
+                navArgument("bookmarkId") { type = NavType.StringType },
+                navArgument("surface") { type = NavType.IntType; defaultValue = EngagementSurface.DETAIL.code }
             )
         ) { backStackEntry ->
             val bookmarkId = backStackEntry.arguments?.getString("bookmarkId").orEmpty()
+            val openSurface = EngagementSurface.fromCode(backStackEntry.arguments?.getInt("surface") ?: EngagementSurface.DETAIL.code)
+                ?: EngagementSurface.DETAIL
             BookmarkDetailScreen(
                 bookmarkId = bookmarkId,
+                openSurface = openSurface,
                 viewModel = libraryViewModel,
                 onNavigateBack = {
                     navController.popBackStack()

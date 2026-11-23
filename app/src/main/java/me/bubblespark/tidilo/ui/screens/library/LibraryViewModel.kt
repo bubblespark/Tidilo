@@ -526,6 +526,13 @@ class LibraryViewModel internal constructor(
             .toSet()
     }
 
+    /** Replaces the query with one entity tag (`#entity`), as Discover's entity taps open Search. */
+    fun searchEntity(entity: String) {
+        val query = "#$entity"
+        _searchQuery.value = query
+        addSearchHistory(query)
+    }
+
     /**
      * Updates the search query with selected tags, retaining existing free-text words.
      */

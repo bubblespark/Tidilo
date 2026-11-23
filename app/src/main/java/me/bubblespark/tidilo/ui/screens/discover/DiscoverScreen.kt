@@ -77,22 +77,18 @@ fun DiscoverScreen(
     onOpenEntity: (value: String) -> Unit,
     onSaveUrl: () -> Unit,
     onRetryImport: (taskId: String) -> Unit,
-    onToggleLike: (id: String, shelf: DiscoverShelf) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DiscoverViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val actions = remember(viewModel, onOpenBookmark, onOpenEntity, onSaveUrl, onRetryImport, onToggleLike) {
+    val actions = remember(viewModel, onOpenBookmark, onOpenEntity, onSaveUrl, onRetryImport) {
         DiscoverActions(
             onOpen = onOpenBookmark,
             onImpression = viewModel::onImpression,
             onEntity = onOpenEntity,
             onSaveUrl = onSaveUrl,
             onRetryImport = onRetryImport,
-            onToggleLike = { id, shelf ->
-                if (shelf == DiscoverShelf.DECK) viewModel.onDeckLikeToggled(id)
-                onToggleLike(id, shelf)
-            },
+            onToggleDeckLike = viewModel::toggleDeckLike,
             onNextCard = viewModel::nextCard,
             onDealAnother = viewModel::dealAnother
         )
@@ -141,15 +137,23 @@ fun DiscoverScreen(
             ) {
                 if (hero != null) {
                     item(key = "discover_hero", contentType = "hero") {
-                        HeroShelf(hero, actions, masthead = {
-                            header(Modifier.padding(top = systemPadding.calculateTopPadding() + 8.dp, bottom = 12.dp))
-                        })
+                        HeroShelf(
+                            hero, actions,
+                            masthead = {
+                                header(Modifier.padding(top = systemPadding.calculateTopPadding() + 8.dp, bottom = 12.dp))
+                            },
+                            showNewCaption = state.newShelfCaption == DiscoverShelf.HERO,
+                            startInset = startInset,
+                            endInset = endInset
+                        )
                     }
                 } else {
                     item(key = "discover_header", contentType = "header") { header(Modifier) }
                 }
                 if (!state.loading && state.libraryCount == 0 && state.justSaved.isEmpty()) {
-                    item(key = "discover_empty", contentType = "empty") { EmptyWall(actions) }
+                    item(key = "discover_empty", contentType = "empty") {
+                        EmptyWall(actions, Modifier.padding(start = startInset, end = endInset))
+                    }
                 }
                 for (shelf in state.presentShelves) {
                     if (shelf == DiscoverShelf.HERO) continue
@@ -165,11 +169,15 @@ fun DiscoverScreen(
                         }
                     }
                     if (shelf == DiscoverShelf.DECK && state.showHowToSave) {
-                        item(key = "discover_how_to_save", contentType = "how_to_save") { HowToSaveCard(actions) }
+                        item(key = "discover_how_to_save", contentType = "how_to_save") {
+                            HowToSaveCard(actions, Modifier.padding(start = startInset, end = endInset))
+                        }
                     }
                 }
                 if (state.showHowToSave && DiscoverShelf.DECK !in state.presentShelves) {
-                    item(key = "discover_how_to_save", contentType = "how_to_save") { HowToSaveCard(actions) }
+                    item(key = "discover_how_to_save", contentType = "how_to_save") {
+                            HowToSaveCard(actions, Modifier.padding(start = startInset, end = endInset))
+                        }
                 }
             }
 

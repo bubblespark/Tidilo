@@ -368,6 +368,7 @@ internal fun BookmarkDetailScreen(
     viewModel: LibraryViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToAiReview: (String) -> Unit = {},
+    openSurface: EngagementSurface = EngagementSurface.DETAIL,
     modifier: Modifier = Modifier,
     onNavigateToAiSettings: () -> Unit = {},
     checkAiCoreReadiness: suspend () -> AiCoreReadiness = { AiCoreAvailability.inspect() }
@@ -389,7 +390,7 @@ internal fun BookmarkDetailScreen(
     LaunchedEffect(bookmarkId, bookmark?.id) {
         if (bookmark != null && !detailRecorded) {
             detailRecorded = true
-            viewModel.recordDetailView(bookmarkId, EngagementSurface.DETAIL)
+            viewModel.recordDetailView(bookmarkId, openSurface)
         }
     }
     if (bookmark == null || detailState.error != null) {

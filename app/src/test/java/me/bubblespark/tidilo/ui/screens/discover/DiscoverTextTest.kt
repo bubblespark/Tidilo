@@ -45,11 +45,23 @@ class DiscoverTextTest {
         val samples = listOf(0xFFFFFFFF, 0xFFF5F1E9, 0xFFFFEB3B, 0xFF00BCD4, 0xFF8BC34A, 0xFFFF9800, 0xFF9C27B0,
             0xFF1D1F20, 0xFF4285F4, 0xFFE91E63, 0xFF607D8B, 0xFF808080).map { Color(it) }
         for (background in samples) {
-            val ink = posterInk(background)
+            val ink = posterInk(listOf(background))
             val behind = Color.Black.copy(alpha = ink.textRegionDarkening).compositeOver(background)
             assertTrue("$background", contrastRatio(ink.text, behind) >= 4.5f)
         }
-        assertEquals(0f, posterInk(Color(0xFF1D1F20)).textRegionDarkening, 0f)
+        assertEquals(0f, posterInk(listOf(Color(0xFF1D1F20))).textRegionDarkening, 0f)
+    }
+
+    @Test fun posterTextReachesAaContrastAcrossTheWholeGradient() {
+        val accents = listOf(0xFF808080, 0xFF4CAF50, 0xFF2196F3, 0xFFFFEB3B, 0xFFE91E63, 0xFF1D1F20).map { Color(it) }
+        for (base in accents) {
+            val deep = Color.Black.copy(alpha = 0.35f).compositeOver(base)
+            val ink = posterInk(listOf(base, deep))
+            for (stop in listOf(base, deep)) {
+                val behind = Color.Black.copy(alpha = ink.textRegionDarkening).compositeOver(stop)
+                assertTrue("$base at $stop", contrastRatio(ink.text, behind) >= 4.5f)
+            }
+        }
     }
 
     @Test fun posterVariantIsStableAndInRange() {

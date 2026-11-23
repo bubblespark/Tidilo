@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.ui.navigation
 
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CollectionsBookmark
@@ -117,13 +118,15 @@ sealed class Screen(
     )
 
     data object BookmarkDetail : Screen(
-        route = "bookmark_detail/{bookmarkId}",
+        route = "bookmark_detail/{bookmarkId}?surface={surface}",
         title = "Details",
         titleRes = R.string.title_bookmark_detail,
         selectedIcon = Icons.Filled.CollectionsBookmark,
         unselectedIcon = Icons.Outlined.CollectionsBookmark
     ) {
-        fun createRoute(bookmarkId: String): String = "bookmark_detail/$bookmarkId"
+        /** [surface] names where Detail was opened from; Detail records its one `DETAIL` event with it. */
+        fun createRoute(bookmarkId: String, surface: EngagementSurface? = null): String =
+            if (surface == null) "bookmark_detail/$bookmarkId" else "bookmark_detail/$bookmarkId?surface=${surface.code}"
     }
 
     data object BookmarkAiReview : Screen(

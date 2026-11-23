@@ -45,18 +45,22 @@ internal fun contrastRatio(a: Color, b: Color): Float {
 }
 
 /**
- * White or near-black text, whichever contrasts more with [background]. When neither reaches 4.5:1,
- * white is kept and the text region is darkened until it does (§10).
+ * White or near-black text for a poster painted with [stops] (a gradient): whichever keeps the higher
+ * contrast against its worst stop. When neither reaches [minContrast] everywhere, white is kept and the
+ * text region is darkened until every stop does (§10).
  */
-internal fun posterInk(background: Color, minContrast: Float = 4.5f): PosterInk {
+internal fun posterInk(stops: List<Color>, minContrast: Float = 4.5f): PosterInk {
+    require(stops.isNotEmpty())
     val white = Color.White
     val ink = Color(0xFF111111)
-    val best = if (contrastRatio(white, background) >= contrastRatio(ink, background)) white else ink
-    if (contrastRatio(best, background) >= minContrast) return PosterInk(best, 0f)
+    fun worst(text: Color, darkening: Float = 0f) =
+        stops.minOf { contrastRatio(text, Color.Black.copy(alpha = darkening).compositeOver(it)) }
+    val best = if (worst(white) >= worst(ink)) white else ink
+    if (worst(best) >= minContrast) return PosterInk(best, 0f)
     var darkening = 0f
     while (darkening < 1f) {
         darkening = (darkening + 0.05f).coerceAtMost(1f)
-        if (contrastRatio(white, Color.Black.copy(alpha = darkening).compositeOver(background)) >= minContrast) break
+        if (worst(white, darkening) >= minContrast) break
     }
     return PosterInk(white, darkening)
 }

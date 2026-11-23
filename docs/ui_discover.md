@@ -8,7 +8,7 @@ Code: `ui/screens/discover/` — `DiscoverScreen.kt` (screen and header), `Disco
 
 - Every image surface is a **1.91:1 plate** (og:image design ratio). Images within 5% of 1.91 fill the plate exactly. Any other ratio is fitted (`ContentScale.Fit`) on a mat made from the domain tone (or the hero's edge colors), and is never cropped.
 - Sizes (`PlateSize`, dp): XL full width (Today's pick), L 380 (Sleeping gems feature), L′ 324 inside a 340 postcard (deck), M 280 (On this day), S 200 / S′ 182 two-up (Just saved, Rising, Connections), XS 112 (list rows). Plates under 190dp use `shapes.medium`, larger ones `shapes.large`.
-- **Posters** stand in for missing og:images. The background is a gradient from the domain's calibrated color. The text is white or ink, whichever contrasts more, and the text region is darkened until it reaches 4.5:1 (`posterInk`). The layout variant comes from the bookmark id (`posterVariant`): title with a watermark initial, a colored spine, or a masthead rule. Under 150dp only the initial is shown.
+- **Posters** stand in for missing og:images. The background is a gradient from the domain's calibrated color. The text is white or ink, whichever keeps more contrast against both gradient stops, and the text region is darkened until every stop reaches 4.5:1 (`posterInk`). The layout variant comes from the bookmark id (`posterVariant`): title with a watermark initial, a colored spine, or a masthead rule. Compact posters (list rows) show only the initial, and the watermark initial fits its box, so it does not grow with the font scale.
 - Captions, reasons, and labels sit outside the art. Domains are shown as display names, never as raw URLs.
 
 ## 2. Layout
@@ -20,7 +20,7 @@ A `LazyColumn` with one keyed item per non-empty shelf. Spacing is 40dp between 
 | Today's pick | Matted cover. The masthead (menu, date, greeting) sits on the top mat; the full-bleed plate dissolves into mats from its own top and bottom edge colors (`rememberDetailHeroPalette`); the caption on the bottom mat has a reason chip, byline, `headlineMedium` title, and a two-line pull quote. The cover runs under the status bar. |
 | On this day | Snapping row of M cards with a `titleLarge` period overline ("A year ago") |
 | Just saved | Snapping row of S cards. Running imports (manual only) come first as a skeleton plate with `ContainedLoadingIndicator`, then failed imports with Retry, then saved bookmarks |
-| Shuffle deck | A postcard (paper surface, postmark with the save month) over two cards tilted ±3°, with Next card and Like buttons. After the last card, "Deal another" deals a new draw. The deck announces "Card N of M" |
+| Shuffle deck | A postcard (paper surface, postmark with the save month beside the byline, off the art) over two cards tilted ±3° (capped at 340dp and narrower windows), with Next card and Like buttons. After the last card, "Deal another" deals a new draw. The deck announces "Card N of M" |
 | Sleeping gems | One feature (reason overline, plate, `titleLarge` title, pull quote) and up to four XS rows |
 | Rising | A tonal topic card per entity (tap opens Search with the entity), then its row of S cards |
 | Fresh from RSS | XS rows with an expiry chip |
@@ -35,12 +35,14 @@ Header: the date (`labelLarge`, local format, refreshed at midnight and on resum
 
 - **0 items**: an empty wall under a soft spotlight, with an explanation and Save URL (opens Manual Import).
 - **1–49 items**: Just saved, the deck, and a "How to save" card, plus any shelf whose rule already matched. Today's pick needs 50 items and Your map needs 30 (engine thresholds).
-- **First appearance**: the first time a shelf (other than Just saved and the deck) appears after Discover recorded its baseline, its header shows "New shelf: …" once. The shelves already seen are stored in `tidilo_library_prefs` (`discover_seen_shelves`). The very first visit only records the baseline, so an existing library shows no captions.
+- **First appearance**: the first time a shelf (other than Just saved and the deck) appears after Discover recorded its baseline, its header (for Today's pick, the caption mat) shows "New shelf: …" once. One caption shows per visit; other new shelves keep theirs for a later visit. The shelves already seen are stored in `tidilo_library_prefs` (`discover_seen_shelves`). The very first visit only records the baseline, so an existing library shows no captions.
 
 ## 4. Engagement
 
-- A card tap records `DETAIL` with the card's shelf as the surface (`EngagementSurface.DISCOVER_*`), then opens Bookmark Detail.
-- A deck Like goes through `LibraryViewModel.toggleLike` with `DISCOVER_DECK`. Next card records `DECK_FLICK`.
+- A card tap opens Bookmark Detail with the card's shelf as the route's `surface` argument (`bookmark_detail/{id}?surface=…`). Detail records its single `DETAIL` event with that surface (`EngagementSurface.DISCOVER_*`); other callers default to `DETAIL`.
+- An entity tap replaces the Search query with `#entity` (`LibraryViewModel.searchEntity`).
+- A deck Like is written by `DiscoverViewModel` with `DISCOVER_DECK`. The heart flips at once, then shows the stored state; a failed write or a deleted bookmark restores it. Next card records `DECK_FLICK`.
+- Hiding Private content removes Private cards from the dealt deck at once. The first save into an empty library deals the deck.
 - **Impressions**: a card that stays at least 50% visible for one second records `IMPRESSION` (`Modifier.onVisibilityChanged`). The repository keeps at most one per item per Discover day.
 - Each card merges its title, reason label, and domain into one content description.
 

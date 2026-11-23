@@ -183,6 +183,16 @@ class LibraryViewModelTest {
         }
     }
 
+    @Test fun searchEntityReplacesTheWholeQuery() = runTest {
+        fixture { f ->
+            f.model.onSearchQueryChanged("compose old #AI")
+            f.model.searchEntity("Model")
+            runCurrent()
+            assertEquals("#Model", f.model.searchQuery.value)
+            assertEquals("#Model", f.model.searchHistory.value.first())
+        }
+    }
+
     @Test fun addSearchHistoryDoesNotRewriteUnchangedHistory() = runTest {
         fixture { f ->
             f.model.addSearchHistory("kotlin")

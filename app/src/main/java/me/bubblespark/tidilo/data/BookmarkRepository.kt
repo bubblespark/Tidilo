@@ -197,13 +197,17 @@ class BookmarkRepository internal constructor(
         }
     }
 
-    /** Toggles Like and records LIKE or UNLIKE; a missing bookmark records nothing. */
-    suspend fun toggleLike(id: String, now: Long, surface: EngagementSurface = EngagementSurface.UNKNOWN): Unit =
+    /**
+     * Toggles Like and records LIKE or UNLIKE. Returns the stored state after the toggle, or null when the
+     * bookmark is missing (nothing is recorded).
+     */
+    suspend fun toggleLike(id: String, now: Long, surface: EngagementSurface = EngagementSurface.UNKNOWN): Boolean? =
         withContext(Dispatchers.IO) {
             transactionRunner.run {
-                val wasLiked = bookmarkDao.isLiked(id) ?: return@run
+                val wasLiked = bookmarkDao.isLiked(id) ?: return@run null
                 bookmarkDao.toggleLike(id, now)
                 recordEvent(id, if (wasLiked) EngagementType.UNLIKE else EngagementType.LIKE, surface, now)
+                !wasLiked
             }
         }
 

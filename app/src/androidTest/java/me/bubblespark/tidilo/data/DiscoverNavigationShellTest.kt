@@ -1,5 +1,7 @@
 package me.bubblespark.tidilo.data
 
+import me.bubblespark.tidilo.data.engagement.EngagementType
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import android.accessibilityservice.AccessibilityService
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.SideEffect
@@ -85,6 +87,32 @@ class DiscoverNavigationShellTest {
         }
         withTimeout(5000) { while (!ready) delay(20) }
         return activity to model
+    }
+
+    @Test
+    fun openingDetailFromDiscoverRecordsOneDetailEventWithTheShelf(): Unit = runBlocking {
+        val host = HeaderTestHost()
+        val database = AppDatabase.getInstance(host.context)
+        val id = "shell-detail-${UUID.randomUUID()}"
+        database.bookmarkDao().insertOrUpdate(
+            BookmarkEntity(id = id, title = "Detail Fixture", url = "https://detail.invalid/$id", description = "",
+                createdAt = System.currentTimeMillis(), updatedAt = 1L)
+        )
+        val (activity, _) = launchShell(host, discoverPreviewEnabled = true)
+        try {
+            val card = host.await(activity) { tag(it, "discover_card_$id") }
+            host.main { click(card) }
+            awaitAbsent(host, activity) { tag(it, "discover_list") }
+            withTimeout(8000) {
+                while (database.engagementDao().eventsFor(id).none { it.type == EngagementType.DETAIL.code }) delay(50)
+            }
+            delay(500) // a second, duplicate write would land within this window
+            val details = database.engagementDao().eventsFor(id).filter { it.type == EngagementType.DETAIL.code }
+            assertEquals(listOf(EngagementSurface.DISCOVER_JUST_SAVED.code), details.map { it.surface })
+        } finally {
+            host.main { activity.finish() }
+            database.bookmarkDao().deleteById(id)
+        }
     }
 
     @Test
@@ -346,6 +374,8 @@ class DiscoverNavigationShellTest {
         try {
             val libraryTab = host.await(activity) { tag(it, "floating_nav_library") }
             host.main { click(libraryTab) }
+            // Discover's "Just saved" also lists the fixture, so wait until Discover has left first.
+            awaitAbsent(host, activity) { tag(it, "discover_list") }
             val item = host.await(activity) { host.text(it, title) }
             host.main { click(item) }
 

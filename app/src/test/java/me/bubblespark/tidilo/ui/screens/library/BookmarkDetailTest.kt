@@ -53,7 +53,7 @@ class BookmarkDetailTest {
     fun testBookmarkDetailNavigationRoute() {
         val route = Screen.BookmarkDetail.createRoute("sample-id-123")
         assertEquals("bookmark_detail/sample-id-123", route)
-        assertEquals("bookmark_detail/{bookmarkId}", Screen.BookmarkDetail.route)
+        assertEquals("bookmark_detail/{bookmarkId}?surface={surface}", Screen.BookmarkDetail.route)
     }
 
     @Test

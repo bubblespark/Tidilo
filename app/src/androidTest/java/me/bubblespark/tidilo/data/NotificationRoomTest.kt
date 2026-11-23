@@ -25,8 +25,16 @@ internal fun restoreLegacyAiSkippedColumns(execSql: (String) -> Unit) {
     execSql("ALTER TABLE trashed_bookmarks ADD COLUMN isAiSkipped INTEGER NOT NULL DEFAULT 0")
 }
 
-/** Undoes v23 on a current-schema database: restores the engagement counters and removes the event log. */
+/** Undoes v24 on a current-schema database: removes the Discover tables. */
+internal fun dropDiscoverTables(execSql: (String) -> Unit) {
+    for (table in listOf("discover_snapshot", "discover_map", "discover_snapshot_meta", "rediscovery_suppressions", "rediscovery_topic_mutes")) {
+        execSql("DROP TABLE IF EXISTS `$table`")
+    }
+}
+
+/** Undoes v24 and v23 on a current-schema database: restores the engagement counters and removes the event log. */
 internal fun restoreEngagementCounters(execSql: (String) -> Unit) {
+    dropDiscoverTables(execSql)
     execSql("DROP TABLE IF EXISTS `engagement_events`")
     for (table in listOf("bookmarks", "trashed_bookmarks")) {
         for (column in listOf("browserOpenCount", "detailViewCount", "summaryPeekCount")) {
@@ -104,9 +112,9 @@ class NotificationRoomTest {
                 rewindPrivateColumnsToLegacyNsfw(sql::execSQL, includeDomainPolicies = false)
                 sql.version = 12
             }
-            db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22, AppDatabase.MIGRATION_22_23).build()
+            db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22, AppDatabase.MIGRATION_22_23, AppDatabase.MIGRATION_23_24).build()
             assertEquals("Description", db.bookmarkDao().getBookmarkById("kept")!!.description)
-            assertEquals(23, db.openHelper.readableDatabase.version)
+            assertEquals(24, db.openHelper.readableDatabase.version)
             db.rssNotificationDao().putRun(RssNotificationRunEntity("run", "work", 100, true))
             assertEquals("run", db.rssNotificationDao().unfinishedRun("work")?.id)
         } finally { db.close(); context.deleteDatabase(name) }

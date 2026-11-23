@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkCollectionCrossRef
+import me.bubblespark.tidilo.data.db.DiscoverDao
 import me.bubblespark.tidilo.data.db.BookmarkDao
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.BookmarkEntityOccurrence
@@ -144,6 +145,7 @@ internal fun fakeAppDatabase(
     override fun engagementDao(): EngagementDao = engagementDao
     override fun collectionDao(): CollectionDao = unusedDaoProxy()
     override fun rssDao(): RssDao = unusedDaoProxy()
+    override fun discoverDao(): DiscoverDao = unusedDaoProxy()
     override fun bookmarkDao(): BookmarkDao = bookmarkDao
     override fun trashDao(): TrashDao = trashDao
     override fun importTaskDao(): ImportTaskDao = unusedDaoProxy()
@@ -166,8 +168,13 @@ internal class InMemoryEngagementDao : EngagementDao {
     }
     override suspend fun eventsFor(bookmarkId: String): List<EngagementEventEntity> =
         events.filter { it.bookmarkId == bookmarkId }.sortedWith(compareBy({ it.at }, { it.id }))
-    override suspend fun deleteOlderThan(cutoff: Long): Int =
-        events.count { it.at < cutoff }.also { events.removeAll { e -> e.at < cutoff } }
+    override suspend fun deleteOlderThan(cutoff: Long): Int {
+        // Mirrors the Room query: each bookmark's latest DETAIL/BROWSER_OPEN survives.
+        val keep = events.filter { it.type == 2 || it.type == 3 }.groupBy { it.bookmarkId }.values.map { group -> group.maxOf { it.id } }.toSet()
+        val doomed = events.filter { it.at < cutoff && it.id !in keep }.toSet()
+        events.removeAll(doomed)
+        return doomed.size
+    }
     override suspend fun deleteOrphans(): Int = error("Covered by instrumentation tests")
 }
 

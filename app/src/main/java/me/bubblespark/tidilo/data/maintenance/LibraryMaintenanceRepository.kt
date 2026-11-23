@@ -10,11 +10,14 @@ import kotlinx.coroutines.CancellationException
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.time.ZoneId
 import me.bubblespark.tidilo.data.TransactionRunner
 import me.bubblespark.tidilo.data.cache.MediaCacheLayout
 import me.bubblespark.tidilo.data.cache.MediaCacheStore
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.RssImageCleanupEntity
+import me.bubblespark.tidilo.data.discover.discoverDay
+import me.bubblespark.tidilo.data.discover.weekStartDay
 import me.bubblespark.tidilo.data.engagement.engagementCutoff
 
 private fun defaultMaintenanceTransactionRunner(database: AppDatabase): TransactionRunner =
@@ -28,6 +31,7 @@ internal class LibraryMaintenanceRepository(
     private val database: AppDatabase = AppDatabase.getInstance(context),
     private val mediaCacheStore: MediaCacheStore = MediaCacheStore.getInstance(context),
     private val transactionRunner: TransactionRunner = defaultMaintenanceTransactionRunner(database),
+    private val zone: () -> ZoneId = ZoneId::systemDefault,
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) {
     suspend fun cleanOgImages(now: Long) = withContext(Dispatchers.IO) {
@@ -87,10 +91,26 @@ internal class LibraryMaintenanceRepository(
         }
     }
 
+    /**
+     * Deletes Discover snapshots older than the 30-day history the rules read, maps older than the previous
+     * week, expired snoozes, and suppressions whose bookmark is neither active nor in Trash.
+     */
+    suspend fun pruneDiscover(now: Long): Int = withContext(Dispatchers.IO) {
+        val day = discoverDay(now, zone())
+        val week = weekStartDay(day)
+        transactionRunner.run {
+            val dao = database.discoverDao()
+            dao.pruneSnapshot(day - DISCOVER_HISTORY_DAYS) + dao.pruneMap(week - 7) +
+                dao.pruneMeta(day - DISCOVER_HISTORY_DAYS, week - 7) +
+                dao.deleteExpiredSuppressions(now) + dao.deleteOrphanSuppressions()
+        }
+    }
+
     suspend fun run() {
         val now = nowMillis()
         expireRssBookmarks(now)
         pruneEngagement(now)
+        pruneDiscover(now)
         var failure: IOException? = null
         try { drainImageCleanup() } catch (e: IOException) { failure = e }
         cleanOgImages(now)
@@ -140,3 +160,6 @@ internal class LibraryMaintenanceRepository(
         }
     }
 }
+
+/** Days of Discover snapshots kept for the "not a recent hero/pair" rules. */
+private const val DISCOVER_HISTORY_DAYS = 30L

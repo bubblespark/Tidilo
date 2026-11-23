@@ -12,7 +12,12 @@ interface EngagementDao {
     @Query("SELECT * FROM engagement_events WHERE bookmarkId = :bookmarkId ORDER BY at, id")
     suspend fun eventsFor(bookmarkId: String): List<EngagementEventEntity>
 
-    @Query("DELETE FROM engagement_events WHERE at < :cutoff")
+    /**
+     * Deletes events older than [cutoff], except each bookmark's latest Detail view or browser open
+     * (types 2 and 3), which Discover needs to tell "never opened" apart from "opened long ago".
+     */
+    @Query("""DELETE FROM engagement_events WHERE at < :cutoff AND id NOT IN (
+        SELECT MAX(id) FROM engagement_events WHERE type IN (2, 3) GROUP BY bookmarkId)""")
     suspend fun deleteOlderThan(cutoff: Long): Int
 
     /** Deletes events whose bookmark is neither active nor in Trash. */

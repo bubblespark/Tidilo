@@ -64,7 +64,7 @@ class BookmarkDatabaseTest {
         val after = database(name)
         try {
             val readable = after.openHelper.readableDatabase
-            assertEquals(23, readable.version)
+            assertEquals(24, readable.version)
             for (table in listOf("bookmarks", "trashed_bookmarks", "import_tasks", "domain_policies")) {
                 val cols = columns(readable, table)
                 assertTrue("Expected isPrivate column on $table, got $cols", "isPrivate" in cols)
@@ -96,7 +96,7 @@ class BookmarkDatabaseTest {
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(23, after.openHelper.readableDatabase.version)
+            assertEquals(24, after.openHelper.readableDatabase.version)
             val kept = after.bookmarkDao().getBookmarkById("kept")
             assertNotNull(kept)
             assertTrue(kept!!.isPrivate)
@@ -124,7 +124,7 @@ class BookmarkDatabaseTest {
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(23, after.openHelper.readableDatabase.version)
+            assertEquals(24, after.openHelper.readableDatabase.version)
             assertNotNull(after.bookmarkDao().getBookmarkById("kept"))
             assertEquals(1, after.rssDao().cleanupItems().size)
             after.rssDao().enqueueCleanup(RssImageCleanupEntity("https://images.invalid/shared.webp", "https://second.invalid/article"))
@@ -149,7 +149,7 @@ class BookmarkDatabaseTest {
         } finally { before.close() }
         val after = database(name)
         try {
-            assertEquals(23, after.openHelper.readableDatabase.version)
+            assertEquals(24, after.openHelper.readableDatabase.version)
             assertEquals(queued.copy(status = "QUEUED", statusText = ""), after.importTaskDao().getTaskById(queued.id))
         } finally { after.close(); context.deleteDatabase(name) }
     }
@@ -294,7 +294,7 @@ class BookmarkDatabaseTest {
             var db = database(name)
             try {
                 val sql = db.openHelper.writableDatabase
-                assertEquals(23, sql.version)
+                assertEquals(24, sql.version)
                 assertTrue(columns(sql, "bookmark_entities").contains("skeletonKey"))
                 sql.query("PRAGMA index_list(bookmark_entities)").use { cursor ->
                     val names = buildList { while (cursor.moveToNext()) add(cursor.getString(1)) }
@@ -362,7 +362,7 @@ class BookmarkDatabaseTest {
             helper.close()
             val db = database(name)
             try {
-                assertEquals(23, db.openHelper.readableDatabase.version)
+                assertEquals(24, db.openHelper.readableDatabase.version)
                 val feed = db.rssDao().feed("feed")!!
                 assertEquals(if (feedMetadataVariant) "https://example.com/icon.png" else null, feed.iconUrl)
                 assertEquals(if (feedMetadataVariant) "https://publisher.example/" else null, feed.siteUrl)
@@ -452,7 +452,7 @@ class BookmarkDatabaseTest {
 
     private fun database(name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22, AppDatabase.MIGRATION_22_23)
+            AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22, AppDatabase.MIGRATION_22_23, AppDatabase.MIGRATION_23_24)
         .addCallback(AppDatabase.DERIVED_DATA_CALLBACK).build()
 
     private suspend fun results(db: AppDatabase, query: String, showPrivate: Boolean = true): List<BookmarkEntity> {

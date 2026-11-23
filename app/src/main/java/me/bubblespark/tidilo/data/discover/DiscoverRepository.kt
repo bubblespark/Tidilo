@@ -7,9 +7,13 @@ import kotlin.random.Random
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filterNotNull
@@ -56,6 +60,15 @@ private const val JUST_SAVED_WINDOW_MS = 48 * 60 * 60 * 1000L
 private const val JUST_SAVED_LIMIT = 12
 private const val FRESH_RSS_LIMIT = 10
 private const val RSS_EXPIRY_LABEL_DAYS = 3
+private const val CLOCK_TICK_MS = 60_000L
+
+/** Emits once on collection and then every minute, so time-based Discover reads stay current while observed. */
+internal fun minuteTicks(): Flow<Unit> = flow {
+    while (true) {
+        emit(Unit)
+        delay(CLOCK_TICK_MS)
+    }
+}
 
 /**
  * Serves Discover (design spec §4–§5): one snapshot per Discover day for the daily shelves, one map per
@@ -74,7 +87,8 @@ class DiscoverRepository internal constructor(
     private val zone: () -> ZoneId = ZoneId::systemDefault,
     private val privateVisible: StateFlow<Boolean> = AppConfig.isPrivateContentVisible,
     private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
-    private val random: Random = Random.Default
+    private val random: Random = Random.Default,
+    private val clockTicks: Flow<Unit> = minuteTicks()
 ) {
     private val dao = database.discoverDao()
     private val mutex = Mutex()
@@ -144,20 +158,25 @@ class DiscoverRepository internal constructor(
     /**
      * Today's daily shelves and this week's map. Subscribing computes a missing snapshot; a Private
      * visibility change recomputes it with the same seed. Trash, suppressions, and mutes apply at once.
+     * While collected, a clock tick that finds a new Discover day (04:00) computes and emits that day.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun observeSnapshot(): Flow<DiscoverSnapshot> = privateVisible.flatMapLatest { visible ->
-        flow {
+        channelFlow {
             ensureToday()
-            emitAll(currentDay.filterNotNull().flatMapLatest { day -> snapshotFor(day, visible) })
+            launch {
+                clockTicks.collect { if (discoverDay(nowMillis(), zone()) != currentDay.value) ensureToday() }
+            }
+            currentDay.filterNotNull().flatMapLatest { day -> snapshotFor(day, visible) }.collect { send(it) }
         }
-    }
+    }.distinctUntilChanged()
 
     private fun snapshotFor(day: Long, visible: Boolean): Flow<DiscoverSnapshot> {
         val picks = combine(dao.observeSnapshot(day), dao.observeSnapshotBookmarks(day), dao.observeMap(weekStartDay(day))) { rows, bookmarks, map ->
             Triple(rows, bookmarks, map)
         }
-        val filters = combine(dao.observeSuppressions(), dao.observeMutes(), dao.observeLibraryCount(visible)) { suppressions, mutes, count ->
+        // The tick re-reads the clock so snoozes that expire while observed come back.
+        val filters = combine(dao.observeSuppressions(), dao.observeMutes(), dao.observeLibraryCount(visible), clockTicks) { suppressions, mutes, count, _ ->
             Triple(suppressions, mutes, count)
         }
         return combine(picks, filters) { (rows, bookmarks, map), (suppressions, mutes, count) ->
@@ -204,19 +223,29 @@ class DiscoverRepository internal constructor(
         )
     }
 
-    /** Manual saves from the last 48 hours, newest first (at most 12). */
+    /** Manual saves from the last 48 hours, newest first (at most 12). The window moves with each clock tick. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun observeJustSaved(): Flow<List<me.bubblespark.tidilo.ui.screens.library.BookmarkItem>> = privateVisible.flatMapLatest { visible ->
-        val now = nowMillis()
-        dao.observeJustSaved(now - JUST_SAVED_WINDOW_MS, now, visible, JUST_SAVED_LIMIT).map { rows -> rows.map { it.toBookmarkItem() } }
-    }
+    fun observeJustSaved(): Flow<List<me.bubblespark.tidilo.ui.screens.library.BookmarkItem>> =
+        combine(privateVisible, clockTicks) { visible, _ -> visible }.flatMapLatest { visible ->
+            val now = nowMillis()
+            dao.observeJustSaved(now - JUST_SAVED_WINDOW_MS, now, visible, JUST_SAVED_LIMIT).map { rows ->
+                val cutoff = nowMillis() - JUST_SAVED_WINDOW_MS
+                rows.filter { it.createdAt >= cutoff }.map { it.toBookmarkItem() }
+            }
+        }.distinctUntilChanged()
 
-    /** Unread RSS articles, newest first (at most 10), labeled when ≤3 days remain before expiry. */
+    /**
+     * Unread RSS articles, newest first (at most 10), labeled when ≤3 days remain before expiry. Each
+     * emission computes the label at emission time, and clock ticks re-run the query as time passes.
+     */
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun observeFreshRss(): Flow<List<DiscoverPick>> = privateVisible.flatMapLatest { visible ->
-        val now = nowMillis()
-        dao.observeFreshRss(now, visible, FRESH_RSS_LIMIT).map { rows -> rows.map { freshRssPick(it, now) } }
-    }
+    fun observeFreshRss(): Flow<List<DiscoverPick>> =
+        combine(privateVisible, clockTicks) { visible, _ -> visible }.flatMapLatest { visible ->
+            dao.observeFreshRss(nowMillis(), visible, FRESH_RSS_LIMIT).map { rows ->
+                val now = nowMillis()
+                rows.map { freshRssPick(it, now) }
+            }
+        }.distinctUntilChanged()
 
     private fun freshRssPick(row: FreshRssRow, now: Long): DiscoverPick {
         val remainingMs = row.bookmark.createdAt + RSS_UNREAD_DAYS * RETENTION_DAY_MS - now

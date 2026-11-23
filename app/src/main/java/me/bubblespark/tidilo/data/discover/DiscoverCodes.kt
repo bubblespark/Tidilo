@@ -88,9 +88,15 @@ data class DiscoverSnapshot(
 /** Hour at which the Discover day rolls over. */
 const val DISCOVER_DAY_START_HOUR = 4
 
-/** Epoch day of the Discover day containing [now]; the day starts at 04:00 local time. */
-fun discoverDay(now: Long, zone: ZoneId): Long =
-    Instant.ofEpochMilli(now).atZone(zone).minusHours(DISCOVER_DAY_START_HOUR.toLong()).toLocalDate().toEpochDay()
+/**
+ * Epoch day of the Discover day containing [now]; the day starts at 04:00 local wall-clock time.
+ * Compares the local hour rather than subtracting elapsed hours, so a DST jump before 04:00 does not move the boundary.
+ */
+fun discoverDay(now: Long, zone: ZoneId): Long {
+    val local = Instant.ofEpochMilli(now).atZone(zone)
+    val date = if (local.hour < DISCOVER_DAY_START_HOUR) local.toLocalDate().minusDays(1) else local.toLocalDate()
+    return date.toEpochDay()
+}
 
 /** Epoch millis at which Discover day [day] starts. */
 fun discoverDayStart(day: Long, zone: ZoneId): Long =

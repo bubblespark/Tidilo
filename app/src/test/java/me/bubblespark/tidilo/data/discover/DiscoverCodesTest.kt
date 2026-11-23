@@ -21,6 +21,17 @@ class DiscoverCodesTest {
         assertEquals(at(2026, 11, 23, 4), discoverDayStart(nov23, TOKYO))
     }
 
+    @Test fun dstSpringForwardBeforeFourKeepsTheBoundaryAtFour() {
+        // New York jumps 02:00 -> 03:00 on 2026-03-08; Lord Howe moves by 30 minutes at 02:00 on 2026-10-04.
+        for ((zoneId, date) in listOf("America/New_York" to LocalDate.of(2026, 3, 8), "Australia/Lord_Howe" to LocalDate.of(2026, 10, 4))) {
+            val zone = java.time.ZoneId.of(zoneId)
+            val day = date.toEpochDay()
+            assertEquals(zoneId, day, discoverDay(discoverDayStart(day, zone), zone))
+            assertEquals(zoneId, day - 1, discoverDay(discoverDayStart(day, zone) - 1, zone))
+            assertEquals(zoneId, day - 1, discoverDay(date.atTime(3, 30).atZone(zone).toInstant().toEpochMilli(), zone))
+        }
+    }
+
     @Test fun weekStartsOnMonday() {
         val sunday = LocalDate.of(2026, 11, 29).toEpochDay()
         assertEquals(LocalDate.of(2026, 11, 23).toEpochDay(), weekStartDay(sunday))

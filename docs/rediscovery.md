@@ -6,7 +6,7 @@ Code: `data/discover/` (`DiscoverCodes.kt`, `DiscoverRepository.kt`) and `data/d
 
 ## 1. Discover day
 
-- A Discover day starts at **04:00 local time** (`discoverDay(now, zone)`). Picks stay the same for the whole day.
+- A Discover day starts at **04:00 local wall-clock time** (`discoverDay(now, zone)`), also on DST transition days. Picks stay the same for the whole day.
 - "Your map" uses weeks starting on **Monday** (`weekStartDay`).
 - Seed: `discoverSeed(day, dealCount) = day * 1000 + dealCount`. A re-deal therefore never reproduces another day's picks.
 
@@ -75,6 +75,7 @@ None of these change `lastInteractedAt`, so they never extend RSS retention.
 - `discover_snapshot` stores the daily picks keyed by `(day, shelf, position)`. Rising rows use `position = group * 10 + index` and carry the entity in `topicKey`. `discover_map` stores the weekly map. `discover_snapshot_meta` records each snapshot's `dealCount`, the Private visibility it was computed for, and `computedAt`.
 - `ensureToday`, `reDeal`, and `resetHistory` are serialized by one mutex. Each loads its input, computes on `Dispatchers.Default`, and replaces the rows and meta in one transaction. A failure keeps the previous snapshot.
 - Reads join `bookmarks`, so Trash and purge take effect immediately. Suppressions, mutes, and Private visibility are also applied at read time, without recomputing.
+- Observed flows re-read the clock once a minute: a snapshot collector moves to the new Discover day after 04:00, expired snoozes reappear, the "Just saved" 48-hour window moves, and "Fresh from RSS" expiry labels count down. All of this happens without restarting collection.
 - Maintenance keeps 30 days of snapshots and the current and previous map weeks (see [library_maintenance.md](library_maintenance.md)).
 
 ## 7. Verification

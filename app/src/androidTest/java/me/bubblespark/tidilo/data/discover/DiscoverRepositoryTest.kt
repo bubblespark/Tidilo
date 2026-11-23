@@ -8,7 +8,11 @@ import kotlin.random.Random
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
@@ -32,12 +36,14 @@ class DiscoverRepositoryTest {
     private val start = LocalDateTime.of(2026, 11, 23, 12, 0).atZone(zone).toInstant().toEpochMilli()
     private var clock = start
     private val visible = MutableStateFlow(true)
+    private val ticks = MutableStateFlow(0)
     private lateinit var db: AppDatabase
     private lateinit var repo: DiscoverRepository
 
     @Before fun setUp() = runBlocking {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
-        repo = DiscoverRepository(db, nowMillis = { clock }, zone = { zone }, privateVisible = visible, random = Random(1))
+        repo = DiscoverRepository(db, nowMillis = { clock }, zone = { zone }, privateVisible = visible, random = Random(1),
+            clockTicks = ticks.map { })
         db.bookmarkDao().insertAll((0 until 60).map { i ->
             bookmark("b$i", createdAt = start - (40 + i) * day, entities = listOf("Topic${i % 7}", "Shared${i % 3}"),
                 isPrivate = i == 0)
@@ -184,5 +190,38 @@ class DiscoverRepositoryTest {
         assertTrue(dao.mutes().isEmpty())
         assertEquals(0, dao.meta(SCOPE_DAILY, today)!!.dealCount)
         assertTrue(rows().isNotEmpty())
+    }
+
+    private suspend fun eventually(condition: () -> Boolean) = withTimeout(5_000) { while (!condition()) delay(10) }
+
+    @Test fun activeSnapshotCollectorMovesToTheNewDayAtFour() = runBlocking {
+        val days = mutableListOf<Long>()
+        val job = launch { repo.observeSnapshot().collect { days += it.day } }
+        eventually { days.isNotEmpty() }
+        val firstDay = days.last()
+        clock = LocalDateTime.of(2026, 11, 24, 4, 0).atZone(zone).toInstant().toEpochMilli()
+        ticks.value++
+        eventually { days.last() == firstDay + 1 }
+        assertNotNull(db.discoverDao().meta(SCOPE_DAILY, firstDay + 1))
+        job.cancel()
+    }
+
+    @Test fun activeLiveShelvesFollowTheClock() = runBlocking {
+        db.bookmarkDao().insertAll(listOf(
+            bookmark("new", createdAt = clock - 47 * 3_600_000L),
+            bookmark("article", createdAt = clock - 6 * day, rssFeedId = "feed")
+        ))
+        var justSaved: List<String> = emptyList()
+        var rss: List<DiscoverPick> = emptyList()
+        val jobs = listOf(
+            launch { repo.observeJustSaved().collect { items -> justSaved = items.map { it.id } } },
+            launch { repo.observeFreshRss().collect { rss = it } }
+        )
+        eventually { justSaved == listOf("new") && rss.size == 1 }
+        assertNull(rss.single().reason)
+        clock += 26 * 3_600_000L // new item is 73 h old; the article has 2 d 22 h left
+        ticks.value++
+        eventually { justSaved.isEmpty() && rss.single().reason == DiscoverReason.RssExpiring(3) }
+        jobs.forEach { it.cancel() }
     }
 }

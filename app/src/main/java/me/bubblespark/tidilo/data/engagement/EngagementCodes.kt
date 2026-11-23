@@ -28,13 +28,23 @@ enum class EngagementType(val code: Int) {
  * Screen where an engagement event happened.
  *
  * [code] is persisted and append-only. [MIGRATED] marks events converted from the former counters.
+ * Discover surfaces name the shelf the card sat on; [DISCOVER_PEEK] covers Peek-sheet actions.
  */
 enum class EngagementSurface(val code: Int) {
     UNKNOWN(0),
     LIBRARY(1),
     SEARCH(2),
     DETAIL(3),
-    MIGRATED(4);
+    MIGRATED(4),
+    DISCOVER_HERO(5),
+    DISCOVER_ON_THIS_DAY(6),
+    DISCOVER_JUST_SAVED(7),
+    DISCOVER_DECK(8),
+    DISCOVER_SLEEPING_GEMS(9),
+    DISCOVER_RISING(10),
+    DISCOVER_FRESH_RSS(11),
+    DISCOVER_CONNECTIONS(12),
+    DISCOVER_PEEK(13);
 
     companion object {
         private val byCode = entries.associateBy { it.code }

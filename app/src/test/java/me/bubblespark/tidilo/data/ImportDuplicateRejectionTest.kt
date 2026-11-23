@@ -115,9 +115,8 @@ class ImportDuplicateRejectionTest {
         override suspend fun collectionsForReplacement(id: String, url: String): List<String> = emptyList()
         override suspend fun insertCollectionMembership(row: me.bubblespark.tidilo.data.db.BookmarkCollectionCrossRef) = Unit
         override suspend fun toggleLike(id: String, now: Long) = Unit
-        override suspend fun recordBrowserOpen(id: String, now: Long) = Unit
-        override suspend fun recordDetailView(id: String, now: Long) = Unit
-        override suspend fun recordSummaryPeek(id: String, now: Long) = Unit
+        override suspend fun touch(id: String, now: Long) = 0
+        override suspend fun isLiked(id: String): Boolean? = null
         val bookmarks = mutableMapOf<String, BookmarkEntity>()
         var onInsertRow: ((BookmarkEntity) -> Unit)? = null
 

@@ -25,9 +25,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ImportNotificationEntity::class,
         RssNotificationRunEntity::class,
         RssNotificationItemEntity::class,
-        DomainPolicyEntity::class
+        DomainPolicyEntity::class,
+        EngagementEventEntity::class
     ],
-    version = 22,
+    version = 23,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -42,8 +43,41 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun importNotificationDao(): ImportNotificationDao
     abstract fun rssNotificationDao(): RssNotificationDao
     abstract fun domainPolicyDao(): DomainPolicyDao
+    abstract fun engagementDao(): EngagementDao
 
     companion object {
+        /**
+         * Replaces the cumulative engagement counters with `engagement_events`.
+         * Each counter becomes at most five events per type (surface MIGRATED) at the last interaction,
+         * falling back to creation time; likes become one LIKE event. The counter columns are then dropped.
+         */
+        val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `engagement_events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bookmarkId` TEXT NOT NULL, `type` INTEGER NOT NULL, `surface` INTEGER NOT NULL, `at` INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_engagement_events_bookmarkId` ON `engagement_events` (`bookmarkId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_engagement_events_at` ON `engagement_events` (`at`)")
+                val counters = listOf("summaryPeekCount" to 1, "detailViewCount" to 2, "browserOpenCount" to 3)
+                for (table in listOf("bookmarks", "trashed_bookmarks")) {
+                    for ((column, type) in counters) {
+                        db.execSQL(
+                            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < $MIGRATED_EVENTS_PER_TYPE) " +
+                                "INSERT INTO engagement_events (bookmarkId, type, surface, at) " +
+                                "SELECT b.id, $type, $MIGRATED_SURFACE, COALESCE(b.lastInteractedAt, b.createdAt) FROM $table b JOIN n ON n.i <= b.$column"
+                        )
+                    }
+                    db.execSQL(
+                        "INSERT INTO engagement_events (bookmarkId, type, surface, at) " +
+                            "SELECT id, $LIKE_TYPE, $MIGRATED_SURFACE, COALESCE(lastInteractedAt, createdAt) FROM $table WHERE isLiked = 1"
+                    )
+                    for ((column, _) in counters) db.execSQL("ALTER TABLE $table DROP COLUMN $column")
+                }
+            }
+        }
+        private const val MIGRATED_EVENTS_PER_TYPE = 5
+        private const val MIGRATED_SURFACE = 4 // EngagementSurface.MIGRATED
+        private const val LIKE_TYPE = 6 // EngagementType.LIKE
+
+
         val MIGRATION_21_22 = object : Migration(21, 22) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP INDEX IF EXISTS `index_bookmarks_isNsfw`")
@@ -260,7 +294,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
                     .addCallback(DERIVED_DATA_CALLBACK)
                     .build()
                     .also { INSTANCE = it }

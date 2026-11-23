@@ -30,9 +30,8 @@ class BookmarkDaoUpdateFieldsTest {
         override suspend fun collectionsForReplacement(id: String, url: String): List<String> = emptyList()
         override suspend fun insertCollectionMembership(row: BookmarkCollectionCrossRef) {}
         override suspend fun toggleLike(id: String, now: Long) {}
-        override suspend fun recordBrowserOpen(id: String, now: Long) {}
-        override suspend fun recordDetailView(id: String, now: Long) {}
-        override suspend fun recordSummaryPeek(id: String, now: Long) {}
+        override suspend fun touch(id: String, now: Long) = 0
+        override suspend fun isLiked(id: String): Boolean? = null
         override suspend fun findSpellingsForKeys(keys: List<String>): List<BookmarkEntitySpelling> = emptyList()
         override suspend fun insertRows(bookmarks: List<BookmarkEntity>) {}
         override suspend fun deleteOccurrencesForBookmarks(bookmarkIds: List<String>) {}

@@ -380,9 +380,8 @@ class ImportDuplicateRoomTest {
         override suspend fun collectionsForReplacement(id: String, url: String): List<String> = error("Unused primitive")
         override suspend fun insertCollectionMembership(row: me.bubblespark.tidilo.data.db.BookmarkCollectionCrossRef): Unit = error("Unused primitive")
         override suspend fun toggleLike(id: String, now: Long) = delegate.toggleLike(id, now)
-        override suspend fun recordBrowserOpen(id: String, now: Long) = delegate.recordBrowserOpen(id, now)
-        override suspend fun recordDetailView(id: String, now: Long) = delegate.recordDetailView(id, now)
-        override suspend fun recordSummaryPeek(id: String, now: Long) = delegate.recordSummaryPeek(id, now)
+        override suspend fun touch(id: String, now: Long) = delegate.touch(id, now)
+        override suspend fun isLiked(id: String) = delegate.isLiked(id)
         var onGetBookmarkByUrl: ((String) -> Unit)? = null
         override suspend fun getBookmarkByUrl(url: String): BookmarkEntity? {
             onGetBookmarkByUrl?.invoke(url)

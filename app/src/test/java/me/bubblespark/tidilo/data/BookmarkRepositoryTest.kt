@@ -11,6 +11,8 @@ import me.bubblespark.tidilo.data.db.BookmarkEntityOccurrence
 import me.bubblespark.tidilo.data.db.BookmarkEntityTagUpdate
 import me.bubblespark.tidilo.data.db.BookmarkEntityTags
 import me.bubblespark.tidilo.data.db.TrashedBookmarkEntity
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
+import me.bubblespark.tidilo.data.engagement.EngagementType
 import me.bubblespark.tidilo.service.GeminiTaggingService
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.Tag
@@ -526,6 +528,12 @@ class BookmarkRepositoryTest {
             val current = rows[id] ?: return
             rows[id] = current.copy(isLiked = !current.isLiked)
         }
+        override suspend fun isLiked(id: String): Boolean? = rows[id]?.isLiked
+        override suspend fun touch(id: String, now: Long): Int {
+            val current = rows[id] ?: return 0
+            rows[id] = current.copy(lastInteractedAt = now)
+            return 1
+        }
         override suspend fun deleteById(id: String) {
             rows.remove(id)
             occurrences.remove(id)
@@ -572,9 +580,12 @@ class BookmarkRepositoryTest {
         trashDao: InMemoryTrashDao,
         scope: CoroutineScope,
         transactionRunner: TransactionRunner = directTransactionRunner(),
-        domainPolicyStore: DomainPolicyStore? = null
+        domainPolicyStore: DomainPolicyStore? = null,
+        engagementDao: InMemoryEngagementDao = InMemoryEngagementDao(),
+        clock: () -> Long = System::currentTimeMillis
     ): BookmarkRepository = BookmarkRepository(
-        database = fakeAppDatabase(bookmarkDao = bookmarkDao, trashDao = trashDao),
+        database = fakeAppDatabase(bookmarkDao = bookmarkDao, trashDao = trashDao, engagementDao = engagementDao),
+        clock = clock,
         transactionRunner = transactionRunner,
         repositoryScope = scope,
         autoInitialize = false,
@@ -924,6 +935,71 @@ class BookmarkRepositoryTest {
             )
 
             assertTrue(bookmarkDao.rows.getValue("b-stale").isPrivate)
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun engagementIsRecordedAsTypedEventsWithSurface() = runBlocking {
+        val bookmarkDao = InMemoryBookmarkDao()
+        val events = InMemoryEngagementDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val repository = testRepository(bookmarkDao, InMemoryTrashDao(), scope, engagementDao = events)
+            bookmarkDao.insertAll(listOf(BookmarkEntity(id = "b1", title = "One", url = "https://example.com/1",
+                description = "", createdAt = 1L, updatedAt = 1L)))
+
+            repository.recordDetailView("b1", 10L, EngagementSurface.DETAIL)
+            repository.recordBrowserOpen("b1", 11L, EngagementSurface.DETAIL)
+            repository.recordSummaryPeek("b1", 12L, EngagementSurface.LIBRARY)
+            repository.toggleLike("b1", 20L, EngagementSurface.LIBRARY)
+            repository.toggleLike("b1", 30L, EngagementSurface.LIBRARY)
+
+            assertEquals(
+                listOf(EngagementType.DETAIL to EngagementSurface.DETAIL, EngagementType.BROWSER_OPEN to EngagementSurface.DETAIL,
+                    EngagementType.PEEK to EngagementSurface.LIBRARY, EngagementType.LIKE to EngagementSurface.LIBRARY,
+                    EngagementType.UNLIKE to EngagementSurface.LIBRARY),
+                events.eventsFor("b1").map { EngagementType.fromCode(it.type) to EngagementSurface.fromCode(it.surface) })
+            assertEquals(listOf(10L, 11L, 12L, 20L, 30L), events.eventsFor("b1").map { it.at })
+            assertFalse(bookmarkDao.rows.getValue("b1").isLiked)
+            assertEquals(12L, bookmarkDao.rows.getValue("b1").lastInteractedAt)
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun engagementOnMissingBookmarkWritesNothing() = runBlocking {
+        val events = InMemoryEngagementDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val repository = testRepository(InMemoryBookmarkDao(), InMemoryTrashDao(), scope, engagementDao = events)
+            repository.recordDetailView("gone", 1L)
+            repository.recordBrowserOpen("gone", 1L)
+            repository.recordSummaryPeek("gone", 1L)
+            repository.toggleLike("gone", 1L)
+            repository.saveNote("gone", "note")
+            assertTrue(events.events.isEmpty())
+        } finally {
+            scope.coroutineContext[Job]?.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun noteWrittenIsRecordedOnEachBlankToNonBlankTransition() = runBlocking {
+        val bookmarkDao = InMemoryBookmarkDao()
+        val events = InMemoryEngagementDao()
+        val scope = CoroutineScope(coroutineContext + SupervisorJob())
+        try {
+            val repository = testRepository(bookmarkDao, InMemoryTrashDao(), scope, engagementDao = events, clock = { 7L })
+            bookmarkDao.insertAll(listOf(BookmarkEntity(id = "b1", title = "One", url = "https://example.com/1",
+                description = "", createdAt = 1L, updatedAt = 1L)))
+            listOf("", "a", "ab", "", "c").forEach { repository.saveNote("b1", it) }
+            val written = events.eventsFor("b1")
+            assertEquals(2, written.size)
+            assertTrue(written.all { it.type == EngagementType.NOTE_WRITTEN.code && it.surface == EngagementSurface.DETAIL.code && it.at == 7L })
+            assertEquals("Notes do not renew retention", null, bookmarkDao.rows.getValue("b1").lastInteractedAt)
         } finally {
             scope.coroutineContext[Job]?.cancelAndJoin()
         }

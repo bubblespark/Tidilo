@@ -85,9 +85,8 @@ class ImportRepositoryEntityMatchingTest {
         override suspend fun collectionsForReplacement(id: String, url: String): List<String> = emptyList()
         override suspend fun insertCollectionMembership(row: me.bubblespark.tidilo.data.db.BookmarkCollectionCrossRef) = Unit
         override suspend fun toggleLike(id: String, now: Long) = Unit
-        override suspend fun recordBrowserOpen(id: String, now: Long) = Unit
-        override suspend fun recordDetailView(id: String, now: Long) = Unit
-        override suspend fun recordSummaryPeek(id: String, now: Long) = Unit
+        override suspend fun touch(id: String, now: Long) = 0
+        override suspend fun isLiked(id: String): Boolean? = null
         override suspend fun entityRowsForReplacement(skeletonKey: String, afterId: String?): List<me.bubblespark.tidilo.data.db.BookmarkEntityTags> = emptyList()
         override suspend fun updateEntityRows(rows: List<me.bubblespark.tidilo.data.db.BookmarkEntityTagUpdate>) {}
         override suspend fun updateTagPrivateRow(row: me.bubblespark.tidilo.data.db.BookmarkTagPrivateUpdate) {}

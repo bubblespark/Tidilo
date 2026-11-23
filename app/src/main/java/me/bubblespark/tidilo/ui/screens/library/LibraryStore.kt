@@ -18,6 +18,7 @@ import me.bubblespark.tidilo.data.BookmarkSource
 import me.bubblespark.tidilo.data.CollectionRepository
 import me.bubblespark.tidilo.data.DomainPolicyStore
 import me.bubblespark.tidilo.data.db.AppDatabase
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import me.bubblespark.tidilo.data.db.RssFeedGroup
 import me.bubblespark.tidilo.data.db.TagCount
@@ -51,10 +52,10 @@ internal interface LibraryStore {
     fun observeTagCounts(selected: Set<String>, showPrivate: Boolean, kind: TagKind): Flow<List<TagCount>>
     fun observeEntityLibrary(): Flow<Map<String, String>>
 
-    suspend fun toggleLike(id: String)
-    suspend fun recordBrowserOpen(id: String)
-    suspend fun recordDetailView(id: String)
-    suspend fun recordSummaryPeek(id: String)
+    suspend fun toggleLike(id: String, surface: EngagementSurface)
+    suspend fun recordBrowserOpen(id: String, surface: EngagementSurface)
+    suspend fun recordDetailView(id: String, surface: EngagementSurface)
+    suspend fun recordSummaryPeek(id: String, surface: EngagementSurface)
     suspend fun saveNote(id: String, note: String)
     suspend fun updateBookmarkTags(id: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String>)
     /** Returns `false` only when no bookmark has [id]; `true` otherwise, including the no-op when both values are null. */
@@ -112,10 +113,10 @@ internal class RepositoryLibraryStore(
         bookmarks.observeTagCounts(selected, showPrivate, kind)
     override fun observeEntityLibrary() = bookmarks.observeEntityLibrary()
 
-    override suspend fun toggleLike(id: String) = logged { bookmarks.toggleLike(id, System.currentTimeMillis()) }
-    override suspend fun recordBrowserOpen(id: String) = logged { bookmarks.recordBrowserOpen(id, System.currentTimeMillis()) }
-    override suspend fun recordDetailView(id: String) = logged { bookmarks.recordDetailView(id, System.currentTimeMillis()) }
-    override suspend fun recordSummaryPeek(id: String) = logged { bookmarks.recordSummaryPeek(id, System.currentTimeMillis()) }
+    override suspend fun toggleLike(id: String, surface: EngagementSurface) = logged { bookmarks.toggleLike(id, System.currentTimeMillis(), surface) }
+    override suspend fun recordBrowserOpen(id: String, surface: EngagementSurface) = logged { bookmarks.recordBrowserOpen(id, System.currentTimeMillis(), surface) }
+    override suspend fun recordDetailView(id: String, surface: EngagementSurface) = logged { bookmarks.recordDetailView(id, System.currentTimeMillis(), surface) }
+    override suspend fun recordSummaryPeek(id: String, surface: EngagementSurface) = logged { bookmarks.recordSummaryPeek(id, System.currentTimeMillis(), surface) }
 
     override suspend fun saveNote(id: String, note: String) {
         bookmarks.saveNote(id, note)

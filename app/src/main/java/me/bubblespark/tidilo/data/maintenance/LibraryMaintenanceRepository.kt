@@ -15,6 +15,7 @@ import me.bubblespark.tidilo.data.cache.MediaCacheLayout
 import me.bubblespark.tidilo.data.cache.MediaCacheStore
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.RssImageCleanupEntity
+import me.bubblespark.tidilo.data.engagement.engagementCutoff
 
 private fun defaultMaintenanceTransactionRunner(database: AppDatabase): TransactionRunner =
     object : TransactionRunner {
@@ -75,9 +76,21 @@ internal class LibraryMaintenanceRepository(
         failure?.let { throw it }
     }
 
+    /**
+     * Deletes engagement events older than the retention window and events whose bookmark is neither
+     * active nor in Trash (purged, expired, or deleted). Returns the number of rows removed.
+     */
+    suspend fun pruneEngagement(now: Long): Int = withContext(Dispatchers.IO) {
+        transactionRunner.run {
+            val dao = database.engagementDao()
+            dao.deleteOlderThan(engagementCutoff(now)) + dao.deleteOrphans()
+        }
+    }
+
     suspend fun run() {
         val now = nowMillis()
         expireRssBookmarks(now)
+        pruneEngagement(now)
         var failure: IOException? = null
         try { drainImageCleanup() } catch (e: IOException) { failure = e }
         cleanOgImages(now)

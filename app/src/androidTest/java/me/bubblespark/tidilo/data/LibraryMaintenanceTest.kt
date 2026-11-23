@@ -35,6 +35,26 @@ class LibraryMaintenanceTest {
         } finally { db.close() }
     }
 
+    @Test fun pruneEngagementDropsOldAndOrphanedEvents() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            val now = 200 * day
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity("a", "A", "https://fixture.invalid/a", "", createdAt = day, updatedAt = day))
+            db.trashDao().insert(TrashedBookmarkEntity("t", "T", "https://fixture.invalid/t", "", createdAt = day, updatedAt = day,
+                note = "", isPrivate = false, trashedAt = day))
+            val events = db.engagementDao()
+            fun event(id: String, at: Long) = EngagementEventEntity(bookmarkId = id, type = 2, surface = 3, at = at)
+            events.insert(event("a", now - 91 * day))
+            events.insert(event("a", now - day))
+            events.insert(event("t", now - day))
+            events.insert(event("gone", now - day))
+            assertEquals(2, LibraryMaintenanceRepository(context, db).pruneEngagement(now))
+            assertEquals(listOf(now - day), events.eventsFor("a").map { it.at })
+            assertEquals(1, events.eventsFor("t").size)
+            assertTrue(events.eventsFor("gone").isEmpty())
+        } finally { db.close() }
+    }
+
     @Test fun engagementRenewalAndDeletionOutboxAreDurable() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
@@ -42,8 +62,8 @@ class LibraryMaintenanceTest {
             dao.insertOrUpdate(BookmarkEntity("rss", "RSS", "https://fixture.invalid/rss", "",
                 createdAt = day, updatedAt = day, rssFeedId = "feed", ogImageUrl = "/image.webp"))
             assertNull(dao.getBookmarkById("rss")!!.lastInteractedAt)
-            dao.recordDetailView("rss", 10 * day)
-            dao.recordBrowserOpen("rss", 39 * day)
+            dao.touch("rss", 10 * day)
+            dao.touch("rss", 39 * day)
             val maintenance = LibraryMaintenanceRepository(context, db)
             maintenance.expireRssBookmarks(40 * day)
             assertNotNull(dao.getBookmarkById("rss"))

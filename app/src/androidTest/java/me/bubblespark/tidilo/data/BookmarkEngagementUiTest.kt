@@ -12,6 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.MainActivity
+import me.bubblespark.tidilo.data.engagement.EngagementType
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.ui.screens.library.BookmarkDetailScreen
@@ -124,8 +125,8 @@ class BookmarkEngagementUiTest {
             assertTrue(click(node("Like")))
             withTimeout(10000) { while (!db.bookmarkDao().getBookmarkById(id)!!.isLiked) delay(30) }
             node("Unlike")
-            withTimeout(10000) { while (db.bookmarkDao().getBookmarkById(id)!!.detailViewCount == 0) delay(30) }
-            assertTrue(db.bookmarkDao().getBookmarkById(id)!!.detailViewCount == 1)
+            withTimeout(10000) { while (db.engagementDao().eventsFor(id).count { it.type == EngagementType.DETAIL.code } == 0) delay(30) }
+            assertTrue(db.engagementDao().eventsFor(id).count { it.type == EngagementType.DETAIL.code } == 1)
             instrumentation.runOnMainSync { host.moveTaskToBack(true) }
             delay(1000)
             context.startActivity(Intent(context, MainActivity::class.java)
@@ -133,7 +134,7 @@ class BookmarkEngagementUiTest {
             node("Unlike")
             delay(1000)
             assertTrue("Returning to the same detail entry must not count a second view",
-                db.bookmarkDao().getBookmarkById(id)!!.detailViewCount == 1)
+                db.engagementDao().eventsFor(id).count { it.type == EngagementType.DETAIL.code } == 1)
         } finally {
             activity?.let { host -> instrumentation.runOnMainSync { host.finish() } }
             db.bookmarkDao().deleteById(id)

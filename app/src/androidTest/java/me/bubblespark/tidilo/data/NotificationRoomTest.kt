@@ -25,7 +25,19 @@ internal fun restoreLegacyAiSkippedColumns(execSql: (String) -> Unit) {
     execSql("ALTER TABLE trashed_bookmarks ADD COLUMN isAiSkipped INTEGER NOT NULL DEFAULT 0")
 }
 
+/** Undoes v23 on a current-schema database: restores the engagement counters and removes the event log. */
+internal fun restoreEngagementCounters(execSql: (String) -> Unit) {
+    execSql("DROP TABLE IF EXISTS `engagement_events`")
+    for (table in listOf("bookmarks", "trashed_bookmarks")) {
+        for (column in listOf("browserOpenCount", "detailViewCount", "summaryPeekCount")) {
+            execSql("ALTER TABLE `$table` ADD COLUMN `$column` INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+}
+
+/** Rewinds a current-schema database below v22; every such rewind also undoes v23. */
 internal fun rewindPrivateColumnsToLegacyNsfw(execSql: (String) -> Unit, includeDomainPolicies: Boolean) {
+    restoreEngagementCounters(execSql)
     execSql("DROP INDEX IF EXISTS `index_bookmarks_isPrivate`")
     execSql("ALTER TABLE `bookmarks` RENAME COLUMN `isPrivate` TO `isNsfw`")
     execSql("CREATE INDEX IF NOT EXISTS `index_bookmarks_isNsfw` ON `bookmarks` (`isNsfw`)")
@@ -80,7 +92,7 @@ class NotificationRoomTest {
                 sql.execSQL("DROP TABLE rss_notification_items")
                 sql.execSQL("DROP TABLE rss_notification_runs")
                 for (table in listOf("bookmarks", "trashed_bookmarks")) {
-                    for (column in listOf("isLiked", "browserOpenCount", "detailViewCount", "summaryPeekCount", "lastInteractedAt")) {
+                    for (column in listOf("isLiked", "lastInteractedAt")) {
                         sql.execSQL("ALTER TABLE $table DROP COLUMN $column")
                     }
                 }
@@ -92,9 +104,9 @@ class NotificationRoomTest {
                 rewindPrivateColumnsToLegacyNsfw(sql::execSQL, includeDomainPolicies = false)
                 sql.version = 12
             }
-            db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22).build()
+            db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_12_13, AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22, AppDatabase.MIGRATION_22_23).build()
             assertEquals("Description", db.bookmarkDao().getBookmarkById("kept")!!.description)
-            assertEquals(22, db.openHelper.readableDatabase.version)
+            assertEquals(23, db.openHelper.readableDatabase.version)
             db.rssNotificationDao().putRun(RssNotificationRunEntity("run", "work", 100, true))
             assertEquals("run", db.rssNotificationDao().unfinishedRun("work")?.id)
         } finally { db.close(); context.deleteDatabase(name) }

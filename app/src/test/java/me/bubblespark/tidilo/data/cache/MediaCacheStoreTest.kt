@@ -462,6 +462,7 @@ class MediaCacheStoreTest {
                 override fun importNotificationDao() = baseDb.importNotificationDao()
                 override fun rssNotificationDao() = baseDb.rssNotificationDao()
                 override fun domainPolicyDao() = baseDb.domainPolicyDao()
+                override fun engagementDao() = baseDb.engagementDao()
                 override fun createInvalidationTracker(): InvalidationTracker =
                     InvalidationTracker(this, emptyMap(), emptyMap(), "bookmarks")
                 @Deprecated("Deprecated in Java")

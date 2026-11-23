@@ -88,7 +88,7 @@ class OgImageRetentionTest {
         repo.cleanOgImages(now)
         assertTrue(file.exists())
         db.bookmarkDao().deleteById("new")
-        db.bookmarkDao().recordSummaryPeek("old", now - 6 * day)
+        db.bookmarkDao().touch("old", now - 6 * day)
         repo.cleanOgImages(now)
         assertTrue(file.exists())
         repo.cleanOgImages(now + day)

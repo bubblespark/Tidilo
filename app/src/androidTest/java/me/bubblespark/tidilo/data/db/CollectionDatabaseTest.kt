@@ -75,11 +75,14 @@ class CollectionDatabaseTest {
         me.bubblespark.tidilo.data.rewindPrivateColumnsToLegacyNsfw(sql::execSQL, includeDomainPolicies = false)
         sql.version = 15
         before.close()
-        val after = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22).build()
+        val after = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22, AppDatabase.MIGRATION_22_23).build()
         try {
             assertTrue(after.bookmarkDao().getBookmarkById("kept")?.isLiked == true)
             assertTrue(after.collectionDao().observeCollections(true).first().isEmpty())
-            counts.filterKeys { it != "room_master_table" }.forEach { (table, count) ->
+            assertEquals("The liked fixture becomes one migrated LIKE event",
+                listOf(me.bubblespark.tidilo.data.engagement.EngagementType.LIKE.code),
+                after.engagementDao().eventsFor("kept").map { it.type })
+            counts.filterKeys { it != "room_master_table" && it != "engagement_events" }.forEach { (table, count) ->
                 assertEquals(table, count, after.openHelper.readableDatabase.query("SELECT COUNT(*) FROM `$table`").use { it.moveToFirst(); it.getInt(0) })
             }
             assertEquals(0, after.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use { it.count })

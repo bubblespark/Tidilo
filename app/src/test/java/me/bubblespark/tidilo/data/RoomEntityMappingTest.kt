@@ -21,8 +21,8 @@ class RoomEntityMappingTest {
             id = "engagement", title = "Saved", url = "https://example.com",
             description = "Summary", tag = Tag.createEmpty()
         )
-        val values = mapOf("isLiked" to true, "browserOpenCount" to 2,
-            "detailViewCount" to 3, "summaryPeekCount" to 4, "lastInteractedAt" to 1234L)
+        val values = mapOf("isLiked" to true,
+            "lastInteractedAt" to 1234L)
         fun write(target: Any) = values.forEach { (name, value) ->
             target.javaClass.getDeclaredField(name).apply { isAccessible = true }.set(target, value)
         }

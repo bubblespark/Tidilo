@@ -8,6 +8,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.BookmarkRepository
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
+import me.bubblespark.tidilo.data.engagement.EngagementType
 import me.bubblespark.tidilo.data.CollectionRepository
 import org.junit.Assert.*
 import org.junit.Test
@@ -19,7 +21,7 @@ class CollectionMembershipTest {
         try {
             db.collectionDao().insert(CollectionEntity("a", "Alpha", "", "folder", null, 0, 1, 1))
             db.collectionDao().insert(CollectionEntity("b", "Beta", "", "star", null, 1, 1, 1))
-            db.bookmarkDao().insertOrUpdate(BookmarkEntity("one", "One", "https://example.com/one", "", createdAt = 1, updatedAt = 1, isLiked = true, browserOpenCount = 7))
+            db.bookmarkDao().insertOrUpdate(BookmarkEntity("one", "One", "https://example.com/one", "", createdAt = 1, updatedAt = 1, isLiked = true, lastInteractedAt = 7))
             db.collectionDao().insertMembership(BookmarkCollectionCrossRef("one", "a"))
             db.collectionDao().insertMembership(BookmarkCollectionCrossRef("one", "b"))
             block(db)
@@ -51,8 +53,24 @@ class CollectionMembershipTest {
         assertTrue(db.collectionDao().observeMembershipIds("one").first().isEmpty())
         val trash = db.trashDao().getAllTrash().single()
         assertFalse(trash.isLiked)
-        assertEquals(7, trash.browserOpenCount)
+        assertEquals(7L, trash.lastInteractedAt)
         assertEquals(0, db.collectionDao().observeCount("a", true).first())
+    } }
+
+    @Test fun collectionAddRecordedOnceForNewMembership() = runBlocking { fixture { db ->
+        val repo = CollectionRepository(db, clock = { 50 })
+        suspend fun adds() = db.engagementDao().eventsFor("one").count { it.type == EngagementType.COLLECTION_ADD.code }
+        repo.removeMembership("one", "a")
+        repo.addMembership("one", "a")
+        repo.addMembership("one", "a")
+        assertEquals("Re-adding an existing membership is not a new signal", 1, adds())
+        repo.setMemberships("one", setOf("a"))
+        repo.setMemberships("one", setOf("a", "b"))
+        assertEquals(2, adds())
+        repo.toggleMembership("one", "a")
+        repo.toggleMembership("one", "a")
+        assertEquals(3, adds())
+        assertTrue(db.engagementDao().eventsFor("one").all { it.at == 50L && it.surface == EngagementSurface.DETAIL.code })
     } }
 
     @Test fun membershipSetIsAtomicAndIdempotent() = runBlocking { fixture { db ->

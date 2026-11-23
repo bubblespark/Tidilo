@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.library
 
 import me.bubblespark.tidilo.data.EntityCandidateExtractor
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
 
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
@@ -388,7 +389,7 @@ internal fun BookmarkDetailScreen(
     LaunchedEffect(bookmarkId, bookmark?.id) {
         if (bookmark != null && !detailRecorded) {
             detailRecorded = true
-            viewModel.recordDetailView(bookmarkId)
+            viewModel.recordDetailView(bookmarkId, EngagementSurface.DETAIL)
         }
     }
     if (bookmark == null || detailState.error != null) {
@@ -636,7 +637,7 @@ internal fun BookmarkDetailScreen(
                                             else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(22.dp))
                                 }
-                                TidiloIconToggleButton(role = SurfaceRole.LIKE_ACTION, checked = bookmark.isLiked, onCheckedChange = { viewModel.toggleLike(bookmark.id) }, modifier = Modifier.size(HeaderDefaults.DetailActionSize)) {
+                                TidiloIconToggleButton(role = SurfaceRole.LIKE_ACTION, checked = bookmark.isLiked, onCheckedChange = { viewModel.toggleLike(bookmark.id, EngagementSurface.DETAIL) }, modifier = Modifier.size(HeaderDefaults.DetailActionSize)) {
                                     Icon(
                                         imageVector = if (bookmark.isLiked) Icons.Filled.Favorite else ImageVector.vectorResource(R.drawable.ic_favorite),
                                         contentDescription = stringResource(if (bookmark.isLiked) R.string.bookmark_unlike else R.string.bookmark_like),
@@ -649,7 +650,7 @@ internal fun BookmarkDetailScreen(
                     }
                     Spacer(Modifier.width(10.dp))
                     TidiloSurface(
-                        onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id) } },
+                        onClick = { openBookmarkInBrowser(context, bookmark.url) { viewModel.recordBrowserOpen(bookmark.id, EngagementSurface.DETAIL) } },
                         role = SurfaceRole.PRIMARY_ACTION,
                         blurBackground = true,
                         variant = SurfaceVariant.COMPACT,

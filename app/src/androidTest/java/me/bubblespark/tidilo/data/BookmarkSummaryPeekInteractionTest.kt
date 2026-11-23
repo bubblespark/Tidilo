@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.AppDatabase
+import me.bubblespark.tidilo.data.engagement.EngagementType
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.BookmarkSummaryPeekOverlay
@@ -93,6 +94,7 @@ class BookmarkSummaryPeekInteractionTest {
         val host = HeaderTestHost()
         val activity = host.launch()
         val dao = AppDatabase.getInstance(host.context).bookmarkDao()
+        val events = AppDatabase.getInstance(host.context).engagementDao()
         val token = UUID.randomUUID().toString().replace("-", "")
         val domain = "$token.invalid"
         val title = "Photo article $token"
@@ -168,8 +170,10 @@ class BookmarkSummaryPeekInteractionTest {
                 return anchor
             }
 
+            suspend fun peeks() = events.eventsFor(id).count { it.type == EngagementType.PEEK.code }
+
             suspend fun awaitEngagement(count: Int) {
-                withTimeout(8000) { dao.observeById(id).first { it?.summaryPeekCount == count } }
+                withTimeout(8000) { while (peeks() != count) delay(30) }
             }
 
             suspend fun assertReturnedTo(anchor: Offset) {
@@ -264,7 +268,7 @@ class BookmarkSummaryPeekInteractionTest {
                 host.await(activity) { host.text(it, activity.getString(R.string.search_header_title)) }
                 host.main { assertTrue(host.nodes(activity).none { it.config.getOrNull(SemanticsProperties.PaneTitle) == readingTitle }) }
             }
-            assertEquals(if (libraryMode == null) 4 else 3, dao.getBookmarkById(id)?.summaryPeekCount)
+            assertEquals(if (libraryMode == null) 4 else 3, peeks())
         } finally {
             host.main {
                 previousView?.let(model::setViewMode)

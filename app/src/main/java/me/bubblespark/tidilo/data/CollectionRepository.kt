@@ -12,10 +12,21 @@ import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkCollectionCrossRef
 import me.bubblespark.tidilo.data.db.CollectionEntity
+import me.bubblespark.tidilo.data.db.EngagementEventEntity
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
+import me.bubblespark.tidilo.data.engagement.EngagementType
 import java.util.UUID
 
-class CollectionRepository(private val database: AppDatabase) {
+class CollectionRepository(
+    private val database: AppDatabase,
+    private val clock: () -> Long = System::currentTimeMillis
+) {
     private val dao = database.collectionDao()
+
+    /** Records that the user put [bookmarkId] into a collection; called inside the membership transaction. */
+    private suspend fun recordCollectionAdd(bookmarkId: String) = database.engagementDao().insert(
+        EngagementEventEntity(bookmarkId = bookmarkId, type = EngagementType.COLLECTION_ADD.code,
+            surface = EngagementSurface.DETAIL.code, at = clock()))
     fun observeCollections(showPrivate: Boolean) = dao.observeCollections(showPrivate)
     fun observeCollection(id: String) = dao.observeCollection(id)
     fun observeMembershipIds(bookmarkId: String) = dao.observeMembershipIds(bookmarkId)
@@ -58,6 +69,7 @@ class CollectionRepository(private val database: AppDatabase) {
                 } else {
                     dao.update(entity.copy(createdAt = existing.createdAt))
                 }
+                if (id !in dao.membershipIds(bookmarkId)) recordCollectionAdd(bookmarkId)
                 dao.insertMembership(BookmarkCollectionCrossRef(bookmarkId, id))
                 true
             }
@@ -100,8 +112,10 @@ class CollectionRepository(private val database: AppDatabase) {
         database.withTransaction {
             if (database.bookmarkDao().getBookmarkById(bookmarkId) == null ||
                 collectionIds.any { dao.getById(it) == null }) return@withTransaction false
+            val previous = dao.membershipIds(bookmarkId).toSet()
             dao.clearMemberships(bookmarkId)
             collectionIds.forEach { dao.insertMembership(BookmarkCollectionCrossRef(bookmarkId, it)) }
+            collectionIds.filterNot { it in previous }.forEach { recordCollectionAdd(bookmarkId) }
             true
         }
     }
@@ -114,9 +128,12 @@ class CollectionRepository(private val database: AppDatabase) {
     private suspend fun changeMembership(bookmarkId: String, collectionId: String, add: Boolean?): Boolean = withContext(NonCancellable + Dispatchers.IO) {
         database.withTransaction {
             if (database.bookmarkDao().getBookmarkById(bookmarkId) == null || dao.getById(collectionId) == null) return@withTransaction false
-            val shouldAdd = add ?: (collectionId !in dao.membershipIds(bookmarkId))
-            if (shouldAdd) dao.insertMembership(BookmarkCollectionCrossRef(bookmarkId, collectionId))
-            else dao.removeMembership(bookmarkId, collectionId)
+            val isMember = collectionId in dao.membershipIds(bookmarkId)
+            val shouldAdd = add ?: !isMember
+            if (shouldAdd) {
+                dao.insertMembership(BookmarkCollectionCrossRef(bookmarkId, collectionId))
+                if (!isMember) recordCollectionAdd(bookmarkId)
+            } else dao.removeMembership(bookmarkId, collectionId)
             true
         }
     }

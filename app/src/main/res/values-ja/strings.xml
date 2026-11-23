@@ -544,4 +544,20 @@
     <plurals name="discover_reason_rising">
         <item quantity="other">14日で%d件</item>
     </plurals>
+    <string name="discover_open">開く</string>
+    <string name="discover_peek">ピーク</string>
+    <string name="discover_peek_snooze">今はいい</string>
+    <string name="discover_peek_never">今後表示しない</string>
+    <string name="discover_peek_add_to_collection">コレクションに追加</string>
+    <string name="discover_notice_snoozed">30日間 Discover に表示しません</string>
+    <string name="discover_notice_hidden">今後 Discover に表示しません</string>
+    <string name="discover_notice_muted">Discover で %1$s をミュートしました</string>
+    <string name="discover_undo">元に戻す</string>
+    <string name="discover_mute_topic">トピックをミュート</string>
+    <string name="settings_discover_reset_title">再発見の履歴をリセット</string>
+    <string name="settings_discover_reset_subtitle">Discover が操作から学んだ内容を消去します。ブックマークは残ります。</string>
+    <string name="settings_discover_reset_dialog_title">再発見の履歴をリセットしますか？</string>
+    <string name="settings_discover_reset_dialog_body">閲覧、いいね、非表示にしたカード、ミュートしたトピックの記録を消去し、今日の棚を配り直します。ブックマーク、メモ、コレクションは変更されません。</string>
+    <string name="settings_discover_reset_confirm">リセット</string>
+    <string name="settings_discover_reset_done">再発見の履歴をリセットしました</string>
 </resources>

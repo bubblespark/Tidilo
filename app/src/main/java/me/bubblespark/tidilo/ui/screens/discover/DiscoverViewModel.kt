@@ -28,6 +28,7 @@ import me.bubblespark.tidilo.data.discover.DiscoverShelf
 import me.bubblespark.tidilo.data.discover.DiscoverSnapshot
 import me.bubblespark.tidilo.data.discover.MapBubble
 import me.bubblespark.tidilo.data.discover.RisingGroup
+import me.bubblespark.tidilo.data.discover.TopicAxis
 import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 
@@ -47,6 +48,17 @@ internal interface DiscoverSource {
     /** Shelves already shown, or null before Discover recorded its first baseline. */
     fun seenShelves(): Set<DiscoverShelf>?
     fun saveSeenShelves(shelves: Set<DiscoverShelf>)
+    /** Records a Peek-sheet open (`PEEK`, [EngagementSurface.DISCOVER_PEEK]). */
+    suspend fun peek(bookmarkId: String)
+    suspend fun snooze(bookmarkId: String)
+    suspend fun neverAgain(bookmarkId: String)
+    suspend fun unsuppress(bookmarkId: String)
+    suspend fun muteTopic(skeletonKey: String)
+    suspend fun unmuteTopic(skeletonKey: String)
+    suspend fun reDeal()
+    /** The Discover day whose first-open entrance already played, or null. */
+    fun entranceDay(): Long?
+    fun saveEntranceDay(day: Long)
 }
 
 /** Production [DiscoverSource] over [DiscoverRepository], [ImportRepository], and `tidilo_library_prefs`. */
@@ -73,10 +85,25 @@ internal class RepositoryDiscoverSource(
     override fun saveSeenShelves(shelves: Set<DiscoverShelf>) {
         runCatching { prefs.edit().putStringSet(SEEN_SHELVES_KEY, shelves.mapTo(HashSet()) { it.name }).apply() }
     }
+    override suspend fun peek(bookmarkId: String) {
+        bookmarks.recordSummaryPeek(bookmarkId, System.currentTimeMillis(), EngagementSurface.DISCOVER_PEEK)
+    }
+    override suspend fun snooze(bookmarkId: String) = discover.snooze(bookmarkId, EngagementSurface.DISCOVER_PEEK)
+    override suspend fun neverAgain(bookmarkId: String) = discover.neverAgain(bookmarkId, EngagementSurface.DISCOVER_PEEK)
+    override suspend fun unsuppress(bookmarkId: String) = discover.unsuppress(bookmarkId)
+    override suspend fun muteTopic(skeletonKey: String) = discover.muteTopic(TopicAxis.ENTITY, skeletonKey)
+    override suspend fun unmuteTopic(skeletonKey: String) = discover.unmuteTopic(TopicAxis.ENTITY, skeletonKey)
+    override suspend fun reDeal() = discover.reDeal()
+    override fun entranceDay(): Long? =
+        runCatching { prefs.getLong(ENTRANCE_DAY_KEY, Long.MIN_VALUE) }.getOrNull()?.takeIf { it != Long.MIN_VALUE }
+    override fun saveEntranceDay(day: Long) {
+        runCatching { prefs.edit().putLong(ENTRANCE_DAY_KEY, day).apply() }
+    }
 
     companion object {
         private const val PREFS_NAME = "tidilo_library_prefs"
         private const val SEEN_SHELVES_KEY = "discover_seen_shelves"
+        private const val ENTRANCE_DAY_KEY = "discover_entrance_day"
 
         fun create(context: Context = TidiloApplication.instance) = RepositoryDiscoverSource(
             DiscoverRepository.getInstance(context),
@@ -105,12 +132,34 @@ data class DeckState(val cards: List<BookmarkItem> = emptyList(), val index: Int
     val exhausted: Boolean get() = cards.isNotEmpty() && index >= cards.size
     fun isLiked(item: BookmarkItem): Boolean = likes[item.id] ?: item.isLiked
 
+    fun next(): DeckState = if (current == null) this else copy(index = index + 1)
+
+    /** Takes a card out of the deck; the top card stays on top, or the next one takes its place. */
+    fun remove(id: String): DeckState {
+        val at = cards.indexOfFirst { it.id == id }
+        if (at < 0) return this
+        return copy(cards = cards.filterIndexed { i, _ -> i != at }, index = if (at < index) index - 1 else index)
+    }
+
+    /** Puts a removed [card] back at [at] (Undo). */
+    fun restore(card: BookmarkItem, at: Int): DeckState {
+        if (cards.any { it.id == card.id }) return this
+        val position = at.coerceIn(0, cards.size)
+        return copy(cards = cards.take(position) + card + cards.drop(position), index = if (position < index) index + 1 else index)
+    }
+
     /** Drops Private cards, keeping the top card (or the next visible one) on top. */
     fun withoutPrivate(): DeckState {
         if (cards.none { it.isPrivate }) return this
         val kept = cards.filterNot { it.isPrivate }
         return copy(cards = kept, index = cards.take(index).count { !it.isPrivate })
     }
+}
+
+/** A one-shot snackbar with Undo: a card hidden from Discover, or a muted map topic ([id] is its skeleton key). */
+@Immutable
+data class DiscoverNotice(val kind: Kind, val id: String, val label: String) {
+    enum class Kind { SNOOZED, HIDDEN, MUTED }
 }
 
 @Immutable
@@ -131,7 +180,11 @@ data class DiscoverUiState(
     val connection: ConnectionPair? = null,
     val map: List<MapBubble> = emptyList(),
     val showHowToSave: Boolean = false,
-    val newShelfCaption: DiscoverShelf? = null
+    val newShelfCaption: DiscoverShelf? = null,
+    val reDealing: Boolean = false,
+    val notice: DiscoverNotice? = null,
+    /** First open of this Discover day: the shelves rise in once (§7.6). */
+    val playEntrance: Boolean = false
 ) {
     /** Shelves with content, in display order (§4.2). */
     val presentShelves: List<DiscoverShelf>
@@ -165,6 +218,12 @@ class DiscoverViewModel internal constructor(
     private var seen: Set<DiscoverShelf>? = null
     private val caption = MutableStateFlow<DiscoverShelf?>(null)
     private var lastLibraryCount: Int? = null
+    private val extras = MutableStateFlow(Extras())
+    private var entranceChecked = false
+    /** Deck cards hidden from the Peek sheet, with their position, so Undo can put them back. */
+    private val removed = HashMap<String, Pair<BookmarkItem, Int>>()
+
+    private data class Extras(val reDealing: Boolean = false, val notice: DiscoverNotice? = null, val playEntrance: Boolean = false)
 
     private val tasks = combine(source.processingTasks(), source.errorTasks(), source.privateVisible) { running, failed, visible ->
         fun ImportTask.shown() = rssFeedId == null && (visible || !isPrivate)
@@ -178,9 +237,10 @@ class DiscoverViewModel internal constructor(
         source.justSaved(),
         source.freshRss(),
         tasks,
-        combine(deck, caption) { d, c -> d to c }
-    ) { snapshot, justSaved, freshRss, taskEntries, (deckState, captionShelf) ->
+        combine(deck, caption, extras) { d, c, e -> Triple(d, c, e) }
+    ) { snapshot, justSaved, freshRss, taskEntries, (deckState, captionShelf, extra) ->
         val count = snapshot.libraryCount
+        if (count > 0) noteEntrance(snapshot.day)
         // The first save into an empty library deals the deck that the empty open could not.
         if (lastLibraryCount == 0 && count > 0 && deckState.cards.isEmpty()) dealAnother()
         lastLibraryCount = count
@@ -205,7 +265,9 @@ class DiscoverViewModel internal constructor(
             )
         }
         noteShelves(state.presentShelves.toSet())
-        state.copy(newShelfCaption = caption.value ?: captionShelf)
+        val latest = extras.value
+        state.copy(newShelfCaption = caption.value ?: captionShelf, reDealing = extra.reDealing, notice = extra.notice,
+            playEntrance = latest.playEntrance)
     }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), DiscoverUiState())
 
     init {
@@ -238,24 +300,105 @@ class DiscoverViewModel internal constructor(
         source.saveSeenShelves(known + first)
     }
 
+    /** Plays the entrance on the first Discover open of [day] only. */
+    private fun noteEntrance(day: Long) {
+        if (entranceChecked) return
+        entranceChecked = true
+        if (source.entranceDay() == day) return
+        source.saveEntranceDay(day)
+        extras.update { it.copy(playEntrance = true) }
+    }
+
+    /** The UI played the entrance; returning to Discover in this visit does not replay it. */
+    fun entranceShown() = extras.update { it.copy(playEntrance = false) }
+
     /** Draws a fresh deck (on open and on "Deal another"). */
     fun dealAnother() = launchLogged("deal the deck") {
         val cards = source.dealDeck()
+        removed.clear()
         deck.value = DeckState(cards)
     }
 
-    /** "Next card": records a flick for the top card and advances. */
+    /** "Next card" or a flick: records a flick for the top card and advances. */
     fun nextCard() {
         val top = deck.value.current ?: return
-        deck.update { it.copy(index = it.index + 1) }
+        deck.update { it.next() }
         launchLogged("record a deck flick") { source.recordDeckFlick(top.id, EngagementSurface.DISCOVER_DECK) }
     }
 
+    fun toggleDeckLike(item: BookmarkItem) = toggleLike(item, EngagementSurface.DISCOVER_DECK)
+
+    fun togglePeekLike(item: BookmarkItem) = toggleLike(item, EngagementSurface.DISCOVER_PEEK)
+
+    fun onPeek(id: String) = launchLogged("record a peek") { source.peek(id) }
+
+    /** "Not now" (30 days). A dealt deck card leaves the deck at once; a failed write puts it back. */
+    fun snooze(item: BookmarkItem) = hide(item, DiscoverNotice.Kind.SNOOZED) { source.snooze(it) }
+
+    /** "Don't show again". */
+    fun neverAgain(item: BookmarkItem) = hide(item, DiscoverNotice.Kind.HIDDEN) { source.neverAgain(it) }
+
+    private fun hide(item: BookmarkItem, kind: DiscoverNotice.Kind, write: suspend (String) -> Unit) {
+        val at = deck.value.cards.indexOfFirst { it.id == item.id }
+        if (at >= 0) {
+            removed[item.id] = deck.value.cards[at] to at
+            deck.update { it.remove(item.id) }
+        }
+        scope.launch {
+            try {
+                write(item.id)
+                extras.update { it.copy(notice = DiscoverNotice(kind, item.id, item.title)) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                restoreDeckCard(item.id)
+                logError("hide a card", error)
+            }
+        }
+    }
+
+    /** Long-press on a map bubble: mutes the entity for rediscovery (snapshot shelves drop it at once). */
+    fun muteTopic(bubble: MapBubble) = launchLogged("mute a topic") {
+        source.muteTopic(bubble.skeletonKey)
+        extras.update { it.copy(notice = DiscoverNotice(DiscoverNotice.Kind.MUTED, bubble.skeletonKey, bubble.entity)) }
+    }
+
+    fun undo(notice: DiscoverNotice) = when (notice.kind) {
+        DiscoverNotice.Kind.MUTED -> launchLogged("unmute a topic") { source.unmuteTopic(notice.id) }
+        else -> launchLogged("show a hidden card again") {
+            source.unsuppress(notice.id)
+            restoreDeckCard(notice.id)
+        }
+    }
+
+    fun noticeShown() = extras.update { it.copy(notice = null) }
+
+    private fun restoreDeckCard(id: String) {
+        removed.remove(id)?.let { (card, at) -> deck.update { it.restore(card, at) } }
+    }
+
+    /** Pull to re-deal (§4.4). A pull while a re-deal runs is ignored. */
+    fun reDeal() {
+        if (extras.value.reDealing) return
+        extras.update { it.copy(reDealing = true) }
+        scope.launch {
+            try {
+                source.reDeal()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                logError("re-deal", error)
+            } finally {
+                extras.update { it.copy(reDealing = false) }
+            }
+        }
+    }
+
     /**
-     * Likes or unlikes a deck card. The heart flips at once; the stored result then replaces it, and a
+     * Likes or unlikes a card. The heart flips at once; the stored result then replaces it, and a
      * failure or a bookmark that no longer exists restores the previous state.
      */
-    fun toggleDeckLike(item: BookmarkItem) {
+    private fun toggleLike(item: BookmarkItem, surface: EngagementSurface) {
         val before = deck.value.likes[item.id]
         val optimistic = !deck.value.isLiked(item)
         deck.update { it.copy(likes = it.likes + (item.id to optimistic)) }
@@ -264,7 +407,7 @@ class DiscoverViewModel internal constructor(
         }
         scope.launch {
             try {
-                val stored = source.toggleLike(item.id, EngagementSurface.DISCOVER_DECK)
+                val stored = source.toggleLike(item.id, surface)
                 if (stored == null) restore() else deck.update { it.copy(likes = it.likes + (item.id to stored)) }
             } catch (cancelled: CancellationException) {
                 throw cancelled

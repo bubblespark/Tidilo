@@ -20,6 +20,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.History
+import android.widget.Toast
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.testTag
+import kotlinx.coroutines.launch
+import me.bubblespark.tidilo.data.discover.DiscoverRepository
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
@@ -69,7 +75,8 @@ fun SettingsScreen(
     onNavigateToPrivateContent: () -> Unit = {},
     onNavigateToDebug: () -> Unit = {},
     onNavigateToStorage: () -> Unit = {},
-    onNavigateToRss: () -> Unit = {}
+    onNavigateToRss: () -> Unit = {},
+    onResetDiscoverHistory: (suspend () -> Unit)? = null
 ) {
     val currentLanguage by AppConfig.currentLanguage.collectAsStateWithLifecycle()
     val currentTheme by AppConfig.currentTheme.collectAsStateWithLifecycle()
@@ -80,6 +87,10 @@ fun SettingsScreen(
     val localConfig = LocalConfiguration.current
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
+    var showResetDialog by rememberSaveable { mutableStateOf(false) }
+    val discoverPreviewEnabled by AppConfig.discoverPreviewEnabled.collectAsStateWithLifecycle()
+    val resetScope = rememberCoroutineScope()
+    val resetDone = stringResource(R.string.settings_discover_reset_done)
     val dialogSurface = currentThemeSurfaces().resolve(SurfaceRole.DIALOG)
 
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), modifier = modifier, header = {
@@ -123,6 +134,12 @@ fun SettingsScreen(
                     SettingsDivider()
                     SettingsNavigationRow(stringResource(R.string.rss_title), stringResource(R.string.rss_subtitle),
                         Icons.Default.RssFeed, onNavigateToRss)
+                    if (discoverPreviewEnabled) {
+                        SettingsDivider()
+                        SettingsNavigationRow(stringResource(R.string.settings_discover_reset_title),
+                            stringResource(R.string.settings_discover_reset_subtitle), Icons.Default.History,
+                            onClick = { showResetDialog = true }, modifier = Modifier.testTag("discover_reset_history"))
+                    }
                 }
                 Spacer(Modifier.height(24.dp))
                 SettingsSectionTitle(stringResource(R.string.settings_section_debug))
@@ -132,6 +149,39 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showResetDialog) {
+        TidiloAlertDialog(
+            containerColor = dialogSurface.containerColor,
+            onDismissRequest = { showResetDialog = false },
+            title = { Text(stringResource(R.string.settings_discover_reset_dialog_title), fontWeight = FontWeight.Bold) },
+            text = { Text(stringResource(R.string.settings_discover_reset_dialog_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showResetDialog = false
+                    resetScope.launch {
+                        // A failed reset rolls back in its transaction; it must not crash Settings.
+                        val reset = try {
+                            onResetDiscoverHistory?.invoke() ?: DiscoverRepository.getInstance(context).resetHistory()
+                            true
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            android.util.Log.e("SettingsScreen", "Failed to reset rediscovery history", error)
+                            false
+                        }
+                        if (reset) Toast.makeText(context, resetDone, Toast.LENGTH_SHORT).show()
+                    }
+                }) {
+                    Text(stringResource(R.string.settings_discover_reset_confirm), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) { Text(stringResource(R.string.common_cancel)) }
+            },
+            shape = dialogSurface.shape
+        )
     }
 
     if (showLanguageDialog) {

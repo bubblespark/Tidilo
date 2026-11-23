@@ -71,6 +71,14 @@ internal class HeaderTestHost {
         }
         requireNotNull(found)
     }
+    suspend fun awaitAbsent(activity: ComponentActivity, predicate: (SemanticsNode) -> Boolean) = withTimeout(8000) {
+        while (true) {
+            var present = true
+            main { present = nodes(activity).any(predicate) }
+            if (!present) break
+            delay(30)
+        }
+    }
     fun description(node: SemanticsNode, value: String) = node.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(value) == true
     fun text(node: SemanticsNode, value: String) = node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == value } == true
     fun scroll(activity: ComponentActivity, amount: Float) {

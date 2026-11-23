@@ -1,7 +1,20 @@
 package me.bubblespark.tidilo.ui.screens.discover
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import me.bubblespark.tidilo.data.discover.MapBubble
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,8 +67,15 @@ class DiscoverActions(
     val onRetryImport: (taskId: String) -> Unit,
     val onToggleDeckLike: (item: BookmarkItem) -> Unit,
     val onNextCard: () -> Unit,
-    val onDealAnother: () -> Unit
+    val onDealAnother: () -> Unit,
+    val onPeek: (item: BookmarkItem, reason: String?) -> Unit,
+    val onMute: (bubble: MapBubble) -> Unit
 )
+
+/** The card that opened the Peek sheet gets focus back when the sheet closes (§10). */
+internal class PeekFocus(val id: String, val requester: FocusRequester)
+
+internal val LocalPeekFocus = compositionLocalOf<PeekFocus?> { null }
 
 /** Impression after ≥1 s at ≥50% visibility (§5.1). The repository keeps one per item per day. */
 internal fun Modifier.discoverImpression(id: String, shelf: DiscoverShelf, actions: DiscoverActions): Modifier =
@@ -63,20 +83,43 @@ internal fun Modifier.discoverImpression(id: String, shelf: DiscoverShelf, actio
         if (visible) actions.onImpression(id, shelf)
     }
 
-/** Tap target, impression tracking, and one merged announcement (title, reason, domain) for a card. */
+/**
+ * Tap target, long-press Peek (§6), impression tracking, and one merged announcement (title, reason,
+ * domain) for a card. The card lifts (scale 1.03) while pressed.
+ */
 @Composable
 internal fun Modifier.discoverCard(
     item: BookmarkItem,
     shelf: DiscoverShelf,
     reason: String?,
-    actions: DiscoverActions
+    actions: DiscoverActions,
+    onDoubleClick: (() -> Unit)? = null
 ): Modifier {
     val domain = rememberDomainLabel(item)
     val description = listOf(item.title, reason, domain).filterNot { it.isNullOrBlank() }.joinToString(", ")
+    val haptic = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val lift by animateFloatAsState(if (pressed) 1.03f else 1f, MaterialTheme.motionScheme.fastSpatialSpec(), label = "cardLift")
+    val peekFocus = LocalPeekFocus.current
     return this
         .testTag("discover_card_${item.id}")
+        .then(if (peekFocus?.id == item.id) Modifier.focusRequester(peekFocus.requester) else Modifier)
         .discoverImpression(item.id, shelf, actions)
-        .clickable { actions.onOpen(item.id, shelf) }
+        .dealFlip()
+        .graphicsLayer { scaleX = lift; scaleY = lift }
+        .combinedClickable(
+            interactionSource = interaction,
+            indication = LocalIndication.current,
+            onLongClickLabel = stringResource(R.string.discover_peek),
+            onLongClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                actions.onPeek(item, reason)
+            },
+            onDoubleClick = onDoubleClick,
+            onClickLabel = stringResource(R.string.discover_open),
+            onClick = { actions.onOpen(item.id, shelf) }
+        )
         .semantics(mergeDescendants = true) { contentDescription = description }
 }
 

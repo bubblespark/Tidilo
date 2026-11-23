@@ -1,5 +1,20 @@
 package me.bubblespark.tidilo.ui.screens.discover
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.zIndex
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -108,7 +123,8 @@ internal fun HeroShelf(
     modifier: Modifier = Modifier,
     showNewCaption: Boolean = false,
     startInset: Dp = 0.dp,
-    endInset: Dp = 0.dp
+    endInset: Dp = 0.dp,
+    parallax: () -> Float = { 0f }
 ) {
     val item = pick.item
     val source = LocalCacheVisualSource.current
@@ -124,7 +140,8 @@ internal fun HeroShelf(
     Column(modifier.fillMaxWidth().testTag("discover_shelf_${DiscoverShelf.HERO.name}")) {
         Box(Modifier.fillMaxWidth().background(topMat)) { masthead() }
         Column(Modifier.fillMaxWidth().clip(HeroBottomShape).background(bottomMat).discoverCard(item, DiscoverShelf.HERO, reasonLabel, actions)) {
-            Box(Modifier.fillMaxWidth()) {
+            // Parallax (§7.4): the plate trails the scroll and slides under the caption mat below it.
+            Box(Modifier.fillMaxWidth().graphicsLayer { translationY = parallax() }) {
                 DiscoverPlateContent(item, ogState, visuals.domain, RectangleShape, Modifier.fillMaxWidth(), matColor = topMat)
                 // The plate's edges dissolve into the mats (13% top, 6% bottom).
                 Box(Modifier.fillMaxWidth().height(PlateSize.XL.height * 0.13f).align(Alignment.TopCenter)
@@ -132,7 +149,8 @@ internal fun HeroShelf(
                 Box(Modifier.fillMaxWidth().height(PlateSize.XL.height * 0.06f).align(Alignment.BottomCenter)
                     .background(Brush.verticalGradient(listOf(Color.Transparent, bottomMat))))
             }
-            Column(Modifier.padding(start = 20.dp + startInset, end = 20.dp + endInset, top = 16.dp, bottom = 16.dp),
+            Column(Modifier.zIndex(1f).fillMaxWidth().background(bottomMat)
+                .padding(start = 20.dp + startInset, end = 20.dp + endInset, top = 16.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (showNewCaption) {
                     Text(stringResource(R.string.discover_new_shelf, stringResource(R.string.discover_shelf_hero)),
@@ -193,11 +211,12 @@ internal fun JustSavedShelf(entries: List<JustSavedEntry>, actions: DiscoverActi
 }
 
 /**
- * Shuffle deck (§4.2a): the top postcard over two cards tilted ±3°, with Next and Like buttons so dragging
- * is never the only way (WCAG 2.5.7). Drag physics arrive with the deck interactions.
+ * Shuffle deck (§4.2a, §7.5): the top postcard over two cards tilted ±3°. A horizontal fling or a drag past
+ * 40% of the width flicks it to the next card; anything else springs back. Next and Like buttons and
+ * accessibility actions mean dragging is never the only way (WCAG 2.5.7). Double-tap likes.
  */
 @Composable
-internal fun DeckShelf(deck: DeckState, actions: DiscoverActions) {
+internal fun DeckShelf(deck: DeckState, actions: DiscoverActions, reducedMotion: Boolean) {
     val current = deck.current
     Column(Modifier.fillMaxWidth().padding(horizontal = ShelfMargin).testTag("discover_deck"),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -210,23 +229,82 @@ internal fun DeckShelf(deck: DeckState, actions: DiscoverActions) {
             return@Column
         }
         val position = stringResource(R.string.discover_deck_position, deck.index + 1, deck.cards.size)
+        val liked = deck.isLiked(current)
+        val nextLabel = stringResource(R.string.discover_deck_next)
+        val likeLabel = stringResource(if (liked) R.string.discover_deck_unlike else R.string.discover_deck_like)
+        val haptic = LocalHapticFeedback.current
+        val scope = rememberCoroutineScope()
+        val springBack = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
+        // A new top card starts centered; the flicked one leaves with its own Animatable.
+        val drag = remember(current.id) { Animatable(0f) }
+        val burst = remember(current.id) { Animatable(0f) }
+        val flickVelocity = with(LocalDensity.current) { FlickVelocity.toPx() }
+        fun like() {
+            if (!liked && !reducedMotion) scope.launch { burst.snapTo(1f); burst.animateTo(0f, tween(500)) }
+            actions.onToggleDeckLike(current)
+        }
         Box(Modifier.widthIn(max = PostcardWidth).fillMaxWidth(), contentAlignment = Alignment.Center) {
             if (deck.index + 2 < deck.cards.size) PostcardBack(Modifier.matchParentSize().rotate(3f))
             if (deck.index + 1 < deck.cards.size) PostcardBack(Modifier.matchParentSize().rotate(-3f))
-            Postcard(current, actions, Modifier.semantics { stateDescription = position })
+            Postcard(current, actions, onDoubleClick = ::like, modifier = Modifier
+                .graphicsLayer {
+                    translationX = drag.value
+                    rotationZ = drag.value * DragRotationPerPx
+                }
+                .pointerInput(current.id) {
+                    val tracker = VelocityTracker()
+                    fun release() {
+                        val velocity = tracker.calculateVelocity().x
+                        val flick = kotlin.math.abs(velocity) > flickVelocity || kotlin.math.abs(drag.value) > size.width * 0.4f
+                        scope.launch {
+                            if (!flick) {
+                                drag.animateTo(0f, springBack)
+                                return@launch
+                            }
+                            haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                            val direction = if (kotlin.math.abs(velocity) > flickVelocity) kotlin.math.sign(velocity) else kotlin.math.sign(drag.value)
+                            // Reduced motion: the flick still works, without inertia.
+                            if (!reducedMotion) drag.animateTo(direction * size.width * 1.4f, tween(160))
+                            actions.onNextCard()
+                        }
+                    }
+                    detectHorizontalDragGestures(
+                        onDragStart = { tracker.resetTracking() },
+                        onDragEnd = ::release,
+                        onDragCancel = { scope.launch { drag.animateTo(0f, springBack) } },
+                        onHorizontalDrag = { change, amount ->
+                            change.consume()
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            scope.launch { drag.snapTo(drag.value + amount) }
+                        }
+                    )
+                }
+                .semantics {
+                    stateDescription = position
+                    customActions = listOf(
+                        CustomAccessibilityAction(nextLabel) { actions.onNextCard(); true },
+                        CustomAccessibilityAction(likeLabel) { actions.onToggleDeckLike(current); true }
+                    )
+                })
+            Icon(Icons.Filled.Favorite, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(72.dp).graphicsLayer {
+                    alpha = burst.value
+                    val scale = 1.4f - 0.4f * burst.value
+                    scaleX = scale
+                    scaleY = scale
+                })
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             FilledTonalButton(onClick = actions.onNextCard, modifier = Modifier.testTag("discover_deck_next")) {
-                Text(stringResource(R.string.discover_deck_next))
+                Text(nextLabel)
             }
-            val liked = deck.isLiked(current)
             IconToggleButton(
                 checked = liked,
                 onCheckedChange = { actions.onToggleDeckLike(current) },
                 modifier = Modifier.size(48.dp).testTag("discover_deck_like")
             ) {
                 Icon(if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    contentDescription = stringResource(if (liked) R.string.discover_deck_unlike else R.string.discover_deck_like),
+                    contentDescription = likeLabel,
                     tint = if (liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -234,6 +312,8 @@ internal fun DeckShelf(deck: DeckState, actions: DiscoverActions) {
 }
 
 private val PostcardWidth = 340.dp
+private val FlickVelocity = 1_000.dp // per second
+private const val DragRotationPerPx = 0.06f
 private val postmarkFormat = DateTimeFormatter.ofPattern("yyyy.MM")
 
 @Composable
@@ -250,12 +330,17 @@ private fun PostcardBack(modifier: Modifier) {
 }
 
 @Composable
-private fun Postcard(item: me.bubblespark.tidilo.ui.screens.library.BookmarkItem, actions: DiscoverActions, modifier: Modifier) {
+private fun Postcard(
+    item: me.bubblespark.tidilo.ui.screens.library.BookmarkItem,
+    actions: DiscoverActions,
+    onDoubleClick: () -> Unit,
+    modifier: Modifier
+) {
     val postmark = remember(item.createdAt) {
         Instant.ofEpochMilli(item.createdAt).atZone(ZoneId.systemDefault()).format(postmarkFormat)
     }
     Surface(color = postcardColor(), shape = MaterialTheme.shapes.large, shadowElevation = 3.dp,
-        modifier = modifier.fillMaxWidth().discoverCard(item, DiscoverShelf.DECK, null, actions)) {
+        modifier = modifier.fillMaxWidth().discoverCard(item, DiscoverShelf.DECK, null, actions, onDoubleClick)) {
         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             DiscoverPlate(item, MaterialTheme.shapes.medium, Modifier.fillMaxWidth())
             Text(item.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -360,9 +445,11 @@ internal fun ConnectionsShelf(pair: ConnectionPair, actions: DiscoverActions) {
     }
 }
 
-/** "Your map" (§4.2a): entity bubbles sized by affinity; a tap searches the entity. */
+/** "Your map" (§4.2a): entity bubbles sized by affinity; a tap searches the entity, a long-press mutes it (§6). */
 @Composable
 internal fun MapShelf(bubbles: List<MapBubble>, actions: DiscoverActions) {
+    val haptic = LocalHapticFeedback.current
+    val muteLabel = stringResource(R.string.discover_mute_topic)
     FlowRow(
         modifier = Modifier.padding(horizontal = ShelfMargin).fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -374,7 +461,15 @@ internal fun MapShelf(bubbles: List<MapBubble>, actions: DiscoverActions) {
                 color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f + 0.55f * weight),
                 shape = CircleShape,
                 modifier = Modifier.heightIn(min = 48.dp).widthIn(min = 48.dp).clip(CircleShape)
-                    .clickable(role = Role.Button) { actions.onEntity(bubble.entity) }
+                    .combinedClickable(
+                        role = Role.Button,
+                        onLongClickLabel = muteLabel,
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            actions.onMute(bubble)
+                        },
+                        onClick = { actions.onEntity(bubble.entity) }
+                    )
                     .testTag("discover_map_${bubble.skeletonKey}")
             ) {
                 Box(Modifier.heightIn(min = 48.dp).widthIn(min = 48.dp).padding(horizontal = (12 + 8 * weight).dp), contentAlignment = Alignment.Center) {

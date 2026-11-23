@@ -190,7 +190,7 @@ class BookmarkRepository internal constructor(
         transactionRunner.run {
             val previous = bookmarkDao.getBookmarkById(id)?.note
             bookmarkDao.updateNote(id, note, now)
-            // Only the first non-blank note is a signal of interest; later edits of the same note are not.
+            // A note that goes from blank to non-blank is a signal of interest; editing an existing note is not.
             if (previous != null && previous.isBlank() && note.isNotBlank()) {
                 recordEvent(id, EngagementType.NOTE_WRITTEN, EngagementSurface.DETAIL, now)
             }

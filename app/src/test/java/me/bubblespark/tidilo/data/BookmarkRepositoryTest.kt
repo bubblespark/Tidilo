@@ -987,7 +987,7 @@ class BookmarkRepositoryTest {
     }
 
     @Test
-    fun noteWrittenIsRecordedOnlyForTheFirstNonBlankNote() = runBlocking {
+    fun noteWrittenIsRecordedOnEachBlankToNonBlankTransition() = runBlocking {
         val bookmarkDao = InMemoryBookmarkDao()
         val events = InMemoryEngagementDao()
         val scope = CoroutineScope(coroutineContext + SupervisorJob())

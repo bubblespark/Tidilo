@@ -62,7 +62,7 @@ data class Tag(
 - **Engagement Contract**: Interest is stored as append-only rows in `engagement_events` (`bookmarkId, type, surface, at`), written in the same transaction as the bookmark update. `type` and `surface` hold the persisted, append-only codes of `EngagementType` and `EngagementSurface` (`data/engagement/EngagementCodes.kt`).
   - Detail view, browser open, and Summary Peek record `DETAIL`, `BROWSER_OPEN`, and `PEEK` and refresh `lastInteractedAt`.
   - Liking records `LIKE` and refreshes `lastInteractedAt`; unliking records `UNLIKE` and preserves it.
-  - The first non-blank note records `NOTE_WRITTEN`; adding a bookmark to a collection it was not in records `COLLECTION_ADD`. Neither changes `lastInteractedAt`.
+  - Each transition of the stored note from blank to non-blank records `NOTE_WRITTEN` (clearing a note and writing again records it again; editing a non-blank note does not); adding a bookmark to a collection it was not in records `COLLECTION_ADD`. Neither changes `lastInteractedAt`.
   - Each caller passes the surface it runs on (`LIBRARY`, `SEARCH`, `DETAIL`). An id with no active bookmark records nothing.
   - Edits, URL replacement, and RSS promotion keep `isLiked`, `lastInteractedAt`, and the bookmark's events. Moving to or restoring from Trash sets `isLiked = false` and keeps `lastInteractedAt` and events. Events have no foreign key; maintenance prunes them (see [library_maintenance.md](library_maintenance.md)).
 

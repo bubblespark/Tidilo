@@ -20,6 +20,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.screens.discover.DiscoverScreen
+import me.bubblespark.tidilo.ui.screens.discover.surfaceOf
 import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
 import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
 
@@ -164,7 +165,20 @@ fun TidiloNavGraph(
         }
     ) {
         composable(Screen.Discover.route) {
-            DiscoverScreen(onOpenNavigation = onOpenNavigation)
+            DiscoverScreen(
+                onOpenNavigation = onOpenNavigation,
+                onOpenBookmark = { bookmarkId, shelf ->
+                    libraryViewModel.recordDetailView(bookmarkId, surfaceOf(shelf))
+                    navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) { launchSingleTop = true }
+                },
+                onOpenEntity = { value ->
+                    libraryViewModel.updateQueryWithSelectedTags(setOf(value))
+                    navController.navigateTopLevel(TopLevelDestination.SEARCH)
+                },
+                onSaveUrl = onOpenManualImport,
+                onRetryImport = importViewModel::retryError,
+                onToggleLike = { bookmarkId, shelf -> libraryViewModel.toggleLike(bookmarkId, surfaceOf(shelf)) }
+            )
         }
         composable(Screen.Library.route) {
             LibraryScreen(

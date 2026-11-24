@@ -6,7 +6,8 @@ import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -285,13 +286,17 @@ private fun GalleryDeckCard(
     val shape = MaterialTheme.shapes.largeIncreased
     val colors = MaterialTheme.colorScheme
     val count = pluralStringResource(R.plurals.domain_card_item_count, item.count, item.count)
+    // Grow with the font: 166dp fits 1x; each extra 1x of font scale needs ~100dp for title, subtitle, and pill.
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val wash = remember(accent) {
+        Brush.linearGradient(listOf(accent.copy(alpha = 0.28f), Color.Transparent), start = Offset.Zero, end = Offset(420f, 300f))
+    }
     Box(
         modifier
             .fillMaxWidth()
-            .height(166.dp)
+            .height((166 + 100 * (fontScale - 1f)).dp)
             .clip(shape)
-            .clickable(onClick = onClick)
-            .semantics(mergeDescendants = true) {}
+            .clickable(role = Role.Button, onClick = onClick)
     ) {
         Box(Modifier.fillMaxSize().padding(start = 14.dp, bottom = 28.dp).clip(shape)
             .background(colors.surfaceContainerLow).border(1.dp, accent.copy(alpha = 0.32f), shape))
@@ -300,7 +305,7 @@ private fun GalleryDeckCard(
         Box(
             Modifier.fillMaxSize().padding(end = 14.dp, top = 14.dp).clip(shape)
                 .background(colors.surfaceContainerHigh)
-                .background(Brush.linearGradient(listOf(accent.copy(alpha = 0.28f), Color.Transparent), start = Offset.Zero, end = Offset(420f, 300f)))
+                .background(wash)
                 .border(1.dp, accent.copy(alpha = 0.5f), shape)
         ) {
             watermark(Modifier.align(Alignment.BottomEnd).offset(x = 16.dp, y = 16.dp))

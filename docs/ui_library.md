@@ -112,7 +112,7 @@ Shown only while `AppConfig.discoverPreviewEnabled` is on (`LibraryScreen(discov
 - **List** (`LibraryPlateRow`): XS plate (`112.dp`, initial-only poster), title (2 lines), and "domain · time"; content type `library_plate_row`.
 - **Cards**: tap opens Detail; long-press opens the Peek sheet (`onLongClickLabel` **Peek**). Each card merges one description (title, domain, time, RSS). Tags `library_card_<id>` / `library_row_<id>`. Drill-downs use the same cards. Cards have no heart button; Like is in the Peek sheet and Detail.
 - **Peek sheet** (`LibraryPeek.kt`): the Discover Peek sheet with **Like** and **Add to collection** only (no Not now / Don't show again). The bookmark is observed from Room, so Like shows the stored state and a deleted bookmark closes the sheet. Opening records `PEEK` with `EngagementSurface.LIBRARY`. The peeked id and its collection sheets survive rotation (`rememberSaveable`). Summary Peek is not shown.
-- **Decks** (`LibraryDeckCard(gallery = true)`): three tonal layers (`surfaceContainerLow` / `surfaceContainer` / `surfaceContainerHigh`), `1.dp` accent hairlines (α 0.32 back, 0.5 front), an accent wash on the front, `shapes.largeIncreased`, the favicon watermark, a 2-line title, the subtitle rule of §6, and the plural count pill. Collection keeps its 1-column card with the same tonal layers and hairlines (`CollectionCard(gallery = true)`).
+- **Decks** (`LibraryDeckCard(gallery = true)`): three tonal layers (`surfaceContainerLow` / `surfaceContainer` / `surfaceContainerHigh`), `1.dp` accent hairlines (α 0.32 back, 0.5 front), an accent wash on the front, `shapes.largeIncreased`, the favicon watermark, a 2-line title, the subtitle rule of §6, and the plural count pill. The deck is `166.dp` tall at 1× font and grows `100.dp` per extra 1× of font scale so the pill never collapses. Plate cards, decks, and collection cards expose `Role.Button`. Collection keeps its 1-column card with the same tonal layers and hairlines (`CollectionCard(gallery = true)`).
 - **Empty states** (`LibraryEmptyState`, tag `library_empty_<MODE>`, button `library_empty_action`): icon, `titleLarge` heading, body, and a filled button.
 
 | Tab | Title | Action |
@@ -123,5 +123,5 @@ Shown only while `AppConfig.discoverPreviewEnabled` is on (`LibraryScreen(discov
 | RSS, subscribed but nothing visible (not fetched yet, all Private while hidden, or expired) | **No articles to show right now** | **RSS settings** → RSS Settings |
 | Collection, none | **Group bookmarks by theme** | **New collection** → editor sheet; the dashed add card appears only once a collection exists |
 
-The RSS branch reads `LibraryViewModel.rssSubscriptionCount` (non-deleted rows of `rss_feeds`). An empty drill-down uses the Newest state.
+The RSS branch reads `LibraryViewModel.rssSubscriptionCount` (non-deleted rows of `rss_feeds`). While that count is unknown, the RSS tab keeps its loading skeleton instead of guessing an empty state. An empty drill-down uses the Newest state.
 

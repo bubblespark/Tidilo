@@ -635,6 +635,8 @@ fun LibraryScreen(
                     val loading = !initialized || isBookmarkLoading(refreshState, bookmarks.itemCount) ||
                         (state == LibraryDisplayState.DomainGrid && domainGroupsLoading) ||
                         (state == LibraryDisplayState.RssFeedGrid && rssFeedGroupsLoading) ||
+                        // The two RSS empty states differ by subscription count; wait for it (PR #335 R-003).
+                        (discoverPreview && state == LibraryDisplayState.RssFeedGrid && rssFeedGroups.isEmpty() && rssSubscriptionCount == null) ||
                         (state == LibraryDisplayState.CollectionList && collectionLoading)
                     val scopeStatePadding = newestFirstStatePadding(contentPadding, LocalLayoutDirection.current)
                     if (loading && isNewestFirst) {

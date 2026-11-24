@@ -414,6 +414,6 @@ private fun CollectionLayer(
             .clip(shape)
             .background(container)
             .border(1.dp, accent.copy(alpha = if (depth == 0) 0.5f else 0.32f), shape)
-            .then(if (onClick != null) Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick) else Modifier)
+            .then(if (onClick != null) Modifier.combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick) else Modifier)
     ) { content() }
 }

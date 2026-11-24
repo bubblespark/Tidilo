@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
@@ -91,7 +92,8 @@ class LibraryLayerTest {
         override val initializationFailure = MutableStateFlow<Throwable?>(null)
         val items = MutableStateFlow<List<BookmarkItem>>(emptyList())
         val domains = MutableStateFlow<List<DomainGroupItem>>(emptyList())
-        val feeds = MutableStateFlow(0)
+        /** `null` until the subscription count query has emitted. */
+        val feeds = MutableStateFlow<Int?>(0)
         val likes = CopyOnWriteArrayList<Pair<String, EngagementSurface>>()
         val peeks = CopyOnWriteArrayList<Pair<String, EngagementSurface>>()
         override fun retryInitialization() = Unit
@@ -104,7 +106,7 @@ class LibraryLayerTest {
         override fun observeCollectionCount(collectionId: String, showPrivate: Boolean) = flowOf(0)
         override fun observeDomainGroups(showPrivate: Boolean) = domains
         override fun observeRssFeedGroups(showPrivate: Boolean) = flowOf(emptyList<RssFeedGroup>())
-        override fun observeRssFeedCount() = feeds
+        override fun observeRssFeedCount() = feeds.filterNotNull()
         override fun observeCollections(showPrivate: Boolean) = flowOf(emptyList<CollectionWithCount>())
         override fun observeMembershipIds(bookmarkId: String) = flowOf(emptyList<String>())
         override fun observeBookmark(id: String) = items.map { list -> list.firstOrNull { it.id == id } }
@@ -138,12 +140,16 @@ class LibraryLayerTest {
         val rssSettings = AtomicInteger()
     }
 
-    private fun show(store: FakeStore, calls: Calls = Calls()): Pair<ComponentActivity, LibraryViewModel> {
+    private fun show(store: FakeStore, calls: Calls = Calls(), fontScale: Float = 1f): Pair<ComponentActivity, LibraryViewModel> {
         val activity = host.launch()
         lateinit var model: LibraryViewModel
         host.main {
             model = LibraryViewModel(store, SavedStateHandle(), MutableStateFlow(true))
             activity.setContent {
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale)
+                ) {
                 TidiloTheme(dynamicColor = false) {
                     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
                     LibraryScreen(
@@ -154,6 +160,7 @@ class LibraryLayerTest {
                         discoverPreview = true,
                         onOpenRssSettings = { calls.rssSettings.incrementAndGet() }
                     )
+                }
                 }
             }
         }
@@ -167,6 +174,8 @@ class LibraryLayerTest {
         return target
     }
     private fun click(node: SemanticsNode) = host.main { check(clickable(node).config[SemanticsActions.OnClick].action?.invoke() == true) }
+    private fun isButton(node: SemanticsNode) =
+        clickable(node).config.getOrNull(SemanticsProperties.Role) == androidx.compose.ui.semantics.Role.Button
     private fun checked(node: SemanticsNode) = node.config.getOrNull(SemanticsProperties.ToggleableState) == ToggleableState.On
     private suspend fun until(condition: () -> Boolean) = withTimeout(8000) { while (!condition()) delay(30) }
     private suspend fun <T> step(name: String, block: suspend () -> T): T =
@@ -279,6 +288,60 @@ class LibraryLayerTest {
                 host.nodes(activity).none { host.description(it, host.context.getString(R.string.collection_create_title)) }) }
             click(step("12") { host.await(activity) { tag(it, "library_empty_action") } })
             step("13") { host.await(activity) { host.text(it, host.context.getString(R.string.collection_create_title)) } }
+        } finally { activity.finish() }
+    }
+
+    /** PR #335 R-001: plate, deck, and collection cards are announced as buttons. */
+    @Test fun libraryCardsExposeButtonRole(): Unit = runBlocking {
+        val store = FakeStore()
+        store.items.value = listOf(item("a"))
+        store.domains.value = listOf(DomainGroupItem(domain, "Named site", 1))
+        val (activity, _) = show(store)
+        try {
+            assertTrue("Plate card", isButton(host.await(activity) { tag(it, "library_card_a") }))
+            click(host.await(activity) { tag(it, "library_tab_DOMAIN") })
+            assertTrue("Domain deck", isButton(host.await(activity) { host.text(it, "Named site") }))
+        } finally { activity.finish() }
+    }
+
+    /** PR #335 R-002: at 200% font the deck's 2-line title, subtitle, and count pill stay inside the card. */
+    @Test fun galleryDeckFitsAtDoubleFontScale(): Unit = runBlocking {
+        val store = FakeStore()
+        store.domains.value = listOf(DomainGroupItem(domain, "A long site name that wraps onto two lines", 12))
+        val (activity, model) = show(store, fontScale = 2f)
+        try {
+            host.main { model.setFilterMode(LibraryFilterMode.DOMAIN) }
+            val count = host.context.resources.getQuantityString(R.plurals.domain_card_item_count, 12, 12)
+            val pill = host.await(activity) { host.text(it, count) }
+            host.capture("library-layer-deck-2x")
+            host.main {
+                val card = clickable(pill)
+                val subtitle = host.nodes(activity).first { host.text(it, domain) }
+                assertTrue("Count pill bottom ${pill.boundsInRoot.bottom} inside card ${card.boundsInRoot.bottom}",
+                    pill.boundsInRoot.bottom <= card.boundsInRoot.bottom)
+                assertTrue("Subtitle must not overlap the count pill", subtitle.boundsInRoot.bottom <= pill.boundsInRoot.top)
+                // labelMedium is 16sp tall; at 2x it needs ~32dp. A squashed pill measures far less.
+                val minHeight = 28f * activity.resources.displayMetrics.density
+                assertTrue("Count pill text squashed to ${pill.boundsInRoot.height}px", pill.boundsInRoot.height >= minHeight)
+            }
+        } finally { activity.finish() }
+    }
+
+    /** PR #335 R-003: subscribed feeds with nothing visible never flash the "no feeds" state. */
+    @Test fun rssEmptyStateWaitsForSubscriptionCount(): Unit = runBlocking {
+        val store = FakeStore()
+        store.feeds.value = null
+        val (activity, model) = show(store)
+        try {
+            host.main { model.setFilterMode(LibraryFilterMode.RSS) }
+            host.await(activity) { tag(it, "library_tab_RSS") && checked(it) }
+            repeat(20) {
+                host.main { assertTrue("No-feeds state shown before the count is known",
+                    host.nodes(activity).none { tag(it, "library_empty_RSS") }) }
+                delay(50)
+            }
+            store.feeds.value = 2
+            host.await(activity) { tag(it, "library_empty_RSS_IDLE") }
         } finally { activity.finish() }
     }
 }

@@ -42,10 +42,12 @@ fun TidiloFrostedHeader(
     navigationIcon: (@Composable () -> Unit)? = null,
     scrollState: ScrollableState? = null,
     onTitleClick: (() -> Unit)? = null,
+    bottomContent: (@Composable () -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
     FrostedHeaderContainer(modifier, scrollState = scrollState) {
+      Column {
         Row(
             Modifier.fillMaxWidth().windowInsetsPadding(screenSystemInsets().only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .height(HeaderDefaults.rowHeight())
@@ -69,6 +71,8 @@ fun TidiloFrostedHeader(
             }
             Row(verticalAlignment = Alignment.CenterVertically, content = actions)
         }
+        bottomContent?.invoke()
+      }
     }
 }
 

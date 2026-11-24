@@ -16,7 +16,8 @@ internal fun RssFeedCard(
     group: RssFeedGroup,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    context: Context = LocalContext.current
+    context: Context = LocalContext.current,
+    gallery: Boolean = false
 ) {
     val visualSource = LocalCacheVisualSource.current
     val icon by rememberFeedVisual(group.feed, context = context, source = visualSource)
@@ -28,7 +29,8 @@ internal fun RssFeedCard(
         ),
         icon.color,
         onClick,
-        modifier
+        modifier,
+        gallery
     ) { watermarkModifier ->
         IconWatermark(icon.bitmap, modifier = watermarkModifier)
     }

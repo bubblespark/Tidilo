@@ -168,7 +168,9 @@
     <string name="time_hours_ago">%1$d時間前</string>
     <string name="time_day_ago">1日前</string>
     <string name="time_days_ago">%1$d日前</string>
-    <string name="domain_card_item_count">%1$d件</string>
+    <plurals name="domain_card_item_count">
+        <item quantity="other">%1$d件</item>
+    </plurals>
     <plurals name="collection_card_item_count">
         <item quantity="other">%1$d件</item>
     </plurals>
@@ -560,4 +562,19 @@
     <string name="settings_discover_reset_dialog_body">閲覧、いいね、非表示にしたカード、ミュートしたトピックの記録を消去し、今日の棚を配り直します。ブックマーク、メモ、コレクションは変更されません。</string>
     <string name="settings_discover_reset_confirm">リセット</string>
     <string name="settings_discover_reset_done">再発見の履歴をリセットしました</string>
+    <!-- Library layer (Discover preview) -->
+    <string name="library_tabs_label">ライブラリの表示</string>
+    <string name="library_tab_newest">新着</string>
+    <string name="library_tab_domain">ドメイン</string>
+    <string name="library_show_as_list">リスト表示にする</string>
+    <string name="library_show_as_grid">グリッド表示にする</string>
+    <string name="library_empty_domain_title">まだサイトがありません</string>
+    <string name="library_empty_domain_body">保存したページが、サイトごとにここにまとまります。</string>
+    <string name="library_empty_rss_title">よく読むサイトの更新を受け取れます</string>
+    <string name="library_empty_rss_body">サイトのフィードを登録すると、新しい記事がここと「発見」に届きます。</string>
+    <string name="library_empty_rss_idle_title">いま表示できる記事はありません</string>
+    <string name="library_empty_rss_idle_body">新しい記事は1日1回届きます。プライベートを非表示にしている間はプライベートの記事は表示されず、未読の記事は10日で消えます。</string>
+    <string name="library_open_rss_settings">RSS設定</string>
+    <string name="library_empty_collection_title">テーマごとにまとめられます</string>
+    <string name="library_empty_collection_body">旅行の候補や勉強会のネタなどを、コレクションにまとめられます。ブックマークの詳細からも追加できます。</string>
 </resources>

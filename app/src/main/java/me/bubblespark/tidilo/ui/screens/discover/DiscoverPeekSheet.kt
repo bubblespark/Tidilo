@@ -40,7 +40,8 @@ internal data class PeekTarget(val item: BookmarkItem, val reason: String?)
 /**
  * Peek sheet (§6): the card's plate, title, domain, summary, and reason, with Like / Not now / Don't show
  * again / Add to collection. The house sheet blurs the backdrop, or falls back to the opaque surface.
- * Every action except Like closes the sheet first.
+ * Every action except Like closes the sheet first. The Library passes no [onSnooze] / [onNeverAgain]: those
+ * rows are Discover rediscovery controls and are hidden there.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,8 +49,8 @@ internal fun DiscoverPeekSheet(
     target: PeekTarget,
     liked: Boolean,
     onToggleLike: () -> Unit,
-    onSnooze: () -> Unit,
-    onNeverAgain: () -> Unit,
+    onSnooze: (() -> Unit)?,
+    onNeverAgain: (() -> Unit)?,
     onAddToCollection: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -89,11 +90,15 @@ internal fun DiscoverPeekSheet(
                     Text(stringResource(if (liked) R.string.discover_deck_unlike else R.string.discover_deck_like),
                         modifier = Modifier.padding(start = 8.dp))
                 }
-                OutlinedButton(onClick = { closeThen(onSnooze) }, modifier = Modifier.testTag("discover_peek_snooze")) {
-                    Text(stringResource(R.string.discover_peek_snooze))
+                onSnooze?.let { snooze ->
+                    OutlinedButton(onClick = { closeThen(snooze) }, modifier = Modifier.testTag("discover_peek_snooze")) {
+                        Text(stringResource(R.string.discover_peek_snooze))
+                    }
                 }
-                OutlinedButton(onClick = { closeThen(onNeverAgain) }, modifier = Modifier.testTag("discover_peek_never")) {
-                    Text(stringResource(R.string.discover_peek_never))
+                onNeverAgain?.let { never ->
+                    OutlinedButton(onClick = { closeThen(never) }, modifier = Modifier.testTag("discover_peek_never")) {
+                        Text(stringResource(R.string.discover_peek_never))
+                    }
                 }
                 OutlinedButton(onClick = { closeThen(onAddToCollection) }, modifier = Modifier.testTag("discover_peek_collection")) {
                     Text(stringResource(R.string.discover_peek_add_to_collection))

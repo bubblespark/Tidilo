@@ -364,6 +364,9 @@ class BookmarkRepository internal constructor(
     fun observeRssFeedGroups(showPrivate: Boolean): Flow<List<me.bubblespark.tidilo.data.db.RssFeedGroup>> =
         observeSafely { database.rssDao().observeLibraryGroups(showPrivate) }
 
+    /** Subscribed (not deleted) feeds, whether or not any of their articles is visible. */
+    fun observeRssFeedCount(): Flow<Int> = observeSafely { database.rssDao().observeActiveFeedCount() }
+
     fun observeCollectionCounts(): Flow<CollectionCounts> = observeSafely { bookmarkDao.observeCollectionCounts() }
 
     fun observeCount(query: String, domain: String?, showPrivate: Boolean, source: BookmarkSource = BookmarkSource.ALL, rssFeedId: String? = null): Flow<Int> =

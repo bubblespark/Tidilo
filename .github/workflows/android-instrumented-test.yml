@@ -50,12 +50,7 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_7
-          script: |
-            if [ -n "${{ inputs.test_class }}" ]; then
-              ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=${{ inputs.test_class }}
-            else
-              ./gradlew :app:connectedDebugAndroidTest
-            fi
+          script: ./gradlew :app:connectedDebugAndroidTest ${{ inputs.test_class != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.test_class) || '' }}
 
       - name: Upload test report
         if: always()

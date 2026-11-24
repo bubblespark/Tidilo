@@ -25,36 +25,43 @@ internal class HeaderTestHost {
             destination?.let { putExtra(me.bubblespark.tidilo.data.notifications.NotificationCoordinator.EXTRA_DESTINATION, it) }
         }) as ComponentActivity
     fun main(block: () -> Unit) = instrumentation.runOnMainSync(block)
-    private fun roots(view: View): List<ViewRootForTest> = when (view) {
-        is ViewRootForTest -> listOf(view)
-        is ViewGroup -> (0 until view.childCount).flatMap { roots(view.getChildAt(it)) }
-        else -> emptyList()
+    private fun roots(view: View, out: MutableList<ViewRootForTest>) {
+        when (view) {
+            is ViewRootForTest -> out.add(view)
+            is ViewGroup -> for (i in 0 until view.childCount) {
+                roots(view.getChildAt(i), out)
+            }
+        }
     }
     fun nodes(
         activity: ComponentActivity,
         useUnmergedTree: Boolean = true,
         includeOtherWindows: Boolean = true
     ): List<SemanticsNode> {
-        fun visit(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::visit)
-        val activityRoots = roots(activity.window.decorView)
-        val windowRoots = if (!includeOtherWindows) emptyList() else runCatching {
-            val wmg = Class.forName("android.view.WindowManagerGlobal")
-            val instance = wmg.getMethod("getInstance").invoke(null)
-            val mViews = wmg.getDeclaredField("mViews").apply { isAccessible = true }
-            @Suppress("UNCHECKED_CAST")
-            val views = (mViews.get(instance) as? List<View>)?.let { ArrayList(it) } ?: emptyList()
-            views.flatMap { roots(it) }
-        }.onFailure { android.util.Log.w("HeaderTestHost", "WindowManagerGlobal root lookup failed", it) }
-            .getOrDefault(emptyList())
-        val allRoots = (activityRoots + windowRoots).distinct()
-        return allRoots.flatMap { root ->
+        val collectedRoots = mutableListOf<ViewRootForTest>()
+        roots(activity.window.decorView, collectedRoots)
+        if (includeOtherWindows) {
+            runCatching {
+                val wmg = Class.forName("android.view.WindowManagerGlobal")
+                val instance = wmg.getMethod("getInstance").invoke(null)
+                val mViews = wmg.getDeclaredField("mViews").apply { isAccessible = true }
+                @Suppress("UNCHECKED_CAST")
+                val views = (mViews.get(instance) as? List<View>)?.let { ArrayList(it) } ?: emptyList()
+                views.forEach { roots(it, collectedRoots) }
+            }.onFailure { android.util.Log.w("HeaderTestHost", "WindowManagerGlobal root lookup failed", it) }
+        }
+        val result = mutableListOf<SemanticsNode>()
+        fun visit(node: SemanticsNode) {
+            result.add(node)
+            node.children.forEach(::visit)
+        }
+        collectedRoots.distinct().forEach { root ->
             runCatching {
                 val owner = root.semanticsOwner
                 visit(if (useUnmergedTree) owner.unmergedRootSemanticsNode else owner.rootSemanticsNode)
-            }
-                .onFailure { android.util.Log.w("HeaderTestHost", "Semantics traversal failed", it) }
-                .getOrDefault(emptyList())
+            }.onFailure { android.util.Log.w("HeaderTestHost", "Semantics traversal failed", it) }
         }
+        return result
     }
     suspend fun await(activity: ComponentActivity, predicate: (SemanticsNode) -> Boolean): SemanticsNode =
         await(activity, includeOtherWindows = true, predicate)
@@ -67,7 +74,7 @@ internal class HeaderTestHost {
         var found: SemanticsNode? = null
         while (found == null) {
             main { found = nodes(activity, includeOtherWindows = includeOtherWindows).firstOrNull(predicate) }
-            if (found == null) delay(30)
+            if (found == null) delay(100)
         }
         requireNotNull(found)
     }
@@ -76,7 +83,7 @@ internal class HeaderTestHost {
             var present = true
             main { present = nodes(activity).any(predicate) }
             if (!present) break
-            delay(30)
+            delay(100)
         }
     }
     fun description(node: SemanticsNode, value: String) = node.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(value) == true
@@ -88,6 +95,7 @@ internal class HeaderTestHost {
         }
     }
     fun capture(name: String) {
+        if (InstrumentationRegistry.getArguments().getString("tidiloDebugCapture") != "true") return
         instrumentation.waitForIdleSync()
         android.os.SystemClock.sleep(150)
         val bitmap = instrumentation.uiAutomation.takeScreenshot()

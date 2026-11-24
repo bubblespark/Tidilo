@@ -53,7 +53,10 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_7
-          script: ./gradlew :app:connectedDebugAndroidTest ${{ inputs.test_class != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.test_class) || '' }}
+          ram-size: 2048M
+          heap-size: 512M
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: ./gradlew :app:connectedDebugAndroidTest -Dorg.gradle.jvmargs="-Xmx2g" ${{ inputs.test_class != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.test_class) || '' }}
 
       - name: Upload test report
         if: always()

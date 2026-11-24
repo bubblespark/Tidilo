@@ -54,6 +54,7 @@ cd Tidilo
 | Document | Contents |
 | :--- | :--- |
 | [coding_conventions.md](coding_conventions.md) | Naming, Compose performance, coroutines, error handling. |
+| [testing_conventions.md](testing_conventions.md) | Test tier placement, JVM standards, Room testing, instrumentation render/host/sync budgets, and fixture isolation. |
 | [ui_design.md](ui_design.md) | Material 3 Expressive foundation: color, typography, shape, motion, insets, chrome, theme surfaces. |
 | [theme_development.md](theme_development.md) | Multi-theme surface tokens, preset authoring, and Haze backdrop blur integration. |
 | [chrome_blur_performance.md](chrome_blur_performance.md) | Backdrop blur frame timings and GPU performance metrics. |
@@ -76,6 +77,7 @@ cd Tidilo
 | Trash or daily maintenance | `trash.md`, `library_maintenance.md` |
 | AI Analysis | `aicore.md` |
 | Database changes | `data_models.md` |
+| Writing, refactoring, or reviewing tests | `testing_conventions.md` |
 
 ---
 

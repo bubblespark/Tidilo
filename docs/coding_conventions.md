@@ -92,12 +92,10 @@ This document defines the strict engineering standards, naming conventions, Comp
   - Never define expensive URL normalization or SHA-256 hashing inside a custom `get()` property on a UI data class or recompute them inside composable item cards.
 - **Bilingual Substring Search (`instr`) vs. Default FTS**:
   - Retain SQLite `instr()` over normalized comparison columns (`searchTitle`, `searchDescription`, `searchUrl`, `searchValue`) for bilingual (Japanese/English) and arbitrary URL substring queries. Do not replace with default `@Fts4`/`FTS5` whitespace tokenizers (`simple`/`unicode61`) or trigram tokenizers without fallback, as they break unsegmented Japanese words and 1–2 character queries.
-- **Room Schema Upgrades & Cross-Test Migration Synchronization**:
-  - Whenever incrementing `AppDatabase` version, adding a `Migration`, or renaming/dropping columns or indexes, search `app/src/androidTest/` for all `addMigrations(`, `sql.version =`, previous version assertions (`assertEquals(<oldVersion>`), and `fingerprint(` usages across all test packages (including sibling suites such as `BookmarkDatabaseTest`, `CollectionDatabaseTest`, and `NotificationRoomTest`).
-  - Register the new `Migration` in every test builder, rewind each pre-migration fixture cleanly to the exact legacy schema and columns before setting `sql.version`, map renamed columns before calling `fingerprint()`, and extract shared SQL rewind helpers into a single `internal` test helper instead of duplicating SQL statements across test files.
+- **Room Schema Upgrades & Cross-Test Migration Synchronization**: Follow [Testing Conventions §3](testing_conventions.md#3-room--persistence-testing) whenever incrementing `AppDatabase` version or adding/modifying a `Migration`.
 
 ### 3.5 Lifecycle Re-Entry & Symmetric Producer Testing
-- **Cover Full Lifecycle Cycles Across Sibling Producers**: For reactive cache/state producers, unit tests must exercise not only the forward `pending -> resolved` transition, but also lifecycle re-entry paths—post-resolution eviction, invalidation, and generation resets (`resolved -> pending -> reloaded or fallback`). Apply this coverage symmetrically across all sibling flows sharing the same visual or cache contract.
+- Follow [Testing Conventions §2](testing_conventions.md#2-jvm-unit-test-standards) for symmetric lifecycle re-entry test coverage across reactive cache/state producers.
 
 ### 3.6 Autosave & Drafts
 - **Record Edit Intent; Never Infer It From Values**: Track which fields the user edited with `EditedFields`. An edited field shows the user's value and ignores Room emissions until a write of its latest edit succeeds; a revert is an edit, and a failed write stays owed. Every other field follows the stored row.
@@ -149,4 +147,4 @@ Use standard Conventional Commits in English:
 
 ### 6.2 File-Backed Test Fixtures
 
-When a test uses a temporary directory, pass it explicitly to the store under test. Use the same resolved path for fixture setup, assertions, and cleanup. When using a `ContextWrapper`, verify the path the store actually resolves, including any lookup through `applicationContext`.
+Follow [Testing Conventions §7](testing_conventions.md#7-fixtures-database--device-state-isolation) for explicit temporary directories, `ContextWrapper` path verification, and deterministic cleanup.

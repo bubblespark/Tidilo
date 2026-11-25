@@ -132,7 +132,7 @@ class LibraryNavigationRouteTest {
             await("the Library menu after leaving the selected domain", hasContentDescription(context.getString(R.string.navigation_open)))
             assertNull(model.selectedDomainFilter.value)
         } finally {
-            scenario?.close()
+            val closeFailure = runCatching { scenario?.close() }.exceptionOrNull()
             withContext(NonCancellable + Dispatchers.IO) {
                 try {
                     val sql = db.openHelper.writableDatabase
@@ -141,9 +141,10 @@ class LibraryNavigationRouteTest {
                 } finally {
                     val editor = prefs.edit()
                     savedPrefs.forEach { (key, value) -> if (value == null) editor.remove(key) else editor.putString(key, value) }
-                    editor.commit()
+                    check(editor.commit()) { "Failed to restore Library preferences" }
                 }
             }
+            closeFailure?.let { throw it }
         }
     }
 }

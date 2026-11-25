@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.ui.screens.library
 import androidx.lifecycle.SavedStateHandle
 import androidx.paging.PagingData
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -52,6 +53,12 @@ class LibraryViewModelTest {
         var savedFilterMode: LibraryFilterMode? = null
         var savedHistory: List<String>? = null
         var storedHistory: List<String> = emptyList()
+        var storedIncludeRss = false
+        var savedIncludeRss: Boolean? = null
+        var includeRssWrites = 0
+        var tagSaveGate: CompletableDeferred<Unit>? = null
+        var tagSaveFailure: Throwable? = null
+        var tagSaveCalls = 0
         var likeFailure: Throwable? = null
         var engagementFailure: Throwable? = null
 
@@ -84,7 +91,11 @@ class LibraryViewModelTest {
         override suspend fun recordDetailView(id: String, surface: EngagementSurface) { engagementFailure?.let { throw it } }
         override suspend fun recordSummaryPeek(id: String, surface: EngagementSurface) { engagementFailure?.let { throw it } }
         override suspend fun saveNote(id: String, note: String) = Unit
-        override suspend fun updateBookmarkTags(id: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String>) = Unit
+        override suspend fun updateBookmarkTags(id: String, tag: Tag, isPrivate: Boolean, replacements: Map<String, String>) {
+            tagSaveCalls++
+            tagSaveGate?.await()
+            tagSaveFailure?.let { throw it }
+        }
         override suspend fun applyAiProposal(id: String, description: String?, tag: Tag?) = true
         override suspend fun moveToTrash(id: String) = true
         override fun loadFilterMode() = LibraryFilterMode.NEWEST_FIRST
@@ -94,8 +105,12 @@ class LibraryViewModelTest {
         }
         override fun loadViewMode() = LibraryViewMode.LIST
         override fun saveViewMode(mode: LibraryViewMode) { viewModeWrites++ }
-        override fun loadIncludeRssInNewestFirst() = false
-        override fun saveIncludeRssInNewestFirst(include: Boolean) = Unit
+        override fun loadIncludeRssInNewestFirst() = storedIncludeRss
+        override fun saveIncludeRssInNewestFirst(include: Boolean) {
+            includeRssWrites++
+            savedIncludeRss = include
+            storedIncludeRss = include
+        }
         override suspend fun loadSearchHistory() = storedHistory
         override suspend fun saveSearchHistory(history: List<String>) {
             historyWrites++
@@ -429,6 +444,73 @@ class LibraryViewModelTest {
             f.model.releaseLibraryPages(stale)
             assertFalse("A superseded window must not keep its cache after its last release", stale.isActive)
             assertTrue(fresh.isActive)
+        }
+    }
+
+    @Test fun commitBookmarkTagsReportsSavingThenSavedOnceAndConsumeClears() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val store = FakeLibraryStore().apply { tagSaveGate = gate }
+        fixture(store) { f ->
+            val tag = Tag("Tool", "Tech", listOf("Kotlin"))
+            f.model.commitBookmarkTags("b1", tag, isPrivate = true, replacements = emptyMap())
+            assertEquals(TagSaveStatus.Saving, f.model.tagSaves.value["b1"])
+            // A duplicate commit while Saving must be ignored.
+            f.model.commitBookmarkTags("b1", tag, isPrivate = true, replacements = emptyMap())
+            runCurrent()
+            assertEquals(1, store.tagSaveCalls)
+            assertEquals(TagSaveStatus.Saving, f.model.tagSaves.value["b1"])
+
+            gate.complete(Unit)
+            runCurrent()
+            assertEquals(TagSaveStatus.Saved, f.model.tagSaves.value["b1"])
+
+            f.model.consumeTagSave("b1")
+            assertNull(f.model.tagSaves.value["b1"])
+        }
+    }
+
+    @Test fun commitBookmarkTagsFailureReportsFailedAndConsumeClears() = runTest {
+        val store = FakeLibraryStore().apply { tagSaveFailure = IOException("disk error") }
+        fixture(store) { f ->
+            f.model.commitBookmarkTags("b1", Tag("Tool", "Tech", listOf("Kotlin")), isPrivate = true, replacements = emptyMap())
+            runCurrent()
+            assertEquals(TagSaveStatus.Failed, f.model.tagSaves.value["b1"])
+
+            f.model.consumeTagSave("b1")
+            assertNull(f.model.tagSaves.value["b1"])
+        }
+    }
+
+    @Test fun commitBookmarkTagsCancellationPropagatesWithoutFailedState() = runTest {
+        val store = FakeLibraryStore().apply { tagSaveFailure = CancellationException("cancelled") }
+        fixture(store) { f ->
+            f.model.commitBookmarkTags("b1", Tag("Tool", "Tech", listOf("Kotlin")), isPrivate = true, replacements = emptyMap())
+            runCurrent()
+            assertEquals(TagSaveStatus.Saving, f.model.tagSaves.value["b1"])
+        }
+    }
+
+    @Test fun includeRssPersistsAcrossViewModelsAndFilterModes() = runTest {
+        val store = FakeLibraryStore().apply { storedIncludeRss = false }
+        fixture(store) { f ->
+            assertFalse(f.model.includeRssInNewestFirst.value)
+            f.model.setIncludeRssInNewestFirst(true)
+            f.model.setIncludeRssInNewestFirst(true)
+            assertEquals(1, store.includeRssWrites)
+            assertEquals(true, store.savedIncludeRss)
+
+            f.model.setFilterMode(LibraryFilterMode.RSS)
+            f.model.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
+            runCurrent()
+            assertTrue(f.model.includeRssInNewestFirst.value)
+
+            val recreatedScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+            try {
+                val recreated = LibraryViewModel(store, SavedStateHandle(), f.visible, recreatedScope)
+                assertTrue(recreated.includeRssInNewestFirst.value)
+            } finally {
+                recreatedScope.cancel()
+            }
         }
     }
 }

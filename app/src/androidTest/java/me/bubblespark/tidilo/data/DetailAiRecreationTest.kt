@@ -128,7 +128,7 @@ private fun AiFlow(
     generate: suspend () -> Result<TaggingResult>,
     onReviewNavigation: (dialogVisible: Boolean) -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val summaryLabel = androidx.compose.ui.res.stringResource(R.string.detail_action_ai_summary)
     TidiloTheme(dynamicColor = false, blurEnabled = false) {
         Surface(Modifier.fillMaxSize()) {
             val nav = rememberNavController()
@@ -137,7 +137,7 @@ private fun AiFlow(
                     BookmarkDetailScreen(
                         id, viewModel, {},
                         onNavigateToAiReview = {
-                            onReviewNavigation(anyWindowShowsText(context.getString(R.string.detail_action_ai_summary)))
+                            onReviewNavigation(anyWindowShowsText(summaryLabel))
                             nav.navigate("review") { launchSingleTop = true }
                         },
                         checkAiCoreReadiness = inspect

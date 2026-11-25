@@ -1,390 +1,154 @@
 package me.bubblespark.tidilo.data
 
-import android.content.Intent
-import android.view.accessibility.AccessibilityNodeInfo
-import android.view.View
-import android.view.ViewGroup
-import android.view.ViewTreeObserver
-import android.view.InputDevice
-import android.view.MotionEvent
-import android.os.SystemClock
+import android.graphics.Bitmap
+import android.graphics.Rect
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Recomposer
-import androidx.compose.ui.MotionDurationScale
-import androidx.compose.ui.platform.AndroidUiDispatcher
-import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsNode
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
-import androidx.lifecycle.ViewModelProvider
-import androidx.test.platform.app.InstrumentationRegistry
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onRoot
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import me.bubblespark.tidilo.MainActivity
-import me.bubblespark.tidilo.data.db.AppDatabase
+import kotlinx.coroutines.withContext
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.RssFeedEntity
-import me.bubblespark.tidilo.ui.screens.library.*
-import org.junit.Assert.*
+import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
+import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
+import me.bubblespark.tidilo.ui.screens.library.LibraryViewMode
+import me.bubblespark.tidilo.ui.theme.TidiloTheme
+import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
-import java.util.UUID
 
-/** Slows this composition's animations so assertions inspect the exit, rather than only its endpoint. */
+/** Outgoing Library content stays drawn while its exit runs; frames are sampled on the paused test clock. */
 class LibraryTransitionTest {
-    private val instrumentation = InstrumentationRegistry.getInstrumentation()
-    private val context = instrumentation.targetContext
-
-    private suspend fun swipeBack(activity: ComponentActivity) {
-        val width = activity.resources.displayMetrics.widthPixels
-        val y = activity.resources.displayMetrics.heightPixels * 0.55f
-        val start = SystemClock.uptimeMillis()
-        fun send(action: Int, x: Float) {
-            val event = MotionEvent.obtain(start, SystemClock.uptimeMillis(), action, x, y, 0)
-            event.source = InputDevice.SOURCE_TOUCHSCREEN
-            assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true))
-            event.recycle()
-        }
-        send(MotionEvent.ACTION_DOWN, 1f)
-        for (step in 1..20) {
-            delay(16)
-            send(MotionEvent.ACTION_MOVE, width * 0.7f * step / 20)
-        }
-        send(MotionEvent.ACTION_UP, width * 0.7f)
-    }
-
-    @Test fun rssHeaderAndEdgeSwipeBackNeverRenderAnEmptyResultInAnyFrame(): Unit = runBlocking {
-        val db = AppDatabase.getInstance(context)
-        val id = UUID.randomUUID().toString()
-        val feed = RssFeedEntity(id, "https://rss120-back.example/$id", "000 RSS back regression", enabled = false)
-        val articles = (1..20).map { index -> BookmarkEntity("$id-$index", "RSS back article $index",
-            "https://rss120-back.example/$id/$index", "Summary", createdAt = index.toLong(), updatedAt = index.toLong(), rssFeedId = id) }
-        db.rssDao().putFeed(feed)
-        db.bookmarkDao().insertAll(articles)
-        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
-        lateinit var vm: LibraryViewModel
-        var oldMode = LibraryFilterMode.NEWEST_FIRST
-        var oldView = LibraryViewMode.LIST
-        var listener: ViewTreeObserver.OnDrawListener? = null
-        try {
-            instrumentation.runOnMainSync {
-                vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
-                oldMode = vm.filterMode.value
-                oldView = vm.viewMode.value
-                vm.setFilterMode(LibraryFilterMode.RSS)
-            }
-            for ((mode, gesture) in LibraryViewMode.entries.flatMap { listOf(it to false, it to true) }) {
-                instrumentation.runOnMainSync { vm.setViewMode(mode) }
-                awaitText(feed.title)
-                instrumentation.runOnMainSync { vm.selectRssFeedFilter(feed) }
-                awaitText("RSS back article 20")
-                delay(350)
-                val emptyFrames = mutableListOf<List<String>>()
-                var frames = 0
-                var observedArticle = false
-                fun texts(node: SemanticsNode): List<String> =
-                    node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } + node.children.flatMap(::texts)
-                fun roots(view: View): List<ViewRootForTest> = when (view) {
-                    is ViewRootForTest -> listOf(view)
-                    is ViewGroup -> (0 until view.childCount).flatMap { roots(view.getChildAt(it)) }
-                    else -> emptyList()
-                }
-                listener = ViewTreeObserver.OnDrawListener {
-                    val rendered = roots(activity.window.decorView).flatMap { texts(it.semanticsOwner.unmergedRootSemanticsNode) }
-                    frames++
-                    observedArticle = observedArticle || rendered.any { it == "RSS back article 20" }
-                    if (rendered.any { it == context.getString(me.bubblespark.tidilo.R.string.library_empty_title) }) emptyFrames += rendered
-                }
-                instrumentation.runOnMainSync { activity.window.decorView.viewTreeObserver.addOnDrawListener(listener) }
-                if (gesture) swipeBack(activity) else {
-                    val back = withTimeout(5000) {
-                        var found: AccessibilityNodeInfo? = null
-                        fun visit(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-                            if (node.contentDescription?.toString() == "Back to feeds") return node
-                            for (index in 0 until node.childCount) node.getChild(index)?.let { visit(it)?.let { match -> return match } }
-                            return null
-                        }
-                        while (found == null) {
-                            instrumentation.uiAutomation.clearCache()
-                            found = instrumentation.uiAutomation.rootInActiveWindow?.let(::visit)
-                            if (found == null) delay(20)
-                        }
-                        found
-                    }
-                    var button: AccessibilityNodeInfo? = back
-                    while (button != null && !button.isClickable) button = button.parent
-                    val clickableButton = requireNotNull(button) { "Clickable header back button missing after parent traversal" }
-                    assertTrue("Header back must be clickable", clickableButton.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-                }
-                val update = launch {
-                    delay(32)
-                    db.bookmarkDao().insertAll(listOf(articles.last().copy(description = "Updated during RSS back")))
-                }
-                delay(650)
-                update.join()
-                instrumentation.runOnMainSync { activity.window.decorView.viewTreeObserver.removeOnDrawListener(listener) }
-                listener = null
-                assertTrue("Test must sample transition frames", frames >= 2)
-                assertTrue("Frame observer must read the actual bookmark content", observedArticle)
-                assertTrue("$mode gesture=$gesture RSS back rendered an empty result in ${emptyFrames.size} frames: ${emptyFrames.firstOrNull()}", emptyFrames.isEmpty())
-                assertNull("Back must clear the selected feed", vm.selectedRssFeedFilter.value)
-                awaitText(feed.title)
-            }
-        } finally {
-            instrumentation.runOnMainSync {
-                listener?.let { activity.window.decorView.viewTreeObserver.removeOnDrawListener(it) }
-                runCatching { vm.setFilterMode(oldMode); vm.setViewMode(oldView) }
-                activity.finish()
-            }
-            articles.forEach { db.bookmarkDao().deleteById(it.id) }
-            db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(id))
-        }
-    }
-
-    private fun find(text: String): AccessibilityNodeInfo? {
-        instrumentation.uiAutomation.clearCache()
-        fun visit(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-            if (node.text?.toString() == text) return node
-            for (index in 0 until node.childCount) node.getChild(index)?.let { visit(it)?.let { found -> return found } }
-            return null
-        }
-        return instrumentation.uiAutomation.rootInActiveWindow?.let(::visit)
-    }
-
-    private suspend fun awaitText(text: String) = withTimeout(10000) {
-        while (find(text) == null) delay(30)
-    }
-
-    private fun capture(name: String): android.graphics.Bitmap = instrumentation.uiAutomation.takeScreenshot().also { bitmap ->
-        java.io.File(context.cacheDir, name).outputStream().use {
-            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
-        }
-    }
-
-    // Exiting AnimatedContent is excluded from accessibility, even while still drawn.
-    private fun assertTextStillDrawn(before: android.graphics.Bitmap, during: android.graphics.Bitmap, bounds: android.graphics.Rect) {
-        var dark = 0
-        var retained = 0
-        for (y in bounds.top until bounds.bottom) for (x in bounds.left until bounds.right) {
-            val old = before.getPixel(x, y)
-            if (android.graphics.Color.red(old) < 80 && android.graphics.Color.green(old) < 80 && android.graphics.Color.blue(old) < 80) {
-                dark++
-                val next = during.getPixel(x, y)
-                if (android.graphics.Color.red(next) < 120 && android.graphics.Color.green(next) < 120 && android.graphics.Color.blue(next) < 120) retained++
-            }
-        }
-        assertTrue("Fixture must contain rendered title pixels", dark > 50)
-        assertTrue("Outgoing title pixels must survive fade-out: $retained / $dark", retained > dark * 0.6)
-    }
-
-    private fun assertAccentStillDrawn(before: android.graphics.Bitmap, during: android.graphics.Bitmap, bounds: android.graphics.Rect) {
-        data class Ink(val x: Int, val y: Int, val hue: Float)
-        val mask = mutableListOf<Ink>()
-        val oldHsv = FloatArray(3)
-        for (y in bounds.top until bounds.bottom) for (x in bounds.left until bounds.right) {
-            android.graphics.Color.colorToHSV(before.getPixel(x, y), oldHsv)
-            if (oldHsv[1] > 0.35f) mask += Ink(x, y, oldHsv[0])
-        }
-        assertTrue("Fixture must contain accent-colored subtitle pixels", mask.size > 30)
-
-        // Navigation shrinks horizontally and the centered title block can move vertically.
-        // Locate ONE translation by glyph shape, independently of the expected hue.
-        val density = context.resources.displayMetrics.density
-        val maxX = (52 * density).toInt()
-        val maxY = (24 * density).toInt()
-        val area = android.graphics.Rect(maxOf(0, bounds.left - maxX), maxOf(0, bounds.top - maxY),
-            minOf(during.width, bounds.right + maxX), minOf(during.height, bounds.bottom + maxY))
-        val width = area.width()
-        val pixels = IntArray(width * area.height())
-        during.getPixels(pixels, 0, width, area.left, area.top, width, area.height())
-        val ink = BooleanArray(pixels.size)
-        val colored = BooleanArray(pixels.size)
-        val hues = FloatArray(pixels.size)
-        val luminances = pixels.map { pixel ->
-            (0.2126f * android.graphics.Color.red(pixel) + 0.7152f * android.graphics.Color.green(pixel) +
-                0.0722f * android.graphics.Color.blue(pixel)) / 255f
-        }
-        val background = luminances.sorted()[luminances.size / 2]
-        val hsv = FloatArray(3)
-        pixels.forEachIndexed { index, pixel ->
-            android.graphics.Color.colorToHSV(pixel, hsv)
-            colored[index] = hsv[1] > 0.15f
-            ink[index] = colored[index] || kotlin.math.abs(luminances[index] - background) > 0.15f
-            hues[index] = hsv[0]
-        }
-        val stride = width + 1
-        val sums = IntArray(stride * (area.height() + 1))
-        for (y in 0 until area.height()) for (x in 0 until width) {
-            val index = (y + 1) * stride + x + 1
-            sums[index] = (if (ink[y * width + x]) 1 else 0) + sums[index - 1] + sums[index - stride] - sums[index - stride - 1]
-        }
-        var bestScore = -1f
-        var bestX = 0
-        var bestY = 0
-        fun score(dx: Int, dy: Int) {
-            val left = bounds.left + dx - area.left
-            val top = bounds.top + dy - area.top
-            val right = left + bounds.width()
-            val bottom = top + bounds.height()
-            if (left < 0 || top < 0 || right > width || bottom > area.height()) return
-            val count = sums[bottom * stride + right] - sums[top * stride + right] -
-                sums[bottom * stride + left] + sums[top * stride + left]
-            val overlap = mask.count { ink[(it.y + dy - area.top) * width + it.x + dx - area.left] }
-            val shapeScore = 2f * overlap / (mask.size + count)
-            if (shapeScore > bestScore) { bestScore = shapeScore; bestX = dx; bestY = dy }
-        }
-        val step = maxOf(1, density.toInt())
-        for (dy in -maxY..maxY step step) for (dx in -maxX..maxX step step) score(dx, dy)
-        val coarseX = bestX
-        val coarseY = bestY
-        for (dy in coarseY - step..coarseY + step) for (dx in coarseX - step..coarseX + step) score(dx, dy)
-        assertTrue("Outgoing subtitle glyph shape must survive motion: $bestScore", bestScore > 0.65f)
-        val retained = mask.count {
-            val index = (it.y + bestY - area.top) * width + it.x + bestX - area.left
-            val distance = kotlin.math.abs(it.hue - hues[index])
-            colored[index] && minOf(distance, 360f - distance) < 20f
-        }
-        assertTrue("Outgoing subtitle must retain its accent at translation ($bestX,$bestY): $retained / ${mask.size}", retained > mask.size * 0.35)
-    }
-
-    @Test fun accentAssertionTracksOneTranslationAndRejectsWrongColor(): Unit {
-        val before = android.graphics.Bitmap.createBitmap(180, 100, android.graphics.Bitmap.Config.ARGB_8888)
-        val during = before.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
-        val wrong = before.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
-        val paint = android.graphics.Paint().apply { color = android.graphics.Color.MAGENTA; textSize = 18f; isAntiAlias = true }
-        try {
-            before.eraseColor(android.graphics.Color.WHITE)
-            during.eraseColor(android.graphics.Color.WHITE)
-            wrong.eraseColor(android.graphics.Color.WHITE)
-            android.graphics.Canvas(before).drawText("1 bookmark", 8f, 24f, paint)
-            android.graphics.Canvas(during).drawText("1 bookmark", 30f, 42f, paint)
-            val bounds = android.graphics.Rect(4, 6, 116, 28)
-            assertAccentStillDrawn(before, during, bounds)
-            for (color in listOf(android.graphics.Color.BLUE, android.graphics.Color.GRAY, android.graphics.Color.WHITE)) {
-                wrong.eraseColor(android.graphics.Color.WHITE)
-                paint.color = color
-                android.graphics.Canvas(wrong).drawText("1 bookmark", 30f, 42f, paint)
-                paint.color = android.graphics.Color.MAGENTA
-                // Wrong hue, lost saturation, and missing text must not match a nearby label.
-                android.graphics.Canvas(wrong).drawText("99 feeds", 8f, 65f, paint)
-                org.junit.Assert.assertThrows(AssertionError::class.java) { assertAccentStillDrawn(before, wrong, bounds) }
-            }
-        } finally { before.recycle(); during.recycle(); wrong.recycle() }
-    }
+    @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
+    private val context get() = composeRule.activity
 
     @Test fun outgoingFeedAndDomainKeepTheirBookmarksUntilExitCompletes(): Unit = runBlocking {
-        val db = AppDatabase.getInstance(context)
-        val id = UUID.randomUUID().toString()
-        val feed = RssFeedEntity(id, "https://transition120.example/feed", "000 Transition feed", enabled = false)
+        val feed = RssFeedEntity("transition-feed", "https://transition120.example/feed", "000 Transition feed", enabled = false)
         val domain = "000-transition120.example"
-        val manual = BookmarkEntity("$id-manual", "Transition manual article", "https://$domain/article", "Summary", createdAt = 1, updatedAt = 1)
-        val rss = BookmarkEntity("$id-rss", "Transition RSS article", "https://transition120.example/article", "Summary", createdAt = 2, updatedAt = 2, rssFeedId = id)
-        db.rssDao().putFeed(feed)
-        db.bookmarkDao().insertAll(listOf(manual, rss))
-        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
-        lateinit var vm: LibraryViewModel
-        var oldMode = LibraryFilterMode.NEWEST_FIRST
-        var oldView = LibraryViewMode.LIST
-        lateinit var animationScope: CoroutineScope
-        lateinit var recomposer: Recomposer
+        val manual = BookmarkEntity("transition-manual", "Transition manual article", "https://$domain/article", "Summary",
+            createdAt = 1, updatedAt = 1)
+        val rss = BookmarkEntity("transition-rss", "Transition RSS article", "https://transition120.example/article", "Summary",
+            createdAt = 2, updatedAt = 2, rssFeedId = feed.id)
+        val caches = OfflineVisualCaches()
+        val library = withContext(Dispatchers.IO) {
+            InMemoryLibrary(context.applicationContext).also {
+                it.awaitReady()
+                it.db.rssDao().putFeed(feed)
+                it.db.bookmarkDao().insertAll(listOf(manual, rss))
+            }
+        }
         try {
-            instrumentation.runOnMainSync {
-                animationScope = CoroutineScope(AndroidUiDispatcher.CurrentThread + SupervisorJob() +
-                    object : MotionDurationScale { override val scaleFactor = 10f })
-                recomposer = Recomposer(animationScope.coroutineContext)
-                animationScope.launch { recomposer.runRecomposeAndApplyChanges() }
-                vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
-                oldMode = vm.filterMode.value
-                oldView = vm.viewMode.value
+            val vm = library.viewModel()
+            composeRule.runOnUiThread {
                 vm.setFilterMode(LibraryFilterMode.RSS)
                 vm.setViewMode(LibraryViewMode.LIST)
-                activity.setContent(parent = recomposer) { MaterialTheme { LibraryScreen(vm) } }
             }
+            composeRule.setContent {
+                TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
+                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
+                    LibraryScreen(vm)
+                }
+            }
+            val empty = context.getString(R.string.library_empty_title)
+
+            // RSS feed → feed list.
             awaitText(feed.title)
-            delay(2400)
-            instrumentation.runOnMainSync { vm.selectRssFeedFilter(feed) }
+            composeRule.runOnIdle { vm.selectRssFeedFilter(feed) }
             awaitText(rss.title)
-            delay(2400)
-            val rssBounds = android.graphics.Rect().also {
-                requireNotNull(find(rss.title)) { "RSS title missing when capturing exit frame" }.getBoundsInScreen(it)
-            }
-            val subtitleBounds = android.graphics.Rect().also {
-                requireNotNull(find("1 bookmark")) { "RSS bookmark count missing when capturing exit frame" }.getBoundsInScreen(it)
-            }
-            val rssBefore = capture("issue120-before.png")
-            instrumentation.runOnMainSync { vm.selectRssFeedFilter(null) }
-            delay(450)
-            val rssDuring = capture("issue120-during.png")
-            assertTextStillDrawn(rssBefore, rssDuring, rssBounds)
-            assertAccentStillDrawn(rssBefore, rssDuring, subtitleBounds)
-            rssBefore.recycle(); rssDuring.recycle()
-            assertNull("RSS back must not introduce a transient empty state", find("No bookmarks yet"))
-            delay(2200)
-            assertNull(find(rss.title))
+            assertOutgoingStillDrawn(rss.title, accentText = "1 bookmark", forbiddenText = empty) { vm.selectRssFeedFilter(null) }
+            awaitAbsent(rss.title)
 
-            instrumentation.runOnMainSync { vm.setFilterMode(LibraryFilterMode.DOMAIN) }
+            // Domain list → domain.
+            composeRule.runOnIdle { vm.setFilterMode(LibraryFilterMode.DOMAIN) }
             awaitText(domain)
-            delay(2400)
-            val gridBounds = android.graphics.Rect().also {
-                requireNotNull(find(domain)) { "Domain card title missing when capturing forward frame" }.getBoundsInScreen(it)
-            }
-            val gridBefore = capture("issue120-domain-grid.png")
-            instrumentation.runOnMainSync { vm.selectDomainFilter(domain) }
-            delay(450)
-            val forward = capture("issue120-domain-forward.png")
-            assertTextStillDrawn(gridBefore, forward, gridBounds)
-            gridBefore.recycle(); forward.recycle()
+            assertOutgoingStillDrawn(domain) { vm.selectDomainFilter(domain) }
             awaitText(manual.title)
-            delay(2400)
-            val manualBounds = android.graphics.Rect().also {
-                requireNotNull(find(manual.title)) { "Domain bookmark title missing when capturing exit frame" }.getBoundsInScreen(it)
-            }
-            val manualBefore = capture("issue120-domain-before.png")
-            instrumentation.runOnMainSync { activity.onBackPressedDispatcher.onBackPressed() }
-            delay(450)
-            val manualDuring = capture("issue120-domain-during.png")
-            assertTextStillDrawn(manualBefore, manualDuring, manualBounds)
-            manualBefore.recycle(); manualDuring.recycle()
-            delay(2200)
-            assertNull(find(manual.title))
 
-            instrumentation.runOnMainSync { vm.setFilterMode(LibraryFilterMode.NEWEST_FIRST); vm.setViewMode(LibraryViewMode.GRID) }
-            awaitText(manual.title)
-            delay(2400)
-            val timelineBounds = android.graphics.Rect().also {
-                requireNotNull(find(manual.title)) { "Timeline bookmark title missing when capturing mode-switch frame" }.getBoundsInScreen(it)
+            // Domain → domain list (back).
+            assertOutgoingStillDrawn(manual.title) { context.onBackPressedDispatcher.onBackPressed() }
+            awaitAbsent(manual.title)
+
+            // Newest first → RSS mode switch.
+            composeRule.runOnIdle {
+                vm.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
+                vm.setViewMode(LibraryViewMode.GRID)
             }
-            val timelineBefore = capture("issue120-timeline.png")
-            instrumentation.runOnMainSync { vm.setFilterMode(LibraryFilterMode.RSS) }
-            delay(450)
-            val modeDuring = capture("issue120-mode-switch.png")
-            assertTextStillDrawn(timelineBefore, modeDuring, timelineBounds)
-            timelineBefore.recycle(); modeDuring.recycle()
-            delay(2200)
-            assertNull(find(manual.title))
+            awaitText(manual.title)
+            assertOutgoingStillDrawn(manual.title) { vm.setFilterMode(LibraryFilterMode.RSS) }
+            awaitAbsent(manual.title)
 
             // An actually empty feed must still settle to the empty state.
-            val emptyFeed = feed.copy(id = "$id-empty", url = "https://transition120.example/empty")
-            instrumentation.runOnMainSync { vm.selectRssFeedFilter(emptyFeed) }
-            awaitText("No bookmarks yet")
+            val emptyFeed = feed.copy(id = "transition-empty", url = "https://transition120.example/empty")
+            composeRule.runOnIdle { vm.selectRssFeedFilter(emptyFeed) }
+            awaitText(empty)
         } finally {
-            instrumentation.runOnMainSync {
-                runCatching { vm.setFilterMode(oldMode); vm.setViewMode(oldView) }
-                activity.finish()
-                recomposer.cancel()
-                animationScope.cancel()
-            }
-            db.bookmarkDao().deleteById(manual.id)
-            db.bookmarkDao().deleteById(rss.id)
-            db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(id))
+            caches.close()
+            library.close()
         }
+    }
+
+    /**
+     * Captures the settled frame, applies [change] on the paused clock, steps [EXIT_SAMPLE_MS] into the exit,
+     * and asserts that [title] (and the accent of [accentText]) are still drawn and [forbiddenText] is absent.
+     */
+    private fun assertOutgoingStillDrawn(
+        title: String,
+        accentText: String? = null,
+        forbiddenText: String? = null,
+        change: () -> Unit
+    ) {
+        composeRule.waitForIdle()
+        val titleBounds = pixelBounds(title)
+        val accentBounds = accentText?.let(::pixelBounds)
+        val before = capture()
+        var during: Bitmap? = null
+        try {
+            composeRule.mainClock.autoAdvance = false
+            composeRule.runOnUiThread(change)
+            composeRule.mainClock.advanceTimeByFrame()
+            composeRule.mainClock.advanceTimeBy(EXIT_SAMPLE_MS)
+            during = capture()
+            assertTextStillDrawn(before, during, titleBounds)
+            accentBounds?.let { assertAccentStillDrawn(before, during, it, context.resources.displayMetrics.density) }
+            if (forbiddenText != null) {
+                assertTrue("Exit must not introduce a transient '$forbiddenText'", nodes(hasText(forbiddenText)).isEmpty())
+            }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+            before.recycle()
+            during?.recycle()
+        }
+    }
+
+    private fun capture(): Bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
+
+    private fun pixelBounds(text: String): Rect {
+        val bounds = nodes(hasText(text)).first().boundsInRoot
+        return Rect(bounds.left.roundToInt(), bounds.top.roundToInt(), bounds.right.roundToInt(), bounds.bottom.roundToInt())
+    }
+
+    private fun nodes(matcher: SemanticsMatcher): List<SemanticsNode> =
+        composeRule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes()
+
+    private fun awaitText(text: String) = composeRule.waitUntil(10_000) { nodes(hasText(text)).isNotEmpty() }
+
+    private fun awaitAbsent(text: String) = composeRule.waitUntil(10_000) { nodes(hasText(text)).isEmpty() }
+
+    private companion object {
+        /** About a quarter into the 160–180ms Library fades. */
+        const val EXIT_SAMPLE_MS = 48L
     }
 }

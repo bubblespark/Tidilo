@@ -1,32 +1,40 @@
 package me.bubblespark.tidilo.data
 
-import android.graphics.Bitmap
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.Density
 import androidx.lifecycle.SavedStateHandle
 import androidx.paging.PagingData
-import java.io.ByteArrayOutputStream
+import androidx.test.platform.app.InstrumentationRegistry
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import me.bubblespark.tidilo.data.db.RssFeedGroup
@@ -46,30 +54,24 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 
 /** The Library layer (Discover preview on) over an in-memory store: tabs, plates, decks, Peek, empty states. */
 class LibraryLayerTest {
-    private val host = HeaderTestHost()
+    @get:Rule val composeRule = createComposeRule()
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val domain = "${UUID.randomUUID().toString().take(8)}.example"
-    private val oldDownloader = OgImageManager.imageDownloader
-    private val oldIconDownload = DomainIconManager.httpDownloader
-    private val oldDiscovery = DomainIconManager.htmlDiscoverer
+    private val modelScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
+    private lateinit var caches: OfflineVisualCaches
 
     @Before fun images() {
-        OgImageManager.imageDownloader = { url ->
-            val bitmap = Bitmap.createBitmap(1200, 630, Bitmap.Config.ARGB_8888)
-            bitmap.eraseColor(android.graphics.Color.HSVToColor(floatArrayOf((url.hashCode() and 0xff) * 1.4f, 0.45f, 0.75f)))
-            ByteArrayOutputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it); bitmap.recycle(); it.toByteArray() }
-        }
-        DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, true, false) }
-        DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), true, false) }
+        caches = OfflineVisualCaches { tinyPng(16, 9) }
     }
 
     @After fun restore() {
-        OgImageManager.imageDownloader = oldDownloader
-        DomainIconManager.httpDownloader = oldIconDownload
-        DomainIconManager.htmlDiscoverer = oldDiscovery
+        modelScope.cancel()
+        caches.close()
     }
 
     private fun item(id: String, image: Boolean = true, rss: Boolean = false) = BookmarkItem(
@@ -140,17 +142,13 @@ class LibraryLayerTest {
         val rssSettings = AtomicInteger()
     }
 
-    private fun show(store: FakeStore, calls: Calls = Calls(), fontScale: Float = 1f): Pair<ComponentActivity, LibraryViewModel> {
-        val activity = host.launch()
+    private fun show(store: FakeStore, calls: Calls = Calls(), fontScale: Float = 1f): LibraryViewModel {
         lateinit var model: LibraryViewModel
-        host.main {
-            model = LibraryViewModel(store, SavedStateHandle(), MutableStateFlow(true))
-            activity.setContent {
-                val density = androidx.compose.ui.platform.LocalDensity.current
-                androidx.compose.runtime.CompositionLocalProvider(
-                    androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale)
-                ) {
-                TidiloTheme(dynamicColor = false) {
+        composeRule.runOnUiThread { model = LibraryViewModel(store, SavedStateHandle(), MutableStateFlow(true), modelScope) }
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
+                TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
                     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
                     LibraryScreen(
                         viewModel = model,
@@ -161,187 +159,178 @@ class LibraryLayerTest {
                         onOpenRssSettings = { calls.rssSettings.incrementAndGet() }
                     )
                 }
-                }
             }
         }
-        return activity to model
+        return model
     }
 
-    private fun tag(node: SemanticsNode, value: String) = node.config.getOrNull(SemanticsProperties.TestTag) == value
+    private fun nodes(matcher: SemanticsMatcher): List<SemanticsNode> =
+        composeRule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes()
+    private fun await(matcher: SemanticsMatcher): SemanticsNode {
+        composeRule.waitUntil(8_000) { nodes(matcher).isNotEmpty() }
+        return nodes(matcher).first()
+    }
+    private fun awaitAbsent(matcher: SemanticsMatcher) = composeRule.waitUntil(8_000) { nodes(matcher).isEmpty() }
+    private fun until(condition: () -> Boolean) = composeRule.waitUntil(8_000, condition)
+    private fun text(value: String) = hasText(value)
+    private fun tag(value: String) = hasTestTag(value)
+    private val checked = SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.On)
     private fun clickable(node: SemanticsNode): SemanticsNode {
         var target = node
         while (target.config.getOrNull(SemanticsActions.OnClick) == null) target = requireNotNull(target.parent)
         return target
     }
-    private fun click(node: SemanticsNode) = host.main { check(clickable(node).config[SemanticsActions.OnClick].action?.invoke() == true) }
+    private fun click(node: SemanticsNode) {
+        composeRule.runOnUiThread { check(clickable(node).config[SemanticsActions.OnClick].action?.invoke() == true) }
+        composeRule.waitForIdle()
+    }
+    private fun longClick(node: SemanticsNode) {
+        composeRule.runOnUiThread { node.config[SemanticsActions.OnLongClick].action?.invoke() }
+        composeRule.waitForIdle()
+    }
     private fun isButton(node: SemanticsNode) =
-        clickable(node).config.getOrNull(SemanticsProperties.Role) == androidx.compose.ui.semantics.Role.Button
-    private fun checked(node: SemanticsNode) = node.config.getOrNull(SemanticsProperties.ToggleableState) == ToggleableState.On
-    private suspend fun until(condition: () -> Boolean) = withTimeout(8000) { while (!condition()) delay(30) }
-    private suspend fun <T> step(name: String, block: suspend () -> T): T =
-        try { block() } catch (e: kotlinx.coroutines.TimeoutCancellationException) { throw AssertionError("Timed out at: $name", e) }
+        clickable(node).config.getOrNull(SemanticsProperties.Role) == Role.Button
+    private fun <T> step(name: String, block: () -> T): T =
+        try { block() } catch (e: ComposeTimeoutException) { throw AssertionError("Timed out at: $name", e) }
     private fun describes(node: SemanticsNode, value: String) =
         node.config.getOrNull(SemanticsProperties.ContentDescription)?.any { value in it } == true
 
-    @Test fun tabsSwitchModesAndHideInDrillDown(): Unit = runBlocking {
+    @Test fun tabsSwitchModesAndHideInDrillDown() {
         val store = FakeStore()
         store.items.value = listOf(item("a"))
         store.domains.value = listOf(DomainGroupItem(domain, domain, 1))
-        val (activity, model) = show(store)
-        try {
-            host.await(activity) { tag(it, "library_tab_NEWEST_FIRST") && checked(it) }
-            host.await(activity) { host.text(it, host.context.getString(R.string.library_header_title)) }
-            click(host.await(activity) { tag(it, "library_tab_DOMAIN") })
-            until { model.filterMode.value == LibraryFilterMode.DOMAIN }
-            host.await(activity) { tag(it, "library_tab_DOMAIN") && checked(it) }
-            // An unnamed domain shows its name once (no duplicate subtitle) and a singular count.
-            host.awaitAbsent(activity) { tag(it, "library_card_a") }
-            val count = host.context.resources.getQuantityString(R.plurals.domain_card_item_count, 1, 1)
-            val deck = host.await(activity) { host.text(it, count) }
-            host.main { assertEquals(1, host.nodes(activity).count { host.text(it, domain) }) }
-            click(deck)
-            until { model.selectedDomainFilter.value == domain }
-            host.awaitAbsent(activity) { tag(it, "library_tabs") }
-            host.await(activity) { tag(it, "library_card_a") }
-            click(host.await(activity) { host.description(it, host.context.getString(R.string.library_back_to_domains)) })
-            host.await(activity) { tag(it, "library_tabs") }
-            host.capture("library-layer-domain")
-        } finally { activity.finish() }
+        val model = show(store)
+        await(tag("library_tab_NEWEST_FIRST") and checked)
+        await(text(context.getString(R.string.library_header_title)))
+        click(await(tag("library_tab_DOMAIN")))
+        until { model.filterMode.value == LibraryFilterMode.DOMAIN }
+        await(tag("library_tab_DOMAIN") and checked)
+        // An unnamed domain shows its name once (no duplicate subtitle) and a singular count.
+        awaitAbsent(tag("library_card_a"))
+        val count = context.resources.getQuantityString(R.plurals.domain_card_item_count, 1, 1)
+        val deck = await(text(count))
+        assertEquals(1, nodes(text(domain)).size)
+        click(deck)
+        until { model.selectedDomainFilter.value == domain }
+        awaitAbsent(tag("library_tabs"))
+        await(tag("library_card_a"))
+        click(await(hasContentDescription(context.getString(R.string.library_back_to_domains))))
+        await(tag("library_tabs"))
     }
 
-    @Test fun newestShowsPlatesTogglesListAndOpensDetail(): Unit = runBlocking {
+    @Test fun newestShowsPlatesTogglesListAndOpensDetail() {
         val calls = Calls()
         val store = FakeStore(includeRss = true)
         store.items.value = listOf(item("a"), item("poster", image = false), item("feed", rss = true))
-        val (activity, model) = show(store, calls)
-        try {
-            host.await(activity) { tag(it, "library_card_a") }
-            host.await(activity) { tag(it, "library_card_poster") }
-            val rss = host.await(activity) { tag(it, "library_card_feed") }
-            assertTrue(describes(rss, host.context.getString(R.string.rss_title)))
-            host.capture("library-layer-grid")
-            click(host.await(activity) { tag(it, "library_card_a") })
-            assertEquals(listOf("a"), calls.opened.toList())
-            click(host.await(activity) { tag(it, "library_view_toggle") })
-            until { model.viewMode.value == LibraryViewMode.LIST }
-            host.await(activity) { tag(it, "library_row_a") }
-            host.awaitAbsent(activity) { tag(it, "library_card_a") }
-            host.capture("library-layer-list")
-        } finally { activity.finish() }
+        val model = show(store, calls)
+        await(tag("library_card_a"))
+        await(tag("library_card_poster"))
+        val rss = await(tag("library_card_feed"))
+        assertTrue(describes(rss, context.getString(R.string.rss_title)))
+        click(await(tag("library_card_a")))
+        assertEquals(listOf("a"), calls.opened.toList())
+        click(await(tag("library_view_toggle")))
+        until { model.viewMode.value == LibraryViewMode.LIST }
+        await(tag("library_row_a"))
+        awaitAbsent(tag("library_card_a"))
     }
 
-    @Test fun longPressOpensLibraryPeekSheet(): Unit = runBlocking {
+    @Test fun longPressOpensLibraryPeekSheet() {
         val store = FakeStore()
         store.items.value = listOf(item("a"))
-        val (activity, _) = show(store)
-        try {
-            val card = host.await(activity) { tag(it, "library_card_a") }
-            host.main {
-                assertEquals(host.context.getString(R.string.discover_peek), card.config[SemanticsActions.OnLongClick].label)
-                card.config[SemanticsActions.OnLongClick].action?.invoke()
-            }
-            host.await(activity) { tag(it, "discover_peek_sheet") }
-            host.main {
-                val nodes = host.nodes(activity)
-                assertTrue("Library Peek has no Not now", nodes.none { tag(it, "discover_peek_snooze") })
-                assertTrue("Library Peek has no Don't show again", nodes.none { tag(it, "discover_peek_never") })
-            }
-            until { store.peeks.toList() == listOf("a" to EngagementSurface.LIBRARY) }
-            click(host.await(activity) { tag(it, "discover_peek_like") })
-            until { store.likes.toList() == listOf("a" to EngagementSurface.LIBRARY) }
-            host.await(activity) { host.text(it, host.context.getString(R.string.discover_deck_unlike)) }
-            host.capture("library-layer-peek")
-            click(host.await(activity) { tag(it, "discover_peek_collection") })
-            host.await(activity) { host.text(it, "Choose collections") }
-            host.awaitAbsent(activity) { tag(it, "discover_peek_sheet") }
-        } finally { activity.finish() }
+        show(store)
+        val card = await(tag("library_card_a"))
+        assertEquals(context.getString(R.string.discover_peek), card.config[SemanticsActions.OnLongClick].label)
+        longClick(card)
+        await(tag("discover_peek_sheet"))
+        assertTrue("Library Peek has no Not now", nodes(tag("discover_peek_snooze")).isEmpty())
+        assertTrue("Library Peek has no Don't show again", nodes(tag("discover_peek_never")).isEmpty())
+        until { store.peeks.toList() == listOf("a" to EngagementSurface.LIBRARY) }
+        click(await(tag("discover_peek_like")))
+        until { store.likes.toList() == listOf("a" to EngagementSurface.LIBRARY) }
+        await(text(context.getString(R.string.discover_deck_unlike)))
+        click(await(tag("discover_peek_collection")))
+        await(text("Choose collections"))
+        awaitAbsent(tag("discover_peek_sheet"))
     }
 
-    @Test fun emptyStatesOfferTheirActions(): Unit = runBlocking {
+    @Test fun emptyStatesOfferTheirActions() {
         val calls = Calls()
         val store = FakeStore()
-        val (activity, _) = show(store, calls)
-        try {
-            step("1") { host.await(activity) { tag(it, "library_empty_NEWEST") } }
-            click(step("2") { host.await(activity) { tag(it, "library_empty_action") } })
-            assertEquals(1, calls.saves.get())
+        show(store, calls)
+        step("1") { await(tag("library_empty_NEWEST")) }
+        click(step("2") { await(tag("library_empty_action")) })
+        assertEquals(1, calls.saves.get())
 
-            click(step("3") { host.await(activity) { tag(it, "library_tab_DOMAIN") } })
-            step("4") { host.await(activity) { tag(it, "library_empty_DOMAIN") } }
-            host.awaitAbsent(activity) { tag(it, "library_empty_NEWEST") }
-            click(step("5") { host.await(activity) { tag(it, "library_empty_action") } })
-            assertEquals(2, calls.saves.get())
+        click(step("3") { await(tag("library_tab_DOMAIN")) })
+        step("4") { await(tag("library_empty_DOMAIN")) }
+        awaitAbsent(tag("library_empty_NEWEST"))
+        click(step("5") { await(tag("library_empty_action")) })
+        assertEquals(2, calls.saves.get())
 
-            click(step("6") { host.await(activity) { tag(it, "library_tab_RSS") } })
-            step("7") { host.await(activity) { tag(it, "library_empty_RSS") } }
-            host.awaitAbsent(activity) { tag(it, "library_empty_DOMAIN") }
-            click(step("8") { host.await(activity) { tag(it, "library_empty_action") } })
-            assertEquals(1, calls.rssSettings.get())
-            store.feeds.value = 2
-            step("9") { host.await(activity) { tag(it, "library_empty_RSS_IDLE") } }
-            host.capture("library-layer-rss-idle")
+        click(step("6") { await(tag("library_tab_RSS")) })
+        step("7") { await(tag("library_empty_RSS")) }
+        awaitAbsent(tag("library_empty_DOMAIN"))
+        click(step("8") { await(tag("library_empty_action")) })
+        assertEquals(1, calls.rssSettings.get())
+        store.feeds.value = 2
+        step("9") { await(tag("library_empty_RSS_IDLE")) }
 
-            click(step("10") { host.await(activity) { tag(it, "library_tab_COLLECTION") } })
-            step("11") { host.await(activity) { tag(it, "library_empty_COLLECTION") } }
-            host.awaitAbsent(activity) { tag(it, "library_empty_RSS_IDLE") }
-            host.main { assertTrue("No dashed add card while empty",
-                host.nodes(activity).none { host.description(it, host.context.getString(R.string.collection_create_title)) }) }
-            click(step("12") { host.await(activity) { tag(it, "library_empty_action") } })
-            step("13") { host.await(activity) { host.text(it, host.context.getString(R.string.collection_create_title)) } }
-        } finally { activity.finish() }
+        click(step("10") { await(tag("library_tab_COLLECTION")) })
+        step("11") { await(tag("library_empty_COLLECTION")) }
+        awaitAbsent(tag("library_empty_RSS_IDLE"))
+        assertTrue("No dashed add card while empty",
+            nodes(hasContentDescription(context.getString(R.string.collection_create_title))).isEmpty())
+        click(step("12") { await(tag("library_empty_action")) })
+        step("13") { await(text(context.getString(R.string.collection_create_title))) }
     }
 
     /** PR #335 R-001: plate, deck, and collection cards are announced as buttons. */
-    @Test fun libraryCardsExposeButtonRole(): Unit = runBlocking {
+    @Test fun libraryCardsExposeButtonRole() {
         val store = FakeStore()
         store.items.value = listOf(item("a"))
         store.domains.value = listOf(DomainGroupItem(domain, "Named site", 1))
-        val (activity, _) = show(store)
-        try {
-            assertTrue("Plate card", isButton(host.await(activity) { tag(it, "library_card_a") }))
-            click(host.await(activity) { tag(it, "library_tab_DOMAIN") })
-            assertTrue("Domain deck", isButton(host.await(activity) { host.text(it, "Named site") }))
-        } finally { activity.finish() }
+        show(store)
+        assertTrue("Plate card", isButton(await(tag("library_card_a"))))
+        click(await(tag("library_tab_DOMAIN")))
+        assertTrue("Domain deck", isButton(await(text("Named site"))))
     }
 
     /** PR #335 R-002: at 200% font the deck's 2-line title, subtitle, and count pill stay inside the card. */
-    @Test fun galleryDeckFitsAtDoubleFontScale(): Unit = runBlocking {
+    @Test fun galleryDeckFitsAtDoubleFontScale() {
         val store = FakeStore()
         store.domains.value = listOf(DomainGroupItem(domain, "A long site name that wraps onto two lines", 12))
-        val (activity, model) = show(store, fontScale = 2f)
-        try {
-            host.main { model.setFilterMode(LibraryFilterMode.DOMAIN) }
-            val count = host.context.resources.getQuantityString(R.plurals.domain_card_item_count, 12, 12)
-            val pill = host.await(activity) { host.text(it, count) }
-            host.capture("library-layer-deck-2x")
-            host.main {
-                val card = clickable(pill)
-                val subtitle = host.nodes(activity).first { host.text(it, domain) }
-                assertTrue("Count pill bottom ${pill.boundsInRoot.bottom} inside card ${card.boundsInRoot.bottom}",
-                    pill.boundsInRoot.bottom <= card.boundsInRoot.bottom)
-                assertTrue("Subtitle must not overlap the count pill", subtitle.boundsInRoot.bottom <= pill.boundsInRoot.top)
-                // labelMedium is 16sp tall; at 2x it needs ~32dp. A squashed pill measures far less.
-                val minHeight = 28f * activity.resources.displayMetrics.density
-                assertTrue("Count pill text squashed to ${pill.boundsInRoot.height}px", pill.boundsInRoot.height >= minHeight)
-            }
-        } finally { activity.finish() }
+        val model = show(store, fontScale = 2f)
+        composeRule.runOnIdle { model.setFilterMode(LibraryFilterMode.DOMAIN) }
+        val count = context.resources.getQuantityString(R.plurals.domain_card_item_count, 12, 12)
+        val pill = await(text(count))
+        val card = clickable(pill)
+        val subtitle = nodes(text(domain)).first()
+        assertTrue("Count pill bottom ${pill.boundsInRoot.bottom} inside card ${card.boundsInRoot.bottom}",
+            pill.boundsInRoot.bottom <= card.boundsInRoot.bottom)
+        assertTrue("Subtitle must not overlap the count pill", subtitle.boundsInRoot.bottom <= pill.boundsInRoot.top)
+        // labelMedium is 16sp tall; at 2x it needs ~32dp. A squashed pill measures far less.
+        val minHeight = 28f * context.resources.displayMetrics.density
+        assertTrue("Count pill text squashed to ${pill.boundsInRoot.height}px", pill.boundsInRoot.height >= minHeight)
     }
 
     /** PR #335 R-003: subscribed feeds with nothing visible never flash the "no feeds" state. */
-    @Test fun rssEmptyStateWaitsForSubscriptionCount(): Unit = runBlocking {
+    @Test fun rssEmptyStateWaitsForSubscriptionCount() {
         val store = FakeStore()
         store.feeds.value = null
-        val (activity, model) = show(store)
+        val model = show(store)
+        composeRule.runOnIdle { model.setFilterMode(LibraryFilterMode.RSS) }
+        await(tag("library_tab_RSS") and checked)
+        composeRule.mainClock.autoAdvance = false
         try {
-            host.main { model.setFilterMode(LibraryFilterMode.RSS) }
-            host.await(activity) { tag(it, "library_tab_RSS") && checked(it) }
-            repeat(20) {
-                host.main { assertTrue("No-feeds state shown before the count is known",
-                    host.nodes(activity).none { tag(it, "library_empty_RSS") }) }
-                delay(50)
+            repeat(5) {
+                composeRule.mainClock.advanceTimeByFrame()
+                assertTrue("No-feeds state shown before the count is known", nodes(tag("library_empty_RSS")).isEmpty())
             }
-            store.feeds.value = 2
-            host.await(activity) { tag(it, "library_empty_RSS_IDLE") }
-        } finally { activity.finish() }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+        store.feeds.value = 2
+        await(tag("library_empty_RSS_IDLE"))
     }
 }

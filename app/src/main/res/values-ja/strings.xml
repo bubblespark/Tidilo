@@ -176,6 +176,10 @@
     </plurals>
     <string name="bookmark_open_in_browser">ブラウザで開く</string>
     <string name="bookmark_could_not_open_browser">ブラウザを開けませんでした</string>
+    <string name="bookmark_like">いいね</string>
+    <string name="bookmark_unlike">いいねを外す</string>
+    <string name="bookmark_liked">いいね済み</string>
+    <string name="bookmark_not_liked">いいねしていません</string>
 
     <!-- Search Screen -->
     <string name="search_header_title">Search</string>
@@ -361,6 +365,7 @@
     <string name="entity_conflict_save_notice">すべてのブックマークでの置き換えは、タグ編集画面で OK を押したときに適用されます。</string>
     <string name="entity_conflict_use_existing">既存のタグを使う</string>
     <string name="entity_conflict_replace">すべてのブックマークで置き換える</string>
+    <string name="entity_library_failed">既存のタグを読み込めませんでした。タグを追加する前に再試行してください。</string>
     <string name="collection_title">コレクション</string>
     <plurals name="collection_subtitle_count">
         <item quantity="other">%1$d件のコレクション</item>

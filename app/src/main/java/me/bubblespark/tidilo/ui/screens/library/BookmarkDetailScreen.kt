@@ -136,6 +136,7 @@ import android.content.ClipData
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.toClipEntry
@@ -374,6 +375,7 @@ internal fun BookmarkDetailScreen(
     checkAiCoreReadiness: suspend () -> AiCoreReadiness = { AiCoreAvailability.inspect() }
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val clipboard = LocalClipboard.current
     val coroutineScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -716,7 +718,7 @@ internal fun BookmarkDetailScreen(
                                         if (viewModel.deleteBookmark(bookmark.id)) onNavigateBack()
                                     } catch (e: Exception) {
                                         kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                                        Toast.makeText(context, context.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, resources.getString(R.string.common_save_failed), Toast.LENGTH_LONG).show()
                                     }
                                 }
                             }
@@ -1236,7 +1238,7 @@ internal fun BookmarkDetailScreen(
                     Toast
                         .makeText(
                             context,
-                            context.getString(R.string.detail_url_copied),
+                            resources.getString(R.string.detail_url_copied),
                             Toast.LENGTH_SHORT
                         )
                         .show()

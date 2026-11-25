@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -65,6 +66,7 @@ fun PrivateSettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val domainPolicyStore = remember(context) { DomainPolicyStore.getInstance(context) }
     val isPrivateVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
     val isPrivateBookmarkable by AppConfig.isPrivateContentBookmarkable.collectAsStateWithLifecycle()
@@ -180,7 +182,7 @@ fun PrivateSettingsScreen(
                                             kotlinx.coroutines.currentCoroutineContext().ensureActive()
                                             android.widget.Toast.makeText(
                                                 context,
-                                                context.getString(R.string.common_save_failed),
+                                                resources.getString(R.string.common_save_failed),
                                                 android.widget.Toast.LENGTH_LONG
                                             ).show()
                                         }

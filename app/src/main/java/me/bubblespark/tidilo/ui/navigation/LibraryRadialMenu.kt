@@ -273,7 +273,7 @@ fun LibraryRadialMenu(
                     } else {
                         val inside = geometry.inTrigger(relative.x, relative.y)
                         environment.pointerPosition = relative
-                    if (!crossedSlop && inside && stamp == currentSignature()) pressFeedback.release() else pressFeedback.cancel()
+                        if (!crossedSlop && inside && stamp == currentSignature()) pressFeedback.release() else pressFeedback.cancel()
                         dispatch(state.endPress(down.id.value, geometry.targetAt(relative.x, relative.y, expansion.value), inside, currentSignature()))
                         break
                     }

@@ -55,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -103,6 +104,7 @@ internal fun StorageContent(
     onClearCache: ((() -> Unit) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     var showClearCacheConfirmDialog by rememberSaveable { mutableStateOf(false) }
 
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(), 
@@ -381,7 +383,7 @@ internal fun StorageContent(
                         onClearCache?.invoke {
                             Toast.makeText(
                                 context.applicationContext,
-                                context.getString(R.string.settings_clear_image_cache_done),
+                                resources.getString(R.string.settings_clear_image_cache_done),
                                 Toast.LENGTH_SHORT
                             ).show()
                         }

@@ -131,7 +131,7 @@ class CollectionUiTest {
         try {
             host.main { activity.setContent {
                 val context = androidx.compose.ui.platform.LocalContext.current
-                val localized = context.createConfigurationContext(android.content.res.Configuration(context.resources.configuration).apply {
+                val localized = context.createConfigurationContext(android.content.res.Configuration(androidx.compose.ui.platform.LocalConfiguration.current).apply {
                     setLocale(if (japanese.value) java.util.Locale.JAPANESE else java.util.Locale.ENGLISH)
                 })
                 CompositionLocalProvider(androidx.compose.ui.platform.LocalContext provides localized,

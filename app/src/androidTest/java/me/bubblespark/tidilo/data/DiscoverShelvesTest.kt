@@ -148,8 +148,9 @@ class DiscoverShelvesTest {
     private fun show(source: FakeSource, calls: Calls = Calls(), japaneseLightLargeFont: Boolean = false) {
         composeRule.setContent {
             val base = LocalContext.current
-            val context = if (!japaneseLightLargeFont) base else remember(base) {
-                base.createConfigurationContext(Configuration(base.resources.configuration).apply {
+            val baseConfiguration = LocalConfiguration.current
+            val context = if (!japaneseLightLargeFont) base else remember(base, baseConfiguration) {
+                base.createConfigurationContext(Configuration(baseConfiguration).apply {
                     setLocale(Locale.JAPAN)
                     fontScale = 2f
                 })

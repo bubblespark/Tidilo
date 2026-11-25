@@ -228,8 +228,9 @@ class ManualImportDialogTest {
 
         composeRule.setContent {
             val baseContext = LocalContext.current
-            val configuration = remember(locale) {
-                Configuration(baseContext.resources.configuration).apply { setLocale(locale) }
+            val baseConfiguration = LocalConfiguration.current
+            val configuration = remember(locale, baseConfiguration) {
+                Configuration(baseConfiguration).apply { setLocale(locale) }
             }
             val localized = remember(configuration) { baseContext.createConfigurationContext(configuration) }
             CompositionLocalProvider(

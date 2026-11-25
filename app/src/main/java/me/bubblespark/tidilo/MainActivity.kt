@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -318,10 +319,11 @@ fun TidiloApp(
             containerColor = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onBackground,
             contentWindowInsets = WindowInsets(0, 0, 0, 0)
-        ) { _ ->
+        ) { innerPadding ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(innerPadding)
                     .nestedScroll(nestedScrollConnection)
             ) {
                 // Stationary centralized background layer

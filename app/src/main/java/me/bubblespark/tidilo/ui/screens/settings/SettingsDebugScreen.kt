@@ -60,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
@@ -94,6 +95,7 @@ internal fun SettingsDebugScreen(
     checkAiCoreReadiness: suspend () -> AiCoreReadiness = { AiCoreAvailability.inspect() }
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val coroutineScope = rememberCoroutineScope()
     val applicationInfo = context.applicationInfo
     var readiness by remember { mutableStateOf<AiCoreReadiness?>(null) }
@@ -536,7 +538,7 @@ internal fun SettingsDebugScreen(
                 clipboard?.setPrimaryClip(clip)
                 Toast.makeText(
                     context,
-                    context.getString(R.string.debug_crash_logs_copied),
+                    resources.getString(R.string.debug_crash_logs_copied),
                     Toast.LENGTH_SHORT
                 ).show()
             }

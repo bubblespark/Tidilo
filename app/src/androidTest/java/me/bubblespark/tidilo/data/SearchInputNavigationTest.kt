@@ -48,6 +48,7 @@ import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
 import me.bubblespark.tidilo.ui.screens.library.RepositoryLibraryStore
 import me.bubblespark.tidilo.ui.screens.library.SearchScreen
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
+import org.json.JSONArray
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -315,8 +316,44 @@ class SearchInputNavigationTest {
 
     @Test
     fun openingSearchFromButtonRailAndTagSelectionFocusesInput(): Unit = runBlocking {
+        runOpeningSearchFromButtonRailAndTagSelectionE2e()
+    }
+
+    @Test
+    fun persistedSearchHistorySurvivesButtonRailAndDetailE2e(): Unit = runBlocking {
+        val libraryPrefs = context.getSharedPreferences(LIBRARY_PREFS_NAME, Context.MODE_PRIVATE)
+        val hadSavedHistory = libraryPrefs.contains(SEARCH_HISTORY_KEY)
+        val savedHistoryJson = libraryPrefs.getString(SEARCH_HISTORY_KEY, null)
+        val expectedHistory = listOf("persisted alpha", "persisted beta")
+
+        try {
+            libraryPrefs.edit()
+                .putString(SEARCH_HISTORY_KEY, JSONArray(expectedHistory).toString())
+                .commit()
+
+            runOpeningSearchFromButtonRailAndTagSelectionE2e()
+
+            val persistedJson = libraryPrefs.getString(SEARCH_HISTORY_KEY, null)
+            val persisted = persistedJson?.let { raw ->
+                val array = JSONArray(raw)
+                List(array.length()) { array.getString(it) }
+            }.orEmpty()
+            assertEquals("E2E test must preserve persisted search history", expectedHistory, persisted)
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) {
+                libraryPrefs.edit().apply {
+                    if (hadSavedHistory) putString(SEARCH_HISTORY_KEY, savedHistoryJson) else remove(SEARCH_HISTORY_KEY)
+                }.commit()
+            }
+        }
+    }
+
+    private suspend fun runOpeningSearchFromButtonRailAndTagSelectionE2e() {
         val oldBlur = AppConfig.overlayBlurEnabled.value
         val oldDiscoverPreview = AppConfig.discoverPreviewEnabled.value
+        val libraryPrefs = context.getSharedPreferences(LIBRARY_PREFS_NAME, Context.MODE_PRIVATE)
+        val hadSavedHistory = libraryPrefs.contains(SEARCH_HISTORY_KEY)
+        val savedHistoryJson = libraryPrefs.getString(SEARCH_HISTORY_KEY, null)
         val db = AppDatabase.getInstance(context)
         val prefix = "search-detail-${UUID.randomUUID()}"
         val fixtureRows = (0..15).map { index ->
@@ -333,7 +370,6 @@ class SearchInputNavigationTest {
         var vmReady = false
         var oldMode: LibraryViewMode? = null
         var oldQuery = ""
-        var oldHistory = emptyList<String>()
 
         try {
             AppConfig.setOverlayBlurEnabled(false)
@@ -346,7 +382,6 @@ class SearchInputNavigationTest {
                     vmReady = true
                     oldMode = vm.viewMode.value
                     oldQuery = vm.searchQuery.value
-                    oldHistory = vm.searchHistory.value
                     vm.setViewMode(LibraryViewMode.LIST)
                     vm.onSearchQueryChanged("")
                 }
@@ -498,8 +533,6 @@ class SearchInputNavigationTest {
                         instrumentation.runOnMainSync {
                             oldMode?.let(vm::setViewMode)
                             vm.onSearchQueryChanged(oldQuery)
-                            vm.clearSearchHistory()
-                            oldHistory.asReversed().forEach(vm::addSearchHistory)
                         }
                     }
                 }
@@ -507,9 +540,17 @@ class SearchInputNavigationTest {
         } finally {
             withContext(NonCancellable + Dispatchers.IO) {
                 db.openHelper.writableDatabase.execSQL("DELETE FROM bookmarks WHERE id LIKE ?", arrayOf("$prefix%"))
+                libraryPrefs.edit().apply {
+                    if (hadSavedHistory) putString(SEARCH_HISTORY_KEY, savedHistoryJson) else remove(SEARCH_HISTORY_KEY)
+                }.commit()
             }
             AppConfig.setDiscoverPreviewEnabled(oldDiscoverPreview)
             AppConfig.setOverlayBlurEnabled(oldBlur)
         }
+    }
+
+    companion object {
+        private const val LIBRARY_PREFS_NAME = "tidilo_library_prefs"
+        private const val SEARCH_HISTORY_KEY = "search_history"
     }
 }

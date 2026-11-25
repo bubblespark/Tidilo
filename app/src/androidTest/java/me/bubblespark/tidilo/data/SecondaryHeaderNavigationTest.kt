@@ -1,191 +1,194 @@
 package me.bubblespark.tidilo.data
 
-import androidx.activity.compose.setContent
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModelProvider
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import me.bubblespark.tidilo.service.TaggingResult
 import me.bubblespark.tidilo.R
-import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
-import me.bubblespark.tidilo.ui.screens.library.*
-import org.junit.Assert.*
+import me.bubblespark.tidilo.service.TaggingResult
+import me.bubblespark.tidilo.ui.screens.library.AI_REVIEW_STATUS_ERROR_TAG
+import me.bubblespark.tidilo.ui.screens.library.AI_REVIEW_STATUS_INFO_TAG
+import me.bubblespark.tidilo.ui.screens.library.BookmarkAiReviewScreen
+import me.bubblespark.tidilo.ui.screens.library.BookmarkDetailScreen
+import me.bubblespark.tidilo.ui.screens.library.TagSelectionScreen
+import me.bubblespark.tidilo.ui.theme.TidiloTheme
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
-import java.util.UUID
 
 class SecondaryHeaderNavigationTest {
-    @Test fun enlargedTagHeaderKeepsSubtitleBelowSingleLineTitle(): Unit = runBlocking {
-        val host = HeaderTestHost()
-        val activity = host.launch()
-        try {
-            host.main {
-                val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
-                activity.setContent { MaterialTheme {
-                    CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 2f)) {
-                        Box(Modifier.size(320.dp, 450.dp)) { TagSelectionScreen(vm, {}) }
-                    }
-                } }
+    @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
+    private val context get() = composeRule.activity
+
+    /** Runs [block] against an in-memory Library seeded with [seed], with offline visual caches. */
+    private fun withLibrary(vararg seed: BookmarkEntity, block: suspend (InMemoryLibrary) -> Unit): Unit = runBlocking {
+        val caches = OfflineVisualCaches()
+        val library = withContext(Dispatchers.IO) {
+            InMemoryLibrary(context.applicationContext).also {
+                it.awaitReady()
+                if (seed.isNotEmpty()) it.db.bookmarkDao().insertAll(seed.toList())
             }
-            val node = host.await(activity) { host.text(it, host.context.getString(R.string.tag_selection_title)) }
-            host.main {
-                val layouts = mutableListOf<TextLayoutResult>()
-                node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
-                assertEquals("Header title stays one line at 200%", 1, layouts.single().lineCount)
-            }
-            host.capture("tag-header-200")
-        } finally { host.main { activity.finish() } }
+        }
+        try { block(library) } finally {
+            caches.close()
+            library.close()
+        }
     }
 
-    @Test fun reviewHeaderSurvivesLoadingSuccessAndDiscardWithoutInference(): Unit = runBlocking {
-        val host = HeaderTestHost()
-        val activity = host.launch()
-        val db = AppDatabase.getInstance(host.context)
-        val id = "header-review-${UUID.randomUUID()}"
+    private fun show(content: @androidx.compose.runtime.Composable () -> Unit) = composeRule.setContent {
+        TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) { content() }
+    }
+
+    private fun await(matcher: SemanticsMatcher, unmerged: Boolean = false): SemanticsNode {
+        composeRule.waitUntil(8_000) { composeRule.onAllNodes(matcher, unmerged).fetchSemanticsNodes().isNotEmpty() }
+        return composeRule.onAllNodes(matcher, unmerged).fetchSemanticsNodes().first()
+    }
+
+    private fun backBounds(label: String): Rect = await(hasContentDescription(label) and hasClickAction()).boundsInRoot
+
+    private fun clickBack(label: String) {
+        composeRule.onAllNodes(hasContentDescription(label) and hasClickAction())[0].performSemanticsAction(SemanticsActions.OnClick)
+    }
+
+    private fun scroll(pixels: Float) {
+        composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy))[0]
+            .performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, pixels) }
+        composeRule.waitForIdle()
+    }
+
+    @Test fun enlargedTagHeaderKeepsSubtitleBelowSingleLineTitle() = withLibrary { library ->
+        val vm = library.viewModel()
+        show {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 2f)) {
+                Box(Modifier.size(320.dp, 450.dp)) { TagSelectionScreen(vm, {}) }
+            }
+        }
+        val node = await(hasText(context.getString(R.string.tag_selection_title)), unmerged = true)
+        composeRule.runOnUiThread {
+            val layouts = mutableListOf<TextLayoutResult>()
+            node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+            assertEquals("Header title stays one line at 200%", 1, layouts.single().lineCount)
+        }
+    }
+
+    @Test fun reviewHeaderSurvivesLoadingSuccessAndDiscardWithoutInference() = withLibrary(
+        BookmarkEntity("header-review", "Header review", "https://header.invalid/review", "Original summary", createdAt = 1, updatedAt = 1)
+    ) { library ->
         val generated = CompletableDeferred<Result<TaggingResult>>()
         var returned = false
         var calls = 0
-        try {
-            db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Header review", "https://header.invalid/$id", "Original summary", createdAt = 1, updatedAt = 1))
-            host.main {
-                val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
-                activity.setContent { MaterialTheme { Box(Modifier.size(360.dp, 450.dp)) {
-                    BookmarkAiReviewScreen(id, vm, { returned = true }, generateProposal = { _, _, _ -> calls++; generated.await() })
-                } } }
+        val vm = library.viewModel()
+        show {
+            Box(Modifier.size(360.dp, 450.dp)) {
+                BookmarkAiReviewScreen("header-review", vm, { returned = true }, generateProposal = { _, _, _ -> calls++; generated.await() })
             }
-            val loadingTitle = host.context.getString(R.string.ai_review_loading_title)
-            host.await(activity, includeOtherWindows = false) { host.text(it, loadingTitle) }
-            host.assertNoAiReviewStatusIcon(activity, loadingTitle)
-            val label = host.context.getString(R.string.common_back)
-            val before = host.await(activity) { host.description(it, label) }.boundsInRoot
-            generated.complete(Result.success(TaggingResult("Proposal", "Proposal summary ".repeat(60), "Article", "Tech", listOf("Android"))))
-            host.await(activity) { host.text(it, "Header review") }
-            host.scroll(activity, 6000f)
-            delay(400)
-            val after = host.await(activity) { host.description(it, label) }
-            assertEquals(before.top, after.boundsInRoot.top, 1f)
-            host.main {
-                var node = after
-                while (node.config.getOrNull(SemanticsActions.OnClick) == null) node = requireNotNull(node.parent)
-                node.config[SemanticsActions.OnClick].action?.invoke()
-            }
-            assertFalse(returned)
-            fun find(node: android.view.accessibility.AccessibilityNodeInfo, text: String): android.view.accessibility.AccessibilityNodeInfo? {
-                if (node.text?.toString() == text) return node
-                return (0 until node.childCount).firstNotNullOfOrNull { node.getChild(it)?.let { child -> find(child, text) } }
-            }
-            val confirm = withTimeout(5000) {
-                var node: android.view.accessibility.AccessibilityNodeInfo? = null
-                while (node == null) {
-                    host.instrumentation.uiAutomation.clearCache()
-                    node = host.instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, host.context.getString(R.string.ai_review_dialog_discard_confirm)) }
-                    if (node == null) delay(30)
-                }
-                node
-            }
-            var clickable = confirm
-            while (!clickable.isClickable) clickable = requireNotNull(clickable.parent)
-            assertTrue(clickable.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
-            withTimeout(3000) { while (!returned) delay(30) }
-            assertEquals(1, calls)
-            assertEquals("Original summary", db.bookmarkDao().getBookmarkById(id)?.description)
-        } finally { host.main { activity.finish() }; db.bookmarkDao().deleteById(id) }
+        }
+        val loadingTitle = context.getString(R.string.ai_review_loading_title)
+        await(hasText(loadingTitle), unmerged = true)
+        composeRule.onAllNodes(hasTestTag(AI_REVIEW_STATUS_INFO_TAG) or hasTestTag(AI_REVIEW_STATUS_ERROR_TAG), useUnmergedTree = true)
+            .fetchSemanticsNodes().let { assertTrue("Review status icon should be absent", it.isEmpty()) }
+        val label = context.getString(R.string.common_back)
+        val before = backBounds(label)
+        generated.complete(Result.success(TaggingResult("Proposal", "Proposal summary ".repeat(60), "Article", "Tech", listOf("Android"))))
+        await(hasText("Header review"), unmerged = true)
+        scroll(6000f)
+        assertEquals(before.top, backBounds(label).top, 1f)
+        clickBack(label)
+        assertFalse(returned)
+        val confirm = hasText(context.getString(R.string.ai_review_dialog_discard_confirm)) and hasClickAction()
+        await(confirm)
+        composeRule.onAllNodes(confirm)[0].performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitUntil(3_000) { returned }
+        assertEquals(1, calls)
+        val description = withContext(Dispatchers.IO) { library.db.bookmarkDao().getBookmarkById("header-review")?.description }
+        assertEquals("Original summary", description)
     }
 
-    @Test fun detailBackRemainsFixedAndNoteAutosavesWhenLeaving(): Unit = runBlocking {
-        val host = HeaderTestHost()
-        val activity = host.launch()
-        val db = AppDatabase.getInstance(host.context)
-        val id = "header-detail-${UUID.randomUUID()}"
+    @Test fun detailBackRemainsFixedAndNoteAutosavesWhenLeaving() = withLibrary(
+        BookmarkEntity("header-detail", "Header detail", "https://header.invalid/detail", "Long summary ".repeat(60), createdAt = 1, updatedAt = 1)
+    ) { library ->
         var returned = false
-        try {
-            db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Header detail", "https://header.invalid/$id", "Long summary ".repeat(60), createdAt = 1, updatedAt = 1))
-            host.main {
-                val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
-                activity.setContent { MaterialTheme { Box(Modifier.size(360.dp, 450.dp)) { BookmarkDetailScreen(id, vm, { returned = true }) } } }
+        val shown = mutableStateOf(true)
+        val vm = library.viewModel()
+        show {
+            if (shown.value) Box(Modifier.size(360.dp, 450.dp)) { BookmarkDetailScreen("header-detail", vm, { returned = true }) }
+        }
+        val label = context.getString(R.string.common_back)
+        val before = backBounds(label)
+        await(hasText("Header detail"), unmerged = true)
+        scroll(6000f)
+        assertEquals(before.top, backBounds(label).top, 1f)
+        val note = await(SemanticsMatcher.keyIsDefined(SemanticsActions.SetText))
+        val back = await(hasContentDescription(label) and hasClickAction())
+        composeRule.runOnUiThread {
+            assertTrue(note.config[SemanticsActions.SetText].action?.invoke(AnnotatedString("Saved from fixed header")) == true)
+        }
+        // Leave right after typing: Back needs no confirmation and disposal flushes the pending note.
+        composeRule.runOnUiThread {
+            assertTrue(back.config[SemanticsActions.OnClick].action?.invoke() == true)
+            shown.value = false
+        }
+        composeRule.waitUntil(5_000) { returned }
+        withTimeout(5_000) {
+            while (withContext(Dispatchers.IO) { library.db.bookmarkDao().getBookmarkById("header-detail")?.note } != "Saved from fixed header") {
+                delay(100)
             }
-            val label = host.context.getString(R.string.common_back)
-            val before = host.await(activity) { host.description(it, label) }.boundsInRoot
-            host.await(activity) { host.text(it, "Header detail") }
-            host.scroll(activity, 6000f)
-            delay(400)
-            val after = host.await(activity) { host.description(it, label) }
-            assertEquals(before.top, after.boundsInRoot.top, 1f)
-            val note = host.await(activity) { it.config.getOrNull(SemanticsActions.SetText) != null }
-            host.main {
-                assertTrue(note.config[SemanticsActions.SetText].action?.invoke(androidx.compose.ui.text.AnnotatedString("Saved from fixed header")) == true)
-            }
-            // Leave right after typing: Back needs no confirmation and disposal flushes the pending note.
-            host.main {
-                var node = after
-                while (node.config.getOrNull(SemanticsActions.OnClick) == null) node = requireNotNull(node.parent)
-                assertTrue(node.config[SemanticsActions.OnClick].action?.invoke() == true)
-                activity.setContent { }
-            }
-            withTimeout(5000) { while (!returned) delay(30) }
-            withTimeout(5000) {
-                while (db.bookmarkDao().getBookmarkById(id)?.note != "Saved from fixed header") delay(30)
-            }
-        } finally { host.main { activity.finish() }; db.bookmarkDao().deleteById(id) }
+        }
     }
 
-    @Test fun tagSelectionBackRemainsFixedAndAppliesQuery(): Unit = runBlocking {
-        val host = HeaderTestHost()
-        val activity = host.launch()
-        lateinit var vm: LibraryViewModel
+    @Test fun tagSelectionBackRemainsFixedAndAppliesQuery() = withLibrary { library ->
         var returned = false
-        var previous = ""
-        try {
-            host.main {
-                vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
-                previous = vm.searchQuery.value
-                vm.onSearchQueryChanged("header-query")
-                activity.setContent { MaterialTheme { Box(Modifier.size(360.dp, 350.dp)) { TagSelectionScreen(vm, { returned = true }) } } }
-            }
-            val label = host.context.getString(R.string.tag_selection_back_and_apply)
-            val before = host.await(activity) { host.description(it, label) }.boundsInRoot
-            host.scroll(activity, 3000f)
-            delay(400)
-            val after = host.await(activity) { host.description(it, label) }
-            assertEquals(before.top, after.boundsInRoot.top, 1f)
-            host.main {
-                var node = after
-                while (node.config.getOrNull(SemanticsActions.OnClick) == null) node = requireNotNull(node.parent)
-                node.config[SemanticsActions.OnClick].action?.invoke()
-            }
-            assertTrue(returned)
-            assertEquals("header-query", vm.searchQuery.value)
-        } finally { host.main { vm.onSearchQueryChanged(previous); activity.finish() } }
+        val vm = library.viewModel()
+        composeRule.runOnUiThread { vm.onSearchQueryChanged("header-query") }
+        show { Box(Modifier.size(360.dp, 350.dp)) { TagSelectionScreen(vm, { returned = true }) } }
+        val label = context.getString(R.string.tag_selection_back_and_apply)
+        val before = backBounds(label)
+        scroll(3000f)
+        assertEquals(before.top, backBounds(label).top, 1f)
+        clickBack(label)
+        assertTrue(returned)
+        assertEquals("header-query", vm.searchQuery.value)
     }
 
-    @Test fun missingDetailAndReviewKeepNavigationInHeader(): Unit = runBlocking {
-        val host = HeaderTestHost()
-        val activity = host.launch()
-        try {
-            for (review in listOf(false, true)) {
-                host.main {
-                    val vm = ViewModelProvider(activity)[LibraryViewModel::class.java]
-                    activity.setContent { MaterialTheme {
-                        if (review) BookmarkAiReviewScreen("missing-header-test", vm, {})
-                        else BookmarkDetailScreen("missing-header-test", vm, {})
-                    } }
-                }
-                host.await(activity) { host.text(it, host.context.getString(R.string.detail_item_not_found)) }
-                val back = host.await(activity) { host.description(it, host.context.getString(R.string.common_back)) }
-                assertTrue("Missing content still has a top navigation header", back.boundsInRoot.top < 200f * host.context.resources.displayMetrics.density)
-            }
-        } finally { host.main { activity.finish() } }
+    @Test fun missingDetailAndReviewKeepNavigationInHeader() = withLibrary { library ->
+        val review = mutableStateOf(false)
+        val vm = library.viewModel()
+        show {
+            if (review.value) BookmarkAiReviewScreen("missing-header-test", vm, {})
+            else BookmarkDetailScreen("missing-header-test", vm, {})
+        }
+        for (isReview in listOf(false, true)) {
+            composeRule.runOnIdle { review.value = isReview }
+            await(hasText(context.getString(R.string.detail_item_not_found)), unmerged = true)
+            val back = backBounds(context.getString(R.string.common_back))
+            assertTrue("Missing content still has a top navigation header (review=$isReview)",
+                back.top < 200f * context.resources.displayMetrics.density)
+        }
     }
 }

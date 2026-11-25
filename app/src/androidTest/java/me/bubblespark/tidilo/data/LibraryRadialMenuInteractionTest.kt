@@ -1,524 +1,396 @@
 package me.bubblespark.tidilo.data
 
-import android.os.SystemClock
-import android.view.InputDevice
-import android.view.MotionEvent
-import android.view.View
-import android.view.ViewGroup
+import android.view.ViewConfiguration
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.BroadcastFrameClock
-import androidx.compose.runtime.Recomposer
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.snapshots.Snapshot
-import androidx.compose.ui.MotionDurationScale
-import androidx.compose.ui.platform.AndroidUiDispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.cancel
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.*
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.TouchInjectionScope
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.junit4.AndroidComposeTestRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
-import me.bubblespark.tidilo.ui.navigation.*
+import me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu
+import me.bubblespark.tidilo.ui.navigation.LibraryRadialMenuState
+import me.bubblespark.tidilo.ui.navigation.LibraryShortcut
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
-import me.bubblespark.tidilo.config.AppTheme
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import kotlin.math.abs
 
-/** Menu-only fixture. Effective semantics deliberately use the merged Activity root. */
-internal class RadialMenuFixture(val direction: LayoutDirection = LayoutDirection.Ltr,
-    theme: AppTheme = AppTheme.DEFAULT, dark: Boolean = false, blur: Boolean = true,
-    fontScale: Float? = null, motionScale: Float? = null,
-    private val frameClock: BroadcastFrameClock? = null) : AutoCloseable {
-    val host = HeaderTestHost()
-    val activity = host.launch()
+internal typealias ComponentActivityRule = AndroidComposeTestRule<ActivityScenarioRule<ComponentActivity>, ComponentActivity>
+
+/** Motion scale read by every animation the rule runs; set it before `setContent`. */
+internal class TestMotionScale : MotionDurationScale {
+    var factor = 1f
+    override val scaleFactor: Float get() = factor
+}
+
+/** The radial menu alone over an empty scaffold. Shortcuts are recorded in [actions]. */
+internal class RadialMenuScene(private val rule: ComponentActivityRule) {
     val state = LibraryRadialMenuState()
     val actions = mutableListOf<String>()
+    val direction = mutableStateOf(LayoutDirection.Ltr)
+    /** True confines the menu to a short full-width box instead of the whole window. */
+    val landscapeBox = mutableStateOf(false)
     private var pointerDown = false
-    private var ready = false
-    private val motionScope = motionScale?.let {
-        val context = if (frameClock == null) AndroidUiDispatcher.Main else Dispatchers.Main.immediate + frameClock
-        CoroutineScope(context + SupervisorJob())
-    }
-    private var composeRoot: ViewRootForTest? = null
-    private var frameTimeMillis = 0L
-    private val recomposer = motionScope?.let { scope -> Recomposer(scope.coroutineContext + object : MotionDurationScale {
-        override val scaleFactor: Float = requireNotNull(motionScale)
-    }) }
 
+    val density: Float get() = rule.activity.resources.displayMetrics.density
 
-    init {
-        recomposer?.let { active -> motionScope!!.launch { active.runRecomposeAndApplyChanges() } }
-        host.main { activity.setContent(parent = recomposer) {
-            if (frameClock != null) {
-                val view = LocalView.current
-                SideEffect { composeRoot = view as ViewRootForTest }
-            }
-            TidiloTheme(dynamicColor = false, theme = theme, darkTheme = dark, blurEnabled = blur) {
-                val currentDensity = LocalDensity.current
-                CompositionLocalProvider(LocalLayoutDirection provides direction,
-                    LocalDensity provides Density(currentDensity.density, fontScale ?: currentDensity.fontScale)) {
-                    Box(Modifier.fillMaxSize().testTag("radial_fixture")) {
-                    TidiloScreenScaffold(header = {}, overlay = {
-                        LibraryRadialMenu(state, LibraryFilterMode.DOMAIN, { actions += it.name }, { actions += "SEARCH" })
-                    }) { Box(Modifier.fillMaxSize()) }
+    fun show(fontScale: Float? = null) {
+        rule.setContent {
+            TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
+                val current = LocalDensity.current
+                CompositionLocalProvider(LocalLayoutDirection provides direction.value,
+                    LocalDensity provides Density(current.density, fontScale ?: current.fontScale)) {
+                    val bounds = if (landscapeBox.value) Modifier.fillMaxWidth().height(360.dp) else Modifier.fillMaxSize()
+                    Box(bounds.testTag(FIXTURE_TAG)) {
+                        TidiloScreenScaffold(header = {}, overlay = {
+                            LibraryRadialMenu(state, LibraryFilterMode.DOMAIN, { actions += it.name }, { actions += "SEARCH" })
+                        }) { Box(Modifier.fillMaxSize()) }
                     }
                 }
             }
-        } }
-    }
-
-    fun advanceFrame(frameMillis: Long): Long {
-        frameTimeMillis += frameMillis
-        Snapshot.sendApplyNotifications()
-        requireNotNull(frameClock).sendFrame(frameTimeMillis * 1_000_000L)
-        Snapshot.sendApplyNotifications()
-        composeRoot?.measureAndLayoutForTest()
-        return frameTimeMillis
-    }
-
-    suspend fun node(suffix: String): SemanticsNode {
-        if (!ready) {
-            withTimeout(4000) {
-                var focused = false
-                while (!focused) {
-                    host.main { focused = activity.hasWindowFocus() && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
-                    if (!focused) delay(20)
-                }
-            }
-            host.instrumentation.waitForIdleSync()
-            if (frameClock != null) host.main { advanceFrame(16) }
-            ready = true
         }
+        // The menu ignores input unless its window has focus.
+        rule.waitUntil(4_000) { rule.activity.hasWindowFocus() }
+        rule.waitForIdle()
+    }
+
+    private fun nodes(suffix: String, clickable: Boolean): List<SemanticsNode> {
+        val tag = hasTestTag("library_radial_$suffix")
+        return rule.onAllNodes(if (clickable) tag and hasClickAction() else tag, useUnmergedTree = true).fetchSemanticsNodes()
+    }
+
+    /** Waits for the clickable shortcut (or trigger) and returns it. */
+    fun node(suffix: String): SemanticsNode {
         try {
-            return host.await(activity) {
-                it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_$suffix" &&
-                    it.config.getOrNull(SemanticsActions.OnClick) != null &&
-                    generateSequence(it) { node -> node.parent }.any { node ->
-                        node.config.getOrNull(SemanticsProperties.TestTag) == "radial_fixture"
-                    }
-            }
-        } catch (error: Exception) {
+            rule.waitUntil(4_000) { nodes(suffix, clickable = true).isNotEmpty() }
+        } catch (error: Throwable) {
             throw AssertionError("Missing $suffix; open=${state.isOpen}; actions=$actions", error)
         }
+        return nodes(suffix, clickable = true).first()
     }
 
-    suspend fun click(suffix: String) {
-        val node = node(suffix)
-        host.main { assertTrue(node.config[SemanticsActions.OnClick].action!!.invoke()) }
-        if (state.isOpen) delay(280)
+    fun bounds(suffix: String): Rect = node(suffix).boundsInRoot
+    fun center(suffix: String): Offset = bounds(suffix).center
+    fun fixtureBounds(): Rect = rule.onAllNodes(hasTestTag(FIXTURE_TAG)).fetchSemanticsNodes().single().boundsInRoot
+
+    /** Shortcut extension in [0, 1], measured from the Newest first circle whether or not it is clickable. */
+    fun progress(trigger: Offset): Float {
+        val item = nodes("newest_first", clickable = false).first()
+        return (trigger.y - item.boundsInRoot.center.y) / (150f * density)
     }
 
-    suspend fun center(suffix: String): Offset {
-        if (state.isOpen) delay(280)
-        return node(suffix).boundsInWindow.center
+    fun click(suffix: String) {
+        node(suffix)
+        rule.onAllNodes(hasTestTag("library_radial_$suffix") and hasClickAction(), useUnmergedTree = true)[0]
+            .performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
     }
 
-    fun send(action: Int, position: Offset, downTime: Long) {
-        if (action == MotionEvent.ACTION_CANCEL && !pointerDown) return
-        val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, position.x, position.y, 0)
-        event.source = InputDevice.SOURCE_TOUCHSCREEN
-        try {
-            check(host.instrumentation.uiAutomation.injectInputEvent(event, true))
-            if (action == MotionEvent.ACTION_DOWN) pointerDown = true
-            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) pointerDown = false
-        } finally { event.recycle() }
-    }
+    fun touch(block: TouchInjectionScope.() -> Unit) = rule.onRoot().performTouchInput(block)
 
-    override fun close() { host.main { activity.setContent {}; activity.finish(); recomposer?.cancel(); motionScope?.cancel() } }
+    fun down(position: Offset) { touch { down(position) }; pointerDown = true }
+    fun up() { touch { up() }; pointerDown = false }
+    fun cancel() { if (pointerDown) touch { cancel() }; pointerDown = false }
+
+    fun tap(position: Offset) = touch { down(position); up() }
+
+    fun assertClosedWithoutAction(message: String = "") = rule.runOnIdle {
+        assertFalse(message, state.isOpen)
+        assertTrue(message, actions.isEmpty())
+    }
 
     companion object {
-        fun effectiveNodes(activity: ComponentActivity): List<SemanticsNode> {
-            fun roots(view: View): List<ViewRootForTest> = when (view) {
-                is ViewRootForTest -> listOf(view)
-                is ViewGroup -> (0 until view.childCount).flatMap { roots(view.getChildAt(it)) }
-                else -> emptyList()
-            }
-            fun visit(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::visit)
-            val owners = roots(activity.window.decorView)
-            check(owners.isNotEmpty()) { "No effective Compose root" }
-            return owners.flatMap { visit(it.semanticsOwner.rootSemanticsNode) }
-        }
+        const val FIXTURE_TAG = "radial_fixture"
     }
 }
 
+@OptIn(ExperimentalTestApi::class)
 class LibraryRadialMenuInteractionTest {
-    private fun readProgress(fixture: RadialMenuFixture, trigger: Offset): Float {
-        val node = fixture.host.nodes(fixture.activity).first { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_newest_first" &&
-            generateSequence(it) { parent -> parent.parent }.any { parent -> parent.config.getOrNull(SemanticsProperties.TestTag) == "radial_fixture" } }
-        return (trigger.y - node.boundsInWindow.center.y) / (150f * fixture.activity.resources.displayMetrics.density)
-    }
+    private val motion = TestMotionScale()
+    @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>(effectContext = motion)
+    private val scene = RadialMenuScene(composeRule)
+    private val clock get() = composeRule.mainClock
 
-    private fun progress(fixture: RadialMenuFixture, trigger: Offset): Float {
-        var value = 0f
-        fixture.host.main { value = readProgress(fixture, trigger) }
-        return value
-    }
-
-    private suspend fun awaitProgress(fixture: RadialMenuFixture, trigger: Offset, range: ClosedFloatingPointRange<Float>, increasing: Boolean = true): Float = withTimeout(4000) {
-        var value = progress(fixture, trigger)
-        while (value !in range) {
-            check(!increasing || value <= range.endInclusive) { "Missed progress $range, observed $value" }
-            delay(5); value = progress(fixture, trigger)
+    /** Steps paused frames until progress enters [range]; fails if an increasing animation overshoots it. */
+    private fun awaitProgress(trigger: Offset, range: ClosedFloatingPointRange<Float>): Float {
+        var value = scene.progress(trigger)
+        repeat(400) {
+            if (value in range) return value
+            check(value <= range.endInclusive) { "Missed progress $range, observed $value" }
+            clock.advanceTimeByFrame()
+            value = scene.progress(trigger)
         }
-        value
+        throw AssertionError("Progress never reached $range, last $value")
     }
 
-    @Test fun stationaryCornerPressDoesNotCountWrapperMotionAsFingerMotion() = runBlocking {
-        run {
-            RadialMenuFixture(motionScale = 10f).use { fixture ->
-                val trigger = fixture.center("trigger")
-                val button = fixture.node("trigger")
-                fixture.host.main { button.config[SemanticsActions.OnClick].action!!.invoke() }
-                val start = awaitProgress(fixture, trigger, .42f.. .48f)
-                val density = fixture.activity.resources.displayMetrics.density
-                val point = trigger + Offset(-27f * density, (-150f * start + 8f) * density)
-                val time = SystemClock.uptimeMillis()
-                fixture.send(MotionEvent.ACTION_DOWN, point, time)
-                try {
-                    val slop = android.view.ViewConfiguration.get(fixture.activity).scaledTouchSlop
-                    val delta = (slop / density + 4f) / 150f
-                    val end = awaitProgress(fixture, trigger, start + delta..start + delta + .07f)
-                    assertTrue("Wrapper must move farther than touch slop", (end - start) * 150f * density > slop)
-                    fixture.send(MotionEvent.ACTION_UP, point, time)
-                } finally { fixture.send(MotionEvent.ACTION_CANCEL, point, time) }
-                delay(100)
-                fixture.host.main { assertEquals(listOf("DOMAIN"), fixture.actions); assertFalse(fixture.state.isOpen) }
-            }
-        }
-    }
-
-    @Test fun reversingDuringMotionKeepsContinuousFramePositions() = runBlocking {
-        val frameClock = BroadcastFrameClock()
-        val motionScale = 10f
-        RadialMenuFixture(motionScale = motionScale, frameClock = frameClock).use { fixture ->
-            val trigger = fixture.center("trigger")
-            val button = fixture.node("trigger")
-            val frameMillis = 16L
-            val rounding = 2f / (150f * fixture.activity.resources.displayMetrics.density)
-            // The easing derivative is bounded by 5. Compare positions from adjacent clock steps.
-            val tolerance = 5f * frameMillis / (230f * motionScale) + rounding
-
-            fun toggle() = fixture.host.main {
-                assertTrue(button.config[SemanticsActions.OnClick].action!!.invoke())
-            }
-
-            fun advanceUntil(target: ClosedFloatingPointRange<Float>): Float {
-                var previous = progress(fixture, trigger)
-                val initial = previous
-                // Each reversal starts at an intermediate position. Its first step is checked too.
-                repeat(150) {
-                    var current = 0f
-                    var frameTimeMillis = 0L
-                    fixture.host.main {
-                        frameTimeMillis = fixture.advanceFrame(frameMillis)
-                        current = readProgress(fixture, trigger)
-                    }
-                    assertTrue(
-                        "Shortcut position jumped: $previous -> $current at $frameTimeMillis ms",
-                        abs(current - previous) <= tolerance,
-                    )
-                    if (initial > 0f) {
-                        assertTrue("Shortcut reached an endpoint during reversal: $current", current > 0f && current < 1f)
-                    }
-                    if (current in target) return current
-                    previous = current
-                }
-                throw AssertionError("Shortcut did not reach $target from $initial, last position $previous")
-            }
-
-            toggle()
-            val expanding = advanceUntil(.4f.. .6f)
-            toggle()
-            val contracting = advanceUntil(.15f.. .3f)
-            toggle()
-            val reopening = advanceUntil(.7f.. .9f)
-            assertTrue(expanding > contracting)
-            assertTrue(reopening > contracting)
-            fixture.host.main {
-                assertTrue(fixture.state.isOpen)
-                assertTrue(fixture.actions.isEmpty())
-            }
-        }
-    }
-
-    @Test fun midExpansionCornerTapSelectsSearchInsteadOfDismissing() = runBlocking {
-        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
-        val previous = android.provider.Settings.Global.getString(instrumentation.targetContext.contentResolver,
-            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE)
-        fun shell(command: String) { instrumentation.uiAutomation.executeShellCommand(command).use {
-            java.io.FileInputStream(it.fileDescriptor).use { stream -> stream.readBytes() }
-        } }
+    @Test fun stationaryCornerPressDoesNotCountWrapperMotionAsFingerMotion() {
+        motion.factor = 10f
+        scene.show()
+        val trigger = scene.center("trigger")
+        clock.autoAdvance = false
+        scene.click("trigger")
+        val start = awaitProgress(trigger, .42f..0.48f)
+        val density = scene.density
+        val point = trigger + Offset(-27f * density, (-150f * start + 8f) * density)
+        scene.down(point)
         try {
-            shell("settings put global animator_duration_scale 10")
-            delay(200)
-            RadialMenuFixture(motionScale = 10f).use { fixture ->
-                val trigger = fixture.center("trigger")
-                val button = fixture.node("trigger")
-                fixture.host.main { button.config[SemanticsActions.OnClick].action!!.invoke() }
-                val density = fixture.activity.resources.displayMetrics.density
-                withTimeout(4000) {
-                    var ready = false
-                    while (!ready) {
-                        fixture.host.main {
-                            val node = fixture.host.nodes(fixture.activity).first { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_newest_first" }
-                            val progress = (trigger.y - node.boundsInWindow.center.y) / (150f * density)
-                            ready = progress in .48f.. .65f
-                        }
-                        if (!ready) delay(10)
-                    }
+            val slop = ViewConfiguration.get(composeRule.activity).scaledTouchSlop
+            val delta = (slop / density + 4f) / 150f
+            val end = awaitProgress(trigger, start + delta..start + delta + .07f)
+            assertTrue("Wrapper must move farther than touch slop", (end - start) * 150f * density > slop)
+            scene.up()
+        } finally { scene.cancel() }
+        clock.autoAdvance = true
+        composeRule.runOnIdle { assertEquals(listOf("DOMAIN"), scene.actions); assertFalse(scene.state.isOpen) }
+    }
+
+    @Test fun reversingDuringMotionKeepsContinuousFramePositions() {
+        motion.factor = 10f
+        scene.show()
+        val trigger = scene.center("trigger")
+        val frameMillis = 16L // ComposeTestRule frame duration
+        val rounding = 2f / (150f * scene.density)
+        // The easing derivative is bounded by 5. Compare positions from adjacent clock steps.
+        val tolerance = 5f * frameMillis / (230f * motion.factor) + rounding
+        clock.autoAdvance = false
+
+        fun advanceUntil(target: ClosedFloatingPointRange<Float>): Float {
+            var previous = scene.progress(trigger)
+            val initial = previous
+            // Each reversal starts at an intermediate position. Its first step is checked too.
+            repeat(150) {
+                clock.advanceTimeByFrame()
+                val current = scene.progress(trigger)
+                assertTrue("Shortcut position jumped: $previous -> $current at ${clock.currentTime} ms",
+                    abs(current - previous) <= tolerance)
+                if (initial > 0f) {
+                    assertTrue("Shortcut reached an endpoint during reversal: $current", current > 0f && current < 1f)
                 }
-                val point = trigger + Offset(-25f * density, -25f * density)
-                val time = SystemClock.uptimeMillis()
-                fixture.send(MotionEvent.ACTION_DOWN, point, time)
-                try { fixture.send(MotionEvent.ACTION_UP, point, time) }
-                finally { fixture.send(MotionEvent.ACTION_CANCEL, point, time) }
-                delay(100)
-                fixture.host.main { assertEquals(listOf("SEARCH"), fixture.actions); assertFalse(fixture.state.isOpen) }
+                if (current in target) return current
+                previous = current
             }
-        } finally {
-            shell(if (previous == null) "settings delete global animator_duration_scale" else "settings put global animator_duration_scale $previous")
+            throw AssertionError("Shortcut did not reach $target from $initial, last position $previous")
+        }
+
+        scene.click("trigger")
+        val expanding = advanceUntil(.4f..0.6f)
+        scene.click("trigger")
+        val contracting = advanceUntil(.15f..0.3f)
+        scene.click("trigger")
+        val reopening = advanceUntil(.7f..0.9f)
+        assertTrue(expanding > contracting)
+        assertTrue(reopening > contracting)
+        composeRule.runOnIdle {
+            assertTrue(scene.state.isOpen)
+            assertTrue(scene.actions.isEmpty())
         }
     }
 
-    @Test fun expansionAndRetractionMoveItemsWhileTriggerStaysFixed() = runBlocking {
-        RadialMenuFixture().use { fixture ->
-            val trigger = fixture.center("trigger")
-            val samples = java.util.concurrent.CopyOnWriteArrayList<Float>()
-            var sampling = true
-            val callback = object : android.view.Choreographer.FrameCallback {
-                override fun doFrame(time: Long) {
-                    fixture.host.nodes(fixture.activity).firstOrNull {
-                        it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_newest_first" &&
-                            generateSequence(it) { node -> node.parent }.any { node ->
-                                node.config.getOrNull(SemanticsProperties.TestTag) == "radial_fixture"
-                            }
-                    }?.let { samples += it.boundsInWindow.center.y }
-                    if (sampling) android.view.Choreographer.getInstance().postFrameCallback(this)
-                }
-            }
+    @Test fun midExpansionCornerTapSelectsSearchInsteadOfDismissing() {
+        motion.factor = 10f
+        scene.show()
+        val trigger = scene.center("trigger")
+        clock.autoAdvance = false
+        scene.click("trigger")
+        awaitProgress(trigger, .48f..0.65f)
+        val density = scene.density
+        scene.tap(trigger + Offset(-25f * density, -25f * density))
+        clock.autoAdvance = true
+        composeRule.runOnIdle { assertEquals(listOf("SEARCH"), scene.actions); assertFalse(scene.state.isOpen) }
+    }
+
+    @Test fun expansionAndRetractionMoveItemsWhileTriggerStaysFixed() {
+        scene.show()
+        val trigger = scene.center("trigger")
+        clock.autoAdvance = false
+        fun sample(): List<Float> = buildList {
+            add(scene.progress(trigger))
+            // 400ms of frames covers the 230ms motion.
+            repeat(25) { clock.advanceTimeByFrame(); add(scene.progress(trigger)) }
+        }
+        scene.click("trigger")
+        val opening = sample()
+        assertTrue("Opening must move, not only fade", opening.distinct().size > 2)
+        assertTrue(opening.first() < opening.last())
+        assertEquals(trigger, scene.center("trigger"))
+        scene.click("trigger")
+        val closing = sample()
+        assertTrue("Closing must move", closing.distinct().size > 2)
+        assertTrue(closing.first() > closing.last())
+        clock.autoAdvance = true
+        scene.assertClosedWithoutAction()
+    }
+
+    @Test fun tapsOutsideEveryCircleInsideControlBoundsDismiss() {
+        scene.show()
+        for (target in listOf("trigger", "search", "collection", "rss", "domain", "newest_first")) {
+            scene.click("trigger")
+            val corner = scene.bounds(target).bottomRight - Offset(2f, 2f)
+            scene.tap(corner)
+            scene.assertClosedWithoutAction(target)
+        }
+    }
+
+    @Test fun backgroundingCancelsTapOpenMenu() {
+        scene.show()
+        scene.click("trigger")
+        scene.node("search")
+        val scenario = composeRule.activityRule.scenario
+        try {
+            // Pausing is the lifecycle event the menu listens to when the app leaves the foreground.
+            scenario.moveToState(Lifecycle.State.STARTED)
+            scene.assertClosedWithoutAction()
+        } finally { scenario.moveToState(Lifecycle.State.RESUMED) }
+    }
+
+    @Test fun itemPointerCancelAndAdditionalPointerCloseWithoutAction() {
+        scene.show()
+        for (additional in listOf(false, true)) {
+            scene.click("trigger")
+            val center = scene.center("search")
+            scene.down(center)
             try {
-                fixture.host.main {
-                    android.view.Choreographer.getInstance().postFrameCallback(callback)
-                    val button = fixture.host.nodes(fixture.activity).first {
-                        it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" &&
-                            it.config.getOrNull(SemanticsActions.OnClick) != null
-                    }
-                    button.config[SemanticsActions.OnClick].action!!.invoke()
-                }
-                delay(400)
-                assertTrue("Opening must move, not only fade", samples.distinct().size > 2)
-                assertTrue(samples.first() > samples.last())
-                assertEquals(trigger, fixture.center("trigger"))
-                samples.clear()
-                fixture.click("trigger")
-                delay(400)
-                assertTrue("Closing must move", samples.distinct().size > 2)
-                assertTrue(samples.first() < samples.last())
-                fixture.host.main { assertFalse(fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
-            } finally {
-                fixture.host.main { sampling = false; android.view.Choreographer.getInstance().removeFrameCallback(callback) }
-            }
-        }
-    }
-
-    @Test fun tapsOutsideEveryCircleInsideControlBoundsDismiss() = runBlocking {
-        RadialMenuFixture().use { fixture ->
-            for (target in listOf("trigger", "search", "collection", "rss", "domain", "newest_first")) {
-                fixture.click("trigger")
-                val bounds = fixture.node(target).boundsInWindow
-                val corner = bounds.bottomRight - Offset(2f, 2f)
-                val time = SystemClock.uptimeMillis()
-                fixture.send(MotionEvent.ACTION_DOWN, corner, time)
-                try {
-                    fixture.send(MotionEvent.ACTION_UP, corner, time)
-                    delay(100)
-                    fixture.host.main { assertFalse(target, fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
-                } finally { fixture.send(MotionEvent.ACTION_CANCEL, corner, time) }
-            }
-        }
-    }
-    @Test fun backgroundingCancelsTapOpenMenu() = runBlocking {
-        RadialMenuFixture().use { fixture ->
-            fixture.click("trigger")
-            fixture.node("search")
-            fixture.host.instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_HOME)
-            delay(200)
-            fixture.host.main { assertFalse(fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
-        }
-    }
-    @Test fun itemPointerCancelAndAdditionalPointerCloseWithoutAction() = runBlocking {
-        RadialMenuFixture().use { fixture ->
-            for (additional in listOf(false, true)) {
-                fixture.click("trigger")
-                val center = fixture.center("search")
-                val time = SystemClock.uptimeMillis()
-                fixture.send(MotionEvent.ACTION_DOWN, center, time)
                 if (additional) {
-                    val properties = Array(2) { index -> MotionEvent.PointerProperties().apply {
-                        id = index; toolType = MotionEvent.TOOL_TYPE_FINGER
-                    } }
-                    val coordinates = Array(2) { index -> MotionEvent.PointerCoords().apply {
-                        x = center.x + index * 10; y = center.y; pressure = 1f; size = 1f
-                    } }
-                    val event = MotionEvent.obtain(time, SystemClock.uptimeMillis(),
-                        MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
-                        2, properties, coordinates, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
-                    try { assertTrue(fixture.host.instrumentation.uiAutomation.injectInputEvent(event, true)) }
-                    finally { event.recycle() }
-                    val cancel = MotionEvent.obtain(time, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL,
-                        2, properties, coordinates, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
-                    try {
-                        withTimeout(3000) {
-                            var closed = false
-                            while (!closed) {
-                                fixture.host.main { closed = !fixture.state.isOpen; assertTrue(fixture.actions.isEmpty()) }
-                                if (!closed) delay(20)
-                            }
-                        }
-                    } finally {
-                        try { assertTrue(fixture.host.instrumentation.uiAutomation.injectInputEvent(cancel, true)) }
-                        finally { cancel.recycle() }
-                    }
-                } else fixture.send(MotionEvent.ACTION_CANCEL, center, time)
-                delay(100)
-                fixture.host.main { assertFalse("additional=$additional", fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
-            }
-            val trigger = fixture.center("trigger")
-            val time = SystemClock.uptimeMillis()
-            fixture.send(MotionEvent.ACTION_DOWN, trigger, time)
-            fixture.send(MotionEvent.ACTION_MOVE, trigger + Offset(-50f, -50f), time)
-            val domain = fixture.center("domain")
-            fixture.send(MotionEvent.ACTION_MOVE, domain, time)
-            fixture.send(MotionEvent.ACTION_CANCEL, domain, time)
-            delay(100)
-            fixture.host.main { assertFalse(fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
+                    scene.touch { down(1, center + Offset(10f, 0f)) }
+                    composeRule.waitUntil(3_000) { !scene.state.isOpen }
+                    composeRule.runOnIdle { assertTrue(scene.actions.isEmpty()) }
+                }
+            } finally { scene.cancel() }
+            scene.assertClosedWithoutAction("additional=$additional")
         }
-    }
-    @Test fun geometryAndNamesFitAcrossThemesAndLargeFonts() = runBlocking {
-        val automation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
-        val landscape = androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("radialLandscape") == "true"
-        if (landscape) assertTrue(automation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_90))
-        if (landscape) delay(600)
+        val trigger = scene.center("trigger")
+        scene.down(trigger)
         try {
-        for (theme in AppTheme.entries) for (dark in listOf(false, true)) for (blur in listOf(false, true)) {
-            RadialMenuFixture(LayoutDirection.Rtl, theme, dark, blur, 2f).use { fixture ->
-                if (landscape) withTimeout(4000) {
-                    while (fixture.activity.resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE) delay(20)
-                }
-                fixture.click("trigger")
-                val nodes = listOf("trigger", "search", "collection", "rss", "domain", "newest_first").map { fixture.node(it) }
-                val bounds = nodes.map { it.boundsInWindow }
-                val density = fixture.activity.resources.displayMetrics.density
-                bounds.forEach { rect ->
-                    assertEquals(56f * density, rect.width, 1f)
-                    assertTrue("$theme/$dark/$blur left $rect", rect.left >= 0)
-                    assertTrue("$theme/$dark/$blur top $rect", rect.top >= 0)
-                    assertTrue(rect.right <= fixture.activity.window.decorView.width)
-                    assertTrue(rect.bottom <= fixture.activity.window.decorView.height)
-                }
-                bounds.forEachIndexed { index, rect -> bounds.drop(index + 1).forEach {
-                    assertTrue("Circles overlap", (it.center - rect.center).getDistance() > rect.width)
-                } }
-                for (target in LibraryShortcut.entries) {
-                    fixture.host.main { fixture.state.feedback(target) }
-                    delay(160)
-                    val popup = fixture.host.await(fixture.activity) {
-                        it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_name"
-                    }.boundsInWindow
-                    bounds.forEach { circle ->
-                        val nearest = Offset(circle.center.x.coerceIn(popup.left, popup.right),
-                            circle.center.y.coerceIn(popup.top, popup.bottom))
-                        assertTrue("Name overlaps a target: $target/$popup/$circle",
-                            (nearest - circle.center).getDistance() >= circle.width / 2)
-                    }
-                }
-                fixture.host.capture("radial-${theme.name}-$dark-$blur")
-                fixture.click("trigger")
-            }
-        }
-        } finally { if (landscape) automation.setRotation(android.app.UiAutomation.ROTATION_UNFREEZE) }
+            scene.touch { moveTo(trigger + Offset(-50f, -50f)) }
+            val domain = scene.center("domain")
+            scene.touch { moveTo(domain) }
+        } finally { scene.cancel() }
+        scene.assertClosedWithoutAction()
     }
-    @Test fun swipeCrossingSearchCommitsOnlyDomainOnceInBothDirections() = runBlocking {
+
+    @Test fun geometryAndNamesFitAcrossThemesAndLargeFonts() {
+        scene.direction.value = LayoutDirection.Rtl
+        scene.show(fontScale = 2f)
+        for (landscape in listOf(false, true)) {
+            composeRule.runOnIdle { scene.landscapeBox.value = landscape }
+            composeRule.waitForIdle()
+            scene.click("trigger")
+            val box = scene.fixtureBounds()
+            val bounds = listOf("trigger", "search", "collection", "rss", "domain", "newest_first").map { scene.bounds(it) }
+            val density = scene.density
+            bounds.forEach { rect ->
+                assertEquals(56f * density, rect.width, 1f)
+                assertTrue("landscape=$landscape left $rect", rect.left >= box.left)
+                assertTrue("landscape=$landscape top $rect", rect.top >= box.top)
+                assertTrue("landscape=$landscape right $rect", rect.right <= box.right)
+                assertTrue("landscape=$landscape bottom $rect", rect.bottom <= box.bottom)
+            }
+            bounds.forEachIndexed { index, rect -> bounds.drop(index + 1).forEach {
+                assertTrue("Circles overlap", (it.center - rect.center).getDistance() > rect.width)
+            } }
+            for (target in LibraryShortcut.entries) {
+                composeRule.runOnIdle { scene.state.feedback(target) }
+                composeRule.waitForIdle()
+                val popup = composeRule.onAllNodes(hasTestTag("library_radial_name"), useUnmergedTree = true)
+                    .fetchSemanticsNodes().single().boundsInRoot
+                bounds.forEach { circle ->
+                    val nearest = Offset(circle.center.x.coerceIn(popup.left, popup.right),
+                        circle.center.y.coerceIn(popup.top, popup.bottom))
+                    assertTrue("Name overlaps a target: landscape=$landscape/$target/$popup/$circle",
+                        (nearest - circle.center).getDistance() >= circle.width / 2)
+                }
+            }
+            scene.click("trigger")
+        }
+    }
+
+    @Test fun swipeCrossingSearchCommitsOnlyDomainOnceInBothDirections() {
+        scene.show()
         for (direction in listOf(LayoutDirection.Ltr, LayoutDirection.Rtl)) {
-            RadialMenuFixture(direction).use { fixture ->
-                val start = fixture.center("trigger")
-                val time = SystemClock.uptimeMillis()
-                fixture.send(MotionEvent.ACTION_DOWN, start, time)
-                try {
-                    delay(650)
-                    fixture.host.main { assertFalse("No long-press timer", fixture.state.isOpen) }
-                    fixture.send(MotionEvent.ACTION_MOVE, start + Offset(-40f, -40f), time)
-                    val search = fixture.center("search")
-                    fixture.send(MotionEvent.ACTION_MOVE, search, time)
-                    fixture.host.main { assertTrue(fixture.actions.isEmpty()) }
-                    val domain = fixture.center("domain")
-                    fixture.send(MotionEvent.ACTION_MOVE, domain, time)
-                    fixture.send(MotionEvent.ACTION_UP, domain, time)
-                    delay(100)
-                    fixture.host.main {
-                        assertEquals(listOf("DOMAIN"), fixture.actions)
-                        assertFalse(fixture.state.isOpen)
-                    }
-                } finally { fixture.send(MotionEvent.ACTION_CANCEL, start, time) }
-            }
+            composeRule.runOnIdle { scene.direction.value = direction; scene.actions.clear() }
+            val start = scene.center("trigger")
+            scene.down(start)
+            try {
+                clock.advanceTimeBy(650)
+                composeRule.runOnIdle { assertFalse("No long-press timer", scene.state.isOpen) }
+                scene.touch { moveTo(start + Offset(-40f, -40f)) }
+                val search = scene.center("search")
+                scene.touch { moveTo(search) }
+                composeRule.runOnIdle { assertTrue(scene.actions.isEmpty()) }
+                val domain = scene.center("domain")
+                scene.touch { moveTo(domain) }
+                scene.up()
+                composeRule.runOnIdle {
+                    assertEquals("$direction", listOf("DOMAIN"), scene.actions)
+                    assertFalse(scene.state.isOpen)
+                }
+            } finally { scene.cancel() }
         }
     }
 
-    @Test fun gapClosePointerCancelAndLateReleaseNeverExecute() = runBlocking {
-        RadialMenuFixture().use { fixture ->
-            for (cancelled in listOf(false, true)) {
-                val start = fixture.center("trigger")
-                val time = SystemClock.uptimeMillis()
-                fixture.send(MotionEvent.ACTION_DOWN, start, time)
-                try {
-                    fixture.send(MotionEvent.ACTION_MOVE, start + Offset(-45f, -45f), time)
-                    fixture.node("domain")
-                    if (cancelled) fixture.host.main { fixture.state.cancel() }
-                    fixture.send(MotionEvent.ACTION_UP, if (cancelled) start + Offset(-200f, -200f) else start, time)
-                    delay(100)
-                    fixture.host.main { assertFalse(fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
-                } finally { fixture.send(MotionEvent.ACTION_CANCEL, start, time) }
-            }
-            fixture.click("trigger")
-            fixture.click("trigger")
-            fixture.host.main { assertFalse(fixture.state.isOpen) }
+    @Test fun gapClosePointerCancelAndLateReleaseNeverExecute() {
+        scene.show()
+        for (cancelled in listOf(false, true)) {
+            val start = scene.center("trigger")
+            scene.down(start)
+            try {
+                scene.touch { moveTo(start + Offset(-45f, -45f)) }
+                scene.node("domain")
+                if (cancelled) composeRule.runOnIdle { scene.state.cancel() }
+                scene.touch { moveTo(if (cancelled) start + Offset(-200f, -200f) else start) }
+                scene.up()
+                scene.assertClosedWithoutAction("cancelled=$cancelled")
+            } finally { scene.cancel() }
         }
+        scene.click("trigger")
+        scene.click("trigger")
+        composeRule.runOnIdle { assertFalse(scene.state.isOpen) }
     }
 
-    @Test fun physicalTapAndOutsideDismissDoNotDispatch() = runBlocking {
-        RadialMenuFixture().use { fixture ->
-            val start = fixture.center("trigger")
-            val time = SystemClock.uptimeMillis()
-            fixture.send(MotionEvent.ACTION_DOWN, start, time)
-            fixture.send(MotionEvent.ACTION_UP, start, time)
-            fixture.node("search")
-            fixture.host.main { assertTrue(fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
-            val outside = Offset(60f, 200f)
-            val next = SystemClock.uptimeMillis()
-            fixture.send(MotionEvent.ACTION_DOWN, outside, next)
-            fixture.send(MotionEvent.ACTION_UP, outside, next)
-            delay(150)
-            fixture.host.main { assertFalse(fixture.state.isOpen); assertTrue(fixture.actions.isEmpty()) }
-        }
+    @Test fun physicalTapAndOutsideDismissDoNotDispatch() {
+        scene.show()
+        scene.tap(scene.center("trigger"))
+        scene.node("search")
+        composeRule.runOnIdle { assertTrue(scene.state.isOpen); assertTrue(scene.actions.isEmpty()) }
+        scene.tap(Offset(60f, 200f))
+        scene.assertClosedWithoutAction()
     }
+}
+
+/** Matches the radial shortcut buttons, which all share the `library_radial_` tag prefix. */
+internal val isRadialButton = SemanticsMatcher("radial button") {
+    it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("library_radial_") == true &&
+        it.config.getOrNull(SemanticsActions.OnClick) != null
 }

@@ -42,3 +42,13 @@ jobs:
 
       - name: Run Lint
         run: ./gradlew lintDebug
+        
+      - name: Upload Reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-reports
+          path: |
+            app/build/reports/lint-results-debug.html
+            app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: ignore

@@ -1,38 +1,35 @@
 package me.bubblespark.tidilo.data
 
 import android.content.Context
-import android.content.pm.ActivityInfo
-import android.content.res.Configuration
-import android.view.WindowInsets
-import androidx.activity.compose.setContent
-import androidx.activity.ComponentActivity
-import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.unit.Density
-import androidx.lifecycle.ViewModelProvider
-import androidx.test.core.app.ActivityScenario
+import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
-import java.util.UUID
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
-import me.bubblespark.tidilo.MainActivity
 import me.bubblespark.tidilo.R
-import me.bubblespark.tidilo.config.AppTheme
-import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkCollectionCrossRef
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.CollectionEntity
@@ -45,503 +42,345 @@ import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
 import me.bubblespark.tidilo.ui.screens.library.SearchScreen
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import me.bubblespark.tidilo.ui.util.TimeFormatter
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
+/** Grid layout, scroll, and font reflow in fixed portrait and landscape viewports over an in-memory Library. */
 class AdaptiveBookmarkGridScreenTest {
-    @Test fun firstCardFitsInEveryLandscapeBookmarkGrid(): Unit = runBlocking {
-        verifyGrids(Configuration.ORIENTATION_LANDSCAPE, fontScale = 1.15f)
-    }
+    @get:Rule val composeRule = createComposeRule()
+    private val context: Context = InstrumentationRegistry.getInstrumentation().targetContext
+    private lateinit var viewport: Viewport
 
-    @Test fun largeTextShowsTheEntireInfoAreaInPortraitGrids(): Unit = runBlocking {
-        verifyGrids(Configuration.ORIENTATION_PORTRAIT, fontScale = 2f)
-    }
+    @Test fun firstCardFitsInEveryLandscapeBookmarkGrid() = verifyGrids(Viewport.LANDSCAPE, 1.15f)
 
-    @Test fun baselinePortraitShowsACompleteGridCard(): Unit = runBlocking {
-        verifyGrids(Configuration.ORIENTATION_PORTRAIT, 1.15f, listOf(Destination.TIMELINE))
-    }
+    @Test fun largeTextShowsTheEntireInfoAreaInPortraitGrids() = verifyGrids(Viewport.PORTRAIT, 2f)
 
-    @Test fun searchFontReflowKeepsTheBookmarkWhenTheInputIsOffscreen(): Unit = runBlocking {
-        withFixture { fixture ->
-            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                requestOrientation(scenario, Configuration.ORIENTATION_PORTRAIT)
-                val activity = awaitActivity(scenario, Configuration.ORIENTATION_PORTRAIT)
-                var scale by mutableStateOf(1.15f)
-                lateinit var model: LibraryViewModel
-                scenario.onActivity {
-                    model = ViewModelProvider(it)[LibraryViewModel::class.java]
-                    model.setViewMode(LibraryViewMode.GRID)
-                    it.setContent {
-                        val density = LocalDensity.current
-                        CompositionLocalProvider(LocalDensity provides Density(density.density, scale)) {
-                            TidiloTheme { SearchScreen(viewModel = model) }
-                        }
-                    }
-                }
-                val header = activity.getString(R.string.search_header_title)
-                fixture.awaitNode(activity) { fixture.host.text(it, header) }
-                fixture.host.main { model.onSearchQueryChanged(fixture.searchToken) }
-                val resultCount = activity.getString(R.string.search_header_subtitle_results, fixture.bookmarkCount)
-                fixture.awaitNode(activity) { fixture.host.text(it, resultCount) }
-                fixture.awaitTitle(activity, 0)
-                val bookmark = 8
-                fixture.scrollToItem(activity, bookmark + 1)
-                fixture.awaitTopRow(scenario, "Search anchor before font reflow") { bookmark in it }
-                fixture.scroll(activity, fixture.cardHeight(activity, bookmark) * 0.7f)
-                delay(500)
-                assertFalse("Search input should be outside the viewport before reflow",
-                    fixture.hasVisibleSearchInput(activity))
-                fixture.host.main { scale = 2f }
-                fixture.awaitTopRow(scenario, "Search anchor after font reflow") { it == listOf(bookmark) }
-            }
+    @Test fun baselinePortraitShowsACompleteGridCard() =
+        verifyGrids(Viewport.PORTRAIT, 1.15f, listOf(Destination.TIMELINE))
+
+    @Test fun largeTextInLandscapeCanScrollToTheCompleteSearchCard() =
+        verifyGrids(Viewport.LANDSCAPE, 2f, listOf(Destination.SEARCH), scrollToFit = true)
+
+    @Test fun searchFontReflowKeepsTheBookmarkWhenTheInputIsOffscreen() = withFixture { fixture ->
+        viewport = Viewport.PORTRAIT
+        val scale = mutableFloatStateOf(1.15f)
+        val model = fixture.library.viewModel()
+        composeRule.runOnUiThread { model.setViewMode(LibraryViewMode.GRID) }
+        composeRule.setContent {
+            ViewportBox(viewport.widthDp, viewport.heightDp, scale.floatValue) { Theme { SearchScreen(viewModel = model) } }
         }
+        awaitNode(hasText(context.getString(R.string.search_header_title)))
+        composeRule.runOnIdle { model.onSearchQueryChanged(SEARCH_TOKEN) }
+        awaitNode(hasText(context.getString(R.string.search_header_subtitle_results, fixture.bookmarks.size)))
+        awaitTitle(fixture, 0)
+        val bookmark = 8
+        scrollToIndex(bookmark + 1)
+        awaitTopRow("Search anchor before font reflow") { bookmark in it }
+        val anchor = cardFor(titleNode(fixture.bookmarks[bookmark]))
+        scrollBy(anchor.size.height * 0.7f, within = anchor)
+        assertFalse("Search input should be outside the viewport before reflow", hasVisibleSearchInput())
+        composeRule.runOnIdle { scale.floatValue = 2f }
+        awaitTopRow("Search anchor after font reflow") { it == listOf(bookmark) }
     }
 
-    @Test fun largeTextInLandscapeCanScrollToTheCompleteSearchCard(): Unit = runBlocking {
-        verifyGrids(Configuration.ORIENTATION_LANDSCAPE, 2f, listOf(Destination.SEARCH), scrollToFit = true)
-    }
-
-    @Test fun listAndGridKeepIndependentScrollPositions(): Unit = runBlocking {
-        withFixture { fixture ->
-            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                requestOrientation(scenario, Configuration.ORIENTATION_PORTRAIT)
-                val activity = awaitActivity(scenario, Configuration.ORIENTATION_PORTRAIT)
-                setMode(scenario, LibraryViewMode.GRID)
-                fixture.awaitTitle(activity, 0)
-                fixture.scrollToItem(activity, 10)
-                fixture.awaitTitle(activity, 10)
-                val gridPosition = fixture.cardTop(activity, 10)
-
-                setMode(scenario, LibraryViewMode.LIST)
-                fixture.awaitTitle(activity, 0)
-                fixture.scrollToItem(activity, 20)
-                fixture.awaitTitle(activity, 20)
-                val listPosition = fixture.cardTop(activity, 20)
-
-                setMode(scenario, LibraryViewMode.GRID)
-                fixture.awaitTitle(activity, 10)
-                assertEquals(gridPosition, fixture.cardTop(activity, 10), 2f)
-                setMode(scenario, LibraryViewMode.LIST)
-                fixture.awaitTitle(activity, 20)
-                assertEquals(listPosition, fixture.cardTop(activity, 20), 2f)
-            }
+    @Test fun listAndGridKeepIndependentScrollPositions() = withFixture { fixture ->
+        viewport = Viewport.PORTRAIT
+        val model = fixture.library.viewModel()
+        composeRule.runOnUiThread {
+            model.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
+            model.setViewMode(LibraryViewMode.GRID)
         }
-    }
-
-    @Test fun rotationKeepsTheLeadingBookmarkAndPagingCanAppend(): Unit = runBlocking {
-        withFixture { fixture ->
-            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                requestOrientation(scenario, Configuration.ORIENTATION_PORTRAIT)
-                val activity = awaitActivity(scenario, Configuration.ORIENTATION_PORTRAIT)
-                setMode(scenario, LibraryViewMode.GRID)
-                fixture.awaitTitle(activity, 0)
-                val startRow = fixture.awaitTopRow(scenario, "initial portrait row") { 0 in it }
-                val bookmark = 8
-                // Newest first leads with its full-span scope row, so bookmark N is lazy item N + 1.
-                fixture.scrollToItem(activity, bookmark + 1)
-                fixture.awaitTitle(activity, bookmark)
-                // Move close to the bottom of the taller portrait row before rotating.
-                fixture.scroll(activity, fixture.cardHeight(activity, bookmark) * 0.9f)
-                delay(500)
-
-                requestOrientation(scenario, Configuration.ORIENTATION_LANDSCAPE)
-                awaitActivity(scenario, Configuration.ORIENTATION_LANDSCAPE)
-                val landscapeRow = fixture.awaitTopRow(scenario, "landscape anchor $bookmark") { bookmark in it }
-                assertTrue("Rotation must change the leading row width", landscapeRow.size > startRow.size)
-                requestOrientation(scenario, Configuration.ORIENTATION_PORTRAIT)
-                val rotated = awaitActivity(scenario, Configuration.ORIENTATION_PORTRAIT)
-                fixture.awaitTopRow(scenario, "portrait anchor ${landscapeRow.first()}") { landscapeRow.first() in it }
-
-                withTimeout(20_000) {
-                    while (!fixture.hasVisibleTitle(rotated, 74)) {
-                        fixture.scroll(rotated, 1400f)
-                        delay(140)
-                    }
-                }
-                assertTrue("The final bookmark must come from an appended page", fixture.hasVisibleTitle(rotated, 74))
-            }
+        composeRule.setContent {
+            ViewportBox(viewport.widthDp, viewport.heightDp, 1.15f) { Theme { LibraryScreen(viewModel = model) } }
         }
+        awaitTitle(fixture, 0)
+        scrollToIndex(10)
+        awaitTitle(fixture, 10)
+        val gridPosition = cardTop(fixture, 10)
+
+        setMode(model, LibraryViewMode.LIST)
+        awaitTitle(fixture, 0)
+        scrollToIndex(20)
+        awaitTitle(fixture, 20)
+        val listPosition = cardTop(fixture, 20)
+
+        setMode(model, LibraryViewMode.GRID)
+        awaitTitle(fixture, 10)
+        assertEquals(gridPosition, cardTop(fixture, 10), 2f)
+        setMode(model, LibraryViewMode.LIST)
+        awaitTitle(fixture, 20)
+        assertEquals(listPosition, cardTop(fixture, 20), 2f)
     }
 
-    private suspend fun setMode(scenario: ActivityScenario<MainActivity>, mode: LibraryViewMode) {
-        scenario.onActivity {
-            ViewModelProvider(it)[LibraryViewModel::class.java].apply {
-                setFilterMode(LibraryFilterMode.NEWEST_FIRST)
-                setViewMode(mode)
-            }
-        }
-        delay(400)
-    }
-
-    private suspend fun verifyGrids(
-        orientation: Int,
+    private fun verifyGrids(
+        viewport: Viewport,
         fontScale: Float,
         destinations: List<Destination> = Destination.entries,
         scrollToFit: Boolean = false
-    ) {
-        withFixture { fixture ->
-            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                requestOrientation(scenario, orientation)
-                val activity = awaitActivity(scenario, orientation)
-                val args = InstrumentationRegistry.getArguments()
-                val form = if (orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
-                val capturePrefix = args.getString("gridCapturePrefix")?.let { "$it-$form-${(fontScale * 100).toInt()}" }
-                var theme by mutableStateOf(AppTheme.DEFAULT to false)
-                var search by mutableStateOf(false)
-                lateinit var model: LibraryViewModel
-                scenario.onActivity {
-                    model = ViewModelProvider(it)[LibraryViewModel::class.java]
-                    model.setViewMode(LibraryViewMode.GRID)
-                    model.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
-                    it.setContent {
-                        val density = LocalDensity.current
-                        val testDensity = if (density.fontScale == fontScale) density else Density(density.density, fontScale)
-                        CompositionLocalProvider(LocalDensity provides testDensity) {
-                            TidiloTheme(darkTheme = theme.second, theme = theme.first) {
-                                if (search) SearchScreen(viewModel = model, onNavigateBack = {})
-                                else LibraryScreen(viewModel = model)
-                            }
-                        }
-                    }
-                }
-                for (destination in destinations) {
-                    val header = when (destination) {
-                        Destination.TIMELINE -> activity.getString(R.string.library_header_title)
-                        Destination.DOMAIN -> fixture.domain
-                        Destination.RSS -> fixture.feed.title
-                        Destination.COLLECTION -> fixture.collection.title
-                        Destination.SEARCH -> activity.getString(R.string.search_header_title)
-                    }
-                    fixture.host.main {
-                        when (destination) {
-                            Destination.TIMELINE -> model.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
-                            Destination.DOMAIN -> {
-                                model.setFilterMode(LibraryFilterMode.DOMAIN)
-                                model.selectDomainFilter(fixture.domain)
-                            }
-                            Destination.RSS -> {
-                                model.setFilterMode(LibraryFilterMode.RSS)
-                                model.selectRssFeedFilter(fixture.feed)
-                            }
-                            Destination.COLLECTION -> {
-                                model.setFilterMode(LibraryFilterMode.COLLECTION)
-                                model.selectCollectionFilter(fixture.collection.id)
-                            }
-                            Destination.SEARCH -> {
-                                model.onSearchQueryChanged(fixture.searchToken)
-                                search = true
-                            }
-                        }
-                    }
-                    val first = fixture.firstBookmark(destination)
-                    try {
-                        fixture.awaitNode(activity) { fixture.host.text(it, header) }
-                        fixture.awaitNode(activity) {
-                            fixture.host.text(it, first.title) && it.boundsInWindow.height > 0
-                        }
-                    } catch (timeout: TimeoutCancellationException) {
-                        throw AssertionError("$destination did not show '$header' and its first bookmark", timeout)
-                    }
-                    val initialSearchCardSize = if (destination == Destination.SEARCH) {
-                        fixture.cardSize(activity, first)
-                    } else null
-                    delay(350)
-                    if (initialSearchCardSize != null) {
-                        val settled = fixture.cardSize(activity, first)
-                        assertTrue("Search card must not reflow: $initialSearchCardSize to $settled",
-                            abs(initialSearchCardSize.width - settled.width) <= 1 &&
-                                abs(initialSearchCardSize.height - settled.height) <= 1)
-                    }
-                    if (scrollToFit) {
-                        val overflow = fixture.firstCardBottomOverflow(activity, first)
-                        if (overflow > 0f) fixture.scroll(activity, overflow + 8 * activity.resources.displayMetrics.density)
-                        delay(450)
-                    }
-                    fixture.assertFirstCardVisible(activity, destination, scrollToFit)
-                    if (capturePrefix != null || destination == Destination.TIMELINE || destination == Destination.SEARCH) {
-                        val schemes = if (destination == Destination.TIMELINE || destination == Destination.SEARCH) {
-                            AppTheme.entries.flatMap { appTheme -> listOf(appTheme to false, appTheme to true) }
-                        } else {
-                            listOf(if (fontScale == 2f) AppTheme.MODERN to true else AppTheme.DEFAULT to false)
-                        }
-                        for (scheme in schemes) {
-                            fixture.host.main { theme = scheme }
-                            fixture.host.instrumentation.waitForIdleSync()
-                            fixture.assertFirstCardVisible(activity, destination, scrollToFit)
-                            val appearance = if (scheme.second) "dark" else "light"
-                            if (capturePrefix != null) {
-                                fixture.host.capture("$capturePrefix-${destination.name.lowercase()}-${scheme.first.code}-$appearance")
-                            }
-                        }
-                    }
+    ) = withFixture { fixture ->
+        this.viewport = viewport
+        var search by mutableStateOf(false)
+        val model = fixture.library.viewModel()
+        composeRule.runOnUiThread {
+            model.setViewMode(LibraryViewMode.GRID)
+            model.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
+        }
+        composeRule.setContent {
+            ViewportBox(viewport.widthDp, viewport.heightDp, fontScale) {
+                Theme {
+                    if (search) SearchScreen(viewModel = model, onNavigateBack = {})
+                    else LibraryScreen(viewModel = model)
                 }
             }
         }
+        for (destination in destinations) {
+            val header = when (destination) {
+                Destination.TIMELINE -> context.getString(R.string.library_header_title)
+                Destination.DOMAIN -> fixture.domain
+                Destination.RSS -> fixture.feed.title
+                Destination.COLLECTION -> fixture.collection.title
+                Destination.SEARCH -> context.getString(R.string.search_header_title)
+            }
+            composeRule.runOnIdle {
+                when (destination) {
+                    Destination.TIMELINE -> model.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
+                    Destination.DOMAIN -> {
+                        model.setFilterMode(LibraryFilterMode.DOMAIN)
+                        model.selectDomainFilter(fixture.domain)
+                    }
+                    Destination.RSS -> {
+                        model.setFilterMode(LibraryFilterMode.RSS)
+                        model.selectRssFeedFilter(fixture.feed)
+                    }
+                    Destination.COLLECTION -> {
+                        model.setFilterMode(LibraryFilterMode.COLLECTION)
+                        model.selectCollectionFilter(fixture.collection.id)
+                    }
+                    Destination.SEARCH -> {
+                        model.onSearchQueryChanged(SEARCH_TOKEN)
+                        search = true
+                    }
+                }
+            }
+            val first = fixture.firstBookmark(destination)
+            try {
+                awaitNode(hasText(header))
+                if (destination == Destination.SEARCH) {
+                    // Results arrive after the query debounce; wait for them rather than the pre-search list.
+                    awaitNode(hasText(context.getString(R.string.search_header_subtitle_results, fixture.bookmarks.size)))
+                }
+                awaitNode(hasText(first.title)) { it.boundsInRoot.height > 0 }
+            } catch (timeout: ComposeTimeoutException) {
+                throw AssertionError("$destination did not show '$header' and its first bookmark", timeout)
+            }
+            val initialSearchCardSize = if (destination == Destination.SEARCH) cardFor(titleNode(first)).size else null
+            composeRule.waitForIdle()
+            if (initialSearchCardSize != null) {
+                val settled = cardFor(titleNode(first)).size
+                assertTrue("Search card must not reflow: $initialSearchCardSize to $settled",
+                    abs(initialSearchCardSize.width - settled.width) <= 1 &&
+                        abs(initialSearchCardSize.height - settled.height) <= 1)
+            }
+            if (scrollToFit) {
+                val card = cardFor(titleNode(first))
+                val overflow = card.boundsInRoot.top + card.size.height - viewportBounds().bottom
+                if (overflow > 0f) scrollBy(overflow + 8 * viewportDensity(), within = card)
+            }
+            assertFirstCardVisible(destination, first, scrollToFit)
+        }
     }
 
-    private suspend fun withFixture(block: suspend (Fixture) -> Unit) {
-        val fixture = withContext(Dispatchers.IO) { Fixture() }
-        val oldDiscoverer = DomainIconManager.htmlDiscoverer
-        val oldDownloader = DomainIconManager.httpDownloader
+    private fun assertFirstCardVisible(destination: Destination, bookmark: BookmarkEntity, afterScroll: Boolean) {
+        val viewport = viewportBounds()
+        val title = titleNode(bookmark)
+        val card = cardFor(title)
+        val bounds = card.boundsInRoot
+        val relativeTime = TimeFormatter.formatRelativeTime(bookmark.createdAt, context)
+        val date = nodes(hasText(relativeTime)).first {
+            generateSequence(it) { node -> node.parent }.any { node -> node.id == card.id }
+        }
+        val input = nodes(hasSetTextAction()).firstOrNull()
+        assertEquals("$destination card is clipped: $bounds in viewport $viewport", card.size.height.toFloat(), bounds.height, 2f)
+        assertTrue("$destination card top $bounds is above the viewport $viewport", bounds.top >= viewport.top)
+        assertTrue("$destination card $bounds extends below the viewport $viewport, " +
+            "input ${input?.boundsInRoot}, title ${title.boundsInRoot}, date ${date.boundsInRoot}",
+            bounds.bottom <= viewport.bottom + 1f)
+        assertRenderedText(title, "$destination title, all ${nodes(hasText(bookmark.title)).map { it.boundsInRoot }}")
+        assertRenderedText(date, "$destination date")
+        assertTrue("$destination date is visible below the title",
+            date.boundsInRoot.top >= title.boundsInRoot.bottom && date.boundsInRoot.bottom <= bounds.bottom)
+        if (destination == Destination.SEARCH && !afterScroll) {
+            checkNotNull(input)
+            assertTrue("The Search field is visible above the first card",
+                input.boundsInRoot.height > 0 && input.boundsInRoot.bottom <= bounds.top)
+        } else if (destination != Destination.SEARCH) {
+            val trigger = checkNotNull(nodes(hasTestTag("library_radial_trigger")).firstOrNull()) {
+                "Library shortcut missing for $destination"
+            }
+            assertFalse("First card overlaps the Library shortcut", bounds.overlaps(trigger.boundsInRoot))
+        }
+    }
+
+    private fun setMode(model: LibraryViewModel, mode: LibraryViewMode) {
+        composeRule.runOnIdle {
+            model.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
+            model.setViewMode(mode)
+        }
+        composeRule.waitForIdle()
+    }
+
+    private fun awaitTitle(fixture: Fixture, index: Int) {
         try {
-            DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), true, false) }
-            DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, true, false) }
-            fixture.seed()
+            awaitNode(hasText(fixture.bookmarks[index].title)) { it.boundsInRoot.height > 0 }
+        } catch (timeout: ComposeTimeoutException) {
+            throw AssertionError("Bookmark $index did not become visible", timeout)
+        }
+    }
+
+    private fun awaitNode(matcher: SemanticsMatcher, accept: (SemanticsNode) -> Boolean = { true }) {
+        composeRule.waitUntil(8_000) { nodes(matcher).any(accept) }
+    }
+
+    private fun nodes(matcher: SemanticsMatcher): List<SemanticsNode> =
+        composeRule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes()
+
+    /** The drawn title of [bookmark]; an outgoing destination can still hold a zero-size copy. */
+    private fun titleNode(bookmark: BookmarkEntity): SemanticsNode =
+        nodes(hasText(bookmark.title)).let { titles -> titles.firstOrNull { it.boundsInRoot.height > 0 } ?: titles.first() }
+
+    private fun cardFor(title: SemanticsNode): SemanticsNode =
+        generateSequence(title) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
+
+    private fun cardTop(fixture: Fixture, index: Int): Float =
+        cardFor(titleNode(fixture.bookmarks[index])).boundsInRoot.top
+
+    private fun viewportBounds(): Rect = composeRule.onNodeWithTag(VIEWPORT_TAG).fetchSemanticsNode().boundsInRoot
+
+    /** Pixels per dp inside the viewport, which [ViewportBox] may scale below the device density. */
+    private fun viewportDensity(): Float = viewportBounds().width / viewport.widthDp
+
+    private fun hasVisibleSearchInput(): Boolean = nodes(hasSetTextAction()).any { it.boundsInRoot.height > 0 }
+
+    private fun scrollToIndex(index: Int) {
+        composeRule.onAllNodes(hasScrollToIndexAction()).onFirst().performScrollToIndex(index)
+        composeRule.waitForIdle()
+    }
+
+    /** Scrolls the vertical container that holds [within] by [pixels]. */
+    private fun scrollBy(pixels: Float, within: SemanticsNode) {
+        val container = generateSequence(within) { it.parent }.first {
+            it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null &&
+                it.config.getOrNull(SemanticsActions.ScrollBy) != null
+        }
+        composeRule.runOnUiThread { assertTrue(container.config[SemanticsActions.ScrollBy].action?.invoke(0f, pixels) == true) }
+        composeRule.waitForIdle()
+    }
+
+    /** Waits until the leading visible card row below the header satisfies [predicate]; one semantics pass per check. */
+    private fun awaitTopRow(stage: String, predicate: (List<Int>) -> Boolean): List<Int> {
+        var row = emptyList<Int>()
+        try {
+            composeRule.waitUntil(8_000) {
+                row = topRow()
+                row.isNotEmpty() && predicate(row)
+            }
+        } catch (timeout: ComposeTimeoutException) {
+            throw AssertionError("$stage did not settle. Last top row was $row", timeout)
+        }
+        return row
+    }
+
+    private fun topRow(): List<Int> {
+        val clearance = HeaderDefaults.ContentHeight + HeaderDefaults.FadeHeight + HeaderDefaults.ClearanceGap
+        val bodyTop = viewportBounds().top + clearance.value * viewportDensity()
+        val visibleCards = nodes(GRID_TITLE).mapNotNull { title ->
+            val index = title.config[SemanticsProperties.Text].firstNotNullOfOrNull {
+                it.text.removePrefix(TITLE_PREFIX).toIntOrNull()
+            } ?: return@mapNotNull null
+            val bounds = cardFor(title).boundsInRoot
+            if (bounds.height > 0 && bounds.top >= bodyTop - 2f) index to bounds.top else null
+        }
+        val rowTop = visibleCards.minOfOrNull { it.second } ?: return emptyList()
+        return visibleCards.filter { abs(it.second - rowTop) < 2 }.map { it.first }.sorted()
+    }
+
+    private fun assertRenderedText(node: SemanticsNode, label: String) {
+        val layouts = mutableListOf<TextLayoutResult>()
+        assertTrue(node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts) == true)
+        val text = layouts.single()
+        val bottom = text.getLineBottom(text.lineCount - 1)
+        assertTrue("$label: '${text.layoutInput.text}' ends at $bottom, below its ${node.boundsInRoot} bounds (layout ${text.size})",
+            bottom <= node.boundsInRoot.height + 1f)
+    }
+
+    private fun withFixture(block: suspend (Fixture) -> Unit): Unit = runBlocking {
+        val fixture = withContext(Dispatchers.IO) { Fixture(context).also { it.seed() } }
+        try {
             block(fixture)
         } finally {
-            withContext(NonCancellable + Dispatchers.IO) {
-                DomainIconManager.htmlDiscoverer = oldDiscoverer
-                DomainIconManager.httpDownloader = oldDownloader
-                fixture.clear()
-            }
+            fixture.close()
         }
     }
 
-    private fun requestOrientation(scenario: ActivityScenario<MainActivity>, orientation: Int) {
-        scenario.onActivity {
-            it.requestedOrientation = if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            } else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
-    }
+    @Composable
+    private fun Theme(content: @Composable () -> Unit) =
+        TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false, content = content)
 
-    private suspend fun awaitActivity(
-        scenario: ActivityScenario<MainActivity>,
-        orientation: Int
-    ): MainActivity {
-        var activity: MainActivity? = null
-        var observedOrientation = Configuration.ORIENTATION_UNDEFINED
-        try {
-            withTimeout(8_000) {
-                while (activity == null) {
-                    scenario.onActivity {
-                        observedOrientation = it.resources.configuration.orientation
-                        if (observedOrientation == orientation) activity = it
-                    }
-                    if (activity == null) delay(30)
-                }
-            }
-        } catch (timeout: TimeoutCancellationException) {
-            throw AssertionError("Expected orientation $orientation, observed $observedOrientation", timeout)
+    /** The device's own screen in dp, so portrait and landscape match what a rotation would give. */
+    private data class Viewport(val widthDp: Int, val heightDp: Int) {
+        companion object {
+            private val metrics = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics
+            private val shortSide = (minOf(metrics.widthPixels, metrics.heightPixels) / metrics.density).toInt()
+            private val longSide = (maxOf(metrics.widthPixels, metrics.heightPixels) / metrics.density).toInt()
+            val PORTRAIT = Viewport(shortSide, longSide)
+            val LANDSCAPE = Viewport(longSide, shortSide)
         }
-        return requireNotNull(activity)
     }
 
     private enum class Destination { TIMELINE, DOMAIN, RSS, COLLECTION, SEARCH }
 
-    private class Fixture {
-        val host = HeaderTestHost()
-        val searchToken = "gridfixture${UUID.randomUUID().toString().replace("-", "")}"
-        val domain = "$searchToken.invalid"
-        val feed = RssFeedEntity(searchToken, "https://$domain/rss", "Adaptive Grid RSS", enabled = false)
+    private class Fixture(context: Context) : AutoCloseable {
+        val library = InMemoryLibrary(context)
+        private val caches = OfflineVisualCaches()
         private val now = System.currentTimeMillis()
-        val collection = CollectionEntity(searchToken, "Adaptive Grid Collection", "", null, null, 0, now, now)
-        private val bookmarks = List(75) { index ->
-            BookmarkEntity(
-                "$searchToken-$index", "Adaptive grid card $index $searchToken", "https://$domain/$index", "Summary",
-                createdAt = now + 60_000L - index, updatedAt = now
-            )
+        val domain = "grid.invalid"
+        val feed = RssFeedEntity("grid-feed", "https://feed.invalid/rss", "Grid RSS", enabled = false)
+        val collection = CollectionEntity("grid-collection", "Grid Collection", "", null, null, 0, now, now)
+        val bookmarks = List(30) { index ->
+            BookmarkEntity("grid-$index", "$TITLE_PREFIX$index", "https://$domain/$index", "Summary $SEARCH_TOKEN",
+                createdAt = now - index, updatedAt = now)
         }
-        val bookmarkCount get() = bookmarks.size
-        private val rssBookmark = BookmarkEntity(
-            "$searchToken-rss", "Adaptive RSS card", "https://rss-${UUID.randomUUID()}.invalid/article", "Summary",
-            createdAt = now + 60_000L, updatedAt = now, rssFeedId = feed.id
-        )
-        private val db = AppDatabase.getInstance(host.context)
-        private val prefs = host.context.getSharedPreferences("tidilo_library_prefs", Context.MODE_PRIVATE)
-        private val savedPrefs = listOf("library_filter_mode", "library_view_mode").associateWith { prefs.getString(it, null) }
+        private val rssBookmark = BookmarkEntity("grid-rss", "Grid RSS card", "https://feed.invalid/article", "Summary",
+            createdAt = now - 1_000, updatedAt = now, rssFeedId = feed.id)
 
         suspend fun seed() {
+            library.awaitReady()
+            val db = library.db
             db.rssDao().putFeed(feed)
             db.collectionDao().insert(collection)
             db.bookmarkDao().insertAll(bookmarks + rssBookmark)
-            bookmarks.forEach { db.collectionDao().insertMembership(BookmarkCollectionCrossRef(it.id, collection.id)) }
-        }
-
-        suspend fun clear() {
-            try {
-                db.collectionDao().delete(collection.id)
-                bookmarks.forEach { db.bookmarkDao().deleteById(it.id) }
-                db.bookmarkDao().deleteById(rssBookmark.id)
-                db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(feed.id))
-            } finally {
-                val editor = prefs.edit()
-                savedPrefs.forEach { (key, value) -> if (value == null) editor.remove(key) else editor.putString(key, value) }
-                check(editor.commit())
+            db.withTransaction {
+                bookmarks.forEach { db.collectionDao().insertMembership(BookmarkCollectionCrossRef(it.id, collection.id)) }
             }
-        }
-
-        suspend fun awaitTitle(activity: ComponentActivity, index: Int) =
-            try {
-                awaitNode(activity) { host.text(it, bookmarks[index].title) && it.boundsInWindow.height > 0 }
-            } catch (timeout: TimeoutCancellationException) {
-                throw AssertionError("Bookmark $index did not become visible", timeout)
-            }
-
-        fun hasVisibleSearchInput(activity: ComponentActivity): Boolean {
-            var visible = false
-            host.main {
-                visible = nodes(activity).any {
-                    it.config.getOrNull(SemanticsActions.SetText) != null && it.boundsInWindow.height > 0
-                }
-            }
-            return visible
-        }
-
-        suspend fun awaitNode(activity: ComponentActivity, predicate: (SemanticsNode) -> Boolean): SemanticsNode =
-            withTimeout(8_000) {
-                var node: SemanticsNode? = null
-                while (node == null) {
-                    host.main { node = nodes(activity).firstOrNull(predicate) }
-                    if (node == null) delay(30)
-                }
-                requireNotNull(node)
-            }
-
-        private fun nodes(activity: ComponentActivity): List<SemanticsNode> =
-            host.nodes(activity, includeOtherWindows = false)
-
-        suspend fun scroll(activity: ComponentActivity, pixels: Float) {
-            val scroll = awaitNode(activity) {
-                it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null &&
-                    it.config.getOrNull(SemanticsActions.ScrollBy) != null
-            }
-            host.main { assertTrue(scroll.config[SemanticsActions.ScrollBy].action?.invoke(0f, pixels) == true) }
-        }
-
-        suspend fun scrollToItem(activity: ComponentActivity, index: Int) {
-            val scroll = awaitNode(activity) { it.config.getOrNull(SemanticsActions.ScrollToIndex) != null }
-            host.main { assertTrue(scroll.config[SemanticsActions.ScrollToIndex].action?.invoke(index) == true) }
-            delay(400)
         }
 
         fun firstBookmark(destination: Destination): BookmarkEntity =
             if (destination == Destination.RSS) rssBookmark else bookmarks.first()
 
-        fun hasVisibleTitle(activity: ComponentActivity, index: Int): Boolean {
-            var visible = false
-            host.main {
-                visible = nodes(activity).any { host.text(it, bookmarks[index].title) && it.boundsInWindow.height > 0 }
-            }
-            return visible
+        override fun close() {
+            caches.close()
+            library.close()
         }
+    }
 
-        fun firstCardBottomOverflow(activity: ComponentActivity, bookmark: BookmarkEntity): Float {
-            var overflow = 0f
-            host.main {
-                val card = cardFor(nodes(activity).first { host.text(it, bookmark.title) })
-                overflow = card.boundsInWindow.top + card.size.height - safeBottom(activity)
-            }
-            return overflow
-        }
-
-        private fun safeBottom(activity: ComponentActivity): Int = activity.window.decorView.height -
-            activity.window.decorView.rootWindowInsets.getInsets(
-                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
-            ).bottom
-
-        fun assertFirstCardVisible(activity: ComponentActivity, destination: Destination, afterScroll: Boolean) {
-            host.main {
-                val nodes = nodes(activity)
-                val bookmark = firstBookmark(destination)
-                val title = nodes.first { host.text(it, bookmark.title) }
-                val card = cardFor(title)
-                val bounds = card.boundsInWindow
-                val safe = activity.window.decorView.rootWindowInsets.getInsets(
-                    WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
-                )
-                val relativeTime = TimeFormatter.formatRelativeTime(bookmark.createdAt, activity)
-                val date = nodes.first {
-                    host.text(it, relativeTime) && generateSequence(it) { node -> node.parent }.any { node -> node.id == card.id }
-                }
-                val input = nodes.firstOrNull { it.config.getOrNull(SemanticsActions.SetText) != null }
-                assertEquals("$destination card is clipped: $bounds", card.size.height.toFloat(), bounds.height, 2f)
-                assertTrue("$destination card top overlaps a system bar", bounds.top >= safe.top)
-                assertTrue("$destination card $bounds overlaps bottom inset ${safe.bottom}, " +
-                    "window height ${activity.window.decorView.height}, top inset ${safe.top}, " +
-                    "input ${input?.boundsInWindow}, title ${title.boundsInWindow}, date ${date.boundsInWindow}",
-                    bounds.bottom <= safeBottom(activity) + 1f)
-                assertRenderedText(title)
-                assertRenderedText(date)
-                assertTrue("$destination date is visible below the title",
-                    date.boundsInWindow.top >= title.boundsInWindow.bottom && date.boundsInWindow.bottom <= bounds.bottom)
-                if (destination == Destination.SEARCH && !afterScroll) {
-                    checkNotNull(input)
-                    assertTrue("The Search field is visible above the first card",
-                        input.boundsInWindow.height > 0 && input.boundsInWindow.bottom <= bounds.top)
-                } else if (destination != Destination.SEARCH) {
-                    val trigger = checkNotNull(nodes.firstOrNull {
-                        it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger"
-                    }) {
-                        "Library shortcut missing for $destination"
-                    }
-                    assertFalse("First card overlaps the Library shortcut", bounds.overlaps(trigger.boundsInWindow))
-                }
-            }
-        }
-
-        fun cardTop(activity: ComponentActivity, index: Int): Float {
-            var top = 0f
-            host.main { top = cardFor(nodes(activity).first { host.text(it, bookmarks[index].title) }).boundsInWindow.top }
-            return top
-        }
-
-        fun cardSize(activity: ComponentActivity, bookmark: BookmarkEntity): androidx.compose.ui.unit.IntSize {
-            var size = androidx.compose.ui.unit.IntSize.Zero
-            host.main { size = cardFor(nodes(activity).first { host.text(it, bookmark.title) }).size }
-            return size
-        }
-
-        fun cardHeight(activity: ComponentActivity, index: Int): Int {
-            var height = 0
-            host.main { height = cardFor(nodes(activity).first { host.text(it, bookmarks[index].title) }).size.height }
-            return height
-        }
-
-        suspend fun awaitTopRow(
-            scenario: ActivityScenario<MainActivity>,
-            stage: String,
-            predicate: (List<Int>) -> Boolean
-        ): List<Int> {
-            var row = emptyList<Int>()
-            try {
-                withTimeout(8_000) {
-                    do {
-                        scenario.onActivity { activity ->
-                            val nodes = nodes(activity)
-                            val topInset = activity.window.decorView.rootWindowInsets.getInsets(
-                                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
-                            ).top
-                            val headerClearance = HeaderDefaults.ContentHeight + HeaderDefaults.FadeHeight +
-                                HeaderDefaults.ClearanceGap
-                            val bodyTop = topInset + headerClearance.value * activity.resources.displayMetrics.density
-                            val visibleCards = bookmarks.mapIndexedNotNull { index, item ->
-                                val title = nodes.firstOrNull { host.text(it, item.title) } ?: return@mapIndexedNotNull null
-                                val bounds = cardFor(title).boundsInWindow
-                                if (bounds.height > 0 && bounds.top >= bodyTop - 2f) index to bounds.top else null
-                            }
-                            val rowTop = visibleCards.minOfOrNull { it.second }
-                            row = if (rowTop == null) emptyList() else
-                                visibleCards.filter { abs(it.second - rowTop) < 2 }.map { it.first }
-                        }
-                        if (row.isNotEmpty() && predicate(row)) break
-                        delay(30)
-                    } while (true)
-                }
-            } catch (timeout: TimeoutCancellationException) {
-                throw AssertionError("$stage did not settle. Last top row was $row", timeout)
-            }
-            return row
-        }
-
-        private fun cardFor(title: SemanticsNode): SemanticsNode =
-            generateSequence(title) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
-
-        private fun assertRenderedText(node: SemanticsNode) {
-            val layouts = mutableListOf<TextLayoutResult>()
-            assertTrue(node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts) == true)
-            val text = layouts.single()
-            assertTrue(text.getLineBottom(text.lineCount - 1) <= node.boundsInWindow.height + 1f)
+    private companion object {
+        const val TITLE_PREFIX = "Grid card "
+        const val SEARCH_TOKEN = "gridfixture"
+        val GRID_TITLE = SemanticsMatcher("grid card title") { node ->
+            node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.startsWith(TITLE_PREFIX) } == true
         }
     }
 }

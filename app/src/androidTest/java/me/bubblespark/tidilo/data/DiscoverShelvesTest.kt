@@ -1,23 +1,40 @@
 package me.bubblespark.tidilo.data
 
-import android.graphics.Bitmap
+import android.content.res.Configuration
+import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import java.io.ByteArrayOutputStream
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.unit.Density
+import androidx.test.platform.app.InstrumentationRegistry
+import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.discover.DiscoverPick
 import me.bubblespark.tidilo.data.discover.DiscoverReason
 import me.bubblespark.tidilo.data.discover.DiscoverShelf
@@ -36,32 +53,23 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 
 /** Discover shelves rendered from a fake source (no database): layout, announcements, and callbacks. */
 class DiscoverShelvesTest {
-    private val host = HeaderTestHost()
+    @get:Rule val composeRule = createComposeRule()
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val domain = "${UUID.randomUUID().toString().take(8)}.example"
-    private val oldDownloader = OgImageManager.imageDownloader
-    private val oldIconDownload = DomainIconManager.httpDownloader
-    private val oldDiscovery = DomainIconManager.htmlDiscoverer
+    private lateinit var caches: OfflineVisualCaches
 
     @Before fun images() {
-        // Most images are 1200 × 630; "square" URLs return 1:1 art to exercise the mat.
-        OgImageManager.imageDownloader = { url ->
-            val square = "square" in url
-            val bitmap = Bitmap.createBitmap(if (square) 400 else 1200, if (square) 400 else 630, Bitmap.Config.ARGB_8888)
-            bitmap.eraseColor(android.graphics.Color.HSVToColor(floatArrayOf((url.hashCode() and 0xff) * 1.4f, 0.45f, 0.75f)))
-            ByteArrayOutputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it); bitmap.recycle(); it.toByteArray() }
-        }
-        DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, true, false) }
-        DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), true, false) }
+        // Wide art keeps a 16:9 ratio; "square" URLs return 1:1 art to exercise the mat.
+        caches = OfflineVisualCaches { url -> if ("square" in url) tinyPng(8, 8) else tinyPng(16, 9) }
     }
 
     @After fun restore() {
-        OgImageManager.imageDownloader = oldDownloader
-        DomainIconManager.httpDownloader = oldIconDownload
-        DomainIconManager.htmlDiscoverer = oldDiscovery
+        caches.close()
     }
 
     private fun item(id: String, image: Boolean = true, square: Boolean = false, description: String = "") = BookmarkItem(
@@ -137,25 +145,22 @@ class DiscoverShelvesTest {
         val saves = java.util.concurrent.atomic.AtomicInteger()
     }
 
-    private fun show(source: FakeSource, calls: Calls = Calls(), japaneseLightLargeFont: Boolean = false): ComponentActivity {
-        val activity = host.launch()
-        host.main {
-            activity.setContent {
-                val base = androidx.compose.ui.platform.LocalContext.current
-                val context = if (!japaneseLightLargeFont) base else androidx.compose.runtime.remember(base) {
-                    base.createConfigurationContext(android.content.res.Configuration(base.resources.configuration).apply {
-                        setLocale(java.util.Locale.JAPAN)
-                        fontScale = 2f
-                    })
-                }
-                androidx.compose.runtime.CompositionLocalProvider(
-                    androidx.compose.ui.platform.LocalContext provides context,
-                    androidx.compose.ui.platform.LocalConfiguration provides context.resources.configuration,
-                    androidx.compose.ui.platform.LocalResources provides context.resources,
-                    androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(
-                        context.resources.displayMetrics.density, context.resources.configuration.fontScale)
-                ) {
-                TidiloTheme(darkTheme = !japaneseLightLargeFont, dynamicColor = false) {
+    private fun show(source: FakeSource, calls: Calls = Calls(), japaneseLightLargeFont: Boolean = false) {
+        composeRule.setContent {
+            val base = LocalContext.current
+            val context = if (!japaneseLightLargeFont) base else remember(base) {
+                base.createConfigurationContext(Configuration(base.resources.configuration).apply {
+                    setLocale(Locale.JAPAN)
+                    fontScale = 2f
+                })
+            }
+            CompositionLocalProvider(
+                LocalContext provides context,
+                LocalConfiguration provides context.resources.configuration,
+                LocalResources provides context.resources,
+                LocalDensity provides Density(context.resources.displayMetrics.density, context.resources.configuration.fontScale)
+            ) {
+                TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
                     // The app draws the canvas behind every screen; this host has no app chrome.
                     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
                     DiscoverScreen(
@@ -164,315 +169,234 @@ class DiscoverShelvesTest {
                         onOpenEntity = { calls.entities += it },
                         onSaveUrl = { calls.saves.incrementAndGet() },
                         onRetryImport = { calls.retries += it },
-                        viewModel = DiscoverViewModel(source)
+                        viewModel = remember { DiscoverViewModel(source) }
                     )
-                }
                 }
             }
         }
-        return activity
     }
 
-    private fun tag(node: SemanticsNode, value: String) = node.config.getOrNull(SemanticsProperties.TestTag) == value
-    private fun click(node: SemanticsNode) = host.main { node.config[SemanticsActions.OnClick].action?.invoke() }
+    private fun nodes(matcher: SemanticsMatcher, useUnmergedTree: Boolean = true): List<SemanticsNode> =
+        composeRule.onAllNodes(matcher, useUnmergedTree).fetchSemanticsNodes()
 
-    /** Scrolls the Discover list until a node matching [predicate] is composed. */
-    private suspend fun find(activity: ComponentActivity, predicate: (SemanticsNode) -> Boolean): SemanticsNode {
-        repeat(30) {
-            var found: SemanticsNode? = null
-            host.main { found = host.nodes(activity).firstOrNull(predicate) }
-            found?.let { return it }
-            host.scroll(activity, 600f)
-            delay(80)
-        }
-        return host.await(activity, predicate)
+    private fun await(matcher: SemanticsMatcher): SemanticsNode {
+        composeRule.waitUntil(8_000) { nodes(matcher).isNotEmpty() }
+        return nodes(matcher).first()
     }
 
-    @Test fun emptyLibraryShowsTheWallAndSaveUrl() = runBlocking {
+    private fun awaitAbsent(matcher: SemanticsMatcher) = composeRule.waitUntil(8_000) { nodes(matcher).isEmpty() }
+
+    private fun until(condition: () -> Boolean) = composeRule.waitUntil(5_000, condition)
+
+    private fun tag(value: String) = hasTestTag(value)
+
+    private fun click(node: SemanticsNode) {
+        composeRule.runOnUiThread { node.config[SemanticsActions.OnClick].action?.invoke() }
+        composeRule.waitForIdle()
+    }
+
+    private fun longClick(node: SemanticsNode) {
+        composeRule.runOnUiThread { node.config[SemanticsActions.OnLongClick].action?.invoke() }
+        composeRule.waitForIdle()
+    }
+
+    /** Scrolls the Discover list until a node matching [matcher] is composed. */
+    private fun find(matcher: SemanticsMatcher): SemanticsNode {
+        composeRule.onNodeWithTag("discover_list").performScrollToNode(matcher)
+        return await(matcher)
+    }
+
+    /** Clicks the clickable node whose merged text is [label] (buttons merge their child text). */
+    private fun clickButton(label: String) {
+        val button = hasClickAction() and hasText(label)
+        composeRule.waitUntil(5_000) { nodes(button, useUnmergedTree = false).isNotEmpty() }
+        composeRule.onAllNodes(button).onFirst().performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
+    }
+
+    private fun mergedDescription(tag: String): List<String> =
+        nodes(hasTestTag(tag), useUnmergedTree = false).first().config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
+
+    @Test fun emptyLibraryShowsTheWallAndSaveUrl() {
         val calls = Calls()
         val source = FakeSource(fullSnapshot().copy(libraryCount = 0, hero = null, onThisDay = emptyList(), sleepingGems = emptyList(),
             rising = emptyList(), connection = null, map = emptyList()))
-        val activity = show(source, calls)
-        try {
-            host.await(activity) { tag(it, "discover_empty") }
-            click(button(activity, "Save URL"))
-            assertEquals(1, calls.saves.get())
-            host.capture("discover-empty")
-        } finally { activity.finish() }
+        show(source, calls)
+        await(tag("discover_empty"))
+        clickButton("Save URL")
+        assertEquals(1, calls.saves.get())
     }
 
-    @Test fun smallLibraryShowsDeckAndHowToSave() = runBlocking {
+    @Test fun smallLibraryShowsDeckAndHowToSave() {
         val source = FakeSource(fullSnapshot().copy(libraryCount = 10, hero = null, sleepingGems = emptyList(), rising = emptyList(),
             connection = null, map = emptyList(), onThisDay = emptyList()))
         source.deck = listOf(item("d0"), item("d1"))
         source.justSaved.value = listOf(item("new"))
-        val activity = show(source)
-        try {
-            host.await(activity) { tag(it, "discover_shelf_JUST_SAVED") }
-            find(activity) { tag(it, "discover_deck") }
-            find(activity) { tag(it, "discover_how_to_save") }
-            host.main { assertTrue(host.nodes(activity).none { tag(it, "discover_shelf_HERO") }) }
-        } finally { activity.finish() }
+        show(source)
+        await(tag("discover_shelf_JUST_SAVED"))
+        find(tag("discover_deck"))
+        find(tag("discover_how_to_save"))
+        assertTrue(nodes(tag("discover_shelf_HERO")).isEmpty())
     }
 
-    @Test fun everyShelfRendersWithAHeadingAndAnnouncesItsReason() = runBlocking {
+    @Test fun everyShelfRendersWithAHeadingAndAnnouncesItsReason() {
         val source = FakeSource(fullSnapshot())
         source.deck = listOf(item("d0"), item("d1", square = true))
         source.justSaved.value = listOf(item("new"))
         source.freshRss.value = listOf(pick("rss", DiscoverReason.RssExpiring(2)))
-        val activity = show(source)
-        try {
-            host.await(activity) { tag(it, "discover_shelf_HERO") }
-            shell("dumpsys gfxinfo ${host.context.packageName} reset")
-            host.capture("discover-hero")
-            val hero = host.await(activity) { tag(it, "discover_card_hero") }
-            host.main {
-                val merged = host.nodes(activity, useUnmergedTree = false).first { tag(it, "discover_card_hero") }
-                assertTrue(merged.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty().any { "never opened" in it })
-            }
-            assertTrue(hero.boundsInRoot.width > 0f)
-            val shelves = listOf("ON_THIS_DAY", "JUST_SAVED", "DECK", "SLEEPING_GEMS", "RISING", "FRESH_RSS", "CONNECTIONS", "MAP")
-            for ((index, shelf) in shelves.withIndex()) {
-                val node = find(activity) { tag(it, "discover_shelf_$shelf") }
-                host.scroll(activity, node.boundsInRoot.top - 240f)
-                delay(400)
-                host.capture("discover-shelf-$index-$shelf")
-            }
-            host.main {
-                val headings = host.nodes(activity).count { it.config.getOrNull(SemanticsProperties.Heading) != null }
-                assertTrue("headings: $headings", headings >= 1)
-            }
-            // Frame smoke check (emulator only; the Pixel 8 p90 budget is measured in Phase 7).
-            java.io.File(host.context.cacheDir, "issue137-discover-gfxinfo.txt")
-                .writeText(shell("dumpsys gfxinfo ${host.context.packageName}"))
-            host.main {
-                val rss = host.nodes(activity, useUnmergedTree = false).first { tag(it, "discover_card_rss") }
-                assertTrue(rss.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty().any { "Disappears in 2 days" in it })
-            }
-        } finally { activity.finish() }
+        show(source)
+        await(tag("discover_shelf_HERO"))
+        val hero = await(tag("discover_card_hero"))
+        assertTrue(mergedDescription("discover_card_hero").any { "never opened" in it })
+        assertTrue(hero.boundsInRoot.width > 0f)
+        for (shelf in listOf("ON_THIS_DAY", "JUST_SAVED", "DECK", "SLEEPING_GEMS", "RISING", "FRESH_RSS", "CONNECTIONS", "MAP")) {
+            find(tag("discover_shelf_$shelf"))
+        }
+        val headings = nodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).size
+        assertTrue("headings: $headings", headings >= 1)
+        find(tag("discover_card_rss"))
+        assertTrue(mergedDescription("discover_card_rss").any { "Disappears in 2 days" in it })
     }
 
-    @Test fun japaneseLightThemeAtDoubleFontScaleKeepsShelvesReadable() = runBlocking {
+    @Test fun japaneseLightThemeAtDoubleFontScaleKeepsShelvesReadable() {
         val source = FakeSource(fullSnapshot())
         source.deck = listOf(item("d0"), item("d1"))
         source.freshRss.value = listOf(pick("rss", DiscoverReason.RssExpiring(2)))
-        val activity = show(source, japaneseLightLargeFont = true)
-        try {
-            host.await(activity) { host.text(it, "今日の一枚") || tag(it, "discover_shelf_HERO") }
-            host.capture("discover-ja-light-2x-0-hero")
-            for ((index, shelf) in listOf("DECK", "SLEEPING_GEMS", "FRESH_RSS", "MAP").withIndex()) {
-                val node = find(activity) { tag(it, "discover_shelf_$shelf") }
-                host.scroll(activity, node.boundsInRoot.top - 240f)
-                delay(400)
-                host.capture("discover-ja-light-2x-${index + 1}-$shelf")
-            }
-            host.main { assertTrue(host.nodes(activity).any { host.text(it, "シャッフル") }) }
-        } finally { activity.finish() }
+        show(source, japaneseLightLargeFont = true)
+        await(hasText("今日の一枚") or tag("discover_shelf_HERO"))
+        for (shelf in listOf("DECK", "SLEEPING_GEMS", "FRESH_RSS", "MAP")) find(tag("discover_shelf_$shelf"))
+        find(hasText("シャッフル"))
     }
 
-    @Test fun cardsOpenDetailWithTheirShelfAndEntitiesOpenSearch() = runBlocking {
+    @Test fun cardsOpenDetailWithTheirShelfAndEntitiesOpenSearch() {
         val calls = Calls()
         val source = FakeSource(fullSnapshot())
-        val activity = show(source, calls)
-        try {
-            click(host.await(activity) { tag(it, "discover_card_hero") })
-            click(find(activity) { tag(it, "discover_card_gem0") })
-            click(find(activity) { tag(it, "discover_rising_ai") })
-            click(find(activity) { tag(it, "discover_map_kotlin") })
-            assertEquals(listOf("hero" to DiscoverShelf.HERO, "gem0" to DiscoverShelf.SLEEPING_GEMS), calls.opened.toList())
-            assertEquals(listOf("AI", "Kotlin"), calls.entities.toList())
-        } finally { activity.finish() }
+        show(source, calls)
+        click(await(tag("discover_card_hero")))
+        click(find(tag("discover_card_gem0")))
+        click(find(tag("discover_rising_ai")))
+        click(find(tag("discover_map_kotlin")))
+        assertEquals(listOf("hero" to DiscoverShelf.HERO, "gem0" to DiscoverShelf.SLEEPING_GEMS), calls.opened.toList())
+        assertEquals(listOf("AI", "Kotlin"), calls.entities.toList())
     }
 
-    @Test fun runningAndFailedImportsShowInJustSaved() = runBlocking {
+    @Test fun runningAndFailedImportsShowInJustSaved() {
         val calls = Calls()
         val source = FakeSource(fullSnapshot().copy(hero = null))
         source.processing.value = listOf(ImportTask(id = "run", url = "https://$domain/run", title = "Running", status = TaskStatus.PROCESSING, statusText = ""))
         source.errors.value = listOf(ImportTask(id = "bad", url = "https://$domain/bad", title = "Broken", status = TaskStatus.ERROR, statusText = ""))
-        val activity = show(source, calls)
-        try {
-            host.await(activity) { tag(it, "discover_task_run") }
-            host.capture("discover-saving")
-            click(button(activity, "Retry"))
-            assertEquals(listOf("bad"), calls.retries.toList())
-        } finally { activity.finish() }
+        show(source, calls)
+        await(tag("discover_task_run"))
+        clickButton("Retry")
+        assertEquals(listOf("bad"), calls.retries.toList())
     }
 
-    @Test fun deckButtonsAdvanceAndLike() = runBlocking {
-        val calls = Calls()
+    @Test fun deckButtonsAdvanceAndLike() {
         val source = FakeSource(fullSnapshot().copy(hero = null, onThisDay = emptyList()))
         source.deck = listOf(item("d0"), item("d1"))
-        val activity = show(source, calls)
-        try {
-            click(find(activity) { tag(it, "discover_deck_like") })
-            assertEquals(listOf("d0" to EngagementSurface.DISCOVER_DECK), source.likes.toList())
-            click(host.await(activity) { tag(it, "discover_deck_next") })
-            host.await(activity) { tag(it, "discover_card_d1") }
-            click(host.await(activity) { tag(it, "discover_deck_next") })
-            host.await(activity) { tag(it, "discover_deck_deal") }
-            assertEquals(listOf("d0", "d1"), source.flicks.toList())
-        } finally { activity.finish() }
+        show(source)
+        click(find(tag("discover_deck_like")))
+        until { source.likes.toList() == listOf("d0" to EngagementSurface.DISCOVER_DECK) }
+        click(await(tag("discover_deck_next")))
+        await(tag("discover_card_d1"))
+        click(await(tag("discover_deck_next")))
+        await(tag("discover_deck_deal"))
+        assertEquals(listOf("d0", "d1"), source.flicks.toList())
     }
 
-    @Test fun visibleCardRecordsAnImpressionWithItsShelf() = runBlocking {
+    @Test fun visibleCardRecordsAnImpressionWithItsShelf() {
         val source = FakeSource(fullSnapshot())
-        val activity = show(source)
-        try {
-            host.await(activity) { tag(it, "discover_card_hero") }
-            withTimeoutOrFail { source.impressions.any { it == "hero" to EngagementSurface.DISCOVER_HERO } }
-        } finally { activity.finish() }
+        show(source)
+        await(tag("discover_card_hero"))
+        until { source.impressions.any { it == "hero" to EngagementSurface.DISCOVER_HERO } }
     }
 
-    @Test fun deckFlicksAndOffersAccessibilityActions(): Unit = runBlocking {
+    @Test fun deckFlicksAndOffersAccessibilityActions() {
         val source = FakeSource(fullSnapshot().copy(hero = null, onThisDay = emptyList()))
         source.deck = listOf(item("d0"), item("d1"), item("d2"))
-        val activity = show(source)
-        try {
-            val card = find(activity) { tag(it, "discover_card_d0") }
-            host.main {
-                val labels = card.config[SemanticsActions.CustomActions].map { it.label }
-                assertEquals(listOf("Next card", "Like"), labels)
-                assertEquals("Peek", card.config[SemanticsActions.OnLongClick].label)
-                assertEquals("Card 1 of 3", card.config.getOrNull(SemanticsProperties.StateDescription))
-            }
-            host.main { card.config[SemanticsActions.CustomActions][1].action() }
-            withTimeoutOrFail { source.likes.toList() == listOf("d0" to EngagementSurface.DISCOVER_DECK) }
-            host.main { card.config[SemanticsActions.CustomActions][0].action() }
-            val second = host.await(activity) { tag(it, "discover_card_d1") }
-            host.capture("discover-deck-before-drag")
-            // A fast fling shorter than 40% of the card's width flicks it (velocity alone).
-            val bounds = second.boundsInWindow
-            drag(Offset(bounds.left + 40f, bounds.center.y), Offset(bounds.left + 40f + bounds.width * 0.3f, bounds.center.y))
-            host.await(activity) { tag(it, "discover_card_d2") }
-            withTimeoutOrFail { source.flicks.toList() == listOf("d0", "d1") }
-            // A short drag springs back.
-            val third = host.await(activity) { tag(it, "discover_card_d2") }.boundsInWindow
-            drag(Offset(third.left + 40f, third.center.y), Offset(third.left + 80f, third.center.y), steps = 20, stepMs = 30)
-            delay(500)
-            assertEquals(listOf("d0", "d1"), source.flicks.toList())
-        } finally { activity.finish() }
+        show(source)
+        val card = find(tag("discover_card_d0"))
+        assertEquals(listOf("Next card", "Like"), card.config[SemanticsActions.CustomActions].map { it.label })
+        assertEquals("Peek", card.config[SemanticsActions.OnLongClick].label)
+        assertEquals("Card 1 of 3", card.config.getOrNull(SemanticsProperties.StateDescription))
+        composeRule.runOnUiThread { card.config[SemanticsActions.CustomActions][1].action() }
+        until { source.likes.toList() == listOf("d0" to EngagementSurface.DISCOVER_DECK) }
+        composeRule.runOnUiThread { card.config[SemanticsActions.CustomActions][0].action() }
+        await(tag("discover_card_d1"))
+        // A fast fling shorter than 40% of the card's width flicks it (velocity alone).
+        composeRule.onNodeWithTag("discover_card_d1", useUnmergedTree = true).performTouchInput {
+            swipe(Offset(left + 40f, centerY), Offset(left + 40f + width * 0.3f, centerY), durationMillis = 72)
+        }
+        await(tag("discover_card_d2"))
+        until { source.flicks.toList() == listOf("d0", "d1") }
+        // A short, slow drag springs back.
+        composeRule.onNodeWithTag("discover_card_d2", useUnmergedTree = true).performTouchInput {
+            swipe(Offset(left + 40f, centerY), Offset(left + 80f, centerY), durationMillis = 600)
+        }
+        composeRule.waitForIdle()
+        assertEquals(listOf("d0", "d1"), source.flicks.toList())
     }
 
-    @Test fun peekSheetRecordsSnoozesAndUndoes(): Unit = runBlocking {
+    @Test fun peekSheetRecordsSnoozesAndUndoes() {
         val source = FakeSource(fullSnapshot())
-        val activity = show(source)
-        try {
-            val gem = find(activity) { tag(it, "discover_card_gem0") }
-            host.main { gem.config[SemanticsActions.OnLongClick].action?.invoke() }
-            host.await(activity) { tag(it, "discover_peek_sheet") }
-            host.capture("discover-peek-sheet")
-            withTimeoutOrFail { "peek:gem0" in source.calls }
-            click(button(activity, "Not now"))
-            host.awaitAbsent(activity) { tag(it, "discover_card_gem0") }
-            click(button(activity, "Undo"))
-            find(activity) { tag(it, "discover_card_gem0") }
-            assertEquals(listOf("peek:gem0", "snooze:gem0", "unsuppress:gem0"), source.calls.toList())
+        show(source)
+        longClick(find(tag("discover_card_gem0")))
+        await(tag("discover_peek_sheet"))
+        until { "peek:gem0" in source.calls }
+        clickButton("Not now")
+        awaitAbsent(tag("discover_card_gem0"))
+        clickButton("Undo")
+        find(tag("discover_card_gem0"))
+        assertEquals(listOf("peek:gem0", "snooze:gem0", "unsuppress:gem0"), source.calls.toList())
 
-            val again = find(activity) { tag(it, "discover_card_gem0") }
-            host.main { again.config[SemanticsActions.OnLongClick].action?.invoke() }
-            click(button(activity, "Don’t show again"))
-            host.awaitAbsent(activity) { tag(it, "discover_card_gem0") }
-            assertTrue("never:gem0" in source.calls)
-        } finally { activity.finish() }
+        longClick(find(tag("discover_card_gem0")))
+        clickButton("Don’t show again")
+        awaitAbsent(tag("discover_card_gem0"))
+        assertTrue("never:gem0" in source.calls)
     }
 
-    @Test fun peekLikesAddsToCollectionAndReturnsFocus(): Unit = runBlocking {
+    @Test fun peekLikesAddsToCollectionAndReturnsFocus() {
         val source = FakeSource(fullSnapshot())
         // Cards take input focus only outside touch mode (keyboard, D-pad), as in any Android app.
-        host.instrumentation.setInTouchMode(false)
-        val activity = show(source)
+        instrumentation.setInTouchMode(false)
         try {
-            val hero = host.await(activity) { tag(it, "discover_card_hero") }
-            host.main { hero.config[SemanticsActions.OnLongClick].action?.invoke() }
-            click(host.await(activity) { tag(it, "discover_peek_like") })
-            withTimeoutOrFail { source.likes.toList() == listOf("hero" to EngagementSurface.DISCOVER_PEEK) }
-            click(button(activity, "Add to collection"))
-            host.await(activity) { host.text(it, "Choose collections") }
-            host.awaitAbsent(activity) { tag(it, "discover_peek_sheet") }
-            // BACK during the sheet's entrance can be swallowed; let it settle first.
-            host.capture("discover-peek-collection")
-            host.instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-            host.awaitAbsent(activity) { host.text(it, "Choose collections") }
-            host.await(activity) { tag(it, "discover_card_hero") && it.config.getOrNull(SemanticsProperties.Focused) == true }
+            show(source)
+            longClick(await(tag("discover_card_hero")))
+            click(await(tag("discover_peek_like")))
+            until { source.likes.toList() == listOf("hero" to EngagementSurface.DISCOVER_PEEK) }
+            clickButton("Add to collection")
+            await(hasText("Choose collections"))
+            awaitAbsent(tag("discover_peek_sheet"))
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            awaitAbsent(hasText("Choose collections"))
+            await(tag("discover_card_hero") and SemanticsMatcher.expectValue(SemanticsProperties.Focused, true))
         } finally {
-            activity.finish()
-            host.instrumentation.setInTouchMode(true)
+            instrumentation.setInTouchMode(true)
         }
     }
 
-    @Test fun mapMuteHidesTheBubbleUntilUndo(): Unit = runBlocking {
+    @Test fun mapMuteHidesTheBubbleUntilUndo() {
         val source = FakeSource(fullSnapshot())
-        val activity = show(source)
-        try {
-            val bubble = find(activity) { tag(it, "discover_map_kotlin") }
-            host.main {
-                assertEquals("Mute topic", bubble.config[SemanticsActions.OnLongClick].label)
-                bubble.config[SemanticsActions.OnLongClick].action?.invoke()
-            }
-            host.awaitAbsent(activity) { tag(it, "discover_map_kotlin") }
-            host.capture("discover-map-muted")
-            click(button(activity, "Undo"))
-            host.await(activity) { tag(it, "discover_map_kotlin") }
-            assertEquals(listOf("mute:kotlin", "unmute:kotlin"), source.calls.toList())
-        } finally { activity.finish() }
+        show(source)
+        val bubble = find(tag("discover_map_kotlin"))
+        assertEquals("Mute topic", bubble.config[SemanticsActions.OnLongClick].label)
+        longClick(bubble)
+        awaitAbsent(tag("discover_map_kotlin"))
+        clickButton("Undo")
+        await(tag("discover_map_kotlin"))
+        assertEquals(listOf("mute:kotlin", "unmute:kotlin"), source.calls.toList())
     }
 
-    @Test fun pullingDownReDealsOnceAndFlipsTheSnapshotShelves(): Unit = runBlocking {
+    @Test fun pullingDownReDealsOnceAndFlipsTheSnapshotShelves() {
         val source = FakeSource(fullSnapshot())
         source.justSaved.value = listOf(item("new"))
-        val activity = show(source)
-        try {
-            val list = host.await(activity) { tag(it, "discover_card_hero") }.boundsInWindow
-            drag(Offset(list.center.x, list.top + 40f), Offset(list.center.x, list.top + 900f), steps = 16, stepMs = 20)
-            delay(120)
-            host.capture("discover-redeal-mid-flip")
-            withTimeoutOrFail { source.calls.toList() == listOf("reDeal") }
-            delay(800)
-            find(activity) { tag(it, "discover_card_new") }
-            assertEquals(listOf("reDeal"), source.calls.toList())
-        } finally { activity.finish() }
-    }
-
-    /**
-     * Injects a drag in window coordinates (the test activity is full screen). Event times advance by
-     * exactly [stepMs] per step, so the measured velocity does not depend on how long injection takes.
-     */
-    private suspend fun drag(start: Offset, end: Offset, steps: Int = 6, stepMs: Long = 12) {
-        val downTime = android.os.SystemClock.uptimeMillis()
-        fun send(action: Int, position: Offset, step: Int) {
-            val event = android.view.MotionEvent.obtain(downTime, downTime + step * stepMs, action, position.x, position.y, 0)
-            try { host.instrumentation.sendPointerSync(event) } finally { event.recycle() }
+        show(source)
+        await(tag("discover_card_hero"))
+        composeRule.onNodeWithTag("discover_card_hero", useUnmergedTree = true).performTouchInput {
+            swipe(Offset(centerX, top + 40f), Offset(centerX, top + 900f), durationMillis = 320)
         }
-        send(android.view.MotionEvent.ACTION_DOWN, start, 0)
-        for (step in 1..steps) {
-            delay(stepMs)
-            send(android.view.MotionEvent.ACTION_MOVE, start + (end - start) * (step / steps.toFloat()), step)
-        }
-        send(android.view.MotionEvent.ACTION_UP, end, steps)
-    }
-
-    private fun shell(command: String): String =
-        host.instrumentation.uiAutomation.executeShellCommand(command).let { fd ->
-            android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).bufferedReader().use { it.readText() }
-        }
-
-    /** A clickable node whose merged text is [label] (buttons merge their child text). */
-    private suspend fun button(activity: ComponentActivity, label: String): SemanticsNode {
-        repeat(100) {
-            var found: SemanticsNode? = null
-            host.main {
-                found = host.nodes(activity, useUnmergedTree = false).firstOrNull {
-                    it.config.getOrNull(SemanticsActions.OnClick) != null && host.text(it, label)
-                }
-            }
-            found?.let { return it }
-            delay(50)
-        }
-        error("No button $label")
-    }
-
-    private suspend fun withTimeoutOrFail(condition: () -> Boolean) {
-        repeat(60) { if (condition()) return; delay(50) }
-        assertTrue("condition not met", condition())
+        until { source.calls.toList() == listOf("reDeal") }
+        find(tag("discover_card_new"))
+        assertEquals(listOf("reDeal"), source.calls.toList())
     }
 }

@@ -1,176 +1,167 @@
 package me.bubblespark.tidilo.data
 
-import android.content.Intent
-import android.graphics.Rect
-import android.view.accessibility.AccessibilityNodeInfo
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.lifecycle.ViewModelProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isToggleable
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.text.AnnotatedString
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
-import me.bubblespark.tidilo.MainActivity
-import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.ui.screens.library.BookmarkDetailScreen
-import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
+import me.bubblespark.tidilo.ui.screens.library.formatClassificationBreadcrumb
+import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
 class BookmarkDetailTagLayoutTest {
-    @Test fun entityOnlyTagsHaveNoEmptyClassificationGap() = verifyTags(entities = listOf("UniqueEntity"))
-    @Test fun categoryOnlyTagsRetainTheClassificationLine() = verifyTags(category = "Article")
-    @Test fun subcategoryOnlyTagsRetainTheClassificationLine() = verifyTags(subcategory = "Tech")
-    @Test fun privateOnlyTagsRetainTheClassificationLine() = verifyTags(isPrivate = true)
-    @Test fun emptyTagsRetainTheSectionAndEditAction() = verifyTags()
-    @Test fun tagDialogOkPersistsBreadcrumbAndEntitiesWithoutDetailSave() = verifyTags(
-        category = "Article",
-        subcategory = "Tech",
-        entities = listOf("InitialEntity"),
-        verifyTagCommit = true
-    )
+    @get:Rule val composeRule = createComposeRule()
 
-    private fun verifyTags(
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private val density = context.resources.displayMetrics.density
+    private val token = UUID.randomUUID().toString()
+
+    @Test fun classificationAndEntityRowsKeepTheirSpacing() = withDetail(listOf(
+        row("entity", entities = listOf("UniqueEntity")),
+        row("category", category = "Article"),
+        row("subcategory", subcategory = "Tech"),
+        row("private", isPrivate = true),
+        row("empty")
+    )) { rows, selected ->
+        for (row in rows) {
+            composeRule.runOnUiThread { selected.value = row.id }
+            composeRule.waitForIdle()
+            assertLayout(row)
+        }
+    }
+
+    @Test fun tagDialogOkPersistsBreadcrumbAndEntitiesWithoutDetailSave() = withDetail(listOf(
+        row("commit", category = "Article", subcategory = "Tech", entities = listOf("InitialEntity"))
+    )) { rows, _ ->
+        val row = rows.single()
+        val titleBounds = assertLayout(row)
+        click(string(R.string.detail_edit_tags))
+        val inTagDialog = inWindowShowing(string(R.string.detail_tag_dialog_title))
+        // Toggle the Private switch inside BookmarkTagEditDialog.
+        click(isToggleable() and hasClickAction() and inTagDialog)
+        // Add a new entity tag.
+        click(string(R.string.detail_tag_add_entity))
+        val inAddDialog = inWindowShowing(string(R.string.detail_add_entity_title))
+        val newEntity = "AddedEntity"
+        val field = composeRule.awaitNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetText) and inAddDialog)
+        composeRule.runOnUiThread { check(field.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(newEntity)) == true) }
+        composeRule.awaitNode(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(newEntity)) and inAddDialog)
+        click(string(R.string.common_ok), inAddDialog)
+        // Confirm the parent BookmarkTagEditDialog.
+        click(string(R.string.common_ok), inTagDialog)
+
+        val updatedBreadcrumb = requireNotNull(formatClassificationBreadcrumb(
+            localizedCategory(row), localizedSubcategory(row), true, string(R.string.detail_tag_private_label)))
+        assertTrue("Updated classification breadcrumb with Private appears above title",
+            bounds(hasText(updatedBreadcrumb)).top < titleBounds.top)
+        assertTrue("Added entity chip appears below title", bounds(hasText(newEntity)).top > titleBounds.bottom)
+        // Parent OK is the final persistence step: no Detail-level Save is needed.
+        withTimeout(5_000) {
+            while (true) {
+                val stored = withContext(Dispatchers.IO) { library.db.bookmarkDao().getBookmarkById(row.id) }
+                if (stored?.isPrivate == true && newEntity in stored.entities) break
+                delay(100)
+            }
+        }
+    }
+
+    private lateinit var library: InMemoryLibrary
+
+    private fun row(
+        name: String,
         category: String? = null,
         subcategory: String? = null,
         isPrivate: Boolean = false,
-        entities: List<String> = emptyList(),
-        verifyTagCommit: Boolean = false
+        entities: List<String> = emptyList()
+    ) = BookmarkEntity("$token-$name", "Entity-only spacing", "https://tag-$name-$token.invalid/article", "Summary",
+        category = category, subcategory = subcategory, isPrivate = isPrivate,
+        entities = entities, createdAt = 1, updatedAt = 1)
+
+    private fun withDetail(
+        rows: List<BookmarkEntity>,
+        body: suspend (List<BookmarkEntity>, androidx.compose.runtime.MutableState<String>) -> Unit
     ): Unit = runBlocking {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val context = instrumentation.targetContext
-        val db = AppDatabase.getInstance(context)
-        val id = UUID.randomUUID().toString()
-        val item = BookmarkEntity(id, "Entity-only spacing", "https://tag-$id.invalid/article", "Summary",
-            category = category, subcategory = subcategory, isPrivate = isPrivate,
-            entities = entities, createdAt = 1, updatedAt = 1)
-        var activity: ComponentActivity? = null
+        val caches = OfflineVisualCaches()
+        library = withContext(Dispatchers.IO) { InMemoryLibrary(context).also { it.awaitReady() } }
         try {
-            db.bookmarkDao().insertOrUpdate(item)
-            val host = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ComponentActivity
-            activity = host
-            instrumentation.runOnMainSync {
-                val vm = ViewModelProvider(host)[LibraryViewModel::class.java]
-                host.setContent { MaterialTheme { Surface { BookmarkDetailScreen(id, vm, {}) } } }
-            }
-            fun findNode(node: AccessibilityNodeInfo, predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
-                if (predicate(node)) return node
-                repeat(node.childCount) { index -> node.getChild(index)?.let { findNode(it, predicate)?.let { return it } } }
-                return null
-            }
-            suspend fun awaitNode(predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo = withTimeout(10000) {
-                var node: AccessibilityNodeInfo? = null
-                while (node == null) {
-                    instrumentation.uiAutomation.clearCache()
-                    node = instrumentation.uiAutomation.rootInActiveWindow?.let { findNode(it, predicate) }
-                    if (node == null) delay(20)
-                }
-                node
-            }
-            suspend fun boundsWhere(predicate: (AccessibilityNodeInfo) -> Boolean): Rect =
-                Rect().also(awaitNode(predicate)::getBoundsInScreen)
-            suspend fun bounds(text: String): Rect = boundsWhere { it.text?.toString() == text }
-            suspend fun boundsContaining(substring: String): Rect = boundsWhere { it.text?.toString()?.contains(substring) == true }
-            suspend fun clickNode(label: String) = withTimeout(10000) {
-                while (true) {
-                    instrumentation.uiAutomation.clearCache()
-                    var target = instrumentation.uiAutomation.rootInActiveWindow?.let {
-                        findNode(it) { n -> n.text?.toString() == label || n.contentDescription?.toString() == label }
-                    }
-                    while (target != null && !target.isClickable) target = target.parent
-                    if (target?.isEnabled == true && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) break
-                    delay(30)
-                }
-                delay(150)
-            }
-
-            val density = context.resources.displayMetrics.density
-            val domainBounds = boundsContaining("tag-$id.invalid")
-            val titleBounds = bounds("Entity-only spacing")
-            val localizedCategory = category?.let { Category.toLocalized(it, context) }.orEmpty()
-            val localizedSubcategory = subcategory?.let { Subcategory.toLocalized(it, context) }.orEmpty()
-            val privateLabel = context.getString(R.string.detail_tag_private_label)
-            val expectedBreadcrumb = me.bubblespark.tidilo.ui.screens.library.formatClassificationBreadcrumb(
-                localizedCategory, localizedSubcategory, isPrivate, privateLabel
-            )
-            if (expectedBreadcrumb != null) {
-                val breadcrumbBounds = bounds(expectedBreadcrumb)
-                assertTrue("Classification breadcrumb must sit between domain and title", breadcrumbBounds.top >= domainBounds.bottom - 2 && breadcrumbBounds.bottom <= titleBounds.top + 2)
-            } else {
-                val domainToTitleGap = (titleBounds.top - domainBounds.bottom) / density
-                assertTrue("When classification is empty, title pulls up directly beneath domain without an empty row gap: $domainToTitleGap dp", domainToTitleGap in 2f..18f)
-            }
-
-            val belowTitleText = if (entities.isNotEmpty()) {
-                entities.first()
-            } else {
-                context.getString(R.string.detail_add_tags_placeholder)
-            }
-            val entityBounds = bounds(belowTitleText)
-            val titleToEntityGap = (entityBounds.top - titleBounds.bottom) / density
-            assertTrue("Entity row sits compactly below the title: $titleToEntityGap dp", titleToEntityGap in 6f..32f)
-
-            val editLabel = context.getString(R.string.detail_edit_tags)
-            assertTrue(
-                "Tag editing remains available",
-                instrumentation.uiAutomation.rootInActiveWindow?.let {
-                    findNode(it) { n -> n.contentDescription?.toString() == editLabel } != null
-                } == true
-            )
-
-            if (verifyTagCommit) {
-                clickNode(editLabel)
-                // Toggle Private switch inside BookmarkTagEditDialog
-                withTimeout(10000) {
-                    while (true) {
-                        instrumentation.uiAutomation.clearCache()
-                        val toggle = instrumentation.uiAutomation.rootInActiveWindow?.let {
-                            findNode(it) { n -> n.isCheckable && n.isClickable }
-                        }
-                        if (toggle != null && toggle.performAction(AccessibilityNodeInfo.ACTION_CLICK)) break
-                        delay(30)
-                    }
-                    delay(150)
-                }
-                // Add a new entity tag
-                clickNode(context.getString(R.string.detail_tag_add_entity))
-                val editable = awaitNode { it.isEditable }
-                val newEntity = "AddedEntity"
-                editable.performAction(
-                    AccessibilityNodeInfo.ACTION_SET_TEXT,
-                    android.os.Bundle().apply {
-                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, newEntity)
-                    }
-                )
-                clickNode(context.getString(R.string.common_ok))
-                // Confirm parent BookmarkTagEditDialog
-                clickNode(context.getString(R.string.common_ok))
-
-                val updatedBreadcrumb = me.bubblespark.tidilo.ui.screens.library.formatClassificationBreadcrumb(
-                    localizedCategory, localizedSubcategory, true, privateLabel
-                )!!
-                val updatedBreadcrumbBounds = bounds(updatedBreadcrumb)
-                assertTrue("Updated classification breadcrumb with Private appears above title", updatedBreadcrumbBounds.top < titleBounds.top)
-                val addedEntityBounds = bounds(newEntity)
-                assertTrue("Added entity chip appears below title", addedEntityBounds.top > titleBounds.bottom)
-                // Parent OK is the final persistence step: no Detail-level Save is needed.
-                withTimeout(5000) {
-                    while (true) {
-                        val stored = db.bookmarkDao().getBookmarkById(id)
-                        if (stored?.isPrivate == true && newEntity in stored.entities) break
-                        delay(30)
-                    }
+            withContext(Dispatchers.IO) { library.db.bookmarkDao().insertAll(rows) }
+            val vm = library.viewModel()
+            val selected = mutableStateOf(rows.first().id)
+            composeRule.setContent {
+                TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
+                    Surface { BookmarkDetailScreen(selected.value, vm, {}) }
                 }
             }
+            body(rows, selected)
         } finally {
-            activity?.let { host -> instrumentation.runOnMainSync { host.finish() } }
-            db.bookmarkDao().deleteById(id)
+            caches.close()
+            library.close()
         }
+    }
+
+    /** Asserts the classification, title, and entity rows of [row]; returns the title bounds. */
+    private fun assertLayout(row: BookmarkEntity): Rect {
+        val domainBounds = bounds(hasText(requireNotNull(row.domain), substring = true))
+        val titleBounds = bounds(hasText(row.title))
+        val expectedBreadcrumb = formatClassificationBreadcrumb(
+            localizedCategory(row), localizedSubcategory(row), row.isPrivate, string(R.string.detail_tag_private_label))
+        if (expectedBreadcrumb != null) {
+            val breadcrumbBounds = bounds(hasText(expectedBreadcrumb))
+            assertTrue("${row.id}: classification breadcrumb must sit between domain and title",
+                breadcrumbBounds.top >= domainBounds.bottom - 2 && breadcrumbBounds.bottom <= titleBounds.top + 2)
+        } else {
+            val domainToTitleGap = (titleBounds.top - domainBounds.bottom) / density
+            assertTrue("${row.id}: when classification is empty, title pulls up directly beneath domain without an empty row gap: $domainToTitleGap dp",
+                domainToTitleGap in 2f..18f)
+        }
+        val belowTitleText = row.entities.firstOrNull() ?: string(R.string.detail_add_tags_placeholder)
+        val titleToEntityGap = (bounds(hasText(belowTitleText)).top - titleBounds.bottom) / density
+        assertTrue("${row.id}: entity row sits compactly below the title: $titleToEntityGap dp", titleToEntityGap in 6f..32f)
+        composeRule.awaitNode(hasContentDescription(string(R.string.detail_edit_tags)))
+        return titleBounds
+    }
+
+    private fun localizedCategory(row: BookmarkEntity) = row.category?.let { Category.toLocalized(it, context) }.orEmpty()
+    private fun localizedSubcategory(row: BookmarkEntity) = row.subcategory?.let { Subcategory.toLocalized(it, context) }.orEmpty()
+
+    private fun string(id: Int) = context.getString(id)
+
+    private fun bounds(matcher: SemanticsMatcher): Rect = composeRule.awaitNode(matcher).boundsInRoot
+
+    private fun click(label: String, scope: SemanticsMatcher? = null) =
+        click((hasText(label) or hasContentDescription(label)).let { if (scope == null) it else it and scope })
+
+    /** Clicks the enabled clickable ancestor of the newest node matching [matcher]. */
+    private fun click(matcher: SemanticsMatcher) {
+        var click: (() -> Boolean)? = null
+        composeRule.waitUntil(8_000) {
+            click = composeRule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().asReversed().firstNotNullOfOrNull { node ->
+                generateSequence(node) { it.parent }.firstOrNull { SemanticsActions.OnClick in it.config }
+                    ?.takeIf { SemanticsProperties.Disabled !in it.config }
+                    ?.config?.get(SemanticsActions.OnClick)?.action
+            }
+            click != null
+        }
+        composeRule.runOnUiThread { check(requireNotNull(click)()) }
+        composeRule.waitForIdle()
     }
 }

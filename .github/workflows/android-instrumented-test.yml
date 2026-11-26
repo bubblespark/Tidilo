@@ -101,5 +101,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-test-report-api-${{ inputs.api_level }}
-          path: app/build/reports/androidTests/connected/
+          path: |
+            app/build/reports/androidTests/connected/
+            diagnostics/
           retention-days: 7

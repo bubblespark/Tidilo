@@ -19,6 +19,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import me.bubblespark.tidilo.ui.screens.library.DomainGroupItem
@@ -146,12 +147,19 @@ class CollectionTitleTest {
                 composeRule.mainClock.advanceTimeBy(500)
                 val waiting = screenshot(bounds)
                 composeRule.mainClock.advanceTimeBy(1600)
-                val scrolling = screenshot(bounds)
                 try {
                     assertTrue("Marquee must wait before moving (rss=$rss)", initial.sameAs(waiting))
-                    assertFalse("Overflowing title must eventually scroll (rss=$rss)", waiting.sameAs(scrolling))
+                    // The compositor can present the advanced frame late, so sample up to 10 times 100ms apart.
+                    var moved = false
+                    for (sample in 1..10) {
+                        if (sample > 1) { composeRule.mainClock.advanceTimeBy(100); delay(100) }
+                        val scrolling = screenshot(bounds)
+                        try { moved = !waiting.sameAs(scrolling) } finally { scrolling.recycle() }
+                        if (moved) break
+                    }
+                    assertTrue("Overflowing title must eventually scroll (rss=$rss)", moved)
                 } finally {
-                    initial.recycle(); waiting.recycle(); scrolling.recycle()
+                    initial.recycle(); waiting.recycle()
                 }
             }
         } finally {

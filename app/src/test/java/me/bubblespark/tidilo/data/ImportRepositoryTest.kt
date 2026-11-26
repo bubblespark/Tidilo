@@ -1070,6 +1070,111 @@ class ImportRepositoryTest {
         }
     }
 
+    @Test fun directImportStopsAsErrorOnChallengeOrEmptyHttp200WithoutSavingBookmark() = runBlocking {
+        val cases = listOf(
+            "challenge" to { url: String ->
+                me.bubblespark.tidilo.parser.ParsedWebPage(
+                    requestedUrl = url, finalUrl = url, statusCode = 200, statusMessage = "OK",
+                    contentType = "text/html", htmlLang = "en", title = "Reddit", canonicalUrl = null,
+                    metaTags = emptyList(), ogpTags = emptyMap(), twitterTags = emptyMap(),
+                    standardMetaTags = emptyMap(), jsonLdList = emptyList(), h1List = emptyList(),
+                    h2List = emptyList(), readabilityArticle = null, jsoupBodyText = "Please wait...",
+                    jsoupBodyCharCount = 14, fetchLatencyMs = 0, parseLatencyMs = 0, rawHtmlSizeBytes = 100,
+                    isChallengePage = true
+                ) to me.bubblespark.tidilo.parser.ArticleAccessBlocked.MESSAGE
+            },
+            "empty" to { url: String ->
+                me.bubblespark.tidilo.parser.ParsedWebPage(
+                    requestedUrl = url, finalUrl = url, statusCode = 200, statusMessage = "OK",
+                    contentType = "text/html", htmlLang = "en", title = "Example", canonicalUrl = null,
+                    metaTags = emptyList(), ogpTags = emptyMap(), twitterTags = emptyMap(),
+                    standardMetaTags = emptyMap(), jsonLdList = emptyList(), h1List = emptyList(),
+                    h2List = emptyList(), readabilityArticle = null, jsoupBodyText = "",
+                    jsoupBodyCharCount = 0, fetchLatencyMs = 0, parseLatencyMs = 0, rawHtmlSizeBytes = 50,
+                    isChallengePage = false
+                ) to me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE
+            }
+        )
+        for ((name, factory) in cases) {
+            val job = SupervisorJob()
+            val dao = FakeImportTaskDao()
+            val bookmarks = FakeBookmarkDao()
+            val reportedErrors = mutableListOf<Throwable>()
+            val outcome = CompletableDeferred<Result<ImportOutcome>>()
+            try {
+                val repository = ImportRepository(
+                    taskDao = dao,
+                    bookmarkDao = bookmarks,
+                    repositoryScope = CoroutineScope(coroutineContext + job),
+                    articleAcquirer = { factory(it).first },
+                    reportImportError = { reportedErrors += it }
+                )
+                repository.importUrl("https://blocked.example/$name") { outcome.complete(it) }
+                val result = withTimeout(5000) { outcome.await() }
+                assertTrue(result.isFailure)
+                assertTrue(bookmarks.savedItems.isEmpty())
+                val task = dao.getAllTasks().single()
+                assertEquals("ERROR", task.status)
+                assertFalse(task.articlePrepared)
+                assertEquals(factory("https://blocked.example/$name").second, task.errorMessage)
+                assertEquals(task.errorMessage, reportedErrors.single().message)
+            } finally {
+                job.cancelAndJoin()
+            }
+        }
+    }
+
+    @Test fun retryingErrorTaskAgainstChallengeOrEmptyPageStaysInErrorUntilContentRecovers() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        val bookmarks = FakeBookmarkDao()
+        var attempt = 0
+        val firstDone = CompletableDeferred<Result<ImportOutcome>>()
+        val url = "https://www.reddit.com/r/test/comments/123/"
+        try {
+            val repository = ImportRepository(
+                taskDao = dao,
+                bookmarkDao = bookmarks,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = {
+                    when (attempt++) {
+                        0 -> throw java.io.IOException("Unable to resolve host")
+                        1 -> directFixture(it).copy(title = "Reddit", ogpTags = emptyMap(), jsoupBodyText = "Please wait...", isChallengePage = true)
+                        2 -> directFixture(it).copy(title = "Reddit", ogpTags = emptyMap(), jsoupBodyText = "", isChallengePage = false)
+                        else -> directFixture(it)
+                    }
+                }
+            )
+            repository.importUrl(url) { firstDone.complete(it) }
+            assertTrue(withTimeout(5000) { firstDone.await() }.isFailure)
+            val taskId = dao.getAllTasks().single().id
+            assertEquals("ERROR", dao.getTaskById(taskId)?.status)
+            assertTrue(bookmarks.savedItems.isEmpty())
+
+            repository.retryErrorTaskAndAwait(taskId)
+            withTimeout(5000) { while (dao.getTaskById(taskId)?.status != "ERROR") delay(5) }
+            val afterChallenge = dao.getTaskById(taskId)!!
+            assertFalse(afterChallenge.articlePrepared)
+            assertEquals(me.bubblespark.tidilo.parser.ArticleAccessBlocked.MESSAGE, afterChallenge.errorMessage)
+            assertTrue(bookmarks.savedItems.isEmpty())
+
+            repository.retryErrorTaskAndAwait(taskId)
+            withTimeout(5000) { while (dao.getTaskById(taskId)?.status != "ERROR") delay(5) }
+            val afterEmpty = dao.getTaskById(taskId)!!
+            assertFalse(afterEmpty.articlePrepared)
+            assertEquals(me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE, afterEmpty.errorMessage)
+            assertTrue(bookmarks.savedItems.isEmpty())
+
+            repository.retryErrorTaskAndAwait(taskId)
+            withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
+            val saved = bookmarks.savedItems.single()
+            assertEquals("Parsed Title", saved.title)
+            assertEquals("Parsed Description", saved.description)
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
+
     private class FakeBookmarkDao : StubBookmarkDao(onGetCount = { 0 }) {
         val bookmarks = linkedMapOf<String, BookmarkEntity>()
         val occurrences = linkedMapOf<String, MutableList<BookmarkEntityOccurrence>>()

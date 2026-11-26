@@ -301,7 +301,7 @@ internal class RssRepository internal constructor(private val context: Context,
         try {
             store.claimNotificationTask(runId, task.id)
             val parsed = me.bubblespark.tidilo.parser.ArticleAcquirer.acquire(task.url, network)
-            val article = me.bubblespark.tidilo.parser.ArticlePreparation.prepare(parsed)
+            val article = me.bubblespark.tidilo.parser.ArticlePreparation.prepareForImport(parsed)
             val classification = me.bubblespark.tidilo.parser.classifyStandardMetadata(parsed)
             if (!store.complete(feed, task, article, runId, classification)) return
             val domain = DomainIconManager.extractDomain(article.url)

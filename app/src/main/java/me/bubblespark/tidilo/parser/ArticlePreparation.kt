@@ -9,6 +9,13 @@ class ArticleContentUnavailable : IllegalArgumentException(MESSAGE) {
     }
 }
 
+/** Anti-bot or JS-challenge interstitials cannot be saved as articles. */
+class ArticleAccessBlocked : IllegalArgumentException(MESSAGE) {
+    companion object {
+        const val MESSAGE = "Site requires interactive verification"
+    }
+}
+
 /** Source-independent metadata used by both manual and feed article ingestion. */
 data class PreparedArticle(
     val url: String,
@@ -22,7 +29,7 @@ data class PreparedArticle(
 
 object ArticlePreparation {
     fun prepare(parsed: ParsedWebPage, preferredTitle: String? = null): PreparedArticle {
-        require(parsed.statusCode in 200..299) { "Article HTTP ${parsed.statusCode}" }
+        require(parsed.statusCode == 200) { "Article HTTP ${parsed.statusCode}" }
         val url = parsed.resolvedUrl
         val host = runCatching { URI(url).host }.getOrNull().orEmpty().ifBlank { url }
         fun String?.nonblank() = this?.trim()?.takeIf { it.isNotEmpty() }
@@ -34,5 +41,13 @@ object ArticlePreparation {
             (parsed.ogpTags["og:image"].nonblank() ?: parsed.twitterTags["twitter:image"].nonblank())?.let {
                 runCatching { URI(parsed.imageBaseUrl).resolve(it).toString() }.getOrNull()
             }, parsed.isPrivateSignal)
+    }
+
+    /** Validates that the acquired page is neither an anti-bot challenge nor devoid of saveable content. */
+    fun prepareForImport(parsed: ParsedWebPage, preferredTitle: String? = null): PreparedArticle {
+        val prepared = prepare(parsed, preferredTitle)
+        if (parsed.isChallengePage) throw ArticleAccessBlocked()
+        if (prepared.bodySnippet.isBlank() && prepared.description.isBlank()) throw ArticleContentUnavailable()
+        return prepared
     }
 }

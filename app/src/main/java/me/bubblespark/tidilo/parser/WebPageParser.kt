@@ -218,6 +218,9 @@ object WebPageParser {
 
         val iconCandidates = me.bubblespark.tidilo.data.DomainIconResolver.parseHtml(doc, finalUrl)
         val imageBaseUrl = doc.baseUri()
+        // Inspect challenge form markers before Readability/cleaning strips <form> and <script> nodes.
+        val hasJsChallengeForm = doc.selectFirst("form input[name=js_challenge], form input[name=jsc_token]") != null
+        val hasInterstitialForm = doc.selectFirst("form#challenge-form, #cf-challenge-running, #challenge-running") != null
 
         // Keep the original extraction for comparison in the debug workbench.
         val readabilityArticle = extractReadabilityArticle(finalUrl, doc)
@@ -234,14 +237,20 @@ object WebPageParser {
 
         // Reuse extraction when no matching blocks were removed.
         val cleanedArticle = when {
-            adElements.isEmpty() -> readabilityArticle
             doc.body().text().isBlank() -> null
+            adElements.isEmpty() -> readabilityArticle
             else -> extractReadabilityArticle(finalUrl, doc)
         }
 
         // Body text extraction: Jsoup DOM cleaning fallback.
         val jsoupBodyText = extractJsoupCleanText(doc)
         val cleanedBodyText = cleanedArticle?.textContent?.takeIf { it.isNotBlank() } ?: jsoupBodyText
+        val hasArticleMetadata = ogpTags["og:description"]?.isNotBlank() == true ||
+            standardMetaTags["description"]?.isNotBlank() == true ||
+            jsonLdList.any { it.type != null && it.type != "ParseError" }
+        val hasMetaRefresh = metaTags.any { it.keyType == "http-equiv" && it.keyName.equals("refresh", ignoreCase = true) }
+        val isChallengePage = hasJsChallengeForm ||
+            (!hasArticleMetadata && (hasInterstitialForm || (hasMetaRefresh && cleanedBodyText.isBlank())))
 
         // 9. Derive canonical/resolved URL (resolving Google share wrapper, URL shorteners, canonical link, og:url)
         val resolvedUrl = resolveRealUrl(
@@ -295,7 +304,8 @@ object WebPageParser {
             imageBaseUrl = imageBaseUrl,
             cleanedBodyText = cleanedBodyText,
             jsonLdScripts = jsonLdScripts,
-            pageOpenGraphType = doc.head().selectFirst("> meta[property=og:type]")?.attr("content")?.trim()
+            pageOpenGraphType = doc.head().selectFirst("> meta[property=og:type]")?.attr("content")?.trim(),
+            isChallengePage = isChallengePage
         )
     }
 

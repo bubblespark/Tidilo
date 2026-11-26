@@ -1,9 +1,9 @@
 package me.bubblespark.tidilo.parser
 
 import android.content.Context
-import android.net.http.DnsOptions
 import android.net.http.HttpEngine
 import android.net.http.HttpException
+import android.net.http.NetworkException
 import android.net.http.UrlRequest
 import android.net.http.UrlResponseInfo
 import kotlinx.coroutines.Dispatchers
@@ -16,13 +16,34 @@ import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+internal fun formatDirectNetworkFailure(errorCode: Int?, rawMessage: String?): String = when (errorCode) {
+    1 -> "Unable to resolve host"
+    2 -> "No internet connection"
+    3 -> "Connection interrupted by network change"
+    4, 6 -> "Connection timed out"
+    5 -> "Connection closed unexpectedly"
+    7 -> "Connection refused"
+    8 -> "Connection reset"
+    9 -> "Unable to reach host"
+    else -> {
+        val lower = rawMessage?.lowercase().orEmpty()
+        when {
+            listOf("err_ssl_", "err_cert_", "ssl", "certificat", "handshake").any { it in lower } ->
+                "SSL connection error"
+            "err_name_not_resolved" in lower -> "Unable to resolve host"
+            "err_timed_out" in lower || "timeout" in lower -> "Connection timed out"
+            else -> "Network request failed"
+        }
+    }
+}
+
 /** Direct import transport with cancellation delegated to Android's HTTP engine. */
 internal class DirectArticleNetwork(context: Context) : ArticleNetwork {
     override val scopeKey = "direct-article"
     private val engine by lazy {
         HttpEngine.Builder(context.applicationContext)
             .setUserAgent(WebPageParser.USER_AGENT)
-            .setDnsOptions(DnsOptions.Builder().setUseHttpStackDnsResolver(DnsOptions.DNS_OPTION_ENABLED).build())
+            .setEnableHttpCache(HttpEngine.Builder.HTTP_CACHE_DISABLED, 0)
             .build()
     }
     private val callbacks = Executor { Dispatchers.IO.dispatch(EmptyCoroutineContext, it) }
@@ -38,7 +59,7 @@ internal class DirectArticleNetwork(context: Context) : ArticleNetwork {
             }
 
             override fun onResponseStarted(request: UrlRequest, info: UrlResponseInfo) {
-                if (info.httpStatusCode !in 200..299) fail(request, ArticleHttpFailure(info.httpStatusCode))
+                if (info.httpStatusCode != 200) fail(request, ArticleHttpFailure(info.httpStatusCode))
                 else request.read(ByteBuffer.allocateDirect(READ_BUFFER_BYTES))
             }
 
@@ -66,7 +87,10 @@ internal class DirectArticleNetwork(context: Context) : ArticleNetwork {
             }
 
             override fun onFailed(request: UrlRequest, info: UrlResponseInfo?, error: HttpException) {
-                if (continuation.isActive) continuation.resumeWithException(error)
+                if (continuation.isActive) {
+                    val message = formatDirectNetworkFailure((error as? NetworkException)?.errorCode, error.message)
+                    continuation.resumeWithException(IOException(message, error))
+                }
             }
 
             override fun onCanceled(request: UrlRequest, info: UrlResponseInfo?) = Unit
@@ -77,6 +101,7 @@ internal class DirectArticleNetwork(context: Context) : ArticleNetwork {
             }
         }
         val builder = engine.newUrlRequestBuilder(url, callbacks, callback)
+            .setCacheDisabled(true)
         WebPageParser.REQUEST_HEADERS.forEach { (name, value) -> builder.addHeader(name, value) }
         val request = builder.build()
         continuation.invokeOnCancellation { request.cancel() }

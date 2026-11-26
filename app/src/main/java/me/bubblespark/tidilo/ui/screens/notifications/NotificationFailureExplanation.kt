@@ -3,6 +3,7 @@ package me.bubblespark.tidilo.ui.screens.notifications
 import androidx.annotation.StringRes
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.ImportTaskErrorMessages
+import me.bubblespark.tidilo.parser.ArticleAccessBlocked
 import me.bubblespark.tidilo.parser.ArticleContentUnavailable
 
 /** User-facing cause of an unresolved import or feed failure, derived from its stored diagnostic text. */
@@ -39,10 +40,24 @@ fun classifyFailure(raw: String?): FailureReason {
             else -> FailureReason.HTTP_OTHER
         }
     }
+    if (text == ArticleAccessBlocked.MESSAGE) return FailureReason.ACCESS_DENIED
     val lower = text.lowercase()
     return when {
-        "unable to resolve host" in lower || "failed to connect" in lower -> FailureReason.NETWORK
-        listOf("ssl", "certificat", "handshake", "trust anchor").any { it in lower } -> FailureReason.SECURE_CONNECTION
+        listOf(
+            "unable to resolve host",
+            "failed to connect",
+            "unable to reach host",
+            "no internet connection",
+            "connection refused",
+            "connection reset",
+            "err_name_not_resolved",
+            "err_internet_disconnected",
+            "err_address_unreachable",
+            "err_network_changed",
+            "err_connection_",
+            "err_timed_out"
+        ).any { it in lower } -> FailureReason.NETWORK
+        listOf("ssl", "certificat", "handshake", "trust anchor", "err_ssl_", "err_cert_").any { it in lower } -> FailureReason.SECURE_CONNECTION
         listOf("timed out", "timeout", "exceeded 30 seconds", "connection").any { it in lower } -> FailureReason.NETWORK
         text == ArticleContentUnavailable.MESSAGE -> FailureReason.NO_CONTENT
         else -> FailureReason.UNKNOWN

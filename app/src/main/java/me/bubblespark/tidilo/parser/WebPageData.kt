@@ -65,7 +65,8 @@ data class ParsedWebPage(
     val imageBaseUrl: String = finalUrl,
     val cleanedBodyText: String? = null,
     val jsonLdScripts: List<String> = emptyList(),
-    val pageOpenGraphType: String? = null
+    val pageOpenGraphType: String? = null,
+    val isChallengePage: Boolean = false
 ) {
     /** Full ad-filtered body before snippet truncation; legacy callers retain the extraction fallback. */
     val promptBodyText: String

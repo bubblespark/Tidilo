@@ -56,10 +56,40 @@ jobs:
           ram-size: 2048M
           heap-size: 512M
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: ./gradlew :app:connectedDebugAndroidTest -Dorg.gradle.jvmargs="-Xmx2g" ${{ inputs.test_class != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.test_class) || '' }}
+          script: |
+            mkdir -p diagnostics
+            adb logcat -c || true
+            adb logcat -v threadtime > diagnostics/logcat.txt 2>&1 &
+            LOGCAT_PID=$!
+            (
+              while true; do
+                date -u +"%Y-%m-%dT%H:%M:%SZ"
+                free -m
+                ps -eo pid,ppid,rss,vsz,%cpu,stat,comm | grep -E "PID|qemu|emulator|java|adb" | grep -v grep || true
+                echo "---"
+                sleep 2
+              done
+            ) > diagnostics/host-resources.txt 2>&1 &
+            MON_PID=$!
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace -Dorg.gradle.jvmargs="-Xmx2g" ${{ inputs.test_class != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.test_class) || '' }}
+            STATUS=$?
+            kill "$LOGCAT_PID" "$MON_PID" 2>/dev/null || true
+            wait "$LOGCAT_PID" "$MON_PID" 2>/dev/null || true
+            exit "$STATUS"
+
+      - name: Collect emulator diagnostics
+        if: failure()
+        run: |
+          mkdir -p diagnostics/emu-crash diagnostics/utp-results
+          sudo dmesg -T > diagnostics/dmesg.txt 2>&1 || true
+          free -h > diagnostics/memory-after.txt 2>&1 || true
+          df -h > diagnostics/disk-after.txt 2>&1 || true
+          ls -laR /tmp/android-runner/ > diagnostics/tmp-android-runner.txt 2>&1 || true
+          cp -r /tmp/android-runner/emu-crash-*.db diagnostics/emu-crash/ 2>/dev/null || true
+          cp -r app/build/outputs/androidTest-results/connected/ diagnostics/utp-results/ 2>/dev/null || true
 
       - name: Upload test report
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: android-test-report-api-${{ inputs.api_level }}

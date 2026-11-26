@@ -564,7 +564,7 @@ class ImportRepository internal constructor(
 
                 // 1. Fetch & parse HTML, extract metadata, OGP, and Readability body snippet
                 val parsed = acquireDirectArticle(normalized)
-                val prepared = ArticlePreparation.prepare(parsed)
+                val prepared = ArticlePreparation.prepareForImport(parsed)
                 val classification = classifyStandardMetadata(parsed)
 
                 val realUrl = WebPageParser.normalizeUrl(prepared.url) ?: prepared.url
@@ -816,7 +816,12 @@ class ImportRepository internal constructor(
     }
 
     private suspend fun enqueueRetry(targetEntity: ImportTaskEntity) {
-        if (targetEntity.rssFeedId == null && targetEntity.errorMessage == me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE) {
+        if (targetEntity.rssFeedId == null && (
+                targetEntity.errorMessage == me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE ||
+                    targetEntity.errorMessage == me.bubblespark.tidilo.parser.ArticleAccessBlocked.MESSAGE ||
+                    (targetEntity.articlePrepared && targetEntity.description.isBlank() && targetEntity.bodySnippet.isBlank())
+                )
+        ) {
             // Explicit retry may recover text that was unavailable when the page was first acquired.
             taskDao.update(targetEntity.copy(articlePrepared = false))
         }
@@ -1025,7 +1030,7 @@ class ImportRepository internal constructor(
             if (!target.articlePrepared) {
                 val parsed = acquireDirectArticle(target.url)
                 acquiredParsed = parsed
-                val article = ArticlePreparation.prepare(parsed)
+                val article = ArticlePreparation.prepareForImport(parsed)
                 val classification = classifyStandardMetadata(parsed)
                 target = target.copy(url = WebPageParser.normalizeUrl(article.url) ?: article.url,
                     title = if (isRawUrlOrHost(target.title, target.url)) article.title else target.title,

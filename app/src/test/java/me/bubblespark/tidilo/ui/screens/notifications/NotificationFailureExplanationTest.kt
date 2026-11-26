@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.notifications
 
 import me.bubblespark.tidilo.data.ImportTaskErrorMessages
+import me.bubblespark.tidilo.parser.ArticleAccessBlocked
 import me.bubblespark.tidilo.parser.ArticleContentUnavailable
 import me.bubblespark.tidilo.ui.screens.notifications.FailureReason.*
 import org.junit.Assert.assertEquals
@@ -39,8 +40,26 @@ class NotificationFailureExplanationTest {
     }
 
     @Test fun contentAndSaveFailures() {
+        assertEquals(ACCESS_DENIED, classifyFailure(ArticleAccessBlocked.MESSAGE))
         assertEquals(NO_CONTENT, classifyFailure(ArticleContentUnavailable.MESSAGE))
         assertEquals(SAVE_FAILED, classifyFailure("Bookmark persistence failed: disk I/O error"))
+    }
+
+    @Test fun cronetAndMappedNetworkDiagnostics() {
+        listOf(
+            "Exception in CronetUrlRequest: net::ERR_NAME_NOT_RESOLVED, ErrorCode=1, internalErrorCode=-105, Retryable=false",
+            "Exception in CronetUrlRequest: net::ERR_INTERNET_DISCONNECTED, ErrorCode=2",
+            "Exception in CronetUrlRequest: net::ERR_CONNECTION_TIMED_OUT, ErrorCode=6",
+            "No internet connection",
+            "Unable to reach host",
+            "QUIC protocol connection failed",
+            "Exception in CronetUrlRequest: net::ERR_QUIC_PROTOCOL_ERROR, ErrorCode=10"
+        ).forEach { assertEquals(it, NETWORK, classifyFailure(it)) }
+
+        listOf(
+            "Exception in CronetUrlRequest: net::ERR_SSL_PROTOCOL_ERROR, ErrorCode=11",
+            "Exception in CronetUrlRequest: net::ERR_CERT_AUTHORITY_INVALID, ErrorCode=11"
+        ).forEach { assertEquals(it, SECURE_CONNECTION, classifyFailure(it)) }
     }
 
     @Test fun saveFailurePrefixWinsOverUnderlyingMessage() {

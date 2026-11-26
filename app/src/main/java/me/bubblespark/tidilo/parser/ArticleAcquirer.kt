@@ -20,7 +20,7 @@ object ArticleAcquirer {
         val normalized = WebPageParser.normalizeUrl(url) ?: throw IllegalArgumentException("Invalid article URL")
         val parsed = if (network == null) WebPageParser.parseUrl(normalized).getOrThrow() else {
             val response = network.fetch(normalized)
-            if (response.status !in 200..299) throw ArticleHttpFailure(response.status)
+            if (response.status != 200) throw ArticleHttpFailure(response.status)
             require(response.bytes.size <= 2 * 1024 * 1024) { "Article HTML exceeds 2 MB" }
             require(response.contentType == null || response.contentType.contains("html", ignoreCase = true)) { "Article is not HTML" }
             val charset = Regex("charset=[\"']?([^;\\s\"']+)", RegexOption.IGNORE_CASE)
@@ -29,7 +29,7 @@ object ArticleAcquirer {
             WebPageParser.parseHtml(normalized, String(response.bytes, document.outputSettings().charset()).removePrefix("\uFEFF"), response.url, response.status,
                 contentType = response.contentType ?: "text/html")
         }
-        if (parsed.statusCode !in 200..299) throw ArticleHttpFailure(parsed.statusCode)
+        if (parsed.statusCode != 200) throw ArticleHttpFailure(parsed.statusCode)
         require(parsed.contentType == null || parsed.contentType.contains("html", ignoreCase = true)) { "Article is not HTML" }
         return parsed
     }

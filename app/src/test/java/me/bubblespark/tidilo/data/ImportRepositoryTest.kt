@@ -17,6 +17,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.async
@@ -1065,6 +1066,176 @@ class ImportRepositoryTest {
             assertEquals("ERROR", failed.status)
             assertEquals("Save failed", failed.statusText)
             assertTrue(failed.errorMessage.orEmpty().contains("policy init failed"))
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
+
+    @Test fun directImportStopsAsErrorOnChallengeOrEmptyHttp200WithoutSavingBookmark() = runBlocking {
+        val cases = listOf(
+            "challenge" to { url: String ->
+                me.bubblespark.tidilo.parser.ParsedWebPage(
+                    requestedUrl = url, finalUrl = url, statusCode = 200, statusMessage = "OK",
+                    contentType = "text/html", htmlLang = "en", title = "Reddit", canonicalUrl = null,
+                    metaTags = emptyList(), ogpTags = emptyMap(), twitterTags = emptyMap(),
+                    standardMetaTags = emptyMap(), jsonLdList = emptyList(), h1List = emptyList(),
+                    h2List = emptyList(), readabilityArticle = null, jsoupBodyText = "Please wait...",
+                    jsoupBodyCharCount = 14, fetchLatencyMs = 0, parseLatencyMs = 0, rawHtmlSizeBytes = 100,
+                    isChallengePage = true
+                ) to me.bubblespark.tidilo.parser.ArticleAccessBlocked.MESSAGE
+            },
+            "empty" to { url: String ->
+                me.bubblespark.tidilo.parser.ParsedWebPage(
+                    requestedUrl = url, finalUrl = url, statusCode = 200, statusMessage = "OK",
+                    contentType = "text/html", htmlLang = "en", title = "Example", canonicalUrl = null,
+                    metaTags = emptyList(), ogpTags = emptyMap(), twitterTags = emptyMap(),
+                    standardMetaTags = emptyMap(), jsonLdList = emptyList(), h1List = emptyList(),
+                    h2List = emptyList(), readabilityArticle = null, jsoupBodyText = "",
+                    jsoupBodyCharCount = 0, fetchLatencyMs = 0, parseLatencyMs = 0, rawHtmlSizeBytes = 50,
+                    isChallengePage = false
+                ) to me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE
+            }
+        )
+        for ((name, factory) in cases) {
+            val job = SupervisorJob()
+            val dao = FakeImportTaskDao()
+            val bookmarks = FakeBookmarkDao()
+            val reportedErrors = mutableListOf<Throwable>()
+            val outcome = CompletableDeferred<Result<ImportOutcome>>()
+            try {
+                val repository = ImportRepository(
+                    taskDao = dao,
+                    bookmarkDao = bookmarks,
+                    repositoryScope = CoroutineScope(coroutineContext + job),
+                    articleAcquirer = { factory(it).first },
+                    reportImportError = { reportedErrors += it }
+                )
+                repository.importUrl("https://blocked.example/$name") { outcome.complete(it) }
+                val result = withTimeout(5000) { outcome.await() }
+                assertTrue(result.isFailure)
+                assertTrue(bookmarks.savedItems.isEmpty())
+                val task = dao.getAllTasks().single()
+                assertEquals("ERROR", task.status)
+                assertFalse(task.articlePrepared)
+                assertEquals(factory("https://blocked.example/$name").second, task.errorMessage)
+                assertEquals(task.errorMessage, reportedErrors.single().message)
+            } finally {
+                job.cancelAndJoin()
+            }
+        }
+    }
+
+    @Test fun retryingErrorTaskAgainstChallengeOrEmptyPageStaysInErrorUntilContentRecovers() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        val bookmarks = FakeBookmarkDao()
+        var attempt = 0
+        val firstDone = CompletableDeferred<Result<ImportOutcome>>()
+        val url = "https://www.reddit.com/r/test/comments/123/"
+        try {
+            val repository = ImportRepository(
+                taskDao = dao,
+                bookmarkDao = bookmarks,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = {
+                    when (attempt++) {
+                        0 -> throw java.io.IOException("Unable to resolve host")
+                        1 -> directFixture(it).copy(title = "Reddit", ogpTags = emptyMap(), jsoupBodyText = "Please wait...", isChallengePage = true)
+                        2 -> directFixture(it).copy(title = "Reddit", ogpTags = emptyMap(), jsoupBodyText = "", isChallengePage = false)
+                        else -> directFixture(it)
+                    }
+                }
+            )
+            repository.importUrl(url) { firstDone.complete(it) }
+            assertTrue(withTimeout(5000) { firstDone.await() }.isFailure)
+            val taskId = dao.getAllTasks().single().id
+            assertEquals("ERROR", dao.getTaskById(taskId)?.status)
+            assertTrue(bookmarks.savedItems.isEmpty())
+
+            repository.retryErrorTaskAndAwait(taskId)
+            val afterChallenge = withTimeout(5000) {
+                dao.tasksFlow.first { tasks ->
+                    tasks.firstOrNull { it.id == taskId }?.status == "ERROR"
+                }.single { it.id == taskId }
+            }
+            assertFalse(afterChallenge.articlePrepared)
+            assertEquals(me.bubblespark.tidilo.parser.ArticleAccessBlocked.MESSAGE, afterChallenge.errorMessage)
+            assertTrue(bookmarks.savedItems.isEmpty())
+
+            repository.retryErrorTaskAndAwait(taskId)
+            val afterEmpty = withTimeout(5000) {
+                dao.tasksFlow.first { tasks ->
+                    tasks.firstOrNull { it.id == taskId }?.status == "ERROR"
+                }.single { it.id == taskId }
+            }
+            assertFalse(afterEmpty.articlePrepared)
+            assertEquals(me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE, afterEmpty.errorMessage)
+            assertTrue(bookmarks.savedItems.isEmpty())
+
+            repository.retryErrorTaskAndAwait(taskId)
+            withTimeout(5000) { dao.tasksFlow.first { it.isEmpty() } }
+            val saved = bookmarks.savedItems.single()
+            assertEquals("Parsed Title", saved.title)
+            assertEquals("Parsed Description", saved.description)
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
+
+    @Test fun retryingPreparedDirectSaveErrorWithBlankContentReacquiresInsteadOfSavingHollowBookmark() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        val bookmarks = FakeBookmarkDao()
+        val url = "https://www.reddit.com/r/test/comments/hollow/"
+        val taskId = "blank-save-error"
+        dao.insertOrUpdate(
+            ImportTaskEntity(
+                id = taskId,
+                url = url,
+                title = "www.reddit.com",
+                status = "ERROR",
+                statusText = "Save failed",
+                errorMessage = "Bookmark persistence failed: disk full",
+                createdAt = 100L,
+                description = "",
+                bodySnippet = "",
+                articlePrepared = true
+            )
+        )
+        var attempt = 0
+        try {
+            val repository = ImportRepository(
+                taskDao = dao,
+                bookmarkDao = bookmarks,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = {
+                    if (attempt++ == 0) {
+                        directFixture(it).copy(
+                            title = "Reddit",
+                            ogpTags = emptyMap(),
+                            jsoupBodyText = "",
+                            isChallengePage = false
+                        )
+                    } else {
+                        directFixture(it)
+                    }
+                }
+            )
+            repository.retryErrorTaskAndAwait(taskId)
+            val afterFirstRetry = withTimeout(5000) {
+                dao.tasksFlow.first { tasks ->
+                    tasks.firstOrNull { it.id == taskId }?.status == "ERROR"
+                }.single { it.id == taskId }
+            }
+            assertFalse(afterFirstRetry.articlePrepared)
+            assertEquals(me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE, afterFirstRetry.errorMessage)
+            assertTrue(bookmarks.savedItems.isEmpty())
+
+            repository.retryErrorTaskAndAwait(taskId)
+            withTimeout(5000) { dao.tasksFlow.first { it.isEmpty() } }
+            val saved = bookmarks.savedItems.single()
+            assertEquals("Parsed Title", saved.title)
+            assertEquals("Parsed Description", saved.description)
         } finally {
             job.cancelAndJoin()
         }

@@ -139,6 +139,11 @@ object GeminiTaggingService {
                     if (parsed.statusCode != 200) {
                         throw AiProposalPageException("HTTP error ${parsed.statusCode}")
                     }
+                    try {
+                        ArticlePreparation.prepareForImport(parsed)
+                    } catch (e: IllegalArgumentException) {
+                        throw AiProposalPageException(e.message ?: "Could not extract page content", e)
+                    }
                     val realUrl = parsed.resolvedUrl.takeIf { it.isNotBlank() } ?: url
                     ProposalInput(parsed, realUrl, buildPrompt(url = realUrl, parsed = parsed, language = language))
                 }

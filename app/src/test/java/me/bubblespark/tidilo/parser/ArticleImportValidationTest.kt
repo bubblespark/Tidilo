@@ -54,6 +54,31 @@ class ArticleImportValidationTest {
         }
     }
 
+    @Test fun challengeFormTakesPrecedenceOverMetaDescriptionAndJsonLd() {
+        val html = """
+            <html>
+            <head>
+                <title>Just a moment...</title>
+                <meta name="description" content="Verify your browser" />
+                <meta property="og:description" content="Security check" />
+                <script type="application/ld+json">{"@type":"WebPage","name":"Security"}</script>
+            </head>
+            <body>
+                <p>Checking your browser</p>
+                <form id="challenge-form" action="/cdn-cgi/challenge"></form>
+            </body>
+            </html>
+        """.trimIndent()
+        val parsed = WebPageParser.parseHtml("https://example.com/post", html)
+        assertTrue(parsed.isChallengePage)
+        try {
+            ArticlePreparation.prepareForImport(parsed)
+            fail("Expected ArticleAccessBlocked")
+        } catch (expected: ArticleAccessBlocked) {
+            assertEquals(ArticleAccessBlocked.MESSAGE, expected.message)
+        }
+    }
+
     @Test fun articleDiscussingJsChallengeInProseIsNotFlaggedAsChallenge() {
         val html = """
             <html>

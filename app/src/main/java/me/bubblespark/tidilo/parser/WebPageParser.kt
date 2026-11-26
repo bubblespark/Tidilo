@@ -249,8 +249,8 @@ object WebPageParser {
             standardMetaTags["description"]?.isNotBlank() == true ||
             jsonLdList.any { it.type != null && it.type != "ParseError" }
         val hasMetaRefresh = metaTags.any { it.keyType == "http-equiv" && it.keyName.equals("refresh", ignoreCase = true) }
-        val isChallengePage = hasJsChallengeForm ||
-            (!hasArticleMetadata && (hasInterstitialForm || (hasMetaRefresh && cleanedBodyText.isBlank())))
+        val isChallengePage = hasJsChallengeForm || hasInterstitialForm ||
+            (!hasArticleMetadata && hasMetaRefresh && cleanedBodyText.isBlank())
 
         // 9. Derive canonical/resolved URL (resolving Google share wrapper, URL shorteners, canonical link, og:url)
         val resolvedUrl = resolveRealUrl(

@@ -2,13 +2,13 @@ package me.bubblespark.tidilo.data
 
 import android.Manifest
 import android.accessibilityservice.AccessibilityService
-import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
-import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
 import android.view.View
+import android.view.ViewGroup
+import android.view.inspector.WindowInspector
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.ui.geometry.Offset
@@ -16,6 +16,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -24,13 +25,14 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.toSize
 import androidx.room.withTransaction
 import androidx.test.core.app.ActivityScenario
+import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import me.bubblespark.tidilo.MainActivity
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AiAnalysisMode
@@ -51,19 +53,24 @@ import org.junit.Test
 import java.util.UUID
 import kotlin.math.ceil
 
+/**
+ * Launches the real notification route. A `ComposeTestRule` is not used: its effect dispatcher runs the
+ * launch-destination navigation before `NavHost` sets its graph, so nodes are read from all windows here.
+ */
 class NotificationContrastTest {
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val context = instrumentation.targetContext
+
     /** Uses a dedicated emulator because opening the production route marks unread history as read. */
     @Test
     fun productionNotificationRouteHasReadableTitlesAndActionsAcrossThemeChanges(): Unit = runBlocking {
-        val host = HeaderTestHost()
-        val db = AppDatabase.getInstance(host.context)
+        val db = AppDatabase.getInstance(context)
         val notifications = db.importNotificationDao()
         val originalTheme = AppConfig.currentTheme.value
         val originalAiMode = AppConfig.aiAnalysisMode.value
-        val notificationPrefs = host.context.getSharedPreferences("tidilo_notifications", Context.MODE_PRIVATE)
-        val originalPromptRequested = notificationPrefs.all["permission_requested"] as? Boolean
-        val originalPermission = notificationPermission(host)
-        val originalNightMode = nightMode(host).substringAfter("Night mode: ")
+        val originalBlur = AppConfig.overlayBlurEnabled.value
+        val originalPermission = notificationPermission()
+        val originalNightMode = nightMode().substringAfter("Night mode: ")
         check(originalNightMode in setOf("yes", "no", "auto", "custom_schedule", "custom_bedtime")) {
             "Cannot restore the current night mode: $originalNightMode"
         }
@@ -81,9 +88,10 @@ class NotificationContrastTest {
 
         assertEquals("Use a test profile with no unread notification history", 0, notifications.observeUnreadCount().first())
         try {
+            AppConfig.setOverlayBlurEnabled(false)
             AppConfig.setAiAnalysisMode(AiAnalysisMode.DISABLE)
             AppConfig.setTheme(AppTheme.DEFAULT)
-            nightMode(host, "yes")
+            setNightMode(dark = true)
             historyId = db.withTransaction {
                 db.importTaskDao().insertOrUpdate(ImportTaskEntity(
                     key, "https://import-261.invalid/$key", importTitle, TaskStatus.ERROR.name,
@@ -99,25 +107,27 @@ class NotificationContrastTest {
                 ))
             }
             assertEquals(1, notifications.observeUnreadCount().first())
-            launchNotifications(host, notificationPrefs).use { scenario ->
-                verifyAppearance(host, scenario, titles, actions, AppTheme.DEFAULT, dark = true)
+            launchNotifications().use {
+                verifyAppearance(titles, actions, AppTheme.DEFAULT, dark = true)
                 withTimeout(STATE_CHANGE_TIMEOUT_MS) { notifications.observeUnreadCount().first { it == 0 } }
 
-                nightMode(host, "no")
-                verifyAppearance(host, scenario, titles, actions, AppTheme.DEFAULT, dark = false)
+                setNightMode(dark = false)
+                verifyAppearance(titles, actions, AppTheme.DEFAULT, dark = false)
                 AppConfig.setTheme(AppTheme.MODERN)
-                verifyAppearance(host, scenario, titles, actions, AppTheme.MODERN, dark = false)
-                nightMode(host, "yes")
-                verifyAppearance(host, scenario, titles, actions, AppTheme.MODERN, dark = true)
+                verifyAppearance(titles, actions, AppTheme.MODERN, dark = false)
+                setNightMode(dark = true)
+                verifyAppearance(titles, actions, AppTheme.MODERN, dark = true)
             }
             assertEquals(0, notifications.observeUnreadCount().first())
-            launchNotifications(host, notificationPrefs).use { scenario ->
-                verifyAppearance(host, scenario, titles, actions, AppTheme.MODERN, dark = true)
-                click(host, awaitNode(host, scenario) { it.tag() == importAction })
-                val delete = host.context.getString(R.string.common_delete)
-                click(host, awaitNode(host, scenario) { host.text(it, delete) })
+            launchNotifications().use {
+                verifyAppearance(titles, actions, AppTheme.MODERN, dark = true)
+                click(awaitNode { it.tag() == importAction })
+                val delete = context.getString(R.string.common_delete)
+                click(awaitNode { it.hasText(delete) })
                 withTimeout(STATE_CHANGE_TIMEOUT_MS) {
-                    while (db.importTaskDao().getTaskById(key) != null) delay(POLL_INTERVAL_MS)
+                    while (withContext(Dispatchers.IO) { db.importTaskDao().getTaskById(key) } != null) {
+                        delay(POLL_INTERVAL_MS)
+                    }
                 }
             }
         } catch (failure: Throwable) {
@@ -128,22 +138,19 @@ class NotificationContrastTest {
                 val cleanup = listOf<suspend () -> Unit>(
                     { AppConfig.setTheme(originalTheme) },
                     { AppConfig.setAiAnalysisMode(originalAiMode) },
+                    { AppConfig.setOverlayBlurEnabled(originalBlur) },
                     {
-                        nightMode(host, originalNightMode)
-                        assertEquals("Night mode: $originalNightMode", nightMode(host))
+                        nightMode(originalNightMode)
+                        assertEquals("Night mode: $originalNightMode", nightMode())
                     },
+                    { assertEquals("Test changed notification permission", originalPermission, notificationPermission()) },
                     {
-                        val editor = notificationPrefs.edit()
-                        if (originalPromptRequested == null) editor.remove("permission_requested")
-                        else editor.putBoolean("permission_requested", originalPromptRequested)
-                        assertTrue("Could not restore notification prompt preference", editor.commit())
-                        assertEquals("Test changed notification permission", originalPermission, notificationPermission(host))
-                    },
-                    {
-                        if (historyId != 0L) db.withTransaction {
-                            notifications.deleteById(historyId)
-                            db.importTaskDao().deleteById(key)
-                            db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(key))
+                        if (historyId != 0L) withContext(Dispatchers.IO) {
+                            db.withTransaction {
+                                notifications.deleteById(historyId)
+                                db.importTaskDao().deleteById(key)
+                                db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(key))
+                            }
                         }
                     }
                 )
@@ -157,60 +164,39 @@ class NotificationContrastTest {
         }
     }
 
-    private suspend fun launchNotifications(
-        host: HeaderTestHost,
-        notificationPrefs: SharedPreferences
-    ): ActivityScenario<MainActivity> {
-        val expectsPrompt = notificationPermission(host) != PackageManager.PERMISSION_GRANTED &&
-            !notificationPrefs.getBoolean("permission_requested", false)
-        val scenario = ActivityScenario.launch<MainActivity>(Intent(host.context, MainActivity::class.java)
+    /** `MainActivity` does not ask for notification permission on launch, so there is no prompt to dismiss. */
+    private fun launchNotifications(): ActivityScenario<MainActivity> =
+        ActivityScenario.launch(Intent(context, MainActivity::class.java)
             .putExtra(NotificationCoordinator.EXTRA_DESTINATION, NotificationCategory.IMPORT_ERROR.destination))
-        try {
-            if (expectsPrompt) dismissNotificationPrompt(host)
-            return scenario
-        } catch (failure: Throwable) {
-            runCatching { scenario.close() }.exceptionOrNull()?.let(failure::addSuppressed)
-            throw failure
-        }
-    }
 
-    private suspend fun dismissNotificationPrompt(host: HeaderTestHost) {
-        val automation = host.instrumentation.uiAutomation
-        withTimeout(UI_READY_TIMEOUT_MS) {
-            while (automation.rootInActiveWindow?.packageName?.toString()?.endsWith(".permissioncontroller") != true) {
+    private fun notificationPermission(): Int = context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+
+    /** Switches night mode and waits until the app configuration reflects it. */
+    private suspend fun setNightMode(dark: Boolean) {
+        nightMode(if (dark) "yes" else "no")
+        val expected = if (dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO
+        withTimeout(STATE_CHANGE_TIMEOUT_MS) {
+            while (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK != expected) {
                 delay(POLL_INTERVAL_MS)
             }
-            assertTrue("Could not dismiss the notification permission prompt",
-                automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
-            while (automation.rootInActiveWindow?.packageName != host.context.packageName) delay(POLL_INTERVAL_MS)
         }
     }
 
-    private fun notificationPermission(host: HeaderTestHost): Int =
-        host.context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-
-    private suspend fun verifyAppearance(
-        host: HeaderTestHost,
-        scenario: ActivityScenario<MainActivity>,
-        titles: List<String>,
-        actions: List<String>,
-        theme: AppTheme,
-        dark: Boolean
-    ) {
+    private suspend fun verifyAppearance(titles: List<String>, actions: List<String>, theme: AppTheme, dark: Boolean) {
         val expectedCanvas = when (theme) {
-            AppTheme.DEFAULT -> if (dark) dynamicDarkColorScheme(host.context).background
-                else dynamicLightColorScheme(host.context).background
+            AppTheme.DEFAULT -> if (dark) dynamicDarkColorScheme(context).background
+                else dynamicLightColorScheme(context).background
             AppTheme.MODERN -> if (dark) ModernDarkColorScheme.background else ModernLightColorScheme.background
         }
         val appearance = "$theme ${if (dark) "dark" else "light"}"
         // `titles` is history, import, RSS; `actions` belong to the import and RSS rows in that order.
         val iconDescriptions = titles.takeLast(actions.size)
-            .map { host.context.getString(R.string.notification_more_actions_item, it) }
-        val retryLabel = host.context.getString(R.string.common_retry)
-        val rows = awaitStableFrame(host, scenario, "$appearance notification rows") { activity, nodes ->
-            val rtl = activity.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
+            .map { context.getString(R.string.notification_more_actions_item, it) }
+        val retryLabel = context.getString(R.string.common_retry)
+        val rtl = context.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL
+        val rows = awaitStableFrame("$appearance notification rows") { nodes ->
             val titleSamples = titles.map { title ->
-                val node = nodes.firstOrNull { host.text(it, title) } ?: return@awaitStableFrame null
+                val node = nodes.firstOrNull { it.hasText(title) } ?: return@awaitStableFrame null
                 val color = node.textColorOrNull() ?: return@awaitStableFrame null
                 val bounds = node.screenBounds()
                 val margin = if (rtl) bounds.right + 8f else bounds.left - 8f
@@ -218,14 +204,14 @@ class NotificationContrastTest {
             }
             val iconSamples = actions.zip(iconDescriptions) { tag, iconDescription ->
                 val button = nodes.firstOrNull { it.tag() == tag } ?: return@awaitStableFrame null
-                val icon = button.children.firstOrNull { host.description(it, iconDescription) }
+                val icon = button.children.firstOrNull { it.hasDescription(iconDescription) }
                     ?: return@awaitStableFrame null
                 assertNull(button.config.getOrNull(SemanticsProperties.Disabled))
                 val bounds = button.screenBounds()
                 Sample(icon.screenBounds(), Offset(bounds.left + bounds.width * 0.1f, bounds.center.y))
             }
             // Each unresolved row exposes Retry as a visible tonal button beside its overflow menu.
-            val retryLabels = nodes.filter { host.text(it, retryLabel) }
+            val retryLabels = nodes.filter { it.hasText(retryLabel) }
             if (retryLabels.size != actions.size) return@awaitStableFrame null
             val retrySamples = retryLabels.map { label ->
                 val button = label.clickOwner()
@@ -245,12 +231,12 @@ class NotificationContrastTest {
             assertContrast("$appearance Retry $index", ratio, NORMAL_TEXT_CONTRAST)
         }
 
-        val menuLabels = listOf(R.string.common_delete).map(host.context::getString)
+        val menuLabels = listOf(R.string.common_delete).map(context::getString)
         actions.forEach { tag ->
-            click(host, awaitNode(host, scenario) { it.tag() == tag })
-            val menu = awaitStableFrame(host, scenario, "$appearance $tag menu") { _, nodes ->
+            click(awaitNode { it.tag() == tag })
+            val menu = awaitStableFrame("$appearance $tag menu") { nodes ->
                 FrameSamples(menuLabels.map { label ->
-                    val node = nodes.firstOrNull { host.text(it, label) } ?: return@awaitStableFrame null
+                    val node = nodes.firstOrNull { it.hasText(label) } ?: return@awaitStableFrame null
                     val item = node.clickOwner()
                     assertNull(item.config.getOrNull(SemanticsProperties.Disabled))
                     val textBounds = node.screenBounds()
@@ -261,11 +247,9 @@ class NotificationContrastTest {
             menuLabels.zip(menu).forEach { (label, ratio) ->
                 assertContrast("$appearance $label", ratio, NORMAL_TEXT_CONTRAST)
             }
-            assertTrue(host.instrumentation.uiAutomation.performGlobalAction(
-                AccessibilityService.GLOBAL_ACTION_BACK
-            ))
+            assertTrue(instrumentation.uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
             withTimeout(STATE_CHANGE_TIMEOUT_MS) {
-                while (nodes(host, scenario).any { node -> menuLabels.any { host.text(node, it) } }) delay(POLL_INTERVAL_MS)
+                while (onMain { nodes -> nodes.any { node -> menuLabels.any { node.hasText(it) } } }) delay(POLL_INTERVAL_MS)
             }
         }
     }
@@ -276,30 +260,55 @@ class NotificationContrastTest {
 
     private data class Measurement(val bounds: Rect, val background: Color, val ratio: Double)
 
-    private suspend fun awaitStableFrame(
-        host: HeaderTestHost,
-        scenario: ActivityScenario<MainActivity>,
-        label: String,
-        locate: (MainActivity, List<SemanticsNode>) -> FrameSamples?
-    ): List<Double> {
+    /**
+     * Waits until the samples can be located, then compares at most [MAX_SAMPLES] screenshots taken
+     * [POLL_INTERVAL_MS] apart until [REQUIRED_STABLE_FRAMES] consecutive frames measure the same.
+     */
+    private suspend fun awaitStableFrame(label: String, locate: (List<SemanticsNode>) -> FrameSamples?): List<Double> {
+        withTimeout(UI_READY_TIMEOUT_MS) { while (onMain(locate) == null) delay(POLL_INTERVAL_MS) }
+        instrumentation.waitForIdleSync()
         var previous: List<Measurement>? = null
         var stableFrames = 0
-        val measurements = withTimeoutOrNull(UI_READY_TIMEOUT_MS) {
-            while (stableFrames < REQUIRED_STABLE_FRAMES) {
-                val frame = onActivity(scenario) { locate(it, host.nodes(it)) }
-                val current = frame?.let { screenshot(host) { image -> measureFrame(image, frame) } }
-                // Geometry and pixels must settle. Popup opacity can change without moving its layout bounds.
-                stableFrames = when {
-                    current == null -> 0
-                    current == previous -> stableFrames + 1
-                    else -> 1
-                }
-                previous = current
-                if (stableFrames < REQUIRED_STABLE_FRAMES) delay(POLL_INTERVAL_MS)
+        repeat(MAX_SAMPLES) { sample ->
+            if (sample > 0) delay(POLL_INTERVAL_MS)
+            val frame = onMain(locate)
+            val current = frame?.let { screenshot { image -> measureFrame(image, frame) } }
+            // Geometry and pixels must settle. Popup opacity can change without moving its layout bounds.
+            stableFrames = when {
+                current == null -> 0
+                current == previous -> stableFrames + 1
+                else -> 1
             }
-            previous
+            previous = current
+            if (stableFrames >= REQUIRED_STABLE_FRAMES) return checkNotNull(current).map { it.ratio }
         }
-        return checkNotNull(measurements) { "$label did not settle inside the screenshot viewport" }.map { it.ratio }
+        throw AssertionError("$label did not settle inside the screenshot viewport after $MAX_SAMPLES samples")
+    }
+
+    /** Runs [block] on the main thread over every semantics node in every app window. */
+    private fun <T> onMain(block: (List<SemanticsNode>) -> T): T {
+        var result: Result<T>? = null
+        // Rethrow on the test thread so an assertion failure still runs fixture cleanup.
+        instrumentation.runOnMainSync { result = runCatching { block(allNodes()) } }
+        return checkNotNull(result).getOrThrow()
+    }
+
+    private fun allNodes(): List<SemanticsNode> {
+        val roots = mutableListOf<ViewRootForTest>()
+        fun collect(view: View) {
+            when (view) {
+                is ViewRootForTest -> roots += view
+                is ViewGroup -> for (index in 0 until view.childCount) collect(view.getChildAt(index))
+            }
+        }
+        WindowInspector.getGlobalWindowViews().forEach(::collect)
+        val nodes = mutableListOf<SemanticsNode>()
+        fun visit(node: SemanticsNode) {
+            nodes += node
+            node.children.forEach(::visit)
+        }
+        roots.distinct().forEach { visit(it.semanticsOwner.unmergedRootSemanticsNode) }
+        return nodes
     }
 
     private fun measureFrame(image: Bitmap, frame: FrameSamples): List<Measurement>? = frame.samples.map { sample ->
@@ -324,42 +333,28 @@ class NotificationContrastTest {
         Measurement(bounds, background, ratio)
     }
 
-    private suspend fun awaitNode(
-        host: HeaderTestHost,
-        scenario: ActivityScenario<MainActivity>,
-        match: (SemanticsNode) -> Boolean
-    ): SemanticsNode = withTimeout(UI_READY_TIMEOUT_MS) {
-        var found = nodes(host, scenario).firstOrNull(match)
+    private suspend fun awaitNode(match: (SemanticsNode) -> Boolean): SemanticsNode = withTimeout(UI_READY_TIMEOUT_MS) {
+        var found = onMain { nodes -> nodes.firstOrNull(match) }
         while (found == null) {
             delay(POLL_INTERVAL_MS)
-            found = nodes(host, scenario).firstOrNull(match)
+            found = onMain { nodes -> nodes.firstOrNull(match) }
         }
         found
     }
 
-    private fun nodes(host: HeaderTestHost, scenario: ActivityScenario<MainActivity>): List<SemanticsNode> =
-        onActivity(scenario) { host.nodes(it) }
+    private fun SemanticsNode.hasText(value: String) =
+        config.getOrNull(SemanticsProperties.Text)?.any { it.text == value } == true
 
-    private fun <T> onActivity(scenario: ActivityScenario<MainActivity>, block: (MainActivity) -> T): T {
-        var result: Result<T>? = null
-        scenario.onActivity { result = runCatching { block(it) } }
-        return checkNotNull(result).getOrThrow()
-    }
-
-    private fun <T> onMain(host: HeaderTestHost, block: () -> T): T {
-        var result: Result<T>? = null
-        // Rethrow on the test thread so an assertion failure still runs fixture cleanup.
-        host.main { result = runCatching(block) }
-        return checkNotNull(result).getOrThrow()
-    }
+    private fun SemanticsNode.hasDescription(value: String) =
+        config.getOrNull(SemanticsProperties.ContentDescription)?.contains(value) == true
 
     private fun SemanticsNode.tag() = config.getOrNull(SemanticsProperties.TestTag)
 
     private fun SemanticsNode.clickOwner() = generateSequence(this) { it.parent }
         .first { it.config.getOrNull(SemanticsActions.OnClick) != null }
 
-    private fun click(host: HeaderTestHost, node: SemanticsNode) {
-        onMain(host) { assertTrue(node.clickOwner().config[SemanticsActions.OnClick].action?.invoke() == true) }
+    private fun click(node: SemanticsNode) {
+        assertTrue(onMain { node.clickOwner().config[SemanticsActions.OnClick].action?.invoke() == true })
     }
 
     private fun SemanticsNode.textColorOrNull(): Color? {
@@ -372,8 +367,8 @@ class NotificationContrastTest {
 
     private fun Bitmap.colorAt(x: Float, y: Float) = Color(getPixel(x.toInt(), y.toInt()))
 
-    private fun <T> screenshot(host: HeaderTestHost, inspect: (Bitmap) -> T): T {
-        val image = requireNotNull(host.instrumentation.uiAutomation.takeScreenshot())
+    private fun <T> screenshot(inspect: (Bitmap) -> T): T {
+        val image = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
         return try {
             inspect(image)
         } finally {
@@ -388,12 +383,11 @@ class NotificationContrastTest {
     private fun contrastRatio(foreground: Float, background: Float) =
         (maxOf(foreground, background) + 0.05) / (minOf(foreground, background) + 0.05)
 
-    private fun nightMode(host: HeaderTestHost, mode: String = ""): String =
-        shell(host, "cmd uimode night $mode".trimEnd())
+    private fun nightMode(mode: String = ""): String = shell("cmd uimode night $mode".trimEnd())
 
-    private fun shell(host: HeaderTestHost, command: String): String =
+    private fun shell(command: String): String =
         ParcelFileDescriptor.AutoCloseInputStream(
-            host.instrumentation.uiAutomation.executeShellCommand(command)
+            instrumentation.uiAutomation.executeShellCommand(command)
         ).bufferedReader().use { it.readText().trim() }
 
     private companion object {
@@ -401,7 +395,8 @@ class NotificationContrastTest {
         const val ICON_CONTRAST = 3.0
         const val STATE_CHANGE_TIMEOUT_MS = 5000L
         const val UI_READY_TIMEOUT_MS = 8000L
-        const val POLL_INTERVAL_MS = 30L
+        const val POLL_INTERVAL_MS = 100L
         const val REQUIRED_STABLE_FRAMES = 4
+        const val MAX_SAMPLES = 10
     }
 }

@@ -10,8 +10,11 @@ import java.net.ServerSocket
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.ShareReceiverActivity
 import me.bubblespark.tidilo.config.AiAnalysisMode
@@ -52,7 +55,9 @@ class AiAnalysisShareTest {
         }
         val db = AppDatabase.getInstance(context)
         val notifications = context.getSystemService(NotificationManager::class.java)
+        val originalBlur = AppConfig.overlayBlurEnabled.value
         try {
+            AppConfig.setOverlayBlurEnabled(false)
             AppConfig.setAiAnalysisMode(AiAnalysisMode.DISABLE)
             context.startActivity(Intent(context, ShareReceiverActivity::class.java).apply {
                 action = Intent.ACTION_SEND
@@ -61,7 +66,7 @@ class AiAnalysisShareTest {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             })
             withTimeout(15000) {
-                while (db.bookmarkDao().getBookmarkByUrl(url) == null) delay(30)
+                while (db.bookmarkDao().getBookmarkByUrl(url) == null) delay(100)
             }
             delay(300)
             assertTrue(notifications.activeNotifications.none {
@@ -74,10 +79,13 @@ class AiAnalysisShareTest {
             assertTrue(bookmark.entities.isEmpty())
             assertNull(db.importTaskDao().getTaskByUrl(url))
         } finally {
-            db.bookmarkDao().getBookmarkByUrl(url)?.let { db.bookmarkDao().deleteById(it.id) }
-            db.importTaskDao().getTaskByUrl(url)?.let { db.importTaskDao().deleteById(it.id) }
+            withContext(NonCancellable + Dispatchers.IO) {
+                db.bookmarkDao().getBookmarkByUrl(url)?.let { db.bookmarkDao().deleteById(it.id) }
+                db.importTaskDao().getTaskByUrl(url)?.let { db.importTaskDao().deleteById(it.id) }
+            }
             notifications.cancel(1001)
             AppConfig.setAiAnalysisMode(originalMode)
+            AppConfig.setOverlayBlurEnabled(originalBlur)
             serving.set(false)
             server.close()
             worker.join(1000)

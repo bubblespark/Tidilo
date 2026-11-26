@@ -6,7 +6,11 @@ import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
 import me.bubblespark.tidilo.data.notifications.NotificationCategory
 import org.junit.Assert.*
 import org.junit.Test
+import androidx.room.withTransaction
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.RssNotificationRunEntity
 import me.bubblespark.tidilo.data.db.RssNotificationItemEntity
@@ -19,12 +23,15 @@ class NotificationSystemTest {
             android.content.pm.PackageManager.PERMISSION_GRANTED)
         val manager = context.getSystemService(NotificationManager::class.java)
         val coordinator = NotificationCoordinator.getInstance(context)
-        val dao = AppDatabase.getInstance(context).rssNotificationDao()
+        val db = AppDatabase.getInstance(context)
+        val dao = db.rssNotificationDao()
         val runId = "test-${UUID.randomUUID()}"
         try {
-            dao.putRun(RssNotificationRunEntity(runId, runId, System.currentTimeMillis(), true))
-            for (index in 1..100) dao.putItem(RssNotificationItemEntity(runId, "$index", "IMPORT_ERROR", "HTTP 404"))
-            dao.finish(runId)
+            db.withTransaction {
+                dao.putRun(RssNotificationRunEntity(runId, runId, System.currentTimeMillis(), true))
+                for (index in 1..100) dao.putItem(RssNotificationItemEntity(runId, "$index", "IMPORT_ERROR", "HTTP 404"))
+                dao.finish(runId)
+            }
             coordinator.publishCompletedRssRuns()
             val notices = manager.activeNotifications.filter { it.tag == runId }
             assertEquals(2, notices.size)
@@ -38,10 +45,12 @@ class NotificationSystemTest {
             assertEquals(times, manager.activeNotifications.filter { it.tag == runId }.associate { it.id to it.postTime })
         } finally {
             for (category in NotificationCategory.entries) manager.cancel(runId, category.id)
-            // Remove only this test's isolated bookkeeping records.
-            val sql = AppDatabase.getInstance(context).openHelper.writableDatabase
-            sql.execSQL("DELETE FROM rss_notification_items WHERE runId = ?", arrayOf(runId))
-            sql.execSQL("DELETE FROM rss_notification_runs WHERE id = ?", arrayOf(runId))
+            withContext(NonCancellable + Dispatchers.IO) {
+                // Remove only this test's isolated bookkeeping records.
+                val sql = db.openHelper.writableDatabase
+                sql.execSQL("DELETE FROM rss_notification_items WHERE runId = ?", arrayOf(runId))
+                sql.execSQL("DELETE FROM rss_notification_runs WHERE id = ?", arrayOf(runId))
+            }
         }
     }
 

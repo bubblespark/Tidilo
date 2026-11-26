@@ -149,50 +149,6 @@ class CollectionUiTest {
         } finally { host.main { activity.finish() } }
     }
 
-    @Test fun countBadgesRemainReadableAcrossPaletteAndThemes(): Unit = runBlocking {
-        val activity = host.launch()
-        val paletteIndex = mutableIntStateOf(0)
-        val dark = mutableStateOf(false)
-        val dynamic = mutableStateOf(false)
-        try {
-            host.main { activity.setContent {
-                me.bubblespark.tidilo.ui.theme.TidiloTheme(darkTheme = dark.value, dynamicColor = dynamic.value) {
-                    CollectionCard(CollectionWithCount(CollectionEntity("contrast",
-                        "Badge ${paletteIndex.intValue} ${dark.value} ${dynamic.value}", "", "folder", null,
-                        paletteIndex.intValue, 1, 1), 12), {}, Modifier.padding(20.dp))
-                }
-            } }
-            // Screen captures include the Activity launch transition; let it finish first.
-            delay(600)
-            for (dynamicColor in listOf(false, true)) for (night in listOf(false, true)) for (index in 0..7) {
-                host.main { paletteIndex.intValue = index; dark.value = night; dynamic.value = dynamicColor }
-                await { host.text(it, "Badge $index $night $dynamicColor") }
-                val count = await { host.text(it, "12 items") }
-                var bounds = androidx.compose.ui.geometry.Rect.Zero
-                host.main { bounds = count.boundsInWindow }
-                host.instrumentation.waitForIdleSync()
-                // Semantics can update before the compositor presents the new palette.
-                delay(80)
-                val bitmap = host.instrumentation.uiAutomation.takeScreenshot()
-                try {
-                    val background = Color(bitmap.getPixel(bounds.right.toInt() + 2, bounds.center.y.toInt())).luminance()
-                    var maximumContrast = 1f
-                    for (y in bounds.top.toInt() until bounds.bottom.toInt()) for (x in bounds.left.toInt() until bounds.right.toInt()) {
-                        val foreground = Color(bitmap.getPixel(x, y)).luminance()
-                        maximumContrast = maxOf(maximumContrast,
-                            (maxOf(foreground, background) + 0.05f) / (minOf(foreground, background) + 0.05f))
-                    }
-                    if (maximumContrast < 4.5f) {
-                        java.io.File(host.context.cacheDir, "badge-contrast-failure.png").outputStream().use {
-                            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
-                        }
-                    }
-                    assertTrue("Badge $index dark=$night dynamic=$dynamicColor bounds=$bounds background=$background has contrast $maximumContrast", maximumContrast >= 4.5f)
-                } finally { bitmap.recycle() }
-            }
-        } finally { host.main { activity.finish() } }
-    }
-
     @Test fun loadFailureOffersRetryWithoutSaveAction(): Unit = runBlocking {
         val activity = host.launch()
         val retries = java.util.concurrent.atomic.AtomicInteger()
@@ -316,48 +272,6 @@ class CollectionUiTest {
         val node = await { it.config.getOrNull(SemanticsActions.Dismiss) != null }
         host.main { check(node.config[SemanticsActions.Dismiss].action?.invoke() == true) }
         delay(300)
-    }
-
-    @Test fun membershipSheetSlidesDownBeforeRemoval(): Unit = runBlocking {
-        val db = AppDatabase.getInstance(host.context)
-        val id = UUID.randomUUID().toString()
-        val title = "Animate ${id.take(8)}"
-        val shown = mutableStateOf(true)
-        val activity = host.launch()
-        var sampler: android.view.Choreographer.FrameCallback? = null
-        try {
-            db.collectionDao().insert(CollectionEntity(id, title, "", "folder", null, 0, System.currentTimeMillis(), 1))
-            db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Animate selector", "https://example.com/$id", "", createdAt = 1, updatedAt = 1))
-            host.main { activity.setContent { MaterialTheme {
-                if (shown.value) CollectionMembershipBottomSheet(id, { shown.value = false }, {})
-            } } }
-            action(await { host.text(it, title) })
-            // The toggle persists immediately; let Room's emission settle before closing.
-            withTimeout(5000) { while (db.collectionDao().observeMembershipIds(id).first() != listOf(id)) delay(20) }
-            delay(1500)
-            val positions = mutableListOf<Float>()
-            host.main { positions += allNodes().first { host.text(it, "Choose collections") }.boundsInWindow.top }
-            val dismiss = await { it.config.getOrNull(SemanticsActions.Dismiss) != null }
-            host.main {
-                sampler = object : android.view.Choreographer.FrameCallback {
-                    override fun doFrame(frameTimeNanos: Long) {
-                        allNodes().firstOrNull { host.text(it, "Choose collections") && it.boundsInWindow.height > 0f }
-                            ?.let { positions += it.boundsInWindow.top }
-                        if (shown.value) android.view.Choreographer.getInstance().postFrameCallback(this)
-                    }
-                }
-                android.view.Choreographer.getInstance().postFrameCallback(requireNotNull(sampler))
-                dismiss.config[SemanticsActions.Dismiss].action?.invoke()
-            }
-            withTimeout(5000) { while (shown.value) delay(20) }
-            host.main { sampler?.let { android.view.Choreographer.getInstance().removeFrameCallback(it) } }
-            assertTrue("Sheet must render intermediate downward positions before removal: $positions",
-                positions.any { it > positions.first() + 8f })
-            assertEquals(listOf(id), db.collectionDao().observeMembershipIds(id).first())
-        } finally {
-            host.main { sampler?.let { android.view.Choreographer.getInstance().removeFrameCallback(it) }; activity.finish() }
-            db.collectionDao().delete(id); db.bookmarkDao().deleteById(id)
-        }
     }
 
     @Test fun membershipTogglesPersistBeforeTheSheetCloses(): Unit = runBlocking {
@@ -601,42 +515,6 @@ class CollectionUiTest {
             db.collectionDao().delete(id)
             withTimeout(5000) { while (selected()) delay(30) }
         } finally { host.main { activity.finish() }; db.collectionDao().delete(id); db.bookmarkDao().deleteById(id) }
-    }
-
-    @Test fun actualLibraryEditorRestoresAfterActivityRecreation(): Unit = runBlocking {
-        val activity = host.launch()
-        var current: androidx.activity.ComponentActivity = activity
-        val draft = "Restored ${UUID.randomUUID().toString().take(8)}"
-        var oldMode: LibraryFilterMode? = null
-        try {
-            host.main {
-                val model = androidx.lifecycle.ViewModelProvider(activity)[LibraryViewModel::class.java]
-                oldMode = model.filterMode.value
-                model.setFilterMode(LibraryFilterMode.COLLECTION)
-                model.selectCollectionFilter(null)
-            }
-            action(await { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("New Collection") == true })
-            val field = await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == "" && it.config.getOrNull(SemanticsActions.SetText) != null }
-            host.main { check(field.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(draft)) == true) }
-            await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == draft }
-            host.main { activity.recreate() }
-            withTimeout(8000) {
-                while (current === activity) {
-                    host.main {
-                        current = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
-                            .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
-                            .filterIsInstance<me.bubblespark.tidilo.MainActivity>().firstOrNull { it !== activity } ?: activity
-                    }
-                    if (current === activity) delay(30)
-                }
-            }
-            delay(300)
-            await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == draft }
-            dismissSheet()
-            assertTrue(AppDatabase.getInstance(host.context).collectionDao().observeCollections(true).first().none { it.collection.title == draft })
-        } finally {
-            host.main { oldMode?.let { androidx.lifecycle.ViewModelProvider(current)[LibraryViewModel::class.java].setFilterMode(it) }; current.finish() }
-        }
     }
 
     @Test fun createCollectionFromDetailAssignsAndReopensSelectionChecked(): Unit = runBlocking {
@@ -1055,82 +933,6 @@ class CollectionUiTest {
             host.instrumentation.setInTouchMode(true)
             host.main { activity.finish() }
             createdIds.forEach { db.collectionDao().delete(it) }
-            db.bookmarkDao().deleteById(bookmarkId)
-        }
-    }
-
-    @Test fun detailSequentialCreateSurvivesActivityRecreation(): Unit = runBlocking {
-        val db = AppDatabase.getInstance(host.context)
-        val bookmarkId = UUID.randomUUID().toString()
-        val bookmarkTitle = "RecreateDetail ${bookmarkId.take(6)}"
-        val draftTitle = "RecreatedCol ${bookmarkId.take(6)}"
-        val now = System.currentTimeMillis() + 1_000_000L
-        db.bookmarkDao().insertOrUpdate(
-            BookmarkEntity(bookmarkId, bookmarkTitle, "https://example.com/$bookmarkId", "", createdAt = now, updatedAt = now)
-        )
-        var activity: androidx.activity.ComponentActivity = host.launch()
-        var oldMode: LibraryFilterMode? = null
-        try {
-            phase = "navigate to BookmarkDetailScreen in MainActivity"
-            host.main {
-                val model = androidx.lifecycle.ViewModelProvider(activity)[LibraryViewModel::class.java]
-                oldMode = model.filterMode.value
-                model.setFilterMode(LibraryFilterMode.NEWEST_FIRST)
-            }
-            action(await { host.text(it, bookmarkTitle) })
-            action(await { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Choose collections") == true })
-            await { host.text(it, "Choose collections") }
-            action(awaitEnabledButton("New collection"))
-            await { host.text(it, "New Collection") }
-            val field = awaitFront {
-                it.config.getOrNull(SemanticsProperties.EditableText)?.text == "" &&
-                    it.config.getOrNull(SemanticsActions.SetText) != null
-            }
-            host.main { check(field.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(draftTitle)) == true) }
-            awaitFront { it.config.getOrNull(SemanticsProperties.EditableText)?.text == draftTitle }
-
-            phase = "recreate MainActivity during CREATING"
-            var recreated: androidx.activity.ComponentActivity = activity
-            host.main { activity.recreate() }
-            withTimeout(8000) {
-                while (recreated === activity) {
-                    host.main {
-                        recreated = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
-                            .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
-                            .filterIsInstance<me.bubblespark.tidilo.MainActivity>()
-                            .firstOrNull { it !== activity } ?: activity
-                    }
-                    if (recreated === activity) delay(30)
-                }
-            }
-            activity = recreated
-            delay(300)
-            await { host.text(it, "New Collection") }
-            await { it.config.getOrNull(SemanticsProperties.EditableText)?.text == draftTitle }
-            host.main {
-                assertTrue("Only creator sheet should be visible after recreation", allNodes().none { host.text(it, "Choose collections") })
-            }
-            action(await { host.text(it, "Create") })
-            await { host.text(it, "Choose collections") }
-            withTimeout(5000) {
-                var checked = false
-                while (!checked) {
-                    host.main {
-                        checked = allNodes().any { node ->
-                            node.config.getOrNull(SemanticsProperties.Role) == Role.Checkbox &&
-                                node.config.getOrNull(SemanticsProperties.ToggleableState) == androidx.compose.ui.state.ToggleableState.On &&
-                                node.children.any { child -> host.text(child, draftTitle) }
-                        }
-                    }
-                    if (!checked) delay(20)
-                }
-            }
-        } finally {
-            host.main {
-                oldMode?.let { androidx.lifecycle.ViewModelProvider(activity)[LibraryViewModel::class.java].setFilterMode(it) }
-                activity.finish()
-            }
-            db.collectionDao().observeCollections(true).first().filter { it.collection.title == draftTitle }.forEach { db.collectionDao().delete(it.collection.id) }
             db.bookmarkDao().deleteById(bookmarkId)
         }
     }

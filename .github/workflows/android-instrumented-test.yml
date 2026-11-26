@@ -46,6 +46,33 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
+      - name: Prepare test runner script
+        run: |
+          cat << 'EOF' > /tmp/run-instrumented-with-diag.sh
+          #!/usr/bin/env bash
+          set -u
+          mkdir -p diagnostics
+          adb logcat -c || true
+          adb logcat -v threadtime > diagnostics/logcat.txt 2>&1 &
+          LOGCAT_PID=$!
+          (
+            while true; do
+              date -u +"%Y-%m-%dT%H:%M:%SZ"
+              free -m
+              ps -eo pid,ppid,rss,vsz,%cpu,stat,comm | grep -E "PID|qemu|emulator|java|adb" | grep -v grep || true
+              echo "---"
+              sleep 2
+            done
+          ) > diagnostics/host-resources.txt 2>&1 &
+          MON_PID=$!
+          ./gradlew :app:connectedDebugAndroidTest --stacktrace -Dorg.gradle.jvmargs="-Xmx2g" "$@"
+          STATUS=$?
+          kill "$LOGCAT_PID" "$MON_PID" 2>/dev/null || true
+          wait "$LOGCAT_PID" "$MON_PID" 2>/dev/null || true
+          exit "$STATUS"
+          EOF
+          chmod +x /tmp/run-instrumented-with-diag.sh
+
       - name: Run Instrumented Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -56,26 +83,7 @@ jobs:
           ram-size: 2048M
           heap-size: 512M
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            mkdir -p diagnostics
-            adb logcat -c || true
-            adb logcat -v threadtime > diagnostics/logcat.txt 2>&1 &
-            LOGCAT_PID=$!
-            (
-              while true; do
-                date -u +"%Y-%m-%dT%H:%M:%SZ"
-                free -m
-                ps -eo pid,ppid,rss,vsz,%cpu,stat,comm | grep -E "PID|qemu|emulator|java|adb" | grep -v grep || true
-                echo "---"
-                sleep 2
-              done
-            ) > diagnostics/host-resources.txt 2>&1 &
-            MON_PID=$!
-            ./gradlew :app:connectedDebugAndroidTest --stacktrace -Dorg.gradle.jvmargs="-Xmx2g" ${{ inputs.test_class != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.test_class) || '' }}
-            STATUS=$?
-            kill "$LOGCAT_PID" "$MON_PID" 2>/dev/null || true
-            wait "$LOGCAT_PID" "$MON_PID" 2>/dev/null || true
-            exit "$STATUS"
+          script: /tmp/run-instrumented-with-diag.sh ${{ inputs.test_class != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.test_class) || '' }}
 
       - name: Collect emulator diagnostics
         if: failure()

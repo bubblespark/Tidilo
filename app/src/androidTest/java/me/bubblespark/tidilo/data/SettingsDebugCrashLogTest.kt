@@ -115,7 +115,10 @@ class SettingsDebugCrashLogTest {
                 SettingsDebugScreen(onNavigateBack = {}, checkAiCoreReadiness = { AiCoreReadiness.Failed })
             }
         }
-        composeRule.onNode(hasText("UnsupportedOperationException") and hasClickAction()).performScrollTo().performClick()
+        // Crash logs load and clear on Dispatchers.IO, which idle synchronization does not track.
+        val crash = hasText("UnsupportedOperationException") and hasClickAction()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodes(crash).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNode(crash).performScrollTo().performClick()
 
         val dialogClose = composeRule.onNode(hasText(context.getString(R.string.debug_crash_logs_close)) and hasClickAction())
         dialogClose.performClick()
@@ -125,6 +128,11 @@ class SettingsDebugCrashLogTest {
         val confirmTitle = composeRule.onNodeWithText(context.getString(R.string.debug_crash_logs_clear_confirm_title))
         confirmTitle.assertExists("Clear confirmation dialog title must appear")
         composeRule.onNode(hasText(clearText) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodes(hasText(context.getString(R.string.debug_crash_logs_clear_confirm_title)))
+                .fetchSemanticsNodes().isEmpty() &&
+                composeRule.onAllNodes(hasText(emptyText)).fetchSemanticsNodes().isNotEmpty()
+        }
         confirmTitle.assertDoesNotExist()
         composeRule.onNodeWithText(emptyText).assertExists("Empty state text must appear on screen after clearing logs")
     }

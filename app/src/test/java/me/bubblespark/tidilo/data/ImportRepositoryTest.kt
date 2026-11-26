@@ -17,6 +17,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.async
@@ -1152,21 +1153,27 @@ class ImportRepositoryTest {
             assertTrue(bookmarks.savedItems.isEmpty())
 
             repository.retryErrorTaskAndAwait(taskId)
-            withTimeout(5000) { while (dao.getTaskById(taskId)?.status != "ERROR") delay(5) }
-            val afterChallenge = dao.getTaskById(taskId)!!
+            val afterChallenge = withTimeout(5000) {
+                dao.tasksFlow.first { tasks ->
+                    tasks.firstOrNull { it.id == taskId }?.status == "ERROR"
+                }.single { it.id == taskId }
+            }
             assertFalse(afterChallenge.articlePrepared)
             assertEquals(me.bubblespark.tidilo.parser.ArticleAccessBlocked.MESSAGE, afterChallenge.errorMessage)
             assertTrue(bookmarks.savedItems.isEmpty())
 
             repository.retryErrorTaskAndAwait(taskId)
-            withTimeout(5000) { while (dao.getTaskById(taskId)?.status != "ERROR") delay(5) }
-            val afterEmpty = dao.getTaskById(taskId)!!
+            val afterEmpty = withTimeout(5000) {
+                dao.tasksFlow.first { tasks ->
+                    tasks.firstOrNull { it.id == taskId }?.status == "ERROR"
+                }.single { it.id == taskId }
+            }
             assertFalse(afterEmpty.articlePrepared)
             assertEquals(me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE, afterEmpty.errorMessage)
             assertTrue(bookmarks.savedItems.isEmpty())
 
             repository.retryErrorTaskAndAwait(taskId)
-            withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
+            withTimeout(5000) { dao.tasksFlow.first { it.isEmpty() } }
             val saved = bookmarks.savedItems.single()
             assertEquals("Parsed Title", saved.title)
             assertEquals("Parsed Description", saved.description)
@@ -1215,14 +1222,17 @@ class ImportRepositoryTest {
                 }
             )
             repository.retryErrorTaskAndAwait(taskId)
-            withTimeout(5000) { while (dao.getTaskById(taskId)?.status != "ERROR") delay(5) }
-            val afterFirstRetry = dao.getTaskById(taskId)!!
+            val afterFirstRetry = withTimeout(5000) {
+                dao.tasksFlow.first { tasks ->
+                    tasks.firstOrNull { it.id == taskId }?.status == "ERROR"
+                }.single { it.id == taskId }
+            }
             assertFalse(afterFirstRetry.articlePrepared)
             assertEquals(me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE, afterFirstRetry.errorMessage)
             assertTrue(bookmarks.savedItems.isEmpty())
 
             repository.retryErrorTaskAndAwait(taskId)
-            withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
+            withTimeout(5000) { dao.tasksFlow.first { it.isEmpty() } }
             val saved = bookmarks.savedItems.single()
             assertEquals("Parsed Title", saved.title)
             assertEquals("Parsed Description", saved.description)

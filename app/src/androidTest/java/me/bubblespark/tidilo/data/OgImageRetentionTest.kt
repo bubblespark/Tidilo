@@ -16,9 +16,12 @@ import java.io.ByteArrayOutputStream
 import me.bubblespark.tidilo.data.db.*
 import me.bubblespark.tidilo.data.maintenance.LibraryMaintenanceRepository
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
 
 class OgImageRetentionTest {
+    @get:Rule val composeRule = androidx.compose.ui.test.junit4.createEmptyComposeRule()
+
     private val day = 86_400_000L
     private val now = 100 * day
 
@@ -178,10 +181,8 @@ class OgImageRetentionTest {
     } }
 
     @Test fun visibleImageStateReleasesEvictedBitmapAndRecovers() = runBlocking { fixture { context, db, repo ->
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val real = instrumentation.targetContext
-        val activity = instrumentation.startActivitySync(android.content.Intent(real, me.bubblespark.tidilo.MainActivity::class.java)
-            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) as androidx.activity.ComponentActivity
+        // Launched here rather than by a class rule, so the other tests in this class start no activity.
+        val scenario = androidx.test.core.app.ActivityScenario.launch(androidx.activity.ComponentActivity::class.java)
         val observed = java.util.concurrent.atomic.AtomicReference<me.bubblespark.tidilo.ui.components.OgImageState>()
         val previous = OgImageManager.imageDownloader
         val entered = CompletableDeferred<Unit>()
@@ -199,7 +200,7 @@ class OgImageRetentionTest {
             assertNotNull(initial)
             assertTrue(OgImageManager.getOgImageFile(context, key).setLastModified(now - 8 * day))
             db.bookmarkDao().insertOrUpdate(bookmark("old", 20))
-            instrumentation.runOnMainSync {
+            scenario.onActivity { activity ->
                 activity.setContent {
                     androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalContext provides context) {
                         val state = me.bubblespark.tidilo.ui.components.rememberOgImage(
@@ -208,19 +209,19 @@ class OgImageRetentionTest {
                     }
                 }
             }
-            withTimeout(5000) { while (observed.get()?.bitmap == null) kotlinx.coroutines.delay(10) }
-            instrumentation.waitForIdleSync()
+            composeRule.waitUntil(5_000) { observed.get()?.bitmap != null }
+            composeRule.waitForIdle()
             OgImageManager.imageDownloader = { entered.complete(Unit); release.await(); bytes }
             repo.cleanOgImages(now)
             withTimeout(5000) { entered.await() }
-            withTimeout(5000) { while (observed.get()?.bitmap != null) kotlinx.coroutines.delay(10) }
+            composeRule.waitUntil(5_000) { observed.get()?.bitmap == null }
             release.complete(Unit)
-            withTimeout(5000) { while (observed.get()?.bitmap == null) kotlinx.coroutines.delay(10) }
+            composeRule.waitUntil(5_000) { observed.get()?.bitmap != null }
             assertNotSame(initial, observed.get().bitmap)
             assertNull(db.bookmarkDao().getBookmarkById("old")!!.lastInteractedAt)
         } finally {
             release.complete(Unit)
-            instrumentation.runOnMainSync { activity.finish() }
+            scenario.close()
             OgImageManager.imageDownloader = previous
         }
     } }

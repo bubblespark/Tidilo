@@ -4,14 +4,11 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.view.Choreographer
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.test.core.app.ActivityScenario
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
@@ -22,11 +19,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import me.bubblespark.tidilo.MainActivity
 import me.bubblespark.tidilo.data.cache.IconDownloadResult
 import me.bubblespark.tidilo.data.cache.IconHtmlDiscoveryResult
 import me.bubblespark.tidilo.data.cache.MediaCacheLayout
@@ -42,11 +37,15 @@ import me.bubblespark.tidilo.ui.screens.library.DomainCard
 import me.bubblespark.tidilo.ui.screens.library.DomainGroupItem
 import me.bubblespark.tidilo.ui.screens.library.RssFeedCard
 import me.bubblespark.tidilo.ui.screens.library.Tag
+import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Rule
 import org.junit.Test
 
 class DomainIconCardTest {
+    @get:Rule val composeRule = createComposeRule()
+
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val domain = "icon-ui.example"
     private val faviconUrl = "https://$domain/favicon.png"
@@ -107,9 +106,7 @@ class DomainIconCardTest {
             assertEquals(emptyList<String>(), iconRequests.toList())
 
             releaseOg.complete(Unit)
-            withTimeout(5_000) {
-                while (store.ogImages.getCachedOgImageBitmap(domain, bookmark.ogImageFilename) == null) delay(10)
-            }
+            composeRule.waitUntil(5_000) { store.ogImages.getCachedOgImageBitmap(domain, bookmark.ogImageFilename) != null }
             frames()
             assertEquals(emptyList<String>(), iconRequests.toList())
         }
@@ -171,10 +168,12 @@ class DomainIconCardTest {
     )
 
     private fun pngBytes(): ByteArray {
-        val bitmap = Bitmap.createBitmap(180, 180, Bitmap.Config.ARGB_8888)
+        // Discovered favicons below DomainIconManager.MIN_ICON_SIZE (96px) are rejected as too small.
+        val size = DomainIconManager.MIN_ICON_SIZE
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         return try {
             val paint = Paint().apply { color = android.graphics.Color.BLUE }
-            Canvas(bitmap).drawCircle(90f, 90f, 70f, paint)
+            Canvas(bitmap).drawCircle(size / 2f, size / 2f, size * 0.39f, paint)
             ByteArrayOutputStream().use {
                 check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
                 it.toByteArray()
@@ -192,10 +191,8 @@ class DomainIconCardTest {
         }
     }
 
-    private suspend fun awaitIcon(store: MediaCacheStore, key: String) {
-        withTimeout(5_000) {
-            while (store.domainIcons.getCachedIconBitmap(key) == null) delay(10)
-        }
+    private fun awaitIcon(store: MediaCacheStore, key: String) {
+        composeRule.waitUntil(5_000) { store.domainIcons.getCachedIconBitmap(key) != null }
         frames()
     }
 
@@ -204,16 +201,7 @@ class DomainIconCardTest {
         assertNotEquals(MediaColorPalette.generateDomainAccentColor(key), color)
     }
 
-    private suspend fun frames() {
-        repeat(3) {
-            val frame = CompletableDeferred<Unit>()
-            instrumentation.runOnMainSync {
-                Choreographer.getInstance().postFrameCallback { frame.complete(Unit) }
-            }
-            withTimeout(5_000) { frame.await() }
-            instrumentation.waitForIdleSync()
-        }
-    }
+    private fun frames() = composeRule.waitForIdle()
 
     private suspend fun screen(
         iconDownloader: (String) -> IconDownloadResult,
@@ -235,16 +223,13 @@ class DomainIconCardTest {
         )
         val source = CardCacheVisualSource(store)
         try {
-            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                scenario.onActivity { activity ->
-                    activity.setContent {
-                        CompositionLocalProvider(LocalCacheVisualSource provides source) {
-                            MaterialTheme { content() }
-                        }
-                    }
+            composeRule.setContent {
+                // TidiloTheme binds its own source, so the fake is provided inside it.
+                TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
+                    CompositionLocalProvider(LocalCacheVisualSource provides source) { content() }
                 }
-                check(store)
             }
+            check(store)
         } finally {
             try {
                 withContext(NonCancellable) { store.clearCache() }

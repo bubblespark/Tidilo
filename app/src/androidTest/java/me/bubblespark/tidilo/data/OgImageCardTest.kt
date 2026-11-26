@@ -1,27 +1,26 @@
 package me.bubblespark.tidilo.data
 
-import android.content.Intent
 import android.graphics.Bitmap
-import android.view.Choreographer
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import me.bubblespark.tidilo.MainActivity
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.Tag
+import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
 
 class OgImageCardTest {
+    @get:Rule val composeRule = createComposeRule()
+
     @Test
     fun finishingOneCardDoesNotRestartItsSiblingAndFallbackRenders() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -48,9 +47,6 @@ class OgImageCardTest {
         val a = bookmark("a")
         val b = bookmark("b")
         val fallback = mutableStateOf(false)
-        val activity = instrumentation.startActivitySync(
-            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        ) as ComponentActivity
         try {
             DomainIconManager.htmlDiscoverer = { DomainIconManager.HtmlDiscoveryResult(emptyList(), true, false) }
             DomainIconManager.httpDownloader = { DomainIconManager.DownloadResult(null, true, false) }
@@ -61,40 +57,27 @@ class OgImageCardTest {
                 gates.getValue(id).await()
                 bytes
             }
-            instrumentation.runOnMainSync {
-                activity.setContent {
-                    MaterialTheme {
-                        Column {
-                            if (fallback.value) BookmarkGridCardFixture(bookmark("link", false)) else {
-                                BookmarkGridCardFixture(a)
-                                BookmarkGridCardFixture(b)
-                            }
+            composeRule.setContent {
+                TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
+                    Column {
+                        if (fallback.value) BookmarkGridCardFixture(bookmark("link", false)) else {
+                            BookmarkGridCardFixture(a)
+                            BookmarkGridCardFixture(b)
                         }
                     }
                 }
             }
             assertEquals(setOf("a", "b"), withTimeout(5000) { setOf(entered.receive(), entered.receive()) })
             gates.getValue("a").complete(Unit)
-            withTimeout(5000) {
-                while (OgImageManager.getCachedOgImageBitmap(domain, a.ogImageFilename) == null) delay(10)
-            }
-            suspend fun nextFrame() {
-                val frame = CompletableDeferred<Unit>()
-                instrumentation.runOnMainSync { Choreographer.getInstance().postFrameCallback { frame.complete(Unit) } }
-                withTimeout(5000) { frame.await() }
-                instrumentation.waitForIdleSync()
-            }
-            repeat(3) { nextFrame() }
+            composeRule.waitUntil(5_000) { OgImageManager.getCachedOgImageBitmap(domain, a.ogImageFilename) != null }
+            composeRule.waitForIdle()
             assertEquals(1, calls.getValue("b").get())
             gates.getValue("b").complete(Unit)
-            withTimeout(5000) {
-                while (OgImageManager.getCachedOgImageBitmap(domain, b.ogImageFilename) == null) delay(10)
-            }
+            composeRule.waitUntil(5_000) { OgImageManager.getCachedOgImageBitmap(domain, b.ogImageFilename) != null }
             // A notification for the same image on another domain must not erase A's displayed bitmap.
-            repeat(3) { nextFrame() }
+            composeRule.waitForIdle()
             val before = instrumentation.uiAutomation.takeScreenshot()
-            val displayedColor = before.getPixel(before.width / 2, before.width / 4)
-            before.recycle()
+            val displayedColor = try { before.getPixel(before.width / 2, before.width / 4) } finally { before.recycle() }
             assertTrue("The image must be visible before the notification",
                 android.graphics.Color.blue(displayedColor) > 240 &&
                     android.graphics.Color.red(displayedColor) < 10 && android.graphics.Color.green(displayedColor) < 10)
@@ -103,7 +86,7 @@ class OgImageCardTest {
             assertNotNull(OgImageManager.loadOrFetchOgImage(
                 context, "https://other.example/a", "other.example", a.ogImageUrl
             ))
-            repeat(3) { nextFrame() }
+            composeRule.waitForIdle()
             val retained = instrumentation.uiAutomation.takeScreenshot()
             try {
                 assertEquals("A missing domain cache entry must not erase the rendered image",
@@ -112,20 +95,15 @@ class OgImageCardTest {
                 retained.recycle()
             }
             assertEquals(generation, OgImageManager.getCurrentGeneration())
-            instrumentation.runOnMainSync { fallback.value = true }
-            repeat(3) { nextFrame() }
-            val screenshot = instrumentation.uiAutomation.takeScreenshot()
-            File(context.getExternalFilesDir(null), "issue74-link-fallback.png").outputStream().use {
-                screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
-            }
-            screenshot.recycle()
+            composeRule.runOnUiThread { fallback.value = true }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("Preview link").assertExists()
             assertEquals(3, calls.values.sumOf { it.get() })
         } finally {
             DomainIconManager.htmlDiscoverer = null
             DomainIconManager.httpDownloader = null
             OgImageManager.imageDownloader = null
             gates.values.forEach { it.complete(Unit) }
-            instrumentation.runOnMainSync { activity.finish() }
             for (item in listOf(a, b)) {
                 OgImageManager.getOgImageFile(context, item.ogImageFilename!!).delete()
             }

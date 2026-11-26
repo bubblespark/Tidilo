@@ -24,6 +24,6 @@ internal suspend fun runLibraryMaintenanceAttempt(clean: suspend () -> Unit,
 } catch (cancelled: CancellationException) {
     throw cancelled
 } catch (error: Exception) {
-    Log.w("LibraryMaintenance", "Daily maintenance failed; retrying", error)
+    runCatching { Log.w("LibraryMaintenance", "Daily maintenance failed; retrying", error) }
     ListenableWorker.Result.retry()
 }

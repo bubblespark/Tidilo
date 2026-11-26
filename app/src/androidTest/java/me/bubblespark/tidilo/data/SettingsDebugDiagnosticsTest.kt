@@ -100,7 +100,8 @@ class SettingsDebugDiagnosticsTest {
         val readiness = AiCoreReadiness.Status(FeatureStatus.UNAVAILABLE)
         composeRule.setContent {
             val base = LocalContext.current
-            val configuration = remember(locale) { Configuration(base.resources.configuration).apply { setLocale(locale) } }
+            val baseConfiguration = LocalConfiguration.current
+            val configuration = remember(locale, baseConfiguration) { Configuration(baseConfiguration).apply { setLocale(locale) } }
             val localized = remember(configuration) { base.createConfigurationContext(configuration) }
             CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides configuration) {
                 TidiloTheme(blurEnabled = false, dynamicColor = false) {

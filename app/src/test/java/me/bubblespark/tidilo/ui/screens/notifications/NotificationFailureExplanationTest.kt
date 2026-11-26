@@ -51,7 +51,9 @@ class NotificationFailureExplanationTest {
             "Exception in CronetUrlRequest: net::ERR_INTERNET_DISCONNECTED, ErrorCode=2",
             "Exception in CronetUrlRequest: net::ERR_CONNECTION_TIMED_OUT, ErrorCode=6",
             "No internet connection",
-            "Unable to reach host"
+            "Unable to reach host",
+            "QUIC protocol connection failed",
+            "Exception in CronetUrlRequest: net::ERR_QUIC_PROTOCOL_ERROR, ErrorCode=10"
         ).forEach { assertEquals(it, NETWORK, classifyFailure(it)) }
 
         listOf(

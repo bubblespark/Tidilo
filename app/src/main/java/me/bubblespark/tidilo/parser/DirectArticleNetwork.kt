@@ -25,11 +25,13 @@ internal fun formatDirectNetworkFailure(errorCode: Int?, rawMessage: String?): S
     7 -> "Connection refused"
     8 -> "Connection reset"
     9 -> "Unable to reach host"
+    10 -> "QUIC protocol connection failed"
     else -> {
         val lower = rawMessage?.lowercase().orEmpty()
         when {
             listOf("err_ssl_", "err_cert_", "ssl", "certificat", "handshake").any { it in lower } ->
                 "SSL connection error"
+            "err_quic_protocol" in lower -> "QUIC protocol connection failed"
             "err_name_not_resolved" in lower -> "Unable to resolve host"
             "err_timed_out" in lower || "timeout" in lower -> "Connection timed out"
             else -> "Network request failed"

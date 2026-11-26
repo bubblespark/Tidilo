@@ -55,7 +55,9 @@ fun classifyFailure(raw: String?): FailureReason {
             "err_address_unreachable",
             "err_network_changed",
             "err_connection_",
-            "err_timed_out"
+            "err_timed_out",
+            "err_quic_protocol",
+            "quic protocol connection failed"
         ).any { it in lower } -> FailureReason.NETWORK
         listOf("ssl", "certificat", "handshake", "trust anchor", "err_ssl_", "err_cert_").any { it in lower } -> FailureReason.SECURE_CONNECTION
         listOf("timed out", "timeout", "exceeded 30 seconds", "connection").any { it in lower } -> FailureReason.NETWORK

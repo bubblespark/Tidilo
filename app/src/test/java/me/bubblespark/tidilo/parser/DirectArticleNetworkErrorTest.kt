@@ -15,9 +15,19 @@ class DirectArticleNetworkErrorTest {
         assertEquals("Connection refused", formatDirectNetworkFailure(7, "raw"))
         assertEquals("Connection reset", formatDirectNetworkFailure(8, "raw"))
         assertEquals("Unable to reach host", formatDirectNetworkFailure(9, "raw"))
+        val quicMessage = formatDirectNetworkFailure(
+            10,
+            "Exception in CronetUrlRequest: net::ERR_QUIC_PROTOCOL_FAILED, ErrorCode=10"
+        )
+        assertEquals("QUIC protocol connection failed", quicMessage)
+        org.junit.Assert.assertFalse(quicMessage.contains("CronetUrlRequest"))
     }
 
     @Test fun unknownOrNullErrorCodeFallsBackSafelyWithoutRawCronetPrefix() {
+        assertEquals(
+            "QUIC protocol connection failed",
+            formatDirectNetworkFailure(null, "Exception in CronetUrlRequest: net::ERR_QUIC_PROTOCOL_ERROR")
+        )
         assertEquals(
             "SSL connection error",
             formatDirectNetworkFailure(11, "Exception in CronetUrlRequest: net::ERR_SSL_PROTOCOL_ERROR, ErrorCode=11")

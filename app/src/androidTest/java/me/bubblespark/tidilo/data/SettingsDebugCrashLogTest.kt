@@ -1,13 +1,14 @@
 package me.bubblespark.tidilo.data
 
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsNode
-import androidx.compose.ui.semantics.getOrNull
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.test.platform.app.InstrumentationRegistry
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.debug.CrashLogEntry
 import me.bubblespark.tidilo.data.debug.CrashLogManager
@@ -17,242 +18,122 @@ import me.bubblespark.tidilo.ui.screens.settings.SettingsDebugScreen
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 
 class SettingsDebugCrashLogTest {
-    private val host = HeaderTestHost()
+    @get:Rule val composeRule = createComposeRule()
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private val emptyText = context.getString(R.string.debug_crash_logs_empty)
+    private val clearText = context.getString(R.string.debug_crash_logs_clear)
 
     @Before
     fun setUp() {
-        CrashLogManager.clearLogs(host.context)
+        CrashLogManager.clearLogs(context)
     }
 
     @After
     fun tearDown() {
-        CrashLogManager.clearLogs(host.context)
+        CrashLogManager.clearLogs(context)
     }
 
-    @Test
-    fun crashLogCompleteVerificationLifecycle(): Unit = runBlocking {
-        val activity = host.launch()
-        try {
-            // =========================================================================
-            // Stage 1: Empty state verification
-            // =========================================================================
-            host.main {
-                activity.setContent {
-                    TidiloTheme {
-                        CrashLogsSection(
-                            crashLogs = emptyList(),
-                            onLogClick = {},
-                            onClearClick = {}
-                        )
-                    }
-                }
-            }
-
-            val emptyText = host.context.getString(R.string.debug_crash_logs_empty)
-            val emptyNode = host.await(activity) { host.text(it, emptyText) }
-            assertNotNull("Empty state text must be displayed when no crash logs exist", emptyNode)
-
-            val clearText = host.context.getString(R.string.debug_crash_logs_clear)
-            var clearNodeWhenEmpty: SemanticsNode? = null
-            host.main {
-                clearNodeWhenEmpty = host.nodes(activity).firstOrNull { host.text(it, clearText) }
-            }
-            assertNull("Clear button must not be present when log list is empty", clearNodeWhenEmpty)
-
-            // =========================================================================
-            // Stage 2: List rendering and callback verification with multiple crashes
-            // =========================================================================
-            val entry1 = CrashLogEntry(
-                id = "test-npe-1",
-                timestamp = System.currentTimeMillis(),
-                exceptionClass = "java.lang.NullPointerException",
-                message = "Target view reference is null",
-                stackTrace = "java.lang.NullPointerException: Target view reference is null\n\tat me.test.View.bind(View.kt:42)",
-                threadName = "main"
-            )
-            val entry2 = CrashLogEntry(
-                id = "test-ise-2",
-                timestamp = System.currentTimeMillis() - 1000,
-                exceptionClass = "java.lang.IllegalStateException",
-                message = "Coroutine job was already completed",
-                stackTrace = "java.lang.IllegalStateException: Coroutine job was already completed\n\tat me.test.Job.run(Job.kt:88)",
-                threadName = "DefaultDispatcher-worker-1"
-            )
-
-            var clickedEntry: CrashLogEntry? = null
-            var clearClicked = false
-
-            host.main {
-                activity.setContent {
-                    TidiloTheme {
-                        CrashLogsSection(
-                            crashLogs = listOf(entry1, entry2),
-                            onLogClick = { clickedEntry = it },
-                            onClearClick = { clearClicked = true }
-                        )
-                    }
-                }
-            }
-
-            val npeNode = host.await(activity) { host.text(it, "NullPointerException") }
-            val iseNode = host.await(activity) { host.text(it, "IllegalStateException") }
-            assertNotNull("NullPointerException item must be rendered in the list", npeNode)
-            assertNotNull("IllegalStateException item must be rendered in the list", iseNode)
-
-            invokeClick(npeNode)
-            assertEquals("Clicking NPE card must invoke callback with entry1", "test-npe-1", clickedEntry?.id)
-
-            val clearButtonInList = host.await(activity) { host.text(it, clearText) }
-            invokeClick(clearButtonInList)
-            assertTrue("Clear button must trigger onClearClick callback", clearClicked)
-
-            // =========================================================================
-            // Stage 3: Dialog content metadata & stacktrace display verification
-            // =========================================================================
-            val detailedEntry = CrashLogEntry(
-                id = "detailed-crash-id",
-                timestamp = 1700000000000L,
-                exceptionClass = "java.lang.IllegalArgumentException",
-                message = "Required parameter 'apiKey' was missing",
-                stackTrace = "java.lang.IllegalArgumentException: Required parameter 'apiKey' was missing\n\tat me.bubblespark.tidilo.Service.init(Service.kt:15)",
-                threadName = "background-thread-2",
-                appVersion = "0.5.25 (56)",
-                osVersion = "Android 14 (API 34)",
-                deviceModel = "Google Pixel 8"
-            )
-
-            host.main {
-                activity.setContent {
-                    TidiloTheme {
-                        CrashLogDetailsContent(entry = detailedEntry)
-                    }
-                }
-            }
-
-            val fullClassNode = host.await(activity) { host.text(it, "java.lang.IllegalArgumentException") }
-            assertNotNull("Full exception class name must be shown in dialog content", fullClassNode)
-
-            val metadataNode = host.await(activity) {
-                host.text(it, "App: 0.5.25 (56) | Google Pixel 8 (Android 14 (API 34))")
-            }
-            assertNotNull("App version, device model, and OS version must be displayed", metadataNode)
-
-            val stackTraceNode = host.await(activity) {
-                host.text(it, detailedEntry.stackTrace)
-            }
-            assertNotNull("Full stack trace must be displayed in dialog content", stackTraceNode)
-
-            // =========================================================================
-            // Stage 4: Full SettingsDebugScreen End-to-End integration verification
-            // =========================================================================
-            CrashLogManager.clearLogs(host.context)
-            val integrationException = UnsupportedOperationException("End to end integration test crash")
-            CrashLogManager.recordCrash(host.context, Thread.currentThread(), integrationException)
-
-            host.main {
-                activity.setContent {
-                    TidiloTheme {
-                        SettingsDebugScreen(onNavigateBack = {}, checkAiCoreReadiness = { AiCoreReadiness.Failed })
-                    }
-                }
-            }
-
-            // Scroll down to Crash Logs section
-            val crashLogsTitle = host.context.getString(R.string.debug_crash_logs_title)
-            var crashSectionFound = false
-            for (i in 1..15) {
-                if (host.nodes(activity).any { host.text(it, crashLogsTitle) }) {
-                    crashSectionFound = true
-                    host.scroll(activity, 800f)
-                    delay(150)
-                    break
-                }
-                host.scroll(activity, 1000f)
-                delay(100)
-            }
-            assertTrue("Crash Logs section title must be found after scrolling", crashSectionFound)
-
-            var crashItem: SemanticsNode? = null
-            for (i in 1..5) {
-                crashItem = host.nodes(activity).firstOrNull { host.text(it, "UnsupportedOperationException") }
-                if (crashItem != null) break
-                host.scroll(activity, 400f)
-                delay(100)
-            }
-            val targetCrashItem = requireNotNull(crashItem) { "UnsupportedOperationException must appear in crash list" }
-
-            // Tap crash item to open details dialog
-            invokeClick(targetCrashItem)
-
-            // Verify dialog opened and close it
-            val dialogCloseText = host.context.getString(R.string.debug_crash_logs_close)
-            val dialogCloseButton = host.await(activity) { host.text(it, dialogCloseText) }
-            assertNotNull("Details dialog close button must be found", dialogCloseButton)
-            invokeClick(dialogCloseButton)
-
-            // Wait until dialog dismisses
-            withTimeout(4000) {
-                while (true) {
-                    var dialogVisible = false
-                    host.main {
-                        dialogVisible = host.nodes(activity).any { host.text(it, dialogCloseText) }
-                    }
-                    if (!dialogVisible) break
-                    delay(50)
-                }
-            }
-
-            // Tap Clear button on screen
-            val screenClearButton = host.await(activity) { host.text(it, clearText) }
-            invokeClick(screenClearButton)
-
-            // Confirm clear in confirmation dialog
-            val confirmTitle = host.context.getString(R.string.debug_crash_logs_clear_confirm_title)
-            val confirmDialogTitle = host.await(activity) { host.text(it, confirmTitle) }
-            assertNotNull("Clear confirmation dialog title must appear", confirmDialogTitle)
-
-            // In confirmation dialog, confirm button has text clearText and is located in the dialog window
-            var confirmButtonInDialog: SemanticsNode? = null
-            host.main {
-                confirmButtonInDialog = host.nodes(activity).filter { host.text(it, clearText) }.lastOrNull()
-            }
-            invokeClick(requireNotNull(confirmButtonInDialog))
-
-            // Wait until confirmation dialog dismisses
-            withTimeout(4000) {
-                while (true) {
-                    var confirmDialogVisible = false
-                    host.main {
-                        confirmDialogVisible = host.nodes(activity).any { host.text(it, confirmTitle) }
-                    }
-                    if (!confirmDialogVisible) break
-                    delay(50)
-                }
-            }
-
-            // Empty state should now appear
-            val finalEmptyNode = host.await(activity) { host.text(it, emptyText) }
-            assertNotNull("Empty state text must appear on screen after clearing logs", finalEmptyNode)
-        } finally {
-            host.main {
-                try { activity.finish() } catch (_: Exception) {}
+    @Test fun emptySectionShowsEmptyTextWithoutClear() {
+        composeRule.setContent {
+            TidiloTheme(blurEnabled = false, dynamicColor = false) {
+                CrashLogsSection(crashLogs = emptyList(), onLogClick = {}, onClearClick = {})
             }
         }
+        composeRule.onNodeWithText(emptyText).assertExists("Empty state text must be displayed when no crash logs exist")
+        composeRule.onNodeWithText(clearText).assertDoesNotExist()
     }
 
-    private fun invokeClick(original: SemanticsNode) = host.main {
-        var target: SemanticsNode? = original
-        while (target != null && target.config.getOrNull(SemanticsActions.OnClick) == null) {
-            target = target.parent
+    @Test fun listRendersEntriesAndForwardsClicks() {
+        val entry1 = CrashLogEntry(
+            id = "test-npe-1",
+            timestamp = System.currentTimeMillis(),
+            exceptionClass = "java.lang.NullPointerException",
+            message = "Target view reference is null",
+            stackTrace = "java.lang.NullPointerException: Target view reference is null\n\tat me.test.View.bind(View.kt:42)",
+            threadName = "main"
+        )
+        val entry2 = CrashLogEntry(
+            id = "test-ise-2",
+            timestamp = System.currentTimeMillis() - 1000,
+            exceptionClass = "java.lang.IllegalStateException",
+            message = "Coroutine job was already completed",
+            stackTrace = "java.lang.IllegalStateException: Coroutine job was already completed\n\tat me.test.Job.run(Job.kt:88)",
+            threadName = "DefaultDispatcher-worker-1"
+        )
+        var clickedEntry: CrashLogEntry? = null
+        var clearClicked = false
+        composeRule.setContent {
+            TidiloTheme(blurEnabled = false, dynamicColor = false) {
+                CrashLogsSection(
+                    crashLogs = listOf(entry1, entry2),
+                    onLogClick = { clickedEntry = it },
+                    onClearClick = { clearClicked = true }
+                )
+            }
         }
-        val clickable = requireNotNull(target) { "No clickable parent for node: $original" }
-        assertTrue(clickable.config[SemanticsActions.OnClick].action?.invoke() == true)
+        composeRule.onNode(hasText("IllegalStateException") and hasClickAction()).assertExists()
+        composeRule.onNode(hasText("NullPointerException") and hasClickAction()).performClick()
+        assertEquals("Clicking NPE card must invoke callback with entry1", "test-npe-1", clickedEntry?.id)
+        composeRule.onNode(hasText(clearText) and hasClickAction()).performClick()
+        assertTrue("Clear button must trigger onClearClick callback", clearClicked)
+    }
+
+    @Test fun detailsShowMetadataAndStackTrace() {
+        val detailedEntry = CrashLogEntry(
+            id = "detailed-crash-id",
+            timestamp = 1700000000000L,
+            exceptionClass = "java.lang.IllegalArgumentException",
+            message = "Required parameter 'apiKey' was missing",
+            stackTrace = "java.lang.IllegalArgumentException: Required parameter 'apiKey' was missing\n\tat me.bubblespark.tidilo.Service.init(Service.kt:15)",
+            threadName = "background-thread-2",
+            appVersion = "0.5.25 (56)",
+            osVersion = "Android 14 (API 34)",
+            deviceModel = "Google Pixel 8"
+        )
+        composeRule.setContent {
+            TidiloTheme(blurEnabled = false, dynamicColor = false) { CrashLogDetailsContent(entry = detailedEntry) }
+        }
+        composeRule.onNodeWithText("java.lang.IllegalArgumentException", useUnmergedTree = true)
+            .assertExists("Full exception class name must be shown in dialog content")
+        composeRule.onNodeWithText("App: 0.5.25 (56) | Google Pixel 8 (Android 14 (API 34))", useUnmergedTree = true)
+            .assertExists("App version, device model, and OS version must be displayed")
+        composeRule.onNodeWithText(detailedEntry.stackTrace, useUnmergedTree = true)
+            .assertExists("Full stack trace must be displayed in dialog content")
+    }
+
+    @Test fun debugScreenOpensAndClearsARecordedCrash() {
+        CrashLogManager.recordCrash(context, Thread.currentThread(),
+            UnsupportedOperationException("End to end integration test crash"))
+        composeRule.setContent {
+            TidiloTheme(blurEnabled = false, dynamicColor = false) {
+                SettingsDebugScreen(onNavigateBack = {}, checkAiCoreReadiness = { AiCoreReadiness.Failed })
+            }
+        }
+        // Crash logs load and clear on Dispatchers.IO, which idle synchronization does not track.
+        val crash = hasText("UnsupportedOperationException") and hasClickAction()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodes(crash).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNode(crash).performScrollTo().performClick()
+
+        val dialogClose = composeRule.onNode(hasText(context.getString(R.string.debug_crash_logs_close)) and hasClickAction())
+        dialogClose.performClick()
+        dialogClose.assertDoesNotExist()
+
+        composeRule.onNode(hasText(clearText) and hasClickAction()).performScrollTo().performClick()
+        val confirmTitle = composeRule.onNodeWithText(context.getString(R.string.debug_crash_logs_clear_confirm_title))
+        confirmTitle.assertExists("Clear confirmation dialog title must appear")
+        composeRule.onNode(hasText(clearText) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodes(hasText(context.getString(R.string.debug_crash_logs_clear_confirm_title)))
+                .fetchSemanticsNodes().isEmpty() &&
+                composeRule.onAllNodes(hasText(emptyText)).fetchSemanticsNodes().isNotEmpty()
+        }
+        confirmTitle.assertDoesNotExist()
+        composeRule.onNodeWithText(emptyText).assertExists("Empty state text must appear on screen after clearing logs")
     }
 }

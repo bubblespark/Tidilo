@@ -1,72 +1,58 @@
 package me.bubblespark.tidilo.data
 
-import androidx.activity.compose.setContent
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsNode
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import java.util.concurrent.atomic.AtomicInteger
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.ui.screens.settings.SettingsScreen
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
 /** Settings › Data Management › Reset rediscovery history (Discover preview flag only). */
 class SettingsDiscoverResetTest {
-    private val host = HeaderTestHost()
+    @get:Rule val composeRule = createComposeRule()
 
-    private fun tag(node: SemanticsNode) = node.config.getOrNull(SemanticsProperties.TestTag) == "discover_reset_history"
+    private fun dialogButton(label: String) =
+        composeRule.onNode(hasText(label) and hasClickAction() and hasAnyAncestor(isDialog()))
 
-    @Test fun resetEntryFollowsTheFlagAndAsksFirst(): Unit = runBlocking {
+    @Test fun resetEntryFollowsTheFlagAndAsksFirst() {
         val previous = AppConfig.discoverPreviewEnabled.value
         val resets = AtomicInteger()
-        val activity = host.launch()
         try {
             AppConfig.setDiscoverPreviewEnabled(false)
-            host.main { activity.setContent { TidiloTheme { SettingsScreen({}, {}, onResetDiscoverHistory = { resets.incrementAndGet() }) } } }
-            host.await(activity) { host.text(it, "Data Management") }
-            host.main { assertTrue(host.nodes(activity).none(::tag)) }
+            composeRule.setContent {
+                TidiloTheme(blurEnabled = false, dynamicColor = false) {
+                    SettingsScreen({}, {}, onResetDiscoverHistory = { resets.incrementAndGet() })
+                }
+            }
+            composeRule.onNodeWithText("Data Management").assertExists()
+            val row = composeRule.onNodeWithTag("discover_reset_history")
+            row.assertDoesNotExist()
 
             AppConfig.setDiscoverPreviewEnabled(true)
-            val row = host.await(activity, ::tag)
-            host.main { row.config[SemanticsActions.OnClick].action?.invoke() }
-            host.await(activity) { host.text(it, "Reset rediscovery history?") }
-            host.capture("settings-discover-reset-dialog")
-            click(activity, "Cancel")
-            host.awaitAbsent(activity) { host.text(it, "Reset rediscovery history?") }
+            composeRule.waitForIdle()
+            row.performScrollTo().performClick()
+            val title = composeRule.onNodeWithText("Reset rediscovery history?")
+            title.assertExists()
+            dialogButton("Cancel").performClick()
+            title.assertDoesNotExist()
             assertEquals(0, resets.get())
 
-            host.main { host.nodes(activity).first(::tag).config[SemanticsActions.OnClick].action?.invoke() }
-            click(activity, "Reset")
-            repeat(60) { if (resets.get() == 1) return@repeat; delay(50) }
+            row.performClick()
+            dialogButton("Reset").performClick()
+            composeRule.waitUntil(3_000) { resets.get() == 1 }
             assertEquals(1, resets.get())
         } finally {
             AppConfig.setDiscoverPreviewEnabled(previous)
-            activity.finish()
         }
-    }
-
-    private suspend fun click(activity: androidx.activity.ComponentActivity, label: String) {
-        val button = findButton(activity, label)
-        host.main { button.config[SemanticsActions.OnClick].action?.invoke() }
-    }
-
-    /** Buttons merge their child text, so search the merged tree. */
-    private suspend fun findButton(activity: androidx.activity.ComponentActivity, label: String): SemanticsNode {
-        repeat(160) {
-            var found: SemanticsNode? = null
-            host.main {
-                found = host.nodes(activity, useUnmergedTree = false).firstOrNull {
-                    it.config.getOrNull(SemanticsActions.OnClick) != null && host.text(it, label)
-                }
-            }
-            found?.let { return it }
-            delay(50)
-        }
-        error("No button $label")
     }
 }

@@ -1,10 +1,15 @@
 package me.bubblespark.tidilo.data
 
-import androidx.activity.compose.setContent
+import android.graphics.Bitmap
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -12,75 +17,113 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.test.junit4.ComposeTestRule
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import me.bubblespark.tidilo.ui.components.*
-import me.bubblespark.tidilo.ui.theme.*
-import org.junit.Assert.*
+import me.bubblespark.tidilo.ui.components.overlayBlurBackground
+import me.bubblespark.tidilo.ui.components.rememberOverlayBlurLayer
+import me.bubblespark.tidilo.ui.theme.TidiloTheme
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Rule
 import org.junit.Test
 
 class OverlayBlurRenderingTest {
-    @Test fun sourceBackedDialogChangesOnlyItsBackgroundAndKeepsForegroundSharp(): Unit = runBlocking {
-        val host = HeaderTestHost()
-        val activity = host.launch()
+    @get:Rule val composeRule = createComposeRule()
+
+    @Test
+    fun sourceBackedDialogChangesOnlyItsBackgroundAndKeepsForegroundSharp(): Unit = runBlocking {
         var enabled by mutableStateOf(false)
         val tint = Color(0xFFE0EAE8)
-        try {
-            host.main { activity.setContent { TidiloTheme(dynamicColor = false, blurEnabled = enabled) {
-                Box(Modifier.fillMaxSize().drawBehind {
-                    val stripe = 8.dp.toPx()
-                    var x = 0f
-                    while (x < size.width) {
-                        drawRect(if ((x / stripe).toInt() % 2 == 0) Color.Red else Color.Blue,
-                            Offset(x, 0f), Size(stripe, size.height))
-                        x += stripe
+        composeRule.setContent {
+            TidiloTheme(dynamicColor = false, blurEnabled = enabled) {
+                Box(
+                    Modifier.fillMaxSize().drawBehind {
+                        val stripe = 8.dp.toPx()
+                        var x = 0f
+                        while (x < size.width) {
+                            drawRect(
+                                if ((x / stripe).toInt() % 2 == 0) Color.Red else Color.Blue,
+                                Offset(x, 0f),
+                                Size(stripe, size.height)
+                            )
+                            x += stripe
+                        }
                     }
-                })
+                )
                 val layer = rememberOverlayBlurLayer(true)
                 Dialog(onDismissRequest = {}) {
-                    Surface(Modifier.size(260.dp, 200.dp).overlayBlurBackground(layer, RoundedCornerShape(28.dp), tint),
-                        shape = RoundedCornerShape(28.dp), color = if (layer == null) tint else Color.Transparent) {
-                        Box(contentAlignment = Alignment.Center) { Box(Modifier.size(16.dp).background(Color.Magenta)) }
+                    Surface(
+                        Modifier.size(260.dp, 200.dp).overlayBlurBackground(layer, RoundedCornerShape(28.dp), tint),
+                        shape = RoundedCornerShape(28.dp),
+                        color = if (layer == null) tint else Color.Transparent
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Box(Modifier.size(16.dp).background(Color.Magenta))
+                        }
                     }
                 }
-            } } }
-            delay(500)
-            val before = markerFrame(host)
-            host.main { enabled = true }
-            delay(600)
-            val after = markerFrame(host, before)
-            try {
-                val x = after.width / 2
-                val markerRows = (0 until before.height).filter { before.getPixel(x, it) == Color.Magenta.toArgb() }
-                assertTrue("Fixture must render the sharp foreground marker", markerRows.isNotEmpty())
-                val y = (markerRows.first() + markerRows.last()) / 2
-                for ((name, bitmap) in listOf("overlay-before.png" to before, "overlay-after.png" to after)) {
-                    java.io.File(host.context.cacheDir, name).outputStream().use {
-                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
-                    }
-                }
-                assertEquals(Color.Magenta.toArgb(), after.getPixel(x, y))
-                assertEquals(before.getPixel(20, y), after.getPixel(20, y))
-                assertNotEquals("Frost must sample the striped source, rather than draw an ordinary opaque tint",
-                    before.getPixel(x + 80, y), after.getPixel(x + 80, y))
-            } finally { before.recycle(); after.recycle() }
-        } finally { host.main { activity.finish() } }
-    }
-
-    private suspend fun markerFrame(host: HeaderTestHost, changedFrom: android.graphics.Bitmap? = null): android.graphics.Bitmap = withTimeout(8000) {
-        var result: android.graphics.Bitmap? = null
-        while (result == null) {
-            val frame = host.instrumentation.uiAutomation.takeScreenshot()
+            }
+        }
+        val (y, outsideBefore, surfaceBefore) = composeRule.sampleScreen("unblurred dialog with foreground marker") { frame ->
             val x = frame.width / 2
             val rows = (0 until frame.height).filter { frame.getPixel(x, it) == Color.Magenta.toArgb() }
-            val y = if (rows.isEmpty()) 0 else (rows.first() + rows.last()) / 2
-            if (rows.isNotEmpty() && (changedFrom == null || frame.getPixel(x + 80, y) != changedFrom.getPixel(x + 80, y))) result = frame
-            else { frame.recycle(); delay(30) }
+            if (rows.isEmpty()) return@sampleScreen null
+            val row = (rows.first() + rows.last()) / 2
+            Triple(row, frame.getPixel(20, row), frame.getPixel(x + 80, row))
         }
-        requireNotNull(result)
+        composeRule.runOnUiThread { enabled = true }
+        val (centerAfter, outsideAfter, surfaceAfter) = composeRule.sampleScreen("frosted dialog sampling striped source") { frame ->
+            val x = frame.width / 2
+            val center = frame.getPixel(x, y)
+            val surface = frame.getPixel(x + 80, y)
+            if (center == Color.Magenta.toArgb() && surface != surfaceBefore) {
+                Triple(center, frame.getPixel(20, y), surface)
+            } else {
+                null
+            }
+        }
+        assertEquals(Color.Magenta.toArgb(), centerAfter)
+        assertEquals(outsideBefore, outsideAfter)
+        assertNotEquals(
+            "Frost must sample the striped source, rather than draw an ordinary opaque tint",
+            surfaceBefore,
+            surfaceAfter
+        )
     }
+}
+
+/** Captures the screen and always recycles the [Bitmap] after [read] returns. */
+internal fun <T> captureScreen(read: (Bitmap) -> T): T {
+    val frame = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+    return try {
+        read(frame)
+    } finally {
+        frame.recycle()
+    }
+}
+
+/**
+ * Samples the rendered screen after [ComposeTestRule.waitForIdle] up to [maxAttempts] times spaced
+ * [intervalMs] apart until [read] returns a non-null result.
+ */
+internal suspend fun <T : Any> ComposeTestRule.sampleScreen(
+    label: String,
+    describe: (Bitmap) -> String = { "" },
+    intervalMs: Long = 150L,
+    maxAttempts: Int = 10,
+    read: (Bitmap) -> T?
+): T {
+    require(intervalMs >= 100L) { "Screenshot polling interval must be >= 100ms, was $intervalMs" }
+    var last = ""
+    repeat(maxAttempts) { attempt ->
+        waitForIdle()
+        captureScreen { frame -> read(frame).also { if (it == null) last = describe(frame) } }?.let { return it }
+        if (attempt < maxAttempts - 1) delay(intervalMs)
+    }
+    throw AssertionError("The screen never showed $label. Last sample: $last")
 }

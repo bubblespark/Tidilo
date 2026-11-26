@@ -1,80 +1,131 @@
 package me.bubblespark.tidilo.data
 
+import android.content.Context
+import androidx.room.Room
+import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.BookmarkEntity
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
+import java.io.File
 import java.util.UUID
 
 class ChromePerformanceFixtureTest {
-    @Test fun interruptedJournalRestoresPreferencesAndOnlyOwnedRecords() = runBlocking {
-        val host = HeaderTestHost()
-        val db = AppDatabase.getInstance(host.context)
-        val journal = ChromeFixtureJournal(host.context)
+    private fun withIsolatedFixtureEnv(block: suspend (Context, AppDatabase, File, String) -> Unit) = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val tempDir = File(context.cacheDir, "chrome-fixture-test-${UUID.randomUUID()}").apply { mkdirs() }
+        val journalFile = File(tempDir, "chrome-performance-owner.json")
+        val prefsName = "chrome-fixture-prefs-${UUID.randomUUID()}"
+        try {
+            block(context, db, journalFile, prefsName)
+        } finally {
+            db.close()
+            context.deleteSharedPreferences(prefsName)
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun interruptedJournalRestoresPreferencesAndOnlyOwnedRecords() = withIsolatedFixtureEnv { context, db, journalFile, prefsName ->
+        val journal = ChromeFixtureJournal(context, db, journalFile, prefsName)
         journal.recover()
-        val prefs = host.context.getSharedPreferences("tidilo_library_prefs", android.content.Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
         val keys = listOf("library_filter_mode", "library_view_mode")
         val original = keys.associateWith { prefs.getString(it, null) }
         val prefix = "chrome-${UUID.randomUUID()}"
         val ids = (0 until 400).map { "$prefix-$it" }
         val sentinel = UUID.randomUUID().toString()
-        try {
-            db.bookmarkDao().insertOrUpdate(BookmarkEntity(ids[1], "Chrome fixture article 1", "https://chrome-frame-fixture.invalid/1", "Deterministic local summary 1", createdAt = 1001, updatedAt = 1))
-            db.bookmarkDao().insertOrUpdate(BookmarkEntity(sentinel, "Unrelated sentinel", "https://unrelated.invalid/$sentinel", "Sentinel", createdAt = 1, updatedAt = 1))
-            journal.save(prefix, ids, original, pid = -1)
-            check(prefs.edit().putString(keys[0], "DOMAIN").putString(keys[1], "LIST").commit())
-            journal.recover()
-            assertNull(db.bookmarkDao().getBookmarkById(ids[1]))
-            assertNotNull(db.bookmarkDao().getBookmarkById(sentinel))
-            assertEquals(original, keys.associateWith { prefs.getString(it, null) })
-        } finally {
-            db.bookmarkDao().deleteById(ids[1]); db.bookmarkDao().deleteById(sentinel)
-            journal.restorePreferences(original); journal.clear()
-        }
+        db.bookmarkDao().insertOrUpdate(
+            BookmarkEntity(
+                ids[1],
+                "Chrome fixture article 1",
+                "https://chrome-frame-fixture.invalid/1",
+                "Deterministic local summary 1",
+                createdAt = 1001,
+                updatedAt = 1
+            )
+        )
+        db.bookmarkDao().insertOrUpdate(
+            BookmarkEntity(
+                sentinel,
+                "Unrelated sentinel",
+                "https://unrelated.invalid/$sentinel",
+                "Sentinel",
+                createdAt = 1,
+                updatedAt = 1
+            )
+        )
+        journal.save(prefix, ids, original, pid = -1)
+        check(prefs.edit().putString(keys[0], "DOMAIN").putString(keys[1], "LIST").commit())
+        journal.recover()
+        assertNull(db.bookmarkDao().getBookmarkById(ids[1]))
+        assertNotNull(db.bookmarkDao().getBookmarkById(sentinel))
+        assertEquals(original, keys.associateWith { prefs.getString(it, null) })
     }
 
-    @Test fun recoveryScenarioPreservesAnEarlierPendingJournal() = runBlocking {
-        val host = HeaderTestHost()
-        val journal = ChromeFixtureJournal(host.context)
+    @Test
+    fun recoveryScenarioPreservesAnEarlierPendingJournal() = withIsolatedFixtureEnv { context, db, journalFile, prefsName ->
+        val journal = ChromeFixtureJournal(context, db, journalFile, prefsName)
         journal.recover()
-        val dao = AppDatabase.getInstance(host.context).bookmarkDao()
-        val prefs = host.context.getSharedPreferences("tidilo_library_prefs", android.content.Context.MODE_PRIVATE)
-        val original = listOf("library_filter_mode", "library_view_mode").associateWith { prefs.getString(it, null) }
+        val dao = db.bookmarkDao()
+        val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val keys = listOf("library_filter_mode", "library_view_mode")
+        val original = keys.associateWith { prefs.getString(it, null) }
         val prefix = "chrome-${UUID.randomUUID()}"
         val ids = (0 until 400).map { "$prefix-$it" }
-        try {
-            dao.insertOrUpdate(BookmarkEntity(ids[1], "Chrome fixture article 1", "https://chrome-frame-fixture.invalid/1", "Deterministic local summary 1", createdAt = 1001, updatedAt = 1))
-            journal.save(prefix, ids, original, pid = -1)
-            interruptedJournalRestoresPreferencesAndOnlyOwnedRecords()
-            assertNull("The earlier journal must be recovered before replacement", dao.getBookmarkById(ids[1]))
-        } finally {
-            dao.deleteById(ids[1]); journal.restorePreferences(original); journal.clear()
-        }
+        dao.insertOrUpdate(
+            BookmarkEntity(
+                ids[1],
+                "Chrome fixture article 1",
+                "https://chrome-frame-fixture.invalid/1",
+                "Deterministic local summary 1",
+                createdAt = 1001,
+                updatedAt = 1
+            )
+        )
+        journal.save(prefix, ids, original, pid = -1)
+
+        // Simulate a subsequent fixture run recovering the earlier pending journal before saving its own.
+        journal.recover()
+        assertNull("The earlier journal must be recovered before replacement", dao.getBookmarkById(ids[1]))
     }
 
-    @Test fun visibleDomainIsStableAcrossIndependentFixtures() {
-        val host = HeaderTestHost()
-        val first = ChromePerformanceFixture(host)
-        val second = ChromePerformanceFixture(host)
+    @Test
+    fun visibleDomainIsStableAcrossIndependentFixtures() = withIsolatedFixtureEnv { context, db, journalFile, prefsName ->
+        val first = ChromePerformanceFixture(context, db, journalFile, prefsName)
+        val second = ChromePerformanceFixture(context, db, journalFile, prefsName)
         assertEquals("chrome-frame-fixture.invalid", first.domain)
         assertEquals(first.domain, second.domain)
     }
 
-    @Test fun existingDomainIsNeverMixedWithOrDeletedByFixture() = runBlocking {
-        val host = HeaderTestHost()
-        val fixture = ChromePerformanceFixture(host)
-        val db = AppDatabase.getInstance(host.context)
+    @Test
+    fun existingDomainIsNeverMixedWithOrDeletedByFixture() = withIsolatedFixtureEnv { context, db, journalFile, prefsName ->
+        val fixture = ChromePerformanceFixture(context, db, journalFile, prefsName)
         val id = UUID.randomUUID().toString()
-        db.bookmarkDao().insertOrUpdate(BookmarkEntity(id, "Collision sentinel", "https://chrome-frame-fixture.invalid/sentinel", "Sentinel", createdAt = 1, updatedAt = 1))
+        db.bookmarkDao().insertOrUpdate(
+            BookmarkEntity(
+                id,
+                "Collision sentinel",
+                "https://chrome-frame-fixture.invalid/sentinel",
+                "Sentinel",
+                createdAt = 1,
+                updatedAt = 1
+            )
+        )
         try {
-            try {
-                fixture.prepare()
-                fail("A populated fixture domain must be rejected")
-            } catch (expected: IllegalArgumentException) {
-                assertTrue(requireNotNull(expected.message).contains("already populated"))
-            } finally { fixture.close() }
-            assertNotNull(db.bookmarkDao().getBookmarkById(id))
-        } finally { db.bookmarkDao().deleteById(id) }
+            fixture.prepare()
+            fail("A populated fixture domain must be rejected")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(requireNotNull(expected.message).contains("already populated"))
+        } finally {
+            fixture.close()
+        }
+        assertNotNull(db.bookmarkDao().getBookmarkById(id))
     }
 }

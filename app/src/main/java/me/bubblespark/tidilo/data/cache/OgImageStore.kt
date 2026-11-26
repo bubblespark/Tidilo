@@ -357,12 +357,15 @@ internal class OgImageStore(
                 ) {
                     return@withLock null
                 }
-                if (isTargetExact) {
-                    memoryCache.put(MediaCacheLayout.ogCacheKey(domain, requireNotNull(imageKey)), imageBitmap)
+                val memoryKey = when {
+                    isTargetExact -> MediaCacheLayout.ogCacheKey(domain, requireNotNull(imageKey))
+                    !isSpecific -> MediaCacheLayout.ogFallbackCacheKey(domain)
+                    else -> return@withLock imageBitmap
                 }
-                if (!isSpecific) {
-                    memoryCache.put(MediaCacheLayout.ogFallbackCacheKey(domain), imageBitmap)
-                }
+                // A concurrent fetch may have published while this file was decoded outside the
+                // lock; keep that instance so every caller shares one bitmap.
+                memoryCache.get(memoryKey)?.let { return@withLock it }
+                memoryCache.put(memoryKey, imageBitmap)
                 imageBitmap
             }
         } catch (cancelled: CancellationException) {

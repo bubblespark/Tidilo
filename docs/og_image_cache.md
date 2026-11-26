@@ -12,7 +12,7 @@ The placeholder uses the existing domain-accent gradient, with the theme primary
 
 ## Recovery and shared work
 
-`OgImageStore` (owned by the `File`-rooted `MediaCacheStore` under `data/cache/`, with `OgImageManager` retained as the Part A compatibility facade) resolves relative image URLs against the page URL via `MediaCacheLayout`, preserves query parameters, removes fragments, and derives the SHA-256 `.webp` filename. It first checks exact memory/disk caches. Missing and undecodable cache files are fetched again. `processAndSaveOgImage` uses this same path during import, while `MediaColorPalette` (`DetailHeroPalette`) computes invalidation-safe accent and hero-edge colors from pure RGB pixel arrays (`IntArray`) without `android.graphics.Bitmap` dependencies.
+`OgImageStore` (owned by the `File`-rooted `MediaCacheStore` under `data/cache/`, with `OgImageManager` retained as the Part A compatibility facade) resolves relative image URLs against the page URL via `MediaCacheLayout`, preserves query parameters, removes fragments, and derives the SHA-256 `.webp` filename. It first checks exact memory/disk caches. Missing and undecodable cache files are fetched again. A disk load never replaces a bitmap already published to the memory cache for the same key; it returns the published instance so concurrent callers share one bitmap. `processAndSaveOgImage` uses this same path during import, while `MediaColorPalette` (`DetailHeroPalette`) computes invalidation-safe accent and hero-edge colors from pure RGB pixel arrays (`IntArray`) without `android.graphics.Bitmap` dependencies.
 
 `CoalescedFetchCoordinator<T>` (aliased as `OgImageFetchCoordinator` for compatibility) shares requests by the OG store's cache generation (`ogGeneration` on `MediaCacheRevisionBus`, isolated from domain icon cache clears while `MediaCacheStore.clearCache()` advances the unified UI `generation` once) and image key, independently of the page's domain. A four-permit semaphore covers network access, image compression, and publication. A queued caller leaving composition cancels its interest; a shared request is cancelled only when its final caller leaves. Actual HTTP work disconnects on cancellation, and the permit is retained until its blocking worker exits.
 
@@ -34,7 +34,7 @@ The database schema and persisted `ogImageUrl` are unchanged. No page metadata i
 
 ## Verification
 
-JVM tests cover the four-worker limit, deduplication, partial/all caller cancellation, queued cancellation, transient failure expiry, permanent suppression, and generation reset. Android integration tests exercise actual bitmap decoding, WebP encoding, disk recovery, import/UI sharing, strict-key isolation, invalid-data suppression, and stale-generation rejection. A Compose card integration test verifies sibling completion does not restart another card's request and captures the Link fallback for visual inspection.
+JVM tests cover the four-worker limit, deduplication, disk-load/publication races keeping one bitmap instance, partial/all caller cancellation, queued cancellation, transient failure expiry, permanent suppression, and generation reset. Android integration tests exercise actual bitmap decoding, WebP encoding, disk recovery, import/UI sharing, strict-key isolation, invalid-data suppression, and stale-generation rejection. A Compose card integration test verifies sibling completion does not restart another card's request and captures the Link fallback for visual inspection.
 
 ## RSS acquisition context
 

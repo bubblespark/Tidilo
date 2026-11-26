@@ -1,0 +1,107 @@
+name: Manual Android Instrumented Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_class:
+        description: 'Test class to run (if left blank, all tests will be run; example: me.bubblespark.tidilo.ExampleInstrumentedTest)'
+        required: false
+        default: ''
+      api_level:
+        description: 'Emulator API level (minSdk=34 / targetSdk=36)'
+        type: choice
+        options:
+          - '36'
+          - '35'
+          - '34'
+        default: '36'
+
+jobs:
+  instrumented-test:
+    runs-on: ubuntu-latest
+    # To prevent a GradleException from occurring in the `signingConfigs` section of `app/build.gradle.kts` when `CI==“true”` and the keystore is not configured,
+    # override it to `false` when running debug tests.
+    env:
+      CI: 'false'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Prepare test runner script
+        run: |
+          cat << 'EOF' > /tmp/run-instrumented-with-diag.sh
+          #!/usr/bin/env bash
+          set -u
+          mkdir -p diagnostics
+          adb logcat -c || true
+          adb logcat -v threadtime > diagnostics/logcat.txt 2>&1 &
+          LOGCAT_PID=$!
+          (
+            while true; do
+              date -u +"%Y-%m-%dT%H:%M:%SZ"
+              free -m
+              ps -eo pid,ppid,rss,vsz,%cpu,stat,comm | grep -E "PID|qemu|emulator|java|adb" | grep -v grep || true
+              echo "---"
+              sleep 2
+            done
+          ) > diagnostics/host-resources.txt 2>&1 &
+          MON_PID=$!
+          ./gradlew :app:connectedDebugAndroidTest --stacktrace -Dorg.gradle.jvmargs="-Xmx2g" "$@"
+          STATUS=$?
+          kill "$LOGCAT_PID" "$MON_PID" 2>/dev/null || true
+          wait "$LOGCAT_PID" "$MON_PID" 2>/dev/null || true
+          exit "$STATUS"
+          EOF
+          chmod +x /tmp/run-instrumented-with-diag.sh
+
+      - name: Run Instrumented Tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ inputs.api_level }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          ram-size: 2048M
+          heap-size: 512M
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: /tmp/run-instrumented-with-diag.sh ${{ inputs.test_class != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.test_class) || '' }}
+
+      - name: Collect emulator diagnostics
+        if: failure()
+        run: |
+          mkdir -p diagnostics/emu-crash diagnostics/utp-results
+          sudo dmesg -T > diagnostics/dmesg.txt 2>&1 || true
+          free -h > diagnostics/memory-after.txt 2>&1 || true
+          df -h > diagnostics/disk-after.txt 2>&1 || true
+          ls -laR /tmp/android-runner/ > diagnostics/tmp-android-runner.txt 2>&1 || true
+          cp -r /tmp/android-runner/emu-crash-*.db diagnostics/emu-crash/ 2>/dev/null || true
+          cp -r app/build/outputs/androidTest-results/connected/ diagnostics/utp-results/ 2>/dev/null || true
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-report-api-${{ inputs.api_level }}
+          path: |
+            app/build/reports/androidTests/connected/
+            diagnostics/
+          retention-days: 7

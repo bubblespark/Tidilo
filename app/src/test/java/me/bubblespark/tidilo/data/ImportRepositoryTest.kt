@@ -1175,6 +1175,62 @@ class ImportRepositoryTest {
         }
     }
 
+    @Test fun retryingPreparedDirectSaveErrorWithBlankContentReacquiresInsteadOfSavingHollowBookmark() = runBlocking {
+        val job = SupervisorJob()
+        val dao = FakeImportTaskDao()
+        val bookmarks = FakeBookmarkDao()
+        val url = "https://www.reddit.com/r/test/comments/hollow/"
+        val taskId = "blank-save-error"
+        dao.insertOrUpdate(
+            ImportTaskEntity(
+                id = taskId,
+                url = url,
+                title = "www.reddit.com",
+                status = "ERROR",
+                statusText = "Save failed",
+                errorMessage = "Bookmark persistence failed: disk full",
+                createdAt = 100L,
+                description = "",
+                bodySnippet = "",
+                articlePrepared = true
+            )
+        )
+        var attempt = 0
+        try {
+            val repository = ImportRepository(
+                taskDao = dao,
+                bookmarkDao = bookmarks,
+                repositoryScope = CoroutineScope(coroutineContext + job),
+                articleAcquirer = {
+                    if (attempt++ == 0) {
+                        directFixture(it).copy(
+                            title = "Reddit",
+                            ogpTags = emptyMap(),
+                            jsoupBodyText = "",
+                            isChallengePage = false
+                        )
+                    } else {
+                        directFixture(it)
+                    }
+                }
+            )
+            repository.retryErrorTaskAndAwait(taskId)
+            withTimeout(5000) { while (dao.getTaskById(taskId)?.status != "ERROR") delay(5) }
+            val afterFirstRetry = dao.getTaskById(taskId)!!
+            assertFalse(afterFirstRetry.articlePrepared)
+            assertEquals(me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE, afterFirstRetry.errorMessage)
+            assertTrue(bookmarks.savedItems.isEmpty())
+
+            repository.retryErrorTaskAndAwait(taskId)
+            withTimeout(5000) { while (dao.getCount() != 0) delay(5) }
+            val saved = bookmarks.savedItems.single()
+            assertEquals("Parsed Title", saved.title)
+            assertEquals("Parsed Description", saved.description)
+        } finally {
+            job.cancelAndJoin()
+        }
+    }
+
     private class FakeBookmarkDao : StubBookmarkDao(onGetCount = { 0 }) {
         val bookmarks = linkedMapOf<String, BookmarkEntity>()
         val occurrences = linkedMapOf<String, MutableList<BookmarkEntityOccurrence>>()

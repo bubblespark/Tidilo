@@ -818,7 +818,8 @@ class ImportRepository internal constructor(
     private suspend fun enqueueRetry(targetEntity: ImportTaskEntity) {
         if (targetEntity.rssFeedId == null && (
                 targetEntity.errorMessage == me.bubblespark.tidilo.parser.ArticleContentUnavailable.MESSAGE ||
-                    targetEntity.errorMessage == me.bubblespark.tidilo.parser.ArticleAccessBlocked.MESSAGE
+                    targetEntity.errorMessage == me.bubblespark.tidilo.parser.ArticleAccessBlocked.MESSAGE ||
+                    (targetEntity.articlePrepared && targetEntity.description.isBlank() && targetEntity.bodySnippet.isBlank())
                 )
         ) {
             // Explicit retry may recover text that was unavailable when the page was first acquired.

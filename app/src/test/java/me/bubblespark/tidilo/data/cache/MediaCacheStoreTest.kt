@@ -186,6 +186,64 @@ class MediaCacheStoreTest {
     }
 
     @Test
+    fun ogImageStore_diskLoadDoesNotOverwriteConcurrentlyPublishedBitmap() = runBlocking {
+        val tempRoot = Files.createTempDirectory("media_store_og_disk_race").toFile()
+        try {
+            val decodeCalls = AtomicInteger(0)
+            val diskDecodeEntered = CompletableDeferred<Unit>()
+            val releaseDiskDecode = CountDownLatch(1)
+            val downloadEntered = CompletableDeferred<Unit>()
+            val releaseDownload = CompletableDeferred<Unit>()
+            val baseCodec = fakeOgCodec()
+            // Calls 1-2 are the downloader's cache lookups (undecodable file forces a refetch);
+            // call 3 is the concurrent disk load, held until the download has been published.
+            val codec = object : OgImageCodec by baseCodec {
+                override fun decodeFile(file: File): ImageBitmap? {
+                    if (decodeCalls.incrementAndGet() <= 2) return null
+                    val decoded = TestImageBitmap(tag = "disk")
+                    diskDecodeEntered.complete(Unit)
+                    check(releaseDiskDecode.await(5, TimeUnit.SECONDS))
+                    return decoded
+                }
+            }
+            val store = MediaCacheStore(
+                cacheRootDir = tempRoot,
+                ogImageDownloader = {
+                    downloadEntered.complete(Unit)
+                    releaseDownload.await()
+                    "webp-bytes".toByteArray()
+                },
+                ogImageCodec = codec
+            )
+            val imageUrl = "https://cdn.example.com/race.png"
+            val imageKey = MediaCacheLayout.computeImageKey(imageUrl)
+            store.layout.ogImageFile(imageKey).apply {
+                parentFile?.mkdirs()
+                writeBytes("stale-disk-bytes".toByteArray())
+            }
+
+            val downloader = async {
+                store.ogImages.loadOrFetchOgImage("https://example.com/post", "example.com", imageUrl)
+            }
+            withTimeout(5_000) { downloadEntered.await() }
+            val diskLoader = async { store.ogImages.loadOgImage("example.com", imageKey) }
+            withTimeout(5_000) { diskDecodeEntered.await() }
+
+            releaseDownload.complete(Unit)
+            val published = downloader.await()
+            releaseDiskDecode.countDown()
+            val loaded = diskLoader.await()
+
+            assertNotNull(published)
+            assertSame(published, loaded)
+            assertSame(published, store.ogImages.getCachedOgImageBitmap("example.com", imageKey))
+            assertEquals(3, decodeCalls.get())
+        } finally {
+            tempRoot.deleteRecursively()
+        }
+    }
+
+    @Test
     fun clearCache_advancesGenerationAndRejectsStaleInFlightWrites() = runBlocking {
         val tempRoot = Files.createTempDirectory("media_store_clear_fence").toFile()
         try {

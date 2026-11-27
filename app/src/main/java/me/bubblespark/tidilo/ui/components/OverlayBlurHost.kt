@@ -3,8 +3,6 @@ package me.bubblespark.tidilo.ui.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalView
 import dev.chrisbanes.haze.*
 import me.bubblespark.tidilo.ui.theme.LocalOverlayBlurSetting
@@ -26,26 +24,9 @@ fun OverlayBlurHost(enabled: Boolean, content: @Composable () -> Unit) {
     controller.enabled = enabled
     val supported = LocalView.current.isHardwareAccelerated
     CompositionLocalProvider(LocalOverlayBlurController provides controller) {
-        // Attach HazeSource only when blur is enabled so disabled trees avoid Haze capture nodes.
-        // Observe activeCount in layout and draw so late-attached sources receive placement and capture.
-        Box(
-            if (enabled && supported) {
-                Modifier
-                    .layout { measurable, constraints ->
-                        controller.activeCount
-                        val placeable = measurable.measure(constraints)
-                        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-                    }
-                    .drawWithContent {
-                        controller.activeCount
-                        drawContent()
-                    }
-                    .hazeSource(state, zIndex = 0f, key = 0L)
-            } else {
-                Modifier
-            },
-            propagateMinConstraints = true
-        ) { content() }
+        // Keep the source attached across window changes; Haze records only on effect demand.
+        Box(if (supported) Modifier.hazeSource(state, zIndex = 0f, key = 0L)
+            else Modifier, propagateMinConstraints = true) { content() }
     }
 }
 

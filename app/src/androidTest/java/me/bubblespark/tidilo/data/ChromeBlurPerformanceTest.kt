@@ -79,10 +79,12 @@ class ChromeBlurPerformanceTest {
             val launched = ActivityScenario.launch(MainActivity::class.java)
             scenario = launched
             lateinit var screenWindow: android.view.Window
+            lateinit var decorView: View
             var refreshHz: Float? = null
             lateinit var activation: ChromeFrameMetrics
             launched.onActivity { screen ->
                 screenWindow = screen.window
+                decorView = screenWindow.decorView
                 refreshHz = screen.display?.refreshRate
                 activation = ChromeFrameMetrics(screenWindow).also { it.start() }
                 screen.setContent {
@@ -150,7 +152,7 @@ class ChromeBlurPerformanceTest {
                 }
                 delay(3000)
                 // Ensure paging/content is ready outside the timed interval.
-                awaitNode(instrumentation, launched) { node -> node.config.getOrNull(SemanticsActions.ScrollBy) != null }
+                awaitNode(instrumentation, decorView) { node -> node.config.getOrNull(SemanticsActions.ScrollBy) != null }
                 check(activeDialogCollectors.get() == 0)
                 instrumentation.runOnMainSync {
                     dialogMetrics.clear()
@@ -164,12 +166,12 @@ class ChromeBlurPerformanceTest {
                 while (SystemClock.elapsedRealtime() - start < measureMs) {
                     when (case) {
                         "library", "detail", "header" -> {
-                            scroll(instrumentation, launched, if (tick % 40 < 20) 100f else -100f)
+                            scroll(instrumentation, decorView, if (tick % 40 < 20) 100f else -100f)
                             if (case == "header" && tick % 5 == 0) instrumentation.runOnMainSync { bars = !bars }
                         }
                         "jump" -> {
                             val openInBrowser = context.getString(R.string.bookmark_open_in_browser)
-                            val action = awaitNode(instrumentation, launched) {
+                            val action = awaitNode(instrumentation, decorView) {
                                 it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(openInBrowser) == true
                             }
                             instrumentation.chromeTap(action)
@@ -239,26 +241,20 @@ class ChromeBlurPerformanceTest {
 
     private suspend fun awaitNode(
         instrumentation: Instrumentation,
-        scenario: ActivityScenario<MainActivity>,
+        decorView: View,
         predicate: (SemanticsNode) -> Boolean
     ): SemanticsNode = withTimeout(8000) {
-        var decor: View? = null
-        scenario.onActivity { decor = it.window.decorView }
-        val rootView = requireNotNull(decor)
         var found: SemanticsNode? = null
         while (found == null) {
-            instrumentation.runOnMainSync { found = collectNodes(rootView).firstOrNull(predicate) }
+            instrumentation.runOnMainSync { found = collectNodes(decorView).firstOrNull(predicate) }
             if (found == null) delay(100)
         }
         requireNotNull(found)
     }
 
-    private fun scroll(instrumentation: Instrumentation, scenario: ActivityScenario<MainActivity>, amount: Float) {
-        var decor: View? = null
-        scenario.onActivity { decor = it.window.decorView }
-        val rootView = requireNotNull(decor)
+    private fun scroll(instrumentation: Instrumentation, decorView: View, amount: Float) {
         instrumentation.runOnMainSync {
-            val scrollNode = collectNodes(rootView).first { it.config.getOrNull(SemanticsActions.ScrollBy) != null }
+            val scrollNode = collectNodes(decorView).first { it.config.getOrNull(SemanticsActions.ScrollBy) != null }
             check(scrollNode.config[SemanticsActions.ScrollBy].action?.invoke(0f, amount) == true)
         }
     }

@@ -8,7 +8,7 @@ import kotlin.random.Random
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -197,36 +197,45 @@ class DiscoverRepositoryTest {
         assertTrue(rows().isNotEmpty())
     }
 
-    private suspend fun eventually(condition: () -> Boolean) = withTimeout(5_000) { while (!condition()) delay(10) }
-
-    @Test fun activeSnapshotCollectorMovesToTheNewDayAtFour() = runBlocking {
-        val days = mutableListOf<Long>()
-        val job = launch { repo.observeSnapshot().collect { days += it.day } }
-        eventually { days.isNotEmpty() }
-        val firstDay = days.last()
-        clock = LocalDateTime.of(2026, 11, 24, 4, 0).atZone(zone).toInstant().toEpochMilli()
-        ticks.value++
-        eventually { days.last() == firstDay + 1 }
-        assertNotNull(db.discoverDao().meta(SCOPE_DAILY, firstDay + 1))
-        job.cancel()
+    @Test fun activeSnapshotCollectorMovesToTheNewDayAtFour(): Unit = runBlocking {
+        val latestDay = MutableStateFlow<Long?>(null)
+        val job = launch { repo.observeSnapshot().collect { latestDay.value = it.day } }
+        try {
+            val firstDay = withTimeout(5_000) { latestDay.first { it != null }!! }
+            clock = LocalDateTime.of(2026, 11, 24, 4, 0).atZone(zone).toInstant().toEpochMilli()
+            ticks.value++
+            withTimeout(5_000) { latestDay.first { it == firstDay + 1 } }
+            assertNotNull(db.discoverDao().meta(SCOPE_DAILY, firstDay + 1))
+        } finally {
+            job.cancel()
+        }
     }
 
-    @Test fun activeLiveShelvesFollowTheClock() = runBlocking {
+    @Test fun activeLiveShelvesFollowTheClock(): Unit = runBlocking {
         db.bookmarkDao().insertAll(listOf(
             bookmark("new", createdAt = clock - 47 * 3_600_000L),
             bookmark("article", createdAt = clock - 6 * day, rssFeedId = "feed")
         ))
-        var justSaved: List<String> = emptyList()
-        var rss: List<DiscoverPick> = emptyList()
+        val justSaved = MutableStateFlow<List<String>>(emptyList())
+        val rss = MutableStateFlow<List<DiscoverPick>>(emptyList())
         val jobs = listOf(
-            launch { repo.observeJustSaved().collect { items -> justSaved = items.map { it.id } } },
-            launch { repo.observeFreshRss().collect { rss = it } }
+            launch { repo.observeJustSaved().collect { items -> justSaved.value = items.map { it.id } } },
+            launch { repo.observeFreshRss().collect { rss.value = it } }
         )
-        eventually { justSaved == listOf("new") && rss.size == 1 }
-        assertNull(rss.single().reason)
-        clock += 26 * 3_600_000L // new item is 73 h old; the article has 2 d 22 h left
-        ticks.value++
-        eventually { justSaved.isEmpty() && rss.single().reason == DiscoverReason.RssExpiring(3) }
-        jobs.forEach { it.cancel() }
+        try {
+            withTimeout(5_000) {
+                combine(justSaved, rss) { saved, feed -> saved to feed }
+                    .first { (saved, feed) -> saved == listOf("new") && feed.size == 1 }
+            }
+            assertNull(rss.value.single().reason)
+            clock += 26 * 3_600_000L // new item is 73 h old; the article has 2 d 22 h left
+            ticks.value++
+            withTimeout(5_000) {
+                combine(justSaved, rss) { saved, feed -> saved to feed }
+                    .first { (saved, feed) -> saved.isEmpty() && feed.singleOrNull()?.reason == DiscoverReason.RssExpiring(3) }
+            }
+        } finally {
+            jobs.forEach { it.cancel() }
+        }
     }
 }

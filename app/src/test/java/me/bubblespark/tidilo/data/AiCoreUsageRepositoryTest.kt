@@ -181,4 +181,22 @@ class AiCoreUsageRepositoryTest {
         assertEquals(0L, day.debug)
         assertEquals(snapshot.lastQuota, day.firstQuota)
     }
+
+    @Test fun preferencesRecoverPendingAndPreserveFirstQuota() = runBlocking {
+        val storage = MemoryStorage()
+        val clock = Clock.fixed(Instant.parse("2026-10-23T12:00:00Z"), ZoneOffset.UTC)
+        val repository = AiCoreUsageRepository(storage, clock) { ZoneOffset.UTC }
+        val first = repository.begin(AiUsageSource.NORMAL)
+        repository.complete(first, AiUsageOutcome.FAILED, true)
+        repository.begin(AiUsageSource.DEBUG)
+        val reopened = AiCoreUsageRepository(storage, clock) { ZoneOffset.UTC }
+        reopened.initialize()
+        val snapshot = (reopened.state.value as AiUsageState.Ready).snapshot
+        val day = snapshot.days.getValue(LocalDate.parse("2026-10-23"))
+        assertEquals(2L, day.total)
+        assertEquals(1L, day.failed)
+        assertEquals(1L, day.interrupted)
+        assertEquals(0L, day.pending)
+        assertEquals(1L, snapshot.lastQuota!!.calls)
+    }
 }

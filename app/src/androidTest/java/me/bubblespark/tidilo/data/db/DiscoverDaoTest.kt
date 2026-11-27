@@ -5,7 +5,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import me.bubblespark.tidilo.data.dropDiscoverTables
 import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import me.bubblespark.tidilo.data.engagement.EngagementType
 import me.bubblespark.tidilo.data.engagement.engagementCutoff
@@ -28,24 +27,29 @@ class DiscoverDaoTest {
 
     @Test fun migration23To24CreatesEmptyTablesAndKeepsData() = runBlocking {
         val name = "discover-migration-${UUID.randomUUID()}.db"
-        val before = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
-        before.bookmarkDao().insertOrUpdate(bookmark("kept", listOf("Kotlin")))
-        before.engagementDao().insert(event("kept", EngagementType.DETAIL, now))
-        val sql = before.openHelper.writableDatabase
-        dropDiscoverTables(sql::execSQL)
-        sql.version = 23
-        before.close()
-        val after = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_23_24).build()
         try {
-            val db = after.openHelper.readableDatabase
-            assertEquals(24, db.version)
-            assertEquals("kept", after.bookmarkDao().getBookmarkById("kept")?.id)
-            assertEquals(1, after.engagementDao().eventsFor("kept").size)
-            for (table in listOf("discover_snapshot", "discover_map", "discover_snapshot_meta", "rediscovery_suppressions", "rediscovery_topic_mutes")) {
-                assertEquals(table, 0, db.query("SELECT COUNT(*) FROM `$table`").use { it.moveToFirst(); it.getInt(0) })
+            val before = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+            try {
+                before.bookmarkDao().insertOrUpdate(bookmark("kept", listOf("Kotlin")))
+                before.engagementDao().insert(event("kept", EngagementType.DETAIL, now))
+                val sql = before.openHelper.writableDatabase
+                dropDiscoverTables(sql::execSQL)
+                sql.version = 23
+            } finally {
+                before.close()
             }
-            assertEquals(0, db.query("PRAGMA foreign_key_check").use { it.count })
-        } finally { after.close(); context.deleteDatabase(name) }
+            val after = openMigratedDatabase(context, name)
+            try {
+                val db = after.openHelper.readableDatabase
+                assertEquals(24, db.version)
+                assertEquals("kept", after.bookmarkDao().getBookmarkById("kept")?.id)
+                assertEquals(1, after.engagementDao().eventsFor("kept").size)
+                for (table in listOf("discover_snapshot", "discover_map", "discover_snapshot_meta", "rediscovery_suppressions", "rediscovery_topic_mutes")) {
+                    assertEquals(table, 0, db.query("SELECT COUNT(*) FROM `$table`").use { it.moveToFirst(); it.getInt(0) })
+                }
+                assertEquals(0, db.query("PRAGMA foreign_key_check").use { it.count })
+            } finally { after.close() }
+        } finally { context.deleteDatabase(name) }
     }
 
     @Test fun pruneKeepsOnlyTheLatestOpenPastRetention() = runBlocking {

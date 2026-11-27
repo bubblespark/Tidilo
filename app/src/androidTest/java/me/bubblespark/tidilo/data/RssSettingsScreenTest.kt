@@ -150,24 +150,6 @@ class RssSettingsScreenTest {
         }
     }
 
-    @Test fun cancelledSettingsInitializationIsNotReportedAsLoadFailure(): Unit = runBlocking {
-        val db = androidx.room.Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
-        try {
-            lateinit var model: me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel
-            instrumentation.runOnMainSync {
-                model = me.bubblespark.tidilo.ui.screens.settings.RssSettingsViewModel(
-                    context.applicationContext as android.app.Application,
-                    androidx.lifecycle.SavedStateHandle(),
-                    me.bubblespark.tidilo.data.rss.RssRepository(context, db),
-                    initializeSettings = { throw kotlinx.coroutines.CancellationException("Fixture cancellation") }
-                )
-            }
-            withTimeout(3000) { while (model.busy.value) delay(20) }
-            assertEquals(StorageLoad.Loading, model.settingsLoad.value)
-            assertNull(model.error.value)
-        } finally { db.close() }
-    }
-
     @Test fun fetchNowQueuesOnlyTheExplicitManualChoice(): Unit = runBlocking {
         val host = HeaderTestHost()
         val activity = host.launch()

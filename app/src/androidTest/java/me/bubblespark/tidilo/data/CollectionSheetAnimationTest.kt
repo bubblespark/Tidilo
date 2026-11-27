@@ -65,8 +65,13 @@ class CollectionSheetAnimationTest {
                 dismiss.config[SemanticsActions.Dismiss].action?.invoke()
             }
             composeRule.waitUntil(5_000) { !shown.value }
-            assertTrue("Sheet must render intermediate downward positions before removal: $positions",
-                positions.any { it > positions.first() + 8f })
+            // Stop sampling and copy on the UI thread, where the frame callback appends.
+            val samples = composeRule.runOnUiThread {
+                sampler?.let { Choreographer.getInstance().removeFrameCallback(it) }
+                positions.toList()
+            }
+            assertTrue("Sheet must render intermediate downward positions before removal: $samples",
+                samples.any { it > samples.first() + 8f })
             assertEquals(listOf(id), db.collectionDao().observeMembershipIds(id).first())
         } finally {
             composeRule.runOnUiThread { sampler?.let { Choreographer.getInstance().removeFrameCallback(it) } }

@@ -2,7 +2,6 @@ package me.bubblespark.tidilo.data.db
 
 import androidx.paging.PagingSource
 import androidx.room.Room
-import me.bubblespark.tidilo.data.removeStandardClassificationColumns
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -31,7 +30,9 @@ class CollectionDatabaseTest {
             val dao = db.collectionDao()
             dao.insert(collection("a")); dao.insert(collection("b"))
             db.bookmarkDao().insertAll(listOf(bookmark("manual"), bookmark("rss", feed = "feed"), bookmark("hidden", true), bookmark("other")))
-            listOf("manual", "rss", "hidden").forEach { dao.insertMembership(BookmarkCollectionCrossRef(it, "a")) }
+            dao.insertMembership(BookmarkCollectionCrossRef("manual", "a"))
+            dao.insertMembership(BookmarkCollectionCrossRef("rss", "a"))
+            dao.insertMembership(BookmarkCollectionCrossRef("hidden", "a"))
             dao.insertMembership(BookmarkCollectionCrossRef("manual", "b"))
             assertEquals(2, dao.observeCount("a", false).first())
             assertEquals(3, dao.observeCount("a", true).first())
@@ -61,31 +62,37 @@ class CollectionDatabaseTest {
 
     @Test fun migration15To16PreservesExistingTables() = runBlocking {
         val name = "collection-migration-${UUID.randomUUID()}.db"
-        val before = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
-        before.bookmarkDao().insertOrUpdate(bookmark("kept"))
-        val sql = before.openHelper.writableDatabase
-        val tables = sql.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('collections','bookmark_collection_cross_ref')").use { c ->
-            buildList { while (c.moveToNext()) add(c.getString(0)) }
-        }
-        val counts = tables.associateWith { table -> sql.query("SELECT COUNT(*) FROM `$table`").use { it.moveToFirst(); it.getInt(0) } }
-        sql.execSQL("DROP TABLE bookmark_collection_cross_ref")
-        sql.execSQL("DROP TABLE collections")
-        removeStandardClassificationColumns(sql::execSQL)
-        me.bubblespark.tidilo.data.restoreLegacyAiSkippedColumns(sql::execSQL)
-        me.bubblespark.tidilo.data.rewindPrivateColumnsToLegacyNsfw(sql::execSQL, includeDomainPolicies = false)
-        sql.version = 15
-        before.close()
-        val after = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17, AppDatabase.MIGRATION_17_18, AppDatabase.MIGRATION_18_19, AppDatabase.MIGRATION_19_20, AppDatabase.MIGRATION_20_21, AppDatabase.MIGRATION_21_22, AppDatabase.MIGRATION_22_23, AppDatabase.MIGRATION_23_24).build()
         try {
-            assertTrue(after.bookmarkDao().getBookmarkById("kept")?.isLiked == true)
-            assertTrue(after.collectionDao().observeCollections(true).first().isEmpty())
-            assertEquals("The liked fixture becomes one migrated LIKE event",
-                listOf(me.bubblespark.tidilo.data.engagement.EngagementType.LIKE.code),
-                after.engagementDao().eventsFor("kept").map { it.type })
-            counts.filterKeys { it != "room_master_table" && it != "engagement_events" }.forEach { (table, count) ->
-                assertEquals(table, count, after.openHelper.readableDatabase.query("SELECT COUNT(*) FROM `$table`").use { it.moveToFirst(); it.getInt(0) })
+            val counts: Map<String, Int>
+            val before = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+            try {
+                before.bookmarkDao().insertOrUpdate(bookmark("kept"))
+                val sql = before.openHelper.writableDatabase
+                val tables = sql.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('collections','bookmark_collection_cross_ref')").use { c ->
+                    buildList { while (c.moveToNext()) add(c.getString(0)) }
+                }
+                counts = tables.associateWith { table -> sql.query("SELECT COUNT(*) FROM `$table`").use { it.moveToFirst(); it.getInt(0) } }
+                sql.execSQL("DROP TABLE bookmark_collection_cross_ref")
+                sql.execSQL("DROP TABLE collections")
+                removeStandardClassificationColumns(sql::execSQL)
+                restoreLegacyAiSkippedColumns(sql::execSQL)
+                rewindPrivateColumnsToLegacyNsfw(sql::execSQL, includeDomainPolicies = false)
+                sql.version = 15
+            } finally {
+                before.close()
             }
-            assertEquals(0, after.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use { it.count })
-        } finally { after.close(); context.deleteDatabase(name) }
+            val after = openMigratedDatabase(context, name)
+            try {
+                assertTrue(after.bookmarkDao().getBookmarkById("kept")?.isLiked == true)
+                assertTrue(after.collectionDao().observeCollections(true).first().isEmpty())
+                assertEquals("The liked fixture becomes one migrated LIKE event",
+                    listOf(me.bubblespark.tidilo.data.engagement.EngagementType.LIKE.code),
+                    after.engagementDao().eventsFor("kept").map { it.type })
+                counts.filterKeys { it != "room_master_table" && it != "engagement_events" }.forEach { (table, count) ->
+                    assertEquals(table, count, after.openHelper.readableDatabase.query("SELECT COUNT(*) FROM `$table`").use { it.moveToFirst(); it.getInt(0) })
+                }
+                assertEquals(0, after.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use { it.count })
+            } finally { after.close() }
+        } finally { context.deleteDatabase(name) }
     }
 }

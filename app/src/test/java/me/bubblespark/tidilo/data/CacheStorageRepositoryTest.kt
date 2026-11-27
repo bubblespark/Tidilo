@@ -1,8 +1,11 @@
 package me.bubblespark.tidilo.data
 
+import java.io.File
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
+import org.junit.Assume
 import org.junit.Test
 
 class CacheStorageRepositoryTest {
@@ -63,5 +66,36 @@ class CacheStorageRepositoryTest {
             assertEquals(0, afterClear.iconFiles)
             assertEquals(0L, afterClear.totalBytes)
         } finally { root.deleteRecursively() }
+    }
+
+    @Test fun cacheScannerExcludesSymlinksAndHandlesMissingRoot() = runBlocking {
+        val root = Files.createTempDirectory("summary-cache-root").toFile()
+        val external = Files.createTempDirectory("summary-cache-external").toFile()
+        try {
+            File(root, "domain_icons").mkdir()
+            File(root, "og_images").mkdir()
+            File(root, "domain_icons/a.png").writeBytes(ByteArray(12))
+            File(root, "domain_icons/marker.none").writeBytes(ByteArray(3))
+            File(root, "og_images/a.webp").writeBytes(ByteArray(20))
+            File(root, "og_images/latest_domain.webp").writeBytes(ByteArray(20))
+            val outside = File(external, "outside.png").apply { writeBytes(ByteArray(100)) }
+            try {
+                Files.createSymbolicLink(File(root, "domain_icons/link.png").toPath(), outside.toPath())
+                Files.createSymbolicLink(File(root, "directory-link").toPath(), external.toPath())
+            } catch (e: UnsupportedOperationException) {
+                Assume.assumeNoException("Host OS does not support symlinks", e)
+            } catch (e: SecurityException) {
+                Assume.assumeNoException("Host OS lacks symlink permissions", e)
+            } catch (e: FileSystemException) {
+                Assume.assumeNoException("Host OS denied symlink creation", e)
+            }
+            val snapshot = CacheStorageRepository.scan(root)
+            assertEquals(1, snapshot.iconFiles)
+            assertEquals(2, snapshot.ogFiles)
+            assertEquals(15L, snapshot.iconBytes)
+            assertEquals(55L, snapshot.totalBytes)
+            assertEquals(0L, CacheStorageRepository.scan(File(root, "absent")).totalBytes)
+            assertTrue(outside.exists())
+        } finally { root.deleteRecursively(); external.deleteRecursively() }
     }
 }

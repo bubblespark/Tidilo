@@ -16,7 +16,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
@@ -133,7 +132,7 @@ class ImportDuplicateRoomTest {
             val repository = ImportRepository(taskDao = throwingDao, bookmarkDao = database.bookmarkDao(),
                 database = database, repositoryScope = CoroutineScope(coroutineContext + job))
             repository.onAppBecameActive()
-            withTimeout(5000) { while (tasks.getTaskById(healthy.id) != null) delay(10) }
+            withTimeout(5000) { tasks.getAllTasksFlow().first { list -> list.none { it.id == healthy.id } } }
             assertEquals("ERROR", tasks.getTaskById(unavailable.id)?.status)
             assertEquals("RSS feed is unavailable", tasks.getTaskById(unavailable.id)?.errorMessage)
             assertEquals("QUEUED", tasks.getTaskById(failedClaim.id)?.status)
@@ -147,12 +146,12 @@ class ImportDuplicateRoomTest {
         database.rssDao().putFeed(me.bubblespark.tidilo.data.db.RssFeedEntity(
             feedId, "https://example.com/feed", "Feed", retentionLimit = 10
         ))
-        repeat(10) { index ->
-            database.bookmarkDao().insertOrUpdate(BookmarkEntity(
+        database.bookmarkDao().insertAll((0 until 10).map { index ->
+            BookmarkEntity(
                 "old-$index", "Old", "https://example.com/old-$index", "",
                 createdAt = index.toLong(), updatedAt = 1, rssFeedId = feedId
-            ))
-        }
+            )
+        })
         val task = ImportTaskEntity("recovered", "https://example.com/new", "New", "WAITING_AI", "",
             createdAt = 100, rssFeedId = feedId, articlePrepared = true)
         val oldest = task.copy(id = "recovered-oldest", url = "https://example.com/oldest",
@@ -170,7 +169,7 @@ class ImportDuplicateRoomTest {
                 database = database, repositoryScope = CoroutineScope(coroutineContext + job))
             repository.onAppBecameActive()
             withTimeout(5000) {
-                while (database.importTaskDao().getCount() != 0) delay(10)
+                database.importTaskDao().getAllTasksFlow().first { it.isEmpty() }
             }
             assertEquals(12, database.bookmarkDao().getCount())
             assertNotNull(database.bookmarkDao().getBookmarkById("old-0"))
@@ -195,7 +194,9 @@ class ImportDuplicateRoomTest {
                 articleAcquirer = { throw java.io.IOException("Offline") })
             repository.onAppBecameActive()
             withTimeout(5000) {
-                while (database.importTaskDao().getTaskById(task.id)?.status in listOf("QUEUED", "PROCESSING")) delay(10)
+                database.importTaskDao().getAllTasksFlow().first { list ->
+                    list.find { it.id == task.id }?.status !in listOf("QUEUED", "PROCESSING")
+                }
             }
             assertEquals(original.copy(rssFeedId = null), database.bookmarkDao().getBookmarkById(original.id))
             assertNull(database.importTaskDao().getTaskById(task.id))
@@ -209,10 +210,10 @@ class ImportDuplicateRoomTest {
         val task = ImportTask(id = "skip-task", url = "https://example.com/skipped-rss", title = "RSS",
             rssFeedId = feed.id, articlePrepared = true, status = TaskStatus.QUEUED, statusText = "Ready")
         database.importTaskDao().insertOrUpdate(ImportTaskEntity.fromImportTask(task))
-        var attempted = false
+        val attempted = CompletableDeferred<Unit>()
         val hookableDao = HookableBookmarkDao(database.bookmarkDao()).apply {
             insertReplacingUrlOverride = { bookmark ->
-                attempted = true
+                attempted.complete(Unit)
                 database.bookmarkDao().insertReplacingUrl(bookmark)
                 throw me.bubblespark.tidilo.data.rss.RssImportSkipped()
             }
@@ -222,7 +223,10 @@ class ImportDuplicateRoomTest {
                 database = database, repositoryScope = CoroutineScope(coroutineContext + job))
             repository.onAppBecameActive()
             withTimeout(5000) {
-                while (!attempted || database.importTaskDao().getTaskById(task.id)?.status in listOf("QUEUED", "PROCESSING")) delay(10)
+                attempted.await()
+                database.importTaskDao().getAllTasksFlow().first { list ->
+                    list.find { it.id == task.id }?.status !in listOf("QUEUED", "PROCESSING")
+                }
             }
             assertNull(database.importTaskDao().getTaskById(task.id))
             assertNull(database.bookmarkDao().getBookmarkByUrl(task.url))
@@ -297,7 +301,11 @@ class ImportDuplicateRoomTest {
                 database = database, repositoryScope = CoroutineScope(coroutineContext + job))
             repository.onAppBecameActive()
             withTimeout(5000) { attempted.await() }
-            withTimeout(2000) { while (database.importTaskDao().getTaskById("ready-failure")?.status != "ERROR") delay(10) }
+            withTimeout(2000) {
+                database.importTaskDao().getAllTasksFlow().first { list ->
+                    list.find { it.id == "ready-failure" }?.status == "ERROR"
+                }
+            }
             assertEquals("Save failed", database.importTaskDao().getTaskById("ready-failure")!!.statusText)
         } finally { job.cancel(); job.join() }
     }
@@ -476,70 +484,75 @@ class ImportDuplicateRoomTest {
         }
         hookableBookmarkDao.afterPromotion = { promotionApplied = true }
 
-        val repository = ImportRepository(
-            context = context,
-            database = database,
-            taskDao = database.importTaskDao(),
-            bookmarkDao = hookableBookmarkDao,
-            notificationDao = database.importNotificationDao(),
-            repositoryScope = CoroutineScope(Dispatchers.IO),
-            articleAcquirer = { url ->
-                if (url == redirectUrl) {
-                    redirectInFlightGate.complete(Unit)
-                    allowRedirectGate.await()
-                    createFakeParsedPage(url = redirectUrl, finalUrl = rssCanonicalUrl)
-                } else {
-                    createFakeParsedPage(url = url)
+        val repositoryJob = SupervisorJob()
+        try {
+            val repository = ImportRepository(
+                context = context,
+                database = database,
+                taskDao = database.importTaskDao(),
+                bookmarkDao = hookableBookmarkDao,
+                notificationDao = database.importNotificationDao(),
+                repositoryScope = CoroutineScope(Dispatchers.IO + repositoryJob),
+                articleAcquirer = { url ->
+                    if (url == redirectUrl) {
+                        redirectInFlightGate.complete(Unit)
+                        allowRedirectGate.await()
+                        createFakeParsedPage(url = redirectUrl, finalUrl = rssCanonicalUrl)
+                    } else {
+                        createFakeParsedPage(url = url)
+                    }
+                }
+            )
+
+            // Deterministic test seam: fires immediately before redirect enters runInDbOrLock database transaction
+            repository.onEnteringTransaction = { url ->
+                if (url == rssCanonicalUrl && allowRedirectGate.isCompleted) {
+                    redirectReachedTransactionBoundary.complete(Unit)
                 }
             }
-        )
 
-        // Deterministic test seam: fires immediately before redirect enters runInDbOrLock database transaction
-        repository.onEnteringTransaction = { url ->
-            if (url == rssCanonicalUrl && allowRedirectGate.isCompleted) {
-                redirectReachedTransactionBoundary.complete(Unit)
+            // 1. Start import of converging redirect URL: suspends in articleAcquirer
+            val redirectCallResult = repository.importUrl(redirectUrl) {
+                redirectImportFinished.complete(it)
             }
-        }
+            assertTrue(redirectCallResult.isSuccess)
 
-        // 1. Start import of converging redirect URL: suspends in articleAcquirer
-        val redirectCallResult = repository.importUrl(redirectUrl) {
-            redirectImportFinished.complete(it)
-        }
-        assertTrue(redirectCallResult.isSuccess)
+            // Wait until redirect import is in-flight inside articleAcquirer
+            withTimeout(5000) {
+                redirectInFlightGate.await()
+            }
 
-        // Wait until redirect import is in-flight inside articleAcquirer
-        withTimeout(5000) {
-            redirectInFlightGate.await()
-        }
+            // 2. Start direct canonical URL import:
+            //    Evaluates unanalyzed RSS bookmark and enters atomic Room withTransaction promotion block.
+            val directCallResult = repository.importUrl(rssCanonicalUrl) {
+                directImportFinished.complete(it)
+            }
+            assertTrue(directCallResult.isSuccess)
 
-        // 2. Start direct canonical URL import:
-        //    Evaluates unanalyzed RSS bookmark and enters atomic Room withTransaction promotion block.
-        val directCallResult = repository.importUrl(rssCanonicalUrl) {
-            directImportFinished.complete(it)
-        }
-        assertTrue(directCallResult.isSuccess)
+            // 3. Await completion of both competing imports
+            val directResult = withTimeout(5000) {
+                directImportFinished.await()
+            }
+            assertTrue(directResult.isSuccess)
 
-        // 3. Await completion of both competing imports
-        val directResult = withTimeout(5000) {
-            directImportFinished.await()
-        }
-        assertTrue(directResult.isSuccess)
+            withTimeout(5000) {
+                redirectReachedDaoLookup.await()
+            }
 
-        withTimeout(5000) {
-            redirectReachedDaoLookup.await()
-        }
+            val redirectResult = withTimeout(5000) {
+                redirectImportFinished.await()
+            }
+            assertTrue(redirectResult.isFailure)
 
-        val redirectResult = withTimeout(5000) {
-            redirectImportFinished.await()
-        }
-        assertTrue(redirectResult.isFailure)
+            assertEquals(0, database.importTaskDao().getCount())
+            assertEquals(existing.copy(rssFeedId = null), database.bookmarkDao().getBookmarkByUrl(rssCanonicalUrl))
 
-        assertEquals(0, database.importTaskDao().getCount())
-        assertEquals(existing.copy(rssFeedId = null), database.bookmarkDao().getBookmarkByUrl(rssCanonicalUrl))
-
-        val notifications = withTimeout(5000) {
-            database.importNotificationDao().observeNotifications().first()
+            val notifications = withTimeout(5000) {
+                database.importNotificationDao().observeNotifications().first()
+            }
+            assertTrue(notifications.any { it.message == "Duplicate URL (Already in Library)" })
+        } finally {
+            repositoryJob.cancelAndJoin()
         }
-        assertTrue(notifications.any { it.message == "Duplicate URL (Already in Library)" })
     }
 }

@@ -1,8 +1,6 @@
 package me.bubblespark.tidilo.data
 
 import android.content.res.Configuration
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -12,7 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
@@ -26,13 +24,16 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.data.db.CollectionEntity
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import me.bubblespark.tidilo.data.rss.RssSettings
@@ -50,61 +51,45 @@ import me.bubblespark.tidilo.ui.navigation.LibraryNavigationRail
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.rememberWideNavigationRailState
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Real consumers, synthetic content and deterministic palettes; no production data is mutated. */
 class ThemeConsumerRegressionTest {
+    @get:Rule val composeRule = createComposeRule()
+
     private val bookmark = BookmarkItem("fixture", "Grid fixture", "", "Summary", Tag("Article", "Tech"), createdAt = 0L)
     private val collection = CollectionWithCount(CollectionEntity("fixture", "Collection fixture", "Description",
         "folder", null, 0, 0L, 0L), 3)
+    private val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
 
     private fun scene(
         preset: AppThemeStyle = AppThemeStyle.Modern,
         fontScale: Float = 1f,
         width: Dp = 320.dp,
         locale: Locale = Locale.ENGLISH,
-        blurEnabled: Boolean = false,
         content: @Composable () -> Unit,
-        verify: suspend (HeaderTestHost, ComponentActivity) -> Unit
+        verify: suspend () -> Unit
     ) = runBlocking {
-        val host = HeaderTestHost()
-        val activity = host.launch()
-        try {
-            host.main {
-                activity.setContent {
-                    val context = LocalContext.current
-                    val configuration = Configuration(LocalConfiguration.current).apply { setLocale(locale) }
-                    val density = LocalDensity.current.density
-                    TidiloTheme(darkTheme = false, dynamicColor = false, theme = preset.theme, blurEnabled = blurEnabled) {
-                        val surfaces = resolveThemeSurfaces(preset.theme, false, MaterialTheme.colorScheme, preset)
-                        CompositionLocalProvider(
-                            LocalThemeSurfaces provides surfaces,
-                            LocalConfiguration provides configuration,
-                            LocalContext provides context.createConfigurationContext(configuration),
-                            LocalDensity provides Density(density, fontScale)
-                        ) {
-                            Box(Modifier.fillMaxSize().background(Color.White).padding(32.dp)) {
-                                Column(Modifier.width(width)) { content() }
-                            }
-                        }
-                    }
-                }
-            }
-            host.instrumentation.waitForIdleSync()
-            delay(350)
-            verify(host, activity)
-        } finally { host.main { activity.finish() } }
+        composeRule.setContent { ThemeConsumerScene(preset, fontScale, width, locale, blurEnabled = false, content) }
+        composeRule.waitForIdle()
+        verify()
     }
 
-    private suspend fun tagged(host: HeaderTestHost, activity: ComponentActivity, tag: String): SemanticsNode =
-        host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
+    private fun tagged(tag: String): SemanticsNode = composeRule.awaitNode(hasTestTag(tag))
 
-    private fun pixel(host: HeaderTestHost, x: Float, y: Float): Int {
-        host.instrumentation.waitForIdleSync()
-        val image = host.instrumentation.uiAutomation.takeScreenshot()
-        return try { image.getPixel(x.toInt(), y.toInt()) } finally { image.recycle() }
+    /** Waits until the pixel at screen ([x], [y]) satisfies [matches]. */
+    private suspend fun awaitPixel(label: String, x: Float, y: Float, matches: (Int) -> Boolean) {
+        composeRule.sampleScreen(label, describe = { "pixel=${Integer.toHexString(it.getPixel(x.toInt(), y.toInt()))}" }) {
+            Unit.takeIf { _ -> matches(it.getPixel(x.toInt(), y.toInt())) }
+        }
+    }
+
+    private fun invoke(node: SemanticsNode, action: androidx.compose.ui.semantics.SemanticsPropertyKey<androidx.compose.ui.semantics.AccessibilityAction<() -> Boolean>>) {
+        composeRule.runOnUiThread { assertTrue(node.config[action].action!!.invoke()) }
+        composeRule.waitForIdle()
     }
 
     @Test fun clickableSurfaceExposesDefaultAndCallerRolesWithBothActions() = scene(content = {
@@ -124,26 +109,24 @@ class ThemeConsumerRegressionTest {
             onLongClick = {}, onLongClickLabel = "Edit") {
             Text("Custom tap and long press")
         }
-    }, verify = { host, activity ->
-        val tap = tagged(host, activity, "tap")
-        val longPress = tagged(host, activity, "longPress")
-        val customTap = tagged(host, activity, "customTap")
-        val customLongPress = tagged(host, activity, "customLongPress")
-        host.main {
-            for (node in listOf(tap, longPress, customTap, customLongPress)) {
-                assertNotNull(node.config.getOrNull(SemanticsActions.OnClick)?.action)
-            }
-            assertEquals(Role.Button, tap.config.getOrNull(SemanticsProperties.Role))
-            assertEquals(Role.Button, longPress.config.getOrNull(SemanticsProperties.Role))
-            assertEquals(Role.DropdownList, customTap.config.getOrNull(SemanticsProperties.Role))
-            assertEquals(Role.DropdownList, customLongPress.config.getOrNull(SemanticsProperties.Role))
-            assertNull(tap.config.getOrNull(SemanticsActions.OnLongClick))
-            assertNull(customTap.config.getOrNull(SemanticsActions.OnLongClick))
-            for (node in listOf(longPress, customLongPress)) {
-                val action = node.config.getOrNull(SemanticsActions.OnLongClick)
-                assertEquals("Edit", action?.label)
-                assertNotNull(action?.action)
-            }
+    }, verify = {
+        val tap = tagged("tap")
+        val longPress = tagged("longPress")
+        val customTap = tagged("customTap")
+        val customLongPress = tagged("customLongPress")
+        for (node in listOf(tap, longPress, customTap, customLongPress)) {
+            assertNotNull(node.config.getOrNull(SemanticsActions.OnClick)?.action)
+        }
+        assertEquals(Role.Button, tap.config.getOrNull(SemanticsProperties.Role))
+        assertEquals(Role.Button, longPress.config.getOrNull(SemanticsProperties.Role))
+        assertEquals(Role.DropdownList, customTap.config.getOrNull(SemanticsProperties.Role))
+        assertEquals(Role.DropdownList, customLongPress.config.getOrNull(SemanticsProperties.Role))
+        assertNull(tap.config.getOrNull(SemanticsActions.OnLongClick))
+        assertNull(customTap.config.getOrNull(SemanticsActions.OnLongClick))
+        for (node in listOf(longPress, customLongPress)) {
+            val action = node.config.getOrNull(SemanticsActions.OnLongClick)
+            assertEquals("Edit", action?.label)
+            assertNotNull(action?.action)
         }
     })
 
@@ -152,9 +135,9 @@ class ThemeConsumerRegressionTest {
             treatment = SurfaceTreatment.DECORATED), Modifier.size(160.dp, 90.dp)) {
             Box(Modifier.padding(25.dp)) { Box(Modifier.size(18.dp).background(Color.Black).testTag("foreground")) }
         }
-    }) { host, activity ->
-        val bounds = tagged(host, activity, "foreground").boundsInWindow
-        assertEquals(Color.Black.toArgb(), pixel(host, bounds.center.x, bounds.center.y))
+    }) {
+        val bounds = tagged("foreground").screenBounds()
+        awaitPixel("opaque foreground", bounds.center.x, bounds.center.y) { it == Color.Black.toArgb() }
     }
 
     @Test fun groupedSettingsConsumePresetColors() {
@@ -162,9 +145,9 @@ class ThemeConsumerRegressionTest {
             SurfaceRole.SETTINGS_GROUP to SurfaceStyleOverride(containerColor = Color.Cyan)))
         scene(preset, content = {
             SettingsGroup(Modifier.testTag("settings")) { Text("Settings fixture", Modifier.padding(20.dp)) }
-        }) { host, activity ->
-            val bounds = tagged(host, activity, "settings").boundsInWindow
-            assertEquals(Color.Cyan.toArgb(), pixel(host, bounds.center.x, bounds.bottom - 8f))
+        }) {
+            val bounds = tagged("settings").screenBounds()
+            awaitPixel("cyan settings group", bounds.center.x, bounds.bottom - 8f) { it == Color.Cyan.toArgb() }
         }
     }
 
@@ -175,9 +158,9 @@ class ThemeConsumerRegressionTest {
             RssSettingsContent(StorageLoad.Ready(emptyList()), RssSettings(), false, null, true,
                 onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
                 onDelete = {}, onFetch = {}, onDismissError = {})
-        }) { host, activity ->
-            val text = host.await(activity) { host.text(it, "Not set") }.boundsInWindow
-            assertEquals(Color.Cyan.toArgb(), pixel(host, text.center.x, text.top - 6f))
+        }) {
+            val text = composeRule.awaitNode(hasText("Not set")).screenBounds()
+            awaitPixel("cyan RSS card", text.center.x, text.top - 6f) { it == Color.Cyan.toArgb() }
         }
     }
 
@@ -187,21 +170,11 @@ class ThemeConsumerRegressionTest {
             SurfaceRole.DIALOG to SurfaceStyleOverride(containerColor = Color.Cyan)))
         scene(preset, content = {
             RssRegistrationDialog(2, false, onConfirm = {}, onDismiss = { dismissals.incrementAndGet() })
-        }) { host, activity ->
-            val title = host.await(activity) { host.text(it, "Resume this feed?") }
-            var position = androidx.compose.ui.geometry.Offset.Zero
-            host.main {
-                position = title.layoutInfo.coordinates.localToScreen(androidx.compose.ui.geometry.Offset.Zero)
-            }
+        }) {
+            val position = composeRule.awaitNode(hasText("Resume this feed?")).positionOnScreen
             // Exact color comparisons must wait for the native window fade to finish.
-            withTimeout(5000) {
-                while (pixel(host, position.x + 10f, position.y - 6f) != Color.Cyan.toArgb()) delay(30)
-            }
-            val cancel = host.await(activity) { host.text(it, "Cancel") }
-            host.main {
-                val action = generateSequence(cancel) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
-                assertTrue(action.config[SemanticsActions.OnClick].action!!.invoke())
-            }
+            awaitPixel("cyan dialog container", position.x + 10f, position.y - 6f) { it == Color.Cyan.toArgb() }
+            composeRule.clickNode(composeRule.awaitNode(hasText("Cancel")))
             assertEquals(1, dismissals.get())
         }
     }
@@ -211,38 +184,46 @@ class ThemeConsumerRegressionTest {
             SurfaceRole.BOOKMARK_CARD to SurfaceStyleOverride(elevation = 0.dp)))
         scene(preset, width = 200.dp, content = {
             BookmarkGridCardFixture(bookmark, Modifier.testTag("grid"))
-        }) { host, activity ->
-            val bounds = tagged(host, activity, "grid").boundsInWindow
-            assertEquals(Color.White.toArgb(), pixel(host, bounds.left + 3f, bounds.top + 3f))
+        }) {
+            val bounds = tagged("grid").screenBounds()
             val imageBottom = bounds.top + bounds.width * 9f / 16f
-            assertNotEquals(Color.White.toArgb(), pixel(host, bounds.left + 4f, imageBottom - 4f))
+            composeRule.sampleScreen("rounded top corner over a square image bottom") { frame ->
+                Unit.takeIf {
+                    frame.getPixel((bounds.left + 3f).toInt(), (bounds.top + 3f).toInt()) == Color.White.toArgb() &&
+                        frame.getPixel((bounds.left + 4f).toInt(), (imageBottom - 4f).toInt()) != Color.White.toArgb()
+                }
+            }
         }
     }
 
     @Test fun gridAndCollectionShadowsExtendOutsideTheirInputClip() {
-        for (deck in listOf(false, true)) {
-            val clicks = AtomicInteger()
-            val longs = AtomicInteger()
-            val role = if (deck) SurfaceRole.DECK_FRONT else SurfaceRole.BOOKMARK_CARD
-            val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(role to SurfaceStyleOverride(elevation = 18.dp)))
-            scene(preset, width = 220.dp, content = {
-                if (deck) CollectionCard(collection, { clicks.incrementAndGet() }, Modifier.testTag("card"),
-                    onLongClick = { longs.incrementAndGet() })
-                else BookmarkGridCardFixture(bookmark, Modifier.testTag("card"), onClick = { clicks.incrementAndGet() },
-                    onLongClick = { longs.incrementAndGet() })
-            }) { host, activity ->
-                val node = tagged(host, activity, "card")
-                val clickable = host.await(activity) {
-                    it.config.getOrNull(SemanticsActions.OnLongClick) != null && it.boundsInWindow.overlaps(node.boundsInWindow)
+        val clicks = AtomicInteger()
+        val longs = AtomicInteger()
+        var deck by mutableStateOf(false)
+        val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
+            SurfaceRole.BOOKMARK_CARD to SurfaceStyleOverride(elevation = 18.dp),
+            SurfaceRole.DECK_FRONT to SurfaceStyleOverride(elevation = 18.dp)))
+        scene(preset, width = 220.dp, content = {
+            if (deck) CollectionCard(collection, { clicks.incrementAndGet() }, Modifier.testTag("card"),
+                onLongClick = { longs.incrementAndGet() })
+            else BookmarkGridCardFixture(bookmark, Modifier.testTag("card"), onClick = { clicks.incrementAndGet() },
+                onLongClick = { longs.incrementAndGet() })
+        }) {
+            for ((index, title) in listOf("Grid fixture", "Collection fixture").withIndex()) {
+                composeRule.runOnUiThread { deck = index == 1 }
+                composeRule.awaitNode(hasText(title))
+                val card = tagged("card")
+                val clickable = composeRule.awaitNode(SemanticsMatcher("long-clickable over the card") {
+                    it.config.getOrNull(SemanticsActions.OnLongClick) != null && it.boundsInRoot.overlaps(card.boundsInRoot)
+                })
+                invoke(clickable, SemanticsActions.OnClick)
+                invoke(clickable, SemanticsActions.OnLongClick)
+                assertEquals(index + 1, clicks.get())
+                assertEquals(index + 1, longs.get())
+                val bounds = clickable.screenBounds()
+                composeRule.sampleScreen("$title shadow outside its input clip") { frame ->
+                    Unit.takeIf { (-5..-1).any { frame.getPixel((bounds.left + it).toInt(), bounds.center.y.toInt()) != Color.White.toArgb() } }
                 }
-                host.main {
-                    assertTrue(clickable.config[SemanticsActions.OnClick].action!!.invoke())
-                    assertTrue(clickable.config[SemanticsActions.OnLongClick].action!!.invoke())
-                }
-                assertEquals(1, clicks.get())
-                assertEquals(1, longs.get())
-                val bounds = clickable.boundsInWindow
-                assertTrue((-5..-1).any { pixel(host, bounds.left + it, bounds.center.y) != Color.White.toArgb() })
             }
         }
     }
@@ -260,34 +241,15 @@ class ThemeConsumerRegressionTest {
             var checked by remember { mutableStateOf(true) }
             TidiloIconToggleButton(checked, { checked = it }, SurfaceRole.LIKE_ACTION,
                 Modifier.testTag("toggle-action")) { Icon(Icons.Default.Favorite, "お気に入り") }
-        }) { host, activity ->
+        }) {
             for (tag in listOf("header-action", "toggle-action")) {
-                val bounds = tagged(host, activity, tag).boundsInWindow
-                val density = host.context.resources.displayMetrics.density
+                val bounds = tagged(tag).boundsInWindow
                 assertTrue(bounds.width >= 48f * density - 1f)
                 assertTrue(bounds.height >= 48f * density - 1f)
             }
-            val toggle = host.await(activity) { it.config.getOrNull(SemanticsProperties.ToggleableState) != null }
-            host.main { assertTrue(toggle.config[SemanticsActions.OnClick].action!!.invoke()) }
+            val toggle = composeRule.awaitNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState))
+            invoke(toggle, SemanticsActions.OnClick)
         }
-    }
-
-    @Test fun frostedSearchActionHonorsCustomOpacity() {
-        val blues = mutableListOf<Int>()
-        for (opacity in listOf(1f, .2f)) {
-            val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
-                SurfaceRole.PRIMARY_ACTION to SurfaceStyleOverride(containerColor = Color.Black, opacity = opacity)))
-            scene(preset, blurEnabled = true, content = {
-                TidiloScreenScaffold(header = {}, modifier = Modifier.size(220.dp), overlay = {
-                    LibraryRadialMenu(rememberLibraryRadialMenuState(), LibraryFilterMode.NEWEST_FIRST, {}, {})
-                }) { Box(Modifier.fillMaxSize().background(Color.Blue)) }
-            }) { host, activity ->
-                val action = tagged(host, activity, "library_radial_trigger").boundsInWindow
-                delay(400)
-                blues += android.graphics.Color.blue(pixel(host, action.center.x, action.top + 9f * host.context.resources.displayMetrics.density))
-            }
-        }
-        assertTrue("Lower opacity must expose more captured blue: $blues", blues[1] > blues[0] + 60)
     }
 
     @Test fun searchActionKeepsCustomEdgeFillAndOpacity() {
@@ -295,20 +257,20 @@ class ThemeConsumerRegressionTest {
             SurfaceRole.PRIMARY_ACTION to SurfaceStyleOverride(containerColor = Color.Black,
                 gradient = SurfaceGradient(Color.Blue, Color.Blue), bevel = SurfaceGradient(Color.Green, Color.Green),
                 borderWidth = 4.dp, opacity = 0.4f, shape = androidx.compose.foundation.shape.RoundedCornerShape(7.dp))))
-        scene(preset, content = { NavigationFixture(false) }) { host, activity ->
-            val tab = host.await(activity) { it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger" }
-            val bounds = tab.boundsInWindow
-            val density = host.context.resources.displayMetrics.density
-            withTimeout(5000) {
-                while (true) {
-                    val edge = pixel(host, bounds.left + density, bounds.center.y)
-                    if (android.graphics.Color.green(edge) > 200 && android.graphics.Color.red(edge) < 50) break
-                    delay(40)
+        scene(preset, content = { NavigationFixture(false) }) {
+            val bounds = tagged("library_radial_trigger").screenBounds()
+            composeRule.sampleScreen("green bevel edge with a translucent blue fill", describe = { frame ->
+                "edge=${Integer.toHexString(frame.getPixel((bounds.left + density).toInt(), bounds.center.y.toInt()))} " +
+                    "fill=${Integer.toHexString(frame.getPixel(bounds.center.x.toInt(), (bounds.top + 9f * density).toInt()))}"
+            }) { frame ->
+                val edge = frame.getPixel((bounds.left + density).toInt(), bounds.center.y.toInt())
+                val fill = frame.getPixel(bounds.center.x.toInt(), (bounds.top + 9f * density).toInt())
+                Unit.takeIf {
+                    android.graphics.Color.green(edge) > 200 && android.graphics.Color.red(edge) < 50 &&
+                        android.graphics.Color.blue(fill) > android.graphics.Color.red(fill) + 20 &&
+                        android.graphics.Color.red(fill) > 80
                 }
             }
-            val fill = pixel(host, bounds.center.x, bounds.top + 9f * density)
-            assertTrue(android.graphics.Color.blue(fill) > android.graphics.Color.red(fill) + 20)
-            assertTrue(android.graphics.Color.red(fill) > 80)
         }
     }
 
@@ -320,18 +282,13 @@ class ThemeConsumerRegressionTest {
             val color = MaterialTheme.colorScheme.secondaryContainer
             SideEffect { selectedColor = color }
             NavigationFixture(true)
-        }) { host, activity ->
-            val selected = host.await(activity) {
+        }) {
+            val selected = composeRule.awaitNode(SemanticsMatcher("selected clickable") {
                 it.config.getOrNull(SemanticsProperties.Selected) == true && it.config.getOrNull(SemanticsActions.OnClick) != null
-            }
-            val density = host.context.resources.displayMetrics.density
-            withTimeout(5000) {
-                while (true) {
-                    val bounds = selected.boundsInWindow
-                    if (pixel(host, bounds.center.x, bounds.top + 8f * density) == selectedColor.toArgb()) break
-                    delay(40)
-                }
-            }
+            })
+            composeRule.waitForIdle()
+            val bounds = selected.screenBounds()
+            awaitPixel("selected filter container", bounds.center.x, bounds.top + 8f * density) { it == selectedColor.toArgb() }
         }
     }
 
@@ -344,6 +301,38 @@ class ThemeConsumerRegressionTest {
                 LaunchedEffect(Unit) { state.expand() }
                 LibraryNavigationRail(state, LibraryFilterMode.DOMAIN, {}, {}, {}, {}, {})
             } else LibraryRadialMenu(rememberLibraryRadialMenuState(), LibraryFilterMode.NEWEST_FIRST, {}, {})
+        }
+    }
+}
+
+/** Screen-coordinate bounds, matching `uiAutomation.takeScreenshot()` pixels. */
+internal fun SemanticsNode.screenBounds(): Rect =
+    Rect(positionOnScreen, androidx.compose.ui.geometry.Size(size.width.toFloat(), size.height.toFloat()))
+
+/** Light, locale- and font-scale-controlled host shared by the theme consumer suites. */
+@Composable
+internal fun ThemeConsumerScene(
+    preset: AppThemeStyle,
+    fontScale: Float = 1f,
+    width: Dp = 320.dp,
+    locale: Locale = Locale.ENGLISH,
+    blurEnabled: Boolean,
+    content: @Composable () -> Unit
+) {
+    val context = LocalContext.current
+    val configuration = Configuration(LocalConfiguration.current).apply { setLocale(locale) }
+    val density = LocalDensity.current.density
+    TidiloTheme(darkTheme = false, dynamicColor = false, theme = preset.theme, blurEnabled = blurEnabled) {
+        val surfaces = resolveThemeSurfaces(preset.theme, false, MaterialTheme.colorScheme, preset)
+        CompositionLocalProvider(
+            LocalThemeSurfaces provides surfaces,
+            LocalConfiguration provides configuration,
+            LocalContext provides context.createConfigurationContext(configuration),
+            LocalDensity provides Density(density, fontScale)
+        ) {
+            Box(Modifier.fillMaxSize().background(Color.White).padding(32.dp)) {
+                Column(Modifier.width(width)) { content() }
+            }
         }
     }
 }

@@ -1,75 +1,71 @@
 package me.bubblespark.tidilo.data
 
-import androidx.activity.compose.setContent
+import android.content.Context
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.semantics.*
-import kotlinx.coroutines.runBlocking
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.test.platform.app.InstrumentationRegistry
+import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.config.AppConfig
+import me.bubblespark.tidilo.ui.screens.settings.SettingsScreen
 import me.bubblespark.tidilo.ui.screens.settings.ThemeBlurSetting
 import me.bubblespark.tidilo.ui.theme.*
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
 
 class ThemeBlurSettingTest {
-    @Test fun themeDialogTogglePersistsAndStaysOpen(): Unit = runBlocking {
-        val host = HeaderTestHost()
-        val activity = host.launch()
-        val prefs = host.context.getSharedPreferences("tidilo_app_config_prefs", android.content.Context.MODE_PRIVATE)
+    @get:Rule val composeRule = createComposeRule()
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private val switch = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch)
+
+    @Test fun themeDialogTogglePersistsAndStaysOpen() {
+        val prefs = context.getSharedPreferences("tidilo_app_config_prefs", Context.MODE_PRIVATE)
         val hadKey = prefs.contains("overlay_blur_enabled")
-        val old = me.bubblespark.tidilo.config.AppConfig.overlayBlurEnabled.value
+        val old = AppConfig.overlayBlurEnabled.value
         try {
-            host.main { activity.setContent {
-                val enabled by me.bubblespark.tidilo.config.AppConfig.overlayBlurEnabled.collectAsState()
-                TidiloTheme(blurEnabled = enabled) {
-                    me.bubblespark.tidilo.ui.screens.settings.SettingsScreen({}, {})
-                }
-            } }
-            val theme = host.await(activity) { host.text(it, host.context.getString(me.bubblespark.tidilo.R.string.settings_theme_title)) }
-            host.main {
-                val clickable = generateSequence(theme) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
-                clickable.config[SemanticsActions.OnClick].action!!.invoke()
+            composeRule.setContent {
+                TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) { SettingsScreen({}, {}) }
             }
-            val row = host.await(activity) { it.config.getOrNull(SemanticsProperties.Role) == Role.Switch }
-            host.main { row.config[SemanticsActions.OnClick].action!!.invoke() }
-            host.await(activity) { host.text(it, host.context.getString(me.bubblespark.tidilo.R.string.settings_theme_dialog_title)) }
-            host.main { assertEquals(!old, me.bubblespark.tidilo.config.AppConfig.overlayBlurEnabled.value) }
+            composeRule.onNodeWithText(context.getString(R.string.settings_theme_title), useUnmergedTree = true).performClick()
+            composeRule.awaitNode(switch)
+            composeRule.onNode(switch, useUnmergedTree = true).performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText(context.getString(R.string.settings_theme_dialog_title), useUnmergedTree = true).assertExists()
+            assertEquals(!old, AppConfig.overlayBlurEnabled.value)
             assertEquals(!old, prefs.getBoolean("overlay_blur_enabled", old))
         } finally {
-            host.main { activity.finish(); me.bubblespark.tidilo.config.AppConfig.setOverlayBlurEnabled(old) }
+            composeRule.runOnUiThread { AppConfig.setOverlayBlurEnabled(old) }
             if (!hadKey) prefs.edit().remove("overlay_blur_enabled").commit()
         }
     }
 
-    @Test fun fixedPoliciesDisableTheSwitchAndKeepSavedChoice(): Unit = runBlocking {
-        val host = HeaderTestHost()
-        val activity = host.launch()
+    @Test fun fixedPoliciesDisableTheSwitchAndKeepSavedChoice() {
         var policy by mutableStateOf(OverlayBlurPolicy.USER_CHOICE)
         var saved by mutableStateOf(false)
-        try {
-            host.main { activity.setContent { MaterialTheme {
-                ThemeBlurSetting(resolveOverlayBlur(policy, saved), { saved = it })
-            } } }
-            val row = host.await(activity) { it.config.getOrNull(SemanticsProperties.Role) == Role.Switch }
-            var staleAction: (() -> Boolean)? = null
-            host.main { staleAction = row.config[SemanticsActions.OnClick].action }
-            for ((fixed, checked) in listOf(OverlayBlurPolicy.FORCE_ON to true, OverlayBlurPolicy.FORCE_OFF to false)) {
-                host.main { policy = fixed }
-                val fixedRow = host.await(activity) {
-                    it.config.getOrNull(SemanticsProperties.Role) == Role.Switch &&
-                        it.config.contains(SemanticsProperties.Disabled) &&
-                        it.config.getOrNull(SemanticsProperties.ToggleableState) ==
-                        if (checked) androidx.compose.ui.state.ToggleableState.On else androidx.compose.ui.state.ToggleableState.Off
-                }
-                host.main {
-                    assertTrue(fixedRow.config.contains(SemanticsProperties.Disabled))
-                    staleAction?.invoke()
-                    assertFalse(saved)
-                }
-            }
-            host.main { policy = OverlayBlurPolicy.USER_CHOICE }
-            val editable = host.await(activity) { it.config.getOrNull(SemanticsProperties.Role) == Role.Switch &&
-                !it.config.contains(SemanticsProperties.Disabled) }
-            host.main { editable.config[SemanticsActions.OnClick].action!!.invoke(); assertTrue(saved) }
-        } finally { host.main { activity.finish() } }
+        composeRule.setContent { MaterialTheme {
+            ThemeBlurSetting(resolveOverlayBlur(policy, saved), { saved = it })
+        } }
+        val staleAction = composeRule.awaitNode(switch).config[SemanticsActions.OnClick].action
+        for ((fixed, checked) in listOf(OverlayBlurPolicy.FORCE_ON to true, OverlayBlurPolicy.FORCE_OFF to false)) {
+            composeRule.runOnUiThread { policy = fixed }
+            val state = if (checked) ToggleableState.On else ToggleableState.Off
+            composeRule.awaitNode(switch and SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled) and
+                SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, state))
+            composeRule.runOnUiThread { staleAction?.invoke() }
+            composeRule.waitForIdle()
+            assertFalse(saved)
+        }
+        composeRule.runOnUiThread { policy = OverlayBlurPolicy.USER_CHOICE }
+        composeRule.awaitNode(switch and isEnabled())
+        composeRule.onNode(switch and isEnabled(), useUnmergedTree = true).performClick()
+        composeRule.waitForIdle()
+        assertTrue(saved)
     }
 }

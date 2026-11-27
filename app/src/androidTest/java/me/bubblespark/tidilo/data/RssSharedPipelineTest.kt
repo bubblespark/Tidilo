@@ -230,8 +230,8 @@ class RssSharedPipelineTest {
         try {
             val feed = RssFeedEntity("feed", "https://fixture-feed.example/feed", "Feed", retentionLimit = 30)
             db.rssDao().putFeed(feed)
-            repeat(20) { db.bookmarkDao().insertOrUpdate(BookmarkEntity("saved$it", "Keep", "https://fixture-feed.example/saved/$it",
-                "", createdAt = it.toLong(), updatedAt = 1, rssFeedId = feed.id)) }
+            db.bookmarkDao().insertAll(List(20) { BookmarkEntity("saved$it", "Keep", "https://fixture-feed.example/saved/$it",
+                "", createdAt = it.toLong(), updatedAt = 1, rssFeedId = feed.id) })
             val repo = repository(db, { request, _, _ -> RssHttpPage(200, request, xml()) }, network { request ->
                 db.rssDao().putFeed(db.rssDao().feed(feed.id)!!.copy(revision = 1, retentionLimit = 10))
                 ArticleResponse(request, 200, html.toByteArray(), "text/html")
@@ -411,7 +411,7 @@ class RssSharedPipelineTest {
         val completedArticle = "$fixturePath/1"
         val retriedArticle = "$fixturePath/2"
         val cover = "$fixturePath/cover.png"
-        val image = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888).let { bitmap ->
+        val image = android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888).let { bitmap ->
             try {
                 java.io.ByteArrayOutputStream().use { output ->
                     bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)

@@ -68,10 +68,14 @@ class CollectionRecreationTest {
             scenario.onActivity { oldMode = ViewModelProvider(it)[LibraryViewModel::class.java].filterMode.value }
             block(scenario)
         } finally {
-            oldMode?.let { mode -> scenario?.onActivity { ViewModelProvider(it)[LibraryViewModel::class.java].setFilterMode(mode) } }
-            scenario?.close()
-            caches.close()
-            AppConfig.setOverlayBlurEnabled(oldBlur)
+            try {
+                // A destroyed Activity must not skip the global restores below.
+                runCatching { oldMode?.let { mode -> scenario?.onActivity { ViewModelProvider(it)[LibraryViewModel::class.java].setFilterMode(mode) } } }
+                scenario?.close()
+            } finally {
+                caches.close()
+                AppConfig.setOverlayBlurEnabled(oldBlur)
+            }
         }
     }
 

@@ -37,7 +37,11 @@ internal fun ScreenBackdropHost(content: @Composable () -> Unit) {
 @Composable
 internal fun Modifier.screenCanvasSource(): Modifier {
     val state = LocalScreenBackdropHaze.current ?: return this
-    return if (LocalView.current.isHardwareAccelerated) hazeSource(state, zIndex = 0f, key = ScreenCanvasSourceKey) else this
+    return if (LocalOverlayBlurSetting.current.enabled && LocalView.current.isHardwareAccelerated) {
+        hazeSource(state, zIndex = 0f, key = ScreenCanvasSourceKey)
+    } else {
+        this
+    }
 }
 
 @Composable
@@ -49,7 +53,11 @@ internal fun ScreenBackdropScope(content: @Composable (ScreenBackdropState) -> U
 
 @Composable
 internal fun Modifier.screenBackdropSource(state: ScreenBackdropState): Modifier =
-    if (LocalView.current.isHardwareAccelerated) hazeSource(state.haze, zIndex = 1f, key = state.sourceKey) else this
+    if (LocalOverlayBlurSetting.current.enabled && LocalView.current.isHardwareAccelerated) {
+        hazeSource(state.haze, zIndex = 1f, key = state.sourceKey)
+    } else {
+        this
+    }
 
 @Composable
 internal fun rememberScreenBackdropInput(visible: Boolean = true): HazeInput.Sources? {

@@ -24,8 +24,8 @@ fun OverlayBlurHost(enabled: Boolean, content: @Composable () -> Unit) {
     controller.enabled = enabled
     val supported = LocalView.current.isHardwareAccelerated
     CompositionLocalProvider(LocalOverlayBlurController provides controller) {
-        // Keep the source attached across window changes; Haze records only on effect demand.
-        Box(if (supported) Modifier.hazeSource(state, zIndex = 0f, key = 0L)
+        // Attach HazeSource only when blur is enabled so disabled trees avoid Haze capture nodes.
+        Box(if (enabled && supported) Modifier.hazeSource(state, zIndex = 0f, key = 0L)
             else Modifier, propagateMinConstraints = true) { content() }
     }
 }

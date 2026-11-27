@@ -55,7 +55,7 @@ internal fun ThemeSurfaceCatalogue(
     fontScale: Float = 1f,
     width: Dp = 360.dp,
     scene: Int = 0,
-    blurEnabled: Boolean = true,
+    blurEnabled: Boolean = false,
 ) {
     val density = LocalDensity.current.density
     CompositionLocalProvider(

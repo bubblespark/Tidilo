@@ -87,7 +87,7 @@ class BookmarkTransactionRoomTest {
                     entities = listOf("Retained"), createdAt = 1, updatedAt = 1, note = "important"
                 )
             )
-            db.openHelper.writableDatabase.execSQL("CREATE TRIGGER reject_trash BEFORE INSERT ON trashed_bookmarks BEGIN SELECT RAISE(ABORT,'disk failure'); END")
+            db.openHelper.writableDatabase.execSQL("CREATE TRIGGER reject_trash BEFORE DELETE ON bookmarks BEGIN SELECT RAISE(ABORT,'disk failure'); END")
             try {
                 repository.moveToTrash("off-page", 10, 100)
                 fail("Failed insertion must not report success")
@@ -109,12 +109,13 @@ class BookmarkTransactionRoomTest {
 
     @Test
     fun domainPolicyStoreMigratesLegacyJsonIdempotentlyAndDeletesFilesAfterCommit() = runBlocking {
-        val folder = File(context.cacheDir, "issue233-policy-${UUID.randomUUID()}").apply { mkdirs() }
+        val folder = File(context.cacheDir, "issue233-policy-${UUID.randomUUID()}")
         val legacyFile = File(folder, "domain_policies.json")
         val pendingFile = File(folder, "domain_policies.json.pending")
         val db = inMemoryDatabase()
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         try {
+            folder.mkdirs()
             legacyFile.writeText(
                 """
                 [

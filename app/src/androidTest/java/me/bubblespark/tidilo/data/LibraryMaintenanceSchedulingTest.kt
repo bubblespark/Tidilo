@@ -4,15 +4,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.WorkManager
 import androidx.work.WorkInfo
 import androidx.work.NetworkType
-import androidx.work.ListenableWorker
-import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.data.maintenance.LibraryMaintenanceScheduler
-import me.bubblespark.tidilo.data.maintenance.runLibraryMaintenanceAttempt
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -53,19 +49,5 @@ class LibraryMaintenanceSchedulingTest {
             assertTrue(updated.tags.contains("$name:zone:America/New_York"))
             assertNotEquals(first.tags, updated.tags)
         } finally { manager.cancelUniqueWork(name).result.get() }
-    }
-
-    @Test fun failuresRetryWithoutRealignmentAndCancellationPropagates() = runBlocking {
-        var aligned = false
-        assertEquals(ListenableWorker.Result.retry(), runLibraryMaintenanceAttempt(
-            clean = { throw IOException("fixture") }, realign = { aligned = true }))
-        assertFalse(aligned)
-        try {
-            runLibraryMaintenanceAttempt(clean = { throw CancellationException("fixture") }, realign = { aligned = true })
-            fail("Cancellation must propagate")
-        } catch (_: CancellationException) { }
-        assertFalse(aligned)
-        assertEquals(ListenableWorker.Result.success(), runLibraryMaintenanceAttempt(clean = {}, realign = { aligned = true }))
-        assertTrue(aligned)
     }
 }

@@ -5,6 +5,8 @@ import me.bubblespark.tidilo.ui.components.TidiloModalBottomSheet
 import me.bubblespark.tidilo.ui.theme.SurfaceRole
 import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
+import androidx.activity.compose.BackHandler
+import kotlinx.coroutines.flow.first
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.*
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -155,25 +158,31 @@ internal fun CollectionMembershipContent(
         onClosed = onClosed,
         onCancelWhileClosing = onCancelTransition
     )
-    LaunchedEffect(focusedCollectionId, hasMatchingRow, closing) {
-        if (!closing && focusedCollectionId != null && hasMatchingRow) {
-            withFrameNanos { }
-            try {
-                bringIntoViewRequester.bringIntoView()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-            }
-            runCatching { focusRequester.requestFocus() }
-            currentOnFocusHandled()
-        }
-    }
     TidiloModalBottomSheet(
             containerColor = currentThemeSurfaces().resolve(SurfaceRole.SHEET).containerColor,
             shape = currentThemeSurfaces().resolve(SurfaceRole.SHEET).shape,
             onDismissRequest = controller.onDismissRequest,
             sheetGesturesEnabled = !closing,
         modifier = modifier, sheetState = controller.sheetState) {
+        // The sheet reports Back only after its hide finishes, which loses the race with the close already running.
+        BackHandler(enabled = closing) { onCancelTransition() }
+        // Runs in the sheet's own window so the focus request waits until that window has focus.
+        val sheetWindow = LocalWindowInfo.current
+        LaunchedEffect(focusedCollectionId, hasMatchingRow, closing) {
+            if (!closing && focusedCollectionId != null && hasMatchingRow) {
+                withFrameNanos { }
+                try {
+                    bringIntoViewRequester.bringIntoView()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
+                // A request made before the dialog window gains focus is replaced by its initial focus.
+                snapshotFlow { sheetWindow.isWindowFocused }.first { it }
+                runCatching { focusRequester.requestFocus() }
+                currentOnFocusHandled()
+            }
+        }
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             Text(stringResource(R.string.collection_assign_title),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),

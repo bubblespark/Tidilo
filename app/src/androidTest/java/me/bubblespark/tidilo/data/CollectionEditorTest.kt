@@ -9,16 +9,31 @@ import androidx.room.Room
 import kotlinx.coroutines.launch
 import androidx.room.withTransaction
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.data.db.AppDatabase
+import me.bubblespark.tidilo.data.db.CollectionEntity
+import me.bubblespark.tidilo.ui.screens.library.AutosaveStatus
 import me.bubblespark.tidilo.ui.screens.library.CollectionEditorViewModel
+import me.bubblespark.tidilo.ui.screens.library.DebouncedAutosaver
 import org.junit.Assert.*
 import org.junit.Test
 
 class CollectionEditorTest {
+    private suspend fun <T> Flow<T>.await(predicate: (T) -> Boolean): T = withTimeout(5_000) { first(predicate) }
+
+    private suspend fun AppDatabase.awaitCollection(id: String, predicate: (CollectionEntity?) -> Boolean) =
+        collectionDao().observeCollections(true).map { rows -> rows.firstOrNull { it.collection.id == id }?.collection }.await(predicate)
+
     @Test fun retryAfterInitialLoadFailurePrefillsStoredCollection() = verifyLoadRetry(false)
 
     @Test fun retryAfterLoadFailurePreservesRestoredDraft() = verifyLoadRetry(true)
@@ -37,25 +52,26 @@ class CollectionEditorTest {
             host.runOnMainSync {
                 vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(saved, CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java]
             }
-            withTimeout(5000) { while (vm.state.value.error != "load") delay(20) }
+            vm.state.await { it.error == "load" }
             host.runOnMainSync { vm.edit(CollectionDraft("Blocked")); vm.delete() }
             assertFalse(vm.state.value.pending)
             assertFalse(vm.state.value.done)
             db.openHelper.writableDatabase.execSQL("ALTER TABLE unavailable_collections RENAME TO collections")
             host.runOnMainSync { vm.retryLoad(); vm.retryLoad() }
-            withTimeout(5000) { while (vm.state.value.error != null || vm.state.value.loading) delay(20) }
+            vm.state.await { it.error == null && !it.loading }
             assertFalse(vm.state.value.missing)
             assertEquals(if (restored) "Unsaved draft" else "Stored", vm.state.value.draft.title)
             assertEquals(if (restored) "Draft description" else "Stored description", vm.state.value.draft.description)
             assertEquals(if (restored) "code" else "work", vm.state.value.draft.presetIconId)
             assertEquals(if (restored) 7 else 2, vm.state.value.draft.colorIndex)
             host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "Saved after retry")) }
-            withTimeout(5000) { while (db.collectionDao().getById("a")?.title != "Saved after retry") delay(20) }
+            // The table rename above detaches Room's invalidation tracking, so poll the row.
+            withTimeout(5_000) { while (db.collectionDao().getById("a")?.title != "Saved after retry") delay(100) }
             assertFalse("Autosave keeps the editor open", vm.state.value.done)
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
 
-    @Test fun decorationInputDuringInitialLoadCannotReplacePrefill() = runBlocking {
+    @Test fun decorationInputDuringInitialLoadCannotReplacePrefill(): Unit = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val gate = java.util.concurrent.CountDownLatch(1)
         val delayed = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -73,14 +89,14 @@ class CollectionEditorTest {
             }
             assertTrue(vm.state.value.loading)
             gate.countDown()
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             assertEquals("Alpha", vm.state.value.draft.title)
             assertEquals("Original description", vm.state.value.draft.description)
             assertEquals("work", vm.state.value.draft.presetIconId)
             assertEquals(2, vm.state.value.draft.colorIndex)
         } finally { gate.countDown(); host.runOnMainSync { store.clear() }; db.close(); executor.shutdownNow() }
     }
-    @Test fun confirmationSurvivesRecreationAndDeleteKeepsBookmarks() = runBlocking {
+    @Test fun confirmationSurvivesRecreationAndDeleteKeepsBookmarks(): Unit = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
         val store = ViewModelStore()
@@ -92,21 +108,21 @@ class CollectionEditorTest {
             db.collectionDao().insertMembership(me.bubblespark.tidilo.data.db.BookmarkCollectionCrossRef("one", "a"))
             fun create(saved: SavedStateHandle) { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(saved, CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java] }
             host.runOnMainSync { create(handle) }
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             host.runOnMainSync { vm.confirmDelete(true) }
             assertNotNull(db.collectionDao().getById("a"))
             val snapshot = handle.keys().associateWith { handle.get<Any?>(it) }
             host.runOnMainSync { store.clear(); create(SavedStateHandle(snapshot)) }
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             assertTrue(vm.state.value.confirmDelete)
             host.runOnMainSync { vm.delete() }
-            withTimeout(5000) { while (!vm.state.value.done) delay(20) }
+            vm.state.await { it.done }
             assertNull(db.collectionDao().getById("a"))
             assertNotNull(db.bookmarkDao().getBookmarkById("one"))
             assertTrue(db.collectionDao().observeMembershipIds("one").first().isEmpty())
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
-    @Test fun draftsSurviveRecreationAndRepeatedCreateSavesOnlyOnce() = runBlocking {
+    @Test fun draftsSurviveRecreationAndRepeatedCreateSavesOnlyOnce(): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(instrumentation.targetContext, AppDatabase::class.java).build()
         val repo = CollectionRepository(db)
@@ -127,22 +143,23 @@ class CollectionEditorTest {
                 vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(snapshot), repo, null) } })[CollectionEditorViewModel::class.java]
                 vm.create(); vm.create()
             }
-            withTimeout(5000) { while (!vm.state.value.done) delay(20) }
+            vm.state.await { it.done }
             assertEquals(1, db.collectionDao().observeCollections(true).first().size)
         } finally { instrumentation.runOnMainSync { store.clear() }; db.close() }
     }
 
-    @Test fun missingEditDoesNotRecreateAndFailureRetainsDraft() = runBlocking {
+    @Test fun missingEditDoesNotRecreateAndFailureRetainsDraft(): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(instrumentation.targetContext, AppDatabase::class.java).build()
         val store = ViewModelStore()
         lateinit var vm: CollectionEditorViewModel
         try {
             instrumentation.runOnMainSync { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), "missing") } })[CollectionEditorViewModel::class.java] }
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             assertTrue(vm.state.value.missing)
             instrumentation.runOnMainSync { vm.edit(CollectionDraft("Keep")) }
-            delay(800)
+            // Negative window: one autosave debounce, after which a write would have started.
+            delay(DebouncedAutosaver.DEFAULT_DELAY_MILLIS + 100)
             assertNull(db.collectionDao().getById("missing"))
             instrumentation.runOnMainSync { store.clear() }
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_create BEFORE INSERT ON collections BEGIN SELECT RAISE(ABORT, 'injected'); END")
@@ -150,13 +167,13 @@ class CollectionEditorTest {
                 vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), null) } })[CollectionEditorViewModel::class.java]
                 vm.edit(CollectionDraft("Keep")); vm.create()
             }
-            withTimeout(5000) { while (vm.state.value.error == null) delay(20) }
+            vm.state.await { it.error != null }
             assertEquals("Keep", vm.state.value.draft.title)
             assertFalse(vm.state.value.done)
         } finally { instrumentation.runOnMainSync { store.clear() }; db.close() }
     }
 
-    @Test fun existingCollectionAutosavesValidDraftsAndKeepsBlankTitleAsDraft() = runBlocking {
+    @Test fun existingCollectionAutosavesValidDraftsAndKeepsBlankTitleAsDraft(): Unit = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
         val store = ViewModelStore()
@@ -164,23 +181,23 @@ class CollectionEditorTest {
         try {
             db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "Stored", "", "folder", null, 0, 1, 1))
             host.runOnMainSync { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java] }
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "Renamed", colorIndex = 3)) }
-            withTimeout(5000) { while (db.collectionDao().getById("a")?.title != "Renamed") delay(20) }
+            db.awaitCollection("a") { it?.title == "Renamed" }
             assertEquals(3, db.collectionDao().getById("a")?.colorIndex)
             host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "")) }
-            delay(1000)
+            vm.autosaveStatus.await { it == AutosaveStatus.Invalid }
             assertEquals("A blank title is never written", "Renamed", db.collectionDao().getById("a")?.title)
             assertEquals("The blank draft stays recoverable", "", vm.state.value.draft.title)
-            assertEquals(me.bubblespark.tidilo.ui.screens.library.AutosaveStatus.Invalid, vm.autosaveStatus.value)
+            assertEquals(AutosaveStatus.Invalid, vm.autosaveStatus.value)
             host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "Pending at close")) }
             // Closing before the pause must still persist the last valid draft.
             host.runOnMainSync { store.clear() }
-            withTimeout(5000) { while (db.collectionDao().getById("a")?.title != "Pending at close") delay(20) }
+            db.awaitCollection("a") { it?.title == "Pending at close" }
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
 
-    @Test fun recreatedEditorResubmitsRestoredDraft() = runBlocking {
+    @Test fun recreatedEditorResubmitsRestoredDraft(): Unit = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
         val store = ViewModelStore()
@@ -192,17 +209,17 @@ class CollectionEditorTest {
             db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "Stored", "", "folder", null, 0, 1, 1))
             // A blank title restored after recreation keeps its recoverable-draft error.
             create(SavedStateHandle(mapOf("loaded" to true, "edited" to arrayListOf("TITLE"), "title" to "", "description" to "", "icon" to "folder", "color" to 0)))
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
-            withTimeout(5000) { while (vm.autosaveStatus.value != me.bubblespark.tidilo.ui.screens.library.AutosaveStatus.Invalid) delay(20) }
+            vm.state.await { !it.loading }
+            vm.autosaveStatus.await { it == AutosaveStatus.Invalid }
             assertEquals("Stored", db.collectionDao().getById("a")?.title)
             host.runOnMainSync { store.clear() }
             // A valid unsaved draft restored after recreation is written without further input.
             create(SavedStateHandle(mapOf("loaded" to true, "edited" to arrayListOf("TITLE"), "title" to "Restored", "description" to "", "icon" to "folder", "color" to 0)))
-            withTimeout(5000) { while (db.collectionDao().getById("a")?.title != "Restored") delay(20) }
+            db.awaitCollection("a") { it?.title == "Restored" }
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
 
-    @Test fun laterEmissionsNeverResubmitTheInitialDraft() = runBlocking {
+    @Test fun laterEmissionsNeverResubmitTheInitialDraft(): Unit = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
         val store = ViewModelStore()
@@ -210,16 +227,18 @@ class CollectionEditorTest {
         try {
             db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "A", "", "folder", null, 0, 1, 1))
             host.runOnMainSync { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java] }
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             // Another editor renames the collection while this one is open without edits.
             CollectionRepository(db).update("a", CollectionDraft("B"), 2)
-            delay(1500)
+            vm.state.await { it.draft.title == "B" }
+            // Negative window: one autosave debounce, after which a write-back would have started.
+            delay(DebouncedAutosaver.DEFAULT_DELAY_MILLIS + 100)
             assertEquals("An untouched editor must not write its initial draft back", "B", db.collectionDao().getById("a")?.title)
-            assertEquals(me.bubblespark.tidilo.ui.screens.library.AutosaveStatus.Idle, vm.autosaveStatus.value)
+            assertEquals(AutosaveStatus.Idle, vm.autosaveStatus.value)
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
 
-    @Test fun editingOneFieldKeepsAnotherEditorsChangeToUntouchedFields() = runBlocking {
+    @Test fun editingOneFieldKeepsAnotherEditorsChangeToUntouchedFields(): Unit = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
         val store = ViewModelStore()
@@ -227,16 +246,16 @@ class CollectionEditorTest {
         try {
             db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "A", "Old description", "folder", null, 0, 1, 1))
             host.runOnMainSync { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java] }
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             CollectionRepository(db).update("a", CollectionDraft("B", "Old description"), 2)
-            withTimeout(5000) { while (vm.state.value.draft.title != "B") delay(20) }
+            vm.state.await { it.draft.title == "B" }
             host.runOnMainSync { vm.edit(vm.state.value.draft.copy(description = "New description")) }
-            withTimeout(5000) { while (db.collectionDao().getById("a")?.description != "New description") delay(20) }
+            db.awaitCollection("a") { it?.description == "New description" }
             assertEquals("The untouched title keeps the other editor's change", "B", db.collectionDao().getById("a")?.title)
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
 
-    @Test fun pendingEditPicksUpAnotherEditorsChangeBeforeItIsWritten() = runBlocking {
+    @Test fun pendingEditPicksUpAnotherEditorsChangeBeforeItIsWritten(): Unit = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
         val store = ViewModelStore()
@@ -244,17 +263,17 @@ class CollectionEditorTest {
         try {
             db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "A", "Old description", "folder", null, 0, 1, 1))
             host.runOnMainSync { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java] }
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             // The description edit is still waiting for its typing pause when another editor renames the collection.
             host.runOnMainSync { vm.edit(vm.state.value.draft.copy(description = "New description")) }
             CollectionRepository(db).update("a", CollectionDraft("B", "Old description"), 2)
-            withTimeout(5000) { while (db.collectionDao().getById("a")?.description != "New description") delay(20) }
+            db.awaitCollection("a") { it?.description == "New description" }
             assertEquals("The pending write must carry the adopted title", "B", db.collectionDao().getById("a")?.title)
             assertEquals("B", vm.state.value.draft.title)
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
 
-    @Test fun autosaveWritesOnlyEditedFieldsOverAConcurrentCommit() = runBlocking {
+    @Test fun autosaveWritesOnlyEditedFieldsOverAConcurrentCommit(): Unit = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
         try {
@@ -272,32 +291,33 @@ class CollectionEditorTest {
         } finally { db.close() }
     }
 
-    @Test fun revertDuringAnInFlightWriteIsPersistedAndShown() = runBlocking {
+    @Test fun revertDuringAnInFlightWriteIsPersistedAndShown(): Unit = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
         val store = ViewModelStore()
-        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+        val blockerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         lateinit var vm: CollectionEditorViewModel
         try {
             db.collectionDao().insert(me.bubblespark.tidilo.data.db.CollectionEntity("a", "A", "", "folder", null, 0, 1, 1))
             host.runOnMainSync { vm = ViewModelProvider(store, viewModelFactory { initializer { CollectionEditorViewModel(SavedStateHandle(), CollectionRepository(db), "a") } })[CollectionEditorViewModel::class.java] }
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             // Hold the database so the next write stays in flight.
-            val blocker = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) { db.withTransaction { gate.await() } }
-            delay(200)
+            val entered = CompletableDeferred<Unit>()
+            val blocker = blockerScope.launch { db.withTransaction { entered.complete(Unit); gate.await() } }
+            withTimeout(5_000) { entered.await() }
             host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "B")) }
-            withTimeout(5000) { while (vm.autosaveStatus.value != me.bubblespark.tidilo.ui.screens.library.AutosaveStatus.Saving) delay(20) }
+            vm.autosaveStatus.await { it == AutosaveStatus.Saving }
             host.runOnMainSync { vm.edit(vm.state.value.draft.copy(title = "A")) }
             gate.complete(Unit)
             blocker.join()
-            withTimeout(5000) { while (vm.autosaveStatus.value != me.bubblespark.tidilo.ui.screens.library.AutosaveStatus.Saved) delay(20) }
-            delay(300)
+            vm.autosaveStatus.await { it == AutosaveStatus.Saved }
             assertEquals("The revert is stored", "A", db.collectionDao().getById("a")?.title)
             assertEquals("The revert is shown", "A", vm.state.value.draft.title)
-        } finally { gate.complete(Unit); host.runOnMainSync { store.clear() }; db.close() }
+        } finally { gate.complete(Unit); blockerScope.cancel(); host.runOnMainSync { store.clear() }; db.close() }
     }
 
-    @Test fun createWithBookmarkAssignmentRollsBackOnFailureRetriesWithoutDuplicatesAndRejectsMissingBookmark() = runBlocking {
+    @Test fun createWithBookmarkAssignmentRollsBackOnFailureRetriesWithoutDuplicatesAndRejectsMissingBookmark(): Unit = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
         val repo = CollectionRepository(db)
@@ -317,7 +337,7 @@ class CollectionEditorTest {
                 vm.edit(CollectionDraft("Assigned Collection", "From Detail", "star", null, 3))
                 vm.create()
             }
-            withTimeout(5000) { while (vm.state.value.error == null) delay(20) }
+            vm.state.await { it.error != null }
             assertEquals("save", vm.state.value.error)
             assertFalse(vm.state.value.done)
             assertFalse(vm.state.value.missing)
@@ -329,7 +349,7 @@ class CollectionEditorTest {
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_cross_ref")
             val expectedId = vm.createdId
             host.runOnMainSync { vm.create(); vm.create() }
-            withTimeout(5000) { while (!vm.state.value.done) delay(20) }
+            vm.state.await { it.done }
             assertEquals(expectedId, vm.createdId)
             assertEquals(1, db.collectionDao().observeCollections(true).first().size)
             assertEquals("Assigned Collection", db.collectionDao().getById(expectedId)?.title)
@@ -345,7 +365,7 @@ class CollectionEditorTest {
                 vm.edit(CollectionDraft("Should Not Exist"))
                 vm.create()
             }
-            withTimeout(5000) { while (vm.state.value.error == null) delay(20) }
+            vm.state.await { it.error != null }
             assertEquals("missing_bookmark", vm.state.value.error)
             assertFalse(vm.state.value.done)
             assertFalse(vm.state.value.missing)
@@ -362,7 +382,7 @@ class CollectionEditorTest {
         } finally { host.runOnMainSync { store.clear() }; db.close() }
     }
 
-    @Test fun recreatedAssignedEditorRecoversCommittedUncommittedRemovedMembershipAndMissingBookmark() = runBlocking {
+    @Test fun recreatedAssignedEditorRecoversCommittedUncommittedRemovedMembershipAndMissingBookmark(): Unit = runBlocking {
         val host = InstrumentationRegistry.getInstrumentation()
         val db = Room.inMemoryDatabaseBuilder(host.targetContext, AppDatabase::class.java).build()
         val repo = CollectionRepository(db)
@@ -381,7 +401,7 @@ class CollectionEditorTest {
             assertTrue(repo.createAndAssign(committedId, CollectionDraft("Committed"), "bm-rec", 10))
             val committedHandle = SavedStateHandle(mapOf("createId" to committedId, "submitting" to true, "title" to "Committed"))
             open(committedHandle)
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             assertTrue(vm.state.value.done)
             assertNull(vm.state.value.error)
             host.runOnMainSync { vm.create() }
@@ -393,11 +413,11 @@ class CollectionEditorTest {
             val pendingId = java.util.UUID.randomUUID().toString()
             val pendingHandle = SavedStateHandle(mapOf("createId" to pendingId, "submitting" to true, "title" to "Retried Pending"))
             open(pendingHandle)
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             assertFalse(vm.state.value.done)
             assertNull(vm.state.value.error)
             host.runOnMainSync { vm.create() }
-            withTimeout(5000) { while (!vm.state.value.done) delay(20) }
+            vm.state.await { it.done }
             assertEquals(pendingId, vm.createdId)
             assertTrue(pendingId in db.collectionDao().observeMembershipIds("bm-rec").first())
             host.runOnMainSync { store.clear() }
@@ -408,11 +428,11 @@ class CollectionEditorTest {
             db.collectionDao().removeMembership("bm-rec", detachedId)
             val detachedHandle = SavedStateHandle(mapOf("createId" to detachedId, "submitting" to true, "title" to "Detached"))
             open(detachedHandle)
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             assertFalse(vm.state.value.done)
             assertNull(vm.state.value.error)
             host.runOnMainSync { vm.create() }
-            withTimeout(5000) { while (!vm.state.value.done) delay(20) }
+            vm.state.await { it.done }
             assertEquals(detachedId, vm.createdId)
             assertTrue(detachedId in db.collectionDao().observeMembershipIds("bm-rec").first())
             host.runOnMainSync { store.clear() }
@@ -421,7 +441,7 @@ class CollectionEditorTest {
             val orphanCreatorHandle = SavedStateHandle(mapOf("createId" to detachedId, "submitting" to true, "title" to "Detached"))
             db.bookmarkDao().deleteById("bm-rec")
             open(orphanCreatorHandle, bookmarkId = "bm-rec")
-            withTimeout(5000) { while (vm.state.value.loading) delay(20) }
+            vm.state.await { !it.loading }
             assertEquals("missing_bookmark", vm.state.value.error)
             assertFalse(vm.state.value.done)
             host.runOnMainSync {

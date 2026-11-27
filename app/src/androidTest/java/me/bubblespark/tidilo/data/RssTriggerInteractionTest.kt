@@ -2,34 +2,32 @@ package me.bubblespark.tidilo.data
 
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
-import android.view.InputDevice
-import android.view.MotionEvent
 import android.view.PixelCopy
-import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.key
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.StateRestorationTester
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
-import androidx.compose.runtime.saveable.SaveableStateRegistry
 import java.time.LocalTime
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.R
@@ -37,183 +35,133 @@ import me.bubblespark.tidilo.data.rss.RssSettings
 import me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent
 import me.bubblespark.tidilo.ui.screens.settings.StorageLoad
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
+/** RSS trigger-time picker restoration and large-font reachability of the trigger controls. */
 class RssTriggerInteractionTest {
-    private val host = HeaderTestHost()
-    private suspend fun await(predicate: suspend () -> Boolean) = withTimeout(5000) { while (!predicate()) delay(30) }
+    @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
+    private val activity get() = composeRule.activity
 
-    private fun activePickerNode(predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
-        fun find(node: AccessibilityNodeInfo, matches: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
-            if (node.isVisibleToUser && matches(node)) return node
-            for (index in 0 until node.childCount) {
-                val match = node.getChild(index)?.let { find(it, matches) }
-                if (match != null) return match
-            }
-            return null
-        }
-        val root = host.instrumentation.uiAutomation.rootInActiveWindow ?: return null
-        if (find(root) { it.text?.toString() == "Save" } == null) return null
-        return find(root, predicate)
-    }
+    private fun exists(matcher: SemanticsMatcher) = composeRule.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()
+    private fun description(resource: Int, vararg args: Any) = hasContentDescription(activity.getString(resource, *args))
+    private fun clickRow(matcher: SemanticsMatcher) = composeRule.clickNode(composeRule.revealRssRow(matcher))
+    private fun clickDialog(label: String) = composeRule.clickNode(composeRule.awaitNode(inRssDialog(hasText(label))))
 
-    private fun clickDial(value: String): Boolean {
-        val label = activePickerNode { it.text == null && it.contentDescription?.toString() == value }
-        val target = generateSequence(label) { it.parent }.firstOrNull { it.isClickable }
-        return target?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
-    }
+    /** A clock-face value: the Material dial exposes it as a description without text. */
+    private fun dial(value: String) =
+        inRssDialog(hasContentDescription(value) and SemanticsMatcher.keyNotDefined(SemanticsProperties.Text))
 
-    private fun tapMinute(value: String) {
-        val label = activePickerNode { it.text == null && it.contentDescription?.toString() == value } ?: return
-        val bounds = Rect().also(label::getBoundsInScreen)
-        if (bounds.isEmpty) return
-        val downTime = SystemClock.uptimeMillis()
-        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
-            val event = MotionEvent.obtain(
-                downTime, SystemClock.uptimeMillis(), action, bounds.exactCenterX(), bounds.exactCenterY(), 0
-            )
-            try {
-                event.source = InputDevice.SOURCE_TOUCHSCREEN
-                host.instrumentation.uiAutomation.injectInputEvent(event, true)
-            } finally {
-                event.recycle()
-            }
-        }
-    }
+    /** The picker's minute field shows 15 once the dial accepted the selection. */
+    private fun showsMinute15() = exists(inRssDialog(hasText("15") and hasContentDescription("15 minutes")))
 
-    private fun showsMinute15() = activePickerNode {
-        it.text?.toString() == "15" && it.contentDescription?.toString() == "15 minutes"
-    } != null
-
-    @Test fun pickerDraftSurvivesRestorationAndStaleEditIsDiscarded(): Unit = runBlocking {
-        val activity = host.launch()
-        val controls = RssTriggerTestControls(host, activity)
+    @Test fun pickerDraftSurvivesRestorationAndStaleEditIsDiscarded() {
         val settings = mutableStateOf(RssSettings(listOf(LocalTime.of(18, 30))))
-        val mounted = mutableStateOf(true)
-        val registry = mutableStateOf(SaveableStateRegistry(null) { true })
-        val unmounted = CompletableDeferred<Unit>()
+        val restoration = StateRestorationTester(composeRule)
         var updates = 0
         var stage = "mount"
         try {
-            host.main { activity.setContent { MaterialTheme {
-                if (mounted.value) CompositionLocalProvider(LocalSaveableStateRegistry provides registry.value) {
+            restoration.setContent {
+                TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
                     RssSettingsContent(StorageLoad.Ready(emptyList()), settings.value, false, null, true,
                         onBack = {}, onRetry = {}, onSettings = { settings.value = it; updates++ },
                         onFeed = { _, _ -> }, onDelete = {}, onFetch = {}, onDismissError = {})
-                    DisposableEffect(Unit) {
-                        onDispose { unmounted.complete(Unit) }
-                    }
                 }
-            } } }
+            }
             stage = "add default time"
-            controls.clickRow("Add trigger", controls.description(R.string.rss_add_trigger_time))
-            controls.clickDialog("Add")
-            await { settings.value.triggerTimes.size == 2 }
+            clickRow(description(R.string.rss_add_trigger_time))
+            clickDialog("Add")
+            composeRule.waitUntil(5_000) { settings.value.triggerTimes.size == 2 }
             assertEquals(listOf(LocalTime.of(8, 0), LocalTime.of(18, 30)), settings.value.triggerTimes)
             stage = "open edit"
-            controls.clickRow("Edit 18:30", controls.description(R.string.rss_edit_trigger_time, "18:30"))
-            // The existing Material clock exposes values through descriptions, not text.
+            clickRow(description(R.string.rss_edit_trigger_time, "18:30"))
             stage = "select hour 12"
-            await { clickDial("12 hours") }
+            composeRule.clickNode(composeRule.awaitNode(dial("12 hours")))
             stage = "select minute 15"
-            controls.awaitDialog("minute dial") { host.description(it, "20 minutes") }
-            await {
-                val selected = showsMinute15()
-                // The dial can be present while Material still ignores selections during its transition.
-                if (!selected) tapMinute("15 minutes")
-                selected
+            composeRule.awaitNode(dial("20 minutes"))
+            // The dial can be present while Material still ignores selections during its transition.
+            for (attempt in 1..10) {
+                if (showsMinute15()) break
+                composeRule.onAllNodes(dial("15 minutes")).onFirst().performTouchInput { click() }
+                composeRule.waitForIdle()
             }
-            var saved: Map<String, List<Any?>> = emptyMap()
-            stage = "save and unmount"
-            host.main { saved = registry.value.performSave(); mounted.value = false }
-            withTimeout(5000) { unmounted.await() }
-            await { !controls.dialogHas(controls.text("Save")) }
+            assertTrue("Minute 15 was not accepted", showsMinute15())
             stage = "restore and save draft"
-            host.main { registry.value = SaveableStateRegistry(saved) { true }; mounted.value = true }
-            await(::showsMinute15)
-            controls.clickDialog("Save")
-            await { settings.value.triggerTimes.contains(LocalTime.of(12, 15)) }
+            restoration.emulateSavedInstanceStateRestore()
+            composeRule.waitUntil(5_000) { showsMinute15() }
+            clickDialog("Save")
+            composeRule.waitUntil(5_000) { settings.value.triggerTimes.contains(LocalTime.of(12, 15)) }
             assertEquals(listOf(LocalTime.of(8, 0), LocalTime.of(12, 15)), settings.value.triggerTimes)
             assertFalse(settings.value.dailyEnabled)
             assertTrue(settings.value.wifiOnly)
             assertEquals(2, updates)
             stage = "stale edit"
-            controls.clickRow("Edit 12:15", controls.description(R.string.rss_edit_trigger_time, "12:15"))
-            controls.awaitDialog("Save", predicate = controls.text("Save"))
-            host.main { settings.value = settings.value.copy(triggerTimes = listOf(LocalTime.of(8, 0)), wifiOnly = false) }
-            await { !controls.dialogHas(controls.text("Save")) }
+            clickRow(description(R.string.rss_edit_trigger_time, "12:15"))
+            composeRule.awaitNode(inRssDialog(hasText("Save")))
+            composeRule.runOnUiThread { settings.value = settings.value.copy(triggerTimes = listOf(LocalTime.of(8, 0)), wifiOnly = false) }
+            composeRule.waitUntil(5_000) { !exists(inRssDialog(hasText("Save"))) }
             assertEquals(2, updates)
             assertEquals(listOf(LocalTime.of(8, 0)), settings.value.triggerTimes)
             assertFalse(settings.value.wifiOnly)
-        } catch (failure: Exception) {
+        } catch (failure: Throwable) {
             throw AssertionError("Picker stage: $stage", failure)
-        } finally { host.main { activity.finish() } }
+        }
     }
 
+    private data class Case(val dark: Boolean, val scale: Float, val count: Int)
+
     @Test fun triggerControlsRemainReachableAtLargeFontsInBothThemes(): Unit = runBlocking {
-        val activity = host.launch()
-        val controls = RssTriggerTestControls(host, activity)
-        try {
-            for (dark in listOf(false, true)) for (scale in listOf(1f, 2f)) for (count in 0..3) {
-                val settings = RssSettings(listOf(LocalTime.of(8, 0), LocalTime.NOON, LocalTime.of(18, 30)).take(count))
-                host.main { activity.setContent { key(dark, scale, count) {
-                    TidiloTheme(darkTheme = dark, dynamicColor = false) {
-                        val density = LocalDensity.current.density
-                        CompositionLocalProvider(LocalDensity provides Density(density, scale)) {
-                            Surface { Box(Modifier.width(360.dp)) {
-                                RssSettingsContent(StorageLoad.Ready(emptyList()), settings, false, null, true,
-                                    onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
-                                    onDelete = {}, onFetch = {}, onDismissError = {})
-                            } }
-                        }
+        // Each theme and each font scale reaches both the empty (picker) branch and the delete-button branch.
+        val cases = listOf(Case(false, 1f, 0), Case(true, 2f, 0), Case(false, 2f, 3), Case(true, 1f, 1))
+        val times = listOf(LocalTime.of(8, 0), LocalTime.NOON, LocalTime.of(18, 30))
+        val current = mutableStateOf(cases.first())
+        composeRule.setContent {
+            val case = current.value
+            key(case) {
+                TidiloTheme(darkTheme = case.dark, dynamicColor = false, blurEnabled = false) {
+                    val density = LocalDensity.current.density
+                    CompositionLocalProvider(LocalDensity provides Density(density, case.scale)) {
+                        Surface { Box(Modifier.width(360.dp)) {
+                            RssSettingsContent(StorageLoad.Ready(emptyList()), RssSettings(times.take(case.count)), false, null, true,
+                                onBack = {}, onRetry = {}, onSettings = {}, onFeed = { _, _ -> },
+                                onDelete = {}, onFetch = {}, onDismissError = {})
+                        } }
                     }
-                } } }
-                val scenario = "dark=$dark scale=$scale count=$count"
-                val time = settings.triggerTimes.lastOrNull()
-                val bitmap = if (time == null) {
-                    controls.reveal("Not set ($scenario)", controls.text("Not set"))
-                    host.instrumentation.uiAutomation.takeScreenshot()
-                } else {
-                    val editLabel = controls.description(R.string.rss_edit_trigger_time, time.toString())
-                    val removeLabel = controls.description(R.string.rss_remove_trigger_time, time.toString())
-                    controls.reveal("last trigger ($scenario)", editLabel)
-                    captureDeleteButton(activity, controls, editLabel, removeLabel, scenario)
-                }
-                try {
-                    java.io.File(host.context.getExternalFilesDir(null), "issue160-$dark-$scale-$count.png").outputStream().use {
-                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
-                    }
-                } finally { bitmap.recycle() }
-                if (count == 0) {
-                    controls.clickRow("Add trigger", controls.description(R.string.rss_add_trigger_time))
-                    controls.awaitDialog("Add", predicate = controls.text("Add"))
-                    host.main {
-                        val confirm = host.nodes(activity).first(controls.text("Add"))
-                        assertTrue("Picker confirmation remains visible at font scale $scale",
-                            confirm.boundsInWindow.height >= confirm.size.height - 1 && confirm.size.height > 0)
-                    }
-                    host.instrumentation.waitForIdleSync()
-                    // Capture the settled dialog rather than its translucent entrance frame.
-                    delay(400)
-                    val picker = host.instrumentation.uiAutomation.takeScreenshot()
-                    try { java.io.File(host.context.getExternalFilesDir(null), "issue160-picker-$dark-$scale.png").outputStream().use {
-                        picker.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
-                    } } finally { picker.recycle() }
-                    controls.clickDialog("Cancel")
                 }
             }
-        } finally { host.main { activity.finish() } }
+        }
+        for (case in cases) {
+            composeRule.runOnUiThread { current.value = case }
+            composeRule.waitForIdle()
+            val scenario = "dark=${case.dark} scale=${case.scale} count=${case.count}"
+            val time = times.take(case.count).lastOrNull()
+            if (time == null) {
+                composeRule.revealRssRow(hasText("Not set"))
+                clickRow(description(R.string.rss_add_trigger_time))
+                val confirm = composeRule.awaitNode(inRssDialog(hasText("Add")))
+                assertTrue("Picker confirmation remains visible at font scale ${case.scale}",
+                    confirm.boundsInWindow.height >= confirm.size.height - 1 && confirm.size.height > 0)
+                clickDialog("Cancel")
+            } else {
+                val editLabel = description(R.string.rss_edit_trigger_time, time.toString())
+                val removeLabel = description(R.string.rss_remove_trigger_time, time.toString())
+                composeRule.revealRssRow(editLabel)
+                assertDeleteButton(editLabel, removeLabel, scenario)
+            }
+        }
     }
-    private suspend fun captureDeleteButton(
-        activity: ComponentActivity,
-        controls: RssTriggerTestControls,
-        editLabel: (androidx.compose.ui.semantics.SemanticsNode) -> Boolean,
-        removeLabel: (androidx.compose.ui.semantics.SemanticsNode) -> Boolean,
+
+    /** Asserts the delete control's geometry and its red/white rendering in a window capture. */
+    private suspend fun assertDeleteButton(
+        editLabel: SemanticsMatcher,
+        removeLabel: SemanticsMatcher,
         scenario: String
-    ): Bitmap {
+    ) {
         val committed = CompletableDeferred<Unit>()
-        host.main {
+        composeRule.runOnUiThread {
             val decor = activity.window.decorView
             decor.viewTreeObserver.registerFrameCommitCallback { committed.complete(Unit) }
             decor.invalidate()
@@ -222,24 +170,22 @@ class RssTriggerInteractionTest {
 
         val result = CompletableDeferred<Int>()
         lateinit var bitmap: Bitmap
-        var center = Offset.Zero
         val density = activity.resources.displayMetrics.density
+        val icon = composeRule.awaitNode(removeLabel)
+        val remove = icon.clickTarget()
+        val edit = composeRule.awaitNode(editLabel).clickTarget()
+        for (control in listOf(remove, edit)) {
+            val bounds = control.boundsInRoot
+            assertTrue("48dp touch target: $scenario $bounds",
+                bounds.width >= 48 * density - 1 && bounds.height >= 48 * density - 1)
+            assertTrue("Control fits at 360dp: $scenario $bounds", bounds.right <= 360 * density + 1)
+        }
+        assertTrue("Controls must not overlap: $scenario", remove.boundsInRoot.right <= edit.boundsInRoot.left)
+        assertTrue("Delete icon must be fully visible: $scenario ${icon.boundsInWindow}",
+            icon.boundsInWindow.height >= icon.size.height - 1)
+        val center: Offset = icon.boundsInWindow.center
         try {
-            host.main {
-                val nodes = host.nodes(activity, includeOtherWindows = false)
-                val icon = nodes.first(removeLabel)
-                val remove = controls.action(icon)
-                val edit = controls.action(nodes.first(editLabel))
-                for (control in listOf(remove, edit)) {
-                    val bounds = control.boundsInRoot
-                    assertTrue("48dp touch target: $scenario $bounds",
-                        bounds.width >= 48 * density - 1 && bounds.height >= 48 * density - 1)
-                    assertTrue("Control fits at 360dp: $scenario $bounds", bounds.right <= 360 * density + 1)
-                }
-                assertTrue("Controls must not overlap: $scenario", remove.boundsInRoot.right <= edit.boundsInRoot.left)
-                assertTrue("Delete icon must be fully visible: $scenario ${icon.boundsInWindow}",
-                    icon.boundsInWindow.height >= icon.size.height - 1)
-                center = icon.boundsInWindow.center
+            composeRule.runOnUiThread {
                 val decor = activity.window.decorView
                 bitmap = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
                 PixelCopy.request(activity.window, bitmap, { code ->
@@ -264,12 +210,10 @@ class RssTriggerInteractionTest {
                 }
             }
             assertTrue("Delete minus stays white: $scenario center=$center", whiteMinus)
-            return bitmap
-        } catch (failure: Throwable) {
+        } finally {
+            // A capture still in flight recycles its own bitmap once it sees the cancelled result.
             if (result.isCompleted) bitmap.recycle()
             result.cancel()
-            throw failure
         }
     }
-
 }

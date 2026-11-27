@@ -112,8 +112,8 @@ class OverlayMenuRailTest {
             var match: CollapseSample? = null
             for (step in 0 until 8) {
                 composeRule.waitForIdle()
-                match = captureScreen { frame ->
-                    val divider = findRailDivider(frame) ?: return@captureScreen null
+                match = captureScreenOrNull { frame ->
+                    val divider = findRailDivider(frame) ?: return@captureScreenOrNull null
                     lastDivider = divider
                     val left = expanded.expandedLeft + divider.x - expanded.divider.x
                     if (divider.y == expanded.divider.y &&

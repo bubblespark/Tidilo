@@ -71,17 +71,17 @@ class ChromePerformanceFixtureTest {
 
     @Test
     fun recoveryScenarioPreservesAnEarlierPendingJournal() = withIsolatedFixtureEnv { context, db, journalFile, prefsName ->
-        val journal = ChromeFixtureJournal(context, db, journalFile, prefsName)
-        journal.recover()
+        val journal1 = ChromeFixtureJournal(context, db, journalFile, prefsName)
+        journal1.recover()
         val dao = db.bookmarkDao()
         val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
         val keys = listOf("library_filter_mode", "library_view_mode")
         val original = keys.associateWith { prefs.getString(it, null) }
-        val prefix = "chrome-${UUID.randomUUID()}"
-        val ids = (0 until 400).map { "$prefix-$it" }
+        val prefix1 = "chrome-${UUID.randomUUID()}"
+        val ids1 = (0 until 400).map { "$prefix1-$it" }
         dao.insertOrUpdate(
             BookmarkEntity(
-                ids[1],
+                ids1[1],
                 "Chrome fixture article 1",
                 "https://chrome-frame-fixture.invalid/1",
                 "Deterministic local summary 1",
@@ -89,11 +89,28 @@ class ChromePerformanceFixtureTest {
                 updatedAt = 1
             )
         )
-        journal.save(prefix, ids, original, pid = -1)
+        journal1.save(prefix1, ids1, original, pid = -1)
 
-        // Simulate a subsequent fixture run recovering the earlier pending journal before saving its own.
-        journal.recover()
-        assertNull("The earlier journal must be recovered before replacement", dao.getBookmarkById(ids[1]))
+        // A subsequent journal recovers the earlier pending journal before saving and recovering its own.
+        val journal2 = ChromeFixtureJournal(context, db, journalFile, prefsName)
+        journal2.recover()
+        assertNull("The earlier journal must be recovered before replacement", dao.getBookmarkById(ids1[1]))
+
+        val prefix2 = "chrome-${UUID.randomUUID()}"
+        val ids2 = (0 until 400).map { "$prefix2-$it" }
+        dao.insertOrUpdate(
+            BookmarkEntity(
+                ids2[1],
+                "Chrome fixture article 1",
+                "https://chrome-frame-fixture.invalid/1",
+                "Deterministic local summary 1",
+                createdAt = 1001,
+                updatedAt = 1
+            )
+        )
+        journal2.save(prefix2, ids2, original, pid = -1)
+        journal2.recover()
+        assertNull("The replacement journal must also recover its own records", dao.getBookmarkById(ids2[1]))
     }
 
     @Test

@@ -97,15 +97,19 @@ class OverlayBlurRenderingTest {
     }
 }
 
-/** Captures the screen and always recycles the [Bitmap] after [read] returns. */
-internal fun <T> captureScreen(read: (Bitmap) -> T): T {
-    val frame = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+/** Captures the screen and recycles the [Bitmap] when non-null, returning null if capture is unavailable. */
+internal fun <T> captureScreenOrNull(read: (Bitmap) -> T): T? {
+    val frame = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return null
     return try {
         read(frame)
     } finally {
         frame.recycle()
     }
 }
+
+/** Captures the screen and always recycles the [Bitmap] after [read] returns. */
+internal fun <T> captureScreen(read: (Bitmap) -> T): T =
+    captureScreenOrNull(read) ?: throw AssertionError("uiAutomation.takeScreenshot() returned null")
 
 /**
  * Samples the rendered screen after [ComposeTestRule.waitForIdle] up to [maxAttempts] times spaced
@@ -122,7 +126,13 @@ internal suspend fun <T : Any> ComposeTestRule.sampleScreen(
     var last = ""
     repeat(maxAttempts) { attempt ->
         waitForIdle()
-        captureScreen { frame -> read(frame).also { if (it == null) last = describe(frame) } }?.let { return it }
+        var captured = false
+        val sampled = captureScreenOrNull { frame ->
+            captured = true
+            read(frame).also { if (it == null) last = describe(frame) }
+        }
+        if (!captured) last = "takeScreenshot() returned null"
+        sampled?.let { return it }
         if (attempt < maxAttempts - 1) delay(intervalMs)
     }
     throw AssertionError("The screen never showed $label. Last sample: $last")

@@ -235,15 +235,23 @@ private suspend fun ComposeTestRule.settledPixels(
     repeat(MAX_SETTLE_ATTEMPTS) { attempt ->
         waitForIdle()
         val targets = points()
-        val sample = captureScreen { image ->
+        var captured = false
+        val sample = captureScreenOrNull { image ->
+            captured = true
             image.getPixel(markerPoint.x.toInt(), markerPoint.y.toInt()) to
                 targets.map { image.getPixel(it.x.toInt(), it.y.toInt()) }
         }
-        last = sample
-        val current = sample.second.takeIf { sample.first == expected }
-        repeats = if (current != null && current == previous) repeats + 1 else 0
-        previous = current
-        if (repeats >= STABLE_REPEATS && current != null) return current
+        if (!captured || sample == null) {
+            last = null
+            repeats = 0
+            previous = null
+        } else {
+            last = sample
+            val current = sample.second.takeIf { sample.first == expected }
+            repeats = if (current != null && current == previous) repeats + 1 else 0
+            previous = current
+            if (repeats >= STABLE_REPEATS && current != null) return current
+        }
         if (attempt < MAX_SETTLE_ATTEMPTS - 1) delay(SAMPLE_INTERVAL_MS)
     }
     throw AssertionError("No settled frame for marker ${Integer.toHexString(expected)}; last (marker, pixels) = $last")

@@ -18,7 +18,12 @@ on:
 
 jobs:
   instrumented-test:
+    name: Instrumented Tests (API ${{ inputs.api_level }}, shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJson(inputs.test_class != '' && '[0]' || '[0,1,2,3,4,5,6,7,8,9]') }}
     # To prevent a GradleException from occurring in the `signingConfigs` section of `app/build.gradle.kts` when `CI==“true”` and the keystore is not configured,
     # override it to `false` when running debug tests.
     env:
@@ -80,10 +85,10 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_7
-          ram-size: 2048M
+          ram-size: 4096M
           heap-size: 512M
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: /tmp/run-instrumented-with-diag.sh ${{ inputs.test_class != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.test_class) || '' }}
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -feature -Vulkan -noaudio -no-boot-anim -camera-back none
+          script: /tmp/run-instrumented-with-diag.sh ${{ inputs.test_class != '' && format('-Pandroid.testInstrumentationRunnerArguments.class={0}', inputs.test_class) || format('-Pandroid.testInstrumentationRunnerArguments.numShards=10 -Pandroid.testInstrumentationRunnerArguments.shardIndex={0}', matrix.shard) }}
 
       - name: Collect emulator diagnostics
         if: failure()
@@ -100,7 +105,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: android-test-report-api-${{ inputs.api_level }}
+          name: android-test-report-api-${{ inputs.api_level }}-shard-${{ matrix.shard }}
           path: |
             app/build/reports/androidTests/connected/
             diagnostics/

@@ -1,31 +1,47 @@
 package me.bubblespark.tidilo.data
 
-import androidx.activity.compose.setContent
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.runtime.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import kotlinx.coroutines.delay
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import me.bubblespark.tidilo.ui.components.*
+import kotlinx.coroutines.withContext
+import me.bubblespark.tidilo.ui.components.FrostedHeaderContainer
+import me.bubblespark.tidilo.ui.components.LocalScreenBackdropState
+import me.bubblespark.tidilo.ui.components.ScreenBackdropState
+import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
+import me.bubblespark.tidilo.ui.components.rememberScreenBackdropInput
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
 class ScreenBackdropLifecycleTest {
-    @Test fun concurrentScreensKeepOwnersAcrossTogglesAndDisposeIndependently(): Unit = runBlocking {
-        val host = HeaderTestHost()
-        val activity = host.launch()
+    @get:Rule val composeRule = createComposeRule()
+
+    @Test
+    fun concurrentScreensKeepOwnersAcrossTogglesAndDisposeIndependently(): Unit = runBlocking {
         var enabled by mutableStateOf(true)
         var second by mutableStateOf(true)
         val owners = arrayOfNulls<ScreenBackdropState>(2)
@@ -33,15 +49,19 @@ class ScreenBackdropLifecycleTest {
         var removed = 0
         var focused = false
         var draft by mutableStateOf("Retained draft")
-        var scroll: androidx.compose.foundation.ScrollState? = null
+        var scroll: ScrollState? = null
         val focus = FocusRequester()
-        try {
-            host.main { activity.setContent { TidiloTheme(blurEnabled = enabled) {
-                @Composable fun Screen(index: Int) {
+        composeRule.setContent {
+            TidiloTheme(blurEnabled = enabled) {
+                @Composable
+                fun Screen(index: Int) {
                     TidiloScreenScaffold(header = {
                         val owner = LocalScreenBackdropState.current
                         val input = rememberScreenBackdropInput()
-                        SideEffect { owners[index] = owner; inputs[index] = input != null }
+                        SideEffect {
+                            owners[index] = owner
+                            inputs[index] = input != null
+                        }
                         DisposableEffect(Unit) { onDispose { removed++ } }
                         FrostedHeaderContainer { Box(Modifier.size(20.dp)) }
                     }) {
@@ -49,55 +69,79 @@ class ScreenBackdropLifecycleTest {
                             val state = rememberScrollState()
                             SideEffect { scroll = state }
                             Column(Modifier.height(200.dp).verticalScroll(state)) {
-                                BasicTextField(draft, { draft = it }, Modifier.focusRequester(focus).onFocusChanged { focused = it.isFocused })
+                                BasicTextField(
+                                    draft,
+                                    { draft = it },
+                                    Modifier.focusRequester(focus).onFocusChanged { focused = it.isFocused }
+                                )
                                 Box(Modifier.height(1000.dp))
                             }
-                        } else Box(Modifier.size(20.dp))
+                        } else {
+                            Box(Modifier.size(20.dp))
+                        }
                     }
                 }
                 Screen(0)
                 if (second) Screen(1)
-            } } }
-            delay(400)
-            val first = requireNotNull(owners[0])
-            val other = requireNotNull(owners[1])
-            assertNotSame(first, other)
-            assertTrue(inputs.all { it })
-            // Test-only inspection of pinned Haze demand; no production reflection is added.
-            fun demand(owner: ScreenBackdropState): Boolean {
-                val areas = owner.haze.javaClass.methods.single { it.name.startsWith("getAreas") }.invoke(owner.haze) as List<*>
-                val area = areas.filterNotNull().firstOrNull { candidate ->
-                    candidate.javaClass.methods.single { it.name.startsWith("getKey") }.invoke(candidate) === owner.sourceKey
-                } ?: return false
-                return area.javaClass.methods.single { it.name.startsWith("getHasCaptureDemand") }.invoke(area) as Boolean
             }
-            suspend fun awaitDemand(expected: Boolean) = withTimeout(5000) {
-                var matches = false
-                while (!matches) {
-                    host.main { matches = demand(first) == expected && demand(other) == expected }
-                    if (!matches) delay(30)
-                }
-            }
+        }
+        composeRule.waitUntil(5_000) {
+            var ready = false
+            composeRule.runOnUiThread { ready = owners[0] != null && owners[1] != null && inputs.all { it } }
+            ready
+        }
+        val first = requireNotNull(owners[0])
+        val other = requireNotNull(owners[1])
+        assertNotSame(first, other)
+        assertTrue(inputs.all { it })
+
+        // Test-only inspection of pinned Haze demand; no production reflection is added.
+        fun demand(owner: ScreenBackdropState): Boolean {
+            val areas = owner.haze.javaClass.methods.single { it.name.startsWith("getAreas") }.invoke(owner.haze) as List<*>
+            val area = areas.filterNotNull().firstOrNull { candidate ->
+                candidate.javaClass.methods.single { it.name.startsWith("getKey") }.invoke(candidate) === owner.sourceKey
+            } ?: return false
+            return area.javaClass.methods.single { it.name.startsWith("getHasCaptureDemand") }.invoke(area) as Boolean
+        }
+
+        fun awaitDemand(expected: Boolean) = composeRule.waitUntil(5_000) {
+            var matches = false
+            composeRule.runOnUiThread { matches = demand(first) == expected && demand(other) == expected }
+            matches
+        }
+
+        awaitDemand(true)
+        composeRule.runOnUiThread { focus.requestFocus() }
+        composeRule.waitUntil(5_000) { focused }
+        withContext(Dispatchers.Main) { requireNotNull(scroll).scrollTo(80) }
+        composeRule.waitForIdle()
+        assertTrue(focused)
+
+        repeat(5) {
+            composeRule.runOnUiThread { enabled = false }
+            awaitDemand(false)
+            composeRule.runOnUiThread { assertFalse(inputs.any { it }) }
+            composeRule.runOnUiThread { enabled = true }
             awaitDemand(true)
-            host.main { focus.requestFocus() }
-            requireNotNull(scroll).scrollTo(80)
-            assertTrue(focused)
-            repeat(5) {
-                host.main { enabled = false }
-                awaitDemand(false)
-                assertFalse(inputs.any { it })
-                host.main { enabled = true }
-                awaitDemand(true)
-                assertSame(first, owners[0]); assertSame(other, owners[1])
+            composeRule.runOnUiThread {
+                assertSame(first, owners[0])
+                assertSame(other, owners[1])
                 assertEquals("Retained draft", draft)
                 assertEquals(80, scroll?.value)
                 assertTrue(focused)
             }
-            host.main { second = false }
-            delay(200)
+        }
+
+        composeRule.runOnUiThread { second = false }
+        composeRule.waitUntil(5_000) {
+            var disposed = false
+            composeRule.runOnUiThread { disposed = removed == 1 && !demand(other) }
+            disposed
+        }
+        composeRule.runOnUiThread {
             assertEquals(1, removed)
             assertSame(first, owners[0])
-            host.main { assertFalse(demand(other)) }
-        } finally { host.main { activity.finish() } }
+            assertFalse(demand(other))
+        }
     }
 }

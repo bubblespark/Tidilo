@@ -1,55 +1,72 @@
 package me.bubblespark.tidilo.data
 
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import me.bubblespark.tidilo.ui.components.*
+import me.bubblespark.tidilo.ui.components.TidiloAlertDialog
+import me.bubblespark.tidilo.ui.components.TidiloModalBottomSheet
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
-import org.junit.Assert.*
+import org.junit.Assert.assertNotEquals
+import org.junit.Rule
 import org.junit.Test
 
 class OverlayNestedWindowsTest {
+    @get:Rule val composeRule = createComposeRule()
+
     @OptIn(ExperimentalMaterial3Api::class)
-    @Test fun siblingConfirmationSamplesChangesInTheSheetBelow(): Unit = runBlocking {
-        val host = HeaderTestHost()
-        val activity = host.launch()
+    @Test
+    fun siblingConfirmationSamplesChangesInTheSheetBelow(): Unit = runBlocking {
         var lowerColor by mutableStateOf(Color.Green)
         var confirmation by mutableStateOf(false)
-        try {
-            host.main { activity.setContent { TidiloTheme(dynamicColor = false) {
+        composeRule.setContent {
+            TidiloTheme(dynamicColor = false) {
                 Box(Modifier.fillMaxSize().background(Color.Red))
-                TidiloModalBottomSheet(onDismissRequest = {}, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-                    Box(Modifier.fillMaxWidth().height(650.dp).background(lowerColor))
+                TidiloModalBottomSheet(
+                    onDismissRequest = {},
+                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                ) {
+                    Box(Modifier.fillMaxWidth().height(650.dp).background(lowerColor).testTag("nested-lower-sheet"))
                 }
-                if (confirmation) TidiloAlertDialog({}, {}, title = {
-                    Box(Modifier.fillMaxWidth().height(140.dp))
-                })
-            } } }
-            delay(600)
-            host.main { confirmation = true }
-            delay(500)
-            val before = host.instrumentation.uiAutomation.takeScreenshot()
-            host.main { lowerColor = Color.Blue }
-            delay(500)
-            val after = host.instrumentation.uiAutomation.takeScreenshot()
-            try {
-                for ((name, bitmap) in listOf("nested-before.png" to before, "nested-after.png" to after)) {
-                    java.io.File(host.context.cacheDir, name).outputStream().use {
-                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
-                    }
+                if (confirmation) {
+                    TidiloAlertDialog(
+                        {},
+                        {},
+                        title = { Box(Modifier.fillMaxWidth().height(140.dp).testTag("nested-upper-dialog")) }
+                    )
                 }
-                val x = after.width / 2
-                val y = after.height / 2
-                assertNotEquals("The upper dialog must capture the changed sheet, not only the red activity",
-                    before.getPixel(x, y), after.getPixel(x, y))
-            } finally { before.recycle(); after.recycle() }
-        } finally { host.main { activity.finish() } }
+            }
+        }
+        composeRule.awaitNode(hasTestTag("nested-lower-sheet"))
+        composeRule.runOnUiThread { confirmation = true }
+        composeRule.awaitNode(hasTestTag("nested-upper-dialog"))
+
+        val before = composeRule.sampleScreen("upper dialog over green sheet") { frame ->
+            val pixel = frame.getPixel(frame.width / 2, frame.height / 2)
+            pixel.takeIf { android.graphics.Color.green(it) > android.graphics.Color.blue(it) }
+        }
+        composeRule.runOnUiThread { lowerColor = Color.Blue }
+        val after = composeRule.sampleScreen("upper dialog over updated blue sheet") { frame ->
+            val pixel = frame.getPixel(frame.width / 2, frame.height / 2)
+            pixel.takeIf { it != before && android.graphics.Color.blue(it) > android.graphics.Color.green(it) }
+        }
+        assertNotEquals(
+            "The upper dialog must capture the changed sheet, not only the red activity",
+            before,
+            after
+        )
     }
 }

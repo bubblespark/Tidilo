@@ -27,6 +27,11 @@ import androidx.paging.LoadState
 import androidx.paging.LoadStates
 import androidx.paging.PagingData
 import java.util.UUID
+import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
+import me.bubblespark.tidilo.ui.components.CacheVisualSource
+import java.util.concurrent.atomic.AtomicInteger
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.runtime.remember
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -139,6 +144,8 @@ class PlateTransitionTest {
         composeRule.runOnUiThread { model = LibraryViewModel(store, SavedStateHandle(), MutableStateFlow(true), modelScope) }
         composeRule.setContent {
             TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
+                val visuals = LocalCacheVisualSource.current
+                CompositionLocalProvider(LocalCacheVisualSource provides remember(visuals) { CountingPalettes(visuals) }) {
                 val nav = rememberNavController()
                 // The same page transitions TidiloNavGraph uses between plate screens and Detail.
                 val plate = PlateNavTransitions(MaterialTheme.motionScheme.defaultEffectsSpec(), reducedMotion)
@@ -175,8 +182,17 @@ class PlateTransitionTest {
                         }
                     }
                 }
+                }
             }
         }
+    }
+
+    /** Counts finished hero palette lookups, so a test can wait for the palette instead of sleeping. */
+    private val paletteLookups = AtomicInteger()
+
+    private inner class CountingPalettes(private val base: CacheVisualSource) : CacheVisualSource by base {
+        override suspend fun getDetailHeroPalette(domain: String, imageKey: String?, bitmap: ImageBitmap) =
+            base.getDetailHeroPalette(domain, imageKey, bitmap).also { paletteLookups.incrementAndGet() }
     }
 
     private fun nodes(matcher: SemanticsMatcher): List<SemanticsNode> =
@@ -265,22 +281,26 @@ class PlateTransitionTest {
 
     @Test fun statusBarBandNeverDarkensWhileTheHeroPaletteFadesIn() {
         show()
-        // First open caches the hero palette, so the second open fades it in while frames are stepped.
-        openSettled("a")
-        val settled = bandLuminance()
-        back()
-        settle()
+        await(card("a"))
         val library = bandLuminance()
+        val lookups = paletteLookups.get()
         composeRule.mainClock.autoAdvance = false
         tap("a")
-        val seen = (1..90).map {
+        // The image and palette load off the main thread and resume on the paused composition clock, so
+        // each poll steps one frame until the lookup lands; the edge fade starts after that.
+        composeRule.waitUntil(8_000) {
             composeRule.mainClock.advanceTimeByFrame()
-            Thread.sleep(8) // lets the palette lookup land in real time
+            paletteLookups.get() > lookups
+        }
+        // Ten samples, three frames apart, cover the 350 ms edge fade.
+        val seen = (1..10).map {
+            repeat(3) { composeRule.mainClock.advanceTimeByFrame() }
             bandLuminance()
         }
-        val floor = minOf(settled, library) - 0.08f
-        assertTrue("band luminance dipped to ${seen.min()} (library $library, settled $settled)", seen.all { it >= floor })
         settle()
+        val settled = bandLuminance()
+        val floor = minOf(settled, library) - 0.08f
+        assertTrue("band luminance dipped to ${seen.min()} (library $library, settled $settled, seen $seen)", seen.all { it >= floor })
     }
 
     /** Luminance of the status-bar band's top-right corner, clear of the Back button. */
@@ -318,7 +338,8 @@ class PlateTransitionTest {
         // with the page one frame earlier. A compounded fade would track page(k) × page(k - 1) instead.
         var compared = 0
         var previousPage = 0f
-        repeat(60) {
+        // The page fade runs over the first dozen frames; ten consecutive frames keep the capture budget.
+        repeat(10) {
             composeRule.mainClock.advanceTimeByFrame()
             val frame = composeRule.onRoot().captureToImage().toPixelMap()
             // Projection onto start → final in sRGB, where alpha blending is linear.

@@ -70,8 +70,22 @@ jobs:
             done
           ) > diagnostics/host-resources.txt 2>&1 &
           MON_PID=$!
-          ./gradlew :app:connectedDebugAndroidTest --stacktrace -Dorg.gradle.jvmargs="-Xmx2g" "$@"
+          # Boot-time ANRs (launcher, GMS) otherwise leave a dialog that owns window focus during tests.
+          adb shell settings put global hide_error_dialogs 1 || true
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace -Dorg.gradle.jvmargs="-Xmx2g"
           STATUS=$?
+          if [ "$STATUS" -eq 0 ]; then
+            for _ in 1 2 3 4 5 6 7 8 9 10; do
+              FOCUS=$(adb shell dumpsys window | grep mCurrentFocus || true)
+              echo "Focus before tests: $FOCUS"
+              echo "$FOCUS" | grep -qE 'Not Responding|Application Error' || break
+              adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null || true
+              adb shell input keyevent KEYCODE_BACK || true
+              sleep 2
+            done
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace -Dorg.gradle.jvmargs="-Xmx2g" "$@"
+            STATUS=$?
+          fi
           kill "$LOGCAT_PID" "$MON_PID" 2>/dev/null || true
           wait "$LOGCAT_PID" "$MON_PID" 2>/dev/null || true
           exit "$STATUS"

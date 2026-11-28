@@ -204,6 +204,8 @@ fun TidiloApp(
 
     LaunchedEffect(notificationRoute, manualImportState, notificationDeferred, currentRoute) {
         if (notificationRoute != null) {
+            // The graph is set by the subcomposed NavHost; wait for its first entry before navigating.
+            if (currentRoute == null) return@LaunchedEffect
             if (manualImportState != null) {
                 notificationDeferred = true
                 return@LaunchedEffect

@@ -15,14 +15,6 @@ import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.config.AppTheme
 
 /**
- * Strategy for active tab indicators in floating bottom navigation bars.
- */
-enum class ActiveTabIndicatorStyle {
-    M3_TONAL_CAPSULE,
-    TACTILE_EXTRUDED_TILE
-}
-
-/**
  * Strategy for icon button backing plates and tactile styling.
  */
 enum class IconButtonPlateStyle {
@@ -112,20 +104,9 @@ data class ThemeChipStyle(
  */
 data class ThemeFloatingBarStyle(
     val depth: Dp = 0.dp,
-    val activeTabStyle: ActiveTabIndicatorStyle = ActiveTabIndicatorStyle.M3_TONAL_CAPSULE,
     val useGradientFill: Boolean = false,
-    val darkActiveContainerColor: Color? = null,
-    val lightActiveContainerColor: Color? = null,
-    val darkActiveContentColor: Color? = null,
-    val lightActiveContentColor: Color? = null,
     val treatment: SurfaceTreatment = SurfaceTreatment.MATERIAL
 ) {
-    fun activeContainer(isDark: Boolean, fallback: Color): Color =
-        (if (isDark) darkActiveContainerColor else lightActiveContainerColor) ?: fallback
-
-    fun activeContent(isDark: Boolean, fallback: Color): Color =
-        (if (isDark) darkActiveContentColor else lightActiveContentColor) ?: fallback
-
     companion object {
         val Default = ThemeFloatingBarStyle()
     }
@@ -237,12 +218,7 @@ data class AppThemeStyle(
             ),
             floatingBarStyle = ThemeFloatingBarStyle(
                 depth = 3.dp,
-                activeTabStyle = ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE,
                 useGradientFill = true,
-                darkActiveContainerColor = ModernDarkColorScheme.surfaceContainer,
-                lightActiveContainerColor = ModernLightColorScheme.surfaceContainerLow,
-                darkActiveContentColor = ModernDarkColorScheme.primary,
-                lightActiveContentColor = ModernLightColorScheme.primary,
                 treatment = SurfaceTreatment.DECORATED
             ),
             iconButtonStyle = ThemeIconButtonStyle(

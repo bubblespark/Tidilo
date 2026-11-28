@@ -115,18 +115,19 @@ Drill-downs publish active colors (`ownerId = "library_drilldown"`) via `Remembe
 | RSS Settings feed deck (Library decks use tonal layers) | `DECK_FRONT` and `DECK_BACK` | Front/back corner diffs, stack offsets, watermark, contextual wash |
 | Classification/entity badges | Shared badge resolution and Surface | Category hierarchy, Private badge tones, search-match colors |
 | Entity editor/toggle chips | `ENTITY_CHIP` / `FILTER_CHIP` compact native | Flat styling, selection/removal, animated colors, limit state |
-| Navigation, toolbar & actions | `FLOATING_BAR`, `TOOLBAR`, `PRIMARY_ACTION`, `FILTER_ACTION`, `NAVIGATION_INDICATOR` | Visibility animations, ripple, input semantics |
+| Navigation, toolbar & actions | `FLOATING_BAR`, `TOOLBAR`, `PRIMARY_ACTION` | Visibility animations, ripple, input semantics |
 | Like & toolbar icon plates | `LIKE_ACTION` / `TOOLBAR_ACTION` wrappers | Semantic foreground tints, native icon/toggle interaction |
 | Grouped settings/RSS/params | `SETTINGS_GROUP` and variants | Flat Modern appearance, padding, disabled parameter styling |
 | Notification history & errors | Material typography, `primary` section headings, dividers, error tone, tonal Retry | Needs attention/History sections, timestamps, inline Retry, overflow Delete, details toggle, Open saved page |
-| Header & AI bubble | Resolved header/bubble attributes | Header fade & drag forwarding; bubble rainbow border & tail |
+| Header | Resolved header attributes | Header fade & drag forwarding |
 | Dialogs & bottom sheets | Resolved native container/default shape | Material focus, keyboard, scrim, dismissal |
 | Sort menu, inputs, status, plates | `MENU`, `INPUT`, `STATUS_BADGE`, `ICON_PLATE` | Native behavior and semantic content |
 | Remaining controls & diagnostics | Preset palette and shared `ThemeShapeScale` | Native defaults, error/disabled/focus styling |
 
 Native Material consumers inherit palette and shape defaults without supporting custom decorations; layout, spacing, typography, and asymmetric crops remain component-owned.
 
-### 7.5 Modern Preset, Haze Backdrop Blur & Verification
-- **Modern Fixed Palettes**: Dark (`#1D1F20` canvas, `#2B2C2D` containers, `#D4B06B` accent); Light (`#F5F1E9` canvas, `#FFFAF2` containers, `#886225` accent). Retains `3.dp` tactile depth, `26.dp` card / `12.dp` badge corners, and optional `1.dp` downward shadow on selected nav/screen/primary labels.
+### 7.5 Gallery & Modern Presets, Haze Backdrop Blur & Verification
+- **Gallery (`default`)**: Dynamic Color with near-neutral walls: the wall roles keep 20% of their Oklab chroma (`wallChroma = 0.2`) at unchanged lightness, while `primary` and the other accents stay wallpaper-derived for the FAB, selection, and focus.
+- **Modern Fixed Palettes**: Dark (`#1D1F20` canvas, `#2B2C2D` containers, `#D4B06B` accent); Light (`#F5F1E9` canvas, `#FFFAF2` containers, `#886225` accent). Retains `3.dp` tactile depth, `26.dp` card / `12.dp` badge corners, and optional `1.dp` downward shadow on selected nav/screen/primary labels. Ambient light is blended 30% toward `primary` (gold) for warm lighting (`ambientAccentBlend = 0.3`).
 - **Backdrop Blur (Haze 2.1.0)**: Defaults ON with theme-policy override without mutating saved preference. Two isolated graphs avoid feedback: an app-wide modal source (`TidiloAlertDialog`, `TidiloModalBottomSheet`, `TidiloDropdownMenu`, `LibraryNavigationRail`) and per-screen chrome sources (`FrostedHeaderContainer`, Detail toolbar/browser jump). Each consumer uses its ordinary background when blur is OFF or unsupported.
 

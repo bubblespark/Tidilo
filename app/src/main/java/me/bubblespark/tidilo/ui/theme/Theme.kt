@@ -11,6 +11,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.colorspace.ColorSpaces
 import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.data.cache.MediaCacheStore
 import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
@@ -112,4 +114,26 @@ private inline fun resolveMaterialColors(
     darkTheme: Boolean,
     style: AppThemeStyle,
     fallback: () -> ColorScheme
-): ColorScheme = (if (darkTheme) style.darkMaterialColors else style.lightMaterialColors) ?: fallback()
+): ColorScheme = (if (darkTheme) style.darkMaterialColors else style.lightMaterialColors)
+    ?: fallback().withWallChroma(style.wallChroma)
+
+/** Scales the Oklab chroma of the wall roles (canvas and containers); accents and ink keep the system palette. */
+internal fun ColorScheme.withWallChroma(scale: Float): ColorScheme {
+    if (scale == 1f) return this
+    fun Color.wall(): Color {
+        val lab = convert(ColorSpaces.Oklab) // red = L, green = a, blue = b
+        return Color(lab.red, lab.green * scale, lab.blue * scale, lab.alpha, ColorSpaces.Oklab).convert(ColorSpaces.Srgb)
+    }
+    return copy(
+        background = background.wall(),
+        surface = surface.wall(),
+        surfaceVariant = surfaceVariant.wall(),
+        surfaceBright = surfaceBright.wall(),
+        surfaceDim = surfaceDim.wall(),
+        surfaceContainerLowest = surfaceContainerLowest.wall(),
+        surfaceContainerLow = surfaceContainerLow.wall(),
+        surfaceContainer = surfaceContainer.wall(),
+        surfaceContainerHigh = surfaceContainerHigh.wall(),
+        surfaceContainerHighest = surfaceContainerHighest.wall()
+    )
+}

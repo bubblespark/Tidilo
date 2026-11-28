@@ -129,7 +129,7 @@ sequenceDiagram
     DB-->>UI: Invalidation refreshes affected queries
 ```
 - **Paging & Read Guarantees**: `BookmarkRepository` exposes no eager full-library collection; Paging uses `pageSize = 30`, `initialLoadSize = 60`, `prefetchDistance = 10`, `maxSize = 150`, placeholders disabled, ordered `createdAt DESC, id DESC`, switching generations via `flatMapLatest` before `cachedIn`. Aggregate/trash reads await initialization and surface explicit retry on failure.
-- **`AppTheme` (`config/AppTheme.kt`)**: `DEFAULT("default", R.string.settings_theme_default)` and `MODERN("modern", R.string.settings_theme_modern)`, persisted via `AppConfig.KEY_APP_THEME`, parsed case-insensitively with `DEFAULT` fallback, exposed as `AppConfig.currentTheme: StateFlow<AppTheme>`.
+- **`AppTheme` (`config/AppTheme.kt`)**: `DEFAULT("default", R.string.settings_theme_default)` (shown as Gallery) and `MODERN("modern", R.string.settings_theme_modern)`, persisted via `AppConfig.KEY_APP_THEME`, parsed case-insensitively with `DEFAULT` fallback, exposed as `AppConfig.currentTheme: StateFlow<AppTheme>`.
 
 ---
 

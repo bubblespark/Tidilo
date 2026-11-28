@@ -6,11 +6,16 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.lifecycle.SavedStateHandle
 import androidx.navigation.NavType
@@ -22,6 +27,12 @@ import androidx.paging.LoadState
 import androidx.paging.LoadStates
 import androidx.paging.PagingData
 import java.util.UUID
+import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
+import me.bubblespark.tidilo.ui.components.CacheVisualSource
+import java.util.concurrent.atomic.AtomicInteger
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.runtime.remember
+import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,6 +41,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import me.bubblespark.tidilo.data.db.RssFeedGroup
 import me.bubblespark.tidilo.data.db.TagCount
@@ -132,6 +144,8 @@ class PlateTransitionTest {
         composeRule.runOnUiThread { model = LibraryViewModel(store, SavedStateHandle(), MutableStateFlow(true), modelScope) }
         composeRule.setContent {
             TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
+                val visuals = LocalCacheVisualSource.current
+                CompositionLocalProvider(LocalCacheVisualSource provides remember(visuals) { CountingPalettes(visuals) }) {
                 val nav = rememberNavController()
                 // The same page transitions TidiloNavGraph uses between plate screens and Detail.
                 val plate = PlateNavTransitions(MaterialTheme.motionScheme.defaultEffectsSpec(), reducedMotion)
@@ -168,8 +182,17 @@ class PlateTransitionTest {
                         }
                     }
                 }
+                }
             }
         }
+    }
+
+    /** Counts finished hero palette lookups, so a test can wait for the palette instead of sleeping. */
+    private val paletteLookups = AtomicInteger()
+
+    private inner class CountingPalettes(private val base: CacheVisualSource) : CacheVisualSource by base {
+        override suspend fun getDetailHeroPalette(domain: String, imageKey: String?, bitmap: ImageBitmap) =
+            base.getDetailHeroPalette(domain, imageKey, bitmap).also { paletteLookups.incrementAndGet() }
     }
 
     private fun nodes(matcher: SemanticsMatcher): List<SemanticsNode> =
@@ -232,6 +255,113 @@ class PlateTransitionTest {
         settle()
         awaitAbsent(hero)
         await(card("a"))
+    }
+
+    @Test fun backButtonDrawsAboveHeroDuringOpen() {
+        show()
+        await(card("a"))
+        composeRule.mainClock.autoAdvance = false
+        tap("a")
+        // Step to the last frames of the morph, where the full-width hero covers Detail's top-left corner.
+        var sampled = false
+        repeat(60) {
+            composeRule.mainClock.advanceTimeByFrame()
+            val back = nodes(hasTestTag("detail_back")).firstOrNull()
+            if (!sampled && active() && back != null && (heroWidth() ?: 0f) > rootWidth() * 0.95f) {
+                sampled = true
+                val center = back.boundsInRoot.center
+                val pixel = composeRule.onRoot().captureToImage().toPixelMap()[center.x.toInt(), center.y.toInt()]
+                // The hero fixture is pure green; the Back plate and its arrow are neutral.
+                assertTrue("Back is hidden under the hero: $pixel", pixel.green - maxOf(pixel.red, pixel.blue) < 0.3f)
+            }
+        }
+        assertTrue("no frame with an active transition and a full-width hero", sampled)
+        settle()
+    }
+
+    @Test fun statusBarBandNeverDarkensWhileTheHeroPaletteFadesIn() {
+        show()
+        await(card("a"))
+        val library = bandLuminance()
+        val lookups = paletteLookups.get()
+        composeRule.mainClock.autoAdvance = false
+        tap("a")
+        // The image and palette load off the main thread and resume on the paused composition clock, so
+        // each poll steps one frame until the lookup lands; the edge fade starts after that.
+        composeRule.waitUntil(8_000) {
+            composeRule.mainClock.advanceTimeByFrame()
+            paletteLookups.get() > lookups
+        }
+        // Ten samples, three frames apart, cover the 350 ms edge fade.
+        val seen = (1..10).map {
+            repeat(3) { composeRule.mainClock.advanceTimeByFrame() }
+            bandLuminance()
+        }
+        settle()
+        val settled = bandLuminance()
+        val floor = minOf(settled, library) - 0.08f
+        assertTrue("band luminance dipped to ${seen.min()} (library $library, settled $settled, seen $seen)", seen.all { it >= floor })
+    }
+
+    /** Luminance of the status-bar band's top-right corner, clear of the Back button. */
+    private fun bandLuminance(): Float {
+        val pixels = composeRule.onRoot().captureToImage().toPixelMap()
+        return pixels[pixels.width - 20, 2].luminance()
+    }
+
+    @Test fun posterOpenFadesTheHeaderOnceWithThePage() {
+        show()
+        await(card("p"))
+        val start = composeRule.onRoot().captureToImage().toPixelMap()
+        tap("p")
+        val backNode = await(hasTestTag("detail_back"))
+        val deleteNode = await(hasContentDescription(composeRule.activity.getString(R.string.detail_action_delete)))
+        settle()
+        val final = composeRule.onRoot().captureToImage().toPixelMap()
+        // The pixel in each node that changes most between Library and Detail tracks that node's fade.
+        fun probe(node: SemanticsNode): Pair<Int, Int> {
+            val b = node.boundsInRoot
+            val candidates = (b.left.toInt() until b.right.toInt()).flatMap { x -> (b.top.toInt() until b.bottom.toInt()).map { y -> x to y } }
+            return candidates.maxBy { (x, y) ->
+                abs(final[x, y].red - start[x, y].red) + abs(final[x, y].green - start[x, y].green) + abs(final[x, y].blue - start[x, y].blue)
+            }
+        }
+        val back = probe(backNode)
+        val delete = probe(deleteNode)
+        back()
+        settle()
+        await(card("p"))
+
+        composeRule.mainClock.autoAdvance = false
+        tap("p")
+        // The header's own fade starts one frame after the page's (child enter animation), so it is compared
+        // with the page one frame earlier. A compounded fade would track page(k) × page(k - 1) instead.
+        var compared = 0
+        var previousPage = 0f
+        // The page fade runs over the first dozen frames; ten consecutive frames keep the capture budget.
+        repeat(10) {
+            composeRule.mainClock.advanceTimeByFrame()
+            val frame = composeRule.onRoot().captureToImage().toPixelMap()
+            // Projection onto start → final in sRGB, where alpha blending is linear.
+            fun progress(p: Pair<Int, Int>): Float {
+                val (x, y) = p
+                val from = start[x, y]
+                val to = final[x, y]
+                val now = frame[x, y]
+                val d = floatArrayOf(to.red - from.red, to.green - from.green, to.blue - from.blue)
+                val v = floatArrayOf(now.red - from.red, now.green - from.green, now.blue - from.blue)
+                return (d[0] * v[0] + d[1] * v[1] + d[2] * v[2]) / (d[0] * d[0] + d[1] * d[1] + d[2] * d[2])
+            }
+            val page = progress(delete)
+            if (previousPage in 0.3f..0.8f) {
+                compared++
+                val header = progress(back)
+                assertTrue("header fade $header lags the page fade $previousPage", header >= previousPage - 0.05f)
+            }
+            previousPage = page
+        }
+        assertTrue("no mid-fade frame sampled", compared > 0)
+        settle()
     }
 
     @Test fun predictiveBackCancelKeepsDetailAndCommitReturnsToCard() {

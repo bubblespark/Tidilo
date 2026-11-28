@@ -29,9 +29,6 @@ enum class PlateSize(val width: Dp) {
 internal fun plateWidth(size: PlateSize, availableWidth: Dp): Dp =
     if (size == PlateSize.XL) availableWidth else min(size.width.value, (availableWidth - 32.dp).value.coerceAtLeast(0f)).dp
 
-/** Images within 5% of 1.91 fill the plate exactly; others are fitted on a mat and never cropped. */
-internal fun fillsPlate(imageAspect: Float): Boolean = abs(imageAspect - PLATE_RATIO) / PLATE_RATIO <= 0.05f
-
 /** Under this width a poster shows only the domain mark. */
 internal val PosterInitialOnlyWidth = 150.dp
 

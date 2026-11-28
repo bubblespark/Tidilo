@@ -64,7 +64,7 @@ class DiscoverShelvesTest {
     private lateinit var caches: OfflineVisualCaches
 
     @Before fun images() {
-        // Wide art keeps a 16:9 ratio; "square" URLs return 1:1 art to exercise the mat.
+        // Wide art keeps a 16:9 ratio; "square" URLs return 1:1 art, which plates crop to fill.
         caches = OfflineVisualCaches { url -> if ("square" in url) tinyPng(8, 8) else tinyPng(16, 9) }
     }
 

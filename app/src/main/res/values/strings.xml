@@ -147,8 +147,6 @@
     <string name="library_subtitle_bookmarks">Bookmarks (%1$d)</string>
     <string name="library_subtitle_bookmarks_with_rss">Bookmarks &amp; RSS (%1$d)</string>
     <string name="library_include_rss_chip">Include RSS</string>
-    <string name="library_rss_source_label">RSS</string>
-    <string name="library_rss_source_description">RSS article</string>
     <string name="library_subtitle_domains">Domains (%1$d)</string>
     <string name="library_subtitle_domain_bookmarks">Domain Bookmarks (%1$d)</string>
     <string name="library_empty_title">No bookmarks yet</string>
@@ -490,7 +488,7 @@
     <!-- Theme Settings -->
     <string name="settings_theme_title">Theme</string>
     <string name="settings_theme_dialog_title">Select Theme</string>
-    <string name="settings_theme_default">Default</string>
+    <string name="settings_theme_default">Gallery</string>
     <string name="settings_theme_modern">Modern</string>
     <string name="search_match_separator">", "</string>
     <string name="search_match_title">Title</string>

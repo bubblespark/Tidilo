@@ -49,6 +49,24 @@ internal class PlateTransition(
             boundsTransform = { _, _ -> motion.defaultSpatialSpec() }
         )
     }
+
+    /**
+     * Draws Detail chrome over the morphing hero, which renders in the shared overlay above the page. Overlay
+     * content skips the page's fade, so the chrome fades itself.
+     */
+    @Composable
+    fun Modifier.aboveSharedPlate(): Modifier = with(scope) {
+        val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+        with(animatedScope) {
+            // For the whole page transition, not only while a hero is shared: inside the fading page the
+            // chrome's own fade would compound with the page's (posters share nothing).
+            renderInSharedTransitionScopeOverlay(
+                zIndexInOverlay = 1f,
+                renderInOverlay = { isTransitionActive || animatedScope.transition.isRunning }
+            )
+                .animateEnterExit(enter = fadeIn(effects), exit = fadeOut(effects))
+        }
+    }
 }
 
 /** Null when no shared scope is provided (reduced motion, or a host without `NavHost`). */
@@ -58,6 +76,11 @@ internal fun rememberPlateTransition(): PlateTransition? {
     val animatedScope = LocalNavAnimatedScope.current ?: return null
     return remember(scope, animatedScope) { PlateTransition(scope, animatedScope) }
 }
+
+/** Applies [PlateTransition.aboveSharedPlate] when [transition] exists. */
+@Composable
+internal fun Modifier.aboveSharedPlate(transition: PlateTransition?): Modifier =
+    if (transition == null) this else with(transition) { this@aboveSharedPlate.aboveSharedPlate() }
 
 /** Applies [PlateTransition.sharedPlate] when [transition] exists. */
 @Composable

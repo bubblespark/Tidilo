@@ -22,13 +22,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -68,8 +66,7 @@ internal fun BookmarkGridCard(
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null,
     onToggleLike: () -> Unit = {},
-    layout: BookmarkGridLayout,
-    showRssSource: Boolean = false
+    layout: BookmarkGridLayout
 ) {
     val textMetrics = layout.text
     val likeClearance = if (layout.mediaHeight < BookmarkGridLikeTarget) {
@@ -191,7 +188,7 @@ internal fun BookmarkGridCard(
                         bottom = BookmarkGridInfoBottomPadding
                     )
             ) {
-                // ❶ Domain Name (Softer contrast); the RSS cue keeps its width and the domain ellipsizes.
+                // ❶ Domain Name (Softer contrast)
                 Row(
                     modifier = Modifier.padding(end = likeClearance).heightIn(min = textMetrics.labelHeight),
                     verticalAlignment = Alignment.CenterVertically
@@ -204,15 +201,6 @@ internal fun BookmarkGridCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (showRssSource) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            imageVector = Icons.Default.RssFeed,
-                            contentDescription = stringResource(R.string.library_rss_source_description),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(textMetrics.labelHeight)
-                        )
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(BookmarkGridInfoGap))

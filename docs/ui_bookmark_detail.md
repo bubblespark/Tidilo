@@ -6,7 +6,7 @@
 
 - **Fixed Chrome Placement**: Top **Floating Header Actions** (`DetailFloatingHeaderOverlay`) and the lower `54.dp` toolbar live outside the scrollable body inside `TidiloScreenScaffold` so both remain fixed during scroll.
 - **Minimal Top Chrome**: Detail omits any `"Details"` text header bar across loaded, loading, error, and not-found states. A permanent top status-bar gradient scrim (`statusBars` height + `8.dp` soft feather) blends `topEdgeColor` (or theme `canvasColor` without `og:image`) to transparent without intruding into the banner body.
-- **Floating Back Button**: One `48.dp` circular `TidiloSurface(..., blurBackground = true)` button (`FLOATING_BAR`) sits at top-left (**Back**). Detail has no screen-wide Save action and no discard prompt: Back always leaves immediately because every edit has its own persistence boundary (see [Persistence Boundaries](#5-persistence-boundaries)).
+- **Floating Back Button**: One `48.dp` circular `TidiloSurface(..., blurBackground = true)` button (`FLOATING_BAR`) sits at top-left (**Back**). During the shared-hero morph the header (status-bar band and Back) draws above the hero in the shared-transition overlay and fades with the page, so it never pops in after the morph. Detail has no screen-wide Save action and no discard prompt: Back always leaves immediately because every edit has its own persistence boundary (see [Persistence Boundaries](#5-persistence-boundaries)).
 
 ---
 

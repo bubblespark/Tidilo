@@ -38,7 +38,7 @@ fun TidiloBackground(
     var lastActiveColor by remember { mutableStateOf(Color.Transparent) }
     val rawColor = if (isDestinationAllowed) lightingState.effectiveActiveColor else null
     val targetColor = if (rawColor != null && rawColor != Color.Transparent) {
-        val resolved = themeStyle.resolveColor(MaterialTheme.colorScheme, rawColor)
+        val resolved = themeStyle.resolveAmbient(MaterialTheme.colorScheme, rawColor)
         lastActiveColor = resolved
         resolved
     } else {

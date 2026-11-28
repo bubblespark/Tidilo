@@ -240,12 +240,17 @@ internal fun rememberDetailHeroPalette(
         Color.Transparent
     }
     val animatedAccent by animateColorAsState(targetAccent, tween(350, easing = EaseOutCubic), label = "detailAccent")
-    val animatedTop by animateColorAsState(targetTop, tween(350, easing = EaseOutCubic), label = "detailTopEdge")
-    val animatedBottom by animateColorAsState(targetBottom, tween(350, easing = EaseOutCubic), label = "detailBottomEdge")
+    // Edges fade in from the canvas: Color.Transparent is black at alpha 0, so animating from it passes
+    // through dark gray that the status-bar scrim (which sets its own alpha) would draw as a gray band.
+    val clearCanvas = surfaces.canvasColor.copy(alpha = 0f)
+    fun Color.fromCanvas() = if (this == Color.Transparent) clearCanvas else this
+    fun Color.orTransparent() = if (alpha == 0f) Color.Transparent else this
+    val animatedTop by animateColorAsState(targetTop.fromCanvas(), tween(350, easing = EaseOutCubic), label = "detailTopEdge")
+    val animatedBottom by animateColorAsState(targetBottom.fromCanvas(), tween(350, easing = EaseOutCubic), label = "detailBottomEdge")
     rememberUpdatedState(
         DetailHeroPalette(
-            topEdgeColor = animatedTop,
-            bottomEdgeColor = animatedBottom,
+            topEdgeColor = animatedTop.orTransparent(),
+            bottomEdgeColor = animatedBottom.orTransparent(),
             accentColor = animatedAccent
         )
     )

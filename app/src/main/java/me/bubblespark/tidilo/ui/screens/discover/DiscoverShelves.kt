@@ -144,7 +144,7 @@ internal fun HeroShelf(
             // Parallax (§7.4): the plate trails the scroll and slides under the caption mat below it.
             Box(Modifier.fillMaxWidth().graphicsLayer { translationY = parallax() }) {
                 DiscoverPlateContent(item, ogState, visuals.domain, RectangleShape,
-                    Modifier.fillMaxWidth().discoverPlate(item, DiscoverShelf.HERO, actions), matColor = topMat)
+                    Modifier.fillMaxWidth().discoverPlate(item, DiscoverShelf.HERO, actions))
                 // The plate's edges dissolve into the mats (13% top, 6% bottom).
                 Box(Modifier.fillMaxWidth().height(PlateSize.XL.height * 0.13f).align(Alignment.TopCenter)
                     .background(Brush.verticalGradient(listOf(topMat, Color.Transparent))))

@@ -104,7 +104,6 @@ class AppThemeStyleTest {
     fun themeFloatingBarStyle_defaults() {
         val barStyle = ThemeFloatingBarStyle.Default
         assertEquals(0.dp, barStyle.depth)
-        assertEquals(ActiveTabIndicatorStyle.M3_TONAL_CAPSULE, barStyle.activeTabStyle)
         assertFalse(barStyle.useGradientFill)
     }
 
@@ -120,10 +119,6 @@ class AppThemeStyleTest {
 
     @Test
     fun enums_containExpectedValues() {
-        assertEquals(2, ActiveTabIndicatorStyle.entries.size)
-        assertNotNull(ActiveTabIndicatorStyle.valueOf("M3_TONAL_CAPSULE"))
-        assertNotNull(ActiveTabIndicatorStyle.valueOf("TACTILE_EXTRUDED_TILE"))
-
         assertEquals(3, IconButtonPlateStyle.entries.size)
         assertNotNull(IconButtonPlateStyle.valueOf("PLAIN_ICON"))
         assertNotNull(IconButtonPlateStyle.valueOf("M3_FILLED_TONAL"))
@@ -172,7 +167,6 @@ class AppThemeStyleTest {
 
         // floatingBarStyle
         assertEquals(3.dp, style.floatingBarStyle.depth)
-        assertEquals(ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE, style.floatingBarStyle.activeTabStyle)
         assertTrue(style.floatingBarStyle.useGradientFill)
 
         // iconButtonStyle

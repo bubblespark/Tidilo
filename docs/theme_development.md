@@ -20,7 +20,7 @@ The saved selection flows from `AppConfig` to `TidiloTheme`. The provider select
 
 ## Add a selectable preset
 
-1. Add an entry to `AppTheme` with a unique, stable lowercase `code` and a `labelRes`. Add the label to `app/src/main/res/values/strings.xml` and `app/src/main/res/values-ja/strings.xml`. Codes are persisted under `app_theme` and parsed case-insensitively. Preserve existing codes across label changes. Missing or unknown codes fall back to Default.
+1. Add an entry to `AppTheme` with a unique, stable lowercase `code` and a `labelRes`. Add the label to `app/src/main/res/values/strings.xml` and `app/src/main/res/values-ja/strings.xml`. Codes are persisted under `app_theme` and parsed case-insensitively. Preserve existing codes across label changes. Missing or unknown codes fall back to Gallery (`AppTheme.DEFAULT`, code `default`).
 2. Define a preset in `AppThemeStyle.kt`. Start from the preset with the closest behavior, set its `theme` to the new enum entry, and specify the differences. Register it in the exhaustive `AppThemeStyle.forTheme` mapping.
 3. Open Settings > Theme and check the label, selected state, and restoration after reopening the app. The chooser enumerates `AppTheme.entries`. Update explicit enum, mapping, and string expectations in tests where applicable.
 4. Verify the new preset in light and dark mode. Check wallpaper-derived colors if the preset inherits Dynamic Color. Exercise both untouched presets to catch changes to shared defaults.
@@ -34,10 +34,12 @@ Start with an affected component and identify its role, variant, state, and rend
 | `lightMaterialColors`, `darkMaterialColors` | Full Material color scheme for the corresponding mode. A null value inherits the provider's Dynamic Color or built-in fallback. Set matching foreground and container pairs when supplying a palette. |
 | `surfacePalette` | Light and dark canvas colors and shared container defaults for roles that read the palette. The canvas and Material background are separate values. |
 | `shapeScale` | Named corner sizes used by Material shape slots and consumers that use the scale. A role or component with an explicit shape can use a different radius. |
+| `wallChroma` | Share of Oklab chroma kept on the wall roles (`background`, `surface*`, `surfaceVariant`) of an inherited Dynamic Color or fallback scheme; accents, ink, and outlines are untouched. `1` keeps the scheme as is; Gallery uses `0.2`. Ignored when the preset supplies its own palette. |
 | `colorRole` | Source of the ambient lighting color, including the contextual accent or a Material color role. |
+| `ambientAccentBlend` | Share of `primary` blended into the resolved ambient color (`AppThemeStyle.resolveAmbient`, read by `TidiloBackground`). Modern uses `0.3` for its warm lighting; Gallery `0`. |
 | `cardStyle` | Treatment, depth, shape, gradient fill, and accent rim policy for the shared bookmark and front deck cards. Back deck layers have their own role. |
 | `chipStyle` | Display badge treatment, depth, shape, gradient fill, category or unified color policy, category and subcategory icon tint, and light and dark neutral and content colors. Editor and filter chips have separate native role variants. |
-| `floatingBarStyle` | Bar treatment, depth and gradient fill, active tab treatment, and the light and dark active tab color pair. The animated indicator has a separate resolution path. |
+| `floatingBarStyle` | Treatment, depth, and gradient fill of the floating bar and toolbar roles. |
 | `iconButtonStyle` | Plate style for primary, Like, and toolbar actions, plus decorated plate depth and gradient fill. Semantic icon tints can come from the component. |
 | `headerAlpha`, `floatingBarAlpha`, `cardAlpha` | Background opacity defaults for the corresponding role families. Foreground content remains sharp and opaque unless its own state styling changes it. |
 | `headerBlurRadius`, `floatingBarBlurRadius`, `cardBlurRadius` | Existing self-blur settings for the consumers that apply them. The affected layer blurs its own drawing. Treat backdrop blur as a separate rendering feature. |
@@ -56,14 +58,16 @@ SurfaceRole.BOOKMARK_CARD to SurfaceStyleOverride(
 
 This entry applies to both bookmark variants. Collection, domain, and RSS decks use separate deck roles. A change intended only for the compact grid variant belongs in variant resolution, with a check for the list variant.
 
+Gallery (`AppThemeStyle.Default`) inherits Dynamic Color and keeps its accents, but sets `wallChroma` so the canvas and containers read as near-neutral gallery walls (`withWallChroma` in `Theme.kt`). Discover and Library plates use Material color-scheme roles directly, so they need no Discover-specific roles.
+
 Modern supplies both fixed Material schemes in `ModernColors.kt`. Its canvas and shared containers reuse those scheme tokens. Keep header colors tied to the Material background role so the existing scroll fade blends into the canvas.
 
-Use `modernRaisedTextStyle` at eligible text call sites. Pass the existing text style and the control state so Default and disabled controls keep their existing styling. Shared page headers require explicit opt-in. Settings titles and controls use the ordinary text style.
+Use `modernRaisedTextStyle` at eligible text call sites. Pass the existing text style and the control state so Gallery and disabled controls keep their existing styling. Shared page headers require explicit opt-in. Settings titles and controls use the ordinary text style.
 
 ## Understand precedence and renderer limits
 
 - Begin with the Material palette and role and variant defaults. The resolver applies preset overrides and then enforces semantic rules where applicable. Check error and caution states, selected filters, and matched and warning badges. A neutral override can be superseded by a state-specific color pair. Animated navigation has its own resolution path and reapplies drawing overrides.
-- Check the consumer as well as the resolver. Shared Surface consumers can use decorated fills, bevels, and shadows. Dialogs and sheets use resolved native attributes such as container and default shape. A shape specified by the caller takes precedence at that call site. Native controls and diagnostic content can inherit Material colors and shapes without using a shared Surface. Header fading and AI bubble decoration have specialized drawing paths.
+- Check the consumer as well as the resolver. Shared Surface consumers can use decorated fills, bevels, and shadows. Dialogs and sheets use resolved native attributes such as container and default shape. A shape specified by the caller takes precedence at that call site. Native controls and diagnostic content can inherit Material colors and shapes without using a shared Surface. Header fading has a specialized drawing path.
 - Keep treatment independent of elevation. A decorated surface with zero elevation still has its fill and edge. Use finite, nonnegative elevation and border widths, and opacity between zero and one. Preserve the shared ordering that draws shadows outside the content and ripple clip.
 - Layout, spacing, component-specific typography, assets, asymmetric image masks, and specialized lighting geometry belong to the owning component or shared layout. The current preset model exposes no general typography, spacing, or motion scale. A new parameter needs a resolver rule and a consumer that uses it.
 - Prefer an existing role and variant for a new consumer. Pass the semantic state and contextual accent to the resolver or the appropriate shared component. Use the resolved foreground with its container and preserve native input and accessibility semantics. Add a role when the design needs independent behavior, and record its consumers and supported attributes in the UI design coverage table.
@@ -92,7 +96,7 @@ The independent user preference defaults to true. Set `AppThemeStyle.overlayBlur
 | `FORCE_ON` | Enabled | Checked, disabled, with explanation |
 | `FORCE_OFF` | Disabled | Unchecked, disabled, with explanation |
 
-Default and Modern use `USER_CHOICE`. Fixed policies never overwrite the saved choice; returning to a user-choice theme restores it. Theme authors do not implement Haze rendering or maintain separate blur palettes, but must still verify contrast in both modes with blur ON/OFF.
+Gallery and Modern use `USER_CHOICE`. Fixed policies never overwrite the saved choice; returning to a user-choice theme restores it. Theme authors do not implement Haze rendering or maintain separate blur palettes, but must still verify contrast in both modes with blur ON/OFF.
 
 For a new native overlay family, follow the existing adapters:
 
@@ -107,7 +111,7 @@ Native anchored surfaces append movement, predictive-back/overscroll graphics la
 
 `TidiloAlertDialog` accepts `blurBackground` (default `true`) to suppress only its background effect while retaining overlay ownership, lower-source capture eligibility, tint, outline and native fill behavior. It does not override the global/theme policy or saved preference. The Detail tag editor uses this opt-out while its entity picker is composed to avoid redundant lower-window rendering. Once the picker is removed, the parent effect output fades in over 300 ms at its unchanged blur radius. Initially enabled dialogs render at full blur. The effect modifier remains absent while suppressed, including when reopening interrupts restoration. Tint, outline and foreground do not fade. Other callers retain the default, and the picker itself remains blurred.
 
-Validate the new family with Default/Modern, light/dark, both saved choices and synthetic fixed policies. Check busy backgrounds, full-surface outline and clipped corners, sharp text, source updates/loss, OFF parity, nested/sibling windows, back/outside dismissal, IME/draft retention, narrow layouts, large text, RTL anchoring, disabled actions, and interrupted/repeated opening and closing without retained registrations. Use hardware-accelerated Compose UI instrumentation following [Testing Conventions §§4–5](testing_conventions.md#4-ui-instrumentation-render-blur-animation--screenshots) (resolver tests and browser mockups do not prove Haze rendering).
+Validate the new family with Gallery/Modern, light/dark, both saved choices and synthetic fixed policies. Check busy backgrounds, full-surface outline and clipped corners, sharp text, source updates/loss, OFF parity, nested/sibling windows, back/outside dismissal, IME/draft retention, narrow layouts, large text, RTL anchoring, disabled actions, and interrupted/repeated opening and closing without retained registrations. Use hardware-accelerated Compose UI instrumentation following [Testing Conventions §§4–5](testing_conventions.md#4-ui-instrumentation-render-blur-animation--screenshots) (resolver tests and browser mockups do not prove Haze rendering).
 
 ## Add blur to in-window screen chrome
 
@@ -135,5 +139,5 @@ Validate underlying-body motion, foreground isolation, source loss, concurrent d
 
 Screen backgrounds and chrome capture sources stay full-window. Opt screen bodies into `TidiloScreenScaffold` system/cutout insets and pass its padding into lazy `contentPadding` or inside ordinary scrolling content. `bottomContentPadding` is app-only spacing; do not pass an already-inset value. Input bodies set `avoidIme = true` and leave keyboard padding to the scaffold. Its single `imePadding` owner avoids the lateral-transition narrowing observed with an IME ruler.
 
-Apply `screenActionInsets` independently to floating controls. The shared header protects its foreground row while frost/gradient backgrounds remain full width. Detail artwork remains full bleed; only its text and controls receive safe margins. Native overlay windows keep Material3's own inset handling and must not inherit screen content padding. Verify Default/Modern, light/dark, both navigation modes, portrait/landscape, large text, IME show/hide, and blur ON/OFF without changing native overlay modifier order; structure automated regression coverage per [Testing Conventions §§4–5](testing_conventions.md#4-ui-instrumentation-render-blur-animation--screenshots) rather than nested multi-axis loops.
+Apply `screenActionInsets` independently to floating controls. The shared header protects its foreground row while frost/gradient backgrounds remain full width. Detail artwork remains full bleed; only its text and controls receive safe margins. Native overlay windows keep Material3's own inset handling and must not inherit screen content padding. Verify Gallery/Modern, light/dark, both navigation modes, portrait/landscape, large text, IME show/hide, and blur ON/OFF without changing native overlay modifier order; structure automated regression coverage per [Testing Conventions §§4–5](testing_conventions.md#4-ui-instrumentation-render-blur-animation--screenshots) rather than nested multi-axis loops.
 

@@ -156,24 +156,6 @@ private fun SurfaceContent(style: ResolvedSurfaceStyle, frosted: Boolean, conten
 }
 
 @Composable
-fun Modifier.themeNavigationIndicator(selected: Boolean, animatedColor: Color): Modifier {
-    val theme = currentThemeSurfaces()
-    val style = theme.resolveNavigationIndicator(selected, animatedColor)
-    if (style.treatment == SurfaceTreatment.MATERIAL) {
-        return background(style.containerColor.copy(alpha = style.containerColor.alpha * style.opacity), style.shape)
-    }
-    return decoration(style).drawWithCache {
-        val fill = style.gradient
-        val brush = if (fill == null) null else Brush.verticalGradient(listOf(fill.top, style.containerColor, fill.bottom))
-        val outline = style.shape.createOutline(size, layoutDirection, this)
-        onDrawBehind {
-            if (brush == null) drawOutline(outline, style.containerColor.copy(alpha = style.containerColor.alpha * style.opacity))
-            else drawOutline(outline, brush, alpha = style.opacity)
-        }
-    }
-}
-
-@Composable
 fun TidiloPrimaryActionSurface(expanded: Boolean, modifier: Modifier = Modifier, blurBackground: Boolean = false, content: @Composable () -> Unit) {
     val style = currentThemeSurfaces().resolve(SurfaceRole.PRIMARY_ACTION,
         if (expanded) SurfaceVariant.EMPHASIZED else SurfaceVariant.STANDARD)

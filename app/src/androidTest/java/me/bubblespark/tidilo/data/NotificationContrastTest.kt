@@ -44,8 +44,8 @@ import me.bubblespark.tidilo.data.db.ImportTaskEntity
 import me.bubblespark.tidilo.data.db.RssFeedEntity
 import me.bubblespark.tidilo.data.notifications.NotificationCategory
 import me.bubblespark.tidilo.data.notifications.NotificationCoordinator
-import me.bubblespark.tidilo.ui.theme.ModernDarkColorScheme
-import me.bubblespark.tidilo.ui.theme.ModernLightColorScheme
+import me.bubblespark.tidilo.ui.theme.AppThemeStyle
+import me.bubblespark.tidilo.ui.theme.resolveMaterialColors
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -183,11 +183,9 @@ class NotificationContrastTest {
     }
 
     private suspend fun verifyAppearance(titles: List<String>, actions: List<String>, theme: AppTheme, dark: Boolean) {
-        val expectedCanvas = when (theme) {
-            AppTheme.DEFAULT -> if (dark) dynamicDarkColorScheme(context).background
-                else dynamicLightColorScheme(context).background
-            AppTheme.MODERN -> if (dark) ModernDarkColorScheme.background else ModernLightColorScheme.background
-        }
+        // The production resolution: Gallery neutralizes the dynamic walls, Modern supplies its own palette.
+        val system = if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        val expectedCanvas = resolveMaterialColors(system, dark, AppThemeStyle.forTheme(theme)).background
         val appearance = "$theme ${if (dark) "dark" else "light"}"
         // `titles` is history, import, RSS; `actions` belong to the import and RSS rows in that order.
         val iconDescriptions = titles.takeLast(actions.size)

@@ -9,17 +9,10 @@ import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.config.AppTheme
-
-/**
- * Strategy for active tab indicators in floating bottom navigation bars.
- */
-enum class ActiveTabIndicatorStyle {
-    M3_TONAL_CAPSULE,
-    TACTILE_EXTRUDED_TILE
-}
 
 /**
  * Strategy for icon button backing plates and tactile styling.
@@ -111,20 +104,9 @@ data class ThemeChipStyle(
  */
 data class ThemeFloatingBarStyle(
     val depth: Dp = 0.dp,
-    val activeTabStyle: ActiveTabIndicatorStyle = ActiveTabIndicatorStyle.M3_TONAL_CAPSULE,
     val useGradientFill: Boolean = false,
-    val darkActiveContainerColor: Color? = null,
-    val lightActiveContainerColor: Color? = null,
-    val darkActiveContentColor: Color? = null,
-    val lightActiveContentColor: Color? = null,
     val treatment: SurfaceTreatment = SurfaceTreatment.MATERIAL
 ) {
-    fun activeContainer(isDark: Boolean, fallback: Color): Color =
-        (if (isDark) darkActiveContainerColor else lightActiveContainerColor) ?: fallback
-
-    fun activeContent(isDark: Boolean, fallback: Color): Color =
-        (if (isDark) darkActiveContentColor else lightActiveContentColor) ?: fallback
-
     companion object {
         val Default = ThemeFloatingBarStyle()
     }
@@ -188,13 +170,21 @@ data class AppThemeStyle(
     val surfaceOverrides: Map<SurfaceRole, SurfaceStyleOverride> = emptyMap(),
     val shapeScale: ThemeShapeScale = ThemeShapeScale(),
     val lightMaterialColors: ColorScheme? = null,
-    val darkMaterialColors: ColorScheme? = null
+    val darkMaterialColors: ColorScheme? = null,
+    /** Oklab chroma kept on the system palette's wall roles; 1 keeps them as is. Ignored with explicit palettes. */
+    val wallChroma: Float = 1f,
+    /** Share of `primary` blended into the ambient light (§8.1 Modern "warm lighting"). */
+    val ambientAccentBlend: Float = 0f
 ) {
     fun resolveColor(colorScheme: ColorScheme, dynamicAccent: Color? = null): Color =
         colorRole.resolve(colorScheme, dynamicAccent)
 
+    fun resolveAmbient(colorScheme: ColorScheme, accent: Color): Color =
+        lerp(resolveColor(colorScheme, accent), colorScheme.primary, ambientAccentBlend)
+
     companion object {
-        val Default = AppThemeStyle(AppTheme.DEFAULT)
+        /** Gallery: Dynamic Color with near-neutral walls (§8.1). */
+        val Default = AppThemeStyle(AppTheme.DEFAULT, wallChroma = 0.2f)
 
         val Modern = AppThemeStyle(
             theme = AppTheme.MODERN,
@@ -228,12 +218,7 @@ data class AppThemeStyle(
             ),
             floatingBarStyle = ThemeFloatingBarStyle(
                 depth = 3.dp,
-                activeTabStyle = ActiveTabIndicatorStyle.TACTILE_EXTRUDED_TILE,
                 useGradientFill = true,
-                darkActiveContainerColor = ModernDarkColorScheme.surfaceContainer,
-                lightActiveContainerColor = ModernLightColorScheme.surfaceContainerLow,
-                darkActiveContentColor = ModernDarkColorScheme.primary,
-                lightActiveContentColor = ModernLightColorScheme.primary,
                 treatment = SurfaceTreatment.DECORATED
             ),
             iconButtonStyle = ThemeIconButtonStyle(
@@ -244,7 +229,8 @@ data class AppThemeStyle(
                 useGradientFill = true
             ),
             lightMaterialColors = ModernLightColorScheme,
-            darkMaterialColors = ModernDarkColorScheme
+            darkMaterialColors = ModernDarkColorScheme,
+            ambientAccentBlend = 0.3f
         )
 
         fun forTheme(theme: AppTheme): AppThemeStyle = when (theme) {

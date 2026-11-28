@@ -7,9 +7,18 @@ import me.bubblespark.tidilo.config.AppConfig
 import org.junit.Assert.*
 import org.junit.Test
 
-/** Run the two methods in separate instrumentation processes, in the documented order. */
+/**
+ * Opt-in restart check: run the two methods in separate instrumentation processes, in the documented order,
+ * with `-e verifyAiAnalysisRestart true`. Sharded or single-process runs skip it.
+ */
 @org.junit.FixMethodOrder(org.junit.runners.MethodSorters.NAME_ASCENDING)
 class AiAnalysisPersistenceTest {
+    companion object {
+        @org.junit.BeforeClass @JvmStatic fun requireOptIn() = org.junit.Assume.assumeTrue(
+            InstrumentationRegistry.getArguments().getString("verifyAiAnalysisRestart") == "true"
+        )
+    }
+
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Test fun persistDisabledBeforeRestart() {

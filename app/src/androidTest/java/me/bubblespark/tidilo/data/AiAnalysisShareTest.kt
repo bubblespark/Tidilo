@@ -3,7 +3,6 @@ package me.bubblespark.tidilo.data
 import android.Manifest
 import android.app.NotificationManager
 import android.content.Intent
-import android.content.pm.PackageManager
 import androidx.test.platform.app.InstrumentationRegistry
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -28,8 +27,8 @@ class AiAnalysisShareTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val originalMode = AppConfig.aiAnalysisMode.value
-        org.junit.Assume.assumeTrue("Grant notification permission before running this test",
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+        // A fresh emulator has not granted it; granting does not restart the app process.
+        instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
         val serving = AtomicBoolean(true)
         val server = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
         val url = "http://127.0.0.1:${server.localPort}/article-${UUID.randomUUID()}"

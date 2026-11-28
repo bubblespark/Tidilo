@@ -14,7 +14,7 @@ This document provides the canonical catalog of all programming languages, SDKs,
 | **Kotlin Compose Compiler Plugin** | `2.4.21` | `gradle/libs.versions.toml` | Integrated Compose compiler plugin. |
 | **KSP** | `2.3.12` | `gradle/libs.versions.toml` | Kotlin Symbol Processing for Room code generation. |
 | **Java / JVM Target** | `21` | `app/build.gradle.kts` | Modern Java runtime bytecode target. |
-| **compileSdk** | `37` | `app/build.gradle.kts` | API 37 platform headers. |
+| **compileSdk** | `37.1` | `app/build.gradle.kts` | API 37.1 platform headers. |
 | **minSdk** | `34` | `app/build.gradle.kts` | Android 14 baseline for AICore support. |
 | **targetSdk** | `36` | `app/build.gradle.kts` | Target Android 15/16 platform behaviors. |
 
@@ -24,10 +24,10 @@ This document provides the canonical catalog of all programming languages, SDKs,
 
 | Library | Version / BOM | Package / Alias | Purpose |
 | :--- | :--- | :--- | :--- |
-| **Compose BOM** | `2026.09.00` | `androidx-compose-bom` | Dependency management across Compose UI modules. |
+| **Compose BOM** | `2026.11.01` | `androidx-compose-bom` | Dependency management across Compose UI modules. |
 | **Compose UI & Foundation** | BOM managed | `androidx-ui`, `androidx-ui-graphics` | Declarative UI rendering, touch handling, layout primitives. |
 | **Haze backdrop blur** | `2.1.0` | `haze-blur` | Source-backed overlay and screen chrome frost. |
-| **Compose Material 3** | BOM managed (`1.4.0`) | `androidx-material3` | Material 3 components and design tokens. |
+| **Compose Material 3** | BOM managed (`1.5.0`) | `androidx-material3` | Material 3 components and design tokens. |
 | **Material Icons Extended** | BOM managed | `androidx-material-icons-extended` | Material icons (Search, History, OpenInNew, Tag, Folder, etc.). |
 | **Navigation Compose** | `2.10.2` | `androidx-navigation-compose` | In-app screen routing, type-safe arguments, animated transitions. |
 | **Lifecycle Runtime KTX** | `2.11.0` | `androidx-lifecycle-runtime-ktx` | Android lifecycle coroutines and scopes. |

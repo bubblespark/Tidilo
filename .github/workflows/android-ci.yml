@@ -1,11 +1,7 @@
 name: Android CI
 
 on:
-  push:
-    branches: [ "main" ]
-    paths:
-      - 'app/**'
-      - '!app/**/*.md'
+  workflow_dispatch:
   pull_request:
     branches: [ "main" ]
     paths:
@@ -44,7 +40,7 @@ jobs:
         run: ./gradlew lintDebug
         
       - name: Upload Reports
-        if: always()
+        if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || failure()) }}
         uses: actions/upload-artifact@v4
         with:
           name: android-reports

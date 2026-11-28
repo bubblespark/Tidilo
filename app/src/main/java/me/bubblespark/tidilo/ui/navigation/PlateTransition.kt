@@ -58,7 +58,12 @@ internal class PlateTransition(
     fun Modifier.aboveSharedPlate(): Modifier = with(scope) {
         val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
         with(animatedScope) {
-            renderInSharedTransitionScopeOverlay(zIndexInOverlay = 1f)
+            // For the whole page transition, not only while a hero is shared: inside the fading page the
+            // chrome's own fade would compound with the page's (posters share nothing).
+            renderInSharedTransitionScopeOverlay(
+                zIndexInOverlay = 1f,
+                renderInOverlay = { isTransitionActive || animatedScope.transition.isRunning }
+            )
                 .animateEnterExit(enter = fadeIn(effects), exit = fadeOut(effects))
         }
     }

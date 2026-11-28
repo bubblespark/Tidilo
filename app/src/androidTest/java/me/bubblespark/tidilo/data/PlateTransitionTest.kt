@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -26,6 +27,7 @@ import androidx.paging.LoadState
 import androidx.paging.LoadStates
 import androidx.paging.PagingData
 import java.util.UUID
+import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,6 +36,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import me.bubblespark.tidilo.data.db.RssFeedGroup
 import me.bubblespark.tidilo.data.db.TagCount
@@ -284,6 +287,60 @@ class PlateTransitionTest {
     private fun bandLuminance(): Float {
         val pixels = composeRule.onRoot().captureToImage().toPixelMap()
         return pixels[pixels.width - 20, 2].luminance()
+    }
+
+    @Test fun posterOpenFadesTheHeaderOnceWithThePage() {
+        show()
+        await(card("p"))
+        val start = composeRule.onRoot().captureToImage().toPixelMap()
+        tap("p")
+        val backNode = await(hasTestTag("detail_back"))
+        val deleteNode = await(hasContentDescription(composeRule.activity.getString(R.string.detail_action_delete)))
+        settle()
+        val final = composeRule.onRoot().captureToImage().toPixelMap()
+        // The pixel in each node that changes most between Library and Detail tracks that node's fade.
+        fun probe(node: SemanticsNode): Pair<Int, Int> {
+            val b = node.boundsInRoot
+            val candidates = (b.left.toInt() until b.right.toInt()).flatMap { x -> (b.top.toInt() until b.bottom.toInt()).map { y -> x to y } }
+            return candidates.maxBy { (x, y) ->
+                abs(final[x, y].red - start[x, y].red) + abs(final[x, y].green - start[x, y].green) + abs(final[x, y].blue - start[x, y].blue)
+            }
+        }
+        val back = probe(backNode)
+        val delete = probe(deleteNode)
+        back()
+        settle()
+        await(card("p"))
+
+        composeRule.mainClock.autoAdvance = false
+        tap("p")
+        // The header's own fade starts one frame after the page's (child enter animation), so it is compared
+        // with the page one frame earlier. A compounded fade would track page(k) × page(k - 1) instead.
+        var compared = 0
+        var previousPage = 0f
+        repeat(60) {
+            composeRule.mainClock.advanceTimeByFrame()
+            val frame = composeRule.onRoot().captureToImage().toPixelMap()
+            // Projection onto start → final in sRGB, where alpha blending is linear.
+            fun progress(p: Pair<Int, Int>): Float {
+                val (x, y) = p
+                val from = start[x, y]
+                val to = final[x, y]
+                val now = frame[x, y]
+                val d = floatArrayOf(to.red - from.red, to.green - from.green, to.blue - from.blue)
+                val v = floatArrayOf(now.red - from.red, now.green - from.green, now.blue - from.blue)
+                return (d[0] * v[0] + d[1] * v[1] + d[2] * v[2]) / (d[0] * d[0] + d[1] * d[1] + d[2] * d[2])
+            }
+            val page = progress(delete)
+            if (previousPage in 0.3f..0.8f) {
+                compared++
+                val header = progress(back)
+                assertTrue("header fade $header lags the page fade $previousPage", header >= previousPage - 0.05f)
+            }
+            previousPage = page
+        }
+        assertTrue("no mid-fade frame sampled", compared > 0)
+        settle()
     }
 
     @Test fun predictiveBackCancelKeepsDetailAndCommitReturnsToCard() {

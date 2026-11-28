@@ -50,6 +50,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.ui.navigation.PlateKey
+import me.bubblespark.tidilo.ui.navigation.PlateTransition
+import me.bubblespark.tidilo.ui.navigation.sharedPlate
 import me.bubblespark.tidilo.data.DomainIconManager
 import me.bubblespark.tidilo.data.ImportTask
 import me.bubblespark.tidilo.data.discover.DiscoverReason
@@ -59,7 +62,7 @@ import me.bubblespark.tidilo.ui.util.TimeFormatter
 
 /** Callbacks shared by every Discover card. Stable so shelves skip recomposition when only data changes. */
 @Stable
-class DiscoverActions(
+internal class DiscoverActions(
     val onOpen: (id: String, shelf: DiscoverShelf) -> Unit,
     val onImpression: (id: String, shelf: DiscoverShelf) -> Unit,
     val onEntity: (value: String) -> Unit,
@@ -69,8 +72,14 @@ class DiscoverActions(
     val onNextCard: (id: String) -> Unit,
     val onDealAnother: () -> Unit,
     val onPeek: (item: BookmarkItem, reason: String?) -> Unit,
-    val onMute: (bubble: MapBubble) -> Unit
+    val onMute: (bubble: MapBubble) -> Unit,
+    val plateTransition: PlateTransition? = null
 )
+
+/** The plate's half of the card → Detail hero morph (§7.2), keyed by the surface Detail is opened with. */
+@Composable
+internal fun Modifier.discoverPlate(item: BookmarkItem, shelf: DiscoverShelf, actions: DiscoverActions): Modifier =
+    sharedPlate(actions.plateTransition, PlateKey(item.id, surfaceOf(shelf).code))
 
 /** The card that opened the Peek sheet gets focus back when the sheet closes (§10). */
 internal class PeekFocus(val id: String, val requester: FocusRequester)
@@ -183,7 +192,7 @@ internal fun PlateCard(
             Text(it, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
         }
         if (showReasonOverline && reasonLabel != null) ReasonOverline(reasonLabel)
-        DiscoverPlate(item, plateShape(width), Modifier.fillMaxWidth())
+        DiscoverPlate(item, plateShape(width), Modifier.fillMaxWidth().discoverPlate(item, shelf, actions))
         Text(item.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface,
             maxLines = 2, overflow = TextOverflow.Ellipsis)
         Byline(item)
@@ -210,7 +219,7 @@ internal fun PlateRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        DiscoverPlate(item, MaterialTheme.shapes.medium, Modifier.width(PlateSize.XS.width), compact = true)
+        DiscoverPlate(item, MaterialTheme.shapes.medium, Modifier.width(PlateSize.XS.width).discoverPlate(item, shelf, actions), compact = true)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(item.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)

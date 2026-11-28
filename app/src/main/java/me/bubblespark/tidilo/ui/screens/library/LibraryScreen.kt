@@ -10,6 +10,7 @@ import androidx.paging.compose.itemKey
 import androidx.paging.PagingData
 import androidx.paging.LoadState
 import androidx.activity.compose.BackHandler
+import me.bubblespark.tidilo.ui.navigation.rememberPlateTransition
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseInOutCubic
@@ -943,6 +944,8 @@ private fun LibraryPlates(
     onPeek: (BookmarkItem) -> Unit,
     leadingContent: (@Composable () -> Unit)? = null
 ) {
+    // Resolved once above the lazy layouts, not per item.
+    val plateTransition = rememberPlateTransition()
     AnimatedContent(
         targetState = viewMode,
         transitionSpec = {
@@ -967,7 +970,7 @@ private fun LibraryPlates(
                 }
                 items(count = bookmarks.itemCount, key = bookmarks.itemKey { it.id }, contentType = { "library_plate_card" }) { index ->
                     val item = bookmarks[index] ?: return@items
-                    LibraryPlateCard(item, includeRss && item.rssFeedId != null, onOpen, onPeek)
+                    LibraryPlateCard(item, includeRss && item.rssFeedId != null, onOpen, onPeek, plateTransition = plateTransition)
                 }
             }
         } else {
@@ -982,7 +985,7 @@ private fun LibraryPlates(
                 }
                 items(count = bookmarks.itemCount, key = bookmarks.itemKey { it.id }, contentType = { "library_plate_row" }) { index ->
                     val item = bookmarks[index] ?: return@items
-                    LibraryPlateRow(item, includeRss && item.rssFeedId != null, onOpen, onPeek)
+                    LibraryPlateRow(item, includeRss && item.rssFeedId != null, onOpen, onPeek, plateTransition = plateTransition)
                 }
             }
         }

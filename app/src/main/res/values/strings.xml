@@ -147,8 +147,6 @@
     <string name="library_subtitle_bookmarks">Bookmarks (%1$d)</string>
     <string name="library_subtitle_bookmarks_with_rss">Bookmarks &amp; RSS (%1$d)</string>
     <string name="library_include_rss_chip">Include RSS</string>
-    <string name="library_rss_source_label">RSS</string>
-    <string name="library_rss_source_description">RSS article</string>
     <string name="library_subtitle_domains">Domains (%1$d)</string>
     <string name="library_subtitle_domain_bookmarks">Domain Bookmarks (%1$d)</string>
     <string name="library_empty_title">No bookmarks yet</string>

@@ -60,7 +60,8 @@ class PosterDomainIconTest {
     @Test fun missingOrBlurryIconKeepsInitial() {
         var icon by mutableStateOf<ImageBitmap?>(null)
         show { icon }
-        for (case in listOf(null, ImageBitmap(8, 8))) {
+        // 4px stays blurry for the 16dp masthead tile down to 1.0x density (4 * 2 < 16).
+        for (case in listOf(null, ImageBitmap(4, 4))) {
             composeRule.runOnIdle { icon = case }
             assertEquals(0, count(hasTestTag(POSTER_ICON_TAG)))
             assertEquals(3, count(hasText(initial)))

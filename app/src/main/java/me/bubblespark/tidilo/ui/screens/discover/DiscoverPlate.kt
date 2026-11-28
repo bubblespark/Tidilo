@@ -59,8 +59,8 @@ internal fun rememberDomainLabel(item: BookmarkItem): String {
 }
 
 /**
- * A 1.91:1 plate (§8.2). An og:image near 1.91:1 fills it exactly; any other ratio is fitted on a mat of
- * [matColor] (or the domain tone) and never cropped. Without an image it becomes a [DiscoverPoster].
+ * A 1.91:1 plate (§8.2). An og:image of any ratio is scaled to fill it and center-cropped (Detail's hero
+ * shows the whole image). Without an image it becomes a [DiscoverPoster].
  * Purely visual: semantics belong to the enclosing card.
  */
 @Composable
@@ -68,11 +68,10 @@ internal fun DiscoverPlate(
     item: BookmarkItem,
     shape: Shape,
     modifier: Modifier = Modifier,
-    matColor: Color = Color.Unspecified,
     compact: Boolean = false
 ) {
     val visuals = rememberPlateVisuals(item)
-    DiscoverPlateContent(item, visuals.og, visuals.domain, shape, modifier, matColor, compact)
+    DiscoverPlateContent(item, visuals.og, visuals.domain, shape, modifier, compact)
 }
 
 /** The og:image and domain visuals of a bookmark, observed once and shared by a plate and its mats. */
@@ -95,7 +94,6 @@ internal fun DiscoverPlateContent(
     domainVisual: DomainIconVisual,
     shape: Shape,
     modifier: Modifier = Modifier,
-    matColor: Color = Color.Unspecified,
     compact: Boolean = false
 ) {
     val placeholder = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -109,25 +107,12 @@ internal fun DiscoverPlateContent(
             .clearAndSetSemantics {}
     ) {
         when {
-            bitmap != null -> {
-                val aspect = bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1)
-                if (fillsPlate(aspect)) {
-                    Image(bitmap, contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
-                } else {
-                    val mat = if (matColor.isSpecified()) matColor else domainTone(domainVisual.accentColor, placeholder)
-                    Box(Modifier.fillMaxSize().background(mat))
-                    Image(bitmap, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
-                }
-            }
+            bitmap != null ->
+                Image(bitmap, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             ogState.shouldShowFallback -> DiscoverPoster(item, domainVisual.accentColor, domainVisual.bitmap, compact, Modifier.fillMaxSize())
         }
     }
 }
-
-private fun Color.isSpecified() = this != Color.Unspecified && this != Color.Transparent
-
-private fun domainTone(accent: Color, base: Color): Color =
-    if (accent == Color.Unspecified) base else accent.copy(alpha = 0.35f).compositeOver(base)
 
 /**
  * Typographic poster for a bookmark without og:image (§8.2): the domain color as a gradient, white or ink

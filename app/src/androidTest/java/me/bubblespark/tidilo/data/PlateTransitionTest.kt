@@ -6,6 +6,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
@@ -257,6 +258,32 @@ class PlateTransitionTest {
         }
         assertTrue("no frame with an active transition and a full-width hero", sampled)
         settle()
+    }
+
+    @Test fun statusBarBandNeverDarkensWhileTheHeroPaletteFadesIn() {
+        show()
+        // First open caches the hero palette, so the second open fades it in while frames are stepped.
+        openSettled("a")
+        val settled = bandLuminance()
+        back()
+        settle()
+        val library = bandLuminance()
+        composeRule.mainClock.autoAdvance = false
+        tap("a")
+        val seen = (1..90).map {
+            composeRule.mainClock.advanceTimeByFrame()
+            Thread.sleep(8) // lets the palette lookup land in real time
+            bandLuminance()
+        }
+        val floor = minOf(settled, library) - 0.08f
+        assertTrue("band luminance dipped to ${seen.min()} (library $library, settled $settled)", seen.all { it >= floor })
+        settle()
+    }
+
+    /** Luminance of the status-bar band's top-right corner, clear of the Back button. */
+    private fun bandLuminance(): Float {
+        val pixels = composeRule.onRoot().captureToImage().toPixelMap()
+        return pixels[pixels.width - 20, 2].luminance()
     }
 
     @Test fun predictiveBackCancelKeepsDetailAndCommitReturnsToCard() {

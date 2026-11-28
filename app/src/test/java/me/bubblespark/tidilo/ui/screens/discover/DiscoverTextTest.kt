@@ -36,9 +36,6 @@ class DiscoverTextTest {
         assertEquals(360f, plateWidth(PlateSize.XL, 360.dp).value, 0f)
         assertEquals(280f, plateWidth(PlateSize.M, 412.dp).value, 0f)
         assertEquals(268f, plateWidth(PlateSize.L, 300.dp).value, 0f)
-        assertTrue(fillsPlate(1200f / 630f))
-        assertFalse(fillsPlate(1f))
-        assertFalse(fillsPlate(4f / 3f))
     }
 
     @Test fun posterIconNeedsAtMostTwofoldUpscale() {

@@ -143,7 +143,8 @@ internal fun HeroShelf(
         Column(Modifier.fillMaxWidth().clip(HeroBottomShape).background(bottomMat).discoverCard(item, DiscoverShelf.HERO, reasonLabel, actions)) {
             // Parallax (§7.4): the plate trails the scroll and slides under the caption mat below it.
             Box(Modifier.fillMaxWidth().graphicsLayer { translationY = parallax() }) {
-                DiscoverPlateContent(item, ogState, visuals.domain, RectangleShape, Modifier.fillMaxWidth(), matColor = topMat)
+                DiscoverPlateContent(item, ogState, visuals.domain, RectangleShape,
+                    Modifier.fillMaxWidth().discoverPlate(item, DiscoverShelf.HERO, actions), matColor = topMat)
                 // The plate's edges dissolve into the mats (13% top, 6% bottom).
                 Box(Modifier.fillMaxWidth().height(PlateSize.XL.height * 0.13f).align(Alignment.TopCenter)
                     .background(Brush.verticalGradient(listOf(topMat, Color.Transparent))))
@@ -347,7 +348,7 @@ private fun Postcard(
     Surface(color = postcardColor(), shape = MaterialTheme.shapes.large, shadowElevation = 3.dp,
         modifier = modifier.fillMaxWidth().discoverCard(item, DiscoverShelf.DECK, null, actions, onDoubleClick)) {
         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            DiscoverPlate(item, MaterialTheme.shapes.medium, Modifier.fillMaxWidth())
+            DiscoverPlate(item, MaterialTheme.shapes.medium, Modifier.fillMaxWidth().discoverPlate(item, DiscoverShelf.DECK, actions))
             Text(item.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 4.dp))
             // The postmark sits on the paper, beside the byline, never on the art.
@@ -371,7 +372,7 @@ internal fun SleepingGemsShelf(picks: List<DiscoverPick>, actions: DiscoverActio
         Column(Modifier.fillMaxWidth().discoverCard(feature.item, DiscoverShelf.SLEEPING_GEMS, reason, actions),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             reason?.let { ReasonOverline(it) }
-            DiscoverPlate(feature.item, FeatureShape, Modifier.fillMaxWidth())
+            DiscoverPlate(feature.item, FeatureShape, Modifier.fillMaxWidth().discoverPlate(feature.item, DiscoverShelf.SLEEPING_GEMS, actions))
             Text(feature.item.title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 3, overflow = TextOverflow.Ellipsis)
             if (feature.item.description.isNotBlank()) {

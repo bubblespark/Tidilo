@@ -151,6 +151,19 @@ class DiscoverNavigationShellTest {
     }
 
     @Test
+    fun backFromDetailReturnsToTheSameDiscoverCard() = shellTest { prefix ->
+        val id = "${prefix}return"
+        seed(BookmarkEntity(id = id, title = "Return Fixture", url = "https://detail.invalid/$id", description = "",
+            createdAt = System.currentTimeMillis(), updatedAt = 1L))
+        launchShell(discoverPreviewEnabled = true)
+        click(await(tag("discover_card_$id")))
+        awaitAbsent(tag("discover_list"))
+        pressSystemBack()
+        await(tag("discover_card_$id"))
+        awaitAbsent(description(R.string.common_back))
+    }
+
+    @Test
     fun startsOnDiscoverWithToolbarAndFab() = shellTest {
         launchShell(discoverPreviewEnabled = true)
         await(tag("discover_header"))

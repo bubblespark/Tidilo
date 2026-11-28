@@ -70,6 +70,10 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.platform.testTag
+import me.bubblespark.tidilo.ui.navigation.PlateKey
+import me.bubblespark.tidilo.ui.navigation.rememberPlateTransition
+import me.bubblespark.tidilo.ui.navigation.sharedPlate
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -537,6 +541,7 @@ internal fun BookmarkDetailScreen(
     }
 
     val ogFilename = bookmark.ogImageFilename
+    val plateTransition = rememberPlateTransition()
     val ogState by rememberOgImage(bookmark.url, domain, bookmark.ogImageUrl, ogFilename, context = context, source = visualSource)
     val ogBitmap = ogState.bitmap
     val fallbackDomainVisual by rememberDomainVisual(
@@ -854,7 +859,13 @@ internal fun BookmarkDetailScreen(
                                     }
                             )
                         }
-                        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                        BoxWithConstraints(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                // Receives the plate that opened Detail (§7.2); the status-bar band stays outside.
+                                .sharedPlate(plateTransition, PlateKey(bookmark.id, openSurface.code))
+                                .testTag("detail_hero")
+                        ) {
                             val bannerHeight = minOf(
                                 maxWidth / calculateOgAspectRatio(ogBitmap.width, ogBitmap.height),
                                 DETAIL_HERO_MAX_BANNER_HEIGHT

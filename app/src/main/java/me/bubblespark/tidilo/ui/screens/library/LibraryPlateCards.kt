@@ -29,6 +29,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.data.engagement.EngagementSurface
+import me.bubblespark.tidilo.ui.navigation.PlateKey
+import me.bubblespark.tidilo.ui.navigation.PlateTransition
+import me.bubblespark.tidilo.ui.navigation.sharedPlate
 import me.bubblespark.tidilo.ui.screens.discover.DiscoverPlate
 import me.bubblespark.tidilo.ui.screens.discover.PlateSize
 import me.bubblespark.tidilo.ui.screens.discover.rememberDomainLabel
@@ -67,6 +71,9 @@ private fun Modifier.libraryCard(
         .semantics(mergeDescendants = true) { contentDescription = description }
 }
 
+/** Library opens Detail with the default surface, so its plates share that code with the hero. */
+private fun libraryPlateKey(item: BookmarkItem) = PlateKey(item.id, EngagementSurface.DETAIL.code)
+
 @Composable
 private fun rememberRelativeTime(item: BookmarkItem): String {
     val context = LocalContext.current
@@ -80,7 +87,8 @@ internal fun LibraryPlateCard(
     showRssSource: Boolean,
     onOpen: (String) -> Unit,
     onPeek: (BookmarkItem) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    plateTransition: PlateTransition? = null
 ) {
     val domain = rememberDomainLabel(item)
     val time = rememberRelativeTime(item)
@@ -90,7 +98,8 @@ internal fun LibraryPlateCard(
             .libraryCard(item, "library_card_${item.id}", showRssSource, domain, time, onOpen, onPeek),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        DiscoverPlate(item, MaterialTheme.shapes.medium, Modifier.fillMaxWidth().padding(bottom = 6.dp))
+        DiscoverPlate(item, MaterialTheme.shapes.medium,
+            Modifier.fillMaxWidth().padding(bottom = 6.dp).sharedPlate(plateTransition, libraryPlateKey(item)))
         Text(domain, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(item.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface,
@@ -106,7 +115,8 @@ internal fun LibraryPlateRow(
     showRssSource: Boolean,
     onOpen: (String) -> Unit,
     onPeek: (BookmarkItem) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    plateTransition: PlateTransition? = null
 ) {
     val domain = rememberDomainLabel(item)
     val time = rememberRelativeTime(item)
@@ -117,7 +127,8 @@ internal fun LibraryPlateRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        DiscoverPlate(item, MaterialTheme.shapes.medium, Modifier.width(PlateSize.XS.width), compact = true)
+        DiscoverPlate(item, MaterialTheme.shapes.medium,
+            Modifier.width(PlateSize.XS.width).sharedPlate(plateTransition, libraryPlateKey(item)), compact = true)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(item.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)

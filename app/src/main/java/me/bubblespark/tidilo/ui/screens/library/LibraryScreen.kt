@@ -10,6 +10,7 @@ import androidx.paging.compose.itemKey
 import androidx.paging.PagingData
 import androidx.paging.LoadState
 import androidx.activity.compose.BackHandler
+import me.bubblespark.tidilo.ui.navigation.rememberPlateTransition
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseInOutCubic
@@ -777,7 +778,8 @@ fun LibraryScreen(
                                             else -> domainDetailGridState
                                         }
                                         LibraryPlates(viewMode, domainBookmarks, listState, gridState, contentPadding,
-                                            includeRss = feed != null, onOpen = onNavigateToDetail, onPeek = ::openPeek)
+                                            includeRss = feed != null, onOpen = onNavigateToDetail, onPeek = ::openPeek,
+                                            active = state == displayState)
                                     } else {
                                         AnimatedContent(
                                             targetState = viewMode,
@@ -851,7 +853,8 @@ fun LibraryScreen(
                                 )
                             } else if (discoverPreview) {
                                 LibraryPlates(viewMode, bookmarks, newestFirstListState, newestFirstGridState, contentPadding,
-                                    includeRss = includeRss, onOpen = onNavigateToDetail, onPeek = ::openPeek, leadingContent = scopeRow)
+                                    includeRss = includeRss, onOpen = onNavigateToDetail, onPeek = ::openPeek,
+                                    active = state == displayState, leadingContent = scopeRow)
                             } else {
                                 AnimatedContent(
                                     targetState = viewMode,
@@ -941,8 +944,11 @@ private fun LibraryPlates(
     includeRss: Boolean,
     onOpen: (String) -> Unit,
     onPeek: (BookmarkItem) -> Unit,
+    active: Boolean,
     leadingContent: (@Composable () -> Unit)? = null
 ) {
+    // Resolved once above the lazy layouts, not per item.
+    val plateTransition = rememberPlateTransition()
     AnimatedContent(
         targetState = viewMode,
         transitionSpec = {
@@ -951,6 +957,8 @@ private fun LibraryPlates(
         },
         label = "library_plates_view_mode"
     ) { mode ->
+        // Only the settled branch registers plate keys, so a crossfade never shows two plates with one key.
+        val branchTransition = plateTransition.takeIf { active && mode == viewMode }
         if (mode == LibraryViewMode.GRID) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(LibraryPlateMinCellWidth),
@@ -967,7 +975,7 @@ private fun LibraryPlates(
                 }
                 items(count = bookmarks.itemCount, key = bookmarks.itemKey { it.id }, contentType = { "library_plate_card" }) { index ->
                     val item = bookmarks[index] ?: return@items
-                    LibraryPlateCard(item, includeRss && item.rssFeedId != null, onOpen, onPeek)
+                    LibraryPlateCard(item, includeRss && item.rssFeedId != null, onOpen, onPeek, plateTransition = branchTransition)
                 }
             }
         } else {
@@ -982,7 +990,7 @@ private fun LibraryPlates(
                 }
                 items(count = bookmarks.itemCount, key = bookmarks.itemKey { it.id }, contentType = { "library_plate_row" }) { index ->
                     val item = bookmarks[index] ?: return@items
-                    LibraryPlateRow(item, includeRss && item.rssFeedId != null, onOpen, onPeek)
+                    LibraryPlateRow(item, includeRss && item.rssFeedId != null, onOpen, onPeek, plateTransition = branchTransition)
                 }
             }
         }

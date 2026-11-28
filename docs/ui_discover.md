@@ -39,7 +39,7 @@ Header: the date (`labelLarge`, local format, refreshed at midnight and on resum
 
 ## 4. Engagement
 
-- A card tap opens Bookmark Detail with the card's shelf as the route's `surface` argument (`bookmark_detail/{id}?surface=…`). Detail records its single `DETAIL` event with that surface (`EngagementSurface.DISCOVER_*`); other callers default to `DETAIL`.
+- A card tap opens Bookmark Detail with the card's shelf as the route's `surface` argument (`bookmark_detail/{id}?surface=…`). Detail records its single `DETAIL` event with that surface (`EngagementSurface.DISCOVER_*`); other callers default to `DETAIL`. The card's plate grows into the Detail hero and returns to it on Back (`docs/ui_design.md` §4); the Peek sheet's plate takes no part.
 - An entity tap replaces the Search query with `#entity` (`LibraryViewModel.searchEntity`).
 - A deck Like is written by `DiscoverViewModel` with `DISCOVER_DECK`. The heart flips at once, then shows the stored state; a failed write or a deleted bookmark restores it. Next card records `DECK_FLICK`.
 - Hiding Private content removes Private cards from the dealt deck at once. The first save into an empty library deals the deck.

@@ -1,6 +1,7 @@
 package me.bubblespark.tidilo.ui.screens.discover
 
 import android.text.format.DateFormat
+import me.bubblespark.tidilo.ui.navigation.rememberPlateTransition
 import android.os.SystemClock
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SnackbarDuration
@@ -112,7 +113,9 @@ fun DiscoverScreen(
     var focusId by rememberSaveable { mutableStateOf<String?>(null) }
     var collectionFor by rememberSaveable { mutableStateOf<String?>(null) }
     var creatorFor by rememberSaveable { mutableStateOf<String?>(null) }
-    val actions = remember(viewModel, onOpenBookmark, onOpenEntity, onSaveUrl, onRetryImport) {
+    // Resolved once here; cards read it from the actions instead of a CompositionLocal per item.
+    val plateTransition = rememberPlateTransition()
+    val actions = remember(viewModel, onOpenBookmark, onOpenEntity, onSaveUrl, onRetryImport, plateTransition) {
         DiscoverActions(
             onOpen = onOpenBookmark,
             onImpression = viewModel::onImpression,
@@ -128,7 +131,8 @@ fun DiscoverScreen(
                 focusId = item.id
                 viewModel.onPeek(item.id)
             },
-            onMute = viewModel::muteTopic
+            onMute = viewModel::muteTopic,
+            plateTransition = plateTransition
         )
     }
     val listState = rememberLazyListState()

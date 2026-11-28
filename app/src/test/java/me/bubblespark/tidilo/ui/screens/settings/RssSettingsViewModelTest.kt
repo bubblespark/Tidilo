@@ -3,6 +3,10 @@ package me.bubblespark.tidilo.ui.screens.settings
 import android.app.Application
 import androidx.lifecycle.SavedStateHandle
 import java.io.File
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -54,5 +58,17 @@ class RssSettingsViewModelTest {
             "Proguard rules must keep ViewModel classes",
             content.contains("-keep class * extends androidx.lifecycle.ViewModel")
         )
+    }
+
+    @Test
+    fun cancelledSettingsInitializationIsNotReportedAsLoadFailure() = runTest {
+        val thrown = runCatching { loadRssSettings { throw CancellationException("Fixture cancellation") } }.exceptionOrNull()
+        assertTrue("Cancellation must propagate instead of becoming a load state", thrown is CancellationException)
+    }
+
+    @Test
+    fun settingsInitializationFailureIsReportedAndSuccessIsReady() = runTest {
+        assertEquals(StorageLoad.Error, loadRssSettings { throw IOException("Fixture settings failure") })
+        assertEquals(StorageLoad.Ready(Unit), loadRssSettings { })
     }
 }

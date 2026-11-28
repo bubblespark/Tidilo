@@ -9,10 +9,13 @@ import androidx.work.impl.WorkManagerImpl
 import androidx.work.testing.WorkManagerTestInitHelper
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import me.bubblespark.tidilo.data.rss.RssFetchWorker
 import me.bubblespark.tidilo.data.rss.RssPreferences
@@ -84,8 +87,10 @@ class RssManualFetchWorkTest {
                 WorkManagerTestInitHelper.closeWorkDatabase()
             } finally {
                 WorkManagerImpl.setDelegate(null)
-                db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(feedId))
-                preferences.save(original)
+                withContext(NonCancellable + Dispatchers.IO) {
+                    db.openHelper.writableDatabase.execSQL("DELETE FROM rss_feeds WHERE id = ?", arrayOf(feedId))
+                    preferences.save(original)
+                }
                 assertSame(defaultManager, WorkManager.getInstance(context))
             }
         }

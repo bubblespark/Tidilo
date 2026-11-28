@@ -52,6 +52,16 @@ internal fun manualFetchStatus(states: List<WorkInfo.State>): ManualFetchStatus 
     else -> ManualFetchStatus.Idle
 }
 
+/** Cancellation propagates so a screen that left mid-load never reports a load failure. */
+internal suspend fun loadRssSettings(initialize: suspend () -> Unit): StorageLoad<Unit> = try {
+    initialize()
+    StorageLoad.Ready(Unit)
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: Exception) {
+    StorageLoad.Error
+}
+
 class RssSettingsViewModel internal constructor(
     application: Application,
     private val savedState: androidx.lifecycle.SavedStateHandle,
@@ -122,14 +132,7 @@ class RssSettingsViewModel internal constructor(
 
     internal fun retrySettings() = action {
         _settingsLoad.value = StorageLoad.Loading
-        try {
-            initializeSettings()
-            _settingsLoad.value = StorageLoad.Ready(Unit)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            _settingsLoad.value = StorageLoad.Error
-        }
+        _settingsLoad.value = loadRssSettings(initializeSettings)
     }
 
     fun retry() {

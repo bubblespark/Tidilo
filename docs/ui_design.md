@@ -126,7 +126,8 @@ Drill-downs publish active colors (`ownerId = "library_drilldown"`) via `Remembe
 
 Native Material consumers inherit palette and shape defaults without supporting custom decorations; layout, spacing, typography, and asymmetric crops remain component-owned.
 
-### 7.5 Modern Preset, Haze Backdrop Blur & Verification
-- **Modern Fixed Palettes**: Dark (`#1D1F20` canvas, `#2B2C2D` containers, `#D4B06B` accent); Light (`#F5F1E9` canvas, `#FFFAF2` containers, `#886225` accent). Retains `3.dp` tactile depth, `26.dp` card / `12.dp` badge corners, and optional `1.dp` downward shadow on selected nav/screen/primary labels.
+### 7.5 Gallery & Modern Presets, Haze Backdrop Blur & Verification
+- **Gallery (`default`)**: Dynamic Color with near-neutral walls: the wall roles keep 20% of their Oklab chroma (`wallChroma = 0.2`) at unchanged lightness, while `primary` and the other accents stay wallpaper-derived for the FAB, selection, and focus.
+- **Modern Fixed Palettes**: Dark (`#1D1F20` canvas, `#2B2C2D` containers, `#D4B06B` accent); Light (`#F5F1E9` canvas, `#FFFAF2` containers, `#886225` accent). Retains `3.dp` tactile depth, `26.dp` card / `12.dp` badge corners, and optional `1.dp` downward shadow on selected nav/screen/primary labels. Ambient light is blended 30% toward `primary` (gold) for warm lighting (`ambientAccentBlend = 0.3`).
 - **Backdrop Blur (Haze 2.1.0)**: Defaults ON with theme-policy override without mutating saved preference. Two isolated graphs avoid feedback: an app-wide modal source (`TidiloAlertDialog`, `TidiloModalBottomSheet`, `TidiloDropdownMenu`, `LibraryNavigationRail`) and per-screen chrome sources (`FrostedHeaderContainer`, Detail toolbar/browser jump). Each consumer uses its ordinary background when blur is OFF or unsupported.
 

@@ -9,6 +9,7 @@ import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.config.AppTheme
@@ -188,13 +189,21 @@ data class AppThemeStyle(
     val surfaceOverrides: Map<SurfaceRole, SurfaceStyleOverride> = emptyMap(),
     val shapeScale: ThemeShapeScale = ThemeShapeScale(),
     val lightMaterialColors: ColorScheme? = null,
-    val darkMaterialColors: ColorScheme? = null
+    val darkMaterialColors: ColorScheme? = null,
+    /** Oklab chroma kept on the system palette's wall roles; 1 keeps them as is. Ignored with explicit palettes. */
+    val wallChroma: Float = 1f,
+    /** Share of `primary` blended into the ambient light (§8.1 Modern "warm lighting"). */
+    val ambientAccentBlend: Float = 0f
 ) {
     fun resolveColor(colorScheme: ColorScheme, dynamicAccent: Color? = null): Color =
         colorRole.resolve(colorScheme, dynamicAccent)
 
+    fun resolveAmbient(colorScheme: ColorScheme, accent: Color): Color =
+        lerp(resolveColor(colorScheme, accent), colorScheme.primary, ambientAccentBlend)
+
     companion object {
-        val Default = AppThemeStyle(AppTheme.DEFAULT)
+        /** Gallery: Dynamic Color with near-neutral walls (§8.1). */
+        val Default = AppThemeStyle(AppTheme.DEFAULT, wallChroma = 0.2f)
 
         val Modern = AppThemeStyle(
             theme = AppTheme.MODERN,
@@ -244,7 +253,8 @@ data class AppThemeStyle(
                 useGradientFill = true
             ),
             lightMaterialColors = ModernLightColorScheme,
-            darkMaterialColors = ModernDarkColorScheme
+            darkMaterialColors = ModernDarkColorScheme,
+            ambientAccentBlend = 0.3f
         )
 
         fun forTheme(theme: AppTheme): AppThemeStyle = when (theme) {

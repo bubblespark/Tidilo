@@ -6,11 +6,14 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.lifecycle.SavedStateHandle
 import androidx.navigation.NavType
@@ -232,6 +235,28 @@ class PlateTransitionTest {
         settle()
         awaitAbsent(hero)
         await(card("a"))
+    }
+
+    @Test fun backButtonDrawsAboveHeroDuringOpen() {
+        show()
+        await(card("a"))
+        composeRule.mainClock.autoAdvance = false
+        tap("a")
+        // Step to the last frames of the morph, where the full-width hero covers Detail's top-left corner.
+        var sampled = false
+        repeat(60) {
+            composeRule.mainClock.advanceTimeByFrame()
+            val back = nodes(hasTestTag("detail_back")).firstOrNull()
+            if (!sampled && active() && back != null && (heroWidth() ?: 0f) > rootWidth() * 0.95f) {
+                sampled = true
+                val center = back.boundsInRoot.center
+                val pixel = composeRule.onRoot().captureToImage().toPixelMap()[center.x.toInt(), center.y.toInt()]
+                // The hero fixture is pure green; the Back plate and its arrow are neutral.
+                assertTrue("Back is hidden under the hero: $pixel", pixel.green - maxOf(pixel.red, pixel.blue) < 0.3f)
+            }
+        }
+        assertTrue("no frame with an active transition and a full-width hero", sampled)
+        settle()
     }
 
     @Test fun predictiveBackCancelKeepsDetailAndCommitReturnsToCard() {

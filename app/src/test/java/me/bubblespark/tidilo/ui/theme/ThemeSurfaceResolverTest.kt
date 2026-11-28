@@ -3,6 +3,8 @@ package me.bubblespark.tidilo.ui.theme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.colorspace.ColorSpaces
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import me.bubblespark.tidilo.config.AppTheme
@@ -18,7 +20,7 @@ class ThemeSurfaceResolverTest {
             val second = darkColorScheme(primary = Color.Blue)
             val modern = resolveMaterialColors(first, dark, AppThemeStyle.Modern)
             assertEquals(modern, resolveMaterialColors(second, dark, AppThemeStyle.Modern))
-            assertSame(first, resolveMaterialColors(first, dark, AppThemeStyle.Default))
+            assertEquals(first.primary, resolveMaterialColors(first, dark, AppThemeStyle.Default).primary)
             val surfaces = resolveThemeSurfaces(AppTheme.MODERN, dark, modern)
             assertEquals(if (dark) Color(0xFF1D1F20) else Color(0xFFF5F1E9), modern.background)
             assertEquals(if (dark) Color(0xFFD4B06B) else Color(0xFF886225), modern.primary)
@@ -152,12 +154,39 @@ class ThemeSurfaceResolverTest {
     }
 
     @Test fun presetMaterialColorsRetainDynamicWhenUnspecified() {
-        assertSame(colors, resolveMaterialColors(colors, false, AppThemeStyle.Default))
+        val plain = AppThemeStyle(AppTheme.DEFAULT)
+        assertSame(colors, resolveMaterialColors(colors, false, plain))
         val replacement = colors.copy(surfaceContainerHigh = Color.Cyan)
-        val preset = AppThemeStyle.Default.copy(lightMaterialColors = replacement)
+        val preset = plain.copy(lightMaterialColors = replacement)
         assertSame(replacement, resolveMaterialColors(colors, false, preset))
         assertSame(colors, resolveMaterialColors(colors, true, preset))
     }
+
+    @Test fun galleryNeutralizesWallsAndKeepsDynamicAccents() {
+        // A wallpaper-tinted dynamic scheme: blue walls, blue accent.
+        val tinted = lightColorScheme(primary = Color(0xFF3654A5), background = Color(0xFFF0F4FF),
+            surface = Color(0xFFF0F4FF), surfaceContainerHigh = Color(0xFFDCE2F9), surfaceContainerLowest = Color(0xFFFFFFFF))
+        val gallery = resolveMaterialColors(tinted, false, AppThemeStyle.Default)
+        assertEquals(tinted.primary, gallery.primary)
+        assertEquals(tinted.primaryContainer, gallery.primaryContainer)
+        assertEquals(tinted.onSurface, gallery.onSurface)
+        for ((before, after) in listOf(tinted.background to gallery.background, tinted.surface to gallery.surface,
+            tinted.surfaceContainerHigh to gallery.surfaceContainerHigh)) {
+            val b = before.convert(ColorSpaces.Oklab)
+            val a = after.convert(ColorSpaces.Oklab)
+            assertEquals(b.red, a.red, 0.005f)
+            assertTrue("chroma $after vs $before", chroma(a) <= chroma(b) * 0.2f + 0.002f)
+        }
+    }
+
+    @Test fun modernAmbientBlendsTowardGoldAndGalleryKeepsTheAccent() {
+        val red = Color(0xFFFF0000)
+        assertEquals(red, AppThemeStyle.Default.resolveAmbient(colors, red))
+        val modern = ModernDarkColorScheme
+        assertEquals(lerp(red, modern.primary, 0.3f), AppThemeStyle.Modern.resolveAmbient(modern, red))
+    }
+
+    private fun chroma(lab: Color) = kotlin.math.hypot(lab.green, lab.blue)
 
     @Test fun materialShapeScaleMatchesNativeRoles() {
         val scale = ThemeShapeScale(card = 23.dp)

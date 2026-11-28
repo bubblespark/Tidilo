@@ -28,7 +28,7 @@ class ThemeStringsTest {
         )
         assertTrue(
             "settings_theme_default should exist in English",
-            enXml.contains("<string name=\"settings_theme_default\">Default</string>")
+            enXml.contains("<string name=\"settings_theme_default\">Gallery</string>")
         )
         assertTrue(
             "settings_theme_modern should exist in English",
@@ -56,7 +56,7 @@ class ThemeStringsTest {
         )
         assertTrue(
             "settings_theme_default should exist in Japanese",
-            jaXml.contains("<string name=\"settings_theme_default\">デフォルト</string>")
+            jaXml.contains("<string name=\"settings_theme_default\">ギャラリー</string>")
         )
         assertTrue(
             "settings_theme_modern should exist in Japanese",

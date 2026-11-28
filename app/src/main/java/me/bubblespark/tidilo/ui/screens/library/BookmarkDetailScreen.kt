@@ -72,6 +72,7 @@ import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.testTag
 import me.bubblespark.tidilo.ui.navigation.PlateKey
+import me.bubblespark.tidilo.ui.navigation.aboveSharedPlate
 import me.bubblespark.tidilo.ui.navigation.rememberPlateTransition
 import me.bubblespark.tidilo.ui.navigation.sharedPlate
 import androidx.compose.foundation.layout.WindowInsets
@@ -1308,7 +1309,7 @@ private fun DetailFloatingHeaderOverlay(
     val surfaces = currentThemeSurfaces()
     val fallbackScrimColor = surfaces.canvasColor
     val statusBarHeight = screenSystemInsets().asPaddingValues().calculateTopPadding()
-    Box(modifier = Modifier.fillMaxWidth()) {
+    Box(modifier = Modifier.fillMaxWidth().aboveSharedPlate(rememberPlateTransition())) {
         // Permanent top status-bar protection gradient scrim (confined to the status bar + 8dp soft edge)
         Box(
             modifier = Modifier
@@ -1359,7 +1360,7 @@ private fun DetailFloatingHeaderOverlay(
                 onClick = onBackClick,
                 role = SurfaceRole.FLOATING_BAR,
                 blurBackground = true,
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(48.dp).testTag("detail_back")
             ) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Icon(

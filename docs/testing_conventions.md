@@ -43,6 +43,7 @@ Instrumentation tests must pass reliably on **software-GPU CI emulators** (`-gpu
 - **Keep Fixtures Free of Infinite Animations**: Use short fixture titles and labels so `Modifier.basicMarquee` and other infinite animations do not trigger during assertions. Never leave continuous transitions running across waits or synchronization checks.
 - **No Debug Screenshots**: Never commit `host.capture(...)` or debug PNG dumps. Reserve `uiAutomation.takeScreenshot()` strictly for pixel-level rendering assertions (blur, lighting, surface drawing) and recycle every `Bitmap` in `finally`. Visual-review catalogues and benchmarks are not part of the test suite (see §8).
 - **Pixel Tolerances for Software Rendering**: Pixel assertions use tolerances that hold on software-GPU rendering. A check that cannot pass there moves to a JVM test of the underlying math or is removed; never skip it per device.
+- **Exclude System Bars & Cutouts from Pixel Samples**: Under edge-to-edge (`targetSdk 36`), `uiAutomation.takeScreenshot()` captures OS status/navigation bar icons and display cutouts over the app window. Keep sampled coordinates strictly inside runtime `WindowInsets` (`systemBars.union(displayCutout)` / `safeDrawing`)—either by padding the sampled container with those insets or clamping coordinates against them—never by screen-edge fractions or OS-version branches.
 - **Pixel Capture Budget**: Assert pixels in memory (crop and inspect the `Bitmap`); never PNG-encode or write a capture to disk to assert it. Keep each `@Test` to about **20 captures** at most.
 
 ---

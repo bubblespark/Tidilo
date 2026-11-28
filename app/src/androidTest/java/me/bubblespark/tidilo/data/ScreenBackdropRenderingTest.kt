@@ -3,10 +3,15 @@ package me.bubblespark.tidilo.data
 import android.graphics.Bitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -19,7 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.runBlocking
 import me.bubblespark.tidilo.ui.components.FrostedHeaderContainer
@@ -42,8 +47,20 @@ class ScreenBackdropRenderingTest {
             TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = enabled) {
                 TidiloScreenScaffold(header = {
                     FrostedHeaderContainer(Modifier.testTag("frosted-header")) {
-                        Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                            Box(Modifier.size(16.dp).background(Color.Magenta))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout))
+                        ) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(100.dp)
+                                    .testTag("frosted-header-content"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(Modifier.size(16.dp).background(Color.Magenta))
+                            }
                         }
                     }
                 }) {
@@ -68,17 +85,21 @@ class ScreenBackdropRenderingTest {
             }
         }
         val header = composeRule.awaitNode(hasTestTag("frosted-header"))
-        val left = header.positionOnScreen.x
-        val top = header.positionOnScreen.y
-        val width = header.size.width.toFloat()
-        val height = header.size.height.toFloat()
+        val content = composeRule.awaitNode(hasTestTag("frosted-header-content"))
+        val contentLeft = content.positionOnScreen.x
+        val contentTop = content.positionOnScreen.y
+        val contentWidth = content.size.width.toFloat()
+        val contentHeight = content.size.height.toFloat()
+        val headerBottom = (header.positionOnScreen.y + header.size.height).toInt()
 
         fun samplePixel(frame: Bitmap, fractionY: Float = .3f): Int =
-            frame.getPixel((left + width * .25f).toInt(), (top + height * fractionY).toInt())
+            frame.getPixel((contentLeft + contentWidth * .25f).toInt(), (contentTop + contentHeight * fractionY).toInt())
 
         fun contrast(frame: Bitmap): Int {
-            val y = (top + height * .25f).toInt()
-            val values = (frame.width / 4 until frame.width * 3 / 4).map { android.graphics.Color.red(frame.getPixel(it, y)) }
+            val y = (contentTop + contentHeight * .25f).toInt()
+            val startX = (contentLeft + contentWidth / 4f).toInt()
+            val endX = (contentLeft + contentWidth * 3f / 4f).toInt()
+            val values = (startX until endX).map { android.graphics.Color.red(frame.getPixel(it, y)) }
             return values.max() - values.min()
         }
 
@@ -103,7 +124,7 @@ class ScreenBackdropRenderingTest {
             val p = samplePixel(frame)
             if (p != red && android.graphics.Color.blue(p) > android.graphics.Color.red(p)) {
                 val marker = (0 until frame.height).any { frame.getPixel(frame.width / 2, it) == Color.Magenta.toArgb() }
-                val tailPixel = frame.getPixel((left + width * .25f).toInt(), (top + height).toInt() - 2)
+                val tailPixel = frame.getPixel((contentLeft + contentWidth * .25f).toInt(), headerBottom - 2)
                 Triple(p, marker, tailPixel)
             } else {
                 null

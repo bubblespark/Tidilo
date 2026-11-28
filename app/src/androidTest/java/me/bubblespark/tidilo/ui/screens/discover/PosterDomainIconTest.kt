@@ -3,12 +3,18 @@ package me.bubblespark.tidilo.ui.screens.discover
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -18,6 +24,7 @@ import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.Tag
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -55,6 +62,37 @@ class PosterDomainIconTest {
         show { ImageBitmap(256, 256) }
         assertEquals(4, count(hasTestTag(POSTER_ICON_TAG)))
         assertEquals(0, count(hasText(initial)))
+    }
+
+    @Test fun posterTextFitsThePlateAtDoubleFontScale() {
+        val title = "A long poster title that would need several lines on a small two-up grid plate"
+        composeRule.setContent {
+            TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
+                val density = LocalDensity.current
+                CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                    androidx.compose.foundation.layout.Column {
+                        layouts.filterNot { it.second }.forEach { (id, _) ->
+                            // The two-up Library grid plate (182dp wide).
+                            Box(Modifier.width(182.dp).aspectRatio(PLATE_RATIO)) {
+                                DiscoverPoster(item(id).copy(title = title), Color(0xFF4285F4), null, compact = false)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val texts = composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+        assertTrue(texts.isNotEmpty())
+        texts.forEach { node ->
+            val layouts = mutableListOf<TextLayoutResult>()
+            node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+            val layout = layouts.single()
+            // Ellipsizing at maxLines is intended; drawing lines taller than the space given is the clip.
+            val drawn = layout.multiParagraph.height
+            val available = layout.layoutInput.constraints.maxHeight
+            assertTrue("'${layout.layoutInput.text}' needs ${drawn}px but has ${available}px", drawn <= available)
+        }
     }
 
     @Test fun missingOrBlurryIconKeepsInitial() {

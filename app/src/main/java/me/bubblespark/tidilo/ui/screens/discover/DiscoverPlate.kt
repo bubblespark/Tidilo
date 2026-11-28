@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,7 +39,9 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import me.bubblespark.tidilo.data.DomainPolicyManager
 import me.bubblespark.tidilo.ui.components.DomainIconVisual
@@ -131,56 +134,60 @@ internal fun DiscoverPoster(item: BookmarkItem, accent: Color, icon: ImageBitmap
     fun sharpIcon(size: Dp): ImageBitmap? =
         icon?.takeIf { posterIconSharp(it.width, it.height, with(density) { size.toPx() }) }
     val textRegion = Modifier.background(Color.Black.copy(alpha = ink.textRegionDarkening))
-    Box(modifier.background(Brush.linearGradient(listOf(base, deep)))) {
-        if (compact) {
-            val tile = sharpIcon(CompactTile)
-            if (tile != null) {
-                PosterIconTile(tile, CompactTile, Modifier.align(Alignment.Center))
+    // The plate is image-like: its text keeps its size at every font scale (the caption below repeats the
+    // title at the user's scale), so a small plate never clips it.
+    CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1f)) {
+        Box(modifier.background(Brush.linearGradient(listOf(base, deep)))) {
+            if (compact) {
+                val tile = sharpIcon(CompactTile)
+                if (tile != null) {
+                    PosterIconTile(tile, CompactTile, Modifier.align(Alignment.Center))
+                    return@Box
+                }
+                // The whole small poster is the text region, so darken it evenly.
+                Box(Modifier.fillMaxSize().then(textRegion))
+                Text(initial, color = ink.text, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.Center))
                 return@Box
             }
-            // The whole small poster is the text region, so darken it evenly.
-            Box(Modifier.fillMaxSize().then(textRegion))
-            Text(initial, color = ink.text, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.Center))
-            return@Box
-        }
-        when (posterVariant(item.id)) {
-            0 -> {
-                val tile = sharpIcon(CornerTile)
-                if (tile != null) {
-                    PosterIconTile(tile, CornerTile, Modifier.align(Alignment.BottomEnd).padding(CornerTileInset))
-                    // Keep a 3-line title clear of the tile.
-                    PosterTitle(item.title, ink.text, Modifier.align(Alignment.TopStart).padding(end = CornerTile + CornerTileInset)
-                        .then(textRegion).padding(start = 14.dp, top = 14.dp, bottom = 14.dp, end = 8.dp))
-                } else {
-                    // The watermark fits its box, so it never grows with the font scale.
-                    BasicText(
-                        initial,
-                        style = MaterialTheme.typography.displayLarge.copy(color = ink.text.copy(alpha = 0.16f), fontWeight = FontWeight.Black),
-                        autoSize = TextAutoSize.StepBased(),
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp).fillMaxHeight(0.9f).aspectRatio(1f)
-                    )
-                    PosterTitle(item.title, ink.text, Modifier.align(Alignment.TopStart).then(textRegion).padding(14.dp))
+            when (posterVariant(item.id)) {
+                0 -> {
+                    val tile = sharpIcon(CornerTile)
+                    if (tile != null) {
+                        PosterIconTile(tile, CornerTile, Modifier.align(Alignment.BottomEnd).padding(CornerTileInset))
+                        // Keep a 3-line title clear of the tile.
+                        PosterTitle(item.title, ink.text, Modifier.align(Alignment.TopStart).padding(end = CornerTile + CornerTileInset)
+                            .then(textRegion).padding(start = 14.dp, top = 14.dp, bottom = 14.dp, end = 8.dp))
+                    } else {
+                        // The watermark fits its box, so it never grows with the font scale.
+                        BasicText(
+                            initial,
+                            style = MaterialTheme.typography.displayLarge.copy(color = ink.text.copy(alpha = 0.16f), fontWeight = FontWeight.Black),
+                            autoSize = TextAutoSize.StepBased(),
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp).fillMaxHeight(0.9f).aspectRatio(1f)
+                        )
+                        PosterTitle(item.title, ink.text, Modifier.align(Alignment.TopStart).then(textRegion).padding(14.dp))
+                    }
                 }
-            }
-            1 -> Row(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxHeight().fillMaxWidth(0.18f).background(Color.Black.copy(alpha = 0.25f)),
-                    contentAlignment = Alignment.Center) {
-                    val tile = sharpIcon(SpineTile)
-                    if (tile != null) PosterIconTile(tile, SpineTile)
-                    else Text(initial, color = ink.text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                1 -> Row(Modifier.fillMaxSize()) {
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(0.18f).background(Color.Black.copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center) {
+                        val tile = sharpIcon(SpineTile)
+                        if (tile != null) PosterIconTile(tile, SpineTile)
+                        else Text(initial, color = ink.text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    }
+                    PosterTitle(item.title, ink.text, Modifier.weight(1f).then(textRegion).padding(14.dp))
                 }
-                PosterTitle(item.title, ink.text, Modifier.weight(1f).then(textRegion).padding(14.dp))
-            }
-            else -> Column(Modifier.fillMaxSize().then(textRegion).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    sharpIcon(MastheadTile)?.let { PosterIconTile(it, MastheadTile) }
-                    Text(label.uppercase(), color = ink.text, style = MaterialTheme.typography.labelSmall, letterSpacing = 1.5.sp,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                else -> Column(Modifier.fillMaxSize().then(textRegion).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        sharpIcon(MastheadTile)?.let { PosterIconTile(it, MastheadTile) }
+                        Text(label.uppercase(), color = ink.text, style = MaterialTheme.typography.labelSmall, letterSpacing = 1.5.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(ink.text.copy(alpha = 0.6f)))
+                    Spacer(Modifier.height(2.dp))
+                    PosterTitle(item.title, ink.text, Modifier.weight(1f))
                 }
-                Box(Modifier.fillMaxWidth().height(1.dp).background(ink.text.copy(alpha = 0.6f)))
-                Spacer(Modifier.height(2.dp))
-                PosterTitle(item.title, ink.text, Modifier)
             }
         }
     }
@@ -206,8 +213,12 @@ private fun PosterIconTile(icon: ImageBitmap, size: Dp, modifier: Modifier = Mod
     )
 }
 
+/** Up to three lines that shrink to the space the layout leaves, so the last line is never cut mid-glyph. */
 @Composable
 private fun PosterTitle(title: String, color: Color, modifier: Modifier) {
-    Text(title, color = color, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-        maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = modifier)
+    val base = MaterialTheme.typography.titleMedium
+    // Line height in em, so it shrinks with the auto-sized font.
+    val style = base.copy(color = color, fontWeight = FontWeight.SemiBold, lineHeight = (base.lineHeight.value / base.fontSize.value).em)
+    BasicText(title, modifier, style = style, maxLines = 3, overflow = TextOverflow.Ellipsis,
+        autoSize = TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = style.fontSize))
 }

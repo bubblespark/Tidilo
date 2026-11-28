@@ -30,6 +30,7 @@ class ThemeBlurSettingTest {
         val hadKey = prefs.contains("overlay_blur_enabled")
         val old = AppConfig.overlayBlurEnabled.value
         try {
+            AppConfig.setOverlayBlurEnabled(false)
             composeRule.setContent {
                 TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) { SettingsScreen({}, {}) }
             }
@@ -38,8 +39,8 @@ class ThemeBlurSettingTest {
             composeRule.onNode(switch, useUnmergedTree = true).performClick()
             composeRule.waitForIdle()
             composeRule.onNodeWithText(context.getString(R.string.settings_theme_dialog_title), useUnmergedTree = true).assertExists()
-            assertEquals(!old, AppConfig.overlayBlurEnabled.value)
-            assertEquals(!old, prefs.getBoolean("overlay_blur_enabled", old))
+            assertTrue(AppConfig.overlayBlurEnabled.value)
+            assertTrue(prefs.getBoolean("overlay_blur_enabled", false))
         } finally {
             composeRule.runOnUiThread { AppConfig.setOverlayBlurEnabled(old) }
             if (!hadKey) prefs.edit().remove("overlay_blur_enabled").commit()

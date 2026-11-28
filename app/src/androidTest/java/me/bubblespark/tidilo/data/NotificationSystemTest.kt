@@ -18,9 +18,10 @@ import java.util.UUID
 
 class NotificationSystemTest {
     @Test fun hundredArticleErrorsProduceOneImportErrorAndOneSummaryWithoutReplay() = runBlocking {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        org.junit.Assume.assumeTrue(context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        // A fresh emulator has not granted it; granting does not restart the app process.
+        instrumentation.uiAutomation.grantRuntimePermission(context.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
         val manager = context.getSystemService(NotificationManager::class.java)
         val coordinator = NotificationCoordinator.getInstance(context)
         val db = AppDatabase.getInstance(context)

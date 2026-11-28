@@ -133,6 +133,7 @@ class EdgeToEdgeInputTest {
             composeRule.clickNode(composeRule.awaitNode(textStartsWith("All Tags (")))
             composeRule.awaitNode(textStartsWith("Filter Meta Tags ("))
             val filter = nodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText)).last()
+            composeRule.waitUntil(5_000) { activity.hasWindowFocus() }
             composeRule.runOnUiThread {
                 check(filter.config[SemanticsActions.RequestFocus].action?.invoke() == true)
                 keyboard?.show()
@@ -191,6 +192,8 @@ class EdgeToEdgeInputTest {
         }
         val candidates = nodes(editable).filter { it.config.getOrNull(SemanticsProperties.Disabled) == null }
         val target = if (lastField) candidates.last() else candidates.first()
+        // The IME ignores show requests from a window that does not have focus yet.
+        composeRule.waitUntil(5_000) { activity.hasWindowFocus() }
         composeRule.runOnUiThread {
             check(target.config[SemanticsActions.RequestFocus].action?.invoke() == true)
             keyboard?.show()
@@ -209,9 +212,10 @@ class EdgeToEdgeInputTest {
         }
         composeRule.runOnUiThread { keyboard?.hide() }
         composeRule.waitUntil(5_000) { !imeVisible() }
-        composeRule.waitForIdle()
-        val expanded = nodes(viewport).first().boundsInWindow
-        assertTrue("Viewport must expand after IME dismissal", expanded.bottom >= activity.window.decorView.height - 1f)
+        // The IME reports hidden when its hide animation starts; the viewport settles about 400 ms later.
+        composeRule.waitUntil("Viewport must expand after IME dismissal", 5_000) {
+            nodes(viewport).first().boundsInWindow.bottom >= activity.window.decorView.height - 1f
+        }
         if (detail) composeRule.awaitNode(hasContentDescription(activity.getString(R.string.detail_action_delete)))
     }
 }

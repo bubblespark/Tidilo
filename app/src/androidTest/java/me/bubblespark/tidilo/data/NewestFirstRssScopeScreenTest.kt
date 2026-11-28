@@ -14,6 +14,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -142,7 +143,8 @@ class NewestFirstRssScopeScreenTest {
                 composeRule.onAllNodes(hasText("$id rss 5"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() &&
                     composeRule.onAllNodes(hasText(combinedSubtitle), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
             }
-            composeRule.onNodeWithText(badgeLabel, useUnmergedTree = true).assertExists()
+            // How many untagged RSS rows fit in the box depends on the device's font metrics.
+            assertTrue(composeRule.onAllNodesWithText(badgeLabel, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
 
             // Grid: the scope row spans the grid width, so the first two cards sit below it.
             composeRule.runOnUiThread { vm.setViewMode(LibraryViewMode.GRID) }

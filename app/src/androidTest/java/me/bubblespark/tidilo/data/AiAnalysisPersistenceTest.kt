@@ -9,19 +9,16 @@ import org.junit.Test
 
 /**
  * Opt-in restart check: run the two methods in separate instrumentation processes, in the documented order,
- * with `-e verifyAiAnalysisRestart true`. Sharded or single-process runs skip it.
+ * with `-e verifyAiAnalysisRestart true`. Other runs return without checking.
  */
 @org.junit.FixMethodOrder(org.junit.runners.MethodSorters.NAME_ASCENDING)
 class AiAnalysisPersistenceTest {
-    companion object {
-        @org.junit.BeforeClass @JvmStatic fun requireOptIn() = org.junit.Assume.assumeTrue(
-            InstrumentationRegistry.getArguments().getString("verifyAiAnalysisRestart") == "true"
-        )
-    }
-
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    // Returns instead of assuming: the test report counts assumption failures as failures.
+    private val optedIn = InstrumentationRegistry.getArguments().getString("verifyAiAnalysisRestart") == "true"
 
     @Test fun persistDisabledBeforeRestart() {
+        if (!optedIn) return
         val state = context.getSharedPreferences("issue125_verification", Context.MODE_PRIVATE)
         assertTrue(state.edit().putString("previous", AppConfig.aiAnalysisMode.value.code).commit())
         AppConfig.setAiAnalysisMode(AiAnalysisMode.DISABLE)
@@ -32,6 +29,7 @@ class AiAnalysisPersistenceTest {
     }
 
     @Test fun restoreDisabledInFreshProcessAndRestoreOriginalPreference() {
+        if (!optedIn) return
         val state = context.getSharedPreferences("issue125_verification", Context.MODE_PRIVATE)
         val previous = state.getString("previous", null)
         try {

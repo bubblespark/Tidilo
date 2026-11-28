@@ -123,7 +123,10 @@ class ScreenBackdropRenderingTest {
         val (blue, hasSharpMarker, tail) = composeRule.sampleScreen("solid blue body under frosted header") { frame ->
             val p = samplePixel(frame)
             if (p != red && android.graphics.Color.blue(p) > android.graphics.Color.red(p)) {
-                val marker = (0 until frame.height).any { frame.getPixel(frame.width / 2, it) == Color.Magenta.toArgb() }
+                val markerX = (contentLeft + contentWidth / 2f).toInt()
+                val marker = (contentTop.toInt() until (contentTop + contentHeight).toInt()).any {
+                    frame.getPixel(markerX, it) == Color.Magenta.toArgb()
+                }
                 val tailPixel = frame.getPixel((contentLeft + contentWidth * .25f).toInt(), headerBottom - 2)
                 Triple(p, marker, tailPixel)
             } else {

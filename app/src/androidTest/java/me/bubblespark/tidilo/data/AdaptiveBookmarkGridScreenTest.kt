@@ -216,11 +216,6 @@ class AdaptiveBookmarkGridScreenTest {
             checkNotNull(input)
             assertTrue("The Search field is visible above the first card",
                 input.boundsInRoot.height > 0 && input.boundsInRoot.bottom <= bounds.top)
-        } else if (destination != Destination.SEARCH) {
-            val trigger = checkNotNull(nodes(hasTestTag("library_radial_trigger")).firstOrNull()) {
-                "Library shortcut missing for $destination"
-            }
-            assertFalse("First card overlaps the Library shortcut", bounds.overlaps(trigger.boundsInRoot))
         }
     }
 
@@ -248,8 +243,9 @@ class AdaptiveBookmarkGridScreenTest {
         composeRule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes()
 
     /** The drawn title of [bookmark]; an outgoing destination can still hold a zero-size copy. */
+    // A Library poster repeats the title on the plate; the caption below it is the card's info area.
     private fun titleNode(bookmark: BookmarkEntity): SemanticsNode =
-        nodes(hasText(bookmark.title)).let { titles -> titles.firstOrNull { it.boundsInRoot.height > 0 } ?: titles.first() }
+        nodes(hasText(bookmark.title)).let { titles -> titles.filter { it.boundsInRoot.height > 0 }.maxByOrNull { it.boundsInRoot.top } ?: titles.first() }
 
     private fun cardFor(title: SemanticsNode): SemanticsNode =
         generateSequence(title) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }

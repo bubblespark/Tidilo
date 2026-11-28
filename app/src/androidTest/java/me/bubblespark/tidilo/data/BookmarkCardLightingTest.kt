@@ -65,57 +65,6 @@ class BookmarkCardLightingTest {
         CardState(dark = true, grid = false, Color.Green), CardState(dark = true, grid = true, Color.Blue)
     ))
 
-    @Test fun libraryDrillDownCardsUseTheFeedAndDomainAccents(): Unit = runBlocking {
-        val context = instrumentation.targetContext
-        val caches = OfflineVisualCaches()
-        val library = withContext(Dispatchers.IO) { InMemoryLibrary(context).also { it.awaitReady() } }
-        try {
-            val id = UUID.randomUUID().toString()
-            val domain = "lighting-$id.invalid"
-            val feed = RssFeedEntity(id, "https://feed-$id.invalid/rss", "Lighting feed", enabled = false)
-            val manual = BookmarkEntity("$id-manual", "Lighting manual", "https://$domain/article", "Summary", createdAt = 1, updatedAt = 1)
-            val rss = BookmarkEntity("$id-rss", "Lighting RSS", "https://other-$id.invalid/article", "Summary",
-                createdAt = 2, updatedAt = 2, rssFeedId = id)
-            withContext(Dispatchers.IO) {
-                library.db.rssDao().putFeed(feed)
-                library.db.bookmarkDao().insertAll(listOf(manual, rss))
-            }
-            val vm = library.viewModel()
-            composeRule.setContent {
-                TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
-                    MaterialTheme(colorScheme = lightColorScheme(primary = Color.Gray)) {
-                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { LibraryScreen(vm) }
-                    }
-                }
-            }
-            for ((mode, isRss) in listOf(LibraryViewMode.LIST to false, LibraryViewMode.GRID to true,
-                LibraryViewMode.LIST to true, LibraryViewMode.GRID to false)) {
-                composeRule.runOnUiThread {
-                    vm.setViewMode(mode)
-                    vm.setFilterMode(if (isRss) LibraryFilterMode.RSS else LibraryFilterMode.DOMAIN)
-                    if (isRss) vm.selectRssFeedFilter(feed) else vm.selectDomainFilter(domain)
-                }
-                composeRule.waitForIdle()
-                val title = composeRule.awaitNode(hasText(if (isRss) rss.title else manual.title))
-                val bounds = generateSequence(title) { it.parent }.first { SemanticsActions.OnClick in it.config }.screenRect()
-                val inset = ((if (mode == LibraryViewMode.GRID) 20 else 28) * density).roundToInt()
-                // Without a declared feed image, the publisher supplies the feed accent.
-                val key = if (isRss) requireNotNull(DomainIconManager.feedPublisherDomain(feed)) else domain
-                val expectedHsv = FloatArray(3).also { PixelColor.colorToHSV(DomainIconManager.generateDomainAccentColor(key).toArgb(), it) }
-                fun hueDistance(hsv: FloatArray) = kotlin.math.abs(hsv[0] - expectedHsv[0]).let { minOf(it, 360f - it) }
-                val actualHsv = sampleScreen(
-                    read = { FloatArray(3).also { hsv -> PixelColor.colorToHSV(it.getPixel(bounds.right - 1, bounds.top + inset), hsv) } },
-                    accept = { hueDistance(it) < 25f && it[1] > 0.05f }
-                )
-                assertTrue("$mode rss=$isRss: the rim must match the destination, hue ${actualHsv[0]} vs ${expectedHsv[0]}",
-                    hueDistance(actualHsv) < 25f && actualHsv[1] > 0.05f)
-            }
-        } finally {
-            caches.close()
-            library.close()
-        }
-    }
-
     private fun verifyCards(states: List<CardState>): Unit = runBlocking {
         val state = mutableStateOf(states.first())
         val bookmark = BookmarkItem("lighting", "", "", "", Tag.createEmpty(), domain = null)

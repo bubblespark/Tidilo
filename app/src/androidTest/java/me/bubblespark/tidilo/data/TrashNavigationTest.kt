@@ -24,7 +24,6 @@ import me.bubblespark.tidilo.data.db.AppDatabase
 import me.bubblespark.tidilo.data.db.TrashedBookmarkEntity
 import org.junit.After
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -75,7 +74,6 @@ class TrashNavigationTest {
                 lateinit var activity: MainActivity
                 scenario.onActivity { activity = it }
                 val navOpenDesc = activity.getString(R.string.navigation_open)
-                val navSearchText = activity.getString(R.string.nav_search)
                 val trashTitle = activity.getString(R.string.trash_title)
                 val backDesc = activity.getString(R.string.common_back)
 
@@ -90,12 +88,8 @@ class TrashNavigationTest {
                 composeRule.onNodeWithContentDescription(navOpenDesc).performClick()
 
                 composeRule.waitUntil(8000) {
-                    composeRule.onAllNodes(hasText(navSearchText), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() &&
-                        composeRule.onAllNodes(hasText(trashTitle), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+                    composeRule.onAllNodes(hasText(trashTitle), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
                 }
-                val search = composeRule.onNodeWithText(navSearchText, useUnmergedTree = true).fetchSemanticsNode()
-                val trash = composeRule.onNodeWithText(trashTitle, useUnmergedTree = true).fetchSemanticsNode()
-                assertTrue(trash.boundsInRoot.top > search.boundsInRoot.bottom)
                 composeRule.onNodeWithText(trashTitle).performClick()
 
                 composeRule.waitUntil(8000) {

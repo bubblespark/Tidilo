@@ -7,6 +7,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.text.AnnotatedString
@@ -86,7 +87,10 @@ class CollectionRecreationTest {
             model.setFilterMode(LibraryFilterMode.COLLECTION)
             model.selectCollectionFilter(null)
         }
-        composeRule.clickNode(composeRule.awaitNode(hasContentDescription("New Collection", substring = true)))
+        // The app starts on Discover; the toolbar opens the Library layer.
+        composeRule.clickNode(composeRule.awaitNode(hasTestTag("floating_nav_library")))
+        // The dashed add card exists once a collection does; otherwise the empty state offers the same editor.
+        composeRule.clickNode(composeRule.awaitNode(hasContentDescription("New Collection", substring = true) or hasTestTag("library_empty_action")))
         typeInto("", draft)
         scenario.recreate()
         composeRule.awaitNode(editable(draft))

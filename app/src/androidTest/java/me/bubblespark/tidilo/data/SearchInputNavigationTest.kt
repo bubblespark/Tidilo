@@ -350,16 +350,17 @@ class SearchInputNavigationTest {
 
     private suspend fun runOpeningSearchFromButtonRailAndTagSelectionE2e() {
         val oldBlur = AppConfig.overlayBlurEnabled.value
-        val oldDiscoverPreview = AppConfig.discoverPreviewEnabled.value
         val libraryPrefs = context.getSharedPreferences(LIBRARY_PREFS_NAME, Context.MODE_PRIVATE)
         val hadSavedHistory = libraryPrefs.contains(SEARCH_HISTORY_KEY)
         val savedHistoryJson = libraryPrefs.getString(SEARCH_HISTORY_KEY, null)
         val db = AppDatabase.getInstance(context)
         val prefix = "search-detail-${UUID.randomUUID()}"
+        // Rows left by an aborted earlier run must not share these titles.
+        val roundtrip = "Detail Roundtrip ${prefix.takeLast(8)}"
         val fixtureRows = (0..15).map { index ->
             BookmarkEntity(
                 id = "$prefix-$index",
-                title = "Detail Roundtrip $index",
+                title = "$roundtrip $index",
                 url = "https://roundtrip.invalid/$index",
                 description = "Summary",
                 createdAt = System.currentTimeMillis() + index,
@@ -373,7 +374,6 @@ class SearchInputNavigationTest {
 
         try {
             AppConfig.setOverlayBlurEnabled(false)
-            AppConfig.setDiscoverPreviewEnabled(false)
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 lateinit var activity: MainActivity
                 scenario.onActivity {
@@ -387,18 +387,12 @@ class SearchInputNavigationTest {
                 }
                 var phase = "init"
                 try {
-                    // 1. Radial trigger -> Search
-                    phase = "radial trigger"
-                    val trigger = awaitSemantics(activity) {
-                        it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_trigger"
+                    // 1. Floating toolbar -> Search
+                    phase = "toolbar search"
+                    val toolbarSearch = awaitSemantics(activity) {
+                        it.config.getOrNull(SemanticsProperties.TestTag) == "floating_nav_search"
                     }
-                    clickOwner(trigger)
-                    phase = "radial search"
-                    val innerSearch = awaitSemantics(activity) {
-                        it.config.getOrNull(SemanticsProperties.TestTag) == "library_radial_search" &&
-                            it.config.getOrNull(SemanticsActions.OnClick) != null
-                    }
-                    clickOwner(innerSearch)
+                    clickOwner(toolbarSearch)
                     phase = "search focus 1"
                     awaitSemantics(activity) {
                         it.config.getOrNull(SemanticsProperties.EditableText) != null &&
@@ -419,30 +413,14 @@ class SearchInputNavigationTest {
                             it.config.getOrNull(SemanticsProperties.Focused) == true
                     }
 
-                    // 3. Back to Library -> Rail -> Search
-                    phase = "back to library"
+                    // 3. Back to Discover -> toolbar Search again
+                    phase = "back to discover"
                     val backDesc = activity.getString(R.string.common_back)
-                    val railOpenDesc = activity.getString(R.string.navigation_open)
-                    val navSearchText = activity.getString(R.string.nav_search)
                     clickOwner(awaitSemantics(activity) { hasDesc(it, backDesc) })
-                    phase = "open rail"
-                    clickOwner(awaitSemantics(activity) { hasDesc(it, railOpenDesc) })
-                    phase = "rail nav search"
-                    awaitSemantics(activity) { hasExactText(it, navSearchText) && it.boundsInWindow.height > 0 }
-                    withTimeout(5000) {
-                        var previous = androidx.compose.ui.geometry.Rect.Zero
-                        var stable = 0
-                        while (stable < 3) {
-                            instrumentation.runOnMainSync {
-                                val current = collectNodes(activity).lastOrNull { hasExactText(it, navSearchText) }
-                                val bounds = current?.boundsInWindow ?: androidx.compose.ui.geometry.Rect.Zero
-                                stable = if (bounds.height > 0 && bounds == previous) stable + 1 else 0
-                                previous = bounds
-                            }
-                            if (stable < 3) delay(100)
-                        }
-                    }
-                    clickOwner(awaitSemantics(activity) { hasExactText(it, navSearchText) })
+                    phase = "toolbar search again"
+                    clickOwner(awaitSemantics(activity) {
+                        it.config.getOrNull(SemanticsProperties.TestTag) == "floating_nav_search" && it.boundsInWindow.height > 0
+                    })
                     phase = "search focus 3"
                     awaitSemantics(activity) {
                         it.config.getOrNull(SemanticsProperties.EditableText) != null &&
@@ -452,8 +430,8 @@ class SearchInputNavigationTest {
                     // 4. Detail round-trip
                     phase = "detail fixtures"
                     db.bookmarkDao().insertAll(fixtureRows)
-                    instrumentation.runOnMainSync { vm.onSearchQueryChanged("Detail Roundtrip") }
-                    awaitSemantics(activity) { hasExactText(it, "Detail Roundtrip 15") }
+                    instrumentation.runOnMainSync { vm.onSearchQueryChanged(roundtrip) }
+                    awaitSemantics(activity) { hasExactText(it, "$roundtrip 15") }
                     phase = "scroll"
                     val scrollNode = awaitSemantics(activity) {
                         it.config.getOrNull(SemanticsActions.ScrollBy) != null &&
@@ -483,7 +461,7 @@ class SearchInputNavigationTest {
                     lateinit var targetNode: SemanticsNode
                     instrumentation.runOnMainSync {
                         val first = collectNodes(activity).filter { node ->
-                            node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.startsWith("Detail Roundtrip") } == true &&
+                            node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.startsWith(roundtrip) } == true &&
                                 node.boundsInRoot.top > 0f && node.boundsInRoot.bottom < activity.window.decorView.height
                         }.minBy { it.boundsInRoot.top }
                         visibleTitle = first.config[SemanticsProperties.Text].single().text
@@ -544,7 +522,6 @@ class SearchInputNavigationTest {
                     if (hadSavedHistory) putString(SEARCH_HISTORY_KEY, savedHistoryJson) else remove(SEARCH_HISTORY_KEY)
                 }.commit()
             }
-            AppConfig.setDiscoverPreviewEnabled(oldDiscoverPreview)
             AppConfig.setOverlayBlurEnabled(oldBlur)
         }
     }

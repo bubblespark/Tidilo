@@ -16,7 +16,7 @@ Computed from `engagement_events` (see [data_models.md](data_models.md) §1.1) p
 
 | Signal | Weight |
 | :--- | :--- |
-| Save, Summary Peek | +1 |
+| Save, Peek | +1 |
 | Detail view | +2 |
 | Browser open, first note, collection add | +3 |
 | Like | +4 |

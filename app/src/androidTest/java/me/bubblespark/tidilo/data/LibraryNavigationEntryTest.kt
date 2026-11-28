@@ -11,6 +11,7 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.performSemanticsAction
@@ -87,9 +88,11 @@ class LibraryNavigationEntryTest {
         composeRule.runOnUiThread { activity.enableEdgeToEdge() }
         composeRule.setContent {
             TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
-                TidiloApp(libraryViewModel = model, discoverPreviewEnabled = false)
+                TidiloApp(libraryViewModel = model)
             }
         }
+        // The app starts on Discover; the toolbar opens the Library layer.
+        click(await(hasTestTag("floating_nav_library")))
     }
 
     @Test fun domainDrillDownReplacesMenuWithUp() = verifyGroupNavigation(LibraryFilterMode.DOMAIN)

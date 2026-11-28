@@ -27,6 +27,9 @@ import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewMode
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.assertTrue
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import me.bubblespark.tidilo.ui.screens.library.LibraryTabsHeight
 import org.junit.Rule
 import org.junit.Test
 
@@ -68,17 +71,18 @@ class LibraryTransitionTest {
             awaitText(feed.title)
             composeRule.runOnIdle { vm.selectRssFeedFilter(feed) }
             awaitText(rss.title)
-            assertOutgoingStillDrawn(rss.title, accentText = "1 bookmark", forbiddenText = empty) { vm.selectRssFeedFilter(null) }
+            // Leaving a drill-down brings back the tab group, which moves the outgoing list down by its height.
+            assertOutgoingStillDrawn(rss.title, accentText = "1 bookmark", forbiddenText = empty, shift = LibraryTabsHeight) { vm.selectRssFeedFilter(null) }
             awaitAbsent(rss.title)
 
             // Domain list → domain.
             composeRule.runOnIdle { vm.setFilterMode(LibraryFilterMode.DOMAIN) }
             awaitText(domain)
-            assertOutgoingStillDrawn(domain) { vm.selectDomainFilter(domain) }
+            assertOutgoingStillDrawn(domain, shift = -LibraryTabsHeight) { vm.selectDomainFilter(domain) }
             awaitText(manual.title)
 
             // Domain → domain list (back).
-            assertOutgoingStillDrawn(manual.title) { context.onBackPressedDispatcher.onBackPressed() }
+            assertOutgoingStillDrawn(manual.title, shift = LibraryTabsHeight) { context.onBackPressedDispatcher.onBackPressed() }
             awaitAbsent(manual.title)
 
             // Newest first → RSS mode switch.
@@ -108,6 +112,7 @@ class LibraryTransitionTest {
         title: String,
         accentText: String? = null,
         forbiddenText: String? = null,
+        shift: Dp = 0.dp,
         change: () -> Unit
     ) {
         composeRule.waitForIdle()
@@ -121,7 +126,8 @@ class LibraryTransitionTest {
             composeRule.mainClock.advanceTimeByFrame()
             composeRule.mainClock.advanceTimeBy(EXIT_SAMPLE_MS)
             during = capture()
-            assertTextStillDrawn(before, during, titleBounds)
+            val shiftPx = (shift.value * context.resources.displayMetrics.density).roundToInt()
+            assertTextStillDrawn(before, during, titleBounds, shiftPx)
             accentBounds?.let { assertAccentStillDrawn(before, during, it, context.resources.displayMetrics.density) }
             if (forbiddenText != null) {
                 assertTrue("Exit must not introduce a transient '$forbiddenText'", nodes(hasText(forbiddenText)).isEmpty())
@@ -136,7 +142,8 @@ class LibraryTransitionTest {
     private fun capture(): Bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
 
     private fun pixelBounds(text: String): Rect {
-        val bounds = nodes(hasText(text)).first().boundsInRoot
+        // A poster repeats the title in light ink on its plate; the dark caption below it is the last node.
+        val bounds = nodes(hasText(text)).maxBy { it.boundsInRoot.top }.boundsInRoot
         return Rect(bounds.left.roundToInt(), bounds.top.roundToInt(), bounds.right.roundToInt(), bounds.bottom.roundToInt())
     }
 

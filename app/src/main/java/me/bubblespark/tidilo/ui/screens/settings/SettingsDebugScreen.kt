@@ -11,7 +11,6 @@ import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -25,12 +24,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
@@ -46,7 +43,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -62,17 +58,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.mlkit.genai.common.FeatureStatus
-import me.bubblespark.tidilo.BuildConfig
-import me.bubblespark.tidilo.MainActivity
 import me.bubblespark.tidilo.R
-import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.AiCoreAvailability
 import me.bubblespark.tidilo.data.AiCoreReadiness
 import me.bubblespark.tidilo.data.debug.CrashLogEntry
@@ -137,68 +128,6 @@ internal fun SettingsDebugScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(contentPadding)
         ) {
-            if (BuildConfig.DEBUG) {
-                val discoverPreviewEnabled by AppConfig.discoverPreviewEnabled.collectAsStateWithLifecycle()
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = themeCorner(ThemeCorner.PROMINENT_CARD),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .toggleable(
-                                value = discoverPreviewEnabled,
-                                role = Role.Switch,
-                                onValueChange = { enabled ->
-                                    AppConfig.setDiscoverPreviewEnabled(enabled)
-                                    val restartIntent = Intent(context, MainActivity::class.java).apply {
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                                    }
-                                    context.startActivity(restartIntent)
-                                }
-                            )
-                            .padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Explore,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = stringResource(R.string.debug_discover_preview_title),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            Text(
-                                text = stringResource(R.string.debug_discover_preview_desc),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = discoverPreviewEnabled,
-                            onCheckedChange = null
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
             // Device & SDK Info Card
             Card(
                 modifier = Modifier.fillMaxWidth(),

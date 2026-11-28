@@ -26,6 +26,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -69,10 +70,11 @@ class SettingsRedesignTest {
             assertEquals(Role.Button, node.config[SemanticsProperties.Role])
         }
         listOf(R.string.settings_ai_analysis_title, R.string.settings_private_title, R.string.rss_title,
-            R.string.summary_title, R.string.settings_debug_title).forEach { row(string(it)).performClick() }
+            R.string.summary_title, R.string.settings_debug_title).forEach { row(string(it)).performScrollTo().performClick() }
         assertEquals(listOf(1, 1, 1, 1, 1), listOf(ai, privateContent, rss, summary, debug))
 
-        row(string(R.string.settings_language_title)).performClick()
+        // Scrolling back up re-shows the header over the top row, so the click goes through semantics.
+        row(string(R.string.settings_language_title)).performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
         val dialogTitle = composeRule.onNode(hasText(string(R.string.settings_language_dialog_title)))
         dialogTitle.assertExists()
         row(string(R.string.common_close)).performClick()

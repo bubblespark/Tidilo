@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.data
 
+import android.accessibilityservice.AccessibilityService
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,6 +49,7 @@ import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
 import me.bubblespark.tidilo.ui.screens.library.LibraryStore
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewMode
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
+import me.bubblespark.tidilo.ui.screens.library.SearchScreen
 import me.bubblespark.tidilo.ui.screens.library.Tag
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.After
@@ -103,7 +105,8 @@ class LibraryLayerTest {
             // Explicit load states: a static empty page otherwise leaves LazyPagingItems in its initial Loading.
             items.map { PagingData.from(it, DONE) }
         override fun pagedCollectionBookmarks(collectionId: String, showPrivate: Boolean): Flow<PagingData<BookmarkItem>> = flowOf(PagingData.empty())
-        override fun pagedSearchResults(query: String, showPrivate: Boolean): Flow<PagingData<BookmarkSearchResult>> = flowOf(PagingData.empty())
+        override fun pagedSearchResults(query: String, showPrivate: Boolean): Flow<PagingData<BookmarkSearchResult>> =
+            items.map { list -> PagingData.from(if (query.isBlank()) emptyList() else list.map { BookmarkSearchResult(it, emptySet()) }, DONE) }
         override fun observeCount(query: String, domain: String?, showPrivate: Boolean, source: BookmarkSource, rssFeedId: String?) = items.map { it.size }
         override fun observeCollectionCount(collectionId: String, showPrivate: Boolean) = flowOf(0)
         override fun observeDomainGroups(showPrivate: Boolean) = domains
@@ -154,8 +157,6 @@ class LibraryLayerTest {
                         viewModel = model,
                         onOpenManualImport = { calls.saves.incrementAndGet() },
                         onNavigateToDetail = { calls.opened += it },
-                        showRadialMenu = false,
-                        discoverPreview = true,
                         onOpenRssSettings = { calls.rssSettings.incrementAndGet() }
                     )
                 }
@@ -252,6 +253,42 @@ class LibraryLayerTest {
         click(await(tag("discover_peek_collection")))
         await(text("Choose collections"))
         awaitAbsent(tag("discover_peek_sheet"))
+    }
+
+    @Test fun searchLongPressOpensPeekSheet() {
+        val store = FakeStore()
+        store.items.value = listOf(item("a"))
+        lateinit var model: LibraryViewModel
+        composeRule.runOnUiThread { model = LibraryViewModel(store, SavedStateHandle(), MutableStateFlow(true), modelScope) }
+        composeRule.setContent {
+            TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) { SearchScreen(viewModel = model) }
+        }
+        val peekSheet = tag("discover_peek_sheet")
+        val searchCard = SemanticsMatcher("Search card with Peek") {
+            it.config.getOrNull(SemanticsActions.OnLongClick)?.label == context.getString(R.string.library_summary_peek_open)
+        }
+        composeRule.runOnUiThread { model.onSearchQueryChanged("plate") }
+        step("long-press opens Peek") {
+            longClick(await(searchCard))
+            await(peekSheet)
+        }
+        until { store.peeks.toList() == listOf("a" to EngagementSurface.SEARCH) }
+        assertTrue("Search Peek has no Not now", nodes(tag("discover_peek_snooze")).isEmpty())
+        assertTrue("Search Peek has no Don't show again", nodes(tag("discover_peek_never")).isEmpty())
+        click(await(tag("discover_peek_like")))
+        until { store.likes.toList() == listOf("a" to EngagementSurface.SEARCH) }
+        step("Back closes only the sheet") {
+            // System Back reaches the sheet's own window first.
+            check(InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
+            awaitAbsent(peekSheet)
+            await(text(context.getString(R.string.search_header_title)))
+        }
+        step("a new query closes the sheet") {
+            longClick(await(searchCard))
+            await(peekSheet)
+            composeRule.runOnUiThread { model.onSearchQueryChanged("plates") }
+            awaitAbsent(peekSheet)
+        }
     }
 
     @Test fun emptyStatesOfferTheirActions() {

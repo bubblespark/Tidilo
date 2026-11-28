@@ -87,17 +87,15 @@ internal fun AnimatedContentTransitionScope<NavBackStackEntry>.isPlateReturn(): 
     initialState.destination.route == Screen.BookmarkDetail.route && isPlateRoute(targetState.destination.route)
 
 /**
- * Hosts `NavHost` ([content]) in a `SharedTransitionLayout` when [enabled]. Under [reducedMotion] no scope is
+ * Hosts `NavHost` ([content]) in a `SharedTransitionLayout`. Under [reducedMotion] no scope is
  * provided, so plates attach nothing and Detail only crossfades (§7).
  */
 @Composable
 internal fun PlateTransitionLayout(
-    enabled: Boolean,
     modifier: Modifier = Modifier,
     reducedMotion: Boolean = rememberReducedMotion(),
     content: @Composable (Modifier) -> Unit
 ) {
-    if (!enabled) return content(modifier)
     SharedTransitionLayout(modifier) {
         CompositionLocalProvider(LocalSharedTransitionScope provides this.takeUnless { reducedMotion }) {
             content(Modifier.fillMaxSize())

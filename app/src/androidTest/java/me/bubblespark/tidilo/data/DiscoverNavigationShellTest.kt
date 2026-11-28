@@ -83,10 +83,7 @@ class DiscoverNavigationShellTest {
         composeRule.waitForIdle()
     }
 
-    private fun launchShell(
-        discoverPreviewEnabled: Boolean,
-        setupModel: (LibraryViewModel) -> Unit = {}
-    ): LibraryViewModel {
+    private fun launchShell(setupModel: (LibraryViewModel) -> Unit = {}): LibraryViewModel {
         lateinit var model: LibraryViewModel
         composeRule.runOnUiThread {
             // MainActivity draws edge to edge; the shell's toolbar insets depend on it.
@@ -96,7 +93,7 @@ class DiscoverNavigationShellTest {
         }
         composeRule.setContent {
             TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
-                TidiloApp(libraryViewModel = model, discoverPreviewEnabled = discoverPreviewEnabled)
+                TidiloApp(libraryViewModel = model)
             }
         }
         return model
@@ -138,7 +135,7 @@ class DiscoverNavigationShellTest {
         val id = "${prefix}detail"
         seed(BookmarkEntity(id = id, title = "Detail Fixture", url = "https://detail.invalid/$id", description = "",
             createdAt = System.currentTimeMillis(), updatedAt = 1L))
-        launchShell(discoverPreviewEnabled = true)
+        launchShell()
         click(await(tag("discover_card_$id")))
         awaitAbsent(tag("discover_list"))
         withTimeout(8_000) { while (detailEvents(id).isEmpty()) delay(100) }
@@ -155,7 +152,7 @@ class DiscoverNavigationShellTest {
         val id = "${prefix}return"
         seed(BookmarkEntity(id = id, title = "Return Fixture", url = "https://detail.invalid/$id", description = "",
             createdAt = System.currentTimeMillis(), updatedAt = 1L))
-        launchShell(discoverPreviewEnabled = true)
+        launchShell()
         click(await(tag("discover_card_$id")))
         awaitAbsent(tag("discover_list"))
         pressSystemBack()
@@ -165,16 +162,15 @@ class DiscoverNavigationShellTest {
 
     @Test
     fun startsOnDiscoverWithToolbarAndFab() = shellTest {
-        launchShell(discoverPreviewEnabled = true)
+        launchShell()
         await(tag("discover_header"))
         await(tag("floating_nav_discover") and selected)
         await(tag("floating_nav_save"))
-        assertFalse("Radial trigger must be absent when preview is enabled", nodes(tag("library_radial_trigger")).isNotEmpty())
     }
 
     @Test
     fun toolbarSwitchesLayersAndBackReturnsToDiscover() = shellTest {
-        launchShell(discoverPreviewEnabled = true)
+        launchShell()
         await(tag("discover_header"))
 
         click(await(tag("floating_nav_library")))
@@ -199,7 +195,7 @@ class DiscoverNavigationShellTest {
         val domain = "drilldown.invalid"
         seed(BookmarkEntity(id = id, title = "Drilldown Fixture", url = "https://$domain/$id", description = "Summary",
             createdAt = System.currentTimeMillis(), updatedAt = 1L))
-        val model = launchShell(discoverPreviewEnabled = true)
+        val model = launchShell()
         click(await(tag("floating_nav_library")))
         await(text(R.string.library_header_title))
 
@@ -222,7 +218,7 @@ class DiscoverNavigationShellTest {
 
     @Test
     fun fabOpensManualImportFromDiscoverAndLibrary() = shellTest {
-        launchShell(discoverPreviewEnabled = true)
+        launchShell()
         await(tag("discover_header"))
         click(await(tag("floating_nav_save")))
         await(text(R.string.import_dialog_title))
@@ -238,7 +234,7 @@ class DiscoverNavigationShellTest {
 
     @Test
     fun railFromDiscoverIsTrimmed() = shellTest {
-        launchShell(discoverPreviewEnabled = true)
+        launchShell()
         await(tag("discover_header"))
         click(await(description(R.string.navigation_open)))
 
@@ -247,9 +243,6 @@ class DiscoverNavigationShellTest {
         await(description(R.string.settings_notification_title))
 
         assertTrue("Trimmed rail must omit Search", nodes(text(R.string.nav_search)).isEmpty())
-        assertTrue("Trimmed rail must omit Manual Import", nodes(text(R.string.navigation_manual_import)).isEmpty())
-        assertTrue("Trimmed rail must omit Filters (the Library button group replaces them)",
-            nodes(text(R.string.navigation_filters)).isEmpty())
     }
 
     @Test
@@ -259,7 +252,7 @@ class DiscoverNavigationShellTest {
             BookmarkEntity(id = "$prefix$index", title = "Scroll Fixture $index", url = "https://scroll.invalid/$prefix$index",
                 description = "Summary $index", createdAt = now + index, updatedAt = 1L)
         })
-        launchShell(discoverPreviewEnabled = true) { it.setFilterMode(LibraryFilterMode.NEWEST_FIRST) }
+        launchShell { it.setFilterMode(LibraryFilterMode.NEWEST_FIRST) }
         click(await(tag("floating_nav_library")))
         // Discover's "Just saved" also lists the fixtures, so wait until Discover has left first.
         awaitAbsent(tag("discover_list"))
@@ -277,7 +270,7 @@ class DiscoverNavigationShellTest {
 
     @Test
     fun toolbarClearsSystemBarsAndLastItem() = shellTest {
-        launchShell(discoverPreviewEnabled = true)
+        launchShell()
         val toolbar = await(tag("floating_nav"))
         var rootHeight = 0
         var navBarBottom = 0
@@ -302,7 +295,7 @@ class DiscoverNavigationShellTest {
         val title = "Detail Toolbar Fixture"
         seed(BookmarkEntity(id = id, title = title, url = "https://detail.invalid/$id", description = "Summary",
             createdAt = System.currentTimeMillis() + 50_000L, updatedAt = 1L))
-        launchShell(discoverPreviewEnabled = true) { it.setFilterMode(LibraryFilterMode.NEWEST_FIRST) }
+        launchShell { it.setFilterMode(LibraryFilterMode.NEWEST_FIRST) }
         click(await(tag("floating_nav_library")))
         // Discover's "Just saved" also lists the fixture, so wait until Discover has left first.
         awaitAbsent(tag("discover_list"))
@@ -312,14 +305,6 @@ class DiscoverNavigationShellTest {
 
         click(await(description(R.string.common_back)))
         await(tag("floating_nav"))
-    }
-
-    @Test
-    fun flagOffKeepsRadialShell() = shellTest {
-        launchShell(discoverPreviewEnabled = false)
-        await(text(R.string.library_header_title))
-        await(tag("library_radial_trigger"))
-        assertTrue("Floating toolbar must be absent when preview flag is off", nodes(tag("floating_nav")).isEmpty())
     }
 
     private companion object {

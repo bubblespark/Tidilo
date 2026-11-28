@@ -33,11 +33,11 @@ internal class LibraryPeekState(peekId: String? = null, collectionFor: String? =
 internal fun rememberLibraryPeekState(): LibraryPeekState = rememberSaveable(saver = LibraryPeekState.Saver) { LibraryPeekState() }
 
 /**
- * The Library layer's long-press sheet (P5-Q1): the Discover Peek sheet with Like and Add to collection
- * only. The bookmark is observed from Room, so Like shows the stored state and a deleted bookmark closes it.
+ * The long-press sheet of the Library layer (P5-Q1) and Search: the Discover Peek sheet with Like and Add to
+ * collection only. The bookmark is observed from Room, so Like shows the stored state and a deleted bookmark closes it.
  */
 @Composable
-internal fun LibraryPeekSheets(state: LibraryPeekState, viewModel: LibraryViewModel) {
+internal fun LibraryPeekSheets(state: LibraryPeekState, viewModel: LibraryViewModel, surface: EngagementSurface = EngagementSurface.LIBRARY) {
     state.peekId?.let { id ->
         val details by remember(id) { viewModel.bookmarkDetails(id) }.collectAsStateWithLifecycle(BookmarkDetailState())
         val item = details.bookmark
@@ -46,7 +46,7 @@ internal fun LibraryPeekSheets(state: LibraryPeekState, viewModel: LibraryViewMo
             DiscoverPeekSheet(
                 target = PeekTarget(item, reason = null),
                 liked = item.isLiked,
-                onToggleLike = { viewModel.toggleLike(item.id, EngagementSurface.LIBRARY) },
+                onToggleLike = { viewModel.toggleLike(item.id, surface) },
                 onSnooze = null,
                 onNeverAgain = null,
                 onAddToCollection = { state.collectionFor = item.id },

@@ -88,8 +88,11 @@ class NewestFirstRssScopeScreenTest {
             )
         }
         val chipLabel = context.getString(R.string.library_include_rss_chip)
-        val badgeLabel = context.getString(R.string.library_rss_source_label)
-        val iconDescription = context.getString(R.string.library_rss_source_description)
+        // Library plates name an RSS article's source at the end of their merged description.
+        val rssSource = ", " + context.getString(R.string.rss_title)
+        val rssCard = SemanticsMatcher("RSS plate") { node ->
+            node.config.getOrNull(SemanticsProperties.ContentDescription)?.any { it.endsWith(rssSource) } == true
+        }
         val manualSubtitle = context.getString(R.string.library_subtitle_bookmarks, manual.size)
         val combinedSubtitle = context.getString(R.string.library_subtitle_bookmarks_with_rss, manual.size + rss.size)
 
@@ -133,7 +136,7 @@ class NewestFirstRssScopeScreenTest {
                     composeRule.onAllNodes(hasText(manualSubtitle), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
             }
             composeRule.onNodeWithText("$id rss 5", useUnmergedTree = true).assertDoesNotExist()
-            composeRule.onNodeWithText(badgeLabel, useUnmergedTree = true).assertDoesNotExist()
+            composeRule.onNode(rssCard, useUnmergedTree = true).assertDoesNotExist()
 
             // ON: combined list, RSS badge on untagged RSS rows, combined subtitle.
             composeRule.onNode(chipMatcher, useUnmergedTree = true).performClick()
@@ -144,26 +147,18 @@ class NewestFirstRssScopeScreenTest {
                     composeRule.onAllNodes(hasText(combinedSubtitle), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
             }
             // How many untagged RSS rows fit in the box depends on the device's font metrics.
-            assertTrue(composeRule.onAllNodesWithText(badgeLabel, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+            assertTrue(composeRule.onAllNodes(rssCard, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
 
-            // Grid: the scope row spans the grid width, so the first two cards sit below it.
+            // Grid: the scope row spans the grid width, so the first card sits below it (one plate column fits 360dp).
             composeRule.runOnUiThread { vm.setViewMode(LibraryViewMode.GRID) }
             composeRule.waitUntil(5000) {
-                composeRule.onAllNodes(hasText("$id rss 4"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() &&
-                    composeRule.onAllNodes(SemanticsMatcher("rss icon") {
-                        it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(iconDescription) == true
-                    }, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodes(hasText("$id rss 5"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() &&
+                    composeRule.onAllNodes(rssCard, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
             }
-            assertTrue(
-                composeRule.onAllNodes(SemanticsMatcher("rss icon") {
-                    it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(iconDescription) == true
-                }, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            )
             val chipBottom = composeRule.onNode(chipMatcher, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.bottom
-            val first = composeRule.onNodeWithText("$id rss 5", useUnmergedTree = true).fetchSemanticsNode()
-            val second = composeRule.onNodeWithText("$id rss 4", useUnmergedTree = true).fetchSemanticsNode()
+            // A poster repeats the title on its plate, so a title can have two nodes.
+            val first = composeRule.onAllNodesWithText("$id rss 5", useUnmergedTree = true).fetchSemanticsNodes().first()
             assertTrue("First card must start below the scope row", first.boundsInRoot.top >= chipBottom)
-            assertTrue("No card may share the scope row", second.boundsInRoot.top >= chipBottom)
 
             // Scope change returns the active layout to the top.
             val scrollableMatcher = SemanticsMatcher("scrollable list/grid") {

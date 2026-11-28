@@ -2,6 +2,8 @@ package me.bubblespark.tidilo.data
 
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -57,7 +59,8 @@ class BookmarkPagingAppendTest {
             // Bookmark 60 lies beyond the initial load, so only an appended page can supply it.
             awaitTitle(60, timeoutMillis = 10_000)
             scrollToIndex(75)
-            composeRule.onNodeWithText("Grid card 74", useUnmergedTree = true).assertIsDisplayed()
+            // A poster repeats the title on its plate; the caption below it is the last node.
+            composeRule.onAllNodesWithText("Grid card 74", useUnmergedTree = true).onLast().assertIsDisplayed()
         } finally {
             caches.close()
             library.close()

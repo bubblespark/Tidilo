@@ -33,6 +33,7 @@ import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import androidx.compose.ui.MotionDurationScale
 import org.junit.Rule
 import org.junit.Test
 
@@ -156,4 +157,10 @@ class LibraryNavigationButtonTest {
         assertEquals(3, menuClicks)
         assertEquals(2, upClicks)
     }
+}
+
+/** Motion scale read by every animation the rule runs; set it before `setContent`. */
+internal class TestMotionScale : MotionDurationScale {
+    var factor = 1f
+    override val scaleFactor: Float get() = factor
 }

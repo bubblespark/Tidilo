@@ -114,7 +114,7 @@ Instrumentation tests must pass reliably on **software-GPU CI emulators** (`-gpu
 
 - **Inject Fakes**: New test seams are constructor parameters, factory arguments, or `CompositionLocal` providers that tests fill with fakes.
 - **No New Process-Wide Hooks**: Do not add process-wide mutable test hooks (for example, an `internal var` lambda on an `object`) to production code. They are shared by every test in the instrumentation process, and production reads of `@VisibleForTesting` members are reported by lint.
-- **Existing Hooks**: `DomainIconManager.httpDownloader` / `htmlDiscoverer`, `OgImageManager.imageDownloader`, the `ImportRepository` transaction hooks, and `LibraryRadialMenuState.onCancellation` remain until their area is migrated to injected fakes. A test that sets one restores it in `finally`.
+- **Existing Hooks**: `DomainIconManager.httpDownloader` / `htmlDiscoverer`, `OgImageManager.imageDownloader`, and the `ImportRepository` transaction hooks remain until their area is migrated to injected fakes. A test that sets one restores it in `finally`.
 
 ---
 

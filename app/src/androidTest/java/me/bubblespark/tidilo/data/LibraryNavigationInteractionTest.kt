@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import me.bubblespark.tidilo.R
+import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.TidiloApp
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.data.db.CollectionEntity
@@ -44,7 +45,6 @@ import org.junit.Test
 class LibraryNavigationInteractionTest {
     @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
     private val activity get() = composeRule.activity
-    private val trigger = hasTestTag("library_radial_trigger")
 
     private fun nodes(matcher: SemanticsMatcher): List<SemanticsNode> =
         composeRule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes()
@@ -87,12 +87,12 @@ class LibraryNavigationInteractionTest {
         composeRule.runOnUiThread { activity.enableEdgeToEdge() }
         composeRule.setContent {
             TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
-                TidiloApp(libraryViewModel = model, discoverPreviewEnabled = false)
+                TidiloApp(libraryViewModel = model)
             }
         }
     }
 
-    @Test fun searchStaysCompactWhileScrollingAndBackRestoresLibrary() = withLibrary { library ->
+    @Test fun searchBackRestoresLibraryPosition() = withLibrary { library ->
         val now = System.currentTimeMillis()
         withContext(Dispatchers.IO) {
             library.db.bookmarkDao().insertAll((0..15).map {
@@ -102,62 +102,56 @@ class LibraryNavigationInteractionTest {
         }
         val model = library.viewModel()
         var stage = "opening the Library"
-        val fixtureTitle = SemanticsMatcher("navigation fixture") { node ->
-            node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.startsWith("Navigation fixture") } == true
+        val fixtureCard = SemanticsMatcher("navigation fixture card") { node ->
+            // Grid cards and list rows carry the bookmark id in their tag.
+            node.config.getOrNull(SemanticsProperties.TestTag)?.let { it.startsWith("library_card_navigation-") || it.startsWith("library_row_navigation-") } == true
+        }
+        fun scrollBy(pixels: Float) {
+            composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy))[0]
+                .performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, pixels) }
+            composeRule.waitForIdle()
         }
         try {
             composeRule.runOnUiThread { model.setFilterMode(LibraryFilterMode.NEWEST_FIRST) }
             showApp(model)
-            stage = "waiting for the Library Search action"
-            val before = await(trigger).boundsInRoot
+            // The app starts on Discover; the toolbar opens the Library layer.
+            click(await(hasTestTag("floating_nav_library")))
             stage = "waiting for Library fixtures"
-            await(fixtureTitle)
-            click(await(text(R.string.library_header_title)))
-            // Paging can retain its visible key across fixture invalidations; this test checks Search return position.
-            await(fixtureTitle)
-            composeRule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy))[0]
-                .performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 500f) }
-            composeRule.waitForIdle()
+            await(fixtureCard)
+            scrollBy(500f)
+            // A short upward scroll brings the hidden toolbar back.
+            scrollBy(-40f)
             val height = composeRule.runOnUiThread { activity.window.decorView.height }
-            val first = nodes(fixtureTitle).filter { it.boundsInRoot.top > 0f && it.boundsInRoot.bottom < height }
+            val first = nodes(fixtureCard).filter { it.boundsInRoot.top > 0f && it.boundsInRoot.bottom < height }
                 .minBy { it.boundsInRoot.top }
-            val firstVisibleTitle = first.config[SemanticsProperties.Text].single().text
+            val firstVisibleCard = first.config[SemanticsProperties.TestTag]
             val firstVisibleTop = first.boundsInRoot.top
-            val action = await(trigger)
-            val after = action.boundsInRoot
-            assertEquals(56f * activity.resources.displayMetrics.density, after.width, 1f)
-            assertEquals(before.top, after.top, 1f)
-            assertEquals(before.width, after.width, 1f)
-            click(action)
-            click(await(hasTestTag("library_radial_search") and hasClickAction()))
             stage = "opening Search"
+            click(await(hasTestTag("floating_nav_search")))
             await(text(R.string.search_header_title))
-            composeRule.waitUntil(3_000) { safeNodes(trigger).isEmpty() }
             stage = "returning from Search"
+            // Back from Search returns to Discover; the toolbar's Library item restores the saved Library state.
             click(await(description(R.string.common_back)))
-            await(trigger)
+            click(await(hasTestTag("floating_nav_library")))
+            await(text(R.string.library_header_title))
             assertEquals(LibraryFilterMode.NEWEST_FIRST, model.filterMode.value)
             stage = "restoring the visible bookmark"
             composeRule.waitUntil(8_000) {
-                safeNodes(hasText(firstVisibleTitle)).any { abs(it.boundsInRoot.top - firstVisibleTop) <= 2f }
+                safeNodes(hasTestTag(firstVisibleCard)).any { abs(it.boundsInRoot.top - firstVisibleTop) <= 2f }
             }
-            val restored = nodes(hasText(firstVisibleTitle)).first()
+            val restored = nodes(hasTestTag(firstVisibleCard)).first()
             assertEquals("Back must restore the same bookmark position", firstVisibleTop, restored.boundsInRoot.top, 2f)
         } catch (error: Throwable) {
             throw AssertionError("Navigation test failed while $stage; filter=${model.filterMode.value}; initialized=${model.isInitialized.value}", error)
         }
     }
 
-    @Test fun drawerOpensNotificationsAndManualImportWithoutRootTabs() = withLibrary { library ->
+    @Test fun drawerOpensNotificationsWithoutRootTabs() = withLibrary { library ->
         showApp(library.viewModel())
         click(await(description(R.string.navigation_open)))
         click(await(description(R.string.settings_notification_title)))
         await(text(R.string.settings_notification_title))
         click(await(description(R.string.common_back)))
-        click(await(description(R.string.navigation_open)))
-        click(await(text(R.string.navigation_manual_import)))
-        await(text(R.string.import_dialog_title))
-        click(await(text(R.string.common_cancel)))
         await(description(R.string.navigation_open))
     }
 
@@ -188,10 +182,10 @@ class LibraryNavigationInteractionTest {
             await(text(R.string.library_empty_title))
             await(text(R.string.library_empty_hint))
             val cta = clickableNode(await(text(R.string.library_empty_save_url)))
-            val radial = await(trigger)
             assertTrue("fontScale=$scale CTA must have >= 48dp height", cta.boundsInRoot.height >= 47.5f * density)
-            assertFalse("fontScale=$scale Save URL button must not overlap the radial shortcut trigger",
-                cta.boundsInRoot.overlaps(radial.boundsInRoot))
+            // The 640dp host reserves the floating toolbar's clearance at its bottom.
+            assertTrue("fontScale=$scale Save URL button must stay above the floating toolbar",
+                cta.boundsInRoot.bottom <= (640.dp - HeaderDefaults.FloatingNavigationClearance).value * density + 1f)
             click(cta)
             assertEquals(index + 1, saveClicks)
         }

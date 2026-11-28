@@ -1,6 +1,4 @@
 <resources>
-    <string name="library_shortcuts_open">ショートカットを開く</string>
-    <string name="library_shortcuts_title">ライブラリのショートカット</string>
     <string name="settings_blur_effects">ブラー効果</string>
     <string name="settings_blur_fixed_on">このテーマでは常に有効です</string>
     <string name="settings_blur_fixed_off">このテーマでは常に無効です</string>
@@ -20,8 +18,6 @@
     <string name="trash_restored">ブックマークを復元しました。</string>
     <string name="trash_deleted">ブックマークを完全に削除しました。</string>
     <string name="navigation_open">ナビゲーションを開く</string>
-    <string name="navigation_filters">フィルター</string>
-    <string name="navigation_manual_import">手動インポート</string>
     <string name="notification_empty">通知はありません</string>
     <string name="notification_more_actions_item">%1$s のその他の操作</string>
     <string name="notification_retry_item">%1$s を再試行</string>
@@ -80,8 +76,6 @@
     <string name="common_remove">削除</string>
 
     <!-- Bottom Navigation Bar & FAB -->
-    <string name="bottom_bar_domain">Domain</string>
-    <string name="bottom_bar_newest_first">Newest first</string>
     <string name="bottom_bar_close_filter_menu">フィルターメニューを閉じる</string>
     <string name="bottom_bar_filter_menu">フィルターメニュー</string>
     <string name="bottom_bar_search">Search</string>
@@ -157,9 +151,6 @@
     <string name="library_empty_hint">ここからURLを保存するか、ブラウザの共有メニューからTidiloにページを共有できます。</string>
     <string name="library_empty_save_url">URLを保存</string>
     <string name="library_back_to_domains">ドメインに戻る</string>
-    <string name="library_view_mode_menu_desc">表示スタイル</string>
-    <string name="library_view_mode_list">リスト</string>
-    <string name="library_view_mode_grid">グリッド</string>
     <string name="library_summary_peek_open">要約を開く</string>
     <string name="time_just_now">たった今</string>
     <string name="time_minute_ago">1分前</string>
@@ -508,8 +499,6 @@
     <!-- Discover preview navigation shell -->
     <string name="nav_discover">発見</string>
     <string name="discover_greeting_growing">集めたものが、少しずつ棚になります</string>
-    <string name="debug_discover_preview_title">発見プレビュー</string>
-    <string name="debug_discover_preview_desc">新しい「発見」ホームとフローティングツールバーを試します。アプリが再起動します。</string>
     <string name="discover_shelf_hero">今日の一枚</string>
     <string name="discover_shelf_on_this_day">あの日の今日</string>
     <string name="discover_shelf_just_saved">保存したばかり</string>

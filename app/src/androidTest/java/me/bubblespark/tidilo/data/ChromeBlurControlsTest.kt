@@ -35,8 +35,6 @@ import me.bubblespark.tidilo.config.AppTheme
 import me.bubblespark.tidilo.data.db.BookmarkEntity
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.screenCanvasSource
-import me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu
-import me.bubblespark.tidilo.ui.navigation.rememberLibraryRadialMenuState
 import me.bubblespark.tidilo.ui.screens.library.BookmarkDetailScreen
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
 import me.bubblespark.tidilo.ui.theme.LocalOverlayBlurSetting
@@ -132,75 +130,6 @@ class ChromeBlurControlsTest {
         }
     }
 
-    @Test
-    fun realSearchActionUsesBodyInBothThemesAndRetainsClick() = runBlocking {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        var enabled by mutableStateOf(false)
-        var theme by mutableStateOf(AppTheme.DEFAULT)
-        var dark by mutableStateOf(false)
-        var body by mutableStateOf(Color.Red)
-        var clicks = 0
-        var policy by mutableStateOf(OverlayBlurPolicy.USER_CHOICE)
-        composeRule.setContent {
-            TidiloTheme(darkTheme = dark, dynamicColor = false, theme = theme, blurEnabled = enabled) {
-                Box(Modifier.fillMaxSize()) {
-                    CompositionLocalProvider(LocalOverlayBlurSetting provides resolveOverlayBlur(policy, enabled)) {
-                        TidiloScreenScaffold(header = {}, overlay = {
-                            LibraryRadialMenu(rememberLibraryRadialMenuState(), LibraryFilterMode.NEWEST_FIRST, {}, { clicks++ })
-                        }) {
-                            Box(Modifier.fillMaxSize().drawBehind { drawRect(body) })
-                        }
-                    }
-                    FrameSyncMarker({ body })
-                }
-            }
-        }
-        val markerNode = composeRule.awaitNode(hasTestTag(FRAME_SYNC_MARKER_TAG))
-        val marker = Offset(
-            markerNode.positionOnScreen.x + markerNode.size.width / 2f,
-            markerNode.positionOnScreen.y + markerNode.size.height / 2f
-        )
-        val triggerNode = composeRule.awaitNode(hasTestTag("library_radial_trigger"))
-        val point = listOf(
-            Offset(
-                triggerNode.positionOnScreen.x + triggerNode.size.width * .25f,
-                triggerNode.positionOnScreen.y + triggerNode.size.height * .4f
-            )
-        )
-        suspend fun step(color: Color, change: () -> Unit): Int {
-            composeRule.runOnUiThread {
-                change()
-                body = color
-            }
-            return composeRule.settledPixels(marker, color) { point }.single()
-        }
-        for ((preset, night) in listOf(AppTheme.DEFAULT to false, AppTheme.MODERN to true)) {
-            val plain = step(Color.Green) { theme = preset; dark = night; enabled = false }
-            assertEquals("OFF retains the themed opaque surface for $preset/$night", plain, step(Color.Red) {})
-            val blurred = step(Color.Blue) { enabled = true }
-            assertNotEquals("Search must sample its body for $preset/$night", blurred, step(Color.Red) {})
-        }
-        // Menu interactions run apart from pixel sampling so their animations never overlap a sample.
-        for ((preset, night) in listOf(AppTheme.DEFAULT to false, AppTheme.MODERN to true)) {
-            composeRule.runOnUiThread { theme = preset; dark = night; enabled = true }
-            composeRule.clickNode(
-                composeRule.awaitNode(hasContentDescription(context.getString(R.string.library_shortcuts_open), substring = true))
-            )
-            composeRule.clickNode(
-                composeRule.awaitNode(hasContentDescription(context.getString(R.string.nav_search), substring = true))
-            )
-        }
-        assertEquals(2, clicks)
-        for ((fixed, saved) in listOf(OverlayBlurPolicy.FORCE_ON to false, OverlayBlurPolicy.FORCE_OFF to true)) {
-            val first = step(Color.Green) { policy = fixed; enabled = saved }
-            val second = step(Color.Red) {}
-            if (fixed == OverlayBlurPolicy.FORCE_ON) {
-                assertNotEquals("$fixed/$saved must sample its body", first, second)
-            } else {
-                assertEquals("$fixed/$saved retains the themed opaque surface", first, second)
-            }
-        }
-    }
 }
 
 private const val FRAME_SYNC_MARKER_TAG = "chrome_blur_frame_sync_marker"

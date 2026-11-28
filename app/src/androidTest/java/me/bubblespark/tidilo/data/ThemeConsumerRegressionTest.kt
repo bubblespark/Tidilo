@@ -44,8 +44,6 @@ import me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent
 import me.bubblespark.tidilo.ui.screens.settings.SettingsGroup
 import me.bubblespark.tidilo.ui.screens.settings.StorageLoad
 import me.bubblespark.tidilo.ui.theme.*
-import me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu
-import me.bubblespark.tidilo.ui.navigation.rememberLibraryRadialMenuState
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
 import me.bubblespark.tidilo.ui.navigation.LibraryNavigationRail
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -252,57 +250,6 @@ class ThemeConsumerRegressionTest {
         }
     }
 
-    @Test fun searchActionKeepsCustomEdgeFillAndOpacity() {
-        val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
-            SurfaceRole.PRIMARY_ACTION to SurfaceStyleOverride(containerColor = Color.Black,
-                gradient = SurfaceGradient(Color.Blue, Color.Blue), bevel = SurfaceGradient(Color.Green, Color.Green),
-                borderWidth = 4.dp, opacity = 0.4f, shape = androidx.compose.foundation.shape.RoundedCornerShape(7.dp))))
-        scene(preset, content = { NavigationFixture(false) }) {
-            val bounds = tagged("library_radial_trigger").screenBounds()
-            composeRule.sampleScreen("green bevel edge with a translucent blue fill", describe = { frame ->
-                "edge=${Integer.toHexString(frame.getPixel((bounds.left + density).toInt(), bounds.center.y.toInt()))} " +
-                    "fill=${Integer.toHexString(frame.getPixel(bounds.center.x.toInt(), (bounds.top + 9f * density).toInt()))}"
-            }) { frame ->
-                val edge = frame.getPixel((bounds.left + density).toInt(), bounds.center.y.toInt())
-                val fill = frame.getPixel(bounds.center.x.toInt(), (bounds.top + 9f * density).toInt())
-                Unit.takeIf {
-                    android.graphics.Color.green(edge) > 200 && android.graphics.Color.red(edge) < 50 &&
-                        android.graphics.Color.blue(fill) > android.graphics.Color.red(fill) + 20 &&
-                        android.graphics.Color.red(fill) > 80
-                }
-            }
-        }
-    }
-
-    @Test fun expandedFilterConsumerKeepsSelectedMeaningAfterNeutralOverride() {
-        val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
-            SurfaceRole.FILTER_ACTION to SurfaceStyleOverride(containerColor = Color.Gray, contentColor = Color.Black)))
-        var selectedColor = Color.Unspecified
-        scene(preset, content = {
-            val color = MaterialTheme.colorScheme.secondaryContainer
-            SideEffect { selectedColor = color }
-            NavigationFixture(true)
-        }) {
-            val selected = composeRule.awaitNode(SemanticsMatcher("selected clickable") {
-                it.config.getOrNull(SemanticsProperties.Selected) == true && it.config.getOrNull(SemanticsActions.OnClick) != null
-            })
-            composeRule.waitForIdle()
-            val bounds = selected.screenBounds()
-            awaitPixel("selected filter container", bounds.center.x, bounds.top + 8f * density) { it == selectedColor.toArgb() }
-        }
-    }
-
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable
-    private fun NavigationFixture(expanded: Boolean) {
-        Box(Modifier.fillMaxWidth().height(420.dp)) {
-            if (expanded) {
-                val state = rememberWideNavigationRailState()
-                LaunchedEffect(Unit) { state.expand() }
-                LibraryNavigationRail(state, LibraryFilterMode.DOMAIN, {}, {}, {}, {}, {})
-            } else LibraryRadialMenu(rememberLibraryRadialMenuState(), LibraryFilterMode.NEWEST_FIRST, {}, {})
-        }
-    }
 }
 
 /** Screen-coordinate bounds, matching `uiAutomation.takeScreenshot()` pixels. */

@@ -83,13 +83,11 @@ class LibraryRssBackTransitionTest {
         val prefs = context.getSharedPreferences("tidilo_library_prefs", Context.MODE_PRIVATE)
         val savedPrefs = PREF_KEYS.associateWith { prefs.getString(it, null) }
         val oldBlur = AppConfig.overlayBlurEnabled.value
-        val oldPreview = AppConfig.discoverPreviewEnabled.value
         val caches = OfflineVisualCaches()
         val recorder = FrameRecorder(context.getString(R.string.library_empty_title))
         var scenario: ActivityScenario<MainActivity>? = null
         try {
             AppConfig.setOverlayBlurEnabled(false)
-            AppConfig.setDiscoverPreviewEnabled(false)
             withContext(Dispatchers.IO) {
                 db.rssDao().putFeed(feed)
                 db.bookmarkDao().insertAll(articles)
@@ -104,6 +102,8 @@ class LibraryRssBackTransitionTest {
                 vm.setFilterMode(LibraryFilterMode.RSS)
                 vm.setViewMode(mode)
             }
+            // The app starts on Discover; the toolbar opens the Library layer.
+            withTimeout(8_000) { while (!clickTagged(decor, "floating_nav_library")) delay(100) }
             awaitFrame(recorder, "feed list") { feed.title in it }
             instrumentation.runOnMainSync { vm.selectRssFeedFilter(feed) }
             awaitFrame(recorder, "feed articles") { LAST_ARTICLE in it }
@@ -137,7 +137,6 @@ class LibraryRssBackTransitionTest {
                     savedPrefs.forEach { (key, value) -> if (value == null) editor.remove(key) else editor.putString(key, value) }
                     editor.commit()
                     AppConfig.setOverlayBlurEnabled(oldBlur)
-                    AppConfig.setDiscoverPreviewEnabled(oldPreview)
                     caches.close()
                 }
             }
@@ -194,6 +193,19 @@ class LibraryRssBackTransitionTest {
             visit(node)
             node.children.forEach(pending::addLast)
         }
+    }
+
+    /** Clicks the node tagged [tag] (or its clickable ancestor); false while it is not composed yet. */
+    private fun clickTagged(decor: View, tag: String): Boolean {
+        var clicked = false
+        instrumentation.runOnMainSync {
+            var found: SemanticsNode? = null
+            forEachNode(decor) { node -> if (found == null && node.config.getOrNull(SemanticsProperties.TestTag) == tag) found = node }
+            var target = found ?: return@runOnMainSync
+            while (target.config.getOrNull(SemanticsActions.OnClick) == null) target = target.parent ?: return@runOnMainSync
+            clicked = target.config[SemanticsActions.OnClick].action?.invoke() == true
+        }
+        return clicked
     }
 
     private fun clickHeaderBack(decor: View) {

@@ -163,7 +163,8 @@ class LibraryScrollToTopTest {
                     val title = when (filter) {
                         LibraryFilterMode.NEWEST_FIRST -> context.getString(R.string.library_header_title)
                         LibraryFilterMode.DOMAIN -> if (detail) "$id-0.invalid" else context.getString(R.string.library_header_title)
-                        LibraryFilterMode.RSS -> if (detail) feeds.first().title else context.getString(R.string.rss_title)
+                        // Tab roots keep the Library title.
+                        LibraryFilterMode.RSS -> if (detail) feeds.first().title else context.getString(R.string.library_header_title)
                         LibraryFilterMode.COLLECTION -> context.getString(R.string.collection_title)
                     }
                     val titleMatcher = SemanticsMatcher("header title $title") { node ->

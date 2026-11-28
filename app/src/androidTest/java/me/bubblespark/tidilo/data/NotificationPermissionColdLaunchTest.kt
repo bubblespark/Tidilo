@@ -82,7 +82,6 @@ class NotificationPermissionColdLaunchTest {
         val hadRequestedKey = notificationPrefs.contains(KEY_NOTIFICATION_PERMISSION_REQUESTED)
         val previousRequested = notificationPrefs.getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
         val oldBlur = AppConfig.overlayBlurEnabled.value
-        val oldPreview = AppConfig.discoverPreviewEnabled.value
         val caches = OfflineVisualCaches()
         val library = withContext(Dispatchers.IO) { InMemoryLibrary(context).also { it.awaitReady() } }
         val importJob = SupervisorJob()
@@ -255,7 +254,6 @@ class NotificationPermissionColdLaunchTest {
         }
         try {
             AppConfig.setOverlayBlurEnabled(false)
-            AppConfig.setDiscoverPreviewEnabled(false)
             assertTrue(notificationPrefs.edit().remove(KEY_NOTIFICATION_PERMISSION_REQUESTED).commit())
             if (wasPermissionGranted) {
                 revokePostNotificationsWithoutKill()
@@ -327,11 +325,13 @@ class NotificationPermissionColdLaunchTest {
                 activity.setContent {
                     TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
                         CompositionLocalProvider(LocalActivityResultRegistryOwner provides deniedRegistryOwner) {
-                            TidiloApp(importViewModel = testImportViewModel, libraryViewModel = model, discoverPreviewEnabled = false)
+                            TidiloApp(importViewModel = testImportViewModel, libraryViewModel = model)
                         }
                     }
                 }
             }
+            // The app starts on Discover; the toolbar opens the Library layer.
+            click(await(hasTestTag("floating_nav_library")))
             withContext(Dispatchers.IO) {
                 library.db.collectionDao().insert(CollectionEntity(collectionId, "Empty capture fixture", "", "folder", null, 0, 1L, 1L))
             }
@@ -341,11 +341,11 @@ class NotificationPermissionColdLaunchTest {
             await(hasText(context.getString(R.string.library_empty_title)))
             await(hasText(context.getString(R.string.library_empty_hint)))
             val saveButton = clickableNode(await(hasText(context.getString(R.string.library_empty_save_url))))
-            val radial = await(hasTestTag("library_radial_trigger"))
+            val toolbar = await(hasTestTag("floating_nav"))
             val density = context.resources.displayMetrics.density
             assertTrue("Save URL button must meet 48dp touch height", saveButton.boundsInRoot.height >= 47.5f * density)
-            assertFalse("Save URL button must not overlap the radial shortcut trigger",
-                saveButton.boundsInRoot.overlaps(radial.boundsInRoot))
+            assertFalse("Save URL button must not overlap the floating toolbar",
+                saveButton.boundsInRoot.overlaps(toolbar.boundsInRoot))
             click(saveButton)
             await(hasText(context.getString(R.string.import_dialog_title)))
             val input = await(SemanticsMatcher.keyIsDefined(SemanticsActions.SetText))
@@ -391,7 +391,6 @@ class NotificationPermissionColdLaunchTest {
                 runCleanupStep { library.close() }
                 runCleanupStep {
                     AppConfig.setOverlayBlurEnabled(oldBlur)
-                    AppConfig.setDiscoverPreviewEnabled(oldPreview)
                     caches.close()
                 }
                 runCleanupStep {

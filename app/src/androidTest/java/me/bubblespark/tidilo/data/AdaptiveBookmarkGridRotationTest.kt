@@ -11,7 +11,9 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performScrollToIndex
@@ -53,12 +55,10 @@ class AdaptiveBookmarkGridRotationTest {
         val prefs = context.getSharedPreferences("tidilo_library_prefs", Context.MODE_PRIVATE)
         val savedPrefs = PREF_KEYS.associateWith { prefs.getString(it, null) }
         val oldBlur = AppConfig.overlayBlurEnabled.value
-        val oldPreview = AppConfig.discoverPreviewEnabled.value
         val caches = OfflineVisualCaches()
         var scenario: ActivityScenario<MainActivity>? = null
         try {
             AppConfig.setOverlayBlurEnabled(false)
-            AppConfig.setDiscoverPreviewEnabled(false)
             withContext(Dispatchers.IO) { db.bookmarkDao().insertAll(bookmarks) }
             scenario = ActivityScenario.launch(MainActivity::class.java)
             scenario.onActivity {
@@ -68,6 +68,9 @@ class AdaptiveBookmarkGridRotationTest {
                     setViewMode(LibraryViewMode.GRID)
                 }
             }
+            // The app starts on Discover; the toolbar opens the Library layer.
+            composeRule.waitUntil(8_000) { nodes(hasTestTag("floating_nav_library")).isNotEmpty() }
+            composeRule.onNode(hasTestTag("floating_nav_library"), useUnmergedTree = true).performClick()
             var bodyTop = awaitOrientation(scenario, Configuration.ORIENTATION_PORTRAIT)
             awaitTitle(0)
             val startRow = awaitTopRow("initial portrait row", bodyTop) { 0 in it }
@@ -96,7 +99,6 @@ class AdaptiveBookmarkGridRotationTest {
                     savedPrefs.forEach { (key, value) -> if (value == null) editor.remove(key) else editor.putString(key, value) }
                     editor.commit()
                     AppConfig.setOverlayBlurEnabled(oldBlur)
-                    AppConfig.setDiscoverPreviewEnabled(oldPreview)
                     caches.close()
                 }
             }

@@ -1,5 +1,6 @@
 package me.bubblespark.tidilo.data
 
+import android.accessibilityservice.AccessibilityService
 import android.graphics.Color
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.geometry.Offset
@@ -32,6 +33,8 @@ import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import androidx.compose.ui.test.hasTestTag
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Rule
 import org.junit.Test
 
@@ -189,8 +192,10 @@ class RssFeedLibraryScreenTest {
             val card = generateSequence(awaitText(alphaArticle.title)) { it.parent }
                 .first { SemanticsActions.OnLongClick in it.config }
             composeRule.runOnUiThread { assertTrue(card.config[SemanticsActions.OnLongClick].action?.invoke() == true) }
-            awaitText(alphaArticle.description)
-            composeRule.runOnUiThread { activity.onBackPressedDispatcher.onBackPressed() }
+            composeRule.awaitNode(hasTestTag("discover_peek_sheet"))
+            // System Back reaches the Peek sheet's own window first and keeps the feed selected.
+            check(InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
+            composeRule.waitUntil(8_000) { nodes(hasTestTag("discover_peek_sheet")).isEmpty() }
             awaitText(alphaArticle.title)
             composeRule.clickNode(composeRule.awaitNode(hasContentDescription(activity.getString(R.string.rss_back_to_feeds))))
             composeRule.waitUntil(5_000) { model.selectedRssFeedFilter.value == null && visibleDeck(a) != null }

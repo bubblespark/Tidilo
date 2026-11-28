@@ -33,11 +33,9 @@ class LegacyImportEntryTest {
 
     @Test fun legacyImportEntryOpensNotificationList(): Unit = runBlocking {
         val oldBlur = AppConfig.overlayBlurEnabled.value
-        val oldPreview = AppConfig.discoverPreviewEnabled.value
         val caches = OfflineVisualCaches()
         try {
             AppConfig.setOverlayBlurEnabled(false)
-            AppConfig.setDiscoverPreviewEnabled(false)
             val intent = Intent(context, MainActivity::class.java)
                 .putExtra(NotificationCoordinator.EXTRA_DESTINATION, "import")
             ActivityScenario.launch<MainActivity>(intent).use {
@@ -54,7 +52,6 @@ class LegacyImportEntryTest {
             }
         } finally {
             AppConfig.setOverlayBlurEnabled(oldBlur)
-            AppConfig.setDiscoverPreviewEnabled(oldPreview)
             caches.close()
         }
     }

@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.navigation.NavBackStackEntry
 import me.bubblespark.tidilo.ui.screens.discover.rememberReducedMotion
 
-/** The `SharedTransitionLayout` around `NavHost`; null with the Discover preview off or under reduced motion. */
+/** The `SharedTransitionLayout` around `NavHost`; null under reduced motion. */
 internal val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScope?> { null }
 
 /** The animated scope of the current `NavHost` destination. */
@@ -51,7 +51,7 @@ internal class PlateTransition(
     }
 }
 
-/** Null when no shared scope is provided (flag off, reduced motion, or a host without `NavHost`). */
+/** Null when no shared scope is provided (reduced motion, or a host without `NavHost`). */
 @Composable
 internal fun rememberPlateTransition(): PlateTransition? {
     val scope = LocalSharedTransitionScope.current ?: return null
@@ -87,17 +87,15 @@ internal fun AnimatedContentTransitionScope<NavBackStackEntry>.isPlateReturn(): 
     initialState.destination.route == Screen.BookmarkDetail.route && isPlateRoute(targetState.destination.route)
 
 /**
- * Hosts `NavHost` ([content]) in a `SharedTransitionLayout` when [enabled]. Under [reducedMotion] no scope is
+ * Hosts `NavHost` ([content]) in a `SharedTransitionLayout`. Under [reducedMotion] no scope is
  * provided, so plates attach nothing and Detail only crossfades (§7).
  */
 @Composable
 internal fun PlateTransitionLayout(
-    enabled: Boolean,
     modifier: Modifier = Modifier,
     reducedMotion: Boolean = rememberReducedMotion(),
     content: @Composable (Modifier) -> Unit
 ) {
-    if (!enabled) return content(modifier)
     SharedTransitionLayout(modifier) {
         CompositionLocalProvider(LocalSharedTransitionScope provides this.takeUnless { reducedMotion }) {
             content(Modifier.fillMaxSize())

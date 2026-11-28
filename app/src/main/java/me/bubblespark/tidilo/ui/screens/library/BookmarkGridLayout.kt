@@ -20,14 +20,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import me.bubblespark.tidilo.ui.components.HeaderDefaults
-import me.bubblespark.tidilo.ui.components.screenSystemInsets
-import me.bubblespark.tidilo.ui.navigation.LibraryRadialMenuGeometry
 import kotlinx.coroutines.flow.filterNotNull
 import kotlin.math.ceil
 
@@ -78,13 +73,11 @@ internal fun rememberBookmarkGridTextMetrics(): BookmarkGridTextMetrics {
 internal fun BoxWithConstraintsScope.bookmarkGridLayout(
     contentPadding: PaddingValues,
     trailingPadding: Dp,
-    leadingContentHeightPx: Int = 0,
-    protectLibraryShortcut: Boolean = false
+    leadingContentHeightPx: Int = 0
 ): BookmarkGridLayout {
     val direction = LocalLayoutDirection.current
     val density = LocalDensity.current
     val text = rememberBookmarkGridTextMetrics()
-    val insets = if (protectLibraryShortcut) screenSystemInsets() else null
 
     return with(density) {
         val left = contentPadding.calculateLeftPadding(direction).roundToPx()
@@ -92,18 +85,6 @@ internal fun BoxWithConstraintsScope.bookmarkGridLayout(
         val top = contentPadding.calculateTopPadding().roundToPx() + leadingContentHeightPx
         val safeBottom = constraints.maxHeight -
             (contentPadding.calculateBottomPadding() - trailingPadding).roundToPx()
-        val shortcut = insets?.let {
-            val diameter = HeaderDefaults.LibraryActionSize.roundToPx()
-            val geometry = remember(density.density, diameter) { LibraryRadialMenuGeometry(density.density, diameter) }
-            val margin = ((HeaderDefaults.LibraryActionClearance - HeaderDefaults.LibraryActionSize) / 2).roundToPx()
-            val center = geometry.anchor(
-                constraints.maxWidth, constraints.maxHeight,
-                it.getRight(density, LayoutDirection.Ltr), it.getBottom(density), margin
-            )
-            val triggerLeft = center.x - diameter / 2
-            val triggerTop = center.y - diameter / 2
-            IntRect(triggerLeft, triggerTop, triggerLeft + diameter, triggerTop + diameter)
-        }
         val titleOffset = BookmarkGridInfoTopPadding.roundToPx() + text.labelHeight.roundToPx() +
             BookmarkGridInfoGap.roundToPx()
         val infoHeight = titleOffset + text.titleHeight.roundToPx() +
@@ -120,13 +101,7 @@ internal fun BoxWithConstraintsScope.bookmarkGridLayout(
                 BookmarkGridLikeTarget.roundToPx() - titleOffset
             ),
             infoHeight = infoHeight
-        ) { cellWidth ->
-            val firstLeft = if (direction == LayoutDirection.Ltr) left else right - cellWidth
-            val bottom = if (shortcut != null && firstLeft < shortcut.right && firstLeft + cellWidth > shortcut.left) {
-                minOf(safeBottom, shortcut.top)
-            } else safeBottom
-            bottom - top
-        }
+        ) { safeBottom - top }
         BookmarkGridLayout(size.columns, size.mediaHeightPx.toDp(), text)
     }
 }

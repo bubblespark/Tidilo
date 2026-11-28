@@ -103,7 +103,6 @@ class ChromeBlurPerformanceTest {
                                     library = {
                                         LibraryScreen(
                                             fixture.vm,
-                                            onNavigateToSearch = { detail = true },
                                             onNavigateToDetail = { detail = true }
                                         )
                                     },

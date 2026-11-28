@@ -2,7 +2,7 @@ package me.bubblespark.tidilo.data
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import kotlinx.coroutines.Dispatchers
@@ -33,7 +33,7 @@ class MainTabHeaderTest {
                 composeRule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
             }
             val centers = linkedMapOf<String, Float>()
-            val viewStyle = context.getString(R.string.library_view_mode_menu_desc)
+            val viewStyle = hasTestTag("library_view_toggle")
             // Short titles only: an overflowing title starts an infinite marquee.
             for (title in listOf<String?>(null, "IGN", "IGN PC Articles")) {
                 composeRule.runOnIdle {
@@ -43,11 +43,11 @@ class MainTabHeaderTest {
                 val expectedTitle = title ?: context.getString(R.string.library_header_title)
                 try {
                     await(hasText(expectedTitle))
-                    await(hasContentDescription(viewStyle))
+                    await(viewStyle)
                 } catch (error: Throwable) {
                     throw AssertionError("Missing title or view style action for $expectedTitle", error)
                 }
-                val action = composeRule.onAllNodes(hasContentDescription(viewStyle), useUnmergedTree = true).fetchSemanticsNodes().first()
+                val action = composeRule.onAllNodes(viewStyle, useUnmergedTree = true).fetchSemanticsNodes().first()
                 centers[expectedTitle] = action.boundsInRoot.center.y
             }
             assertEquals("Titles must not move the view style action vertically: $centers", centers.values.min(), centers.values.max(), 1f)

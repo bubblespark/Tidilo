@@ -34,8 +34,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
-import me.bubblespark.tidilo.data.db.CollectionEntity
-import me.bubblespark.tidilo.data.db.CollectionWithCount
 import me.bubblespark.tidilo.data.rss.RssSettings
 import me.bubblespark.tidilo.ui.components.*
 import me.bubblespark.tidilo.ui.screens.library.*
@@ -44,12 +42,6 @@ import me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent
 import me.bubblespark.tidilo.ui.screens.settings.SettingsGroup
 import me.bubblespark.tidilo.ui.screens.settings.StorageLoad
 import me.bubblespark.tidilo.ui.theme.*
-import me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu
-import me.bubblespark.tidilo.ui.navigation.rememberLibraryRadialMenuState
-import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
-import me.bubblespark.tidilo.ui.navigation.LibraryNavigationRail
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.rememberWideNavigationRailState
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -61,8 +53,6 @@ class ThemeConsumerRegressionTest {
     @get:Rule val composeRule = createComposeRule()
 
     private val bookmark = BookmarkItem("fixture", "Grid fixture", "", "Summary", Tag("Article", "Tech"), createdAt = 0L)
-    private val collection = CollectionWithCount(CollectionEntity("fixture", "Collection fixture", "Description",
-        "folder", null, 0, 0L, 0L), 3)
     private val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
 
     private fun scene(
@@ -196,34 +186,28 @@ class ThemeConsumerRegressionTest {
         }
     }
 
-    @Test fun gridAndCollectionShadowsExtendOutsideTheirInputClip() {
+    // The collection deck uses tonal Library-layer layers, so only the grid card consumes the elevation override.
+    @Test fun gridCardShadowExtendsOutsideItsInputClip() {
         val clicks = AtomicInteger()
         val longs = AtomicInteger()
-        var deck by mutableStateOf(false)
         val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
-            SurfaceRole.BOOKMARK_CARD to SurfaceStyleOverride(elevation = 18.dp),
-            SurfaceRole.DECK_FRONT to SurfaceStyleOverride(elevation = 18.dp)))
+            SurfaceRole.BOOKMARK_CARD to SurfaceStyleOverride(elevation = 18.dp)))
         scene(preset, width = 220.dp, content = {
-            if (deck) CollectionCard(collection, { clicks.incrementAndGet() }, Modifier.testTag("card"),
-                onLongClick = { longs.incrementAndGet() })
-            else BookmarkGridCardFixture(bookmark, Modifier.testTag("card"), onClick = { clicks.incrementAndGet() },
+            BookmarkGridCardFixture(bookmark, Modifier.testTag("card"), onClick = { clicks.incrementAndGet() },
                 onLongClick = { longs.incrementAndGet() })
         }) {
-            for ((index, title) in listOf("Grid fixture", "Collection fixture").withIndex()) {
-                composeRule.runOnUiThread { deck = index == 1 }
-                composeRule.awaitNode(hasText(title))
-                val card = tagged("card")
-                val clickable = composeRule.awaitNode(SemanticsMatcher("long-clickable over the card") {
-                    it.config.getOrNull(SemanticsActions.OnLongClick) != null && it.boundsInRoot.overlaps(card.boundsInRoot)
-                })
-                invoke(clickable, SemanticsActions.OnClick)
-                invoke(clickable, SemanticsActions.OnLongClick)
-                assertEquals(index + 1, clicks.get())
-                assertEquals(index + 1, longs.get())
-                val bounds = clickable.screenBounds()
-                composeRule.sampleScreen("$title shadow outside its input clip") { frame ->
-                    Unit.takeIf { (-5..-1).any { frame.getPixel((bounds.left + it).toInt(), bounds.center.y.toInt()) != Color.White.toArgb() } }
-                }
+            composeRule.awaitNode(hasText("Grid fixture"))
+            val card = tagged("card")
+            val clickable = composeRule.awaitNode(SemanticsMatcher("long-clickable over the card") {
+                it.config.getOrNull(SemanticsActions.OnLongClick) != null && it.boundsInRoot.overlaps(card.boundsInRoot)
+            })
+            invoke(clickable, SemanticsActions.OnClick)
+            invoke(clickable, SemanticsActions.OnLongClick)
+            assertEquals(1, clicks.get())
+            assertEquals(1, longs.get())
+            val bounds = clickable.screenBounds()
+            composeRule.sampleScreen("Grid fixture shadow outside its input clip") { frame ->
+                Unit.takeIf { (-5..-1).any { frame.getPixel((bounds.left + it).toInt(), bounds.center.y.toInt()) != Color.White.toArgb() } }
             }
         }
     }
@@ -252,57 +236,6 @@ class ThemeConsumerRegressionTest {
         }
     }
 
-    @Test fun searchActionKeepsCustomEdgeFillAndOpacity() {
-        val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
-            SurfaceRole.PRIMARY_ACTION to SurfaceStyleOverride(containerColor = Color.Black,
-                gradient = SurfaceGradient(Color.Blue, Color.Blue), bevel = SurfaceGradient(Color.Green, Color.Green),
-                borderWidth = 4.dp, opacity = 0.4f, shape = androidx.compose.foundation.shape.RoundedCornerShape(7.dp))))
-        scene(preset, content = { NavigationFixture(false) }) {
-            val bounds = tagged("library_radial_trigger").screenBounds()
-            composeRule.sampleScreen("green bevel edge with a translucent blue fill", describe = { frame ->
-                "edge=${Integer.toHexString(frame.getPixel((bounds.left + density).toInt(), bounds.center.y.toInt()))} " +
-                    "fill=${Integer.toHexString(frame.getPixel(bounds.center.x.toInt(), (bounds.top + 9f * density).toInt()))}"
-            }) { frame ->
-                val edge = frame.getPixel((bounds.left + density).toInt(), bounds.center.y.toInt())
-                val fill = frame.getPixel(bounds.center.x.toInt(), (bounds.top + 9f * density).toInt())
-                Unit.takeIf {
-                    android.graphics.Color.green(edge) > 200 && android.graphics.Color.red(edge) < 50 &&
-                        android.graphics.Color.blue(fill) > android.graphics.Color.red(fill) + 20 &&
-                        android.graphics.Color.red(fill) > 80
-                }
-            }
-        }
-    }
-
-    @Test fun expandedFilterConsumerKeepsSelectedMeaningAfterNeutralOverride() {
-        val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
-            SurfaceRole.FILTER_ACTION to SurfaceStyleOverride(containerColor = Color.Gray, contentColor = Color.Black)))
-        var selectedColor = Color.Unspecified
-        scene(preset, content = {
-            val color = MaterialTheme.colorScheme.secondaryContainer
-            SideEffect { selectedColor = color }
-            NavigationFixture(true)
-        }) {
-            val selected = composeRule.awaitNode(SemanticsMatcher("selected clickable") {
-                it.config.getOrNull(SemanticsProperties.Selected) == true && it.config.getOrNull(SemanticsActions.OnClick) != null
-            })
-            composeRule.waitForIdle()
-            val bounds = selected.screenBounds()
-            awaitPixel("selected filter container", bounds.center.x, bounds.top + 8f * density) { it == selectedColor.toArgb() }
-        }
-    }
-
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable
-    private fun NavigationFixture(expanded: Boolean) {
-        Box(Modifier.fillMaxWidth().height(420.dp)) {
-            if (expanded) {
-                val state = rememberWideNavigationRailState()
-                LaunchedEffect(Unit) { state.expand() }
-                LibraryNavigationRail(state, LibraryFilterMode.DOMAIN, {}, {}, {}, {}, {})
-            } else LibraryRadialMenu(rememberLibraryRadialMenuState(), LibraryFilterMode.NEWEST_FIRST, {}, {})
-        }
-    }
 }
 
 /** Screen-coordinate bounds, matching `uiAutomation.takeScreenshot()` pixels. */

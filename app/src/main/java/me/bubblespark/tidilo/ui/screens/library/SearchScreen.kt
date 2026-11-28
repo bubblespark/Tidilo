@@ -12,7 +12,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
 
@@ -87,7 +86,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.data.db.BookmarkMatchField
 import me.bubblespark.tidilo.config.AppConfig
-import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.screenSystemInsets
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
@@ -125,17 +123,16 @@ fun SearchScreen(
     val resultGridState = rememberLazyGridState()
     val resultGridAnchor = rememberBookmarkGridAnchor()
     var lastScrollQuery by rememberSaveable { mutableStateOf(searchQuery) }
-    var peekBookmark by remember { mutableStateOf<BookmarkItem?>(null) }
+    val peek = rememberLibraryPeekState()
     LaunchedEffect(searchQuery) {
         if (lastScrollQuery != searchQuery) {
             resultGridAnchor.clear()
             resultListState.requestScrollToItem(0)
             resultGridState.requestScrollToItem(0)
             lastScrollQuery = searchQuery
-            peekBookmark = null
+            peek.peekId = null
         }
     }
-    BackHandler(enabled = peekBookmark != null) { peekBookmark = null }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -150,7 +147,7 @@ fun SearchScreen(
         viewModel.searchFocusTrigger
             .filter { it > 0L }
             .collect { token ->
-                peekBookmark = null
+                peek.peekId = null
                 when {
                     currentQuery.isBlank() -> historyState.scrollToItem(0)
                     currentViewMode == LibraryViewMode.GRID -> resultGridState.scrollToItem(0)
@@ -186,7 +183,6 @@ fun SearchScreen(
         if (captionLanguage == null) captionBaseStyle
         else captionBaseStyle.copy(localeList = LocaleList(captionLanguage))
     }
-    val headerHeight = HeaderDefaults.bodyTopPadding()
 
     val isPrivateVisible by AppConfig.isPrivateContentVisible.collectAsStateWithLifecycle()
     val activeQueryKey = remember(searchQuery, isPrivateVisible) {
@@ -305,7 +301,7 @@ fun SearchScreen(
         filteredBookmarks.itemCount == 0 -> ({ EmptySearchResult(query = searchQuery) })
         else -> null
     }
-    val peekOpen = peekBookmark != null
+    val peekOpen = peek.isOpen
     val backgroundSemantics = if (peekOpen) Modifier.clearAndSetSemantics {} else Modifier
     val screenModifier = if (peekOpen) modifier else modifier.clickable(
         interactionSource = remember { MutableInteractionSource() }, indication = null
@@ -346,7 +342,7 @@ fun SearchScreen(
                 overflow = TextOverflow.Ellipsis
             )
         }) },
-        overlay = { BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null } }
+        overlay = { LibraryPeekSheets(peek, viewModel, EngagementSurface.SEARCH) }
     ) { contentPadding ->
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val showingHistory = searchQuery.isBlank()
@@ -512,7 +508,7 @@ fun SearchScreen(
                                 onLongClick = {
                                     focusManager.clearFocus()
                                     keyboardController?.hide()
-                                    peekBookmark = item
+                                    peek.peekId = item.id
                                     viewModel.recordSummaryPeek(item.id, EngagementSurface.SEARCH)
                                 },
                                 onClick = {

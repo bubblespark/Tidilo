@@ -49,8 +49,6 @@ import me.bubblespark.tidilo.data.db.RssFeedGroup
 import me.bubblespark.tidilo.data.db.TagCount
 import me.bubblespark.tidilo.data.db.TagKind
 import me.bubblespark.tidilo.data.engagement.EngagementSurface
-import me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu
-import me.bubblespark.tidilo.ui.navigation.rememberLibraryRadialMenuState
 import me.bubblespark.tidilo.ui.screens.library.BookmarkItem
 import me.bubblespark.tidilo.ui.screens.library.DomainGroupItem
 import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
@@ -151,12 +149,6 @@ class LibraryChromeRegressionTest {
             TidiloTheme(darkTheme = true, dynamicColor = false, theme = AppTheme.DEFAULT, blurEnabled = false) {
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                     LibraryScreen(model)
-                    Icon(
-                        ImageVector.vectorResource(R.drawable.ic_dashboard_2_gear),
-                        null,
-                        Modifier.align(Alignment.BottomStart).padding(20.dp).size(24.dp).testTag("reference_view_mode"),
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
                 }
             }
         }
@@ -247,110 +239,4 @@ class LibraryChromeRegressionTest {
         }
     }
 
-    @Test
-    fun viewModeGlyphRetainsTheExistingDashboardAsset() {
-        mountLibrary()
-        val viewModeDesc = context.getString(R.string.library_view_mode_menu_desc)
-        composeRule.waitUntil(5000) {
-            composeRule.onAllNodes(SemanticsMatcher("view mode icon") {
-                it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(viewModeDesc) == true
-            }, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-        }
-        val actual = composeRule.onNodeWithContentDescription(viewModeDesc, useUnmergedTree = true).fetchSemanticsNode().boundsInWindow
-        val reference = composeRule.onNodeWithTag("reference_view_mode", useUnmergedTree = true).fetchSemanticsNode().boundsInWindow
-        composeRule.waitForIdle()
-        val bitmap = instrumentation.uiAutomation.takeScreenshot()
-        try {
-            val width = actual.width.roundToInt()
-            val height = actual.height.roundToInt()
-            var differences = 0
-            var referenceInk = 0
-            for (y in 0 until height) {
-                for (x in 0 until width) {
-                    val a = AndroidColor.red(bitmap.getPixel(actual.left.roundToInt() + x, actual.top.roundToInt() + y)) > 150
-                    val b = AndroidColor.red(bitmap.getPixel(reference.left.roundToInt() + x, reference.top.roundToInt() + y)) > 150
-                    if (a != b) differences++
-                    if (b) referenceInk++
-                }
-            }
-            assertTrue("View mode must render the existing dashboard/gear glyph: $differences differing pixels", differences < referenceInk / 5)
-        } finally {
-            bitmap.recycle()
-        }
-    }
-
-    @Test
-    fun viewModePopupAlignsToItsHeaderButton() {
-        mountLibrary()
-        val viewModeDesc = context.getString(R.string.library_view_mode_menu_desc)
-        composeRule.waitUntil(5000) {
-            composeRule.onAllNodes(SemanticsMatcher("view mode icon") {
-                it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(viewModeDesc) == true
-            }, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-        }
-        val icon = composeRule.onNodeWithContentDescription(viewModeDesc, useUnmergedTree = true).fetchSemanticsNode()
-        val button = generateSequence(icon) { it.parent }.first { it.config.getOrNull(SemanticsActions.OnClick) != null }
-        val anchor = screenBounds(button)
-
-        composeRule.onNodeWithContentDescription(viewModeDesc, useUnmergedTree = true).performClick()
-        val popupMatcher = SemanticsMatcher.keyIsDefined(SemanticsProperties.IsPopup)
-        composeRule.waitUntil(5000) {
-            composeRule.onAllNodes(popupMatcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.waitForIdle()
-        val popup = composeRule.onAllNodes(popupMatcher, useUnmergedTree = true).fetchSemanticsNodes().first()
-        val popupBounds = screenBounds(popup)
-        assertEquals("Popup right edge must align with its trigger", anchor.right, popupBounds.right, 2f)
-        assertTrue("Popup must open below the header trigger", popupBounds.top >= anchor.bottom - 2f)
-    }
-
-    @Test
-    fun radialTriggerRippleDoesNotPaintOutsideItsRoundSurface() {
-        composeRule.setContent {
-            TidiloTheme(darkTheme = false, dynamicColor = false, theme = AppTheme.DEFAULT, blurEnabled = false) {
-                Box(Modifier.fillMaxSize().background(Color.White).padding(64.dp)) {
-                    LibraryRadialMenu(rememberLibraryRadialMenuState(), LibraryFilterMode.NEWEST_FIRST, {}, {})
-                }
-            }
-        }
-        composeRule.waitForIdle()
-        val triggerNode = composeRule.onNodeWithTag("library_radial_trigger", useUnmergedTree = true)
-        val bounds = triggerNode.fetchSemanticsNode().boundsInWindow
-        val density = context.resources.displayMetrics.density
-        val inset = 3f * density
-        val x = (bounds.left + inset).roundToInt()
-        val y = (bounds.top + inset).roundToInt()
-        val insideX = bounds.center.x.roundToInt()
-        val insideY = (bounds.top + 8f * density).roundToInt()
-
-        val before = instrumentation.uiAutomation.takeScreenshot().let { bitmap ->
-            try { bitmap.getPixel(x, y) to bitmap.getPixel(insideX, insideY) } finally { bitmap.recycle() }
-        }
-
-        triggerNode.performTouchInput { down(center) }
-        val pressed = try {
-            composeRule.waitForIdle()
-            runBlocking {
-                var sample = before
-                for (attempt in 0 until 6) {
-                    sample = instrumentation.uiAutomation.takeScreenshot().let { bitmap ->
-                        try { bitmap.getPixel(x, y) to bitmap.getPixel(insideX, insideY) } finally { bitmap.recycle() }
-                    }
-                    if (sample.second != before.second) break
-                    if (attempt < 5) delay(100)
-                }
-                sample
-            }
-        } finally {
-            runCatching { triggerNode.performTouchInput { up() } }
-        }
-
-        val difference = maxOf(
-            abs(AndroidColor.red(before.first) - AndroidColor.red(pressed.first)),
-            abs(AndroidColor.green(before.first) - AndroidColor.green(pressed.first)),
-            abs(AndroidColor.blue(before.first) - AndroidColor.blue(pressed.first))
-        )
-        assertTrue("The pointer must actually press and paint the action", before.second != pressed.second)
-        assertTrue("Pressed ripple leaked into the square corner outside the round Surface ($difference)", difference <= 5)
-    }
 }

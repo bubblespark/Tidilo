@@ -1,8 +1,6 @@
 package me.bubblespark.tidilo.ui.screens.library
 
-import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.data.engagement.EngagementSurface
-import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.theme.modernRaisedTextStyle
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.LazyPagingItems
@@ -12,7 +10,6 @@ import androidx.paging.LoadState
 import androidx.activity.compose.BackHandler
 import me.bubblespark.tidilo.ui.navigation.rememberPlateTransition
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseInOutCubic
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
@@ -21,18 +18,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.basicMarquee
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,32 +37,19 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddLink
-import androidx.compose.material.icons.filled.Check
-import me.bubblespark.tidilo.ui.components.TidiloDropdownMenu
-import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.vectorResource
-import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -84,38 +62,27 @@ import kotlinx.coroutines.flow.first
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
 import me.bubblespark.tidilo.data.DomainPolicyManager
-import me.bubblespark.tidilo.ui.components.ChromeBlurBackground
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.components.LocalCacheVisualSource
 import me.bubblespark.tidilo.ui.components.RememberAmbientLighting
 import me.bubblespark.tidilo.ui.components.TidiloFrostedHeader
 import me.bubblespark.tidilo.ui.components.screenSystemInsets
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import me.bubblespark.tidilo.ui.components.TidiloScreenScaffold
 import me.bubblespark.tidilo.ui.components.rememberDomainVisual
 import me.bubblespark.tidilo.ui.components.rememberFeedVisual
@@ -138,11 +105,8 @@ fun LibraryScreen(
     viewModel: LibraryViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     onOpenNavigation: () -> Unit = {},
     onOpenManualImport: () -> Unit = {},
-    onNavigateToSearch: () -> Unit = {},
     onNavigateToDetail: (String) -> Unit = {},
     modifier: Modifier = Modifier,
-    showRadialMenu: Boolean = true,
-    discoverPreview: Boolean = false,
     onOpenRssSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -180,29 +144,23 @@ fun LibraryScreen(
     val localConfig = LocalConfiguration.current
     val viewMode by viewModel.viewMode.collectAsStateWithLifecycle()
     val includeRss by viewModel.includeRssInNewestFirst.collectAsStateWithLifecycle()
-    var isViewModeMenuExpanded by remember { mutableStateOf(false) }
     val selectedDomainColor = rememberDomainAccentColor(selectedDomainFilter)
 
     val domainGridState = rememberLazyGridState()
     val newestFirstListState = rememberLazyListState()
     val newestFirstGridState = rememberLazyGridState()
-    val newestFirstGridAnchor = rememberBookmarkGridAnchor()
     val domainDetailListState = rememberLazyListState()
     val domainDetailGridState = rememberLazyGridState()
-    val domainDetailGridAnchor = rememberBookmarkGridAnchor()
     val rssFeedGridState = rememberLazyGridState()
     val rssDetailListState = rememberLazyListState()
     val rssDetailGridState = rememberLazyGridState()
-    val rssDetailGridAnchor = rememberBookmarkGridAnchor()
     val collectionListState = rememberLazyListState()
     val collectionDetailListState = rememberLazyListState()
     val collectionDetailGridState = rememberLazyGridState()
-    val collectionDetailGridAnchor = rememberBookmarkGridAnchor()
 
     var lastScrollCollection by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(selectedCollectionId) {
         if (selectedCollectionId != lastScrollCollection) {
-            collectionDetailGridAnchor.clear()
             collectionDetailListState.requestScrollToItem(0)
             collectionDetailGridState.requestScrollToItem(0)
         }
@@ -212,7 +170,6 @@ fun LibraryScreen(
     var lastScrollFilterMode by rememberSaveable { mutableStateOf(filterMode.name) }
     LaunchedEffect(filterMode) {
         if (lastScrollFilterMode != filterMode.name) {
-            newestFirstGridAnchor.clear()
             newestFirstListState.requestScrollToItem(0)
             newestFirstGridState.requestScrollToItem(0)
         }
@@ -223,7 +180,6 @@ fun LibraryScreen(
     var lastScrollIncludeRss by rememberSaveable { mutableStateOf(includeRss) }
     LaunchedEffect(includeRss) {
         if (lastScrollIncludeRss != includeRss) {
-            newestFirstGridAnchor.clear()
             newestFirstListState.requestScrollToItem(0)
             newestFirstGridState.requestScrollToItem(0)
         }
@@ -235,7 +191,6 @@ fun LibraryScreen(
     var lastScrollFeed by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(selectedFeed?.id) {
         if (selectedFeed != null && selectedFeed.id != lastScrollFeed) {
-            rssDetailGridAnchor.clear()
             rssDetailListState.requestScrollToItem(0)
             rssDetailGridState.requestScrollToItem(0)
         }
@@ -243,7 +198,6 @@ fun LibraryScreen(
     }
     LaunchedEffect(selectedDomainFilter) {
         if (selectedDomainFilter != null && selectedDomainFilter != lastScrollDomain) {
-            domainDetailGridAnchor.clear()
             // The other layout may be detached; request both positions without awaiting layout.
             domainDetailListState.requestScrollToItem(0)
             domainDetailGridState.requestScrollToItem(0)
@@ -301,27 +255,14 @@ fun LibraryScreen(
     }
     val libraryCount = observedCount ?: 0
 
-    var peekBookmark by remember { mutableStateOf<BookmarkItem?>(null) }
     val libraryPeek = rememberLibraryPeekState()
-    // The Library layer opens the Peek sheet (P5-Q1); the shipped Library keeps Summary Peek.
+    // Long-press opens the Peek sheet (P5-Q1).
     fun openPeek(item: BookmarkItem) {
-        if (discoverPreview) libraryPeek.peekId = item.id else peekBookmark = item
+        libraryPeek.peekId = item.id
         viewModel.recordSummaryPeek(item.id, EngagementSurface.LIBRARY)
     }
-    val radialMenuState = me.bubblespark.tidilo.ui.navigation.rememberLibraryRadialMenuState()
-    val radialMenuOpen = radialMenuState.isOpen
-    LaunchedEffect(peekBookmark != null, showCollectionEditorSheet) {
-        if (peekBookmark != null || showCollectionEditorSheet) radialMenuState.cancel()
-    }
-    BackHandler(enabled = radialMenuOpen) { radialMenuState.cancel() }
-    LaunchedEffect(filterMode, selectedDomainFilter, selectedFeed?.id) { peekBookmark = null }
 
-    // Dismiss summary peek on system back gesture
-    BackHandler(enabled = peekBookmark != null && !radialMenuOpen) {
-        peekBookmark = null
-    }
-
-    // Restore to domain grid from domain drilldown on system back gesture (disabled during peek)
+    // Restore to domain grid from domain drilldown on system back gesture
     val isDrillDown = (filterMode == LibraryFilterMode.DOMAIN && selectedDomainFilter != null) ||
         (filterMode == LibraryFilterMode.RSS && selectedFeed != null) ||
         (filterMode == LibraryFilterMode.COLLECTION && selectedCollection != null)
@@ -337,7 +278,7 @@ fun LibraryScreen(
         else -> null
     }
     RememberAmbientLighting(activeDrillDownColor, ownerId = "library_drilldown")
-    val showTabs = discoverPreview && !isDrillDown
+    val showTabs = !isDrillDown
     val headerExtraHeight = if (showTabs) LibraryTabsHeight else 0.dp
     val headerHeight = HeaderDefaults.bodyTopPadding() + headerExtraHeight
     fun clearCollectionFilter() {
@@ -348,27 +289,18 @@ fun LibraryScreen(
         }
     }
     if (isDrillDown) {
-        BackHandler(enabled = peekBookmark == null && !radialMenuOpen) {
+        BackHandler {
             clearCollectionFilter()
         }
     }
 
-    val bottomClearance = if (showRadialMenu) HeaderDefaults.LibraryActionClearance else HeaderDefaults.FloatingNavigationClearance
-    val backgroundSemantics = if (radialMenuOpen || peekBookmark != null) Modifier.clearAndSetSemantics {} else Modifier
     TidiloScreenScaffold(contentWindowInsets = screenSystemInsets(),
         modifier = modifier,
-        bodyModifier = backgroundSemantics,
         hideHeaderOnScroll = true,
-        bottomContentPadding = bottomClearance,
-        headerVisible = peekBookmark == null,
+        bottomContentPadding = HeaderDefaults.FloatingNavigationClearance,
         headerExtraHeight = headerExtraHeight,
         overlay = {
-            if (showRadialMenu && peekBookmark == null && !showCollectionEditorSheet) {
-                me.bubblespark.tidilo.ui.navigation.LibraryRadialMenu(radialMenuState, filterMode,
-                    viewModel::setFilterMode, onNavigateToSearch)
-            }
-            if (discoverPreview) LibraryPeekSheets(libraryPeek, viewModel)
-            else BookmarkSummaryPeekOverlay(peekBookmark, headerHeight) { peekBookmark = null }
+            LibraryPeekSheets(libraryPeek, viewModel)
             if (showCollectionEditorSheet) {
                 CollectionEditorBottomSheet(
                     collectionId = editingCollectionId,
@@ -381,7 +313,7 @@ fun LibraryScreen(
         },
         // Expressive Header (slides out/in from top screen edge linked with scrolling, hidden during peek)
         header = {
-            Box(backgroundSemantics) {
+            Box {
             TidiloFrostedHeader(
                 scrollState = activeScrollState,
                 onTitleClick = {
@@ -493,92 +425,20 @@ fun LibraryScreen(
                     { LibraryTabs(filterMode, viewModel::setFilterMode) }
                 } else null,
                 actions = {
-                    if (discoverPreview) {
-                        // §9: one Grid/List toggle where bookmarks are listed; deck tabs have none.
-                        if (displayState == LibraryDisplayState.NewestFirst || isDrillDown) {
-                            val toList = viewMode == LibraryViewMode.GRID
-                            IconButton(
-                                onClick = { viewModel.setViewMode(if (toList) LibraryViewMode.LIST else LibraryViewMode.GRID) },
-                                modifier = Modifier.size(48.dp).testTag("library_view_toggle")
-                            ) {
-                                Icon(
-                                    imageVector = (if (toList) LibraryViewMode.LIST else LibraryViewMode.GRID).icon,
-                                    contentDescription = stringResource(if (toList) R.string.library_show_as_list else R.string.library_show_as_grid),
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    } else Box {
+                    // §9: one Grid/List toggle where bookmarks are listed; deck tabs have none.
+                    if (displayState == LibraryDisplayState.NewestFirst || isDrillDown) {
+                        val toList = viewMode == LibraryViewMode.GRID
                         IconButton(
-                            onClick = { if (peekBookmark == null) isViewModeMenuExpanded = true else peekBookmark = null },
-                            modifier = Modifier.size(48.dp)
+                            onClick = { viewModel.setViewMode(if (toList) LibraryViewMode.LIST else LibraryViewMode.GRID) },
+                            modifier = Modifier.size(48.dp).testTag("library_view_toggle")
                         ) {
                             Icon(
-                                imageVector = ImageVector.vectorResource(R.drawable.ic_dashboard_2_gear),
-                                contentDescription = stringResource(R.string.library_view_mode_menu_desc),
+                                imageVector = (if (toList) LibraryViewMode.LIST else LibraryViewMode.GRID).icon,
+                                contentDescription = stringResource(if (toList) R.string.library_show_as_list else R.string.library_show_as_grid),
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
-
-                        val menuWidth = 200.dp
-                        TidiloDropdownMenu(
-                            expanded = isViewModeMenuExpanded,
-                            onDismissRequest = { isViewModeMenuExpanded = false },
-                            shape = themeCorner(ThemeCorner.IMAGE),
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            tonalElevation = 6.dp,
-                            modifier = Modifier.width(menuWidth)
-                        ) {
-                            CompositionLocalProvider(
-                                LocalContext provides context,
-                                LocalConfiguration provides localConfig
-                            ) {
-                                LibraryViewMode.entries.forEach { mode ->
-                                    val isSelected = mode == viewMode
-                                    DropdownMenuItem(
-                                        modifier = Modifier.semantics { this.selected = isSelected },
-                                        text = {
-                                            Text(
-                                                text = stringResource(mode.labelRes),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                            )
-                                        },
-                                        leadingIcon = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                if (isSelected) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Check,
-                                                        contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.primary,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                } else {
-                                                    Spacer(modifier = Modifier.size(18.dp))
-                                                }
-                                                Icon(
-                                                    imageVector = mode.icon,
-                                                    contentDescription = null,
-                                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
-                                        },
-                                        onClick = {
-                                            viewModel.setViewMode(mode)
-                                            isViewModeMenuExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
                     }
-
-
                 }
             )
             }
@@ -601,6 +461,11 @@ fun LibraryScreen(
                     modifier = Modifier.fillMaxSize()
                 ) { state ->
                     // Keep the selected window across details and release outgoing windows after exit.
+                    // Each branch keeps the header clearance of its own state, so an exiting drill-down does not
+                    // jump when the tabs come back (and an exiting root does not jump when they leave).
+                    val stateTabsOffset = (if (state.isDrillDown) 0.dp else LibraryTabsHeight) - headerExtraHeight
+                    val statePadding = remember(contentPadding, stateTabsOffset) { contentPadding.offsetTop(stateTabsOffset) }
+                    val stateHeaderHeight = headerHeight + stateTabsOffset
                     val collectionGrid = state == LibraryDisplayState.DomainGrid || state == LibraryDisplayState.RssFeedGrid || state == LibraryDisplayState.CollectionList
                     val isNewestFirst = state == LibraryDisplayState.NewestFirst
                     val sessionIncludesRss = isNewestFirst && includeRss
@@ -637,9 +502,9 @@ fun LibraryScreen(
                         (state == LibraryDisplayState.DomainGrid && domainGroupsLoading) ||
                         (state == LibraryDisplayState.RssFeedGrid && rssFeedGroupsLoading) ||
                         // The two RSS empty states differ by subscription count; wait for it (PR #335 R-003).
-                        (discoverPreview && state == LibraryDisplayState.RssFeedGrid && rssFeedGroups.isEmpty() && rssSubscriptionCount == null) ||
+                        (state == LibraryDisplayState.RssFeedGrid && rssFeedGroups.isEmpty() && rssSubscriptionCount == null) ||
                         (state == LibraryDisplayState.CollectionList && collectionLoading)
-                    val scopeStatePadding = newestFirstStatePadding(contentPadding, LocalLayoutDirection.current)
+                    val scopeStatePadding = newestFirstStatePadding(statePadding, LocalLayoutDirection.current)
                     if (loading && isNewestFirst) {
                         // The scope stays adjustable while a new scope loads.
                         Column(Modifier.fillMaxSize().padding(scopeStatePadding)) {
@@ -647,9 +512,9 @@ fun LibraryScreen(
                             SkeletonBookmarkList(Modifier.fillMaxSize())
                         }
                     } else if (loading) {
-                        SkeletonBookmarkList(Modifier.fillMaxSize().padding(top = headerHeight, start = 20.dp, end = 20.dp))
+                        SkeletonBookmarkList(Modifier.fillMaxSize().padding(top = stateHeaderHeight, start = 20.dp, end = 20.dp))
                     } else if (state == LibraryDisplayState.CollectionList && collectionError != null) {
-                        Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxSize().padding(top = stateHeaderHeight), contentAlignment = Alignment.Center) {
                             PagingFeedback(LoadState.Error(requireNotNull(collectionError)), viewModel::retryCollections)
                         }
                     } else if (refreshState is LoadState.Error && isNewestFirst) {
@@ -660,12 +525,12 @@ fun LibraryScreen(
                             }
                         }
                     } else if (refreshState is LoadState.Error) {
-                        Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxSize().padding(top = stateHeaderHeight), contentAlignment = Alignment.Center) {
                             PagingFeedback(refreshState, bookmarks::retry)
                         }
                     } else when (state) {
-                        is LibraryDisplayState.CollectionList -> if (discoverPreview && collectionGroups.isEmpty()) {
-                            LibraryEmptyState(LibraryEmpty.COLLECTION, contentPadding = contentPadding, onAction = {
+                        is LibraryDisplayState.CollectionList -> if (collectionGroups.isEmpty()) {
+                            LibraryEmptyState(LibraryEmpty.COLLECTION, contentPadding = statePadding, onAction = {
                                 editingCollectionId = null
                                 showCollectionEditorSheet = true
                             })
@@ -673,7 +538,7 @@ fun LibraryScreen(
                             LazyColumn(
                                 state = collectionListState,
                                 modifier = Modifier.fillMaxSize(),
-                                contentPadding = contentPadding,
+                                contentPadding = statePadding,
                                 verticalArrangement = Arrangement.spacedBy(14.dp)
                             ) {
                                 items(
@@ -687,8 +552,7 @@ fun LibraryScreen(
                                         onLongClick = {
                                             editingCollectionId = group.id
                                             showCollectionEditorSheet = true
-                                        },
-                                        gallery = discoverPreview
+                                        }
                                     )
                                 }
                                 item(key = "add_collection_dummy_card", contentType = "add_collection_dummy") {
@@ -703,29 +567,24 @@ fun LibraryScreen(
                         }
                         is LibraryDisplayState.DomainGrid, is LibraryDisplayState.RssFeedGrid -> {
                             val rss = state is LibraryDisplayState.RssFeedGrid
-                            if (discoverPreview && (if (rss) rssFeedGroups.isEmpty() else domainGroups.isEmpty())) {
+                            if (if (rss) rssFeedGroups.isEmpty() else domainGroups.isEmpty()) {
                                 LibraryEmptyState(
                                     if (rss) rssEmpty(rssSubscriptionCount) else LibraryEmpty.DOMAIN,
-                                    contentPadding = contentPadding,
+                                    contentPadding = statePadding,
                                     onAction = if (rss) onOpenRssSettings else onOpenManualImport
-                                )
-                            } else if (if (rss) rssFeedGroups.isEmpty() else domainGroups.isEmpty()) {
-                                EmptyLibraryMessage(
-                                    onSaveUrl = onOpenManualImport,
-                                    contentPadding = contentPadding
                                 )
                             } else {
                                 LazyVerticalGrid(
                                     state = if (rss) rssFeedGridState else domainGridState,
                                     columns = GridCells.Fixed(2),
                                     modifier = Modifier.fillMaxSize(),
-                                    contentPadding = contentPadding,
+                                    contentPadding = statePadding,
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     if (rss) {
                                         items(items = rssFeedGroups, key = { it.feed.id }, contentType = { "rss_feed_card" }) { group ->
-                                            RssFeedCard(group, onClick = { viewModel.selectRssFeedFilter(group.feed) }, context = context, gallery = discoverPreview)
+                                            RssFeedCard(group, onClick = { viewModel.selectRssFeedFilter(group.feed) }, context = context, gallery = true)
                                         }
                                     } else items(
                                         items = domainGroups,
@@ -738,7 +597,7 @@ fun LibraryScreen(
                                                 viewModel.selectDomainFilter(group.domain)
                                             },
                                             context = context,
-                                            gallery = discoverPreview
+                                            gallery = true
                                         )
                                     }
                                 }
@@ -763,155 +622,30 @@ fun LibraryScreen(
                                 Box(
                                     modifier = Modifier.fillMaxSize()
                                 ) {
-                                    if (domainBookmarks.itemCount == 0 && discoverPreview) {
-                                        LibraryEmptyState(LibraryEmpty.NEWEST, onAction = onOpenManualImport, contentPadding = contentPadding)
-                                    } else if (domainBookmarks.itemCount == 0) {
-                                        EmptyLibraryMessage(
-                                            onSaveUrl = onOpenManualImport,
-                                            contentPadding = contentPadding
-                                        )
-                                    } else if (discoverPreview) {
+                                    if (domainBookmarks.itemCount == 0) {
+                                        LibraryEmptyState(LibraryEmpty.NEWEST, onAction = onOpenManualImport, contentPadding = statePadding)
+                                    } else {
                                         val listState = if (collectionItem != null) collectionDetailListState else if (feed != null) rssDetailListState else domainDetailListState
                                         val gridState = when (state) {
                                             is LibraryDisplayState.CollectionDrillDown -> collectionDetailGridState
                                             is LibraryDisplayState.RssFeedDrillDown -> rssDetailGridState
                                             else -> domainDetailGridState
                                         }
-                                        LibraryPlates(viewMode, domainBookmarks, listState, gridState, contentPadding,
+                                        LibraryPlates(viewMode, domainBookmarks, listState, gridState, statePadding,
                                             includeRss = feed != null, onOpen = onNavigateToDetail, onPeek = ::openPeek,
                                             active = state == displayState)
-                                    } else {
-                                        AnimatedContent(
-                                            targetState = viewMode,
-                                            transitionSpec = {
-                                                fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
-                                                        fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
-                                            },
-                                            label = "domain_view_mode_transition"
-                                        ) { mode ->
-                                            when (mode) {
-                                                LibraryViewMode.LIST -> {
-                                                    LazyColumn(
-                                                        state = if (collectionItem != null) collectionDetailListState else if (feed != null) rssDetailListState else domainDetailListState,
-                                                        modifier = Modifier.fillMaxSize(),
-                                                        contentPadding = contentPadding,
-                                                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                                                    ) {
-                                                        items(
-                                                        count = domainBookmarks.itemCount,
-                                                        key = domainBookmarks.itemKey { it.id },
-                                                        contentType = { "bookmark_card" }
-                                                    ) { index ->
-                                                        val item = domainBookmarks[index] ?: return@items
-                                                            BookmarkItemCard(
-                                                                onToggleLike = { viewModel.toggleLike(item.id, EngagementSurface.LIBRARY) },
-                                                                bookmark = item,
-                                                                wordKeywords = emptyList(),
-                                                                tagKeywords = emptyList(),
-                                                                currentLanguage = currentLanguage,
-                                                                context = context,
-                                                                onClick = { onNavigateToDetail(item.id) }
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                                LibraryViewMode.GRID -> {
-                                                    val (gridState, gridAnchor) = when (state) {
-                                                        is LibraryDisplayState.CollectionDrillDown -> collectionDetailGridState to collectionDetailGridAnchor
-                                                        is LibraryDisplayState.RssFeedDrillDown -> rssDetailGridState to rssDetailGridAnchor
-                                                        else -> domainDetailGridState to domainDetailGridAnchor
-                                                    }
-                                                    LibraryBookmarkGrid(
-                                                        bookmarks = domainBookmarks,
-                                                        state = gridState,
-                                                        anchor = gridAnchor,
-                                                        generation = session?.key.orEmpty(),
-                                                        active = state == displayState && viewMode == mode,
-                                                        contentPadding = contentPadding,
-                                                        bottomClearance = bottomClearance,
-                                                        showRadialMenu = showRadialMenu,
-                                                        onOpenBookmark = onNavigateToDetail,
-                                                        onToggleLike = { viewModel.toggleLike(it, EngagementSurface.LIBRARY) },
-                                                        onPeekBookmark = ::openPeek
-                                                    )
-                                                }
-                                            }
-                                        }
                                     }
                                 }
                             }
                         }
                         is LibraryDisplayState.NewestFirst -> {
-                            if (bookmarks.itemCount == 0 && discoverPreview) {
+                            if (bookmarks.itemCount == 0) {
                                 LibraryEmptyState(LibraryEmpty.NEWEST, onAction = onOpenManualImport,
-                                    contentPadding = contentPadding, leadingContent = scopeRow)
-                            } else if (bookmarks.itemCount == 0) {
-                                EmptyLibraryMessage(
-                                    onSaveUrl = onOpenManualImport,
-                                    contentPadding = contentPadding,
-                                    leadingContent = scopeRow
-                                )
-                            } else if (discoverPreview) {
-                                LibraryPlates(viewMode, bookmarks, newestFirstListState, newestFirstGridState, contentPadding,
+                                    contentPadding = statePadding, leadingContent = scopeRow)
+                            } else {
+                                LibraryPlates(viewMode, bookmarks, newestFirstListState, newestFirstGridState, statePadding,
                                     includeRss = includeRss, onOpen = onNavigateToDetail, onPeek = ::openPeek,
                                     active = state == displayState, leadingContent = scopeRow)
-                            } else {
-                                AnimatedContent(
-                                    targetState = viewMode,
-                                    transitionSpec = {
-                                        fadeIn(animationSpec = tween(220, easing = EaseInOutCubic)) togetherWith
-                                                fadeOut(animationSpec = tween(180, easing = EaseInOutCubic))
-                                    },
-                                    label = "newest_first_view_mode_transition"
-                                ) { mode ->
-                                    when (mode) {
-                                        LibraryViewMode.LIST -> {
-                                            LazyColumn(
-                                                state = newestFirstListState,
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentPadding = contentPadding,
-                                                verticalArrangement = Arrangement.spacedBy(16.dp)
-                                            ) {
-                                                item(key = NewestFirstScopeKey, contentType = NewestFirstScopeKey) { scopeRow() }
-                                                items(
-                                                    count = bookmarks.itemCount,
-                                                    key = bookmarks.itemKey { it.id },
-                                                    contentType = { "bookmark_card" }
-                                                ) { index ->
-                                                    val item = bookmarks[index] ?: return@items
-                                                    BookmarkItemCard(
-                                                        onToggleLike = { viewModel.toggleLike(item.id, EngagementSurface.LIBRARY) },
-                                                        bookmark = item,
-                                                        wordKeywords = emptyList(),
-                                                        tagKeywords = emptyList(),
-                                                        currentLanguage = currentLanguage,
-                                                        context = context,
-                                                        onClick = { onNavigateToDetail(item.id) },
-                                                        showRssSource = includeRss && item.rssFeedId != null
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        LibraryViewMode.GRID -> {
-                                            LibraryBookmarkGrid(
-                                                bookmarks = bookmarks,
-                                                state = newestFirstGridState,
-                                                anchor = newestFirstGridAnchor,
-                                                generation = session?.key.orEmpty(),
-                                                active = state == displayState && viewMode == mode,
-                                                contentPadding = contentPadding,
-                                                bottomClearance = bottomClearance,
-                                                showRadialMenu = showRadialMenu,
-                                                leadingContent = scopeRow,
-                                                leadingContentHeight = rememberNewestFirstScopeRowHeight(),
-                                                showRssSource = includeRss,
-                                                onOpenBookmark = onNavigateToDetail,
-                                                onToggleLike = { viewModel.toggleLike(it, EngagementSurface.LIBRARY) },
-                                                onPeekBookmark = ::openPeek
-                                            )
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
@@ -930,9 +664,21 @@ fun LibraryScreen(
     }
 }
 
+private val LibraryDisplayState.isDrillDown: Boolean
+    get() = this is LibraryDisplayState.DomainDrillDown || this is LibraryDisplayState.RssFeedDrillDown ||
+        this is LibraryDisplayState.CollectionDrillDown
+
+/** [this] with [extra] added to the top; the other sides are unchanged. */
+private fun PaddingValues.offsetTop(extra: Dp): PaddingValues = if (extra == 0.dp) this else object : PaddingValues {
+    override fun calculateLeftPadding(layoutDirection: LayoutDirection) = this@offsetTop.calculateLeftPadding(layoutDirection)
+    override fun calculateTopPadding() = this@offsetTop.calculateTopPadding() + extra
+    override fun calculateRightPadding(layoutDirection: LayoutDirection) = this@offsetTop.calculateRightPadding(layoutDirection)
+    override fun calculateBottomPadding() = this@offsetTop.calculateBottomPadding()
+}
+
 /**
  * Library-layer bookmarks (§9): S plates in an adaptive grid or XS plate rows. The scroll position lives in
- * the saveable list/grid states; the radial-menu anchor logic of [LibraryBookmarkGrid] is not needed here.
+ * the saveable list/grid states.
  */
 @Composable
 private fun LibraryPlates(
@@ -949,6 +695,15 @@ private fun LibraryPlates(
 ) {
     // Resolved once above the lazy layouts, not per item.
     val plateTransition = rememberPlateTransition()
+    // A window resize (rotation) changes the column count; the restored pixel offset would skip the leading row.
+    val window = LocalWindowInfo.current.containerSize.let { "${it.width}x${it.height}" }
+    var lastWindow by rememberSaveable { mutableStateOf(window) }
+    LaunchedEffect(window) {
+        if (window != lastWindow) {
+            gridState.requestScrollToItem(gridState.firstVisibleItemIndex)
+            lastWindow = window
+        }
+    }
     AnimatedContent(
         targetState = viewMode,
         transitionSpec = {
@@ -996,243 +751,6 @@ private fun LibraryPlates(
         }
     }
 }
-
-@Composable
-private fun LibraryBookmarkGrid(
-    bookmarks: LazyPagingItems<BookmarkItem>,
-    state: LazyGridState,
-    anchor: BookmarkGridAnchor,
-    generation: String,
-    active: Boolean,
-    contentPadding: PaddingValues,
-    onOpenBookmark: (String) -> Unit,
-    onToggleLike: (String) -> Unit,
-    onPeekBookmark: (BookmarkItem) -> Unit,
-    leadingContent: (@Composable () -> Unit)? = null,
-    leadingContentHeight: Dp = 0.dp,
-    showRssSource: Boolean = false,
-    bottomClearance: Dp = HeaderDefaults.LibraryActionClearance,
-    showRadialMenu: Boolean = true
-) {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val context = LocalContext.current
-        val density = LocalDensity.current
-        val leadingItems = if (leadingContent != null) 1 else 0
-        val layout = bookmarkGridLayout(
-            contentPadding = contentPadding,
-            trailingPadding = bottomClearance,
-            leadingContentHeightPx = if (leadingContent != null) {
-                with(density) { (leadingContentHeight + BookmarkGridVerticalGap).roundToPx() }
-            } else 0,
-            protectLibraryShortcut = showRadialMenu
-        )
-        if (active) {
-            RestoreBookmarkGridAnchor(state, anchor, generation, layout, leadingItems) { key ->
-                bookmarks.itemSnapshotList.items.indexOfFirst { it.id == key }
-            }
-        }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(layout.columns),
-            state = state,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = contentPadding,
-            horizontalArrangement = Arrangement.spacedBy(BookmarkGridHorizontalGap),
-            verticalArrangement = Arrangement.spacedBy(BookmarkGridVerticalGap)
-        ) {
-            if (leadingContent != null) {
-                item(key = NewestFirstScopeKey, span = { GridItemSpan(maxLineSpan) }, contentType = NewestFirstScopeKey) {
-                    leadingContent()
-                }
-            }
-            items(
-                count = bookmarks.itemCount,
-                key = bookmarks.itemKey { it.id },
-                contentType = { "bookmark_grid_card" }
-            ) { index ->
-                val bookmark = bookmarks[index] ?: return@items
-                BookmarkGridCard(
-                    bookmark = bookmark,
-                    context = context,
-                    onClick = { onOpenBookmark(bookmark.id) },
-                    onLongClick = { onPeekBookmark(bookmark) },
-                    onToggleLike = { onToggleLike(bookmark.id) },
-                    layout = layout,
-                    showRssSource = showRssSource && bookmark.rssFeedId != null
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyLibraryMessage(
-    onSaveUrl: () -> Unit,
-    contentPadding: PaddingValues = PaddingValues(0.dp),
-    leadingContent: @Composable () -> Unit = {}
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(contentPadding)
-    ) {
-        leadingContent()
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 24.dp),
-            shape = themeCorner(ThemeCorner.CARD),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-            )
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Inbox,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.size(36.dp)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = stringResource(R.string.library_empty_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.library_empty_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                    textAlign = TextAlign.Center
-                )
-                Button(
-                    onClick = onSaveUrl,
-                    modifier = Modifier
-                        .padding(top = 16.dp)
-                        .heightIn(min = 48.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AddLink,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(R.string.library_empty_save_url),
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
-            }
-        }
-    }
-}
-
-
-/** Shared borderless summary preview for library and search grid cards. */
-@Composable
-internal fun BookmarkSummaryPeekOverlay(bookmark: BookmarkItem?, headerHeight: androidx.compose.ui.unit.Dp, onDismiss: () -> Unit) {
-    val dismiss by rememberUpdatedState(onDismiss)
-    AnimatedVisibility(
-        visible = bookmark != null,
-        enter = fadeIn(animationSpec = tween(200)),
-        exit = fadeOut(animationSpec = tween(160)),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        val isOpen = bookmark != null
-        var lastPeek by remember { mutableStateOf(bookmark) }
-        SideEffect {
-            if (bookmark != null) lastPeek = bookmark
-        }
-        val currentPeek = bookmark ?: lastPeek
-        val summaryTitle = stringResource(R.string.detail_section_summary)
-        val pane = if (isOpen) {
-            Modifier.pointerInput(Unit) { detectTapGestures { dismiss() } }
-                .semantics { paneTitle = summaryTitle }
-        } else {
-            Modifier.clearAndSetSemantics {}
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(pane)
-        ) {
-            val background = MaterialTheme.colorScheme.background
-            ChromeBlurBackground(
-                shape = RectangleShape,
-                containerColor = background,
-                modifier = Modifier.matchParentSize(),
-                outline = false,
-                unavailableColor = background.copy(alpha = 0.85f)
-            )
-            if (currentPeek != null) {
-                val closeLabel = stringResource(R.string.common_close)
-                val closeAction = if (isOpen) {
-                    Modifier.semantics {
-                        customActions = listOf(CustomAccessibilityAction(closeLabel) {
-                            dismiss()
-                            true
-                        })
-                    }
-                } else {
-                    Modifier
-                }
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = headerHeight)
-                        .padding(horizontal = 24.dp)
-                        .then(closeAction)
-                        .verticalScroll(rememberScrollState(), enabled = isOpen)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = ImageVector.vectorResource(R.drawable.ic_summarize),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = summaryTitle,
-                            modifier = Modifier.semantics { heading() },
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = currentPeek.description.ifBlank {
-                            stringResource(R.string.ai_review_no_summary)
-                        },
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            lineHeight = 24.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-
-                    Spacer(modifier = Modifier.height(140.dp))
-                }
-            }
-        }
-    }
-}
-
-
-
 
 /** Text and accent must remain paired while an outgoing subtitle fades away. */
 internal data class LibrarySubtitle(val text: String, val color: Color)

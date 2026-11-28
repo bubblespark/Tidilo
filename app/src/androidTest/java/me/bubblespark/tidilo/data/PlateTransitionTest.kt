@@ -135,7 +135,7 @@ class PlateTransitionTest {
                 val nav = rememberNavController()
                 // The same page transitions TidiloNavGraph uses between plate screens and Detail.
                 val plate = PlateNavTransitions(MaterialTheme.motionScheme.defaultEffectsSpec(), reducedMotion)
-                PlateTransitionLayout(enabled = true, reducedMotion = reducedMotion) { hostModifier ->
+                PlateTransitionLayout(reducedMotion = reducedMotion) { hostModifier ->
                     scope = LocalSharedTransitionScope.current
                     NavHost(nav, Screen.Library.route, hostModifier,
                         enterTransition = { plate.enter },
@@ -147,9 +147,7 @@ class PlateTransitionTest {
                             CompositionLocalProvider(LocalNavAnimatedScope provides this) {
                                 LibraryScreen(
                                     viewModel = model,
-                                    onNavigateToDetail = { nav.navigate(Screen.BookmarkDetail.createRoute(it)) { launchSingleTop = true } },
-                                    showRadialMenu = false,
-                                    discoverPreview = true
+                                    onNavigateToDetail = { nav.navigate(Screen.BookmarkDetail.createRoute(it)) { launchSingleTop = true } }
                                 )
                             }
                         }

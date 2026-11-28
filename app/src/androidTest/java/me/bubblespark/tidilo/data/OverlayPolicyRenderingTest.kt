@@ -66,7 +66,7 @@ class OverlayPolicyRenderingTest {
                                 3 -> {
                                     val rail = rememberWideNavigationRailState()
                                     LaunchedEffect(rail) { rail.expand() }
-                                    LibraryNavigationRail(rail, LibraryFilterMode.NEWEST_FIRST, {}, {}, {}, {}, {})
+                                    LibraryNavigationRail(rail, {}, {})
                                 }
                             }
                         }

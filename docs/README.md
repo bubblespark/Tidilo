@@ -41,7 +41,7 @@ cd Tidilo
 | [bookmark_classification.md](bookmark_classification.md) | Standard HTML evidence, supported category mappings, and save behavior without AI. |
 | [collections.md](collections.md) | Manual bookmark collections: persistence, Library and editor UI, bookmark assignment. |
 | [trash.md](trash.md) | Trash list view, 30-day / 100-item retention, restore, and duplicate Trash URL handling. |
-| [library_navigation.md](library_navigation.md) | Modal navigation rail, header actions, compact Search button, and manual import dialog. |
+| [library_navigation.md](library_navigation.md) | Top-level layers and floating toolbar, modal navigation rail, header actions, and manual import dialog. |
 | [library_maintenance.md](library_maintenance.md) | Daily network-independent RSS bookmark expiration and orphan cache cleanup. |
 | [aicore.md](aicore.md) | Optional AI Analysis: AICore integration, prompt design, output parsing, quota handling, fallback. |
 | [notifications.md](notifications.md) | Android notification channels and import/RSS result reporting. |

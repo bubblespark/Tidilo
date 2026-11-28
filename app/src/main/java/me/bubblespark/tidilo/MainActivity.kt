@@ -165,8 +165,7 @@ fun TidiloApp(
     importViewModel: ImportViewModel = viewModel(),
     libraryViewModel: LibraryViewModel = viewModel(),
     notificationRoute: String? = null,
-    onNotificationConsumed: () -> Unit = {},
-    discoverPreviewEnabled: Boolean = remember { AppConfig.discoverPreviewEnabled.value }
+    onNotificationConsumed: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     val railState = rememberWideNavigationRailState()
@@ -179,12 +178,7 @@ fun TidiloApp(
         navigationScope.launch {
             railState.collapse()
             val current = navController.currentDestination?.route
-            val canNavigate = if (discoverPreviewEnabled) {
-                topLevelDestinationOf(current) != null
-            } else {
-                current == Screen.Library.route
-            }
-            if (canNavigate) {
+            if (topLevelDestinationOf(current) != null) {
                 navController.navigate(route) { launchSingleTop = true }
             }
         }
@@ -194,12 +188,8 @@ fun TidiloApp(
     val currentRoute = navBackStackEntry?.destination?.route
     val isLibraryRoute = currentRoute == Screen.Library.route
     val topLevel = topLevelDestinationOf(currentRoute)
-    val isTopLevelChromeRoute = if (discoverPreviewEnabled) topLevel != null else isLibraryRoute
-    val isRailRoute = if (discoverPreviewEnabled) {
-        currentRoute == null || topLevel == TopLevelDestination.DISCOVER || topLevel == TopLevelDestination.LIBRARY
-    } else {
-        currentRoute == null || isLibraryRoute
-    }
+    val isTopLevelChromeRoute = topLevel != null
+    val isRailRoute = currentRoute == null || topLevel == TopLevelDestination.DISCOVER || topLevel == TopLevelDestination.LIBRARY
     val imeVisible = WindowInsets.isImeVisible
 
     LaunchedEffect(notificationRoute, manualImportState, notificationDeferred, currentRoute) {
@@ -211,11 +201,7 @@ fun TidiloApp(
                 return@LaunchedEffect
             }
             val current = navController.currentDestination?.route
-            val readyForNotification = if (discoverPreviewEnabled) {
-                topLevelDestinationOf(current) != null
-            } else {
-                current == Screen.Library.route
-            }
+            val readyForNotification = topLevelDestinationOf(current) != null
             if (notificationDeferred && !readyForNotification) {
                 return@LaunchedEffect
             }
@@ -234,14 +220,7 @@ fun TidiloApp(
         if (manualImportState == null && !sharedUrl.isNullOrBlank() && sharedUrl != consumedSharedUrl) {
             consumedSharedUrl = sharedUrl
             importViewModel.importUrl(sharedUrl)
-            if (discoverPreviewEnabled) {
-                navController.navigateTopLevel(TopLevelDestination.LIBRARY)
-            } else {
-                navController.navigate(Screen.Library.route) {
-                    popUpTo(Screen.Library.route) { inclusive = false }
-                    launchSingleTop = true
-                }
-            }
+            navController.navigateTopLevel(TopLevelDestination.LIBRARY)
         }
     }
 
@@ -250,7 +229,7 @@ fun TidiloApp(
     val selectedRssFeedFilter by libraryViewModel.selectedRssFeedFilter.collectAsStateWithLifecycle()
     val selectedCollectionId by libraryViewModel.selectedCollectionId.collectAsStateWithLifecycle()
 
-    // Scroll visibility belongs to the Library header (and floating toolbar in preview mode); the radial trigger stays fixed.
+    // Scroll visibility belongs to the Library header and the floating toolbar.
     var isBarsVisible by remember { mutableStateOf(true) }
     // Restore chrome on navigation and filter changes.
     LaunchedEffect(currentRoute, filterMode, selectedDomainFilter, selectedRssFeedFilter?.id) {
@@ -306,7 +285,7 @@ fun TidiloApp(
         me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.DOMAIN -> selectedDomainFilter != null
         me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode.NEWEST_FIRST -> false
     }
-    // Discover (preview flag only) lights the background from the shelf in view.
+    // Discover lights the background from the shelf in view.
     val isAmbientRoute = (currentRoute == Screen.Library.route && isLibraryDrillDown) || currentRoute == Screen.Discover.route
     SideEffect {
         ambientLightingState.isDestinationAllowed = isAmbientRoute
@@ -340,7 +319,6 @@ fun TidiloApp(
                     importViewModel = importViewModel,
                     libraryViewModel = libraryViewModel,
                     modifier = Modifier.fillMaxSize(),
-                    discoverPreviewEnabled = discoverPreviewEnabled,
                     onOpenNavigation = { navigationScope.launch {
                         androidx.compose.runtime.withFrameNanos { }
                         railState.expand()
@@ -354,7 +332,7 @@ fun TidiloApp(
                     modifier = Modifier.align(Alignment.TopCenter)
                 )
 
-                if (discoverPreviewEnabled && topLevel != null) {
+                if (topLevel != null) {
                     TidiloFloatingNavigation(
                         selected = topLevel,
                         visible = isBarsVisible && !imeVisible && railState.targetValue != WideNavigationRailValue.Expanded,
@@ -370,25 +348,10 @@ fun TidiloApp(
                 }
 
                 if (isRailRoute) {
-                    LibraryNavigationRail(railState, filterMode,
-                        onSelectFilter = { mode ->
-                            libraryViewModel.setFilterMode(mode)
-                            navigationScope.launch {
-                                railState.collapse()
-                                if (discoverPreviewEnabled && currentRoute == Screen.Discover.route) {
-                                    navController.navigateTopLevel(TopLevelDestination.LIBRARY)
-                                }
-                            }
-                        },
-                        onSearch = {
-                            libraryViewModel.triggerSearchFocus()
-                            openDestination(Screen.Search.route)
-                        },
+                    LibraryNavigationRail(railState,
                         onNotifications = { openDestination(Screen.Notifications.route) },
-                        onManualImport = { navigationScope.launch { railState.collapse(); showManualImport = true } },
                         onSettings = { openDestination(Screen.Settings.route) },
-                        onTrash = { openDestination(Screen.Trash.route) },
-                        trimmed = discoverPreviewEnabled)
+                        onTrash = { openDestination(Screen.Trash.route) })
                 }
 
             }

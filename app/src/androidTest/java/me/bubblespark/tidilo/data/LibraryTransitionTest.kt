@@ -40,14 +40,19 @@ class LibraryTransitionTest {
         val domain = "000-transition120.example"
         val manual = BookmarkEntity("transition-manual", "Transition manual article", "https://$domain/article", "Summary",
             createdAt = 1, updatedAt = 1)
+        val manualLead = BookmarkEntity("transition-manual-lead", "Transition manual lead", "https://$domain/lead", "Summary",
+            createdAt = 4, updatedAt = 4)
         val rss = BookmarkEntity("transition-rss", "Transition RSS article", "https://transition120.example/article", "Summary",
             createdAt = 2, updatedAt = 2, rssFeedId = feed.id)
+        // The leads sort first, so each sampled article sits below the tab group that returns over the outgoing list's top.
+        val rssLead = BookmarkEntity("transition-rss-lead", "Transition RSS lead", "https://transition120.example/lead",
+            "Summary", createdAt = 3, updatedAt = 3, rssFeedId = feed.id)
         val caches = OfflineVisualCaches()
         val library = withContext(Dispatchers.IO) {
             InMemoryLibrary(context.applicationContext).also {
                 it.awaitReady()
                 it.db.rssDao().putFeed(feed)
-                it.db.bookmarkDao().insertAll(listOf(manual, rss))
+                it.db.bookmarkDao().insertAll(listOf(manualLead, manual, rss, rssLead))
             }
         }
         try {
@@ -68,7 +73,7 @@ class LibraryTransitionTest {
             awaitText(feed.title)
             composeRule.runOnIdle { vm.selectRssFeedFilter(feed) }
             awaitText(rss.title)
-            assertOutgoingStillDrawn(rss.title, accentText = "1 bookmark", forbiddenText = empty) { vm.selectRssFeedFilter(null) }
+            assertOutgoingStillDrawn(rss.title, accentText = "2 bookmarks", forbiddenText = empty) { vm.selectRssFeedFilter(null) }
             awaitAbsent(rss.title)
 
             // Domain list → domain.
@@ -136,7 +141,8 @@ class LibraryTransitionTest {
     private fun capture(): Bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
 
     private fun pixelBounds(text: String): Rect {
-        val bounds = nodes(hasText(text)).first().boundsInRoot
+        // A poster repeats the title in light ink on its plate; the dark caption below it is the last node.
+        val bounds = nodes(hasText(text)).maxBy { it.boundsInRoot.top }.boundsInRoot
         return Rect(bounds.left.roundToInt(), bounds.top.roundToInt(), bounds.right.roundToInt(), bounds.bottom.roundToInt())
     }
 

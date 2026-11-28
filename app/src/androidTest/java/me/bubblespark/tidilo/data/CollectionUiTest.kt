@@ -73,24 +73,6 @@ class CollectionUiTest : CollectionComposeTestBase() {
         })
     }
 
-    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-    @Test fun collectionFilterExposesRoleAndActiveState() {
-        val mode = mutableStateOf(LibraryFilterMode.NEWEST_FIRST)
-        composeRule.setContent { Themed {
-            val rail = androidx.compose.material3.rememberWideNavigationRailState()
-            LaunchedEffect(Unit) { rail.expand() }
-            me.bubblespark.tidilo.ui.navigation.LibraryNavigationRail(rail, mode.value, { mode.value = it }, {}, {}, {}, {})
-        } }
-        val label = await(text("Collection"))
-        val button = generateSequence(label) { it.parent }.first { it.config.getOrNull(SemanticsProperties.Selected) != null }
-        assertEquals(false, button.config.getOrNull(SemanticsProperties.Selected))
-        composeRule.clickNode(button)
-        await(SemanticsMatcher("selected Collection") {
-            it.config.getOrNull(SemanticsProperties.Selected) == true && it.children.any { child -> hasText(child, "Collection") }
-        })
-        assertEquals(LibraryFilterMode.COLLECTION, mode.value)
-    }
-
     @Test fun collectionCountPillHandlesEnglishAndRetainsJapanese() {
         val count = mutableIntStateOf(1)
         val japanese = mutableStateOf(false)

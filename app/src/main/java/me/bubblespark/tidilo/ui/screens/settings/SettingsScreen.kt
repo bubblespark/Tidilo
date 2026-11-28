@@ -88,7 +88,6 @@ fun SettingsScreen(
     var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
     var showThemeDialog by rememberSaveable { mutableStateOf(false) }
     var showResetDialog by rememberSaveable { mutableStateOf(false) }
-    val discoverPreviewEnabled by AppConfig.discoverPreviewEnabled.collectAsStateWithLifecycle()
     val resetScope = rememberCoroutineScope()
     val resetDone = stringResource(R.string.settings_discover_reset_done)
     val dialogSurface = currentThemeSurfaces().resolve(SurfaceRole.DIALOG)
@@ -134,12 +133,10 @@ fun SettingsScreen(
                     SettingsDivider()
                     SettingsNavigationRow(stringResource(R.string.rss_title), stringResource(R.string.rss_subtitle),
                         Icons.Default.RssFeed, onNavigateToRss)
-                    if (discoverPreviewEnabled) {
-                        SettingsDivider()
-                        SettingsNavigationRow(stringResource(R.string.settings_discover_reset_title),
-                            stringResource(R.string.settings_discover_reset_subtitle), Icons.Default.History,
-                            onClick = { showResetDialog = true }, modifier = Modifier.testTag("discover_reset_history"))
-                    }
+                    SettingsDivider()
+                    SettingsNavigationRow(stringResource(R.string.settings_discover_reset_title),
+                        stringResource(R.string.settings_discover_reset_subtitle), Icons.Default.History,
+                        onClick = { showResetDialog = true }, modifier = Modifier.testTag("discover_reset_history"))
                 }
                 Spacer(Modifier.height(24.dp))
                 SettingsSectionTitle(stringResource(R.string.settings_section_debug))

@@ -87,8 +87,8 @@ class StorageScreenTest {
             click(awaitNode("Library menu") {
                 it.contentDescription?.toString() == activity.getString(R.string.navigation_open)
             })
-            awaitNode("Library rail filters") {
-                it.isVisibleToUser && it.text?.toString() == activity.getString(R.string.navigation_filters)
+            awaitNode("Library rail Trash entry") {
+                it.isVisibleToUser && it.text?.toString() == activity.getString(R.string.trash_title)
             }
             click(awaitNode("Rail Settings entry", onMissing = ::scrollForward) {
                 it.isVisibleToUser && it.text?.toString() == activity.getString(R.string.title_settings)

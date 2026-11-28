@@ -62,10 +62,6 @@ class OverlayMenuRailTest {
                         scope = rememberCoroutineScope()
                         LibraryNavigationRail(
                             state,
-                            LibraryFilterMode.NEWEST_FIRST,
-                            {},
-                            {},
-                            {},
                             {},
                             {},
                             Modifier.testTag("rtl-rail")
@@ -169,7 +165,7 @@ class OverlayMenuRailTest {
         verify(hasText(appName)) {
             val state = rememberWideNavigationRailState()
             LaunchedEffect(Unit) { state.expand() }
-            LibraryNavigationRail(state, LibraryFilterMode.NEWEST_FIRST, {}, {}, {}, {}, {})
+            LibraryNavigationRail(state, {}, {})
         }
     }
 

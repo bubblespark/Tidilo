@@ -17,8 +17,6 @@ class LibraryViewModeTest {
 
     @Test
     fun testLibraryViewModeResourceIds() {
-        assertEquals(R.string.library_view_mode_list, LibraryViewMode.LIST.labelRes)
-        assertEquals(R.string.library_view_mode_grid, LibraryViewMode.GRID.labelRes)
         assertEquals(R.drawable.ic_list, LibraryViewMode.LIST.iconRes)
         assertEquals(R.drawable.ic_grid_view, LibraryViewMode.GRID.iconRes)
     }

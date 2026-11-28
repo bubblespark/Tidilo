@@ -6,6 +6,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -98,8 +99,6 @@ class ManualImportRecreationTest {
                     scenario.onActivity { activity = it }
                     val launchIntent = activity.intent
 
-                    val navOpenDesc = activity.getString(R.string.navigation_open)
-                    val manualImportText = activity.getString(R.string.navigation_manual_import)
                     val importConfirmText = activity.getString(R.string.import_dialog_confirm)
                     val savingText = activity.getString(R.string.import_dialog_saving)
                     val notificationTitle = activity.getString(R.string.settings_notification_title)
@@ -111,17 +110,12 @@ class ManualImportRecreationTest {
                         it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(desc) == true
                     }
 
+                    // The floating toolbar's FAB opens Manual Import.
                     composeRule.waitUntil(8000) {
-                        composeRule.onAllNodes(contentDescMatcher(navOpenDesc), useUnmergedTree = true)
+                        composeRule.onAllNodes(hasTestTag("floating_nav_save"), useUnmergedTree = true)
                             .fetchSemanticsNodes().isNotEmpty()
                     }
-                    composeRule.onNodeWithContentDescription(navOpenDesc).performClick()
-
-                    composeRule.waitUntil(8000) {
-                        composeRule.onAllNodes(hasText(manualImportText), useUnmergedTree = true)
-                            .fetchSemanticsNodes().isNotEmpty()
-                    }
-                    composeRule.onNodeWithText(manualImportText).performClick()
+                    composeRule.onNode(hasTestTag("floating_nav_save")).performClick()
 
                     composeRule.waitUntil(8000) {
                         composeRule.onAllNodes(hasSetTextAction(), useUnmergedTree = true)

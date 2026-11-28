@@ -41,8 +41,7 @@ class LibraryRailAccessibilityTest {
                     LaunchedEffect(Unit) { state.expand() }
                     LibraryNavigationRail(
                         state,
-                        LibraryFilterMode.NEWEST_FIRST,
-                        {}, {}, {}, {}, {},
+                        {}, {},
                         Modifier.height(420.dp).testTag("rail_host")
                     )
                 }

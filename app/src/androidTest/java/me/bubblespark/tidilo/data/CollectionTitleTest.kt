@@ -128,7 +128,8 @@ class CollectionTitleTest {
                 assertFalse("Full title must be laid out for marquee", rendered.isLineEllipsized(0))
             }
             composeRule.runOnUiThread { vm.selectRssFeedFilter(null) }
-            val header = layout(context.getString(me.bubblespark.tidilo.R.string.rss_title))
+            // Tab roots keep the Library title; the RSS label belongs to the tab group.
+            val header = layout(context.getString(me.bubblespark.tidilo.R.string.library_header_title))
             assertEquals(28f, header.layoutInput.style.fontSize.value, 0.01f)
 
             // Exercise both actual drill-down routes: the title stays still initially, then moves.

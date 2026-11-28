@@ -20,17 +20,11 @@ class NotificationColdStartRouteTest {
     @get:Rule val composeRule = createEmptyComposeRule()
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
-    @Test fun coldStartDestinationOpensNotificationWithDiscoverPreviewOff() = coldStartOpensNotification(false)
-
-    @Test fun coldStartDestinationOpensNotificationWithDiscoverPreviewOn() = coldStartOpensNotification(true)
-
-    private fun coldStartOpensNotification(discoverPreview: Boolean) {
+    @Test fun coldStartDestinationOpensNotification() {
         val oldBlur = AppConfig.overlayBlurEnabled.value
-        val oldPreview = AppConfig.discoverPreviewEnabled.value
         val caches = OfflineVisualCaches()
         try {
             AppConfig.setOverlayBlurEnabled(false)
-            AppConfig.setDiscoverPreviewEnabled(discoverPreview)
             val intent = Intent(context, MainActivity::class.java)
                 .putExtra(NotificationCoordinator.EXTRA_DESTINATION, "import")
             ActivityScenario.launch<MainActivity>(intent).use {
@@ -38,7 +32,6 @@ class NotificationColdStartRouteTest {
             }
         } finally {
             AppConfig.setOverlayBlurEnabled(oldBlur)
-            AppConfig.setDiscoverPreviewEnabled(oldPreview)
             caches.close()
         }
     }

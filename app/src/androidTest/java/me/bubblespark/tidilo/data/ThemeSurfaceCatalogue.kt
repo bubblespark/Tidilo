@@ -97,7 +97,7 @@ internal fun ThemeSurfaceCatalogue(
                 7 -> {
                     val rail = rememberWideNavigationRailState()
                     LaunchedEffect(rail) { rail.expand() }
-                    LibraryNavigationRail(rail, LibraryFilterMode.NEWEST_FIRST, {}, {}, {}, {}, {})
+                    LibraryNavigationRail(rail, {}, {})
                 }
                 }
             }

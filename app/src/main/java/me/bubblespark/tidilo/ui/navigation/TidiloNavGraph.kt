@@ -56,7 +56,6 @@ fun TidiloNavGraph(
     importViewModel: ImportViewModel,
     libraryViewModel: LibraryViewModel = viewModel(),
     modifier: Modifier = Modifier,
-    discoverPreviewEnabled: Boolean = false,
     onOpenNavigation: () -> Unit = {},
     onOpenManualImport: () -> Unit = {}
 ) {
@@ -65,13 +64,12 @@ fun TidiloNavGraph(
     val topLevelSlideOffsetPx = with(density) { 14.dp.roundToPx() }
     val topLevelEnterSpec = spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = 0.8f, stiffness = 380f)
     fun AnimatedContentTransitionScope<androidx.navigation.NavBackStackEntry>.isTopLevelSwitch(): Boolean =
-        discoverPreviewEnabled &&
-            topLevelDestinationOf(initialState.destination.route) != null &&
+        topLevelDestinationOf(initialState.destination.route) != null &&
             topLevelDestinationOf(targetState.destination.route) != null
     val reducedMotion = rememberReducedMotion()
     val plate = PlateNavTransitions(MaterialTheme.motionScheme.defaultEffectsSpec(), reducedMotion)
     fun AnimatedContentTransitionScope<androidx.navigation.NavBackStackEntry>.isPlateSwitch(): Boolean =
-        discoverPreviewEnabled && (isPlateOpen() || isPlateReturn())
+        isPlateOpen() || isPlateReturn()
 
     // The only collector, so a failure shows one Toast even while two screens share a transition.
     LaunchedEffect(libraryViewModel) {
@@ -82,7 +80,7 @@ fun TidiloNavGraph(
     val host: @Composable (Modifier) -> Unit = { hostModifier ->
         NavHost(
             navController = navController,
-            startDestination = if (discoverPreviewEnabled) Screen.Discover.route else Screen.Library.route,
+            startDestination = Screen.Discover.route,
             modifier = hostModifier,
             enterTransition = {
                 if (isPlateSwitch()) {
@@ -208,51 +206,30 @@ fun TidiloNavGraph(
                         viewModel = libraryViewModel,
                         onOpenNavigation = onOpenNavigation,
                         onOpenManualImport = onOpenManualImport,
-                        onNavigateToSearch = {
-                            libraryViewModel.triggerSearchFocus()
-                            navController.navigate(Screen.Search.route) { launchSingleTop = true }
-                        },
                         onNavigateToDetail = { bookmarkId ->
                             navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
                                 launchSingleTop = true
                             }
                         },
-                        showRadialMenu = !discoverPreviewEnabled,
-                        discoverPreview = discoverPreviewEnabled,
                         // Straight to RSS Settings; Back returns to Library (docs/library_navigation.md).
                         onOpenRssSettings = { navController.navigate(Screen.RssSettings.route) { launchSingleTop = true } }
                     )
                 }
             }
             composable(Screen.Search.route) {
-                if (discoverPreviewEnabled) {
-                    SearchScreen(
-                        viewModel = libraryViewModel,
-                        onNavigateBack = { navController.popBackStack() },
-                        onNavigateToTagSelection = {
-                            navController.navigate(Screen.TagSelection.route)
-                        },
-                        onNavigateToDetail = { bookmarkId ->
-                            navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
-                                launchSingleTop = true
-                            }
-                        },
-                        bottomContentPadding = HeaderDefaults.FloatingNavigationClearance
-                    )
-                } else {
-                    SearchScreen(
-                        viewModel = libraryViewModel,
-                        onNavigateBack = { navController.popBackStack() },
-                        onNavigateToTagSelection = {
-                            navController.navigate(Screen.TagSelection.route)
-                        },
-                        onNavigateToDetail = { bookmarkId ->
-                            navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
-                                launchSingleTop = true
-                            }
+                SearchScreen(
+                    viewModel = libraryViewModel,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToTagSelection = {
+                        navController.navigate(Screen.TagSelection.route)
+                    },
+                    onNavigateToDetail = { bookmarkId ->
+                        navController.navigate(Screen.BookmarkDetail.createRoute(bookmarkId)) {
+                            launchSingleTop = true
                         }
-                    )
-                }
+                    },
+                    bottomContentPadding = HeaderDefaults.FloatingNavigationClearance
+                )
             }
             composable(
                 route = Screen.BookmarkDetail.route,
@@ -379,5 +356,5 @@ fun TidiloNavGraph(
             }
         }
     }
-    PlateTransitionLayout(discoverPreviewEnabled, modifier, reducedMotion, content = host)
+    PlateTransitionLayout(modifier, reducedMotion, content = host)
 }

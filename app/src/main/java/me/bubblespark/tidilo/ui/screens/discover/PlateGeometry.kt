@@ -32,8 +32,12 @@ internal fun plateWidth(size: PlateSize, availableWidth: Dp): Dp =
 /** Images within 5% of 1.91 fill the plate exactly; others are fitted on a mat and never cropped. */
 internal fun fillsPlate(imageAspect: Float): Boolean = abs(imageAspect - PLATE_RATIO) / PLATE_RATIO <= 0.05f
 
-/** Under this width a poster shows only the domain initial. */
+/** Under this width a poster shows only the domain mark. */
 internal val PosterInitialOnlyWidth = 150.dp
+
+/** A domain icon is used on a poster tile only when its short side needs at most 2× upscaling (§8.2). */
+internal fun posterIconSharp(iconWidthPx: Int, iconHeightPx: Int, tilePx: Float): Boolean =
+    min(iconWidthPx, iconHeightPx) * 2 >= tilePx
 
 /** Text treatment on a poster: [text] color and how much black to lay over the text region. */
 internal data class PosterInk(val text: Color, val textRegionDarkening: Float)

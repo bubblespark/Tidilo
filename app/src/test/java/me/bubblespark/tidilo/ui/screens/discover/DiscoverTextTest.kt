@@ -41,6 +41,14 @@ class DiscoverTextTest {
         assertFalse(fillsPlate(4f / 3f))
     }
 
+    @Test fun posterIconNeedsAtMostTwofoldUpscale() {
+        assertTrue(posterIconSharp(48, 48, 96f))
+        assertFalse(posterIconSharp(47, 47, 96f))
+        assertTrue(posterIconSharp(180, 180, 105f))
+        assertFalse(posterIconSharp(32, 32, 84f))
+        assertFalse(posterIconSharp(256, 40, 94.5f))
+    }
+
     @Test fun posterTextReachesAaContrast() {
         val samples = listOf(0xFFFFFFFF, 0xFFF5F1E9, 0xFFFFEB3B, 0xFF00BCD4, 0xFF8BC34A, 0xFFFF9800, 0xFF9C27B0,
             0xFF1D1F20, 0xFF4285F4, 0xFFE91E63, 0xFF607D8B, 0xFF808080).map { Color(it) }

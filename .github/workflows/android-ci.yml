@@ -44,7 +44,7 @@ jobs:
         run: ./gradlew lintDebug
         
       - name: Upload Reports
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: android-reports

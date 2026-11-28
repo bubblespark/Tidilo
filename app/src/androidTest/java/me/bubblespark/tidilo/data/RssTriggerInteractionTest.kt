@@ -211,9 +211,9 @@ class RssTriggerInteractionTest {
             }
             assertTrue("Delete minus stays white: $scenario center=$center", whiteMinus)
         } finally {
-            // A capture still in flight recycles its own bitmap once it sees the cancelled result.
-            if (result.isCompleted) bitmap.recycle()
+            // Exactly one side owns the bitmap: a capture that loses to cancel() recycles it in its callback.
             result.cancel()
+            if (!result.isCancelled) bitmap.recycle()
         }
     }
 }

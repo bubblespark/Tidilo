@@ -18,7 +18,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -32,7 +31,6 @@ import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -136,12 +134,13 @@ class RssNotificationRationaleTest {
         assertEquals(0, permissionLaunches)
         assertTrue("Dismissing notification rationale must not block Daily fetch", model.settings.value.dailyEnabled)
 
+        // saveSettings decides the rationale before it clears busy, so an idle model has already decided.
         toggleDailyFetch()
-        composeRule.waitUntil(3_000) { !model.settings.value.dailyEnabled }
+        composeRule.waitUntil(3_000) { !model.settings.value.dailyEnabled && !model.busy.value }
         toggleDailyFetch()
-        composeRule.waitUntil(3_000) { model.settings.value.dailyEnabled }
+        composeRule.waitUntil(3_000) { model.settings.value.dailyEnabled && !model.busy.value }
         composeRule.waitForIdle()
-        delay(300) // Negative window: a reopened rationale would appear within a few frames.
+        assertFalse(model.notificationRationale.value)
         assertFalse("Notification rationale must appear only once", showing(rationaleTitle))
     }
 
@@ -228,7 +227,6 @@ class RssNotificationRationaleTest {
             toggleDailyFetch()
             composeRule.waitUntil(3_000) { model.settings.value.dailyEnabled && !model.busy.value }
             composeRule.waitForIdle()
-            delay(300) // Negative window: a reopened rationale would appear within a few frames.
             assertFalse(model.notificationRationale.value)
             assertFalse(
                 "Denied permission must not re-open notification rationale on subsequent Daily fetch enable",
@@ -256,6 +254,7 @@ class RssNotificationRationaleTest {
     @Test fun restoredRationaleLaunchesOnlyFromTheResumedScreen(): Unit = runBlocking {
         val persistStarted = CompletableDeferred<Unit>()
         val allowPersistFinish = CompletableDeferred<Unit>()
+        val persistFinished = CompletableDeferred<Unit>()
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
             val model = RssSettingsViewModel(
@@ -265,8 +264,12 @@ class RssNotificationRationaleTest {
                 permissionGrantedProvider = { false },
                 persistPermissionRequested = {
                     persistStarted.complete(Unit)
-                    allowPersistFinish.await()
-                    notificationPrefs.edit().putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, true).commit()
+                    try {
+                        allowPersistFinish.await()
+                        notificationPrefs.edit().putBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, true).commit()
+                    } finally {
+                        persistFinished.complete(Unit)
+                    }
                 }
             )
             val screenGeneration = mutableStateOf(1)
@@ -312,6 +315,8 @@ class RssNotificationRationaleTest {
             assertEquals("Resumed recreated screen launcher must be invoked once", 1, secondOwnerLaunches)
         } finally {
             allowPersistFinish.complete(Unit)
+            // A started write must land before @After restores the preference.
+            if (persistStarted.isCompleted) withContext(NonCancellable) { withTimeout(3_000) { persistFinished.await() } }
             db.close()
         }
     }
@@ -349,10 +354,10 @@ class RssNotificationRationaleTest {
         }
         composeRule.awaitNode(hasText(jaTitle))
         composeRule.awaitNode(hasText(jaMessage))
-        fun clickable(text: String): SemanticsNode = generateSequence(composeRule.awaitNode(hasText(text))) { it.parent }
-            .first { it.config.getOrNull(SemanticsActions.OnClick) != null }
-        assertTrue("Dialog dismiss button must meet 48dp touch height", clickable(jaLater).size.height >= 47.5f * density)
-        assertTrue("Dialog confirm button must meet 48dp touch height", clickable(jaAllow).size.height >= 47.5f * density)
+        fun visibleHeight(text: String): Float = generateSequence(composeRule.awaitNode(hasText(text))) { it.parent }
+            .first { it.config.getOrNull(SemanticsActions.OnClick) != null }.boundsInWindow.height
+        assertTrue("Dialog dismiss button must meet 48dp touch height", visibleHeight(jaLater) >= 47.5f * density)
+        assertTrue("Dialog confirm button must meet 48dp touch height", visibleHeight(jaAllow) >= 47.5f * density)
         click(jaAllow)
         composeRule.waitUntil(3_000) { dialogAllows > 0 }
     }

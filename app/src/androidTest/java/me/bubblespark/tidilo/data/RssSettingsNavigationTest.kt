@@ -2,6 +2,7 @@ package me.bubblespark.tidilo.data
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Resources
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -40,6 +41,13 @@ class RssSettingsNavigationTest {
         useUnmergedTree = true
     ).fetchSemanticsNodes().isEmpty()
 
+    /** The launched activity's resources, which follow the app's saved language rather than the device locale. */
+    private fun ActivityScenario<MainActivity>.appResources(): Resources {
+        lateinit var resources: Resources
+        onActivity { resources = it.resources }
+        return resources
+    }
+
     /** Launches the app with overlay blur off and offline caches, closing everything afterwards. */
     private fun withApp(block: suspend (ActivityScenario<MainActivity>) -> Unit) = runBlocking {
         val oldBlur = AppConfig.overlayBlurEnabled.value
@@ -66,22 +74,23 @@ class RssSettingsNavigationTest {
         assertTrue(prefs.edit().remove(KEY_NOTIFICATION_PERMISSION_REQUESTED).commit())
         try {
             withApp { scenario ->
-                val openNavigation = context.getString(R.string.navigation_open)
+                val app = scenario.appResources()
+                val openNavigation = app.getString(R.string.navigation_open)
                 composeRule.awaitNode(hasContentDescription(openNavigation))
                 assertFalse(
                     "Cold launch must not request or mark notification permission as requested",
                     prefs.getBoolean(KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
                 )
                 composeRule.clickNode(composeRule.awaitNode(hasContentDescription(openNavigation)))
-                composeRule.clickNode(composeRule.awaitNode(hasText(context.getString(R.string.title_settings))))
-                val language = context.getString(R.string.settings_language_title)
-                val rssEntry = context.getString(R.string.rss_subtitle)
+                composeRule.clickNode(composeRule.awaitNode(hasText(app.getString(R.string.title_settings))))
+                val language = app.getString(R.string.settings_language_title)
+                val rssEntry = app.getString(R.string.rss_subtitle)
                 composeRule.awaitNode(hasText(language))
                 composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText(language)))
                     .performScrollToNode(hasText(rssEntry))
                 composeRule.clickNode(composeRule.awaitNode(hasText(rssEntry)))
-                composeRule.awaitNode(hasText(context.getString(R.string.rss_title)))
-                for (label in listOf(context.getString(R.string.rss_schedule), "Daily fetch time", "Fetch only over Wi-Fi")) {
+                composeRule.awaitNode(hasText(app.getString(R.string.rss_title)))
+                for (label in listOf(app.getString(R.string.rss_schedule), app.getString(R.string.rss_wifi_only))) {
                     composeRule.revealRssRow(hasText(label))
                 }
                 scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
@@ -100,7 +109,8 @@ class RssSettingsNavigationTest {
     }
 
     @Test fun importShowsErrorsWithoutAiWaitingSections() = withApp { scenario ->
-        val openNavigation = hasContentDescription(context.getString(R.string.navigation_open))
+        val app = scenario.appResources()
+        val openNavigation = hasContentDescription(app.getString(R.string.navigation_open))
         composeRule.awaitNode(openNavigation)
         // Delivered to the running app: under the test clock a cold-start destination is navigated before the graph is set.
         // A copy of the launch intent keeps the identity ActivityScenario tracks across setIntent().
@@ -108,7 +118,7 @@ class RssSettingsNavigationTest {
             val intent = Intent(it.intent).putExtra(NotificationCoordinator.EXTRA_DESTINATION, "import")
             InstrumentationRegistry.getInstrumentation().callActivityOnNewIntent(it, intent)
         }
-        composeRule.awaitNode(hasText(context.getString(R.string.settings_notification_title)))
+        composeRule.awaitNode(hasText(app.getString(R.string.settings_notification_title)))
         assertTrue(noTextStartsWith("Ready - RSS ("))
         assertTrue(noTextStartsWith("Ready ("))
     }

@@ -161,6 +161,8 @@ class RssSettingsScreenTest {
             val wifi = activity.getString(R.string.rss_wifi_only)
             val fetch = activity.getString(R.string.rss_fetch_now)
             composeRule.awaitNode(hasText(failure))
+            // The failure state is published before action() clears busy, and a busy model drops the probe.
+            withTimeout(3_000) { model.busy.first { !it } }
             composeRule.runOnUiThread { model.saveSettings(RssSettings(dailyEnabled = true), permissionGranted = true) }
             withTimeout(3_000) { model.busy.first { !it } }
             assertEquals(saved, RssPreferences(context).let {
@@ -331,13 +333,15 @@ class RssSettingsScreenTest {
     @Test fun emptyTriggerSectionIsSeparateAndEditableWhileOff() {
         val settings = mutableStateOf(RssSettings())
         composeRule.setContent { Content(settings = settings.value, onSettings = { settings.value = it }) }
-        val firstTop = composeRule.awaitNode(hasText("Add your first feed")).boundsInRoot.top
         composeRule.awaitNode(hasText("https://example.com/feed.xml", substring = true))
         composeRule.awaitNode(hasText("Add feed"))
-        val daily = composeRule.revealRssRow(hasText("Daily fetch time")).boundsInRoot
+        // Each pair of bounds is read at one scroll position, after the reveal that may move the list.
+        val dailyHeading = hasText("Daily fetch time")
+        composeRule.revealRssRow(dailyHeading)
+        val firstTop = composeRule.awaitNode(hasText("Add your first feed")).boundsInRoot.top
+        assertTrue(firstTop < composeRule.awaitNode(dailyHeading).boundsInRoot.top)
         val trigger = composeRule.revealRssRow(hasText("Trigger time")).boundsInRoot
-        assertTrue(firstTop < daily.top)
-        assertTrue(trigger.top > daily.bottom)
+        assertTrue(trigger.top > composeRule.awaitNode(dailyHeading).boundsInRoot.bottom)
         composeRule.revealRssRow(hasText("0 / 3"))
         composeRule.revealRssRow(hasText("Not set"))
         assertTrue(absent(hasText("Up to 3 times per day")))

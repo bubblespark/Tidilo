@@ -2,10 +2,14 @@ package me.bubblespark.tidilo.ui.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleOut
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -59,6 +63,17 @@ internal fun rememberPlateTransition(): PlateTransition? {
 @Composable
 internal fun Modifier.sharedPlate(transition: PlateTransition?, key: PlateKey): Modifier =
     if (transition == null) this else with(transition) { this@sharedPlate.sharedPlate(key) }
+
+/**
+ * Page transitions between a plate screen and Detail: the shared plate carries the motion, so pages only fade
+ * (§7.2). Detail shrinks on pop and predictive back, except under [reducedMotion] (§7).
+ */
+internal class PlateNavTransitions(private val effects: FiniteAnimationSpec<Float>, private val reducedMotion: Boolean) {
+    val enter: EnterTransition get() = fadeIn(effects)
+    val exit: ExitTransition get() = fadeOut(effects)
+    val popExit: ExitTransition get() =
+        if (reducedMotion) fadeOut(effects) else scaleOut(targetScale = 0.9f) + fadeOut(effects)
+}
 
 /** Discover and Library show plates; Detail opened from them receives the shared hero. */
 internal fun isPlateRoute(route: String?): Boolean = route == Screen.Discover.route || route == Screen.Library.route

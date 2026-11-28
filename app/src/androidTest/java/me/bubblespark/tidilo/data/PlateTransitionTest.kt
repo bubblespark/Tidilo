@@ -3,9 +3,7 @@ package me.bubblespark.tidilo.data
 import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleOut
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.semantics.SemanticsActions
@@ -39,6 +37,7 @@ import me.bubblespark.tidilo.data.db.TagKind
 import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import me.bubblespark.tidilo.ui.navigation.LocalNavAnimatedScope
 import me.bubblespark.tidilo.ui.navigation.LocalSharedTransitionScope
+import me.bubblespark.tidilo.ui.navigation.PlateNavTransitions
 import me.bubblespark.tidilo.ui.navigation.PlateTransitionLayout
 import me.bubblespark.tidilo.ui.navigation.Screen
 import me.bubblespark.tidilo.ui.screens.library.BookmarkDetailScreen
@@ -134,14 +133,15 @@ class PlateTransitionTest {
         composeRule.setContent {
             TidiloTheme(darkTheme = false, dynamicColor = false, blurEnabled = false) {
                 val nav = rememberNavController()
+                // The same page transitions TidiloNavGraph uses between plate screens and Detail.
+                val plate = PlateNavTransitions(MaterialTheme.motionScheme.defaultEffectsSpec(), reducedMotion)
                 PlateTransitionLayout(enabled = true, reducedMotion = reducedMotion) { hostModifier ->
                     scope = LocalSharedTransitionScope.current
-                    // TidiloNavGraph's transitions between plate screens and Detail.
                     NavHost(nav, Screen.Library.route, hostModifier,
-                        enterTransition = { fadeIn() },
-                        exitTransition = { fadeOut() },
-                        popEnterTransition = { fadeIn() },
-                        popExitTransition = { scaleOut(targetScale = 0.9f) + fadeOut() }
+                        enterTransition = { plate.enter },
+                        exitTransition = { plate.exit },
+                        popEnterTransition = { plate.enter },
+                        popExitTransition = { plate.popExit }
                     ) {
                         composable(Screen.Library.route) {
                             CompositionLocalProvider(LocalNavAnimatedScope provides this) {
@@ -259,6 +259,22 @@ class PlateTransitionTest {
         settle()
         awaitAbsent(hero)
         await(card("a"))
+    }
+
+    @Test fun gridListToggleOnlyCrossfades() {
+        show()
+        await(card("a"))
+        composeRule.mainClock.autoAdvance = false
+        val toggle = await(hasTestTag("library_view_toggle"))
+        composeRule.runOnUiThread { check(toggle.config.getOrNull(SemanticsActions.OnClick)?.action?.invoke() == true) }
+        var sawActive = false
+        repeat(30) {
+            composeRule.mainClock.advanceTimeByFrame()
+            sawActive = sawActive || active()
+        }
+        assertFalse("outgoing and incoming plates must not share keys during the crossfade", sawActive)
+        settle()
+        await(hasTestTag("library_row_a"))
     }
 
     @Test fun backDuringOpenSettlesOnLibrary() {

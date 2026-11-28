@@ -5,7 +5,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import android.widget.Toast
@@ -24,6 +23,7 @@ import androidx.navigation.compose.composable
 import me.bubblespark.tidilo.ui.components.HeaderDefaults
 import me.bubblespark.tidilo.ui.screens.discover.DiscoverScreen
 import me.bubblespark.tidilo.ui.screens.discover.surfaceOf
+import me.bubblespark.tidilo.ui.screens.discover.rememberReducedMotion
 import me.bubblespark.tidilo.data.engagement.EngagementSurface
 import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
 import me.bubblespark.tidilo.ui.screens.importscreen.ImportViewModel
@@ -68,8 +68,8 @@ fun TidiloNavGraph(
         discoverPreviewEnabled &&
             topLevelDestinationOf(initialState.destination.route) != null &&
             topLevelDestinationOf(targetState.destination.route) != null
-    // Card ↔ Detail (§7.2): the shared plate carries the motion, so the pages only fade; Detail shrinks on its way back.
-    val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    val reducedMotion = rememberReducedMotion()
+    val plate = PlateNavTransitions(MaterialTheme.motionScheme.defaultEffectsSpec(), reducedMotion)
     fun AnimatedContentTransitionScope<androidx.navigation.NavBackStackEntry>.isPlateSwitch(): Boolean =
         discoverPreviewEnabled && (isPlateOpen() || isPlateReturn())
 
@@ -86,7 +86,7 @@ fun TidiloNavGraph(
             modifier = hostModifier,
             enterTransition = {
                 if (isPlateSwitch()) {
-                    fadeIn(effects)
+                    plate.enter
                 } else if (isTopLevelSwitch()) {
                     fadeIn(animationSpec = tween(220)) + slideInVertically(animationSpec = topLevelEnterSpec) { topLevelSlideOffsetPx }
                 } else {
@@ -106,7 +106,7 @@ fun TidiloNavGraph(
             },
             exitTransition = {
                 if (isPlateSwitch()) {
-                    fadeOut(effects)
+                    plate.exit
                 } else if (isTopLevelSwitch()) {
                     fadeOut(animationSpec = tween(220))
                 } else {
@@ -126,7 +126,7 @@ fun TidiloNavGraph(
             },
             popEnterTransition = {
                 if (isPlateSwitch()) {
-                    fadeIn(effects)
+                    plate.enter
                 } else if (isTopLevelSwitch()) {
                     fadeIn(animationSpec = tween(220)) + slideInVertically(animationSpec = topLevelEnterSpec) { topLevelSlideOffsetPx }
                 } else {
@@ -141,7 +141,7 @@ fun TidiloNavGraph(
             },
             popExitTransition = {
                 if (isPlateSwitch()) {
-                    scaleOut(targetScale = 0.9f) + fadeOut(effects)
+                    plate.popExit
                 } else if (isTopLevelSwitch()) {
                     fadeOut(animationSpec = tween(220))
                 } else {
@@ -156,7 +156,7 @@ fun TidiloNavGraph(
             },
             predictivePopEnterTransition = { _ ->
                 if (isPlateSwitch()) {
-                    fadeIn(effects)
+                    plate.enter
                 } else if (isTopLevelSwitch()) {
                     fadeIn(animationSpec = tween(220)) + slideInVertically(animationSpec = topLevelEnterSpec) { topLevelSlideOffsetPx }
                 } else {
@@ -171,7 +171,7 @@ fun TidiloNavGraph(
             },
             predictivePopExitTransition = { _ ->
                 if (isPlateSwitch()) {
-                    scaleOut(targetScale = 0.9f) + fadeOut(effects)
+                    plate.popExit
                 } else if (isTopLevelSwitch()) {
                     fadeOut(animationSpec = tween(220))
                 } else {
@@ -379,5 +379,5 @@ fun TidiloNavGraph(
             }
         }
     }
-    PlateTransitionLayout(discoverPreviewEnabled, modifier, content = host)
+    PlateTransitionLayout(discoverPreviewEnabled, modifier, reducedMotion, content = host)
 }

@@ -270,7 +270,7 @@ internal fun LibraryDeckCard(
 }
 
 /**
- * Library-layer deck (§9, flag on): three tonal layers (`surfaceContainerLow` → `surfaceContainerHigh`) with
+ * Library-layer deck (§9): three tonal layers (`surfaceContainerLow` → `surfaceContainerHigh`) with
  * an accent hairline, an accent wash on the front card, `largeIncreased` corners, the favicon watermark,
  * a 2-line title, the subtitle only when it adds something, and the plural count pill.
  */

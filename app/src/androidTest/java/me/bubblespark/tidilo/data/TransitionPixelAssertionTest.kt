@@ -12,15 +12,15 @@ import org.junit.Test
 
 // Exiting AnimatedContent is excluded from accessibility, even while still drawn, so exits are checked in pixels.
 
-/** Asserts that most dark title pixels inside [bounds] of [before] are still dark in [during], moved down by [shiftPx]. */
-internal fun assertTextStillDrawn(before: Bitmap, during: Bitmap, bounds: Rect, shiftPx: Int = 0) {
+/** Asserts that most dark title pixels inside [bounds] of [before] are still dark in [during]. */
+internal fun assertTextStillDrawn(before: Bitmap, during: Bitmap, bounds: Rect) {
     var dark = 0
     var retained = 0
     for (y in bounds.top until bounds.bottom) for (x in bounds.left until bounds.right) {
         val old = before.getPixel(x, y)
         if (Color.red(old) < 80 && Color.green(old) < 80 && Color.blue(old) < 80) {
             dark++
-            val next = during.getPixel(x, (y + shiftPx).coerceIn(0, during.height - 1))
+            val next = during.getPixel(x, y)
             if (Color.red(next) < 120 && Color.green(next) < 120 && Color.blue(next) < 120) retained++
         }
     }

@@ -112,7 +112,7 @@ Drill-downs publish active colors (`ownerId = "library_drilldown"`) via `Remembe
 | Consumer family | Theme connection | Behavior retained |
 | :--- | :--- | :--- |
 | Bookmark list/grid | `BOOKMARK_CARD`, compact grid variant | Scoped accent rim/wash/shadow, image crop, click/long press, paging keys |
-| Collection/domain/RSS deck | `DECK_FRONT` and `DECK_BACK` | Front/back corner diffs, stack offsets, watermark, contextual wash |
+| RSS Settings feed deck (Library decks use tonal layers) | `DECK_FRONT` and `DECK_BACK` | Front/back corner diffs, stack offsets, watermark, contextual wash |
 | Classification/entity badges | Shared badge resolution and Surface | Category hierarchy, Private badge tones, search-match colors |
 | Entity editor/toggle chips | `ENTITY_CHIP` / `FILTER_CHIP` compact native | Flat styling, selection/removal, animated colors, limit state |
 | Navigation, toolbar & actions | `FLOATING_BAR`, `TOOLBAR`, `PRIMARY_ACTION`, `FILTER_ACTION`, `NAVIGATION_INDICATOR` | Visibility animations, ripple, input semantics |

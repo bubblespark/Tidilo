@@ -72,6 +72,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import me.bubblespark.tidilo.R
 import me.bubblespark.tidilo.config.AppConfig
@@ -459,6 +461,11 @@ fun LibraryScreen(
                     modifier = Modifier.fillMaxSize()
                 ) { state ->
                     // Keep the selected window across details and release outgoing windows after exit.
+                    // Each branch keeps the header clearance of its own state, so an exiting drill-down does not
+                    // jump when the tabs come back (and an exiting root does not jump when they leave).
+                    val stateTabsOffset = (if (state.isDrillDown) 0.dp else LibraryTabsHeight) - headerExtraHeight
+                    val statePadding = remember(contentPadding, stateTabsOffset) { contentPadding.offsetTop(stateTabsOffset) }
+                    val stateHeaderHeight = headerHeight + stateTabsOffset
                     val collectionGrid = state == LibraryDisplayState.DomainGrid || state == LibraryDisplayState.RssFeedGrid || state == LibraryDisplayState.CollectionList
                     val isNewestFirst = state == LibraryDisplayState.NewestFirst
                     val sessionIncludesRss = isNewestFirst && includeRss
@@ -497,7 +504,7 @@ fun LibraryScreen(
                         // The two RSS empty states differ by subscription count; wait for it (PR #335 R-003).
                         (state == LibraryDisplayState.RssFeedGrid && rssFeedGroups.isEmpty() && rssSubscriptionCount == null) ||
                         (state == LibraryDisplayState.CollectionList && collectionLoading)
-                    val scopeStatePadding = newestFirstStatePadding(contentPadding, LocalLayoutDirection.current)
+                    val scopeStatePadding = newestFirstStatePadding(statePadding, LocalLayoutDirection.current)
                     if (loading && isNewestFirst) {
                         // The scope stays adjustable while a new scope loads.
                         Column(Modifier.fillMaxSize().padding(scopeStatePadding)) {
@@ -505,9 +512,9 @@ fun LibraryScreen(
                             SkeletonBookmarkList(Modifier.fillMaxSize())
                         }
                     } else if (loading) {
-                        SkeletonBookmarkList(Modifier.fillMaxSize().padding(top = headerHeight, start = 20.dp, end = 20.dp))
+                        SkeletonBookmarkList(Modifier.fillMaxSize().padding(top = stateHeaderHeight, start = 20.dp, end = 20.dp))
                     } else if (state == LibraryDisplayState.CollectionList && collectionError != null) {
-                        Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxSize().padding(top = stateHeaderHeight), contentAlignment = Alignment.Center) {
                             PagingFeedback(LoadState.Error(requireNotNull(collectionError)), viewModel::retryCollections)
                         }
                     } else if (refreshState is LoadState.Error && isNewestFirst) {
@@ -518,12 +525,12 @@ fun LibraryScreen(
                             }
                         }
                     } else if (refreshState is LoadState.Error) {
-                        Box(Modifier.fillMaxSize().padding(top = headerHeight), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxSize().padding(top = stateHeaderHeight), contentAlignment = Alignment.Center) {
                             PagingFeedback(refreshState, bookmarks::retry)
                         }
                     } else when (state) {
                         is LibraryDisplayState.CollectionList -> if (collectionGroups.isEmpty()) {
-                            LibraryEmptyState(LibraryEmpty.COLLECTION, contentPadding = contentPadding, onAction = {
+                            LibraryEmptyState(LibraryEmpty.COLLECTION, contentPadding = statePadding, onAction = {
                                 editingCollectionId = null
                                 showCollectionEditorSheet = true
                             })
@@ -531,7 +538,7 @@ fun LibraryScreen(
                             LazyColumn(
                                 state = collectionListState,
                                 modifier = Modifier.fillMaxSize(),
-                                contentPadding = contentPadding,
+                                contentPadding = statePadding,
                                 verticalArrangement = Arrangement.spacedBy(14.dp)
                             ) {
                                 items(
@@ -545,8 +552,7 @@ fun LibraryScreen(
                                         onLongClick = {
                                             editingCollectionId = group.id
                                             showCollectionEditorSheet = true
-                                        },
-                                        gallery = true
+                                        }
                                     )
                                 }
                                 item(key = "add_collection_dummy_card", contentType = "add_collection_dummy") {
@@ -564,7 +570,7 @@ fun LibraryScreen(
                             if (if (rss) rssFeedGroups.isEmpty() else domainGroups.isEmpty()) {
                                 LibraryEmptyState(
                                     if (rss) rssEmpty(rssSubscriptionCount) else LibraryEmpty.DOMAIN,
-                                    contentPadding = contentPadding,
+                                    contentPadding = statePadding,
                                     onAction = if (rss) onOpenRssSettings else onOpenManualImport
                                 )
                             } else {
@@ -572,7 +578,7 @@ fun LibraryScreen(
                                     state = if (rss) rssFeedGridState else domainGridState,
                                     columns = GridCells.Fixed(2),
                                     modifier = Modifier.fillMaxSize(),
-                                    contentPadding = contentPadding,
+                                    contentPadding = statePadding,
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
@@ -617,7 +623,7 @@ fun LibraryScreen(
                                     modifier = Modifier.fillMaxSize()
                                 ) {
                                     if (domainBookmarks.itemCount == 0) {
-                                        LibraryEmptyState(LibraryEmpty.NEWEST, onAction = onOpenManualImport, contentPadding = contentPadding)
+                                        LibraryEmptyState(LibraryEmpty.NEWEST, onAction = onOpenManualImport, contentPadding = statePadding)
                                     } else {
                                         val listState = if (collectionItem != null) collectionDetailListState else if (feed != null) rssDetailListState else domainDetailListState
                                         val gridState = when (state) {
@@ -625,7 +631,7 @@ fun LibraryScreen(
                                             is LibraryDisplayState.RssFeedDrillDown -> rssDetailGridState
                                             else -> domainDetailGridState
                                         }
-                                        LibraryPlates(viewMode, domainBookmarks, listState, gridState, contentPadding,
+                                        LibraryPlates(viewMode, domainBookmarks, listState, gridState, statePadding,
                                             includeRss = feed != null, onOpen = onNavigateToDetail, onPeek = ::openPeek,
                                             active = state == displayState)
                                     }
@@ -635,9 +641,9 @@ fun LibraryScreen(
                         is LibraryDisplayState.NewestFirst -> {
                             if (bookmarks.itemCount == 0) {
                                 LibraryEmptyState(LibraryEmpty.NEWEST, onAction = onOpenManualImport,
-                                    contentPadding = contentPadding, leadingContent = scopeRow)
+                                    contentPadding = statePadding, leadingContent = scopeRow)
                             } else {
-                                LibraryPlates(viewMode, bookmarks, newestFirstListState, newestFirstGridState, contentPadding,
+                                LibraryPlates(viewMode, bookmarks, newestFirstListState, newestFirstGridState, statePadding,
                                     includeRss = includeRss, onOpen = onNavigateToDetail, onPeek = ::openPeek,
                                     active = state == displayState, leadingContent = scopeRow)
                             }
@@ -656,6 +662,18 @@ fun LibraryScreen(
 
 
     }
+}
+
+private val LibraryDisplayState.isDrillDown: Boolean
+    get() = this is LibraryDisplayState.DomainDrillDown || this is LibraryDisplayState.RssFeedDrillDown ||
+        this is LibraryDisplayState.CollectionDrillDown
+
+/** [this] with [extra] added to the top; the other sides are unchanged. */
+private fun PaddingValues.offsetTop(extra: Dp): PaddingValues = if (extra == 0.dp) this else object : PaddingValues {
+    override fun calculateLeftPadding(layoutDirection: LayoutDirection) = this@offsetTop.calculateLeftPadding(layoutDirection)
+    override fun calculateTopPadding() = this@offsetTop.calculateTopPadding() + extra
+    override fun calculateRightPadding(layoutDirection: LayoutDirection) = this@offsetTop.calculateRightPadding(layoutDirection)
+    override fun calculateBottomPadding() = this@offsetTop.calculateBottomPadding()
 }
 
 /**

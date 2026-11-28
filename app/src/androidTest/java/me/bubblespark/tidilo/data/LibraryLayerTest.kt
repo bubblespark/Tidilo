@@ -59,7 +59,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
-/** The Library layer (Discover preview on) over an in-memory store: tabs, plates, decks, Peek, empty states. */
+/** The Library layer over an in-memory store: tabs, plates, decks, Peek, empty states. */
 class LibraryLayerTest {
     @get:Rule val composeRule = createComposeRule()
     private val context = InstrumentationRegistry.getInstrumentation().targetContext

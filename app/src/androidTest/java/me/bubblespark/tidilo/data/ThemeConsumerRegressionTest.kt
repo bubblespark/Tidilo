@@ -34,8 +34,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
-import me.bubblespark.tidilo.data.db.CollectionEntity
-import me.bubblespark.tidilo.data.db.CollectionWithCount
 import me.bubblespark.tidilo.data.rss.RssSettings
 import me.bubblespark.tidilo.ui.components.*
 import me.bubblespark.tidilo.ui.screens.library.*
@@ -44,10 +42,6 @@ import me.bubblespark.tidilo.ui.screens.settings.RssSettingsContent
 import me.bubblespark.tidilo.ui.screens.settings.SettingsGroup
 import me.bubblespark.tidilo.ui.screens.settings.StorageLoad
 import me.bubblespark.tidilo.ui.theme.*
-import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
-import me.bubblespark.tidilo.ui.navigation.LibraryNavigationRail
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.rememberWideNavigationRailState
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -59,8 +53,6 @@ class ThemeConsumerRegressionTest {
     @get:Rule val composeRule = createComposeRule()
 
     private val bookmark = BookmarkItem("fixture", "Grid fixture", "", "Summary", Tag("Article", "Tech"), createdAt = 0L)
-    private val collection = CollectionWithCount(CollectionEntity("fixture", "Collection fixture", "Description",
-        "folder", null, 0, 0L, 0L), 3)
     private val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
 
     private fun scene(
@@ -194,34 +186,28 @@ class ThemeConsumerRegressionTest {
         }
     }
 
-    @Test fun gridAndCollectionShadowsExtendOutsideTheirInputClip() {
+    // The collection deck uses tonal Library-layer layers, so only the grid card consumes the elevation override.
+    @Test fun gridCardShadowExtendsOutsideItsInputClip() {
         val clicks = AtomicInteger()
         val longs = AtomicInteger()
-        var deck by mutableStateOf(false)
         val preset = AppThemeStyle.Modern.copy(surfaceOverrides = mapOf(
-            SurfaceRole.BOOKMARK_CARD to SurfaceStyleOverride(elevation = 18.dp),
-            SurfaceRole.DECK_FRONT to SurfaceStyleOverride(elevation = 18.dp)))
+            SurfaceRole.BOOKMARK_CARD to SurfaceStyleOverride(elevation = 18.dp)))
         scene(preset, width = 220.dp, content = {
-            if (deck) CollectionCard(collection, { clicks.incrementAndGet() }, Modifier.testTag("card"),
-                onLongClick = { longs.incrementAndGet() })
-            else BookmarkGridCardFixture(bookmark, Modifier.testTag("card"), onClick = { clicks.incrementAndGet() },
+            BookmarkGridCardFixture(bookmark, Modifier.testTag("card"), onClick = { clicks.incrementAndGet() },
                 onLongClick = { longs.incrementAndGet() })
         }) {
-            for ((index, title) in listOf("Grid fixture", "Collection fixture").withIndex()) {
-                composeRule.runOnUiThread { deck = index == 1 }
-                composeRule.awaitNode(hasText(title))
-                val card = tagged("card")
-                val clickable = composeRule.awaitNode(SemanticsMatcher("long-clickable over the card") {
-                    it.config.getOrNull(SemanticsActions.OnLongClick) != null && it.boundsInRoot.overlaps(card.boundsInRoot)
-                })
-                invoke(clickable, SemanticsActions.OnClick)
-                invoke(clickable, SemanticsActions.OnLongClick)
-                assertEquals(index + 1, clicks.get())
-                assertEquals(index + 1, longs.get())
-                val bounds = clickable.screenBounds()
-                composeRule.sampleScreen("$title shadow outside its input clip") { frame ->
-                    Unit.takeIf { (-5..-1).any { frame.getPixel((bounds.left + it).toInt(), bounds.center.y.toInt()) != Color.White.toArgb() } }
-                }
+            composeRule.awaitNode(hasText("Grid fixture"))
+            val card = tagged("card")
+            val clickable = composeRule.awaitNode(SemanticsMatcher("long-clickable over the card") {
+                it.config.getOrNull(SemanticsActions.OnLongClick) != null && it.boundsInRoot.overlaps(card.boundsInRoot)
+            })
+            invoke(clickable, SemanticsActions.OnClick)
+            invoke(clickable, SemanticsActions.OnLongClick)
+            assertEquals(1, clicks.get())
+            assertEquals(1, longs.get())
+            val bounds = clickable.screenBounds()
+            composeRule.sampleScreen("Grid fixture shadow outside its input clip") { frame ->
+                Unit.takeIf { (-5..-1).any { frame.getPixel((bounds.left + it).toInt(), bounds.center.y.toInt()) != Color.White.toArgb() } }
             }
         }
     }

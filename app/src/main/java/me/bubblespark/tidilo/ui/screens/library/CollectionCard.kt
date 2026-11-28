@@ -3,11 +3,6 @@ package me.bubblespark.tidilo.ui.screens.library
 import me.bubblespark.tidilo.ui.theme.ThemeCorner
 import me.bubblespark.tidilo.ui.theme.themeCorner
 import me.bubblespark.tidilo.ui.theme.CollectionColorPalette
-import me.bubblespark.tidilo.ui.theme.themeSurfaceBlur
-import me.bubblespark.tidilo.ui.components.TidiloSurface
-import me.bubblespark.tidilo.ui.theme.SurfaceRole
-import me.bubblespark.tidilo.ui.theme.SurfaceVariant
-import me.bubblespark.tidilo.ui.theme.currentThemeSurfaces
 import me.bubblespark.tidilo.data.db.CollectionWithCount
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -118,12 +113,9 @@ private fun CollectionCardVisual(
     item: CollectionGroupItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onLongClick: (() -> Unit)? = null,
-    gallery: Boolean = false
+    onLongClick: (() -> Unit)? = null
 ) {
     val haptic = LocalHapticFeedback.current
-    val themeStyle = currentThemeSurfaces().preset
-    val effectiveShape = currentThemeSurfaces().resolve(SurfaceRole.DECK_FRONT, SurfaceVariant.STANDARD).shape
     val stackOffset = 6.dp
     val cardHeight = (132 * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)).dp
     val dominantColor = item.accentColor
@@ -143,10 +135,7 @@ private fun CollectionCardVisual(
     ) {
         // Deepest background stacked card (Layer 2, top-right peek)
         CollectionLayer(
-            gallery = gallery,
             depth = 2,
-            role = SurfaceRole.DECK_BACK,
-            variant = SurfaceVariant.SUBTLE,
             accent = dominantColor,
             modifier = Modifier
                 .fillMaxWidth()
@@ -163,10 +152,7 @@ private fun CollectionCardVisual(
 
         // Intermediate background stacked card (Layer 1, middle peek)
         CollectionLayer(
-            gallery = gallery,
             depth = 1,
-            role = SurfaceRole.DECK_BACK,
-            variant = SurfaceVariant.STANDARD,
             accent = dominantColor,
             modifier = Modifier
                 .fillMaxWidth()
@@ -184,14 +170,11 @@ private fun CollectionCardVisual(
 
         // Front interactive main horizontal card
         CollectionLayer(
-            gallery = gallery,
             depth = 0,
             onClick = onClick,
             onLongClick = onLongClick?.let { callback ->
                 { haptic.performHapticFeedback(HapticFeedbackType.LongPress); callback() }
             },
-            role = SurfaceRole.DECK_FRONT,
-            variant = SurfaceVariant.STANDARD,
             accent = dominantColor,
             modifier = Modifier
                 .fillMaxWidth()
@@ -206,7 +189,6 @@ private fun CollectionCardVisual(
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .then(if (gallery) Modifier else Modifier.themeSurfaceBlur(themeStyle.cardBlurRadius, effectiveShape))
                         .background(gradient)
                 )
                 // Large background watermark in top-right shoulder
@@ -370,38 +352,25 @@ fun CollectionCard(
     item: CollectionWithCount,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onLongClick: (() -> Unit)? = null,
-    gallery: Boolean = false
+    onLongClick: (() -> Unit)? = null
 ) {
-    CollectionCardVisual(item.cardItem(), onClick, modifier, onLongClick, gallery)
+    CollectionCardVisual(item.cardItem(), onClick, modifier, onLongClick)
 }
 
 /**
- * One layer of the collection deck. Flag-off keeps the theme's [TidiloSurface]; the Library layer
- * ([gallery], P5-Q4) uses tonal containers (`surfaceContainerLow` → `High` by [depth]) with an accent hairline.
+ * One layer of the collection deck (P5-Q4): a tonal container (`surfaceContainerLow` → `High` by [depth]) with
+ * an accent hairline.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CollectionLayer(
-    gallery: Boolean,
     depth: Int,
-    role: SurfaceRole,
-    variant: SurfaceVariant,
     accent: Color,
     modifier: Modifier,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
-    if (!gallery) {
-        if (onClick != null) {
-            TidiloSurface(onClick = onClick, onLongClick = onLongClick, role = role, variant = variant, accent = accent,
-                modifier = modifier, content = content)
-        } else {
-            TidiloSurface(role = role, variant = variant, accent = accent, modifier = modifier, content = content)
-        }
-        return
-    }
     val shape = MaterialTheme.shapes.largeIncreased
     val colors = MaterialTheme.colorScheme
     val container = when (depth) {

@@ -37,12 +37,11 @@ import me.bubblespark.tidilo.ui.screens.library.LibraryFilterMode
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewModel
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** The app shell (`TidiloApp`) with the Discover preview flag: floating toolbar, layers, back, and the trimmed rail. */
+/** The app shell (`TidiloApp`): floating toolbar, Discover/Library/Search layers, back, and the trimmed rail. */
 class DiscoverNavigationShellTest {
     @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()

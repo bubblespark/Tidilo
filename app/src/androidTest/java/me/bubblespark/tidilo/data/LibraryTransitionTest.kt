@@ -27,9 +27,6 @@ import me.bubblespark.tidilo.ui.screens.library.LibraryScreen
 import me.bubblespark.tidilo.ui.screens.library.LibraryViewMode
 import me.bubblespark.tidilo.ui.theme.TidiloTheme
 import org.junit.Assert.assertTrue
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import me.bubblespark.tidilo.ui.screens.library.LibraryTabsHeight
 import org.junit.Rule
 import org.junit.Test
 
@@ -43,14 +40,19 @@ class LibraryTransitionTest {
         val domain = "000-transition120.example"
         val manual = BookmarkEntity("transition-manual", "Transition manual article", "https://$domain/article", "Summary",
             createdAt = 1, updatedAt = 1)
+        val manualLead = BookmarkEntity("transition-manual-lead", "Transition manual lead", "https://$domain/lead", "Summary",
+            createdAt = 4, updatedAt = 4)
         val rss = BookmarkEntity("transition-rss", "Transition RSS article", "https://transition120.example/article", "Summary",
             createdAt = 2, updatedAt = 2, rssFeedId = feed.id)
+        // The leads sort first, so each sampled article sits below the tab group that returns over the outgoing list's top.
+        val rssLead = BookmarkEntity("transition-rss-lead", "Transition RSS lead", "https://transition120.example/lead",
+            "Summary", createdAt = 3, updatedAt = 3, rssFeedId = feed.id)
         val caches = OfflineVisualCaches()
         val library = withContext(Dispatchers.IO) {
             InMemoryLibrary(context.applicationContext).also {
                 it.awaitReady()
                 it.db.rssDao().putFeed(feed)
-                it.db.bookmarkDao().insertAll(listOf(manual, rss))
+                it.db.bookmarkDao().insertAll(listOf(manualLead, manual, rss, rssLead))
             }
         }
         try {
@@ -71,18 +73,17 @@ class LibraryTransitionTest {
             awaitText(feed.title)
             composeRule.runOnIdle { vm.selectRssFeedFilter(feed) }
             awaitText(rss.title)
-            // Leaving a drill-down brings back the tab group, which moves the outgoing list down by its height.
-            assertOutgoingStillDrawn(rss.title, accentText = "1 bookmark", forbiddenText = empty, shift = LibraryTabsHeight) { vm.selectRssFeedFilter(null) }
+            assertOutgoingStillDrawn(rss.title, accentText = "2 bookmarks", forbiddenText = empty) { vm.selectRssFeedFilter(null) }
             awaitAbsent(rss.title)
 
             // Domain list → domain.
             composeRule.runOnIdle { vm.setFilterMode(LibraryFilterMode.DOMAIN) }
             awaitText(domain)
-            assertOutgoingStillDrawn(domain, shift = -LibraryTabsHeight) { vm.selectDomainFilter(domain) }
+            assertOutgoingStillDrawn(domain) { vm.selectDomainFilter(domain) }
             awaitText(manual.title)
 
             // Domain → domain list (back).
-            assertOutgoingStillDrawn(manual.title, shift = LibraryTabsHeight) { context.onBackPressedDispatcher.onBackPressed() }
+            assertOutgoingStillDrawn(manual.title) { context.onBackPressedDispatcher.onBackPressed() }
             awaitAbsent(manual.title)
 
             // Newest first → RSS mode switch.
@@ -112,7 +113,6 @@ class LibraryTransitionTest {
         title: String,
         accentText: String? = null,
         forbiddenText: String? = null,
-        shift: Dp = 0.dp,
         change: () -> Unit
     ) {
         composeRule.waitForIdle()
@@ -126,8 +126,7 @@ class LibraryTransitionTest {
             composeRule.mainClock.advanceTimeByFrame()
             composeRule.mainClock.advanceTimeBy(EXIT_SAMPLE_MS)
             during = capture()
-            val shiftPx = (shift.value * context.resources.displayMetrics.density).roundToInt()
-            assertTextStillDrawn(before, during, titleBounds, shiftPx)
+            assertTextStillDrawn(before, during, titleBounds)
             accentBounds?.let { assertAccentStillDrawn(before, during, it, context.resources.displayMetrics.density) }
             if (forbiddenText != null) {
                 assertTrue("Exit must not introduce a transient '$forbiddenText'", nodes(hasText(forbiddenText)).isEmpty())

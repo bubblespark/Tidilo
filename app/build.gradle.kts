@@ -6,7 +6,11 @@ plugins {
 
 android {
     namespace = "me.bubblespark.tidilo"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
 
     defaultConfig {
         applicationId = "me.bubblespark.tidilo"
